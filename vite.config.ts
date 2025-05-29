@@ -1,3 +1,5 @@
+// vite.config.ts (修改后)
+
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
@@ -12,11 +14,9 @@ import VueI18n from '@intlify/unplugin-vue-i18n/vite'
 
 export default defineConfig({
   /**
-   * 若使用 Github Pages 进行部署，打包后的资源在 /moon-web-start 下
-   * 但默认会请求根目录下的资源 故此处根据 环境变量 REPOSITORY 动态设置 base
-   * 相当于： process.env.REPOSITORY ? '/moon-web-start/' : ''
+   * 👇 已将此处的 base 直接设置为你的仓库名，以确保 GitHub Pages 部署路径正确
    */
-  base: process.env.REPOSITORY ? `/${process.env.REPOSITORY.split('/').pop()}/` : '',
+  base: '/moon-web-start/',
   plugins: [
     Vue(),
     Unocss(),
