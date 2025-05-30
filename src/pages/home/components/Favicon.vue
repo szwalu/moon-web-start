@@ -26,6 +26,7 @@ const $faviconBox = ref<HTMLDivElement>()
 
 // 封装创建首字母图标的函数，方便复用
 function createLetterFallback() {
+  console.log(`[Favicon Debug] STEP 5: Creating letter fallback for: ${props.site.name}`)
   const fallbackDiv = document.createElement('div')
   fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
   faviconMap.value.set(props.site.id, fallbackDiv)
@@ -33,39 +34,29 @@ function createLetterFallback() {
 }
 
 onMounted(() => {
+  console.log(`[Favicon Debug] STEP 1: Component is mounting for site: "${props.site.name}"`)
   const id = props.site.id
   const cachedElement = faviconMap.value.get(id)
 
   if (cachedElement) {
+    console.log(`[Favicon Debug] Found in cache. Exiting.`)
     $faviconBox.value?.appendChild(cachedElement)
     return
   }
 
-  // 如果用户在数据中自定义了 favicon，直接使用它
   if (props.site.favicon) {
-    const img = new Image()
-    img.src = props.site.favicon
-    img.onload = () => {
-      // 检查自定义图标是否有效
-      if (img.naturalWidth < 2) {
-        createLetterFallback()
-      }
-      else {
-        faviconMap.value.set(id, img)
-        $faviconBox.value?.appendChild(img)
-      }
-    }
-    img.onerror = createLetterFallback // 自定义图标加载失败也显示首字母
+    console.log(`[Favicon Debug] Site has a custom favicon defined. Not fetching.`)
+    // 此处可以添加对自定义 favicon 的加载逻辑，但暂时简化
+    createLetterFallback()
     return
   }
 
-  // --- 动态获取图标的核心逻辑 ---
   let domain = ''
   try {
     domain = new URL(props.site.url).hostname
   }
   catch (e) {
-    console.error('Invalid URL:', props.site.url)
+    console.error(`[Favicon Debug] Invalid URL, creating letter fallback.`)
     createLetterFallback()
     return
   }
@@ -75,33 +66,33 @@ onMounted(() => {
   const fallbackUrl = `https://0x3.com/icon?host=${domain}`
 
   const img = new Image()
+  console.log(`[Favicon Debug] STEP 2: Attempting to load Google URL: ${googleUrl}`)
 
   img.onload = () => {
-    // 成功加载后，检查图片尺寸是否有效
+    console.log(`[Favicon Debug] STEP 3 (SUCCESS): 'onload' event triggered for: ${img.src}`)
+    console.log(`[Favicon Debug] Image dimensions are: ${img.naturalWidth} x ${img.naturalHeight}`)
     if (img.naturalWidth < 2) {
-      // 如果图片太小(说明是空白图片)，触发 onerror 逻辑
-      img.onerror!()
+      console.log(`[Favicon Debug] Image is too small. Treating as an error.`)
+      img.onerror?.(new Event('error')) // 手动触发 onerror
     }
     else {
-      // 图片有效，显示并缓存
+      console.log(`[Favicon Debug] Image is valid. Displaying icon.`)
       faviconMap.value.set(id, img)
       $faviconBox.value?.appendChild(img)
     }
   }
 
   img.onerror = () => {
-    // 检查当前失败的是否是 Google API
+    console.log(`[Favicon Debug] STEP 3 (FAILURE): 'onerror' event triggered for: ${img.src}`)
     if (img.src === googleUrl) {
-      // 尝试备用 API
+      console.log(`[Favicon Debug] STEP 4: Google failed. Trying fallback URL: ${fallbackUrl}`)
       img.src = fallbackUrl
     }
     else {
-      // 备用 API 也失败了，显示首字母
       createLetterFallback()
     }
   }
 
-  // 首先尝试 Google API
   img.src = googleUrl
 })
 </script>
