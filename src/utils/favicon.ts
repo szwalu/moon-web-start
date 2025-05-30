@@ -1,16 +1,16 @@
-// src/utils/favicon.ts (修改后的完整内容)
+// src/utils/favicon.ts (使用原网站版本)
 
 /**
  * 根据网站的 URL 生成指向 Google Favicon 服务的图标链接。
  * @param url 网站的完整 URL (例如 "https://www.weibo.com/")
- * @returns 指向 Google Favicon API 的完整 URL
+ * @returns 指向 Google Favicon API 的完整 URL 或空字符串
  */
 export function getFaviconUrl(url: string): string {
   try {
     // 从完整的 URL 中安全地提取出域名 (hostname)
     const domain = new URL(url).hostname
 
-    // 你可以根据需要调整图标的大小 (例如 32, 64, 128)
+    // 原网站请求的尺寸是 64
     const size = 64
 
     // 返回指向 Google Favicon 服务的、格式正确的完整 URL
