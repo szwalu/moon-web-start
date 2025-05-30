@@ -30,7 +30,6 @@ function createLetterFallback() {
   fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
   faviconMap.value.set(props.site.id, fallbackDiv)
   if ($faviconBox.value) {
-    // 清空可能存在的失败的 img 元素
     $faviconBox.value.innerHTML = ''
     $faviconBox.value.appendChild(fallbackDiv)
   }
@@ -50,7 +49,8 @@ onMounted(() => {
     const img = new Image()
     img.src = props.site.favicon
     img.onload = () => {
-      if (img.naturalWidth < 16) {
+      // 检查自定义图标是否有效
+      if (img.naturalWidth < 2) {
         createLetterFallback()
       }
       else {
@@ -62,7 +62,6 @@ onMounted(() => {
     return
   }
 
-  // --- 最终简化的逻辑 ---
   let domain = ''
   try {
     domain = new URL(props.site.url).hostname
@@ -77,16 +76,17 @@ onMounted(() => {
 
   const img = new Image()
 
-  // 成功加载后，检查图片尺寸是否合格
+  // --- 最终的、最精确的逻辑 ---
   img.onload = () => {
-    if (img.naturalWidth < 32) {
-      // 尺寸不合格，直接显示首字母
-      createLetterFallback()
-    }
-    else {
-      // 尺寸合格，显示图标
+    // 只要图片不是一个 1x1 像素的空白占位符，我们就认为它是有效的
+    if (img.naturalWidth > 1) {
+      // 无论是高清的还是低清的，都显示出来
       faviconMap.value.set(id, img)
       $faviconBox.value?.appendChild(img)
+    }
+    else {
+      // 如果是 1x1 像素的图片，说明获取失败，显示首字母
+      createLetterFallback()
     }
   }
 
