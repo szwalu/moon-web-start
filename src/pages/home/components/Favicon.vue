@@ -24,69 +24,85 @@ const faviconMap = inject<Ref<Map<number, HTMLImageElement | HTMLDivElement>>>(F
 
 const $faviconBox = ref<HTMLDivElement>()
 
+// 封装创建首字母图标的函数，方便复用
+function createLetterFallback() {
+  const fallbackDiv = document.createElement('div')
+  fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
+  faviconMap.value.set(props.site.id, fallbackDiv)
+  $faviconBox.value?.appendChild(fallbackDiv)
+}
+
 onMounted(() => {
   const id = props.site.id
   const cachedElement = faviconMap.value.get(id)
 
   if (cachedElement) {
     $faviconBox.value?.appendChild(cachedElement)
+    return
   }
-  else {
+
+  // 如果用户在数据中自定义了 favicon，直接使用它
+  if (props.site.favicon) {
     const img = new Image()
-    let domain = ''
-
-    // 最终的备用方案：创建并显示首字母图标
-    const createLetterFallback = () => {
-      const fallbackDiv = document.createElement('div')
-      fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
-      faviconMap.value.set(id, fallbackDiv)
-      $faviconBox.value?.appendChild(fallbackDiv)
-    }
-
-    try {
-      domain = new URL(props.site.url).hostname
-    }
-    catch (e) {
-      console.error('Invalid URL:', props.site.url)
-      createLetterFallback() // 如果网站 URL 无效，直接显示备用
-      return
-    }
-
-    // 请求一个 128px 的高清图标，以确保在所有屏幕上都清晰
-    const highResSize = 128
-    const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${highResSize}`
-    // 备用 API 不支持尺寸参数，清晰度可能无法保证
-    const fallbackUrl = `https://0x3.com/icon?host=${domain}`
-
-    // 定义图片加载失败后的操作
-    img.onerror = () => {
-      // 检查当前失败的是不是 Google API 地址
-      if (img.src === googleUrl) {
-        // 如果是，切换到备用 API 地址
-        img.src = fallbackUrl
-      }
-      else {
-        // 如果备用 API 地址也失败了，显示首字母
+    img.src = props.site.favicon
+    img.onload = () => {
+      // 检查自定义图标是否有效
+      if (img.naturalWidth < 2) {
         createLetterFallback()
       }
-    }
-
-    // 定义图片加载成功后的操作 (增加尺寸判断)
-    img.onload = () => {
-      // 检查加载到的图片尺寸是否过小（比如 1x1 的空白图片）
-      if (img.naturalWidth <= 1) {
-        // 如果尺寸不正常，手动触发 onerror，启动备用方案
-        img.onerror()
-        return
+      else {
+        faviconMap.value.set(id, img)
+        $faviconBox.value?.appendChild(img)
       }
-      // 如果尺寸正常，则显示图片
+    }
+    img.onerror = createLetterFallback // 自定义图标加载失败也显示首字母
+    return
+  }
+
+  // --- 动态获取图标的核心逻辑 ---
+  let domain = ''
+  try {
+    domain = new URL(props.site.url).hostname
+  }
+  catch (e) {
+    console.error('Invalid URL:', props.site.url)
+    createLetterFallback()
+    return
+  }
+
+  const highResSize = 128
+  const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${highResSize}`
+  const fallbackUrl = `https://0x3.com/icon?host=${domain}`
+
+  const img = new Image()
+
+  img.onload = () => {
+    // 成功加载后，检查图片尺寸是否有效
+    if (img.naturalWidth < 2) {
+      // 如果图片太小(说明是空白图片)，触发 onerror 逻辑
+      img.onerror!()
+    }
+    else {
+      // 图片有效，显示并缓存
       faviconMap.value.set(id, img)
       $faviconBox.value?.appendChild(img)
     }
-
-    // 开始加载：优先使用用户自定义的 favicon，如果没有，则尝试 Google API
-    img.src = props.site.favicon || googleUrl
   }
+
+  img.onerror = () => {
+    // 检查当前失败的是否是 Google API
+    if (img.src === googleUrl) {
+      // 尝试备用 API
+      img.src = fallbackUrl
+    }
+    else {
+      // 备用 API 也失败了，显示首字母
+      createLetterFallback()
+    }
+  }
+
+  // 首先尝试 Google API
+  img.src = googleUrl
 })
 </script>
 
