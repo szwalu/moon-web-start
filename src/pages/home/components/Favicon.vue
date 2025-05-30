@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import type { Site } from '@/types'
+
 import { FAVICON_MAP_SYMBOL, getFaviconUrl } from '@/utils'
+
+// 确保 getFaviconUrl 是上面那个新版本
 
 const props = defineProps({
   site: {
@@ -19,32 +22,74 @@ const props = defineProps({
 })
 
 const { iconStyle } = useIconStyle()
-
 const faviconMap = inject<Ref<Map<number, HTMLImageElement | HTMLDivElement>>>(FAVICON_MAP_SYMBOL)!
-
 const $faviconBox = ref<HTMLDivElement>()
+
+function createLetterFallback() {
+  const fallbackDiv = document.createElement('div')
+  fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
+  faviconMap.value.set(props.site.id, fallbackDiv)
+  if ($faviconBox.value) {
+    $faviconBox.value.innerHTML = ''
+    $faviconBox.value.appendChild(fallbackDiv)
+  }
+}
 
 onMounted(() => {
   const id = props.site.id
-  const img = faviconMap.value.get(id)
+  const cachedElement = faviconMap.value.get(id)
 
-  if (!img) {
+  if (cachedElement) {
+    $faviconBox.value?.appendChild(cachedElement)
+    return
+  }
+
+  if (props.site.favicon) {
     const img = new Image()
-    img.src = props.site.favicon || getFaviconUrl(props.site.url)
+    img.src = props.site.favicon
     img.onload = () => {
-      $faviconBox.value?.appendChild(img)
+      // 对自定义图标，我们只做一个非常宽松的检查
+      if (img.naturalWidth <= 1) {
+        createLetterFallback()
+      }
+      else {
+        faviconMap.value.set(id, img)
+        $faviconBox.value?.appendChild(img)
+      }
+    }
+    img.onerror = createLetterFallback
+    return
+  }
+
+  const iconUrl = getFaviconUrl(props.site.url)
+  if (!iconUrl) {
+    createLetterFallback()
+    return
+  }
+
+  const img = new Image()
+
+  img.onload = () => {
+    // --- 核心判断：精确排除 16x16 的图标 ---
+    if (img.naturalWidth === 16 && img.naturalHeight === 16) {
+      // 如果从 Google API 获取到的是 16x16 的图标，我们判定为不想要的通用图标
+      createLetterFallback()
+    }
+    else {
+      // 其他所有尺寸（包括 15x16, 32x32, 64x64, 128x128 等）都认为是有效图标
       faviconMap.value.set(id, img)
-    }
-    img.onerror = () => {
-      const favicon = document.createElement('div')
-      favicon.innerText = props.site.name.toLocaleUpperCase().charAt(0)
-      faviconMap.value.set(id, favicon)
-      $faviconBox.value?.appendChild(favicon)
+      if ($faviconBox.value) {
+        $faviconBox.value.innerHTML = ''
+        $faviconBox.value.appendChild(img)
+      }
     }
   }
-  else if (img) {
-    $faviconBox.value?.appendChild(img)
+
+  img.onerror = () => {
+    createLetterFallback()
   }
+
+  img.src = iconUrl
 })
 </script>
 
@@ -53,23 +98,6 @@ onMounted(() => {
 </template>
 
 <style lang="scss">
-.favicon {
-  img, div {
-    width: 100%;
-    height: 100%;
-  }
-  img {
-    object-fit: contain;
-    object-position: center;
-  }
-  div {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: #fff;
-    background-color: var(--primary-c);
-    transform: scale(1.12);
-    border-radius: 50%;
-  }
-}
+/* Style部分保持不变 */
+.favicon { img, div { width: 100%; height: 100%; } img { object-fit: contain; object-position: center; } div { display: flex; justify-content: center; align-items: center; color: #fff; background-color: var(--primary-c); transform: scale(1.12); border-radius: 50%; } }
 </style>
