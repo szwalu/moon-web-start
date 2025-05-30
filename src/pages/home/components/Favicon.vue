@@ -1,3 +1,4 @@
+// 方案 A: 宁缺毋滥版 Favicon.vue
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import type { Site } from '@/types'
@@ -19,12 +20,9 @@ const props = defineProps({
 })
 
 const { iconStyle } = useIconStyle()
-
 const faviconMap = inject<Ref<Map<number, HTMLImageElement | HTMLDivElement>>>(FAVICON_MAP_SYMBOL)!
-
 const $faviconBox = ref<HTMLDivElement>()
 
-// 封装创建首字母图标的函数
 function createLetterFallback() {
   const fallbackDiv = document.createElement('div')
   fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
@@ -44,13 +42,11 @@ onMounted(() => {
     return
   }
 
-  // 如果用户在数据中自定义了 favicon，直接使用它
   if (props.site.favicon) {
     const img = new Image()
     img.src = props.site.favicon
     img.onload = () => {
-      // 检查自定义图标是否有效
-      if (img.naturalWidth < 2) {
+      if (img.naturalWidth < 16) {
         createLetterFallback()
       }
       else {
@@ -73,29 +69,23 @@ onMounted(() => {
 
   const highResSize = 128
   const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${highResSize}`
-
   const img = new Image()
 
-  // --- 最终的、最精确的逻辑 ---
   img.onload = () => {
-    // 只要图片不是一个 1x1 像素的空白占位符，我们就认为它是有效的
-    if (img.naturalWidth > 1) {
-      // 无论是高清的还是低清的，都显示出来
+    // 严格检查：如果返回的图片宽度小于32px，就认为是失败的
+    if (img.naturalWidth < 32) {
+      createLetterFallback()
+    }
+    else {
       faviconMap.value.set(id, img)
       $faviconBox.value?.appendChild(img)
     }
-    else {
-      // 如果是 1x1 像素的图片，说明获取失败，显示首字母
-      createLetterFallback()
-    }
   }
 
-  // 任何网络错误或加载失败，都直接显示首字母
   img.onerror = () => {
     createLetterFallback()
   }
 
-  // 开始加载
   img.src = googleUrl
 })
 </script>
@@ -105,23 +95,6 @@ onMounted(() => {
 </template>
 
 <style lang="scss">
-.favicon {
-  img, div {
-    width: 100%;
-    height: 100%;
-  }
-  img {
-    object-fit: contain;
-    object-position: center;
-  }
-  div {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: #fff;
-    background-color: var(--primary-c);
-    transform: scale(1.12);
-    border-radius: 50%;
-  }
-}
+/* Style部分保持不变 */
+.favicon { img, div { width: 100%; height: 100%; } img { object-fit: contain; object-position: center; } div { display: flex; justify-content: center; align-items: center; color: #fff; background-color: var(--primary-c); transform: scale(1.12); border-radius: 50%; } }
 </style>
