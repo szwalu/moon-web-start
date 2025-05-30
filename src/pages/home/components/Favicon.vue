@@ -71,7 +71,7 @@ onMounted(() => {
 
   img.onload = () => {
     // 核心判断：如果图片宽度小于等于这个阈值，认为是获取失败或质量太差
-    const THRESHOLD = 16 // 你可以调整这个数字！
+    const THRESHOLD = 15 // 你可以调整这个数字！
     if (img.naturalWidth <= THRESHOLD) {
       createLetterFallback()
     }
