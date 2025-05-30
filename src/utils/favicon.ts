@@ -6,7 +6,7 @@ export function getFaviconUrl(url: string): string {
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`;
   }
   catch (error) {
-    // console.error(`Invalid URL provided to getFaviconUrl (Google): ${url}`); // 可以去掉console避免eslint问题
+    // console.error(`Invalid URL provided to getFaviconUrl (Google): ${url}`);
     return '';
   }
 }
