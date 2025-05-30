@@ -1,18 +1,38 @@
-// src/utils/favicon.ts (最终版 - 仅使用 Google API)
+const FALLBACK_APIS = [
+  'https://api.iowen.cn/favicon',
+  'https://icons.duckduckgo.com/ip3',
+  'https://www.google.com/s2/favicons?domain',
+]
 
-/**
- * 根据网站的 URL 生成指向 Google Favicon 服务的图标链接。
- * @param url 网站的完整 URL (例如 "https://www.weibo.com/")
- * @returns 指向 Google Favicon API 的完整 URL 或空字符串
- */
+const siteToUrl: Map<string, string> = new Map()
+const sites: string[] = [
+  'clougence.com',
+  'jd.com',
+  'taobao.com',
+  'pinduoduo.com',
+]
+
+sites.forEach((e: string) => {
+  siteToUrl.set(e, `/site/${e}.svg`)
+})
+
+export function getDomainName(url: string) {
+  let domain = url.replace(/(^\w+:|^)\/\//, '')
+  domain = domain.replace(/^www\./, '')
+
+  const matches = domain.match(/([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/)
+  return matches?.[1] ?? null
+}
+
 export function getFaviconUrl(url: string): string {
-  try {
-    const domain = new URL(url).hostname
-    const size = 128 // 始终请求 128px 的高清图标
-    return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`
-  }
-  catch (error) {
-    console.error(`Invalid URL provided to getFaviconUrl: ${url}`)
+  const domain = getDomainName(url)
+  if (!domain)
     return ''
-  }
+
+  const optUrl = siteToUrl.get(domain)
+  if (optUrl)
+    return optUrl
+
+  // 默认使用第一个 API，可后续尝试增加智能切换
+  return `${FALLBACK_APIS[0]}/${domain}.png`
 }
