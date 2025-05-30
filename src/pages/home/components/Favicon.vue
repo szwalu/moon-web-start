@@ -26,7 +26,7 @@ function createLetterFallback(reason: string) {
   console.log(`[FaviconDebug] Site: "${props.site.name}", Reason: "${reason}", Creating letter fallback.`);
   const fallbackDiv = document.createElement('div')
   fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
-  faviconMap.value.set(props.site.id, fallbackDiv)
+  faviconMap.value.set(props.site.id, fallbackDiv) // 仍然缓存结果，即使是首字母
   if ($faviconBox.value) {
     $faviconBox.value.innerHTML = ''
     $faviconBox.value.appendChild(fallbackDiv)
@@ -35,7 +35,7 @@ function createLetterFallback(reason: string) {
 
 function displayImage(imgElement: HTMLImageElement, source: string) {
   console.log(`[FaviconDebug] Site: "${props.site.name}", Source: "${source}", Displaying image (${imgElement.naturalWidth}x${imgElement.naturalHeight}).`);
-  faviconMap.value.set(props.site.id, imgElement)
+  faviconMap.value.set(props.site.id, imgElement) // 缓存成功加载的图片
   if ($faviconBox.value) {
     $faviconBox.value.innerHTML = ''
     $faviconBox.value.appendChild(imgElement)
@@ -43,16 +43,25 @@ function displayImage(imgElement: HTMLImageElement, source: string) {
 }
 
 onMounted(() => {
+  console.log(`[FaviconDebug] STEP 1: Component is mounting for site: "${props.site.name}"`);
   const id = props.site.id
-  const cachedElement = faviconMap.value.get(id)
+  
+  // --- 临时修改：为了测试，我们暂时不从缓存读取 ---
+  const cachedElement = null; // 将此行取消注释，并注释掉下面一行，来强制重新获取
+  // const cachedElement = faviconMap.value.get(id); 
+  console.log(`[FaviconDebug] Site: "${props.site.name}", Cache check bypassed for this test.`);
+  // --- 临时修改结束 ---
 
   if (cachedElement) {
-    console.log(`[FaviconDebug] Site: "${props.site.name}", Found in cache.`);
+    // 这部分逻辑在本次测试中理论上不会被执行
+    console.log(`[FaviconDebug] Site: "${props.site.name}", Found in cache (this log should not appear in test).`);
     $faviconBox.value?.appendChild(cachedElement)
     return
   }
 
+  // 如果用户在数据中自定义了 favicon
   if (props.site.favicon) {
+    console.log(`[FaviconDebug] Site: "${props.site.name}", Using custom favicon prop: ${props.site.favicon}`);
     const customImg = new Image()
     customImg.src = props.site.favicon
     customImg.onload = () => {
@@ -75,10 +84,10 @@ onMounted(() => {
     return
   }
 
-  const googleApiUrl = getFaviconUrl(props.site.url) // Uses sz=128 from favicon.ts
+  const googleApiUrl = getFaviconUrl(props.site.url) 
   const duckDuckGoApiUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`
 
-  if (!googleApiUrl) { // Should not happen if domain is valid
+  if (!googleApiUrl) {
     createLetterFallback('Google URL generation failed')
     return
   }
@@ -96,7 +105,6 @@ onMounted(() => {
         console.log(`[FaviconDebug] Site: "${props.site.name}", DuckDuckGo Content-Type: "${contentType}"`);
 
         if (contentType && contentType.includes('image/png')) {
-          // 根据你的观察，DDG 返回 PNG 时是它的通用占位符
           throw new Error('DuckDuckGo returned PNG (likely placeholder)')
         }
         return response.blob()
@@ -109,8 +117,6 @@ onMounted(() => {
         const objectURL = URL.createObjectURL(blob)
         ddgImg.onload = () => {
           URL.revokeObjectURL(objectURL)
-          // 只要 DDG 返回的不是 PNG，我们就尝试显示它
-          // 不再对DDG返回的ICO做严格的尺寸判断，因为ICO本身可能就包含低清的真实图标
           if (ddgImg.naturalWidth > 1) {
              displayImage(ddgImg, 'DuckDuckGo')
           } else {
@@ -130,7 +136,7 @@ onMounted(() => {
   }
 
   primaryImg.onload = () => {
-    const GOOGLE_MIN_ACCEPTABLE_WIDTH = 32 // 如果Google返回的图片宽度小于此值，我们认为它质量不高
+    const GOOGLE_MIN_ACCEPTABLE_WIDTH = 32 
     console.log(`[FaviconDebug] Site: "${props.site.name}", Google onload. Dimensions: ${primaryImg.naturalWidth}x${primaryImg.naturalHeight}`);
     if (primaryImg.naturalWidth < GOOGLE_MIN_ACCEPTABLE_WIDTH) {
       attemptDuckDuckGo()
