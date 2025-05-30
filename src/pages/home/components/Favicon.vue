@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import type { Site } from '@/types'
-import { FAVICON_MAP_SYMBOL, getFaviconUrl } from '@/utils'
+import { FAVICON_MAP_SYMBOL, getFaviconCandidates } from '@/utils'
 
 const props = defineProps({
   site: {
@@ -25,15 +25,30 @@ const $faviconBox = ref<HTMLDivElement>()
 onMounted(() => {
   const id = props.site.id
   const cached = faviconMap.value.get(id)
+
   if (cached) {
     $faviconBox.value?.appendChild(cached)
     return
   }
 
+  const sources = getFaviconCandidates(props.site.url)
+  tryLoadFavicon(sources, 0, id)
+})
+
+function tryLoadFavicon(sources: string[], index: number, id: number) {
+  if (index >= sources.length) {
+    const fallback = document.createElement('div')
+    fallback.innerText = props.site.name?.toLocaleUpperCase()?.charAt(0) || '?'
+    faviconMap.value.set(id, fallback)
+    $faviconBox.value?.appendChild(fallback)
+    return
+  }
+
+  const src = `${sources[index]}?_=${Date.now()}`
   const img = new Image()
   img.crossOrigin = 'anonymous'
   img.referrerPolicy = 'no-referrer'
-  img.src = `${props.site.favicon || getFaviconUrl(props.site.url)}?_=${Date.now()}`
+  img.src = src
 
   img.onload = () => {
     $faviconBox.value?.appendChild(img)
@@ -41,12 +56,9 @@ onMounted(() => {
   }
 
   img.onerror = () => {
-    const fallback = document.createElement('div')
-    fallback.innerText = props.site.name?.toLocaleUpperCase()?.charAt(0) || '?'
-    faviconMap.value.set(id, fallback)
-    $faviconBox.value?.appendChild(fallback)
+    tryLoadFavicon(sources, index + 1, id)
   }
-})
+}
 </script>
 
 <template>
