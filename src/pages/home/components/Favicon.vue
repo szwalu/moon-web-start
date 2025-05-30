@@ -50,8 +50,10 @@ onMounted(() => {
       return // 结束执行
     }
 
-    // 准备好主 API (Google) 和备用 API (0x3.com) 的地址
-    const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${props.size}`
+    // 请求一个 128px 的高清图标，以确保在所有屏幕上都清晰
+    const highResSize = 128
+    const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${highResSize}`
+    // 备用 API 不支持尺寸参数，清晰度可能无法保证
     const fallbackUrl = `https://0x3.com/icon?host=${domain}`
 
     // 3. 定义图片加载成功后的操作
@@ -60,7 +62,7 @@ onMounted(() => {
       $faviconBox.value?.appendChild(img)
     }
 
-    // 4. 定义图片加载失败后的操作 (核心修改)
+    // 4. 定义图片加载失败后的操作
     img.onerror = () => {
       // 检查当前失败的是不是 Google API 地址
       if (img.src === googleUrl) {
