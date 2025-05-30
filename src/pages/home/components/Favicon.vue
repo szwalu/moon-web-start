@@ -50,8 +50,7 @@ onMounted(() => {
     const img = new Image()
     img.src = props.site.favicon
     img.onload = () => {
-      // 检查自定义图标是否有效
-      if (img.naturalWidth < 16) { // 自定义图标尺寸也做个基本检查
+      if (img.naturalWidth < 16) {
         createLetterFallback()
       }
       else {
@@ -59,11 +58,11 @@ onMounted(() => {
         $faviconBox.value?.appendChild(img)
       }
     }
-    img.onerror = createLetterFallback // 自定义图标加载失败也显示首字母
+    img.onerror = createLetterFallback
     return
   }
 
-  // --- 动态获取图标的核心逻辑 ---
+  // --- 最终简化的逻辑 ---
   let domain = ''
   try {
     domain = new URL(props.site.url).hostname
@@ -75,37 +74,28 @@ onMounted(() => {
 
   const highResSize = 128
   const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=${highResSize}`
-  const fallbackUrl = `https://0x3.com/icon?host=${domain}`
 
   const img = new Image()
 
+  // 成功加载后，检查图片尺寸是否合格
   img.onload = () => {
-    // --- 最终的、更严格的尺寸检查 ---
-    // 如果返回的图片宽度小于 32px，我们就认为它不是一个合格的高清图标
     if (img.naturalWidth < 32) {
-      // 手动触发 onerror，启动备用方案
-      img.onerror?.(new Event('error'))
+      // 尺寸不合格，直接显示首字母
+      createLetterFallback()
     }
     else {
-      // 图片有效，显示并缓存
+      // 尺寸合格，显示图标
       faviconMap.value.set(id, img)
       $faviconBox.value?.appendChild(img)
     }
   }
 
+  // 任何网络错误或加载失败，都直接显示首字母
   img.onerror = () => {
-    // 检查当前失败的是否是 Google API
-    if (img.src === googleUrl) {
-      // 尝试备用 API
-      img.src = fallbackUrl
-    }
-    else {
-      // 备用 API 也失败了，显示首字母
-      createLetterFallback()
-    }
+    createLetterFallback()
   }
 
-  // 首先尝试 Google API
+  // 开始加载
   img.src = googleUrl
 })
 </script>
