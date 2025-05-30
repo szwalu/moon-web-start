@@ -1,11 +1,7 @@
-// src/pages/home/components/Favicon.vue (使用原网站版本)
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import type { Site } from '@/types'
-
 import { FAVICON_MAP_SYMBOL, getFaviconUrl } from '@/utils'
-
-// 确保这里的 getFaviconUrl 是我们刚修改的
 
 const props = defineProps({
   site: {
@@ -30,33 +26,24 @@ const $faviconBox = ref<HTMLDivElement>()
 
 onMounted(() => {
   const id = props.site.id
-  const imgFromCache = faviconMap.value.get(id) // 修改变量名以示区分
+  const img = faviconMap.value.get(id)
 
-  if (!imgFromCache) {
+  if (!img) {
     const img = new Image()
     img.src = props.site.favicon || getFaviconUrl(props.site.url)
     img.onload = () => {
-      if ($faviconBox.value) {
-        $faviconBox.value.innerHTML = '' // 清理以防万一
-        $faviconBox.value.appendChild(img)
-      }
+      $faviconBox.value?.appendChild(img)
       faviconMap.value.set(id, img)
     }
     img.onerror = () => {
-      const fallbackDiv = document.createElement('div')
-      fallbackDiv.innerText = props.site.name.toLocaleUpperCase().charAt(0)
-      faviconMap.value.set(id, fallbackDiv)
-      if ($faviconBox.value) {
-        $faviconBox.value.innerHTML = '' // 清理以防万一
-        $faviconBox.value.appendChild(fallbackDiv)
-      }
+      const favicon = document.createElement('div')
+      favicon.innerText = props.site.name.toLocaleUpperCase().charAt(0)
+      faviconMap.value.set(id, favicon)
+      $faviconBox.value?.appendChild(favicon)
     }
   }
-  else if (imgFromCache) {
-    if ($faviconBox.value) {
-      $faviconBox.value.innerHTML = '' // 清理以防万一
-      $faviconBox.value.appendChild(imgFromCache)
-    }
+  else if (img) {
+    $faviconBox.value?.appendChild(img)
   }
 })
 </script>
