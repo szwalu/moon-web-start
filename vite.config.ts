@@ -1,4 +1,4 @@
-// vite.config.ts (修改后)
+// vite.config.ts (最终修正版)
 
 import path from 'node:path'
 import { defineConfig } from 'vite'
@@ -14,9 +14,10 @@ import VueI18n from '@intlify/unplugin-vue-i18n/vite'
 
 export default defineConfig({
   /**
-   * 👇 已将此处的 base 直接设置为你的仓库名，以确保 GitHub Pages 部署路径正确
+   * 👇 当为项目配置了自定义域名后，网站将从该域名的根目录提供服务。
+   * 因此 base 应该设置为 '/'。
    */
-  base: '/moon-web-start/',
+  base: '/',
   plugins: [
     Vue(),
     Unocss(),
