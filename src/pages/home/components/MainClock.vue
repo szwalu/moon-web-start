@@ -22,7 +22,7 @@ function refreshTime() {
     time.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
   else
     time.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-  $time.value!.innerText = time.value
+  // $time.value!.innerText = time.value
 
   // 若为0点 或阴历为空 刷新日期
   // en: If 00:00 or the lunar is empty, refresh date

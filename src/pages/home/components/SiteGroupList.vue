@@ -45,8 +45,11 @@ const linkStrategyValue = computed(() => settingStore.getSettingItem('linkStrate
       @end="handleEnd"
     >
       <template #item="{ element: group, index: i }: { element: Group, index: number }">
-        <div :class="{ 'mb-6': settingStore.isSetting, 'flex gap-x-8 items-start': !(isXsScreen || isFullTagMode) }" relative>
-          <!-- Group header -->
+        <div
+          :id="group.id"
+          :class="{ 'mb-6': settingStore.isSetting, 'flex gap-x-8 items-start': !(isXsScreen || isFullTagMode) }"
+          relative
+        >
           <div
             :class="{ 'cursor-pointer bg-$site-hover-c': settingStore.isSetting, 'mb-12 w-full': isXsScreen || isFullTagMode }"
             shrink-0 w-96
@@ -76,7 +79,6 @@ const linkStrategyValue = computed(() => settingStore.getSettingItem('linkStrate
               </n-button>
             </div>
           </div>
-          <!-- Group content -->
           <div w-full>
             <draggable
               :list="siteStore.data[siteStore.cateIndex].groupList[i].siteList"
@@ -97,7 +99,6 @@ const linkStrategyValue = computed(() => settingStore.getSettingItem('linkStrate
             >
               <template #item="{ element: site, index }: { element: Site, index: number }">
                 <div>
-                  <!-- Site item -->
                   <SiteItemCard
                     :site="site"
                     :type="settingStore.settings.tagMode as TagMode"
@@ -120,7 +121,6 @@ const linkStrategyValue = computed(() => settingStore.getSettingItem('linkStrate
         </div>
       </template>
     </draggable>
-    <!-- Add group button -->
     <div v-if="addGroupVisible" my-12>
       <n-button type="primary" secondary w-full :focusable="false" @click="modalStore.showModal('add', 'group')">
         <template #icon>

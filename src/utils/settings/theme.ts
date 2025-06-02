@@ -64,5 +64,5 @@ export const theme = new SettingItem({
   name: () => t('settings.theme.title'),
   key: 'Theme',
   children: themeChildren,
-  defaultKey: 'MoonWhite',
+  defaultKey: 'EndlessDesert',
 })
