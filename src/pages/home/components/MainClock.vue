@@ -1,32 +1,10 @@
 <script setup lang="ts">
 import solarLunar from 'solarlunar-es'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const settingStore = useSettingStore()
 
-// 核心修正：使用 try...catch 来安全地获取设置，如果设置不存在，则默认显示
-function getSettingWithDefault(key: string, defaultValue: boolean) {
-  return computed(() => {
-    try {
-      // 尝试获取设置值
-      const value = settingStore.getSettingValue(key as any)
-      // 如果值是 undefined (说明可能设置存在但没有 value)，也使用默认值
-      return value === undefined ? defaultValue : value
-    }
-    catch (error) {
-      // 如果获取过程中发生错误（例如设置项根本不存在），则返回默认值
-      // console.error(`Failed to get setting for "${key}", using default.`, error)
-      return defaultValue
-    }
-  })
-}
+const $time = ref<HTMLDivElement | null>(null)
 
-const showTime = getSettingWithDefault('showTime', true)
-const showDate = getSettingWithDefault('showDate', true)
-const showLunar = getSettingWithDefault('showLunar', true)
-const showSecond = getSettingWithDefault('showSecond', true)
-
-// --- 以下代码与之前版本相同 ---
 const date = ref('')
 const time = ref('')
 const lunarDate = ref('')
@@ -40,11 +18,14 @@ function refreshTime() {
   date.value = now.toLocaleString(lang, { month: 'long', day: 'numeric' })
   week.value = now.toLocaleString(lang, { weekday: 'long' })
 
-  if (showSecond.value)
+  if (settingStore.getSettingValue('showSecond'))
     time.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
   else
     time.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+  // $time.value!.innerText = time.value
 
+  // 若为0点 或阴历为空 刷新日期
+  // en: If 00:00 or the lunar is empty, refresh date
   if (!lunarDate.value || time.value === '00:00' || time.value === '00:00:00')
     getDate()
   return refreshTime
@@ -59,11 +40,19 @@ function getDate() {
 }
 
 function timing() {
+  // 获取并记录初始时间
+  // en: Get and record the initial time
   refreshTime()
   const nowMinute = time.value
+  // 开启定时器
+  // en: Start the timer
   timeInterval = setInterval(() => {
     refreshTime()
-    if (!showSecond.value && nowMinute !== time.value) {
+    // 若 nowMinute !== newMinute 说明开始了新的分钟
+    // en: nowMinute !== newMinute means a new minute has started
+    if (!settingStore.getSettingValue('showSecond') && nowMinute !== time.value) {
+      // 清除每秒定时器 开启分钟定时器
+      // en: Clear second timer and start minute timer
       clearInterval(timeInterval)
       timeInterval = setInterval(refreshTime, 60000)
     }
@@ -72,6 +61,7 @@ function timing() {
 onMounted(() => {
   timing()
 })
+
 onBeforeUnmount(() => {
   clearInterval(timeInterval)
 })
@@ -79,12 +69,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div text-center>
-    <div v-if="showTime" text-48 tracking-wide>
+    <div v-if="settingStore.getSettingValue('showTime')" ref="$time" text-48 tracking-wide>
       {{ time }}
     </div>
-    <p v-if="showDate || showLunar" text="14 $text-c-1">
-      <span v-if="showDate">{{ date }}<span ml-8>{{ week }}</span></span>
-      <span v-if="showLunar" ml-8>{{ lunarDate }}</span>
+    <p text="14 $text-c-1">
+      <span v-if="settingStore.getSettingValue('showDate')">{{ date }}<span ml-8>{{ week }}</span></span>
+      <span v-if="settingStore.getSettingValue('showLunar')" ml-8>{{ lunarDate }}</span>
     </p>
   </div>
 </template>
