@@ -6,3 +6,4 @@ export * from './request'
 export * from './search-engine'
 export * from './symbol'
 export * from './storage'
+export * from './domain' // <--- 添加这一行
