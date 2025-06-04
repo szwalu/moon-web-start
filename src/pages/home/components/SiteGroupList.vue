@@ -91,7 +91,7 @@ const linkStrategyValue = computed(() => settingStore.getSettingItem('linkStrate
                 type: 'transition-group',
                 class: !isFullTagMode
                   ? 'grid gap-10 grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
-                  : 'grid gap-12 grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
+                  : 'grid gap-12 grid-cols-2 md:grid-cols-4',
               }"
               v-bind="draggableOptions"
               @start="handleStart"
