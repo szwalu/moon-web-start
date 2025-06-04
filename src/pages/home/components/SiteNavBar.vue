@@ -32,10 +32,10 @@ function handleNavLeave() {
 // --- 二级菜单相关逻辑结束 ---
 
 // 2. 之前的 handleDragEnd 函数有复杂的 setCateIndex 逻辑，
-//    如果这个拖拽只是 useDrag() 自身的开始/结束状态，那么直接使用 handleEnd 可能就够了。
-//    如果拖拽 categories 数组并改变其顺序的逻辑还需要，我们需要恢复 handleDragEnd。
-//    这里我们假设 useDrag 提供的 handleEnd 是用于结束拖拽状态的。
-//    如果您的 useDrag() 需要一个更复杂的 handleDragEnd，请告诉我。
+//     如果这个拖拽只是 useDrag() 自身的开始/结束状态，那么直接使用 handleEnd 可能就够了。
+//     如果拖拽 categories 数组并改变其顺序的逻辑还需要，我们需要恢复 handleDragEnd。
+//     这里我们假设 useDrag 提供的 handleEnd 是用于结束拖拽状态的。
+//     如果您的 useDrag() 需要一个更复杂的 handleDragEnd，请告诉我。
 
 function handleCateClick(cateIndex: number) {
   // ... (原有的 handleCateClick 逻辑，包括二级菜单的展开/收起)
@@ -92,7 +92,7 @@ function handleSubMenuClick(subItem: any) {
 
 <template>
   <section
-    class="relative flex-center flex-col text-14"
+    class="relative flex-center flex-col text-16"
     @mouseleave="handleNavLeave"
     @mouseenter="handleNavEnter"
   >
@@ -154,7 +154,7 @@ function handleSubMenuClick(subItem: any) {
             v-for="subItem in row"
             :key="subItem.id"
             class="sub-nav-item"
-            cursor-pointer rounded-full bg-gray-100 px-10 py-4 text-12 transition-colors duration-300 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600
+            cursor-pointer rounded-full bg-gray-100 px-8 py-4 text-13 transition-colors duration-300 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600
             @click="handleSubMenuClick(subItem)"
           >
             {{ subItem.name }}
@@ -205,7 +205,7 @@ function handleSubMenuClick(subItem: any) {
   width: auto;
   min-width: 260px;
   max-width: 500px;
-  padding: 10px 8px;
+  padding: 10px 6px; /* 3. 缩小了整个菜单框的左右内边距 */
   background-color: var(--main-bg-c);
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);

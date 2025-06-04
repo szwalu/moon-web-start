@@ -97,7 +97,7 @@ onMounted(() => {
     <div
       my="0 sm:6vh"
       p="12 sm:24"
-      bg="$main-bg-c"
+      bg-transparent
       w="full sm:auto"
       :class="{ no_select: settingStore.isSetting }"
     >

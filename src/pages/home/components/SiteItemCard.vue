@@ -54,3 +54,22 @@ defineProps({
     </div>
   </a>
 </template>
+
+<style scoped>
+.site__handle {
+  /* 确保卡片有一个基础的阴影和圆角，这在'完全模式'下效果更佳 */
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  /* 核心：定义一个平滑过渡效果，让 transform 和 box-shadow 的变化在 0.25秒 内完成 */
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.site__handle:hover {
+  /* 核心：当鼠标悬浮时，卡片向上移动4px */
+  transform: translateY(-4px);
+
+  /* 同时，阴影变得更深更明显，增强“浮起”的立体感 */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+}
+</style>
