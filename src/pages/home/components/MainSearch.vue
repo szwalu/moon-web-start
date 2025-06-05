@@ -182,62 +182,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div dark="bg-$bg-c" w="full sm:450!" bg="gray-200" relative mx-auto flex h-44>
-    <!-- Keyword recommend -->
+  <div dark="bg-$bg-c" class="relative mx-auto w-full flex bg-gray-200 h-44 sm:w-[700px]!">
     <div
       v-show="showKeyDownSel && noticeKeyList.length > 1"
       v-on-click-outside="handleKeyRecomend"
-      absolute z-9 w-full h-10em t-100p
+      class="absolute z-9 w-full h-10em t-100p"
       @mouseleave="handleLeave()"
     >
-      <!-- keys recommend -->
-      <div bg="$main-bg-c" border="2 t-0" z-9 py-6 l-0 t-100p>
+      <div bg="$main-bg-c" class="z-9 py-6 border-2 l-0 t-0 t-100p">
         <div
-          v-for="(item, i) in noticeKeyList.slice(1)" :key="i + 1" text-15 p-5
-          class="cursor-pointer"
+          v-for="(item, i) in noticeKeyList.slice(1)" :key="i + 1" class="cursor-pointer text-15 p-5"
           :class="{ 'bg-$site-hover-c': i + 1 === selectedIndex }"
           @mouseover="handleHover(i + 1)"
           @click="jumpSearch(i + 1)"
           @touchstart="setActive(i + 1)"
           @touchend="setInactive(i + 1)"
         >
-          <div flex-left gap-x-8 style="margin: 0.75rem; margin-left: 2rem;">
+          <div class="flex-left gap-x-8" style="margin: 0.75rem; margin-left: 2rem;">
             <div>{{ item }}</div>
           </div>
         </div>
       </div>
     </div>
-    <!-- Search engine logo -->
-    <div v-on-click-outside="() => selectionVisible = false" relative flex-center shrink-0 w-44>
-      <div hover="op-100" h-full w-full flex-center cursor-pointer op="80" transition-300 @click="toggleSelection">
-        <img :src="_getFavicon(searchList[curSearchIndex].value)" :style="iconStyle" h-32 w-32>
+    <div v-on-click-outside="() => selectionVisible = false" class="relative flex-center shrink-0 w-44">
+      <div hover="op-100" class="h-full w-full flex-center cursor-pointer op-80 transition-300" @click="toggleSelection">
+        <img :src="_getFavicon(searchList[curSearchIndex].value)" :style="iconStyle" class="h-32 w-32">
       </div>
-      <!-- search engine selector -->
-      <div v-show="selectionVisible" bg="$main-bg-c" border="2 t-0" absolute z-9 l-0 t-100p w-200>
+      <div v-show="selectionVisible" bg="$main-bg-c" class="absolute z-9 border-2 l-0 t-0 t-100p w-200">
         <div
           v-for="(item, i) in searchList"
           :key="i"
           hover="bg-$site-hover-c"
-          flex cursor-pointer items-center justify-between px-12 py-7
+          class="flex cursor-pointer items-center justify-between px-12 py-7"
           @click="changeSearch(i)"
         >
-          <div flex-center gap-x-8 text="15 $text-c-1">
-            <img :src="_getFavicon(item.value)" :style="iconStyle" circle h-20 w-20>
+          <div class="$text-c-1 flex-center gap-x-8 text-15">
+            <img :src="_getFavicon(item.value)" :style="iconStyle" class="circle h-20 w-20">
             <div>{{ getText(item.name) }}</div>
-            <div ml-4 font-300>{{ `#${item.value.s}` }}</div>
+            <div class="ml-4 font-300">{{ `#${item.value.s}` }}</div>
           </div>
-          <div v-if="curSearchIndex === i" i-carbon:checkmark text-18 />
+          <div v-if="curSearchIndex === i" class="i-carbon:checkmark text-18" />
         </div>
       </div>
     </div>
-    <!-- Input -->
-    <div flex items-center w="full">
+    <div class="w-full flex items-center">
       <input
         ref="searchInputRef"
         v-model="keyword"
         autofocus
-        text="15 $text-c-1"
-        h-full w-full bg-inherit op-80
+        class="$text-c-1 h-full w-full bg-inherit text-15 op-80"
         @keydown.enter="search"
         @input="handleInput"
         @focus="handleFocus"
@@ -250,13 +243,12 @@ onUnmounted(() => {
       <div
         v-if="keyword.length > 0"
         hover="op-80"
-        i-carbon:close mr-8 cursor-pointer text-20 op-40 transition duration-300
+        class="i-carbon:close mr-8 cursor-pointer text-20 op-40 transition duration-300"
         @click="handleCloseClick"
       />
     </div>
-    <!-- Button -->
-    <button flex-center shrink-0 gap-x-4 px-16 btn @click="search">
-      <span i-carbon:search inline-block text-16 />
+    <button class="flex-center shrink-0 gap-x-4 px-16 btn" @click="search">
+      <span class="i-carbon:search inline-block text-16" />
     </button>
   </div>
 </template>

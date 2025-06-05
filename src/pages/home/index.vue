@@ -1,5 +1,8 @@
 <script setup lang="ts">
+// ... (script部分保持不变，确保 isMobile 和 settingStore 的定义和使用是正确的) ...
 import { onMounted, ref } from 'vue'
+
+// 确保导入 computed
 import Swal from 'sweetalert2'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
@@ -16,6 +19,14 @@ defineOptions({
 })
 
 const settingStore = useSettingStore()
+
+const isMobile = ref(false)
+onMounted(() => {
+  isMobile.value = window.innerWidth <= 768
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 768
+  })
+})
 
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
@@ -37,19 +48,15 @@ async function fetchWeather() {
   }
 }
 
-function isMobileDevice() {
-  return window.innerWidth <= 768
-}
-
 function showMobileToast() {
-  if (isMobileDevice() && !localStorage.getItem('mobileToastShown')) {
+  if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
+    // ... (showMobileToast 函数内容保持不变)
     const Toast = Swal.mixin({
       toast: true,
       position: 'bottom',
       showConfirmButton: false,
       timer: 10000,
       timerProgressBar: true,
-      // 1. 宽度完全遵照您的要求，设置为 165px
       width: '165px',
       background: 'transparent',
       customClass: {
@@ -65,7 +72,6 @@ function showMobileToast() {
     })
 
     Toast.fire({
-      // 2. 减小内边距，并微调字体大小和行高以防止换行
       html: `
         <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
           <div style="text-align: center;">
@@ -76,7 +82,6 @@ function showMobileToast() {
             </div>
             <div>然后选择“添加到主屏幕”</div>
           </div>
-
           <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
             <polygon points="0,0 16,0 8,8" style="fill:white;"/>
           </svg>
@@ -94,21 +99,30 @@ onMounted(() => {
 
 <template>
   <TheDoc>
+    <SiteNavBar />
+
     <div
-      my="0 sm:6vh"
-      p="12 sm:24"
-      bg-transparent
-      w="full sm:auto"
-      :class="{ no_select: settingStore.isSetting }"
+      v-if="settingStore.isSideNavOpen && isMobile"
+      class="mobile-overlay"
+      @click="settingStore.toggleSideNav()"
+    />
+
+    <div
+      class="main-content-area"
+
+      px="6 sm:12" pb="12 sm:24"
+
+      sm:auto my-0 w-full pt-0 bg-transparent sm:pt-0
+      :class="{
+        'no_select': settingStore.isSetting,
+        'content-shifted': settingStore.isSideNavOpen,
+      }"
     >
       <div
-
-        w="full"
+        class="sticky z-[1010] w-full left-0 top-0"
         bg="$main-bg-c"
-        sticky z-20 left-0 top-0
       >
         <MainHeader />
-        <SiteNavBar />
       </div>
 
       <MainClock
@@ -143,6 +157,29 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.main-content-area {
+  transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.content-shifted {
+  margin-left: 160px; /* 与 SiteNavBar.vue 中的 width 一致 */
+  width: calc(100% - 160px); /* 与 SiteNavBar.vue 中的 width 一致 */
+  padding-left: 0 !important; /* 当侧边栏打开时，强制移除左内边距，使其内容紧贴 */
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+}
+
+/* ... weather-container 等其他样式保持不变 ... */
 .weather-container {
   display: flex;
   justify-content: center;
@@ -168,8 +205,8 @@ onMounted(() => {
 }
 
 :deep(.swal2-popup.swal2-toast) {
-    background: transparent !important;
-    box-shadow: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 </style>
 

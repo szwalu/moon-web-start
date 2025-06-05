@@ -13,9 +13,19 @@ const defaultSetting: Settings = Object.fromEntries(
   Object.keys(settingData).map(key => [key, settingData[key as SettingKey].defaultKey]),
 ) as Settings
 
+// 将这个辅助函数放在 defineStore 外部或 defineStore 内部的最开始
+function checkIsMobileDevice(): boolean {
+  return typeof navigator !== 'undefined' && /Mobi|Android|iPhone/i.test(navigator.userAgent)
+}
+
 export const useSettingStore = defineStore('setting', () => {
   const route = useRoute()
   const isSetting = ref(false)
+
+  // --- 👇 将 isSideNavOpen 和 isMobile 的定义移到这里，确保在 restoreSettings 之前 👇 ---
+  const isMobile = checkIsMobileDevice()
+  const isSideNavOpen = ref(!isMobile) // PC端(!isMobile)默认打开(true)，移动端(isMobile)默认关闭(false)
+  // --- 👆 上移结束 👆 ---
 
   watch(route, () => {
     if (route.name === 'setting')
@@ -42,6 +52,7 @@ export const useSettingStore = defineStore('setting', () => {
     })
     return settings
   })())
+
   watch(settings, () => {
     localStorage.setItem('settings', JSON.stringify(toRaw(settings)))
   }, { deep: true })
@@ -56,8 +67,11 @@ export const useSettingStore = defineStore('setting', () => {
   function setSettings(newSettings: Partial<Settings>) {
     Object.assign(settings, newSettings)
   }
+
+  // restoreSettings 函数现在可以安全地访问 isSideNavOpen 和 isMobile
   function restoreSettings() {
     Object.assign(settings, defaultSetting)
+    isSideNavOpen.value = !isMobile // 使用已定义的 isMobile
   }
 
   // ----------------- 拖拽 -----------------
@@ -74,6 +88,11 @@ export const useSettingStore = defineStore('setting', () => {
     siteContainerKey.value++
   }
 
+  // toggleSideNav 函数也移到 isSideNavOpen 定义之后
+  function toggleSideNav() {
+    isSideNavOpen.value = !isSideNavOpen.value
+  }
+
   return {
     isSetting,
     settings,
@@ -85,5 +104,7 @@ export const useSettingStore = defineStore('setting', () => {
     getSettingValue,
     restoreSettings,
     refreshSiteContainer,
+    isSideNavOpen,
+    toggleSideNav,
   }
 })

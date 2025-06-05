@@ -1,78 +1,53 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
 import type { Category } from '@/types'
-
-// import { computed } from 'vue' // 如果 activeSubMenuIndex 和 subMenuRows 已移除，这个可能不需要了
+import { useSettingStore } from '@/stores/setting'
 
 const modalStore = useModalStore()
 const siteStore = useSiteStore()
 const route = useRoute()
 const settingStore = useSettingStore()
 
-// 1. 核心修改：确保 handleEnd 从 useDrag() 中被解构出来
 const { draggableOptions, handleStart, handleEnd } = useDrag()
 
-// --- 以下是之前二级菜单的逻辑，如果您的 SiteNavBar.vue 中已经没有二级菜单了，
-// --- 并且 activeSubMenuIndex, handleNavEnter, handleNavLeave 也不再需要，可以一并移除。
-// --- 我暂时保留它们，以防您还需要。
 const activeSubMenuIndex = ref(-1)
-const leaveTimer = ref<number | null>(null)
 
-function handleNavEnter() {
-  if (leaveTimer.value) {
-    clearTimeout(leaveTimer.value)
-    leaveTimer.value = null
-  }
-}
-function handleNavLeave() {
-  leaveTimer.value = window.setTimeout(() => {
-    activeSubMenuIndex.value = -1
-  }, 150)
-}
-// --- 二级菜单相关逻辑结束 ---
+function checkIsMobileDevice(): boolean {
+  if (typeof navigator !== 'undefined')
+    return /Mobi|Android|iPhone/i.test(navigator.userAgent)
 
-// 2. 之前的 handleDragEnd 函数有复杂的 setCateIndex 逻辑，
-//     如果这个拖拽只是 useDrag() 自身的开始/结束状态，那么直接使用 handleEnd 可能就够了。
-//     如果拖拽 categories 数组并改变其顺序的逻辑还需要，我们需要恢复 handleDragEnd。
-//     这里我们假设 useDrag 提供的 handleEnd 是用于结束拖拽状态的。
-//     如果您的 useDrag() 需要一个更复杂的 handleDragEnd，请告诉我。
+  return false
+}
 
 function handleCateClick(cateIndex: number) {
-  // ... (原有的 handleCateClick 逻辑，包括二级菜单的展开/收起)
   if (route.name === 'setting' && siteStore.cateIndex === cateIndex) {
     modalStore.showModal('update', 'cate')
     return
   }
-  siteStore.setCateIndex(cateIndex) // 更新主要内容区域的显示
+  siteStore.setCateIndex(cateIndex)
 
-  // 处理二级菜单的显示/隐藏 (如果还有二级菜单逻辑的话)
   const clickedCate = siteStore.data[cateIndex]
-  if (clickedCate.groupList && clickedCate.groupList.length > 0 && activeSubMenuIndex !== undefined) { // 检查 activeSubMenuIndex 是否定义
+  if (clickedCate.groupList && clickedCate.groupList.length > 0) {
     if (activeSubMenuIndex.value === cateIndex)
       activeSubMenuIndex.value = -1
+
     else
       activeSubMenuIndex.value = cateIndex
   }
-  else if (activeSubMenuIndex !== undefined) {
+  else {
     activeSubMenuIndex.value = -1
   }
 }
 
-// 用于二级菜单的 subMenuRows 计算属性 (如果还有二级菜单逻辑)
 const subMenuRows = computed(() => {
-  if (activeSubMenuIndex === undefined || activeSubMenuIndex.value < 0 || activeSubMenuIndex.value >= siteStore.data.length)
+  if (activeSubMenuIndex.value < 0 || activeSubMenuIndex.value >= siteStore.data.length)
     return []
   const activeCate = siteStore.data[activeSubMenuIndex.value]
   if (!activeCate || !activeCate.groupList || !activeCate.groupList.length)
     return []
-  const half = Math.ceil(activeCate.groupList.length / 2)
-  return [
-    activeCate.groupList.slice(0, half),
-    activeCate.groupList.slice(half),
-  ].filter(row => row.length > 0)
+  return [activeCate.groupList]
 })
 
-// 用于二级菜单项点击 (如果还有二级菜单逻辑)
 function handleSubMenuClick(subItem: any) {
   const element = document.getElementById(String(subItem.id))
   if (element) {
@@ -85,146 +60,218 @@ function handleSubMenuClick(subItem: any) {
       behavior: 'smooth',
     })
   }
-  if (activeSubMenuIndex !== undefined)
+  if (checkIsMobileDevice()) {
     activeSubMenuIndex.value = -1
+    settingStore.toggleSideNav()
+  }
 }
 </script>
 
 <template>
   <section
-    class="relative flex-center flex-col text-16"
-    @mouseleave="handleNavLeave"
-    @mouseenter="handleNavEnter"
+    class="site-navbar-sidebar text-16"
+    :class="{ 'is-open': settingStore.isSideNavOpen }"
   >
-    <div class="w-full flex items-center justify-center">
-      <draggable
-        class="nav w-auto flex gap-x-6 w-90p sm:gap-x-12 sm:max-w-480"
-        :list="siteStore.data"
-        item-key="id"
-        :component-data="{
-          tag: 'div',
-          type: 'transition-group',
-        }"
-        v-bind="draggableOptions"
-        @start="handleStart"
-        @end="handleEnd"
-      >
-        <template #item="{ element: cate, index: i }: { element: Category, index: number }">
+    <div class="sidebar-logo-container flex items-center justify-center py-7 p-4">
+      <img src="/logo.jpg" alt="Logo" class="w-auto h-32">
+    </div>
+
+    <draggable
+      class="nav flex flex-grow flex-col gap-y-20 pt-16 p-2"
+      :list="siteStore.data"
+      item-key="id"
+      tag="div"
+      v-bind="draggableOptions"
+      @start="handleStart"
+      @end="handleEnd"
+    >
+      <template #item="{ element: cate, index: i }: { element: Category, index: number }">
+        <div :key="cate.id" class="nav-item-wrapper">
           <div
-            class="dragging nav__item flex shrink-0 items-center gap-x-2"
+            class="dragging nav__item w-full flex items-center gap-x-0"
             :class="{
               'hover:text-$primary-c': !settingStore.isSetting,
-              'nav__item--active': siteStore.cateIndex === i,
+              'nav__item--active': siteStore.cateIndex === i && activeSubMenuIndex === -1,
             }"
-            cursor-pointer px-8 py-10 transition-color duration-300
+            cursor-pointer rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200
             @click="handleCateClick(i)"
           >
-            <span>{{ cate.name }}</span>
+            <span class="flex-grow truncate text-center">{{ cate.name }}</span>
             <div
-              v-if="cate.groupList && cate.groupList.length > 0 && activeSubMenuIndex !== undefined"
-              i-carbon-chevron-down text-12 transition-transform duration-300
-              :class="{ 'rotate-180': activeSubMenuIndex === i }"
+              v-if="cate.groupList && cate.groupList.length > 0"
+              class="chevron-icon ml-0.5 flex-shrink-0"
+              i-carbon-chevron-right text-13 transition-transform duration-300
+              :class="{ 'rotate-90': activeSubMenuIndex === i }"
             />
+            <div v-else class="chevron-placeholder flex-shrink-0" />
           </div>
-        </template>
-      </draggable>
+          <transition name="slide-fade-vertical">
+            <div v-if="activeSubMenuIndex === i && subMenuRows.length > 0" class="sub-nav-container-vertical mt-1.5 py-1 pl-3 pr-1">
+              <div
+                v-for="subItem in subMenuRows[0]" :key="subItem.id"
+                class="sub-nav-item-vertical"
+                @click="handleSubMenuClick(subItem)"
+              >
+                {{ subItem.name }}
+              </div>
+            </div>
+          </transition>
+        </div>
+      </template>
+    </draggable>
+
+    <div class="static-links-container mb-4 flex flex-col gap-y-4 px-2 pb-2 pt-4">
+      <a
+        href="mailto:ming@woabc.com"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">网站提交</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </a>
+
+      <a
+        href="mailto:ming@woabc.com"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">友情链接</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </a>
+
+      <a
+        href="https://www.woabc.com/about.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">关于导航</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </a>
+    </div>
+
+    <div v-if="settingStore.isSetting" class="mt-auto border-t border-$border-c p-4">
       <n-button
-        v-if="settingStore.isSetting"
-        class="ml-4"
         type="primary"
         size="small"
         :focusable="false"
         secondary
-        circle
+        block
         @click="modalStore.showModal('add', 'cate')"
       >
         <template #icon>
           <div i-carbon:add />
         </template>
+        添加分类
       </n-button>
     </div>
-
-    <transition name="slide-fade">
-      <div
-        v-if="subMenuRows !== undefined && subMenuRows.length > 0"
-        class="sub-nav-container"
-      >
-        <div v-for="(row, rowIndex) in subMenuRows" :key="rowIndex" class="sub-nav-row" mb-2 flex-center flex-wrap gap-x-4 gap-y-2>
-          <div
-            v-for="subItem in row"
-            :key="subItem.id"
-            class="sub-nav-item"
-            cursor-pointer rounded-full bg-gray-100 px-8 py-4 text-13 transition-colors duration-300 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600
-            @click="handleSubMenuClick(subItem)"
-          >
-            {{ subItem.name }}
-          </div>
-        </div>
-      </div>
-    </transition>
   </section>
 </template>
 
 <style lang="scss" scoped>
-/* 样式部分保持不变，和您上一版完美版一致 */
+/* CSS部分与上一版完全一致 */
+.site-navbar-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 160px;
+  height: 100vh;
+  background-color: var(--main-bg-c);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.07);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease-in-out;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.site-navbar-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.sidebar-logo-container img {
+  max-width: 90%;
+  object-fit: contain;
+}
+
 .nav {
-  overflow-x: scroll;
-  -webkit-overflow-scrolling: touch;
   &::-webkit-scrollbar {
     display: none;
   }
 }
+
 .nav__item {
   position: relative;
+  span {
+    display: inline-block;
+  }
   &::after {
     content: '';
     position: absolute;
-    bottom: 0;
-    width: 0;
-    height: 2px;
-    border-radius: 2px;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 0%;
+    border-radius: 1.5px;
     background-color: var(--primary-c);
-    transition: all .3s;
-    left: 50%;
-    transform: translateX(-50%);
+    transition: height 0.2s ease-in-out, background-color 0.2s ease-in-out;
   }
+
   &--active {
     color: var(--primary-c);
     &::after {
-      width: 100%;
+      height: 70%;
     }
+  }
+  &:not(.nav__item--active):hover {
+    background-color: rgba(var(--primary-c-rgb), 0.05);
+    color: var(--primary-c);
   }
 }
 
-.sub-nav-container {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 10px;
-  width: auto;
-  min-width: 260px;
-  max-width: 500px;
-  padding: 10px 6px; /* 3. 缩小了整个菜单框的左右内边距 */
-  background-color: var(--main-bg-c);
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  border: 1px solid var(--border-c);
-  z-index: 100;
-}
-
-.sub-nav-row {
+.chevron-icon, .chevron-placeholder {
+  width: 13px;
+  height: 13px;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.3s ease-in-out;
+.static-links-container {
+  /* pt-4, px-2, pb-2, gap-y-4, mb-4 在模板中设置 */
 }
 
-.slide-fade-enter-from,
-.slide-fade-leave-to {
+.sub-nav-item-vertical {
+  padding: 5px 6px;
+  font-size: 0.8em;
+  color: var(--text-c-2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  text-align: center;
+  display: block;
+  width: 100%;
+
+  &:hover {
+    background-color: rgba(var(--primary-c-rgb), 0.08);
+    color: var(--primary-c);
+  }
+}
+
+.slide-fade-vertical-enter-active,
+.slide-fade-vertical-leave-active {
+  transition: all 0.25s ease-out;
+  max-height: 200px;
+}
+
+.slide-fade-vertical-enter-from,
+.slide-fade-vertical-leave-to {
   opacity: 0;
-  transform: translate(-50%, -10px);
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(-10px);
 }
 </style>

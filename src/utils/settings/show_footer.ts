@@ -9,5 +9,5 @@ export const showFooter = new SettingItem({
   name: () => t('settings.showFooter.title'),
   key: 'ShowFooter',
   children: showFooterList,
-  defaultKey: 'Show',
+  defaultKey: 'Hide',
 })
