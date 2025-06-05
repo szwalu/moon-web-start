@@ -230,7 +230,7 @@ onUnmounted(() => {
         ref="searchInputRef"
         v-model="keyword"
         autofocus
-        class="$text-c-1 h-full w-full bg-inherit text-15 op-80"
+        class="$text-c-1 h-full w-full text-15 op-80 bg-white"
         @keydown.enter="search"
         @input="handleInput"
         @focus="handleFocus"

@@ -73,7 +73,7 @@ function handleSubMenuClick(subItem: any) {
     class="site-navbar-sidebar pb-12 text-16" :class="{ 'is-open': settingStore.isSideNavOpen }"
   >
     <div class="sidebar-logo-container flex items-center justify-center py-7 p-4">
-      <img src="/logo.jpg" alt="Logo" class="w-auto h-32">
+      <img src="/logo.jpg" alt="Logo" class="w-auto h-40">
     </div>
 
     <draggable
