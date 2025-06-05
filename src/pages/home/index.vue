@@ -1,8 +1,7 @@
 <script setup lang="ts">
-// ... (script部分保持不变，确保 isMobile 和 settingStore 的定义和使用是正确的) ...
 import { onMounted, ref } from 'vue'
 
-// 确保导入 computed
+// 确保 onMounted, ref 已导入
 import Swal from 'sweetalert2'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
@@ -31,20 +30,39 @@ onMounted(() => {
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
-async function fetchWeather() {
-  try {
-    const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
-    const data = await response.json()
-    const weather = data.current
-    const city = data.location.name
-    const temp = weather.temp_c
-    const text = weather.condition.text
-    weatherCity.value = city
-    weatherInfo.value = `${temp}°C ${text}`
+// 当“显示天气”设置为“显示”时，才去获取天气数据
+watchEffect(() => {
+  if (settingStore.getSettingValue('showWeather')) {
+    fetchWeather()
   }
-  catch (error) {
-    weatherCity.value = '天气加载失败'
+  else {
+    // 如果设置为隐藏，可以清空天气信息（可选）
+    weatherCity.value = ''
     weatherInfo.value = ''
+  }
+})
+
+async function fetchWeather() {
+  // 修改后的判断条件：当天气信息是空的、加载中、或加载失败时，都去获取
+  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
+    try {
+      // 在请求前，先将状态设为“加载中...”，避免重复请求
+      weatherCity.value = '加载中...'
+      weatherInfo.value = '...'
+
+      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
+      const data = await response.json()
+      const weather = data.current
+      const city = data.location.name
+      const temp = weather.temp_c
+      const text = weather.condition.text
+      weatherCity.value = city
+      weatherInfo.value = `${temp}°C ${text}`
+    }
+    catch (error) {
+      weatherCity.value = '天气加载失败'
+      weatherInfo.value = ''
+    }
   }
 }
 
@@ -91,8 +109,9 @@ function showMobileToast() {
   }
 }
 
+// onMounted 中不再需要直接调用 fetchWeather，由 watchEffect 控制
 onMounted(() => {
-  fetchWeather()
+  // fetchWeather() // 已移至 watchEffect
   showMobileToast()
 })
 </script>
@@ -130,7 +149,7 @@ onMounted(() => {
         class="mt-4"
       />
 
-      <div v-if="!settingStore.isSetting" class="weather-container">
+      <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showWeather')" class="weather-container">
         <div v-if="weatherCity !== '天气加载失败'" class="weather-content">
           <span><strong>{{ weatherCity }}</strong></span>
           <span class="separator">/</span>
@@ -157,6 +176,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* CSS部分与上一版完全一致，此处省略以保持简洁 */
 .main-content-area {
   transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
   position: relative;
@@ -164,9 +184,9 @@ onMounted(() => {
 }
 
 .content-shifted {
-  margin-left: 130px; /* 与 SiteNavBar.vue 中的 width 一致 */
-  width: calc(100% - 130px); /* 与 SiteNavBar.vue 中的 width 一致 */
-  padding-left: 0 !important; /* 当侧边栏打开时，强制移除左内边距，使其内容紧贴 */
+  margin-left: 130px;
+  width: calc(100% - 130px);
+  padding-left: 0 !important;
 }
 
 .mobile-overlay {
@@ -179,7 +199,6 @@ onMounted(() => {
   z-index: 999;
 }
 
-/* ... weather-container 等其他样式保持不变 ... */
 .weather-container {
   display: flex;
   justify-content: center;

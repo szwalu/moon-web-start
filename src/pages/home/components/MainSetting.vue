@@ -283,6 +283,16 @@ onMounted(() => {
         value-field="key"
         :on-update-value="(key: string) => settingStore.setSettings({ showDate: key })"
       />
+
+      <SettingSelection
+        v-model="settingStore.settings.showWeather"
+        :title="S.showWeather.name"
+        :options="S.showWeather.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showWeather: key })"
+      />
+
       <SettingSelection
         v-model="settingStore.settings.showSecond"
         :title="S.showSecond.name"

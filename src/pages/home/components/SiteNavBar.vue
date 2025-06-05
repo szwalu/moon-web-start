@@ -185,6 +185,17 @@ function handleSubMenuClick(subItem: any) {
   flex-direction: column;
   overflow-y: auto;
   /* pb-12 已在模板的class中通过工具类添加 */
+
+  /* 👇 新增：针对 Firefox 隐藏滚动条 👇 */
+  scrollbar-width: none;
+  /* 👇 新增：针对 IE 和 Edge 旧版 隐藏滚动条 👇 */
+  -ms-overflow-style: none;
+}
+
+/* 👇 新增：针对 Webkit 核心的浏览器 (Chrome, Safari, 新版Edge) 隐藏滚动条 👇 */
+.site-navbar-sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 /* 其他CSS样式与上一版完全一致，此处省略以保持简洁 */
