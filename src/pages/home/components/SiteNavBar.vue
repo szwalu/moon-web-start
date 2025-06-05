@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// ... (script部分与上一版完全一致，此处省略以保持简洁) ...
 import draggable from 'vuedraggable'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
@@ -69,8 +70,7 @@ function handleSubMenuClick(subItem: any) {
 
 <template>
   <section
-    class="site-navbar-sidebar text-16"
-    :class="{ 'is-open': settingStore.isSideNavOpen }"
+    class="site-navbar-sidebar pb-12 text-16" :class="{ 'is-open': settingStore.isSideNavOpen }"
   >
     <div class="sidebar-logo-container flex items-center justify-center py-7 p-4">
       <img src="/logo.jpg" alt="Logo" class="w-auto h-32">
@@ -151,7 +151,7 @@ function handleSubMenuClick(subItem: any) {
       </a>
     </div>
 
-    <div v-if="settingStore.isSetting" class="mt-auto border-t border-$border-c p-4">
+    <div v-if="settingStore.isSetting" class="mt-auto border-t border-$border-c p-2">
       <n-button
         type="primary"
         size="small"
@@ -170,12 +170,11 @@ function handleSubMenuClick(subItem: any) {
 </template>
 
 <style lang="scss" scoped>
-/* CSS部分与上一版完全一致 */
 .site-navbar-sidebar {
   position: fixed;
   top: 0;
   left: 0;
-  width: 160px;
+  width: 130px; /* <-- 您设定的宽度 */
   height: 100vh;
   background-color: var(--main-bg-c);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.07);
@@ -185,8 +184,10 @@ function handleSubMenuClick(subItem: any) {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* pb-12 已在模板的class中通过工具类添加 */
 }
 
+/* 其他CSS样式与上一版完全一致，此处省略以保持简洁 */
 .site-navbar-sidebar.is-open {
   transform: translateX(0);
 }
@@ -240,13 +241,13 @@ function handleSubMenuClick(subItem: any) {
   justify-content: center;
 }
 
-.static-links-container {
-  /* pt-4, px-2, pb-2, gap-y-4, mb-4 在模板中设置 */
+.sub-nav-container-vertical {
+  /* Spacing classes are in the template */
 }
 
 .sub-nav-item-vertical {
   padding: 5px 6px;
-  font-size: 0.8em;
+  font-size: 0.9em; /* 二级菜单字体已调大 */
   color: var(--text-c-2);
   border-radius: 4px;
   cursor: pointer;

@@ -164,8 +164,8 @@ onMounted(() => {
 }
 
 .content-shifted {
-  margin-left: 160px; /* 与 SiteNavBar.vue 中的 width 一致 */
-  width: calc(100% - 160px); /* 与 SiteNavBar.vue 中的 width 一致 */
+  margin-left: 130px; /* 与 SiteNavBar.vue 中的 width 一致 */
+  width: calc(100% - 130px); /* 与 SiteNavBar.vue 中的 width 一致 */
   padding-left: 0 !important; /* 当侧边栏打开时，强制移除左内边距，使其内容紧贴 */
 }
 
