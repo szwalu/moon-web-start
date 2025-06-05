@@ -5,7 +5,8 @@ import { useSettingStore } from '@/stores/setting'
 
 const route = useRoute()
 const settingStore = useSettingStore()
-// const { toggleDark } = useTheme() // 假设 toggleDark 是这样获取的
+// 假设 toggleDark 是全局可用的，或者您有自己的方式来获取它
+// const { toggleDark } = useTheme()
 
 function getIconClass(routeName: string) {
   return {
@@ -15,7 +16,7 @@ function getIconClass(routeName: string) {
 </script>
 
 <template>
-  <div px="0 md:24 lg:48" class="flex items-center justify-between pt-12">
+  <div class="flex items-center justify-between px-4 pt-12 lg:px-8 md:px-6">
     <div class="flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
       <RouterLink to="/">
