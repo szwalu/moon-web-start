@@ -28,7 +28,7 @@ export default async function handler(
     if (data === null)
       return response.status(404).json({ code: -3, msg: '未找到指定ID的数据。' })
 
-    // 成功找到数据，将其返回
+    // 成功找到数据，将其返回。
     return response.status(200).json({ code: 0, msg: '数据读取成功。', data: { id, data } })
   }
   catch (error: any) {

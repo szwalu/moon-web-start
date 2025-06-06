@@ -16,7 +16,7 @@ export default async function handler(
     return response.status(405).json({ msg: '只允许 POST 请求' })
 
   try {
-    // Vercel 会自动解析JSON请求体，我们直接从 request.body 获取
+    // Vercel 会自动解析JSON请求体，我们直接从 request.body，获取
     if (!request.body || typeof request.body !== 'object')
       return response.status(400).json({ code: -1, msg: '请求体无效或为空。' })
 
