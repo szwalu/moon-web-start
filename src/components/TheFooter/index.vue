@@ -39,7 +39,7 @@ onUnmounted(() => {
 <template>
   <footer class="site-footer my-8 flex flex-col items-center gap-y-4">
     <div class="text-content text-center leading-relaxed">
-      <p>本站内容源自互联网，如有内容侵犯权益，请联系站长删除相关内容，联系邮箱：ming@woabc.com</p>
+      <p>本站内容源自互联网，如有内容侵犯权益，请联系站长删除相关内容，<a href="https://wj.qq.com/s2/22661316/e086/">点击联系</a></p>
       <p>
         <span>WOabc已运行：</span>
         <span class="font-mono">{{ runningTime }}</span>
