@@ -25,7 +25,6 @@ watch(() => settingStore.settings.search, () => {
 function search(e?: any) {
   if (
     !keyword.value.trim()
-    // 防止中文输入时回车键触发搜索
     || e?.isComposing
   )
     return
@@ -53,7 +52,6 @@ function toggleSelection() {
 
 /* Handle keydown */
 function handleKeydown(e: KeyboardEvent) {
-  // - 快捷切换搜索引擎
   if (e.key === '#' && !keyword.value.length)
     selectionVisible.value = true
   const target = (keyword.value + e.key).match(/^#[a-z]+/)
@@ -67,7 +65,6 @@ function handleKeydown(e: KeyboardEvent) {
     keyword.value = ''
     selectionVisible.value = false
   }
-  // 关闭搜索引擎选择
   if (keyword.value === '#' && e.key === 'Backspace')
     selectionVisible.value = false
 }
@@ -170,7 +167,6 @@ function setInactive(_: number) {
   selectedIndex.value = 0
 }
 
-/* Icon style */
 const { iconStyle } = useIconStyle()
 
 onMounted(() => {
@@ -182,28 +178,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div dark="bg-$bg-c" class="relative mx-auto w-full flex bg-gray-200 h-44 sm:w-[700px]!">
-    <div
-      v-show="showKeyDownSel && noticeKeyList.length > 1"
-      v-on-click-outside="handleKeyRecomend"
-      class="absolute z-9 w-full h-10em t-100p"
-      @mouseleave="handleLeave()"
-    >
-      <div bg="$main-bg-c" class="z-9 py-6 border-2 l-0 t-0 t-100p">
-        <div
-          v-for="(item, i) in noticeKeyList.slice(1)" :key="i + 1" class="cursor-pointer text-15 p-5"
-          :class="{ 'bg-$site-hover-c': i + 1 === selectedIndex }"
-          @mouseover="handleHover(i + 1)"
-          @click="jumpSearch(i + 1)"
-          @touchstart="setActive(i + 1)"
-          @touchend="setInactive(i + 1)"
-        >
-          <div class="flex-left gap-x-8" style="margin: 0.75rem; margin-left: 2rem;">
-            <div>{{ item }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]!">
     <div v-on-click-outside="() => selectionVisible = false" class="relative flex-center shrink-0 w-44">
       <div hover="op-100" class="h-full w-full flex-center cursor-pointer op-80 transition-300" @click="toggleSelection">
         <img :src="_getFavicon(searchList[curSearchIndex].value)" :style="iconStyle" class="h-32 w-32">
@@ -225,12 +200,14 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
     <div class="w-full flex items-center">
       <input
         ref="searchInputRef"
         v-model="keyword"
         autofocus
-        class="$text-c-1 h-full w-full text-15 op-80 bg-white"
+        class="$text-c-1 search-input h-full w-full bg-inherit px-2 op-80"
+        placeholder="输入并搜索..."
         @keydown.enter="search"
         @input="handleInput"
         @focus="handleFocus"
@@ -247,8 +224,59 @@ onUnmounted(() => {
         @click="handleCloseClick"
       />
     </div>
-    <button class="flex-center shrink-0 gap-x-4 px-16 btn" @click="search">
+
+    <button class="flex-center shrink-0 gap-x-4 px-16 btn">
       <span class="i-carbon:search inline-block text-16" />
     </button>
+
+    <div
+      v-show="showKeyDownSel && noticeKeyList.length > 1"
+      v-on-click-outside="handleKeyRecomend"
+      class="absolute z-9 w-full h-10em t-100p"
+      @mouseleave="handleLeave()"
+    >
+      <div bg="$main-bg-c" class="z-9 py-6 border-2 l-0 t-0 t-100p">
+        <div
+          v-for="(item, i) in noticeKeyList.slice(1)" :key="i + 1" class="cursor-pointer text-15 p-5"
+          :class="{ 'bg-$site-hover-c': i + 1 === selectedIndex }"
+          @mouseover="handleHover(i + 1)"
+          @click="jumpSearch(i + 1)"
+          @touchstart="setActive(i + 1)"
+          @touchend="setInactive(i + 1)"
+        >
+          <div class="flex-left gap-x-8" style="margin: 0.75rem; margin-left: 2rem;">
+            <div>{{ item }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.search-bar-container {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  /* 根据您的要求，移除了所有 border-radius 相关样式 */
+}
+
+.dark .search-bar-container {
+  background-color: #262626;
+  border-color: #404040;
+}
+
+.search-input {
+  background-color: transparent;
+  outline: none; /* 移除浏览器默认的input focus边框 */
+  font-size: 16px; /* 明确设置一个正常的字体大小 */
+}
+
+/* 确保输入框的占位符文字颜色在不同模式下也清晰可见 */
+.search-input::placeholder {
+  color: #9ca3af; /* 浅色模式下的占位符颜色 */
+}
+.dark .search-input::placeholder {
+  color: #71717a; /* 深色模式下的占位符颜色 */
+}
+</style>
