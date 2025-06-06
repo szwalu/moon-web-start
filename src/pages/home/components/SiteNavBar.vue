@@ -126,6 +126,7 @@ function handleSubMenuClick(subItem: any) {
         href="https://wj.qq.com/s2/22661316/e086/"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        target="_blank"
       >
         <span class="flex-grow truncate text-center">网站提交</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -134,6 +135,7 @@ function handleSubMenuClick(subItem: any) {
         href="https://wj.qq.com/s2/22661316/e086/"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        target="_blank"
       >
         <span class="flex-grow truncate text-center">友情链接</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
