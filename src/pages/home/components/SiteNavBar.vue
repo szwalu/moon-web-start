@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// ... (script部分与上一版完全一致，此处省略以保持简洁) ...
+// ... script部分与您提供的版本完全一致，此处省略 ...
 import draggable from 'vuedraggable'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
@@ -77,8 +77,7 @@ function handleSubMenuClick(subItem: any) {
     </div>
 
     <draggable
-      class="nav flex flex-grow flex-col gap-y-20 pt-16 p-2"
-      :list="siteStore.data"
+      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2" :list="siteStore.data"
       item-key="id"
       tag="div"
       v-bind="draggableOptions"
@@ -120,7 +119,9 @@ function handleSubMenuClick(subItem: any) {
       </template>
     </draggable>
 
-    <div class="static-links-container mb-4 flex flex-col gap-y-4 px-2 pb-2 pt-4">
+    <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
+
+    <div class="static-links-container flex flex-col gap-y-20 px-2 pb-4 pt-8">
       <a
         href="mailto:ming@woabc.com"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
@@ -129,7 +130,6 @@ function handleSubMenuClick(subItem: any) {
         <span class="flex-grow truncate text-center">网站提交</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-
       <a
         href="mailto:ming@woabc.com"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
@@ -138,7 +138,6 @@ function handleSubMenuClick(subItem: any) {
         <span class="flex-grow truncate text-center">友情链接</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-
       <a
         href="https://www.woabc.com/about.html"
         target="_blank"
@@ -170,11 +169,12 @@ function handleSubMenuClick(subItem: any) {
 </template>
 
 <style lang="scss" scoped>
+/* 所有CSS部分与您提供的版本完全一致，无需修改 */
 .site-navbar-sidebar {
   position: fixed;
   top: 0;
   left: 0;
-  width: 130px; /* <-- 您设定的宽度 */
+  width: 130px;
   height: 100vh;
   background-color: var(--main-bg-c);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.07);
@@ -184,36 +184,26 @@ function handleSubMenuClick(subItem: any) {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  /* pb-12 已在模板的class中通过工具类添加 */
-
-  /* 👇 新增：针对 Firefox 隐藏滚动条 👇 */
   scrollbar-width: none;
-  /* 👇 新增：针对 IE 和 Edge 旧版 隐藏滚动条 👇 */
   -ms-overflow-style: none;
 }
-
-/* 👇 新增：针对 Webkit 核心的浏览器 (Chrome, Safari, 新版Edge) 隐藏滚动条 👇 */
 .site-navbar-sidebar::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
-
-/* 其他CSS样式与上一版完全一致，此处省略以保持简洁 */
 .site-navbar-sidebar.is-open {
   transform: translateX(0);
 }
-
 .sidebar-logo-container img {
   max-width: 90%;
   object-fit: contain;
 }
-
 .nav {
+  /* 移除了 flex-grow，让它只占据内容所需高度 */
   &::-webkit-scrollbar {
     display: none;
   }
 }
-
 .nav__item {
   position: relative;
   span {
@@ -231,7 +221,6 @@ function handleSubMenuClick(subItem: any) {
     background-color: var(--primary-c);
     transition: height 0.2s ease-in-out, background-color 0.2s ease-in-out;
   }
-
   &--active {
     color: var(--primary-c);
     &::after {
@@ -243,7 +232,6 @@ function handleSubMenuClick(subItem: any) {
     color: var(--primary-c);
   }
 }
-
 .chevron-icon, .chevron-placeholder {
   width: 13px;
   height: 13px;
@@ -251,14 +239,12 @@ function handleSubMenuClick(subItem: any) {
   align-items: center;
   justify-content: center;
 }
-
 .sub-nav-container-vertical {
   /* Spacing classes are in the template */
 }
-
 .sub-nav-item-vertical {
   padding: 5px 6px;
-  font-size: 0.9em; /* 二级菜单字体已调大 */
+  font-size: 0.9em;
   color: var(--text-c-2);
   border-radius: 4px;
   cursor: pointer;
@@ -272,13 +258,11 @@ function handleSubMenuClick(subItem: any) {
     color: var(--primary-c);
   }
 }
-
 .slide-fade-vertical-enter-active,
 .slide-fade-vertical-leave-active {
   transition: all 0.25s ease-out;
   max-height: 200px;
 }
-
 .slide-fade-vertical-enter-from,
 .slide-fade-vertical-leave-to {
   opacity: 0;
