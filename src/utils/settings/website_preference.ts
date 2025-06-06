@@ -12,5 +12,5 @@ export const websitePreference = new SettingItem({
   name: () => t('settings.sitePreference.title'),
   key: 'WebsitePreference',
   children: websitePreferenceList,
-  defaultKey: 'Auto',
+  defaultKey: 'Customize',
 })
