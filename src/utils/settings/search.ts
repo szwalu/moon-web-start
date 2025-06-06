@@ -20,7 +20,8 @@ const searchList: SettingItemChildren<Search> = [
   {
     name: () => t('settings.searchEngine.sogou'),
     key: 'Sogou',
-    value: { url: 'https://www.sogou.com/web', wd: 'wd', favicon: '/svg/sogou.svg', s: 'sg' },
+    // 👇 唯一的修改在这里，将 wd: 'wd' 改为 wd: 'query' 👇
+    value: { url: 'https://www.sogou.com/web', wd: 'query', favicon: '/svg/sogou.svg', s: 'sg' },
   },
   {
     name: () => t('settings.searchEngine.wikipedia'),

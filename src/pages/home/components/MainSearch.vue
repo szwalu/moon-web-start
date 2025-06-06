@@ -22,14 +22,31 @@ watch(() => settingStore.settings.search, () => {
   initcurSearchIndex()
 }, { immediate: true })
 
+// 最终的、已修复的 search 函数
 function search(e?: any) {
   if (
     !keyword.value.trim()
     || e?.isComposing
   )
     return
-  const currentSearch = searchList[curSearchIndex.value]
-  window.open(`${currentSearch.value.url}?${currentSearch.value.wd}=${encodeURIComponent(keyword.value)}`)
+
+  try {
+    const currentSearch = searchList[curSearchIndex.value]
+    // 确保 currentSearch 和其 value 存在，避免错误
+    if (!currentSearch || !currentSearch.value) {
+      console.error('无法找到当前搜索引擎的配置')
+      return
+    }
+    const finalUrl = `${currentSearch.value.url}?${currentSearch.value.wd}=${encodeURIComponent(keyword.value)}`
+
+    // 明确在新标签页中打开，这是最可靠的方式
+    window.open(finalUrl, '_blank')
+  }
+  catch (error) {
+    console.error('搜索时发生错误:', error)
+    // 在这里可以给用户一个友好的错误提示，而不是用 alert
+  }
+
   clearNoticeKey()
   searchInputRef.value?.blur()
 }
@@ -179,11 +196,11 @@ onUnmounted(() => {
 
 <template>
   <div class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]!">
-    <div v-on-click-outside="() => selectionVisible = false" class="relative flex-center shrink-0 w-44">
+    <div v-on-click-outside="() => selectionVisible = false" class="search-engine-logo-container relative flex-center shrink-0 w-44">
       <div hover="op-100" class="h-full w-full flex-center cursor-pointer op-80 transition-300" @click="toggleSelection">
         <img :src="_getFavicon(searchList[curSearchIndex].value)" :style="iconStyle" class="h-32 w-32">
       </div>
-      <div v-show="selectionVisible" bg="$main-bg-c" class="absolute z-9 border-2 l-0 t-0 t-100p w-200">
+      <div v-show="selectionVisible" bg="$main-bg-c" class="search-dropdown absolute z-9 border-2 l-0 t-0 t-100p w-200">
         <div
           v-for="(item, i) in searchList"
           :key="i"
@@ -225,7 +242,7 @@ onUnmounted(() => {
       />
     </div>
 
-    <button class="flex-center shrink-0 gap-x-4 px-16 btn">
+    <button class="search-button flex-center shrink-0 gap-x-4 px-16 btn" @click="search">
       <span class="i-carbon:search inline-block text-16" />
     </button>
 
@@ -235,7 +252,7 @@ onUnmounted(() => {
       class="absolute z-9 w-full h-10em t-100p"
       @mouseleave="handleLeave()"
     >
-      <div bg="$main-bg-c" class="z-9 py-6 border-2 l-0 t-0 t-100p">
+      <div bg="$main-bg-c" class="search-dropdown z-9 py-6 border-2 l-0 t-0 t-100p">
         <div
           v-for="(item, i) in noticeKeyList.slice(1)" :key="i + 1" class="cursor-pointer text-15 p-5"
           :class="{ 'bg-$site-hover-c': i + 1 === selectedIndex }"
@@ -258,7 +275,6 @@ onUnmounted(() => {
   background-color: white;
   border: 1px solid #e5e7eb;
   transition: background-color 0.3s ease, border-color 0.3s ease;
-  /* 根据您的要求，移除了所有 border-radius 相关样式 */
 }
 
 .dark .search-bar-container {
@@ -268,15 +284,14 @@ onUnmounted(() => {
 
 .search-input {
   background-color: transparent;
-  outline: none; /* 移除浏览器默认的input focus边框 */
-  font-size: 16px; /* 明确设置一个正常的字体大小 */
+  outline: none;
+  font-size: 16px;
 }
 
-/* 确保输入框的占位符文字颜色在不同模式下也清晰可见 */
 .search-input::placeholder {
-  color: #9ca3af; /* 浅色模式下的占位符颜色 */
+  color: #9ca3af;
 }
 .dark .search-input::placeholder {
-  color: #71717a; /* 深色模式下的占位符颜色 */
+  color: #71717a;
 }
 </style>
