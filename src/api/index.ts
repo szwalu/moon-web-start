@@ -11,7 +11,7 @@ async function fetcher(url: string, options: RequestInit = {}) {
   })
 
   if (!response.ok) {
-    // 如果服务器返回错误，先尝试获取文本内容
+    // 如果服务器返回错误，先尝试获取文本内容.
     const errorText = await response.text()
     try {
       // 再次尝试将文本内容解析为JSON
