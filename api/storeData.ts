@@ -13,7 +13,7 @@ export default async function handler(
 
   // 确保只接受 POST 请求
   if (request.method !== 'POST')
-    return response.status(405).json({ message: '只允许 POST 请求' })
+    return response.status(405).json({ msg: '只允许 POST 请求' })
 
   try {
     // Vercel 会自动解析JSON请求体，我们直接从 request.body 获取
@@ -25,7 +25,7 @@ export default async function handler(
     if (!id || !data)
       return response.status(400).json({ code: -1, msg: '请求参数错误，必须提供 "id" 和 "data" 字段。' })
 
-    // 使用 Vercel KV 的 set 命令来存储数据
+    // 使用 Vercel KV 的 set 命令来存储数据。
     // Vercel KV可以直接存储JSON对象，无需手动stringify。
     // `config:${id}` 是一个很好的键名约定，方便管理。
     await kv.set(`config:${id}`, data)

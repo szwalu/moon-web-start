@@ -2,31 +2,33 @@
 
 // 封装一个通用的 fetch 函数（已更新错误处理）
 async function fetcher(url: string, options: RequestInit = {}) {
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  })
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    })
 
-  if (!response.ok) {
-    // 如果服务器返回错误，先尝试获取文本内容.
-    const errorText = await response.text()
-    try {
-      // 再次尝试将文本内容解析为JSON
-      const errorData = JSON.parse(errorText)
-      throw new Error(errorData.msg || `请求失败，状态码: ${response.status}`)
+    // 尝试解析JSON响应体
+    const responseData = await response.json()
+
+    // 如果响应状态码不是2xx（不成功）
+    if (!response.ok) {
+      // 抛出一个包含从服务器获取的错误信息的Error对象
+      throw new Error(responseData.msg || `请求失败，状态码: ${response.status}`)
     }
-    catch (e) {
-      // 如果解析JSON失败，说明服务器返回的不是JSON错误（很可能是HTML错误页）
-      // 抛出原始的文本错误，以便我们能看到Vercel返回的具体信息
-      throw new Error(`请求失败，状态码: ${response.status}. 服务器响应: ${errorText}`)
-    }
+
+    // 如果成功，返回解析后的数据
+    return responseData
   }
-
-  // 仅当响应成功时才解析JSON
-  return response.json()
+  catch (error: any) {
+    // 捕获所有类型的错误（网络错误、JSON解析错误、服务器返回的错误等）
+    console.error('API请求时发生错误:', error)
+    // 将错误信息重新抛出，以便UI层能捕获并显示给用户
+    throw new Error(error.message || '发生未知错误，请检查网络连接或联系管理员。')
+  }
 }
 
 // “存储数据”的请求函数 (保持不变)

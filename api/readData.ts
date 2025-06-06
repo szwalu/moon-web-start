@@ -13,7 +13,7 @@ export default async function handler(
 
   // 确保只接受 GET 请求
   if (request.method !== 'GET')
-    return response.status(405).json({ message: '只允许 GET 请求' })
+    return response.status(405).json({ msg: '只允许 GET 请求' })
 
   try {
     const { id } = request.query
