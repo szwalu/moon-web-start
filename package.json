@@ -12,6 +12,8 @@
     "prod": "./scripts/deploy.sh"
   },
   "dependencies": {
+    "@vercel/kv": "^3.0.0",
+    "@vercel/node": "^5.2.1",
     "@vueuse/components": "^10.1.2",
     "@vueuse/core": "^10.0.2",
     "default-passive-events": "^2.0.0",
