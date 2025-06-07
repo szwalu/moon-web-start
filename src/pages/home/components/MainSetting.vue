@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import type { VNode } from 'vue'
+import { createClient } from '@supabase/supabase-js'
 import SettingSelection from './SettingSelection.vue'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
 import { WITH_SERVER, getText, isEqual, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
-import { reqGetData, reqPostData } from '@/api'
+
+const supabase = createClient(
+  'https://szwalu-project.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ',
+)
 
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
 
-/* ThemeSetting */
 function renderThemeLabel(option: SettingItem<Theme>): VNode {
   const currentTheme = S.theme.children.find(item => item.key === option.key)!
   const bgColor = currentTheme.value!.bgC
@@ -19,20 +23,17 @@ function renderThemeLabel(option: SettingItem<Theme>): VNode {
   ])
 }
 
-/* Language */
 function toggleLanguage(language: string) {
   settingStore.setSettings({ language })
   loadLanguageAsync(language)
 }
 
-/* WebsitePreference */
 function handleWebsitePreferenceChange(key: WebsitePreference) {
   siteStore.setCateIndex(0)
   settingStore.setSettings({ websitePreference: key })
   settingStore.refreshSiteContainer()
 }
 
-/* 导入导出 */
 export interface CacheData {
   data: Category[]
   settings: Settings
@@ -81,7 +82,6 @@ function importData() {
   inputElement.click()
 }
 
-/* 重置预设 */
 function resetData() {
   $dialog.warning({
     title: t('messages.tip'),
@@ -95,7 +95,6 @@ function resetData() {
       loadLanguageAsync(settingStore.settings.language)
       settingStore.refreshSiteContainer()
       $message.success(t('messages.reset'))
-      // 重置分类索引
       siteStore.setCateIndex(0)
     },
   })
@@ -113,63 +112,67 @@ const syncId = ref('')
 function validateSyncId() {
   if (/^\w{5,20}$/.test(syncId.value))
     return true
-
   $message.warning(t('messages.warnValidateId'))
   return false
 }
 
-function handleSaveData() {
+async function handleSaveData() {
   if (!validateSyncId())
     return
-
   if (settingStore.getSettingValue('websitePreference') !== 'Customize') {
     $message.warning(t('messages.warnCustomize'))
     return
   }
   const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
-  reqPostData({
-    id: syncId.value,
-    data: {
-      data: siteStore.data,
-      settings: settingStore.settings,
+  const { error } = await supabase.from('moon').upsert([
+    {
+      id: syncId.value,
+      content: JSON.stringify({
+        data: siteStore.data,
+        settings: settingStore.settings,
+      }),
     },
-  }).then((res: any) => {
-    if (res.code !== 0)
-      throw new Error(res.msg)
-
-    secretIdStorage.set(res.data.id)
-    secretId.value = res.data.id
+  ])
+  if (error) {
+    $message.error(error.message)
+  }
+  else {
+    secretIdStorage.set(syncId.value)
+    secretId.value = syncId.value
     syncId.value = ''
     $message.success(t('messages.saveSuccess'))
-  }).catch((err: Error) => {
-    $message.error(err.message)
-  }).finally(() => {
-    loadingRef.destroy()
-  })
+  }
+  loadingRef.destroy()
 }
 
-function handleReadData() {
+async function handleReadData() {
   if (!validateSyncId())
     return
-
   const loadingRef = $message.loading(t('messages.reading'), { duration: 0 })
-  reqGetData(syncId.value).then((res: any) => {
-    if (res.code !== 0)
-      throw new Error(res.msg)
-
-    secretIdStorage.set(res.data.id)
-    secretId.value = res.data.id
-    syncId.value = ''
-
-    loadData(res.data.data)
-    settingStore.setSettings({ websitePreference: 'Customize' })
-    settingStore.refreshSiteContainer()
-    $message.success(t('messages.readSuccess'))
-  }).catch((err: Error) => {
-    $message.error(err.message)
-  }).finally(() => {
-    loadingRef.destroy()
-  })
+  const { data, error } = await supabase
+    .from('moon')
+    .select('content')
+    .eq('id', syncId.value)
+    .single()
+  if (error || !data) {
+    $message.error(error?.message || '读取失败')
+  }
+  else {
+    try {
+      const parsed = JSON.parse(data.content)
+      loadData(parsed)
+      settingStore.setSettings({ websitePreference: 'Customize' })
+      settingStore.refreshSiteContainer()
+      $message.success(t('messages.readSuccess'))
+      secretIdStorage.set(syncId.value)
+      secretId.value = syncId.value
+      syncId.value = ''
+    }
+    catch (err: any) {
+      $message.error(`解析失败：${err.message}`)
+    }
+  }
+  loadingRef.destroy()
 }
 
 function handleStopSync() {
@@ -178,23 +181,27 @@ function handleStopSync() {
 }
 
 function replaceLocalData(id: string) {
-  reqGetData(id).then((res: any) => {
-    if (res.code !== 0)
-      throw new Error(res.msg)
-
-    const remoteData = res.data.data
-    const localData = {
-      data: siteStore.data,
-      settings: settingStore.settings,
-    }
-
-    if (!isEqual(remoteData, localData)) {
-      loadData(remoteData)
-      settingStore.refreshSiteContainer()
-    }
-  }).catch((err) => {
-    console.error(err)
-  })
+  supabase
+    .from('moon')
+    .select('content')
+    .eq('id', id)
+    .single()
+    .then(({ data, error }) => {
+      if (!error && data) {
+        const remoteData = JSON.parse(data.content)
+        const localData = {
+          data: siteStore.data,
+          settings: settingStore.settings,
+        }
+        if (!isEqual(remoteData, localData)) {
+          loadData(remoteData)
+          settingStore.refreshSiteContainer()
+        }
+      }
+    })
+    .catch((err) => {
+      console.error(err)
+    })
 }
 
 onMounted(() => {
@@ -204,6 +211,7 @@ onMounted(() => {
 })
 </script>
 
+<!-- template 部分保持不变，可继续复用 -->
 <template>
   <section v-if="settingStore.isSetting" px="md:32 lg:64">
     <div my-16 text="16 $text-c-1" italic>
