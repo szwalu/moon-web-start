@@ -7,8 +7,8 @@ import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/util
 import * as S from '@/utils/settings'
 
 const supabase = createClient(
-  'https://reikfzpaefbbokwwocdr.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ',
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
 )
 
 const settingStore = useSettingStore()
