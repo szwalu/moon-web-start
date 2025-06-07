@@ -7,7 +7,7 @@ import { WITH_SERVER, getText, isEqual, loadLanguageAsync, secretIdStorage } fro
 import * as S from '@/utils/settings'
 
 const supabase = createClient(
-  'https://szwalu-project.supabase.co',
+  'https://reikfzpaefbbokwwocdr.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ',
 )
 
