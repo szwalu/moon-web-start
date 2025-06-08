@@ -161,10 +161,8 @@ onMounted(() => {
       </div>
 
       <MainSearch
-        v-if="!settingStore.isSetting"
         my-24
       />
-
       <SiteContainer :key="settingStore.siteContainerKey" />
       <MainSetting />
       <TheFooter

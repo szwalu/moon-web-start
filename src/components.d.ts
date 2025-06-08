@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppContainer: typeof import('./components/AppContainer.vue')['default']
     AppProvider: typeof import('./components/AppProvider/index.vue')['default']
+    Auth: typeof import('./components/Auth.vue')['default']
     Blank: typeof import('./components/Blank.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCode: typeof import('naive-ui')['NCode']

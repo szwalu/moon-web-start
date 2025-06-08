@@ -1,15 +1,18 @@
+// 文件路径: src/utils/settings/website_preference.ts
+
 import type { SettingItemChildren, WebsitePreference } from '@/types'
 import { SettingItem } from '@/types'
 
 const websitePreferenceList: SettingItemChildren<WebsitePreference> = [
-  { name: () => t('settings.sitePreference.auto'), key: 'Auto', value: 'Auto' },
-  { name: () => t('settings.sitePreference.chineseMainland'), key: 'ChineseMainland', value: 'ChineseMainland' },
-  { name: () => t('settings.sitePreference.global'), key: 'Global', value: 'Global' },
-  { name: () => t('settings.sitePreference.customize'), key: 'Customize', value: 'Customize' },
+  // --- 修改: 将所有 t() 调用改为返回直接的字符串 ---
+  { name: () => '自动', key: 'Auto', value: 'Auto' },
+  { name: () => '中国大陆', key: 'ChineseMainland', value: 'ChineseMainland' },
+  { name: () => '全球', key: 'Global', value: 'Global' },
+  { name: () => '自定义', key: 'Customize', value: 'Customize' },
 ]
 
 export const websitePreference = new SettingItem({
-  name: () => t('settings.sitePreference.title'),
+  name: () => '网站偏好', // <-- 修改
   key: 'WebsitePreference',
   children: websitePreferenceList,
   defaultKey: 'Auto',

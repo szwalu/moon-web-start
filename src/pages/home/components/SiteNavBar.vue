@@ -128,7 +128,7 @@ function handleSubMenuClick(subItem: any) {
         role="menuitem"
         target="_blank"
       >
-        <span class="flex-grow truncate text-center">申请</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.apply') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
       <a
@@ -137,7 +137,7 @@ function handleSubMenuClick(subItem: any) {
         role="menuitem"
         target="_blank"
       >
-        <span class="flex-grow truncate text-center">友链</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.links') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
       <a
@@ -147,7 +147,7 @@ function handleSubMenuClick(subItem: any) {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
       >
-        <span class="flex-grow truncate text-center">关于</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
     </div>

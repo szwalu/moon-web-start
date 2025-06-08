@@ -66,9 +66,8 @@ settings:
     title: Tag Mode
     concise: Concise
     full: Full
-  common:
-    show: Show
-    hide: Hide
+  showWeather:
+    title: Show Weather
 messages:
   tip: Tip
   warnCustomize: Please set the site preference to "Customize" first
@@ -82,8 +81,12 @@ messages:
   saving: Saving
   saveSuccess: Saved successfully
   reading: Reading
-  readingSuccess: Read successfully
+  readSuccess: Read successfully
   warnValidateId: The ID should be a combination of 5 to 20 digits, letters, or underscores
 iconLinkPlaceholder: Icon Link (optional)
 siteDescPlaceholder: Site Description (optional)
 inputIdPlaceholder: Input ID
+navbar:
+  apply: Apply
+  links: Links
+  about: About
