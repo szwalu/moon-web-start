@@ -4,7 +4,7 @@ common:
   cate: 分类
   group: 分组
   site: 网站
-  link: 链接
+  link: 链接(请输入带 https:// 的完整链接)
   name: 名称
   more: 更多
 button:

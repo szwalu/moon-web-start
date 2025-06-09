@@ -4,7 +4,7 @@ common:
   cate: Category
   group: Group
   site: Site
-  link: Link
+  link: Link(Please enter the full link with https://)
   name: Name
   more: More
 button:
