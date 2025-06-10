@@ -10,6 +10,5 @@ export const tagMode = new SettingItem({
   name: () => t('settings.tagMode.title'),
   key: 'TagType',
   children: tagModeList,
-  // v-- 修改的就是下面这一行 --v
-  defaultKey: (typeof navigator !== 'undefined' && /Mobi|Android|iPhone/i.test(navigator.userAgent)) ? 'Concise' : 'Full',
+  defaultKey: 'Full',
 })
