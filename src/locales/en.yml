@@ -43,6 +43,7 @@ settings:
     google: Google
     sogou: Sogou
     wikipedia: Wikipedia
+    local: On-site Search
   iconStyle:
     title: Icon Style
     vivid: Vivid
@@ -68,6 +69,9 @@ settings:
     full: Full
   showWeather:
     title: Show Weather
+  common:
+    show: Show
+    hide: Hide
 messages:
   tip: Tip
   warnCustomize: Please set the site preference to "Customize" first
@@ -81,8 +85,10 @@ messages:
   saving: Saving
   saveSuccess: Saved successfully
   reading: Reading
-  readSuccess: Read successfully
+  readingSuccess: Read successfully
+  readFailed: Failed to read
   warnValidateId: The ID should be a combination of 5 to 20 digits, letters, or underscores
+  Request: Request Exception
 iconLinkPlaceholder: Icon Link (optional)
 siteDescPlaceholder: Site Description (optional)
 inputIdPlaceholder: Input ID

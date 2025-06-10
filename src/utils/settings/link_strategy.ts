@@ -1,15 +1,13 @@
-// 文件路径: src/utils/settings/link_strategy.ts
-
 import type { SettingItemChildren } from '@/types'
 import { SettingItem } from '@/types'
 
 const linkStrategyList: SettingItemChildren<string> = [
-  { name: () => '当前标签页打开', key: 'currentTab', value: '_self' },
-  { name: () => '新标签页打开', key: 'newTab', value: '_blank' },
+  { name: () => t('settings.linkStrategy.currentTab'), key: 'currentTab', value: '_self' },
+  { name: () => t('settings.linkStrategy.newTab'), key: 'newTab', value: '_blank' },
 ]
 
 export const linkStrategy = new SettingItem({
-  name: () => '链接策略',
+  name: () => t('settings.linkStrategy.title'),
   key: 'LinkStrategy',
   children: linkStrategyList,
   defaultKey: 'newTab',

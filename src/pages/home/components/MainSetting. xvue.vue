@@ -144,7 +144,7 @@ async function handleSaveData() {
   }
   catch (e) {
     console.error('❌ 请求异常：', e)
-    $message.error(t('messages.Request'))
+    $message.error('请求异常')
   }
   finally {
     loadingRef.destroy()
@@ -168,7 +168,7 @@ async function handleReadData() {
   }
   catch (e: any) {
     console.error('❌ 读取失败：', e)
-    $message.error(e.message || t('messages.readFailed'))
+    $message.error(e.message || '读取失败')
   }
   finally {
     loadingRef.destroy()
@@ -187,38 +187,136 @@ function handleStopSync() {
       {{ $t('settings.title') }}
     </div>
     <div grid grid-cols-2 md="grid-cols-3" lg="grid-cols-4" justify-between gap-12>
-      <SettingSelection v-model="settingStore.settings.theme" :title="S.theme.name" :options="S.theme.children" :render-label="renderThemeLabel" label-field="name" value-field="key" :on-update-value="(theme: string) => toggleTheme(theme)" />
-      <SettingSelection v-model="settingStore.settings.language" :title="S.language.name" :options="S.language.children" label-field="name" value-field="key" :on-update-value="(key: string) => toggleLanguage(key)" />
-      <SettingSelection v-model="settingStore.settings.websitePreference" :title="S.websitePreference.name" :options="S.websitePreference.children" label-field="name" value-field="key" :on-update-value="handleWebsitePreferenceChange" />
-      <SettingSelection v-model="settingStore.settings.tagMode" :title="S.tagMode.name" :options="S.tagMode.children" label-field="name" value-field="key" :on-update-value="(key: TagMode) => settingStore.setSettings({ tagMode: key })" />
-      <SettingSelection v-model="settingStore.settings.search" :title="S.search.name" :options="S.search.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ search: key })" />
-      <SettingSelection v-model="settingStore.settings.iconStyle" :title="S.iconStyle.name" :options="S.iconStyle.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ iconStyle: key })" />
-      <SettingSelection v-model="settingStore.settings.linkStrategy" :title="S.linkStrategy.name" :options="S.linkStrategy.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ linkStrategy: key })" />
-      <SettingSelection v-model="settingStore.settings.showTime" :title="S.showTime.name" :options="S.showTime.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showTime: key })" />
-      <SettingSelection v-model="settingStore.settings.showDate" :title="S.showDate.name" :options="S.showDate.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showDate: key })" />
-      <SettingSelection v-model="settingStore.settings.showWeather" :title="S.showWeather.name" :options="S.showWeather.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showWeather: key })" />
-      <SettingSelection v-model="settingStore.settings.showSecond" :title="S.showSecond.name" :options="S.showSecond.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showSecond: key })" />
-      <SettingSelection v-model="settingStore.settings.showLunar" :title="S.showLunar.name" :options="S.showLunar.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showLunar: key })" />
-      <SettingSelection v-model="settingStore.settings.showFooter" :title="S.showFooter.name" :options="S.showFooter.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showFooter: key })" />
+      <SettingSelection
+        v-model="settingStore.settings.theme"
+        :title="S.theme.name"
+        :options="S.theme.children"
+        :render-label="renderThemeLabel"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(theme: string) => toggleTheme(theme)"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.language"
+        :title="S.language.name"
+        :options="S.language.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => toggleLanguage(key)"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.websitePreference"
+        :title="S.websitePreference.name"
+        :options="S.websitePreference.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="handleWebsitePreferenceChange"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.tagMode"
+        :title="S.tagMode.name"
+        :options="S.tagMode.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: TagMode) => settingStore.setSettings({ tagMode: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.search"
+        :title="S.search.name"
+        :options="S.search.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ search: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.iconStyle"
+        :title="S.iconStyle.name"
+        :options="S.iconStyle.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ iconStyle: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.linkStrategy"
+        :title="S.linkStrategy.name"
+        :options="S.linkStrategy.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ linkStrategy: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.showTime"
+        :title="S.showTime.name"
+        :options="S.showTime.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showTime: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.showDate"
+        :title="S.showDate.name"
+        :options="S.showDate.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showDate: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.showSecond"
+        :title="S.showSecond.name"
+        :options="S.showSecond.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showSecond: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.showLunar"
+        :title="S.showLunar.name"
+        :options="S.showLunar.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showLunar: key })"
+      />
+      <SettingSelection
+        v-model="settingStore.settings.showFooter"
+        :title="S.showFooter.name"
+        :options="S.showFooter.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showFooter: key })"
+      />
     </div>
     <div v-if="WITH_SERVER" mt-16 flex-center py-12>
       <div flex-center gap-12>
-        <n-input v-if="!secretId" v-model:value="syncId" :placeholder="$t('inputIdPlaceholder')" />
+        <n-input v-if="!secretId" v-model:value="syncId" placeholder="输入ID" />
         <n-button v-else type="success" disabled>{{ $t('button.dataInSync') }}</n-button>
         <div v-if="!secretId" flex gap-12>
-          <n-button secondary @click="handleSaveData">{{ $t('button.save') }}</n-button>
-          <n-button secondary @click="handleReadData">{{ $t('button.read') }}</n-button>
+          <n-button secondary @click="handleSaveData">
+            {{ $t('button.save') }}
+          </n-button>
+          <n-button secondary @click="handleReadData">
+            {{ $t('button.read') }}
+          </n-button>
         </div>
-        <n-button v-else secondary @click="handleStopSync">{{ $t('button.stopSync') }}</n-button>
+        <n-button v-else secondary @click="handleStopSync">
+          {{ $t('button.stopSync') }}
+        </n-button>
       </div>
     </div>
     <div mt-16 flex flex-wrap justify-center gap-12>
-      <n-button type="primary" quaternary @click="resetData">{{ $t('button.resetData') }}</n-button>
-      <n-button type="success" tertiary @click="importData">{{ $t('button.importData') }}</n-button>
-      <n-button type="success" secondary @click="exportData">{{ $t('button.exportData') }}</n-button>
+      <n-button type="primary" quaternary @click="resetData">
+        {{ $t('button.resetData') }}
+      </n-button>
+      <n-button type="success" tertiary @click="importData">
+        {{ $t('button.importData') }}
+      </n-button>
+      <n-button type="success" secondary @click="exportData">
+        {{ $t('button.exportData') }}
+      </n-button>
     </div>
     <div my-16 flex-center>
-      <n-button size="large" type="primary" @click="$router.back()">{{ $t('button.complete') }}</n-button>
+      <n-button size="large" type="primary" @click="$router.back()">
+        {{ $t('button.complete') }}
+      </n-button>
     </div>
   </section>
 </template>

@@ -4,7 +4,7 @@ common:
   cate: カテゴリー
   group: グループ
   site: サイト
-  link: リンク
+  link: リンク(完全なリンクを https:// で入力してくださ)
   name: 名前
   more: もっと
 button:
@@ -43,6 +43,7 @@ settings:
     google: グーグル
     sogou: 搜狗
     wikipedia: ウィキペディア
+    local: ローカル検索
   iconStyle:
     title: アイコンスタイル
     vivid: 鮮やかな
@@ -66,6 +67,8 @@ settings:
     title: タグモード
     concise: 簡潔
     full: 完全
+  showWeather:
+    title: 天気予報
   common:
     show: 表示
     hide: 非表示
@@ -81,7 +84,12 @@ messages:
   saveSuccess: 正常に保存されました
   reading: 読み込み中
   readingSuccess: 読み込み成功
+  readFailed: 検索に失敗した
   warnValidateId: IDは5～20文字の数字、英字、またはアンダースコアで構成される必要があります
 iconLinkPlaceholder: アイコンリンク（任意）
 siteDescPlaceholder: サイトの説明（任意）
 inputIdPlaceholder: 入力ID
+navbar:
+  apply: しがんしょ
+  links: リンク
+  about: に対して

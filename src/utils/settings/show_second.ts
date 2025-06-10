@@ -1,15 +1,13 @@
-// 文件路径: src/utils/settings/show_second.ts
-
 import { SettingItem, type SettingItemChildren } from '@/types'
 
-const showSecondOptions: SettingItemChildren<boolean> = [
-  { name: () => '显示', key: 'Show', value: true },
-  { name: () => '隐藏', key: 'Hide', value: false },
+const showSecondList: SettingItemChildren<boolean> = [
+  { name: () => t('settings.common.show'), key: 'Show', value: true },
+  { name: () => t('settings.common.hide'), key: 'Hide', value: false },
 ]
 
 export const showSecond = new SettingItem({
-  name: () => '显示秒钟',
+  name: () => t('settings.showSecond.title'),
   key: 'ShowSecond',
-  children: showSecondOptions,
+  children: showSecondList,
   defaultKey: 'Hide',
 })

@@ -1,11 +1,9 @@
-// 文件路径: src/utils/settings/theme.ts
-
 import type { SettingItemChildren, Theme } from '@/types'
 import { SettingItem } from '@/types'
 
 const themeChildren: SettingItemChildren<Theme> = [
   {
-    name: () => '初春',
+    name: () => t('settings.theme.earlySpring'),
     key: 'EarlySpring',
     value: {
       primaryC: '#87a8a4',
@@ -19,7 +17,7 @@ const themeChildren: SettingItemChildren<Theme> = [
     },
   },
   {
-    name: () => '瀚海',
+    name: () => t('settings.theme.vastOcean'),
     key: 'VastOcean',
     value: {
       primaryC: '#146C94',
@@ -33,7 +31,7 @@ const themeChildren: SettingItemChildren<Theme> = [
     },
   },
   {
-    name: () => '大漠',
+    name: () => t('settings.theme.endlessDesert'),
     key: 'EndlessDesert',
     value: {
       primaryC: '#bc6c25',
@@ -47,7 +45,7 @@ const themeChildren: SettingItemChildren<Theme> = [
     },
   },
   {
-    name: () => '月白',
+    name: () => t('settings.theme.moonWhite'),
     key: 'MoonWhite',
     value: {
       primaryC: '#555555',
@@ -63,8 +61,8 @@ const themeChildren: SettingItemChildren<Theme> = [
 ]
 
 export const theme = new SettingItem({
-  name: () => '主题',
+  name: () => t('settings.theme.title'),
   key: 'Theme',
   children: themeChildren,
-  defaultKey: 'EndlessDesert',
+  defaultKey: 'MoonWhite',
 })

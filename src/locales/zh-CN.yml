@@ -16,8 +16,8 @@ button:
   cancel: 取消
   delete: 删除
   dataInSync: 数据同步中
-  save: 保存数据
-  read: 恢复数据
+  save: 存储
+  read: 读取
   stopSync: 停止同步
 settings:
   title: 设置
@@ -43,6 +43,7 @@ settings:
     google: 谷歌
     sogou: 搜狗
     wikipedia: 维基百科
+    local: 本站搜索
   iconStyle:
     title: 图标风格
     vivid: 鲜艳
@@ -68,6 +69,9 @@ settings:
     full: 完全
   showWeather:
     title: 显示天气
+  common:
+    show: 显示
+    hide: 隐藏
 messages:
   tip: 提示
   warnCustomize: 请先将网站偏好设置为“自定义”
@@ -82,7 +86,9 @@ messages:
   saveSuccess: 保存成功
   reading: 读取中
   readSuccess: 读取成功
+  readFailed: 读取失败
   warnValidateId: ID 应为 5-20 位数字、字母或下划线组合
+  Request: 请求异常
 iconLinkPlaceholder: 图标链接（选填）
 siteDescPlaceholder: 网站描述（选填）
 inputIdPlaceholder: 输入ID

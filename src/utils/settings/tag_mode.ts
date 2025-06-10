@@ -1,16 +1,15 @@
-// 文件路径: src/utils/settings/tag_mode.ts
-
 import type { SettingItemChildren, TagMode } from '@/types'
 import { SettingItem } from '@/types'
 
 const tagModeList: SettingItemChildren<TagMode> = [
-  { name: () => '精简', key: 'Concise', value: 'Concise' },
-  { name: () => '完全', key: 'Full', value: 'Full' },
+  { name: () => t('settings.tagMode.concise'), key: 'Concise', value: 'Concise' },
+  { name: () => t('settings.tagMode.full'), key: 'Full', value: 'Full' },
 ]
 
 export const tagMode = new SettingItem({
-  name: () => '标签模式',
+  name: () => t('settings.tagMode.title'),
   key: 'TagType',
   children: tagModeList,
-  defaultKey: 'Full',
+  // v-- 修改的就是下面这一行 --v
+  defaultKey: (typeof navigator !== 'undefined' && /Mobi|Android|iPhone/i.test(navigator.userAgent)) ? 'Concise' : 'Full',
 })
