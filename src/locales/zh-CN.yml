@@ -7,6 +7,12 @@ common:
   link: 链接(请输入带 https:// 的完整链接)
   name: 名称
   more: 更多
+time_units:
+  days: 天
+  hours: 时
+  minutes: 分
+  seconds: 秒
+Alreadyrunning: WOabc已运行：
 button:
   resetData: 重置数据
   importData: 导入数据
@@ -19,6 +25,7 @@ button:
   save: 存储
   read: 读取
   stopSync: 停止同步
+  addCategory: 添加分类
 settings:
   title: 设置
   theme:
@@ -89,6 +96,8 @@ messages:
   readFailed: 读取失败
   warnValidateId: ID 应为 5-20 位数字、字母或下划线组合
   Request: 请求异常
+  noResultsPre: 站内未找到关于 “
+  noResultsPost: ” 的网站
 iconLinkPlaceholder: 图标链接（选填）
 siteDescPlaceholder: 网站描述（选填）
 inputIdPlaceholder: 输入ID
@@ -96,3 +105,6 @@ navbar:
   apply: 申请
   links: 友链
   about: 关于
+footer:
+  disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系站长删除相关内容，
+  contactLink: 点击联系

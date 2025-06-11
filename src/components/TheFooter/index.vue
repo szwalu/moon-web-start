@@ -22,7 +22,11 @@ function updateRunningTime() {
   const RunMinutes = Math.floor((RunDateM % (3600 * 1000)) / (60 * 1000))
   const RunSeconds = Math.floor((RunDateM % (60 * 1000)) / 1000)
 
-  runningTime.value = `${RunDays}天${RunHours}时${RunMinutes}分${RunSeconds}秒`
+  runningTime.value
+  = `${RunDays}${t('time_units.days')}`
+  + `${RunHours}${t('time_units.hours')}`
+  + `${RunMinutes}${t('time_units.minutes')}`
+  + `${RunSeconds}${t('time_units.seconds')}`
 }
 
 onMounted(() => {
@@ -39,9 +43,14 @@ onUnmounted(() => {
 <template>
   <footer class="site-footer my-8 flex flex-col items-center gap-y-4">
     <div class="text-content text-center leading-relaxed">
-      <p>本站内容源自互联网，如有内容侵犯权益，请联系站长删除相关内容，<a href="https://wj.qq.com/s2/22661316/e086/" target="_blank">点击联系</a></p>
       <p>
-        <span>WOabc已运行：</span>
+        {{ $t('footer.disclaimer') }}
+        <a href="https://sc81arzvs0.jiandaoyun.com/f/6844d2a9944452e16eeb5e26" target="_blank">
+          {{ $t('footer.contactLink') }}
+        </a>
+      </p>
+      <p>
+        <span>{{ $t('Alreadyrunning') }}</span>
         <span class="font-mono">{{ runningTime }}</span>
       </p>
       <p>

@@ -7,6 +7,12 @@ common:
   link: リンク(完全なリンクを https:// で入力してくださ)
   name: 名前
   more: もっと
+time_units:
+  days: 日
+  hours: 時間
+  minutes: 分
+  seconds: 秒
+Alreadyrunning: WOabc すでに実行中：
 button:
   resetData: データをリセット
   importData: データをインポート
@@ -19,6 +25,7 @@ button:
   save: 保存
   read: 読み取り
   stopSync: 同期停止
+  addCategory: に追加
 settings:
   title: 設定
   theme:
@@ -86,6 +93,9 @@ messages:
   readingSuccess: 読み込み成功
   readFailed: 検索に失敗した
   warnValidateId: IDは5～20文字の数字、英字、またはアンダースコアで構成される必要があります
+  Request: 例外要求
+  noResultsPre: に関する情報は見つからなかっ‘
+  noResultsPost: ’ウェブサイト
 iconLinkPlaceholder: アイコンリンク（任意）
 siteDescPlaceholder: サイトの説明（任意）
 inputIdPlaceholder: 入力ID
@@ -93,3 +103,6 @@ navbar:
   apply: しがんしょ
   links: リンク
   about: に対して
+footer:
+  disclaimer: インターネットからこのサイトの内容は、任意のコンテンツの権利侵害がある場合は、該当するコンテンツを削除するには、管理者に連絡してください,
+  contactLink: お問い合わせはこちら

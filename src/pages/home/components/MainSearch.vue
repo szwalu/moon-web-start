@@ -63,7 +63,7 @@ function performLocalSearch(query: string) {
   }
 
   // @ts-expect-error $message 是全局挂载的
-  $message.info(`站内未找到关于 "${query}" 的网站`)
+  $message.info(t('messages.noResultsPre') + query + t('messages.noResultsPost'))
 }
 
 function performWebSearch() {

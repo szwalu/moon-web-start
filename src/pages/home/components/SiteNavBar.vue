@@ -118,6 +118,21 @@ function handleSubMenuClick(subItem: any) {
       </template>
     </draggable>
 
+    <div v-if="settingStore.isSetting" class="p-4">
+      <n-button
+        type="primary"
+        size="small"
+        :focusable="false"
+        secondary
+        block
+        @click="modalStore.showModal('add', 'cate')"
+      >
+        <template #icon>
+          <div i-carbon:add />
+        </template>
+        {{ $t('button.addCategory') }}
+      </n-button>
+    </div>
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
     <div class="static-links-container flex flex-col gap-y-20 px-2 pb-4 pt-8">
@@ -149,22 +164,6 @@ function handleSubMenuClick(subItem: any) {
         <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-    </div>
-
-    <div v-if="settingStore.isSetting" class="mt-auto border-t border-$border-c p-2">
-      <n-button
-        type="primary"
-        size="small"
-        :focusable="false"
-        secondary
-        block
-        @click="modalStore.showModal('add', 'cate')"
-      >
-        <template #icon>
-          <div i-carbon:add />
-        </template>
-        添加分类
-      </n-button>
     </div>
   </section>
 </template>

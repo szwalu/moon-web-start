@@ -7,6 +7,12 @@ common:
   link: Link(Please enter the full link with https://)
   name: Name
   more: More
+time_units:
+  days: 'd ' # 加上空格以美化格式，例如 "10d "
+  hours: 'h ' # 例如 "5h "
+  minutes: 'm ' # 例如 "30m "
+  seconds: s # 末尾通常不加空格
+Alreadyrunning: WOabc Already running：
 button:
   resetData: Reset Data
   importData: Import Data
@@ -19,6 +25,7 @@ button:
   save: Save
   read: Read
   stopSync: Stop synchronizing
+  addCategory: Add Category
 settings:
   title: Settings
   theme:
@@ -89,6 +96,8 @@ messages:
   readFailed: Failed to read
   warnValidateId: The ID should be a combination of 5 to 20 digits, letters, or underscores
   Request: Request Exception
+  noResultsPre: No results found for‘
+  noResultsPost: ’on this site
 iconLinkPlaceholder: Icon Link (optional)
 siteDescPlaceholder: Site Description (optional)
 inputIdPlaceholder: Input ID
@@ -96,3 +105,6 @@ navbar:
   apply: Apply
   links: Links
   about: About
+footer:
+  disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
+  contactLink: Contact Us
