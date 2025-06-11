@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import { useI18n } from 'vue-i18n'
+
+// 引入 useI18n
+
 defineOptions({
   name: 'TheFooter',
 })
+
+const { t } = useI18n() // 获取 t 函数
 
 // --- 动态版权年份 ---
 const currentYear = computed(() => new Date().getFullYear())
@@ -59,6 +65,14 @@ onUnmounted(() => {
         <span>&nbsp;|&nbsp;</span>
         <a href="https://github.com/jic999/moon-web-start" target="_blank" rel="noopener noreferrer" class="footer-link">Jic999</a>
       </p>
+      <p>
+        <span>{{ $t('footer.friendlyLinksTitle') }}&nbsp;</span>
+        <a href="https://www.bqju.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkBqju') }}</a>
+        <span>&nbsp;|&nbsp;</span>
+        <a href="https://www.woabc.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkWoabcNav') }}</a>
+        <span>&nbsp;|&nbsp;</span>
+        <a href="https://www.woabc.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkAbcSite') }}</a>
+      </p>
     </div>
   </footer>
 </template>
@@ -82,9 +96,9 @@ onUnmounted(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-/* 3. 新增链接样式 */
+/* 链接样式 */
 .footer-link {
-  color: inherit; /* 继承父元素的颜色，看起来不像默认的蓝色链接 */
+  color: inherit; /* 继承父元素的颜色 */
   text-decoration: none; /* 移除默认的下划线 */
   transition: color 0.2s ease, text-decoration 0.2s ease; /* 添加过渡效果 */
 }
