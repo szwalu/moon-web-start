@@ -15,6 +15,10 @@
   ],
   "routes": [
     {
+      "src": "/functions/v1/send-mail",
+      "dest": "https://reikfzpaefbbokwwocdr.functions.supabase.co/send-mail"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     },
