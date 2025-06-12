@@ -111,7 +111,7 @@ async function handleSubmit() {
   background: white;
   padding: 2rem;
   border-radius: 10px;
-  font-size: 13px !important;
+  font-size: 14px !important;
   line-height: 1.6;
   font-family: system-ui, sans-serif;
   color: #333;
@@ -131,7 +131,7 @@ async function handleSubmit() {
 .tip {
   margin-bottom: 2rem;
   color: #555;
-  font-size: 14px !important;
+  font-size: 14px !important; /* 这是桌面端的大小 */
 }
 
 label {
@@ -198,6 +198,10 @@ button:hover:not([disabled]) {
 
   .breadcrumb {
     font-size: 18px !important;
+  }
+
+  .tip {
+    font-size: 15px !important;
   }
 
   select,
