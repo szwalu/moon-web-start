@@ -128,3 +128,17 @@ form:
   success: Submitted successfully, thank you for your feedback!
   selectError: Please select an option
   error: Submission failed. Please try again later.
+about:
+  title: Features
+  efficientNav: Efficient Navigation - Minimalist design for quick access.
+  freedomEdit: Total Freedom - Freely add, delete, and modify sites with custom icons.
+  dragSort: Drag & Drop Sorting - Quickly rearrange the order of your websites.
+  smartSearch: Smart Search - Suggestions from multiple search engines like Google, Bing, and Baidu.
+  responsive: Responsive Layout - Displays perfectly on any device size.
+  themeSwitch: Theme Switching - Multiple built-in themes to switch between freely.
+  darkMode: Dark Mode - Easy on your eyes.
+  i18nSupport: I18n - Supports Simplified Chinese, English, and Japanese.
+  importExport: Import/Export - Sync your data across different devices.
+  browserPlugin: Browser Extension - Open Moon in every new tab.
+  dockerSupport: Containerized Deployment - Supports one-click deployment with Docker.
+  thanks: Special Thanks

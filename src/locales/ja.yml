@@ -126,3 +126,17 @@ form:
   success: 送信が完了しました。ご意見ありがとうございます！
   selectError: リストから1つ選択してください
   error: 送信に失敗しました。後ほど再試行してください。
+about:
+  title: このナビサイトの特長
+  efficientNav: 効率的なナビゲーション - シンプルなデザインで、素早くアクセス。
+  freedomEdit: 思いのままに編集 - サイトの追加、削除、変更が自由自在。カスタムアイコンにも対応。
+  dragSort: ドラッグ＆ドロップで並び替え - ウェブサイトの順序を素早く調整。
+  smartSearch: 検索キーワード候補 - Google、Bing、Baiduなど複数の検索エンジンに対応。
+  responsive: レスポンシブデザイン - あらゆるデバイスサイズで正常に表示。
+  themeSwitch: テーマ切り替え - 複数の内蔵テーマを自由に切り替え可能。
+  darkMode: ダークモード - あなたの目を大切に。
+  i18nSupport: I18n - 中国語（簡体字）、英語、日本語に対応。
+  importExport: インポート/エクスポート - デバイス間でデータを同期。
+  browserPlugin: ブラウザ拡張機能 - 新しいタブでMoonを開きます。
+  dockerSupport: コンテナ化デプロイ - Dockerによるワンクリックデプロイに対応。
+  thanks: スペシャルサンクス

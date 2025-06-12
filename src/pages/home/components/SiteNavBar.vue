@@ -155,7 +155,7 @@ function handleSubMenuClick(subItem: any) {
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
       <a
-        href="https://www.woabc.com/about.html"
+        href="https://www.woabc.com/about"
         target="_blank"
         rel="noopener noreferrer"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
