@@ -7,34 +7,30 @@ const { t } = useI18n()
 const form = ref<HTMLFormElement | null>(null)
 const successMessage = ref('')
 const errorMessage = ref('')
-const selectError = ref('')
 const loading = ref(false)
 
 async function handleSubmit() {
   if (!form.value)
     return
+  loading.value = true
   successMessage.value = ''
   errorMessage.value = ''
-  selectError.value = ''
-  loading.value = true
-
-  const formData = new FormData(form.value)
-  const type = formData.get('type') as string
-  const message = formData.get('message') as string
-  const email = formData.get('email') as string
-
-  if (!type) {
-    selectError.value = t('form.selectError')
-    loading.value = false
-    return
-  }
 
   try {
+    const formData = new FormData(form.value)
+    const type = formData.get('type') as string
+    const message = formData.get('message') as string
+    const email = formData.get('email') as string
+
     const { error } = await supabase.from('feedbacks').insert([{ type, message, email }])
     if (error)
       throw error
 
-    const response = await fetch('https://reikfzpaefbbokwwocdr.functions.supabase.co/send-mail', {
+    const baseURL = location.hostname === 'localhost'
+      ? 'https://reikfzpaefbbokwwocdr.functions.supabase.co'
+      : '/functions/v1'
+
+    const response = await fetch(`${baseURL}/send-mail`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, message, email }),
@@ -75,7 +71,6 @@ async function handleSubmit() {
           <option value="feedback">{{ t('form.options.feedback') }}</option>
         </select>
       </label>
-      <p v-if="selectError" class="error-message">{{ selectError }}</p>
 
       <label>
         <span class="required">*</span>{{ t('form.messageLabel') }}
@@ -92,26 +87,19 @@ async function handleSubmit() {
       </button>
 
       <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
+      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
     </form>
   </div>
 </template>
 
 <style scoped>
-/* ✅ 添加错误提示样式 */
-.error-message {
-  color: red;
-  font-size: 13px;
-  margin-top: -0.5rem;
-  margin-bottom: 1rem;
-}
-
 .form-container {
   max-width: 640px;
   margin: 2rem auto;
   background: white;
   padding: 2rem;
   border-radius: 10px;
-  font-size: 14px !important;
+  font-size: 13px !important;
   line-height: 1.6;
   font-family: system-ui, sans-serif;
   color: #333;
@@ -131,7 +119,7 @@ async function handleSubmit() {
 .tip {
   margin-bottom: 2rem;
   color: #555;
-  font-size: 14px !important; /* 这是桌面端的大小 */
+  font-size: 14px !important;
 }
 
 label {
@@ -182,14 +170,21 @@ button:hover:not([disabled]) {
   background-color: #009f77;
 }
 
-.success-message {
+.success-message,
+.error-message {
   margin-top: 1rem;
   font-weight: bold;
   text-align: center;
+}
+
+.success-message {
   color: #008800;
 }
 
-/* 📱 移动端适配 */
+.error-message {
+  color: red;
+}
+
 @media (max-width: 600px) {
   .form-container {
     padding: 1.25rem;
@@ -200,10 +195,6 @@ button:hover:not([disabled]) {
     font-size: 18px !important;
   }
 
-  .tip {
-    font-size: 16px !important;
-  }
-
   select,
   textarea,
   input,
@@ -212,7 +203,6 @@ button:hover:not([disabled]) {
   }
 }
 
-/* 🌙 暗色模式适配 */
 @media (prefers-color-scheme: dark) {
   .form-container {
     background: #1e1e1e;
