@@ -106,9 +106,25 @@ navbar:
   links: 友链
   about: 关于
 footer:
-  disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系站长删除相关内容，
+  disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
   contactLink: 点击联系
   friendlyLinksTitle: 友情链接：
   linkBqju: 本趣居
   linkWoabcNav: WOabc导航
   linkAbcSite: TQabc网址
+form:
+  title: 意见建议
+  breadcrumb: 网站收录链接申请 & 反馈
+  tip: 您好，欢迎您使用我们的网站。如您有网站需要我们收录或申请友情链接或有意见反馈，请在下面直接填写提交。谢谢！
+  selectLabel: 请选择
+  selectPlaceholder: 请选择类型
+  options:
+    applySite: 申请收录网站
+    applyLink: 申请友情链接
+    feedback: 意见反馈
+  messageLabel: 请输入
+  emailLabel: 联系邮箱（可选）
+  submit: 提交
+  success: 提交成功，感谢反馈！
+  selectError: 请在列表中选择一项
+  error: 提交失败，请稍后再试

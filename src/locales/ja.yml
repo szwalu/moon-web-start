@@ -110,3 +110,19 @@ footer:
   linkBqju: 本曲州
   linkWoabcNav: WOabcウェブサイト
   linkAbcSite: TQabcウェブサイト
+form:
+  title: ご意見・ご要望
+  breadcrumb: サイト登録申請 & フィードバック
+  tip: ようこそ。当サイトをご利用いただきありがとうございます。登録を希望するサイトや相互リンクの申請、ご意見がある場合は、以下のフォームにご記入ください。
+  selectLabel: 選択してください
+  selectPlaceholder: 種類を選択
+  options:
+    applySite: サイト登録申請
+    applyLink: 相互リンク申請
+    feedback: ご意見・ご要望
+  messageLabel: メッセージを入力してください
+  emailLabel: 連絡用メール（任意）
+  submit: 送信
+  success: 送信が完了しました。ご意見ありがとうございます！
+  selectError: リストから1つ選択してください
+  error: 送信に失敗しました。後ほど再試行してください。

@@ -112,3 +112,19 @@ footer:
   linkBqju: Benquju
   linkWoabcNav: WOabc nav
   linkAbcSite: TQabc site
+form:
+  title: Feedback
+  breadcrumb: Site Submission & Feedback
+  tip: Hello! Welcome to our site. If you'd like us to include your site, apply for a link exchange, or give feedback, please fill out the form below. Thank you!
+  selectLabel: Please choose
+  selectPlaceholder: Select a type
+  options:
+    applySite: Submit a website
+    applyLink: Apply for link exchange
+    feedback: Feedback
+  messageLabel: Your message
+  emailLabel: Contact email (optional)
+  submit: Submit
+  success: Submitted successfully, thank you for your feedback!
+  selectError: Please select an option
+  error: Submission failed. Please try again later.
