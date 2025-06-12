@@ -137,7 +137,7 @@ function handleSubMenuClick(subItem: any) {
 
     <div class="static-links-container flex flex-col gap-y-20 px-2 pb-4 pt-8">
       <a
-        href="https://sc81arzvs0.jiandaoyun.com/f/6844d2a9944452e16eeb5e26"
+        href="https://www.woabc.com/apply"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"
@@ -146,7 +146,7 @@ function handleSubMenuClick(subItem: any) {
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
       <a
-        href="https://sc81arzvs0.jiandaoyun.com/f/6844d2a9944452e16eeb5e26"
+        href="https://www.woabc.com/apply"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"

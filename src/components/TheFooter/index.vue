@@ -51,7 +51,7 @@ onUnmounted(() => {
     <div class="text-content text-center leading-relaxed">
       <p>
         {{ $t('footer.disclaimer') }}
-        <a href="https://sc81arzvs0.jiandaoyun.com/f/6844d2a9944452e16eeb5e26" target="_blank">
+        <a href="https://www.woabc.com/apply" target="_blank">
           {{ $t('footer.contactLink') }}
         </a>
       </p>
