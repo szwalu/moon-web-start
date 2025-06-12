@@ -201,7 +201,7 @@ button:hover:not([disabled]) {
   }
 
   .tip {
-    font-size: 15px !important;
+    font-size: 16px !important;
   }
 
   select,

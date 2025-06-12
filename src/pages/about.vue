@@ -128,11 +128,11 @@ const features = computed(() => {
   .about-container {
     margin: 2rem 1rem;
     padding: 2rem 1.5rem;
-    font-size: 14px; /* <<-- 在这里调整移动端正文基础字体大小 */
+    font-size: 17px; /* <<-- 在这里调整移动端正文基础字体大小 */
     line-height: 1.5; /* <<-- 在这里调整移动端行距 */
   }
   .title {
-    font-size: 4.5rem; /* <<-- 同样增大了移动端的主标题 */
+    font-size: 5.5rem; /* <<-- 同样增大了移动端的主标题 */
   }
   .thanks {
     font-size: 3.0rem; /* <<-- 调整移动端“特别感谢”字体大小 */
