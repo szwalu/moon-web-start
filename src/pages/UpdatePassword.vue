@@ -11,8 +11,6 @@ const password = ref('')
 const loading = ref(false)
 const message = ref('')
 const success = ref(false)
-
-// 一个状态，用来确认页面是否已准备好接受新密码
 const readyToUpdate = ref(false)
 
 async function handleUpdatePassword() {
@@ -63,7 +61,7 @@ onMounted(() => {
     }
   })
 })
-</script> 
+</script>
 
 <template>
   <div class="auth-container">
@@ -81,24 +79,7 @@ onMounted(() => {
   </div>
 </template>
 
-<template>
-  <div class="auth-container">
-    <h1>重置您的密码</h1>
-    <form v-if="!success" class="auth-form" @submit.prevent="handleUpdatePassword">
-      <label>
-        新密码
-        <input v-model="password" type="password" required>
-      </label>
-      <button type="submit" :disabled="loading">
-        {{ loading ? '更新中...' : '更新密码' }}
-      </button>
-    </form>
-    <p v-if="message" class="message">{{ message }}</p>
-  </div>
-</template>
-
 <style scoped>
-/* 这里直接复用了 auth.vue 的样式，您可以根据需要调整 */
 .auth-container { max-width: 480px; margin: 2rem auto; padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-family: system-ui, sans-serif; font-size: 14px; color: #333; transition: background-color .3s ease, color .3s ease; }
 .dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0,0,0,.2); }
 h1 { text-align: center; margin-bottom: 2rem; font-size: 28px; font-weight: bold; color: #111; }
