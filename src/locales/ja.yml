@@ -150,9 +150,13 @@ auth:
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
   prompt_to_login: すでにアカウントをお持ちですか？
+  forgot_password: パスワードをお忘れですか？
+  email_placeholder: メールアドレスを入力してください
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
     user_already_registered: ❌ このメールアドレスは既に登録されています。直接ログインするか、パスワードを再設定してください。
     email_not_confirmed: ❌ 先にメールアドレスの確認をしてください。
+    password_reset_sent: ✅ パスワード再設定の手順を送信しました。受信トレイをご確認ください。
+    email_required_for_reset: パスワードを再設定するにはメールアドレスを入力してください。
     operation_failed: ❌ 操作に失敗しました：
