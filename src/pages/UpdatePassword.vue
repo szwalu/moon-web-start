@@ -12,13 +12,18 @@ const loading = ref(false)
 const message = ref('')
 const success = ref(false)
 
+// 一个状态，用来确认页面是否已准备好接受新密码
+const readyToUpdate = ref(false)
+
 async function handleUpdatePassword() {
+  if (!readyToUpdate.value) {
+    message.value = '页面尚未准备就绪，请稍等...'
+    return
+  }
   if (!password.value) {
     message.value = '请输入您的新密码。'
     return
   }
-
-  // 为避免密码太弱的问题，这里增加一个客户端校验
   if (password.value.length < 6) {
     message.value = '❌ 密码长度不能少于6位。'
     return
@@ -28,16 +33,13 @@ async function handleUpdatePassword() {
   message.value = ''
 
   try {
-    const { _data, error } = await supabase.auth.updateUser({
+    const { error } = await supabase.auth.updateUser({
       password: password.value,
     })
 
-    if (error) {
-      // 如果 Supabase 返回了错误，就把它抛出给 catch 块处理
+    if (error)
       throw error
-    }
 
-    // 如果没有错误，说明API调用成功
     message.value = '✅ 密码重置成功！即将跳转到登录页面...'
     success.value = true
     setTimeout(() => {
@@ -45,7 +47,6 @@ async function handleUpdatePassword() {
     }, 2000)
   }
   catch (err: any) {
-    console.error('Catch 块捕获到错误:', err)
     message.value = `❌ 重置失败: ${err.message}`
   }
   finally {
@@ -54,13 +55,31 @@ async function handleUpdatePassword() {
 }
 
 onMounted(() => {
+  message.value = '正在验证重置链接，请稍候...'
   supabase.auth.onAuthStateChange(async (event, _session) => {
     if (event === 'PASSWORD_RECOVERY') {
-      // 可以在这里处理一些UI逻辑，但目前我们只需要确保用户可以更新密码即可
+      message.value = '链接验证成功，请输入您的新密码。'
+      readyToUpdate.value = true
     }
   })
 })
 </script>
+
+<template>
+  <div class="auth-container">
+    <h1>重置您的密码</h1>
+    <form v-if="!success" class="auth-form" @submit.prevent="handleUpdatePassword">
+      <label>
+        新密码
+        <input v-model="password" type="password" required :disabled="!readyToUpdate">
+      </label>
+      <button type="submit" :disabled="loading || !readyToUpdate">
+        {{ loading ? '更新中...' : '更新密码' }}
+      </button>
+    </form>
+    <p v-if="message" class="message">{{ message }}</p>
+  </div>
+</template>
 
 <template>
   <div class="auth-container">
