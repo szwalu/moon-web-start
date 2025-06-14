@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDark } from '@vueuse/core'
 import { supabase } from '@/utils/supabaseClient'
@@ -11,13 +11,8 @@ const password = ref('')
 const loading = ref(false)
 const message = ref('')
 const success = ref(false)
-const readyToUpdate = ref(false)
 
 async function handleUpdatePassword() {
-  if (!readyToUpdate.value) {
-    message.value = '页面尚未准备就绪，请稍等...'
-    return
-  }
   if (!password.value) {
     message.value = '请输入您的新密码。'
     return
@@ -31,6 +26,7 @@ async function handleUpdatePassword() {
   message.value = ''
 
   try {
+    // Supabase 客户端已经自动从URL中获取了授权，我们直接更新用户密码即可
     const { error } = await supabase.auth.updateUser({
       password: password.value,
     })
@@ -38,7 +34,7 @@ async function handleUpdatePassword() {
     if (error)
       throw error
 
-    message.value = '✅ 密码重置成功！即将跳转到登录页面...'
+    message.value = '✅ 密码重置成功！2秒后将跳转到登录页面...'
     success.value = true
     setTimeout(() => {
       router.push('/auth')
@@ -51,16 +47,6 @@ async function handleUpdatePassword() {
     loading.value = false
   }
 }
-
-onMounted(() => {
-  message.value = '正在验证重置链接，请稍候...'
-  supabase.auth.onAuthStateChange(async (event, _session) => {
-    if (event === 'PASSWORD_RECOVERY') {
-      message.value = '链接验证成功，请输入您的新密码。'
-      readyToUpdate.value = true
-    }
-  })
-})
 </script>
 
 <template>
@@ -69,9 +55,9 @@ onMounted(() => {
     <form v-if="!success" class="auth-form" @submit.prevent="handleUpdatePassword">
       <label>
         新密码
-        <input v-model="password" type="password" required :disabled="!readyToUpdate">
+        <input v-model="password" type="password" required placeholder="请输入至少6位的新密码">
       </label>
-      <button type="submit" :disabled="loading || !readyToUpdate">
+      <button type="submit" :disabled="loading">
         {{ loading ? '更新中...' : '更新密码' }}
       </button>
     </form>
@@ -80,6 +66,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 样式部分保持不变 */
 .auth-container { max-width: 480px; margin: 2rem auto; padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-family: system-ui, sans-serif; font-size: 14px; color: #333; transition: background-color .3s ease, color .3s ease; }
 .dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0,0,0,.2); }
 h1 { text-align: center; margin-bottom: 2rem; font-size: 28px; font-weight: bold; color: #111; }
