@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { supabase } from '@/utils/supabaseClient'
 
+// 激活“跟随系统”的暗色模式功能
 useDark()
 
 const router = useRouter()
@@ -12,7 +13,7 @@ const { t } = useI18n()
 
 const email = ref('')
 const password = ref('')
-const passwordConfirm = ref('') // 【新增】用于存储确认密码的变量
+const passwordConfirm = ref('') // 用于存储确认密码的变量
 const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
@@ -20,8 +21,8 @@ const loading = ref(false)
 function toggleMode() {
   isLogin.value = !isLogin.value
   message.value = ''
-  password.value = '' // 【新增】切换模式时清空密码
-  passwordConfirm.value = '' // 【新增】切换模式时清空确认密码
+  password.value = ''
+  passwordConfirm.value = ''
 }
 
 async function handleSubmit() {
@@ -38,10 +39,9 @@ async function handleSubmit() {
       await router.push('/')
     }
     else {
-      // 【修改】在注册逻辑前增加密码校验
+      // 在注册逻辑前增加密码校验
       if (password.value !== passwordConfirm.value) {
         message.value = t('auth.messages.passwords_do_not_match')
-        // loading 需要在 finally 中统一处理，这里提前返回即可
         loading.value = false
         return
       }
@@ -69,9 +69,28 @@ async function handleSubmit() {
   }
 }
 
-// handlePasswordReset 函数保持不变
 async function handlePasswordReset() {
-  // ...
+  if (!email.value) {
+    message.value = t('auth.messages.email_required_for_reset')
+    return
+  }
+  loading.value = true
+  message.value = ''
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
+      redirectTo: `${window.location.origin}/update-password`,
+    })
+    if (error)
+      throw error
+    message.value = t('auth.messages.password_reset_sent')
+  }
+  catch (err: any) {
+    console.error(err)
+    message.value = `❌ ${err.message}`
+  }
+  finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -117,9 +136,135 @@ async function handlePasswordReset() {
 </template>
 
 <style scoped>
-/* 所有样式都保持不变 */
+/* 组件内部的样式 */
+.auth-container {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 28px;
+  font-weight: bold;
+  color: #111;
+}
+.dark h1 {
+  color: #ffffff;
+}
+
+.auth-form label {
+  display: block;
+  margin-bottom: 1.2rem;
+  color: #555;
+}
+.dark .auth-form label {
+  color: #adadad;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  color: #111;
+}
+.dark .auth-form input {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #ffffff;
+}
+.dark .auth-form input:focus {
+  border-color: #00b386;
+  outline: none;
+}
+
+button {
+  width: 100%;
+  padding: 0.8rem;
+  background-color: #00b386;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  margin-top: 1rem;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.message {
+  margin-top: 1rem;
+  text-align: center;
+  font-weight: bold;
+}
+
+.forgot-password {
+  text-align: right;
+  margin-top: -0.5rem;
+  margin-bottom: 1rem;
+}
+.forgot-password a {
+  font-size: 13px;
+  color: #666;
+  text-decoration: none;
+}
+.forgot-password a:hover {
+  text-decoration: underline;
+}
+.dark .forgot-password a {
+  color: #888;
+}
+
+.toggle {
+  text-align: center;
+  margin-top: 1rem;
+  color: #666;
+}
+.dark .toggle {
+  color: #888;
+}
+.toggle a {
+  margin-left: 0.4rem;
+  color: #00b386;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dark .toggle a {
+  color: #2dd4bf;
+}
 </style>
 
 <style>
-/* 所有样式都保持不变 */
+/* 全局背景样式 */
+body, html {
+  background-color: #f8f9fa;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 25px 25px;
+  transition: background-color 0.3s ease;
+}
+.dark body, html {
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+}
 </style>
