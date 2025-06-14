@@ -152,13 +152,9 @@ auth:
   password: Password
   prompt_to_register: Don't have an account?
   prompt_to_login: Already have an account?
-  forgot_password: Forgot password?
-  email_placeholder: Please enter your email address
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
     user_already_registered: ❌ This email is already registered. Please log in directly or use password recovery.
     email_not_confirmed: ❌ Please confirm your email first.
     operation_failed: '❌ Operation failed: '
-    password_reset_sent: ✅ Password reset instructions sent. Please check your inbox.
-    email_required_for_reset: Please enter your email address to reset your password.
