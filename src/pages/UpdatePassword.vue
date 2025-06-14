@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useDark } from '@vueuse/core'
 import { supabase } from '@/utils/supabaseClient'
 
-useDark() // 同样应用日夜间模式
+useDark()
 
 const router = useRouter()
 const password = ref('')
@@ -18,14 +18,26 @@ async function handleUpdatePassword() {
     return
   }
 
+  // 为避免密码太弱的问题，这里增加一个客户端校验
+  if (password.value.length < 6) {
+    message.value = '❌ 密码长度不能少于6位。'
+    return
+  }
+
   loading.value = true
   message.value = ''
+
   try {
-    const { error } = await supabase.auth.updateUser({
+    const { _data, error } = await supabase.auth.updateUser({
       password: password.value,
     })
-    if (error)
+
+    if (error) {
+      // 如果 Supabase 返回了错误，就把它抛出给 catch 块处理
       throw error
+    }
+
+    // 如果没有错误，说明API调用成功
     message.value = '✅ 密码重置成功！即将跳转到登录页面...'
     success.value = true
     setTimeout(() => {
@@ -33,6 +45,7 @@ async function handleUpdatePassword() {
     }, 2000)
   }
   catch (err: any) {
+    console.error('Catch 块捕获到错误:', err)
     message.value = `❌ 重置失败: ${err.message}`
   }
   finally {
@@ -41,9 +54,8 @@ async function handleUpdatePassword() {
 }
 
 onMounted(() => {
-  supabase.auth.onAuthStateChange(async (event, _session) => { // <-- 修正 1
+  supabase.auth.onAuthStateChange(async (event, _session) => {
     if (event === 'PASSWORD_RECOVERY') {
-      // 修正 2: 移除了 console.log
       // 可以在这里处理一些UI逻辑，但目前我们只需要确保用户可以更新密码即可
     }
   })
