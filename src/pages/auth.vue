@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-
-import { useI18n } from 'vue-i18n'
-
-// 1. 导入 useI18n
+import { useI18n } from 'vue-i18n' // 1. 导入 useI18n
 import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
@@ -36,8 +33,7 @@ async function handleSubmit() {
         email: email.value,
         password: password.value,
       })
-      if (error)
-        throw error
+      if (error) throw error
       await router.push('/')
     }
     else {
@@ -45,8 +41,7 @@ async function handleSubmit() {
         email: email.value,
         password: password.value,
       })
-      if (error)
-        throw error
+      if (error) throw error
 
       if (data.user) {
         if (data.session === null) {
