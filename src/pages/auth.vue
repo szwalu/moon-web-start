@@ -13,7 +13,7 @@ const { t } = useI18n()
 
 const email = ref('')
 const password = ref('')
-const passwordConfirm = ref('') // 用于存储确认密码的变量
+const passwordConfirm = ref('')
 const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
@@ -39,7 +39,6 @@ async function handleSubmit() {
       await router.push('/')
     }
     else {
-      // 在注册逻辑前增加密码校验
       if (password.value !== passwordConfirm.value) {
         message.value = t('auth.messages.passwords_do_not_match')
         loading.value = false
@@ -69,29 +68,7 @@ async function handleSubmit() {
   }
 }
 
-async function handlePasswordReset() {
-  if (!email.value) {
-    message.value = t('auth.messages.email_required_for_reset')
-    return
-  }
-  loading.value = true
-  message.value = ''
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
-      redirectTo: `${window.location.origin}/update-password`,
-    })
-    if (error)
-      throw error
-    message.value = t('auth.messages.password_reset_sent')
-  }
-  catch (err: any) {
-    console.error(err)
-    message.value = `❌ ${err.message}`
-  }
-  finally {
-    loading.value = false
-  }
-}
+// handlePasswordReset 函数已被删除
 </script>
 
 <template>
@@ -118,12 +95,6 @@ async function handlePasswordReset() {
       </button>
 
       <p v-if="message" class="message">{{ message }}</p>
-
-      <p v-if="isLogin" class="forgot-password">
-        <a href="#" @click.prevent="handlePasswordReset">
-          {{ $t('auth.forgot_password') }}
-        </a>
-      </p>
 
       <p class="toggle">
         <span>{{ isLogin ? $t('auth.prompt_to_register') : $t('auth.prompt_to_login') }}</span>
@@ -215,22 +186,7 @@ button:disabled {
   font-weight: bold;
 }
 
-.forgot-password {
-  text-align: right;
-  margin-top: -0.5rem;
-  margin-bottom: 1rem;
-}
-.forgot-password a {
-  font-size: 13px;
-  color: #666;
-  text-decoration: none;
-}
-.forgot-password a:hover {
-  text-decoration: underline;
-}
-.dark .forgot-password a {
-  color: #888;
-}
+/* “忘记密码”的样式已被删除 */
 
 .toggle {
   text-align: center;
