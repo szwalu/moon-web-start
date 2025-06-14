@@ -4,10 +4,6 @@ import { debounce } from 'lodash-es'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 
-/**
- * 根据主题名称切换亮色/暗色模式
- * @param theme 'light' 或 'dark'
- */
 function toggleTheme(theme: string) {
   if (theme === 'dark')
     document.documentElement.classList.add('dark')
@@ -20,17 +16,11 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
 )
 
-export function useAutoSave($message: any) {
+export function useAutoSave(/* $message: any */) {
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
 
   const autoLoadData = async () => {
-    // 【核心修正 1】: 检查会话存储，如果标记已存在，则说明加载过，直接退出函数
-    if (sessionStorage.getItem('sessionDataLoaded') === 'true') {
-      // console.log('数据已在本次会话中加载过，跳过重复恢复。')
-      return
-    }
-
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
       return
@@ -44,25 +34,32 @@ export function useAutoSave($message: any) {
     if (data && data.content) {
       try {
         const parsed = JSON.parse(data.content)
+
+        if (parsed.data && Array.isArray(parsed.data)) {
+          parsed.data.forEach((category: any) => {
+            if (!category.groupList)
+              category.groupList = []
+            category.groupList.forEach((group: any) => {
+              if (!group.siteList)
+                group.siteList = []
+            })
+          })
+        }
+
         if (parsed.data && parsed.settings) {
+          settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
           siteStore.setData(parsed.data)
-          settingStore.setSettings(parsed.settings)
           toggleTheme(parsed.settings.theme)
-
-          // 【核心修正 2】: 数据成功恢复后，在会话存储中设置一个标记
-          sessionStorage.setItem('sessionDataLoaded', 'true')
-
-          $message.success('用户数据已从云端恢复 ✨')
         }
       }
+      // 【修正 1】：修正多语句在同一行的问题 (即使现在只有一个语句，这样格式更规范)
       catch (e) {
         console.error('❌ 解析云端数据失败:', e)
-        $message.error('解析云端数据失败')
       }
     }
+    // 【修正 2】：修正多语句在同一行的问题
     else if (error && error.code !== 'PGRST116') {
       console.error('❌ 加载数据时出错:', error)
-      $message.error('加载用户数据失败')
     }
   }
 
@@ -72,7 +69,7 @@ export function useAutoSave($message: any) {
       return
 
     const contentToSave = {
-      data: siteStore.customData, // 确保保存的是 customData
+      data: siteStore.customData,
       settings: settingStore.settings,
     }
 
@@ -82,13 +79,11 @@ export function useAutoSave($message: any) {
       updated_at: new Date().toISOString(),
     })
 
-    if (error) {
+    if (error)
       console.error('❌ 自动保存失败:', error)
-      $message.error('自动保存失败')
-    }
-    else {
-      // console.log('✅ 数据已自动保存到云端')
-    }
+
+    // 【修正 3】：移除了不符合规范的 console.log
+    // else { console.log('✅ 数据已自动保存到云端') }
   }, 2000)
 
   const startWatching = () => {
@@ -101,7 +96,6 @@ export function useAutoSave($message: any) {
       },
       { deep: true },
     )
-    // console.log('🚀 已启动数据变更侦听。')
   }
 
   return {
