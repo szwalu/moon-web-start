@@ -63,7 +63,7 @@ onMounted(() => {
     }
   })
 })
-</script>
+</script> 
 
 <template>
   <div class="auth-container">
