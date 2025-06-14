@@ -151,6 +151,7 @@ auth:
   prompt_to_register: アカウントをお持ちでないですか？
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
+  email_placeholder: メールアドレスを入力してください
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。

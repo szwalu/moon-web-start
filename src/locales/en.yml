@@ -153,6 +153,7 @@ auth:
   prompt_to_register: Don't have an account?
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
+  email_placeholder: Please enter your email address
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
