@@ -11,6 +11,7 @@ declare module 'vue' {
     AppProvider: typeof import('./components/AppProvider/index.vue')['default']
     Auth: typeof import('./components/Auth.vue')['default']
     Blank: typeof import('./components/Blank.vue')['default']
+    GlobalLogic: typeof import('./components/GlobalLogic.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCode: typeof import('naive-ui')['NCode']
     NCollapse: typeof import('naive-ui')['NCollapse']
@@ -21,10 +22,12 @@ declare module 'vue' {
     NInput: typeof import('naive-ui')['NInput']
     NMessageProvider: typeof import('naive-ui')['NMessageProvider']
     NModal: typeof import('naive-ui')['NModal']
+    NNotificationProvider: typeof import('naive-ui')['NNotificationProvider']
     NSelect: typeof import('naive-ui')['NSelect']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     TheDoc: typeof import('./components/TheDoc.vue')['default']
+    'TheDoc_副本': typeof import('./components/TheDoc_副本.vue')['default']
     TheFooter: typeof import('./components/TheFooter/index.vue')['default']
   }
 }

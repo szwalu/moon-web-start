@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
+
+// 增加登陆按钮
+
+import { supabase } from '@/utils/supabaseClient'
 
 const modalStore = useModalStore()
 const siteStore = useSiteStore()
@@ -63,6 +69,31 @@ function handleSubMenuClick(subItem: any) {
   if (checkIsMobileDevice()) {
     activeSubMenuIndex.value = -1
     settingStore.toggleSideNav()
+  }
+}
+
+// 确保这个路径是正确的
+
+const router = useRouter()
+
+// 创建一个本地的响应式变量来存储用户状态
+const user = ref<any>(null)
+
+// 在组件挂载后，设置一个监听器来实时更新用户状态
+onMounted(() => {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    user.value = session?.user ?? null
+  })
+})
+
+// 定义登出函数
+async function handleLogout() {
+  const { error } = await supabase.auth.signOut()
+  if (!error) {
+    // 登出成功后，可以跳转到主页或登录页
+    // 同时刷新页面以确保所有状态都已重置
+    await router.push('/')
+    window.location.reload()
   }
 }
 </script>
@@ -162,6 +193,27 @@ function handleSubMenuClick(subItem: any) {
         role="menuitem"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </a>
+
+      <router-link
+        v-if="!user"
+        to="/auth"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </router-link>
+
+      <a
+        v-else
+        href="#"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+        @click.prevent="handleLogout"
+      >
+        <span class="flex-grow truncate text-center">{{ $t('navbar.logout') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
     </div>

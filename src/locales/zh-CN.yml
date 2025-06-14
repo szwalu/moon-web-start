@@ -105,6 +105,8 @@ navbar:
   apply: 申请
   links: 友链
   about: 关于
+  auth: 注册/登录
+  logout: 登出
 footer:
   disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
   contactLink: 点击联系
@@ -142,3 +144,17 @@ about:
   browserPlugin: 浏览器插件 - 新建标签页时打开 Moon
   dockerSupport: 容器化部署 - 支持 Docker 一键部署
   thanks: 特别感谢
+auth:
+  login: 登录
+  register: 注册
+  loading: 处理中...
+  email: 邮箱
+  password: 密码
+  prompt_to_register: 还没有账号？
+  prompt_to_login: 已有账号？
+  messages:
+    check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
+    check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
+    user_already_registered: ❌ 此邮箱已被注册，请直接登录或找回密码。
+    email_not_confirmed: ❌ 请先确认您的邮箱。
+    operation_failed: ❌ 操作失败：

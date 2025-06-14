@@ -103,6 +103,8 @@ navbar:
   apply: しがんしょ
   links: リンク
   about: に対して
+  auth: 新規登録 / ログイン
+  logout: ログアウト
 footer:
   disclaimer: インターネットからこのサイトの内容は、任意のコンテンツの権利侵害がある場合は、該当するコンテンツを削除するには、管理者に連絡してください,
   contactLink: お問い合わせ
@@ -140,3 +142,17 @@ about:
   browserPlugin: ブラウザ拡張機能 - 新しいタブでMoonを開きます。
   dockerSupport: コンテナ化デプロイ - Dockerによるワンクリックデプロイに対応。
   thanks: スペシャルサンクス
+auth:
+  login: ログイン
+  register: 新規登録
+  loading: 処理中...
+  email: メールアドレス
+  password: パスワード
+  prompt_to_register: アカウントをお持ちでないですか？
+  prompt_to_login: すでにアカウントをお持ちですか？
+  messages:
+    check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
+    check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
+    user_already_registered: ❌ このメールアドレスは既に登録されています。直接ログインするか、パスワードを再設定してください。
+    email_not_confirmed: ❌ 先にメールアドレスの確認をしてください。
+    operation_failed: ❌ 操作に失敗しました：

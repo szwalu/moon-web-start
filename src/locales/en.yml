@@ -105,6 +105,8 @@ navbar:
   apply: Apply
   links: Links
   about: About
+  auth: Register/Login
+  logout: Logout
 footer:
   disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
   contactLink: Contact Us
@@ -142,3 +144,17 @@ about:
   browserPlugin: Browser Extension - Open Moon in every new tab.
   dockerSupport: Containerized Deployment - Supports one-click deployment with Docker.
   thanks: Special Thanks
+auth:
+  login: Login
+  register: Register
+  loading: Processing...
+  email: Email
+  password: Password
+  prompt_to_register: Don't have an account?
+  prompt_to_login: Already have an account?
+  messages:
+    check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
+    check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
+    user_already_registered: ❌ This email is already registered. Please log in directly or use password recovery.
+    email_not_confirmed: ❌ Please confirm your email first.
+    operation_failed: '❌ Operation failed: '
