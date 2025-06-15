@@ -6,10 +6,10 @@ import { useMessage } from 'naive-ui'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 
-const router = useRouter()
-const { t } = useI18n()
-const messageHook = useMessage()
-const { autoLoadData } = useAutoSave()
+const _router = useRouter()
+const { t: _t } = useI18n()
+const _messageHook = useMessage()
+const { autoLoadData: _autoLoadData } = useAutoSave()
 
 const email = ref('')
 const password = ref('')
@@ -23,40 +23,17 @@ function toggleMode() {
   message.value = ''
 }
 
-async function handleSubmit() {
-  loading.value = true
-  message.value = ''
-  try {
-    if (isLogin.value) {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.value,
-        password: password.value,
-      })
-      if (error)
-        throw error
-      await autoLoadData(messageHook)
-      await router.push('/')
-    }
-    else {
-      const { error } = await supabase.auth.signUp({
-        email: email.value,
-        password: password.value,
-      })
-      if (error)
-        throw error
-      message.value = t('auth.messages.check_email_for_verification')
-    }
-  }
-  catch (err: any) {
-    message.value = err.message || '发生错误'
-  }
-  finally {
-    loading.value = false
-  }
+// 忘记密码对话框
+const showDialog = ref(false)
+const resetEmail = ref('')
+
+function handleForgotPassword() {
+  resetEmail.value = email.value
+  showDialog.value = true
 }
 
-async function handleForgotPassword() {
-  if (!email.value) {
+async function confirmResetPassword() {
+  if (!resetEmail.value) {
     message.value = '请先输入您的邮箱地址。'
     return
   }
@@ -64,7 +41,7 @@ async function handleForgotPassword() {
   loading.value = true
   message.value = ''
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
+  const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
     redirectTo: 'https://woabc.com/update-password',
   })
 
@@ -73,6 +50,7 @@ async function handleForgotPassword() {
   else
     message.value = '重置密码邮件已发送，请前往邮箱查收。'
 
+  showDialog.value = false
   loading.value = false
 }
 </script>
@@ -114,6 +92,23 @@ async function handleForgotPassword() {
         </a>
       </div>
     </form>
+  </div>
+
+  <!-- 忘记密码对话框 -->
+  <div v-if="showDialog" class="dialog-mask">
+    <div class="dialog-box">
+      <h3>找回密码</h3>
+      <input
+        v-model="resetEmail"
+        type="email"
+        placeholder="请输入注册邮箱"
+        class="input"
+      >
+      <div class="dialog-actions">
+        <button class="button" @click="confirmResetPassword">确认</button>
+        <button class="button cancel" @click="showDialog = false">取消</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -226,5 +221,73 @@ button:disabled {
 }
 .dark .forgot-link {
   color: #2dd4bf;
+}
+
+/* 忘记密码对话框样式 */
+.dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.dialog-box {
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+.dialog-box h3 {
+  margin-bottom: 1rem;
+}
+.dialog-box .input {
+  width: 100%;
+  padding: 0.75rem;
+  margin: 1rem 0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.dialog-actions .button {
+  flex: 1;
+  padding: 0.6rem;
+  background-color: #00b386;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.dialog-actions .cancel {
+  background-color: #ccc;
+  color: #333;
+}
+</style>
+
+<style>
+body, html {
+  background-color: #f8f9fa;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 25px 25px;
+  transition: background-color 0.3s ease;
+}
+.dark body, html {
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
 }
 </style>
