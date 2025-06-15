@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
+
+// 增加登陆按钮
+
 import { supabase } from '@/utils/supabaseClient'
 
-// 导入其他需要的 store
 const modalStore = useModalStore()
 const siteStore = useSiteStore()
 const route = useRoute()
@@ -18,6 +21,7 @@ const activeSubMenuIndex = ref(-1)
 function checkIsMobileDevice(): boolean {
   if (typeof navigator !== 'undefined')
     return /Mobi|Android|iPhone/i.test(navigator.userAgent)
+
   return false
 }
 
@@ -32,6 +36,7 @@ function handleCateClick(cateIndex: number) {
   if (clickedCate.groupList && clickedCate.groupList.length > 0) {
     if (activeSubMenuIndex.value === cateIndex)
       activeSubMenuIndex.value = -1
+
     else
       activeSubMenuIndex.value = cateIndex
   }
@@ -67,23 +72,29 @@ function handleSubMenuClick(subItem: any) {
   }
 }
 
+// 确保这个路径是正确的
+
+const router = useRouter()
+
+// 创建一个本地的响应式变量来存储用户状态
 const user = ref<any>(null)
 
+// 在组件挂载后，设置一个监听器来实时更新用户状态
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
   })
 })
 
+// 定义登出函数
 async function handleLogout() {
-  // 移除了所有 console.log，这是最终的、干净的登出函数
-  await supabase.auth.signOut()
-  sessionStorage.clear()
-  Object.keys(localStorage).forEach((key) => {
-    if (key.startsWith('sb-'))
-      localStorage.removeItem(key)
-  })
-  window.location.reload()
+  const { error } = await supabase.auth.signOut()
+  if (!error) {
+    // 登出成功后，可以跳转到主页或登录页
+    // 同时刷新页面以确保所有状态都已重置
+    await router.push('/')
+    window.location.reload()
+  }
 }
 </script>
 
