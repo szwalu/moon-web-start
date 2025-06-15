@@ -18,10 +18,6 @@ const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
 
-// 忘记密码弹窗相关
-const showForgotPrompt = ref(false)
-const forgotEmail = ref('')
-
 function toggleMode() {
   isLogin.value = !isLogin.value
   message.value = ''
@@ -59,21 +55,16 @@ async function handleSubmit() {
   }
 }
 
-function handleForgotPassword() {
-  showForgotPrompt.value = true
-  forgotEmail.value = email.value // 默认填入登录框里的邮箱
-}
-
-async function confirmForgotPassword() {
-  if (!forgotEmail.value) {
-    message.value = '请输入您的邮箱地址。'
+async function handleForgotPassword() {
+  if (!email.value) {
+    message.value = '请先输入您的邮箱地址。'
     return
   }
 
   loading.value = true
   message.value = ''
 
-  const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.value, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
     redirectTo: 'https://woabc.com/update-password',
   })
 
@@ -82,7 +73,6 @@ async function confirmForgotPassword() {
   else
     message.value = '重置密码邮件已发送，请前往邮箱查收。'
 
-  showForgotPrompt.value = false
   loading.value = false
 }
 </script>
@@ -112,26 +102,18 @@ async function confirmForgotPassword() {
 
       <p v-if="message" class="message">{{ message }}</p>
 
-      <p class="toggle">
-        <span>{{ isLogin ? $t('auth.prompt_to_register') : $t('auth.prompt_to_login') }}</span>
-        <a href="#" @click.prevent="toggleMode">
-          {{ isLogin ? $t('auth.register') : $t('auth.login') }}
-        </a>
-        <span v-if="isLogin">
-          |
-          <a href="#" style="color: #00b386; text-decoration: underline;" @click.prevent="handleForgotPassword">
-            忘记密码？
+      <div class="toggle-row">
+        <p class="toggle">
+          <span>{{ isLogin ? $t('auth.prompt_to_register') : $t('auth.prompt_to_login') }}</span>
+          <a href="#" @click.prevent="toggleMode">
+            {{ isLogin ? $t('auth.register') : $t('auth.login') }}
           </a>
-        </span>
-      </p>
+        </p>
+        <a v-if="isLogin" class="forgot-link" href="#" @click.prevent="handleForgotPassword">
+          忘记密码？
+        </a>
+      </div>
     </form>
-
-    <!-- 忘记密码弹窗区域 -->
-    <div v-if="showForgotPrompt" style="margin-top: 2rem; text-align: center;">
-      <p>请输入您的注册邮箱：</p>
-      <input v-model="forgotEmail" type="email" placeholder="邮箱地址" class="input">
-      <button class="button" style="margin-top: 1rem;" @click="confirmForgotPassword">确定</button>
-    </div>
   </div>
 </template>
 
@@ -214,9 +196,14 @@ button:disabled {
   font-weight: bold;
 }
 
-.toggle {
-  text-align: center;
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 1rem;
+}
+.toggle {
+  margin: 0;
   color: #666;
 }
 .dark .toggle {
@@ -231,21 +218,13 @@ button:disabled {
 .dark .toggle a {
   color: #2dd4bf;
 }
-</style>
 
-<style>
-body, html {
-  background-color: #f8f9fa;
-  background-image:
-    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-  background-size: 25px 25px;
-  transition: background-color 0.3s ease;
+.forgot-link {
+  color: #00b386;
+  text-decoration: underline;
+  font-size: 14px;
 }
-.dark body, html {
-  background-color: #1a1a1a;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+.dark .forgot-link {
+  color: #2dd4bf;
 }
 </style>
