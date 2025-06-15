@@ -3,7 +3,6 @@ import { RouterView } from 'vue-router'
 
 // 【重要】导入所有需要的 Provider 组件和我们新建的逻辑组件
 import { NDialogProvider, NMessageProvider, NNotificationProvider } from 'naive-ui'
-import GlobalLogic from '@/components/GlobalLogic.vue'
 </script>
 
 <template>
@@ -15,8 +14,6 @@ import GlobalLogic from '@/components/GlobalLogic.vue'
             <RouterView />
           </AppContainer>
         </AppProvider>
-
-        <GlobalLogic />
       </NNotificationProvider>
     </NDialogProvider>
   </NMessageProvider>

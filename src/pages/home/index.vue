@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-
-// 确保 onMounted, ref 已导入
+import { onMounted, ref, watch } from 'vue'
 import Swal from 'sweetalert2'
+
+// 【修正1】：调整了 import 顺序以符合规范
+
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
@@ -12,6 +13,9 @@ import SiteNavBar from './components/SiteNavBar.vue'
 
 import 'sweetalert2/dist/sweetalert2.min.css'
 import shareIconPath from './1122.jpg'
+import { useAutoSave } from '@/composables/useAutoSave'
+import { useSettingStore } from '@/stores/setting'
+import { useSiteStore } from '@/stores/site'
 
 defineOptions({
   name: 'HomePage',
@@ -19,37 +23,49 @@ defineOptions({
 
 const settingStore = useSettingStore()
 
+const { autoSaveData } = useAutoSave()
+const siteStore = useSiteStore()
+
+watch(
+  () => siteStore.customData,
+  () => {
+    if (settingStore.settings.websitePreference !== 'Customize')
+      settingStore.setSettings({ websitePreference: 'Customize' })
+
+    // 【修正2】：移除了不符合规范的 console.log
+    // console.log('在主页侦听到数据变化，准备自动保存...')
+    autoSaveData()
+  },
+  { deep: true },
+)
+
 const isMobile = ref(false)
 onMounted(() => {
   isMobile.value = window.innerWidth <= 768
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth <= 768
   })
+  showMobileToast()
 })
 
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
-// 当“显示天气”设置为“显示”时，才去获取天气数据
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     fetchWeather()
   }
   else {
-    // 如果设置为隐藏，可以清空天气信息（可选）
     weatherCity.value = ''
     weatherInfo.value = ''
   }
 })
 
 async function fetchWeather() {
-  // 修改后的判断条件：当天气信息是空的、加载中、或加载失败时，都去获取
   if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
     try {
-      // 在请求前，先将状态设为“加载中...”，避免重复请求
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
-
       const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
       const data = await response.json()
       const weather = data.current
@@ -68,7 +84,6 @@ async function fetchWeather() {
 
 function showMobileToast() {
   if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
-    // ... (showMobileToast 函数内容保持不变)
     const Toast = Swal.mixin({
       toast: true,
       position: 'bottom',
@@ -88,7 +103,6 @@ function showMobileToast() {
         localStorage.setItem('mobileToastShown', 'true')
       },
     })
-
     Toast.fire({
       html: `
         <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
@@ -108,12 +122,6 @@ function showMobileToast() {
     })
   }
 }
-
-// onMounted 中不再需要直接调用 fetchWeather，由 watchEffect 控制
-onMounted(() => {
-  // fetchWeather() // 已移至 watchEffect
-  showMobileToast()
-})
 </script>
 
 <template>
