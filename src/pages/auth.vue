@@ -2,28 +2,26 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-
 import { useMessage } from 'naive-ui'
-
-// 导入 useMessage
 import { useAutoSave } from '@/composables/useAutoSave'
-
-// 导入 useAutoSave
 import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
 const { t } = useI18n()
-const messageHook = useMessage() // 获取 message 实例
-const { autoLoadData } = useAutoSave() // 获取 autoLoadData 函数
+const messageHook = useMessage()
+const { autoLoadData } = useAutoSave()
 
 const email = ref('')
 const password = ref('')
+const passwordConfirm = ref('')
 const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
 
-// ... toggleMode 函数保持不变 ...
-function toggleMode() { /* ... */ }
+function toggleMode() {
+  isLogin.value = !isLogin.value
+  message.value = ''
+}
 
 async function handleSubmit() {
   loading.value = true
@@ -36,26 +34,46 @@ async function handleSubmit() {
       })
       if (error)
         throw error
-
-      // 【核心修正】：登录成功后，在这里手动调用 autoLoadData
       await autoLoadData(messageHook)
-
       await router.push('/')
     }
     else {
-      // 注册逻辑保持不变
-      const { error } = await supabase.auth.signUp({ /* ... */ })
+      const { error } = await supabase.auth.signUp({
+        email: email.value,
+        password: password.value,
+      })
       if (error)
         throw error
       message.value = t('auth.messages.check_email_for_verification')
     }
   }
   catch (err: any) {
-    // ... catch 逻辑保持不变 ...
+    message.value = err.message || '发生错误'
   }
   finally {
     loading.value = false
   }
+}
+
+async function handleForgotPassword() {
+  if (!email.value) {
+    message.value = '请先输入您的邮箱地址。'
+    return
+  }
+
+  loading.value = true
+  message.value = ''
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
+    redirectTo: 'http://localhost:1888/update-password', // 👈 部署后请改成你的正式地址
+  })
+
+  if (error)
+    message.value = `发送失败：${error.message}`
+  else
+    message.value = '重置密码邮件已发送，请前往邮箱查收。'
+
+  loading.value = false
 }
 </script>
 
@@ -89,13 +107,18 @@ async function handleSubmit() {
         <a href="#" @click.prevent="toggleMode">
           {{ isLogin ? $t('auth.register') : $t('auth.login') }}
         </a>
+        <span v-if="isLogin">
+          |
+          <a href="#" style="color: #00b386; text-decoration: underline;" @click.prevent="handleForgotPassword">
+            忘记密码？
+          </a>
+        </span>
       </p>
     </form>
   </div>
 </template>
 
 <style scoped>
-/* 组件内部的样式 */
 .auth-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -174,8 +197,6 @@ button:disabled {
   font-weight: bold;
 }
 
-/* “忘记密码”的样式已被删除 */
-
 .toggle {
   text-align: center;
   margin-top: 1rem;
@@ -196,7 +217,6 @@ button:disabled {
 </style>
 
 <style>
-/* 全局背景样式 */
 body, html {
   background-color: #f8f9fa;
   background-image:
