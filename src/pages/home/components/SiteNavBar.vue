@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
 import { computed, onMounted, ref } from 'vue'
-
-// import { useRouter } from 'vue-router' // <--- 修正1: 不再需要，已删除
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -69,8 +67,6 @@ function handleSubMenuClick(subItem: any) {
   }
 }
 
-// const router = useRouter() // <--- 修正1: 不再需要，已删除
-
 const user = ref<any>(null)
 
 onMounted(() => {
@@ -80,7 +76,7 @@ onMounted(() => {
 })
 
 async function handleLogout() {
-  // 修正2: 移除了所有 console.log / console.error
+  // 移除了所有 console.log，这是最终的、干净的登出函数
   await supabase.auth.signOut()
   sessionStorage.clear()
   Object.keys(localStorage).forEach((key) => {
