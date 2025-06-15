@@ -6,10 +6,10 @@ import { useMessage } from 'naive-ui'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 
-const _router = useRouter()
-const { t: _t } = useI18n()
-const _messageHook = useMessage()
-const { autoLoadData: _autoLoadData } = useAutoSave()
+const router = useRouter()
+const { t } = useI18n()
+const messageHook = useMessage()
+const { autoLoadData } = useAutoSave()
 
 const email = ref('')
 const password = ref('')
@@ -18,30 +18,62 @@ const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
 
+// 忘记密码弹窗相关
+const showForgotPrompt = ref(false)
+const forgotEmail = ref('')
+
 function toggleMode() {
   isLogin.value = !isLogin.value
   message.value = ''
 }
 
-// 忘记密码对话框
-const showDialog = ref(false)
-const resetEmail = ref('')
-
-function handleForgotPassword() {
-  resetEmail.value = email.value
-  showDialog.value = true
+async function handleSubmit() {
+  loading.value = true
+  message.value = ''
+  try {
+    if (isLogin.value) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value,
+      })
+      if (error)
+        throw error
+      await autoLoadData(messageHook)
+      await router.push('/')
+    }
+    else {
+      const { error } = await supabase.auth.signUp({
+        email: email.value,
+        password: password.value,
+      })
+      if (error)
+        throw error
+      message.value = t('auth.messages.check_email_for_verification')
+    }
+  }
+  catch (err: any) {
+    message.value = err.message || '发生错误'
+  }
+  finally {
+    loading.value = false
+  }
 }
 
-async function confirmResetPassword() {
-  if (!resetEmail.value) {
-    message.value = '请先输入您的邮箱地址。'
+function handleForgotPassword() {
+  showForgotPrompt.value = true
+  forgotEmail.value = email.value // 默认填入登录框里的邮箱
+}
+
+async function confirmForgotPassword() {
+  if (!forgotEmail.value) {
+    message.value = '请输入您的邮箱地址。'
     return
   }
 
   loading.value = true
   message.value = ''
 
-  const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
+  const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.value, {
     redirectTo: 'https://woabc.com/update-password',
   })
 
@@ -50,7 +82,7 @@ async function confirmResetPassword() {
   else
     message.value = '重置密码邮件已发送，请前往邮箱查收。'
 
-  showDialog.value = false
+  showForgotPrompt.value = false
   loading.value = false
 }
 </script>
@@ -80,34 +112,25 @@ async function confirmResetPassword() {
 
       <p v-if="message" class="message">{{ message }}</p>
 
-      <div class="toggle-row">
-        <p class="toggle">
-          <span>{{ isLogin ? $t('auth.prompt_to_register') : $t('auth.prompt_to_login') }}</span>
-          <a href="#" @click.prevent="toggleMode">
-            {{ isLogin ? $t('auth.register') : $t('auth.login') }}
-          </a>
-        </p>
-        <a v-if="isLogin" class="forgot-link" href="#" @click.prevent="handleForgotPassword">
-          忘记密码？
+      <p class="toggle">
+        <span>{{ isLogin ? $t('auth.prompt_to_register') : $t('auth.prompt_to_login') }}</span>
+        <a href="#" @click.prevent="toggleMode">
+          {{ isLogin ? $t('auth.register') : $t('auth.login') }}
         </a>
-      </div>
+        <span v-if="isLogin">
+          |
+          <a href="#" style="color: #00b386; text-decoration: underline;" @click.prevent="handleForgotPassword">
+            忘记密码？
+          </a>
+        </span>
+      </p>
     </form>
-  </div>
 
-  <!-- 忘记密码对话框 -->
-  <div v-if="showDialog" class="dialog-mask">
-    <div class="dialog-box">
-      <h3>找回密码</h3>
-      <input
-        v-model="resetEmail"
-        type="email"
-        placeholder="请输入注册邮箱"
-        class="input"
-      >
-      <div class="dialog-actions">
-        <button class="button" @click="confirmResetPassword">确认</button>
-        <button class="button cancel" @click="showDialog = false">取消</button>
-      </div>
+    <!-- 忘记密码弹窗区域 -->
+    <div v-if="showForgotPrompt" style="margin-top: 2rem; text-align: center;">
+      <p>请输入您的注册邮箱：</p>
+      <input v-model="forgotEmail" type="email" placeholder="邮箱地址" class="input">
+      <button class="button" style="margin-top: 1rem;" @click="confirmForgotPassword">确定</button>
     </div>
   </div>
 </template>
@@ -191,14 +214,9 @@ button:disabled {
   font-weight: bold;
 }
 
-.toggle-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 1rem;
-}
 .toggle {
-  margin: 0;
+  text-align: center;
+  margin-top: 1rem;
   color: #666;
 }
 .dark .toggle {
@@ -212,66 +230,6 @@ button:disabled {
 }
 .dark .toggle a {
   color: #2dd4bf;
-}
-
-.forgot-link {
-  color: #00b386;
-  text-decoration: underline;
-  font-size: 14px;
-}
-.dark .forgot-link {
-  color: #2dd4bf;
-}
-
-/* 忘记密码对话框样式 */
-.dialog-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-.dialog-box {
-  background: white;
-  padding: 2rem;
-  border-radius: 10px;
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-}
-.dialog-box h3 {
-  margin-bottom: 1rem;
-}
-.dialog-box .input {
-  width: 100%;
-  padding: 0.75rem;
-  margin: 1rem 0;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-}
-.dialog-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-.dialog-actions .button {
-  flex: 1;
-  padding: 0.6rem;
-  background-color: #00b386;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.dialog-actions .cancel {
-  background-color: #ccc;
-  color: #333;
 }
 </style>
 
