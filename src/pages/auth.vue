@@ -18,6 +18,10 @@ const isLogin = ref(true)
 const message = ref('')
 const loading = ref(false)
 
+// 忘记密码弹窗相关
+const showForgotPrompt = ref(false)
+const forgotEmail = ref('')
+
 function toggleMode() {
   isLogin.value = !isLogin.value
   message.value = ''
@@ -55,16 +59,21 @@ async function handleSubmit() {
   }
 }
 
-async function handleForgotPassword() {
-  if (!email.value) {
-    message.value = '请先输入您的邮箱地址。'
+function handleForgotPassword() {
+  showForgotPrompt.value = true
+  forgotEmail.value = email.value // 默认填入登录框里的邮箱
+}
+
+async function confirmForgotPassword() {
+  if (!forgotEmail.value) {
+    message.value = '请输入您的邮箱地址。'
     return
   }
 
   loading.value = true
   message.value = ''
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
+  const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.value, {
     redirectTo: 'https://woabc.com/update-password',
   })
 
@@ -73,6 +82,7 @@ async function handleForgotPassword() {
   else
     message.value = '重置密码邮件已发送，请前往邮箱查收。'
 
+  showForgotPrompt.value = false
   loading.value = false
 }
 </script>
@@ -115,6 +125,13 @@ async function handleForgotPassword() {
         </span>
       </p>
     </form>
+
+    <!-- 忘记密码弹窗区域 -->
+    <div v-if="showForgotPrompt" style="margin-top: 2rem; text-align: center;">
+      <p>请输入您的注册邮箱：</p>
+      <input v-model="forgotEmail" type="email" placeholder="邮箱地址" class="input">
+      <button class="button" style="margin-top: 1rem;" @click="confirmForgotPassword">确定</button>
+    </div>
   </div>
 </template>
 

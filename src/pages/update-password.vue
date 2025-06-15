@@ -5,12 +5,12 @@ import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
 const newPassword = ref('')
+const confirmPassword = ref('')
 const message = ref('')
 const loading = ref(false)
 const sessionReady = ref(false)
 
 onMounted(async () => {
-  // 等待 Supabase 自动解析 URL 中 token 并恢复 session
   const { data: userData, error } = await supabase.auth.getUser()
 
   if (error || !userData?.user) {
@@ -23,8 +23,13 @@ onMounted(async () => {
 })
 
 async function handleReset() {
-  if (!newPassword.value) {
-    message.value = '请输入新密码。'
+  if (!newPassword.value || !confirmPassword.value) {
+    message.value = '请输入并确认新密码。'
+    return
+  }
+
+  if (newPassword.value !== confirmPassword.value) {
+    message.value = '两次输入的密码不一致。'
     return
   }
 
@@ -57,6 +62,12 @@ async function handleReset() {
         v-model="newPassword"
         type="password"
         placeholder="请输入新密码"
+        class="input"
+      >
+      <input
+        v-model="confirmPassword"
+        type="password"
+        placeholder="请再次输入新密码"
         class="input"
       >
       <button :disabled="loading" class="button" @click="handleReset">
