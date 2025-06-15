@@ -14,7 +14,7 @@ onMounted(async () => {
   const { data: userData, error } = await supabase.auth.getUser()
 
   if (error || !userData?.user) {
-    message.value = '密码重设链接无效或已过期，请重新请求重设密码。'
+    message.value = '密码重设链接无效或已过期，请重新请求重设密码.。'
     sessionReady.value = false
   }
   else {
