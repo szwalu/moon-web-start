@@ -65,7 +65,7 @@ async function handleForgotPassword() {
   message.value = ''
 
   const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
-    redirectTo: 'http://localhost:1888/update-password', // 👈 部署后请改成你的正式地址
+    redirectTo: 'https://woabc.com/update-password',
   })
 
   if (error)
