@@ -154,10 +154,27 @@ auth:
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address
+  forgot_password: Forgot Password?
+  confirm: Confirm
+  cancel: Cancel
+  reset_password: Reset Password
+  invalid_link: The reset link is invalid or has expired. Please request a new one.
+  enter_and_confirm: Please enter and confirm your new password.
+  mismatch: The two password entries do not match.
+  reset_failed: Reset failed
+  reset_success: Password has been reset successfully. Redirecting to home in 2 seconds...
+  enter_new_password: Enter new password
+  confirm_new_password: Confirm new password
+  submitting: Submitting...
+  submit_new_password: Submit New Password
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
     user_already_registered: ❌ This email is already registered. Please log in directly or use password recovery.
     email_not_confirmed: ❌ Please confirm your email first.
+    reset_success: Password reset email sent. Please check your inbox.
+    reset_failed: Failed to send
+    enter_email: Please enter your email address.
+    enter_registered_email: Please enter your registered email：
     operation_failed: '❌ Operation failed: '
     passwords_do_not_match: ❌ The passwords entered do not match!

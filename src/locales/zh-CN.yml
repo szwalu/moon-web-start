@@ -154,6 +154,19 @@ auth:
   prompt_to_login: 已有账号？
   confirm_password: 确认密码
   email_placeholder: 请输入您的邮箱地址
+  forgot_password: 忘记密码？
+  confirm: 确定
+  cancel: 取消
+  reset_password: 重设密码
+  invalid_link: 密码重设链接无效或已过期，请重新请求重设密码。
+  enter_and_confirm: 请输入并确认新密码。
+  mismatch: 两次输入的密码不一致。
+  reset_failed: 重设失败
+  reset_success: 密码已成功重设，2秒后将跳转到首页...
+  enter_new_password: 请输入新密码
+  confirm_new_password: 请再次输入新密码
+  submitting: 提交中...
+  submit_new_password: 提交新密码
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -161,3 +174,7 @@ auth:
     email_not_confirmed: ❌ 请先确认您的邮箱。
     operation_failed: ❌ 操作失败。
     passwords_do_not_match: ❌ 两次输入的密码不一致！
+    reset_success: 重置密码邮件已发送，请前往邮箱查收。
+    reset_failed: 发送失败
+    enter_email: 请输入您的邮箱地址。
+    enter_registered_email: 请输入您的注册邮箱：

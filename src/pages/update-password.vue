@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
+const { t } = useI18n()
+
 const newPassword = ref('')
 const confirmPassword = ref('')
 const message = ref('')
@@ -14,7 +17,7 @@ onMounted(async () => {
   const { data: userData, error } = await supabase.auth.getUser()
 
   if (error || !userData?.user) {
-    message.value = '密码重设链接无效或已过期，请重新请求重设密码.。'
+    message.value = t('auth.invalid_link')
     sessionReady.value = false
   }
   else {
@@ -24,12 +27,12 @@ onMounted(async () => {
 
 async function handleReset() {
   if (!newPassword.value || !confirmPassword.value) {
-    message.value = '请输入并确认新密码。'
+    message.value = t('auth.enter_and_confirm')
     return
   }
 
   if (newPassword.value !== confirmPassword.value) {
-    message.value = '两次输入的密码不一致。'
+    message.value = t('auth.mismatch')
     return
   }
 
@@ -40,10 +43,10 @@ async function handleReset() {
   })
 
   if (error) {
-    message.value = `重设失败：${error.message}`
+    message.value = `${t('auth.reset_failed')}：${error.message}`
   }
   else {
-    message.value = '密码已成功重设，2秒后将跳转到首页...'
+    message.value = t('auth.reset_success')
     setTimeout(() => router.push('/'), 2000)
   }
 
@@ -53,7 +56,7 @@ async function handleReset() {
 
 <template>
   <div class="reset-container">
-    <h2>重设密码</h2>
+    <h2>{{ $t('auth.reset_password') }}</h2>
 
     <div v-if="!sessionReady" class="message">{{ message }}</div>
 
@@ -61,17 +64,17 @@ async function handleReset() {
       <input
         v-model="newPassword"
         type="password"
-        placeholder="请输入新密码"
+        :placeholder="$t('auth.enter_new_password')"
         class="input"
       >
       <input
         v-model="confirmPassword"
         type="password"
-        placeholder="请再次输入新密码"
+        :placeholder="$t('auth.confirm_new_password')"
         class="input"
       >
       <button :disabled="loading" class="button" @click="handleReset">
-        {{ loading ? '提交中...' : '提交新密码' }}
+        {{ loading ? $t('auth.submitting') : $t('auth.submit_new_password') }}
       </button>
       <p class="message">{{ message }}</p>
     </div>

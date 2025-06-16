@@ -52,7 +52,7 @@ async function handleSubmit() {
     }
   }
   catch (err: any) {
-    message.value = err.message || '发生错误'
+    message.value = err.message || t('auth.messages.operation_failed')
   }
   finally {
     loading.value = false
@@ -66,7 +66,7 @@ function handleForgotPassword() {
 
 async function confirmForgotPassword() {
   if (!forgotEmail.value) {
-    message.value = '请输入您的邮箱地址。'
+    message.value = t('auth.messages.enter_email')
     return
   }
 
@@ -78,9 +78,9 @@ async function confirmForgotPassword() {
   })
 
   if (error)
-    message.value = `发送失败：${error.message}`
+    message.value = `${t('auth.messages.reset_failed')}：${error.message}`
   else
-    message.value = '重置密码邮件已发送，请前往邮箱查收。'
+    message.value = t('auth.messages.reset_success')
 
   showForgotPrompt.value = false
   loading.value = false
@@ -120,7 +120,7 @@ async function confirmForgotPassword() {
         <span v-if="isLogin">
           |
           <a href="#" style="color: #00b386; text-decoration: underline;" @click.prevent="handleForgotPassword">
-            忘记密码？
+            {{ $t('auth.forgot_password') }}
           </a>
         </span>
       </p>
@@ -128,9 +128,10 @@ async function confirmForgotPassword() {
 
     <!-- 忘记密码弹窗区域 -->
     <div v-if="showForgotPrompt" style="margin-top: 2rem; text-align: center;">
-      <p>请输入您的注册邮箱：</p>
-      <input v-model="forgotEmail" type="email" placeholder="邮箱地址" class="input">
-      <button class="button" style="margin-top: 1rem;" @click="confirmForgotPassword">确定</button>
+      <p>{{ $t('auth.messages.enter_registered_email') }}</p>
+      <input v-model="forgotEmail" type="email" :placeholder="$t('auth.email_placeholder')" class="input">
+      <button class="button" style="margin-top: 1rem; margin-right: 0.5rem;" @click="confirmForgotPassword">{{ $t('auth.confirm') }}</button>
+      <button class="button" style="margin-top: 1rem; background-color: #ccc; color: #333;" @click="showForgotPrompt = false">{{ $t('auth.cancel') }}</button>
     </div>
   </div>
 </template>

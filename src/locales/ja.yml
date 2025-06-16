@@ -152,6 +152,19 @@ auth:
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
   email_placeholder: メールアドレスを入力してください
+  forgot_password: パスワードをお忘れですか？
+  confirm: 確認
+  cancel: キャンセル
+  reset_password: パスワードのリセット
+  invalid_link: リセットリンクが無効か期限切れです。再度リクエストしてください。
+  enter_and_confirm: 新しいパスワードを入力して確認してください。
+  mismatch: パスワードが一致しません。
+  reset_failed: リセットに失敗しました
+  reset_success: パスワードが正常にリセットされました。2秒後にホームへ移動します...
+  enter_new_password: 新しいパスワードを入力
+  confirm_new_password: 新しいパスワードを再入力
+  submitting: 送信中...
+  submit_new_password: 新しいパスワードを送信
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
@@ -159,3 +172,7 @@ auth:
     email_not_confirmed: ❌ 先にメールアドレスの確認をしてください。
     operation_failed: ❌ 手術は失敗し。
     passwords_do_not_match: ❌ 入力された2つのパスワードが一致しません！
+    reset_success: パスワードリセット用のメールを送信しました。メールをご確認ください。
+    reset_failed: 送信に失敗しました
+    enter_email: メールアドレスを入力してください。
+    enter_registered_email: 登録済みのメールアドレスを入力してください：
