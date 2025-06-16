@@ -131,7 +131,7 @@ form:
   selectError: 请在列表中选择一项
   error: 提交失败，请稍后再试
 about:
-  title: 我abc导航站特性
+  title: 我WOabc导航站特性
   efficientNav: 高效导航 - 极简样式，快速访问
   freedomEdit: 从心所欲 - 完全自由地增删改网站，支持自定义网站图标
   dragSort: 拖拽排序 - 快速调整网站顺序
@@ -140,7 +140,7 @@ about:
   themeSwitch: 主题切换 - 内置多种主题样式，可自由切换
   darkMode: 夜间模式 - 爱护你的双眼
   i18nSupport: I18n - 支持简体中文、英文和日文
-  importExport: 注册后云储存数据 - 在不同设备间同步数据
+  importExport: 三种方式储存数据（注册登陆、输入ID、导入导出） - 在不同设备间同步数据
   browserPlugin: 浏览器插件 - 新建标签页时打开 Moon
   dockerSupport: 容器化部署 - 支持 Docker 一键部署
   thanks: 特别感谢
