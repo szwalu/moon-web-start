@@ -301,66 +301,127 @@
     </div>
     
     <script>
-        // 更新时间的函数
-        function updateTime() {
-            const now = new Date();
-            
-            // 北京时间 (UTC+8)
-            const beijingOffset = 8 * 60 * 60 * 1000;
-            const beijingTime = new Date(now.getTime() + beijingOffset);
-            
-            // 洛杉矶时间 (UTC-7 或 UTC-8，这里使用夏令时判断)
-            const isDST = () => {
-                const year = now.getFullYear();
-                // 夏令时：3月第二个周日2:00开始，11月第一个周日2:00结束
-                const dstStart = new Date(Date.UTC(year, 2, 8 + (14 - new Date(year, 2, 8).getUTCDay()) % 7, 9));
-                const dstEnd = new Date(Date.UTC(year, 10, 1 + (7 - new Date(year, 10, 1).getUTCDay()) % 7, 9));
-                return now >= dstStart && now < dstEnd;
-            };
-            
-            const laOffset = (isDST() ? -7 : -8) * 60 * 60 * 1000;
-            const laTime = new Date(now.getTime() + laOffset);
-            
-            // 更新时间差显示
-            const timeDiff = Math.abs(beijingOffset/3600000 - laOffset/3600000);
-            document.getElementById('time-difference').textContent = timeDiff;
-            
-            // 更新时间显示
-            document.getElementById('beijing-hours').textContent = 
-                beijingTime.getUTCHours().toString().padStart(2, '0');
-            document.getElementById('beijing-minutes').textContent = 
-                beijingTime.getUTCMinutes().toString().padStart(2, '0');
-            document.getElementById('beijing-seconds').textContent = 
-                beijingTime.getUTCSeconds().toString().padStart(2, '0');
-            
-            document.getElementById('la-hours').textContent = 
-                laTime.getUTCHours().toString().padStart(2, '0');
-            document.getElementById('la-minutes').textContent = 
-                laTime.getUTCMinutes().toString().padStart(2, '0');
-            document.getElementById('la-seconds').textContent = 
-                laTime.getUTCSeconds().toString().padStart(2, '0');
-            
-            // 更新日期显示
-            const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-            const beijingDateStr = `${beijingTime.getUTCFullYear()}年${(beijingTime.getUTCMonth() + 1).toString().padStart(2, '0')}月${beijingTime.getUTCDate().toString().padStart(2, '0')}日 ${weekdays[beijingTime.getUTCDay()]}`;
-            const laDateStr = `${laTime.getUTCFullYear()}年${(laTime.getUTCMonth() + 1).toString().padStart(2, '0')}月${laTime.getUTCDate().toString().padStart(2, '0')}日 ${weekdays[laTime.getUTCDay()]}`;
-            
-            document.getElementById('beijing-date').innerHTML = `
-                <span>${beijingDateStr}</span>
-            `;
-            
-            document.getElementById('la-date').innerHTML = `
-                <span>${laDateStr}</span>
-            `;
+        // 添加重试机制处理网络错误
+        function loadWithRetry(url, maxRetries = 3, delay = 1000) {
+            return new Promise((resolve, reject) => {
+                const attempt = (retryCount) => {
+                    try {
+                        const script = document.createElement('script');
+                        script.src = url;
+                        script.onload = () => resolve();
+                        script.onerror = (error) => {
+                            if (retryCount < maxRetries) {
+                                console.log(`Retrying ${url} (${retryCount + 1}/${maxRetries})...`);
+                                setTimeout(() => attempt(retryCount + 1), delay);
+                            } else {
+                                reject(error);
+                            }
+                        };
+                        document.head.appendChild(script);
+                    } catch(e) {
+                        reject(e);
+                    }
+                };
+                attempt(0);
+            });
         }
+
+        // 处理网络变化错误
+        let networkChanged = false;
         
-        // 初始更新时间
-        updateTime();
+        window.addEventListener('offline', () => {
+            console.log('网络离线');
+            networkChanged = true;
+        });
         
-        // 每秒更新时间
-        setInterval(updateTime, 1000);
+        window.addEventListener('online', () => {
+            console.log('网络恢复');
+            if(networkChanged) {
+                location.reload();
+                networkChanged = false;
+            }
+        });
         
-        // 创建动态背景元素
+        // 检查网络状态
+        if(!navigator.onLine) {
+            alert('网络连接已断开，请检查您的网络连接');
+        }
+
+        // 更新时间函数（已修复）
+        function getTimeAtTimezone(offset) {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            return new Date(utc + (offset * 3600000));
+        }
+
+        function isPacificDST(date) {
+            const year = date.getFullYear();
+            // 夏令时：三月第二个星期日 - 十一月第一个星期日
+            const dstStart = new Date(year, 2, 14 - new Date(year, 2, 1).getDay(), 2);
+            const dstEnd = new Date(year, 10, 7 - new Date(year, 10, 1).getDay(), 2);
+            return date > dstStart && date < dstEnd;
+        }
+
+        function updateTime() {
+            try {
+                // 北京时间 (UTC+8)
+                const beijingTime = getTimeAtTimezone(8);
+                
+                // 洛杉矶时间 (UTC-8 或 UTC-7 夏令时)
+                const laOffset = isPacificDST(new Date()) ? -7 : -8;
+                const laTime = getTimeAtTimezone(laOffset);
+                
+                // 时间差
+                const timeDiff = Math.abs(8 - laOffset);
+                document.getElementById('time-difference').textContent = timeDiff;
+                
+                // 更新日期和时间显示
+                updateDateTime('beijing', beijingTime);
+                updateDateTime('la', laTime);
+            } catch(e) {
+                console.error('更新时间出错:', e);
+            }
+        }
+
+        function updateDateTime(prefix, date) {
+            const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+            
+            document.getElementById(`${prefix}-hours`).textContent = 
+                date.getHours().toString().padStart(2, '0');
+            document.getElementById(`${prefix}-minutes`).textContent = 
+                date.getMinutes().toString().padStart(2, '0');
+            document.getElementById(`${prefix}-seconds`).textContent = 
+                date.getSeconds().toString().padStart(2, '0');
+            
+            const dateStr = `${date.getFullYear()}年${(date.getMonth() + 1).toString().padStart(2, '0')}月${date.getDate().toString().padStart(2, '0')}日 ${weekdays[date.getDay()]}`;
+            document.getElementById(`${prefix}-date`).innerHTML = `<span>${dateStr}</span>`;
+        }
+
+        // 安全初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                updateTime();
+                setInterval(updateTime, 1000);
+                createBackgroundCircles();
+                
+                // 尝试重新加载失败的资源
+                const failedResources = [
+                    '/assets/zh-CN-f9735af7.js',
+                    '/logo.jpg',
+                    '/favicon.ico'
+                ];
+                
+                failedResources.forEach(resource => {
+                    loadWithRetry(resource).catch(e => {
+                        console.warn(`资源加载失败: ${resource}`, e);
+                    });
+                });
+            } catch(e) {
+                console.error('初始化出错:', e);
+            }
+        });
+
+        // 背景元素创建函数
         function createBackgroundCircles() {
             const container = document.body;
             for (let i = 0; i < 5; i++) {
@@ -379,79 +440,8 @@
                 container.appendChild(circle);
             }
         }
-        
-        createBackgroundCircles();
     </script>
-    
-    <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <!-- 头部代码保持不变 -->
-</head>
-<body>
-    <!-- body内容保持不变（包括bg-circle、main-content等） -->
-    
-    <script>
-        // 修复1：重构时区计算逻辑
-        function getTimeAtTimezone(offset) {
-            const now = new Date();
-            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-            return new Date(utc + (offset * 3600000));
-        }
 
-        // 修复2：简化的夏令时判断（针对洛杉矶时区）
-        function isPacificDST(date) {
-            const year = date.getFullYear();
-            // 夏令时：三月第二个星期日 - 十一月第一个星期日
-            const dstStart = new Date(year, 2, 14 - new Date(year, 2, 1).getDay(), 2);
-            const dstEnd = new Date(year, 10, 7 - new Date(year, 10, 1).getDay(), 2);
-            return date > dstStart && date < dstEnd;
-        }
-
-        function updateTime() {
-            // 北京时间 (UTC+8)
-            const beijingTime = getTimeAtTimezone(8);
-            
-            // 洛杉矶时间 (UTC-8 或 UTC-7 夏令时)
-            const laOffset = isPacificDST(new Date()) ? -7 : -8;
-            const laTime = getTimeAtTimezone(laOffset);
-            
-            // 修复3：正确计算时间差
-            const timeDiff = Math.abs(8 - laOffset);
-            document.getElementById('time-difference').textContent = timeDiff;
-            
-            // 更新日期和时间显示
-            updateDateTime('beijing', beijingTime);
-            updateDateTime('la', laTime);
-        }
-
-        // 修复4：重构日期时间更新函数
-        function updateDateTime(prefix, date) {
-            const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-            
-            document.getElementById(`${prefix}-hours`).textContent = 
-                date.getHours().toString().padStart(2, '0');
-            document.getElementById(`${prefix}-minutes`).textContent = 
-                date.getMinutes().toString().padStart(2, '0');
-            document.getElementById(`${prefix}-seconds`).textContent = 
-                date.getSeconds().toString().padStart(2, '0');
-            
-            const dateStr = `${date.getFullYear()}年${(date.getMonth() + 1).toString().padStart(2, '0')}月${date.getDate().toString().padStart(2, '0')}日 ${weekdays[date.getDay()]}`;
-            document.getElementById(`${prefix}-date`).innerHTML = `<span>${dateStr}</span>`;
-        }
-
-        // 初始化和定时更新
-        document.addEventListener('DOMContentLoaded', () => {
-            updateTime();
-            setInterval(updateTime, 1000);
-            createBackgroundCircles();
-        });
-
-        // 背景元素创建函数保持不变
-        function createBackgroundCircles() {
-            // ... 原始createBackgroundCircles代码 ...
-        }
-    </script>
 </body>
 </html>
     
