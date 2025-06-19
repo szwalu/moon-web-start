@@ -66,20 +66,61 @@ async function fetchWeather() {
     try {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
-      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
-      const data = await response.json()
-      const weather = data.current
-      const city = data.location.name
-      const temp = weather.temp_c
-      const text = weather.condition.text
+
+      // 第一步：用 IP 定位获取经纬度
+      const locationResp = await fetch('https://ipapi.co/json/')
+      const locationData = await locationResp.json()
+      const lat = locationData.latitude
+      const lon = locationData.longitude
+      const city = locationData.city || `${lat.toFixed(2)},${lon.toFixed(2)}`
+
+      // 第二步：获取天气数据
+      const weatherResp = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
+      )
+      const weatherData = await weatherResp.json()
+
+      const temp = weatherData.current.temperature_2m
+      const code = weatherData.current.weathercode
+      const weatherText = getWeatherText(code)
+
       weatherCity.value = city
-      weatherInfo.value = `${temp}°C ${text}`
+      weatherInfo.value = `${temp}°C ${weatherText}`
     }
     catch (error) {
       weatherCity.value = '天气加载失败'
       weatherInfo.value = ''
     }
   }
+}
+
+// 将 weathercode 转换为中文天气描述
+function getWeatherText(code: number): string {
+  const weatherMap: Record<number, string> = {
+    0: '晴朗',
+    1: '主要晴天',
+    2: '部分多云',
+    3: '多云',
+    45: '雾',
+    48: '霜雾',
+    51: '毛毛雨',
+    53: '中等毛毛雨',
+    55: '浓密毛毛雨',
+    61: '小雨',
+    63: '中雨',
+    65: '大雨',
+    71: '小雪',
+    73: '中雪',
+    75: '大雪',
+    80: '阵雨',
+    81: '中等阵雨',
+    82: '强阵雨',
+    95: '雷雨',
+    96: '雷雨伴小冰雹',
+    99: '雷雨伴大冰雹',
+  }
+
+  return weatherMap[code] || '未知天气'
 }
 
 function showMobileToast() {
