@@ -72,10 +72,9 @@ async function fetchWeather() {
     const country = ipData.country
 
     // 2. 请求彩云天气（不再跨域）
-    const caiyunToken = 'FR4EYi0tJHtGlrL1'
-    const apiUrl = `https://api.caiyunapp.com/v2/${caiyunToken}/${lon},${lat}/realtime.json`
-
+    const apiUrl = `/api/weather?lat=${lat}&lon=${lon}`
     const weatherRes = await fetch(apiUrl)
+
     const weatherData = await weatherRes.json()
 
     if (weatherData.status !== 'ok')
