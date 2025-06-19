@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>时间测试</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+        }
+        .time { font-size: 24px; margin: 20px; }
+    </style>
+</head>
+<body>
+    <h1>当前时间测试</h1>
+    <div class="time">
+        <div>北京时间：<span id="bj"></span></div>
+        <div>洛杉矶时间：<span id="la"></span></div>
+    </div>
+    
+    <script>
+        function showTime() {
+            const now = new Date();
+            document.getElementById('bj').textContent = 
+                now.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'});
+                
+            document.getElementById('la').textContent = 
+                now.toLocaleString('zh-CN', {timeZone: 'America/Los_Angeles'});
+        }
+        
+        showTime();
+        setInterval(showTime, 1000);
+    </script>
+</body>
+</html>
