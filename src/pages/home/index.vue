@@ -62,23 +62,50 @@ watchEffect(() => {
 })
 
 async function fetchWeather() {
-  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
-    try {
-      weatherCity.value = '加载中...'
-      weatherInfo.value = '...'
-      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
-      const data = await response.json()
-      const weather = data.current
-      const city = data.location.name
-      const temp = weather.temp_c
-      const text = weather.condition.text
-      weatherCity.value = city
-      weatherInfo.value = `${temp}°C ${text}`
+  try {
+    // 1. 获取用户的 IP 定位
+    const ipRes = await fetch('https://ip-api.com/json/')
+    const ipData = await ipRes.json()
+    const lat = ipData.lat
+    const lon = ipData.lon
+    const city = ipData.city
+    const country = ipData.country
+
+    // 2. 请求彩云天气（不再跨域）
+    const caiyunToken = 'FR4EYi0tJHtGlrL1'
+    const apiUrl = `https://api.caiyunapp.com/v2/${caiyunToken}/${lon},${lat}/realtime.json`
+
+    const weatherRes = await fetch(apiUrl)
+    const weatherData = await weatherRes.json()
+
+    if (weatherData.status !== 'ok')
+      throw new Error('天气数据错误')
+
+    const temp = weatherData.result.temperature
+    const condition = weatherData.result.skycon
+
+    const skyconTextMap = {
+      CLEAR_DAY: '晴',
+      CLEAR_NIGHT: '晴夜',
+      PARTLY_CLOUDY_DAY: '多云',
+      PARTLY_CLOUDY_NIGHT: '多云夜',
+      CLOUDY: '阴',
+      RAIN: '雨',
+      SNOW: '雪',
+      WIND: '风',
+      FOG: '雾',
+      HAZE: '霾',
     }
-    catch (error) {
-      weatherCity.value = '天气加载失败'
-      weatherInfo.value = ''
-    }
+
+    const text = skyconTextMap[condition] || condition
+
+    weatherCity.value = `${city}, ${country}`
+    weatherInfo.value = `${temp.toFixed(1)}°C ${text}`
+  }
+  catch (err) {
+    weatherCity.value = '天气加载失败'
+    weatherInfo.value = ''
+    console.error('天气错误:', err)
   }
 }
 
