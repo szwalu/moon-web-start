@@ -61,24 +61,85 @@ watchEffect(() => {
   }
 })
 
+/**
+ * @description 将WMO天气代码转换为中文天气描述
+ * @param {number} code WMO天气代码
+ * @returns {string} 天气描述
+ * @see https://open-meteo.com/en/docs
+ */
+function getWeatherDescription(code) {
+  const weatherMap = {
+    0: '晴天',
+    1: '大部晴朗',
+    2: '局部多云',
+    3: '多云',
+    45: '雾',
+    48: '冻雾',
+    51: '小毛毛雨',
+    53: '中等毛毛雨',
+    55: '大毛毛雨',
+    56: '小冻毛毛雨',
+    57: '大冻毛毛雨',
+    61: '小雨',
+    63: '中雨',
+    65: '大雨',
+    66: '小冻雨',
+    67: '大冻雨',
+    71: '小雪',
+    73: '中雪',
+    75: '大雪',
+    77: '米雪',
+    80: '小阵雨',
+    81: '中阵雨',
+    82: '大阵雨',
+    85: '小阵雪',
+    86: '大阵雪',
+    95: '雷暴',
+    96: '伴有小冰雹的雷暴',
+    99: '伴有大冰雹的雷暴',
+  }
+  return weatherMap[code] || '未知天气'
+}
+
 async function fetchWeather() {
-  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
-    try {
-      weatherCity.value = '加载中...'
-      weatherInfo.value = '...'
-      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
-      const data = await response.json()
-      const weather = data.current
-      const city = data.location.name
-      const temp = weather.temp_c
-      const text = weather.condition.text
-      weatherCity.value = city
-      weatherInfo.value = `${temp}°C ${text}`
-    }
-    catch (error) {
-      weatherCity.value = '天气加载失败'
-      weatherInfo.value = ''
-    }
+  // 防止重复加载
+  if (weatherCity.value !== '' && weatherCity.value !== '天气加载失败' && weatherCity.value !== '加载中...')
+    return
+
+  try {
+    weatherCity.value = '加载中...'
+    weatherInfo.value = '...'
+
+    // 第1步: 调用Forecast API，自动获取IP所在地的天气和经纬度
+    // 我们请求了当前温度(temperature_2m)和天气代码(weather_code)
+    const weatherResponse = await fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&latitude=auto&longitude=auto&current_units=temperature_unit=celsius')
+    const weatherData = await weatherResponse.json()
+
+    if (!weatherData || !weatherData.latitude || !weatherData.longitude)
+      throw new Error('无法获取位置信息')
+
+    const latitude = weatherData.latitude
+    const longitude = weatherData.longitude
+    const temp = Math.round(weatherData.current.temperature_2m) // 对温度取整
+    const weatherCode = weatherData.current.weather_code
+
+    // 第2步: 使用获取到的经纬度，调用Geocoding API反查城市名称
+    // language=zh-cn 可以让API优先返回中文地名
+    const cityResponse = await fetch(`https://api.open-meteo.com/v1/geocoding/search?latitude=${latitude}&longitude=${longitude}&language=zh-cn`)
+    const cityData = await cityResponse.json()
+
+    // cityData.results[0] 中可能包含多种地名，如 city, town, village
+    // 我们优先取 city，如果没有则取第一个结果的名称
+    const city = cityData.results?.[0]?.city || cityData.results?.[0]?.name || '未知地区'
+
+    // 第3步: 组合信息并更新到界面
+    weatherCity.value = city
+    weatherInfo.value = `${temp}°C ${getWeatherDescription(weatherCode)}`
+  }
+  catch (error) {
+    console.error('获取天气失败:', error)
+    weatherCity.value = '天气加载失败'
+    weatherInfo.value = ''
   }
 }
 
