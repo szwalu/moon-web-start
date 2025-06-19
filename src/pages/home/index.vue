@@ -63,43 +63,11 @@ watchEffect(() => {
 
 async function fetchWeather() {
   try {
-    // 1. 获取用户的 IP 定位
-    const ipRes = await fetch('https://ip-api.com/json/')
-    const ipData = await ipRes.json()
-    const lat = ipData.lat
-    const lon = ipData.lon
-    const city = ipData.city
-    const country = ipData.country
+    const res = await fetch('/api/weather')
+    const data = await res.json()
 
-    // 2. 请求彩云天气（不再跨域）
-    const apiUrl = `/api/weather?lat=${lat}&lon=${lon}`
-    const weatherRes = await fetch(apiUrl)
-
-    const weatherData = await weatherRes.json()
-
-    if (weatherData.status !== 'ok')
-      throw new Error('天气数据错误')
-
-    const temp = weatherData.result.temperature
-    const condition = weatherData.result.skycon
-
-    const skyconTextMap = {
-      CLEAR_DAY: '晴',
-      CLEAR_NIGHT: '晴夜',
-      PARTLY_CLOUDY_DAY: '多云',
-      PARTLY_CLOUDY_NIGHT: '多云夜',
-      CLOUDY: '阴',
-      RAIN: '雨',
-      SNOW: '雪',
-      WIND: '风',
-      FOG: '雾',
-      HAZE: '霾',
-    }
-
-    const text = skyconTextMap[condition] || condition
-
-    weatherCity.value = `${city}, ${country}`
-    weatherInfo.value = `${temp.toFixed(1)}°C ${text}`
+    weatherCity.value = `${data.city}, ${data.country}`
+    weatherInfo.value = `${data.temp.toFixed(1)}°C ${data.text}`
   }
   catch (err) {
     weatherCity.value = '天气加载失败'
