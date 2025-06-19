@@ -382,5 +382,78 @@
         
         createBackgroundCircles();
     </script>
+    
+    <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 头部代码保持不变 -->
+</head>
+<body>
+    <!-- body内容保持不变（包括bg-circle、main-content等） -->
+    
+    <script>
+        // 修复1：重构时区计算逻辑
+        function getTimeAtTimezone(offset) {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            return new Date(utc + (offset * 3600000));
+        }
+
+        // 修复2：简化的夏令时判断（针对洛杉矶时区）
+        function isPacificDST(date) {
+            const year = date.getFullYear();
+            // 夏令时：三月第二个星期日 - 十一月第一个星期日
+            const dstStart = new Date(year, 2, 14 - new Date(year, 2, 1).getDay(), 2);
+            const dstEnd = new Date(year, 10, 7 - new Date(year, 10, 1).getDay(), 2);
+            return date > dstStart && date < dstEnd;
+        }
+
+        function updateTime() {
+            // 北京时间 (UTC+8)
+            const beijingTime = getTimeAtTimezone(8);
+            
+            // 洛杉矶时间 (UTC-8 或 UTC-7 夏令时)
+            const laOffset = isPacificDST(new Date()) ? -7 : -8;
+            const laTime = getTimeAtTimezone(laOffset);
+            
+            // 修复3：正确计算时间差
+            const timeDiff = Math.abs(8 - laOffset);
+            document.getElementById('time-difference').textContent = timeDiff;
+            
+            // 更新日期和时间显示
+            updateDateTime('beijing', beijingTime);
+            updateDateTime('la', laTime);
+        }
+
+        // 修复4：重构日期时间更新函数
+        function updateDateTime(prefix, date) {
+            const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+            
+            document.getElementById(`${prefix}-hours`).textContent = 
+                date.getHours().toString().padStart(2, '0');
+            document.getElementById(`${prefix}-minutes`).textContent = 
+                date.getMinutes().toString().padStart(2, '0');
+            document.getElementById(`${prefix}-seconds`).textContent = 
+                date.getSeconds().toString().padStart(2, '0');
+            
+            const dateStr = `${date.getFullYear()}年${(date.getMonth() + 1).toString().padStart(2, '0')}月${date.getDate().toString().padStart(2, '0')}日 ${weekdays[date.getDay()]}`;
+            document.getElementById(`${prefix}-date`).innerHTML = `<span>${dateStr}</span>`;
+        }
+
+        // 初始化和定时更新
+        document.addEventListener('DOMContentLoaded', () => {
+            updateTime();
+            setInterval(updateTime, 1000);
+            createBackgroundCircles();
+        });
+
+        // 背景元素创建函数保持不变
+        function createBackgroundCircles() {
+            // ... 原始createBackgroundCircles代码 ...
+        }
+    </script>
+</body>
+</html>
+    
 </body>
 </html>
