@@ -62,17 +62,23 @@ watchEffect(() => {
 })
 
 async function fetchWeather() {
-  try {
-    const res = await fetch('/api/weather')
-    const data = await res.json()
-
-    weatherCity.value = `${data.city}, ${data.country}`
-    weatherInfo.value = `${data.temp.toFixed(1)}°C ${data.text}`
-  }
-  catch (err) {
-    weatherCity.value = '天气加载失败'
-    weatherInfo.value = ''
-    console.error('天气错误:', err)
+  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
+    try {
+      weatherCity.value = '加载中...'
+      weatherInfo.value = '...'
+      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
+      const data = await response.json()
+      const weather = data.current
+      const city = data.location.name
+      const temp = weather.temp_c
+      const text = weather.condition.text
+      weatherCity.value = city
+      weatherInfo.value = `${temp}°C ${text}`
+    }
+    catch (error) {
+      weatherCity.value = '天气加载失败'
+      weatherInfo.value = ''
+    }
   }
 }
 
