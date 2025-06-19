@@ -62,43 +62,22 @@ watchEffect(() => {
 })
 
 async function fetchWeather() {
-  if (
-    weatherCity.value === ''
-    || weatherCity.value === '天气加载失败'
-    || weatherCity.value === '加载中...'
-  ) {
+  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
     try {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
-
-      // 1. IP 定位，获取用户所在城市的 locationId
-      const locationRes = await fetch(`https://kj54e3kex4.re.qweatherapi.com/v7/ip/lookup?key=26ffb95e61b54f05b81a6940e4e68c1f`)
-      const locationData = await locationRes.json()
-
-      if (locationData.code !== '200' || !locationData.location?.length)
-        throw new Error('IP定位失败')
-
-      const location = locationData.location[0]
-      const city = location.name
-      const locationId = location.id
-
-      // 2. 实况天气接口
-      const weatherRes = await fetch(`https://kj54e3kex4.re.qweatherapi.com/v7/weather/now?location=${locationId}&key=26ffb95e61b54f05b81a6940e4e68c1f`)
-      const weatherData = await weatherRes.json()
-
-      if (weatherData.code !== '200' || !weatherData.now)
-        throw new Error('天气数据获取失败')
-
-      const temp = weatherData.now.temp
-      const text = weatherData.now.text
-
+      const response = await fetch('https://weatherapi.yjhy88.workers.dev/?q=auto:ip&lang=zh')
+      const data = await response.json()
+      const weather = data.current
+      const city = data.location.name
+      const temp = weather.temp_c
+      const text = weather.condition.text
       weatherCity.value = city
       weatherInfo.value = `${temp}°C ${text}`
     }
     catch (error) {
       weatherCity.value = '天气加载失败'
       weatherInfo.value = ''
-      console.error('天气加载错误:', error)
     }
   }
 }
