@@ -111,12 +111,20 @@ async function fetchWeather() {
     weatherInfo.value = '...'
 
     // 第1步: 调用Forecast API，自动获取IP所在地的天气和经纬度
-    // 我们请求了当前温度(temperature_2m)和天气代码(weather_code)
-    const weatherResponse = await fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&latitude=auto&longitude=auto&current_units=temperature_unit=celsius')
+    // 【修正】这里是修正后的正确URL
+    const weatherResponse = await fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&latitude=auto&longitude=auto&temperature_unit=celsius')
+
+    // 【优化】增加对HTTP请求失败的判断
+    if (!weatherResponse.ok) {
+      const errorData = await weatherResponse.json()
+      // Open-Meteo通常会在失败时返回一个 'reason' 字段
+      throw new Error(errorData.reason || `服务器错误: ${weatherResponse.status}`)
+    }
+
     const weatherData = await weatherResponse.json()
 
-    if (!weatherData || !weatherData.latitude || !weatherData.longitude)
-      throw new Error('无法获取位置信息')
+    if (!weatherData || !weatherData.latitude)
+      throw new Error('API返回数据中缺少位置信息')
 
     const latitude = weatherData.latitude
     const longitude = weatherData.longitude
@@ -124,12 +132,13 @@ async function fetchWeather() {
     const weatherCode = weatherData.current.weather_code
 
     // 第2步: 使用获取到的经纬度，调用Geocoding API反查城市名称
-    // language=zh-cn 可以让API优先返回中文地名
     const cityResponse = await fetch(`https://api.open-meteo.com/v1/geocoding/search?latitude=${latitude}&longitude=${longitude}&language=zh-cn`)
+
+    if (!cityResponse.ok)
+      throw new Error(`无法获取城市名称: ${cityResponse.status}`)
+
     const cityData = await cityResponse.json()
 
-    // cityData.results[0] 中可能包含多种地名，如 city, town, village
-    // 我们优先取 city，如果没有则取第一个结果的名称
     const city = cityData.results?.[0]?.city || cityData.results?.[0]?.name || '未知地区'
 
     // 第3步: 组合信息并更新到界面
@@ -137,7 +146,8 @@ async function fetchWeather() {
     weatherInfo.value = `${temp}°C ${getWeatherDescription(weatherCode)}`
   }
   catch (error) {
-    console.error('获取天气失败:', error)
+    // 【优化】控制台会打印出更具体的错误信息
+    console.error('获取天气失败:', error.message)
     weatherCity.value = '天气加载失败'
     weatherInfo.value = ''
   }
