@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京与洛杉矶时间对照</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        html, body {
+            height: 100%;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #e0f7fa, #b2ebf2, #80deea);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* 动态背景元素 */
+        .bg-circle {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            z-index: -1;
+        }
+        
+        .main-content {
+            max-width: 1000px;
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            margin: 0 auto;
+            padding-bottom: 30px;
+            flex: 1;
+        }
+        
+        .header {
+            text-align: center;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            color: #00796b;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            color: #00897b;
+        }
+        
+        .time-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            transition: transform 0.3s ease;
+        }
+        
+        .time-card:hover {
+            transform: translateY(-10px);
+        }
+        
+        .city-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .city-header h2 {
+            font-size: 2.2rem;
+            margin-left: 15px;
+            color: #00695c;
+        }
+        
+        .flag {
+            font-size: 3.5rem;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .date-info {
+            margin-bottom: 25px;
+        }
+        
+        .date-info p {
+            font-size: 1.4rem;
+            display: flex;
+            justify-content: space-between;
+            color: #00796b;
+        }
+        
+        .time-display {
+            font-size: 2.8rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px rgba(0, 150, 136, 0.3);
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        
+        .time-unit {
+            display: inline-block;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .time-label {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            text-align: center;
+            margin-top: -10px;
+            margin-bottom: 20px;
+            color: #00897b;
+        }
+        
+        .footer-note {
+            text-align: center;
+            font-size: 1.4rem;
+            padding: 15px;
+            background: rgba(0, 150, 136, 0.1);
+            border-radius: 12px;
+            margin-top: 10px;
+            color: #00796b;
+        }
+        
+        .difference {
+            color: #d84315;
+            font-weight: bold;
+        }
+        
+        /* 页脚样式 */
+        .footer {
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.8);
+            color: #00796b;
+            font-size: 1rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            margin-top: auto;
+        }
+        
+        .footer a {
+            color: #00796b;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 0 10px;
+            transition: color 0.3s;
+        }
+        
+        .footer a:hover {
+            color: #d84315;
+            text-decoration: underline;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 850px) {
+            .main-content {
+                flex-direction: column;
+                align-items: center;
+                padding-bottom: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2.2rem;
+            }
+            
+            .time-card {
+                max-width: 100%;
+            }
+            
+            .time-display {
+                font-size: 2.4rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .time-display {
+                font-size: 2rem;
+            }
+            
+            .city-header h2 {
+                font-size: 1.8rem;
+            }
+            
+            .time-unit {
+                min-width: 50px;
+            }
+            
+            .footer {
+                padding: 15px 10px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 动态背景元素 -->
+    <div class="bg-circle" style="width: 300px; height: 300px; top: -50px; left: -50px;"></div>
+    <div class="bg-circle" style="width: 200px; height: 200px; bottom: -30px; right: 100px;"></div>
+    <div class="bg-circle" style="width: 150px; height: 150px; top: 100px; right: -30px;"></div>
+    
+    <div class="main-content">
+        <div class="header">
+            <h1><i class="fas fa-globe-americas"></i> 双城时间对照</h1>
+            <p>北京时间与洛杉矶时间实时对照</p>
+        </div>
+        
+        <!-- 北京时间卡片 -->
+        <div class="time-card">
+            <div class="city-header">
+                <div class="flag">🇨🇳</div>
+                <h2>北京时间</h2>
+            </div>
+            
+            <div class="date-info">
+                <p id="beijing-date"></p>
+            </div>
+            
+            <div class="time-display">
+                <span id="beijing-hours" class="time-unit">00</span>
+                <span>:</span>
+                <span id="beijing-minutes" class="time-unit">00</span>
+                <span>:</span>
+                <span id="beijing-seconds" class="time-unit">00</span>
+            </div>
+            <div class="time-label">
+                <span style="width: 60px; display: inline-block;">时</span>
+                <span style="width: 60px; display: inline-block;">分</span>
+                <span style="width: 60px; display: inline-block;">秒</span>
+            </div>
+            
+            <div class="footer-note">
+                时间相等
+            </div>
+        </div>
+        
+        <!-- 洛杉矶时间卡片 -->
+        <div class="time-card">
+            <div class="city-header">
+                <div class="flag">🇺🇸</div>
+                <h2>洛杉矶时间</h2>
+            </div>
+            
+            <div class="date-info">
+                <p id="la-date"></p>
+            </div>
+            
+            <div class="time-display">
+                <span id="la-hours" class="time-unit">00</span>
+                <span>:</span>
+                <span id="la-minutes" class="time-unit">00</span>
+                <span>:</span>
+                <span id="la-seconds" class="time-unit">00</span>
+            </div>
+            <div class="time-label">
+                <span style="width: 60px; display: inline-block;">时</span>
+                <span style="width: 60px; display: inline-block;">分</span>
+                <span style="width: 60px; display: inline-block;">秒</span>
+            </div>
+            
+            <div class="footer-note">
+                比北京时间慢 <span id="time-difference" class="difference">16</span> 小时
+            </div>
+        </div>
+    </div>
+    
+    <!-- 页脚 -->
+    <div class="footer">
+        <a href="https://www.woabc.com/">回到首页</a> | 
+        <span>北京与洛杉矶时间对照表 © 2023</span>
+    </div>
+    
+    <script>
+        // 更新时间的函数
+        function updateTime() {
+            const now = new Date();
+            
+            // 北京时间 (UTC+8)
+            const beijingOffset = 8 * 60 * 60 * 1000;
+            const beijingTime = new Date(now.getTime() + beijingOffset);
+            
+            // 洛杉矶时间 (UTC-7 或 UTC-8，这里使用夏令时判断)
+            const isDST = () => {
+                const year = now.getFullYear();
+                // 夏令时：3月第二个周日2:00开始，11月第一个周日2:00结束
+                const dstStart = new Date(Date.UTC(year, 2, 8 + (14 - new Date(year, 2, 8).getUTCDay()) % 7, 9));
+                const dstEnd = new Date(Date.UTC(year, 10, 1 + (7 - new Date(year, 10, 1).getUTCDay()) % 7, 9));
+                return now >= dstStart && now < dstEnd;
+            };
+            
+            const laOffset = (isDST() ? -7 : -8) * 60 * 60 * 1000;
+            const laTime = new Date(now.getTime() + laOffset);
+            
+            // 更新时间差显示
+            const timeDiff = Math.abs(beijingOffset/3600000 - laOffset/3600000);
+            document.getElementById('time-difference').textContent = timeDiff;
+            
+            // 更新时间显示
+            document.getElementById('beijing-hours').textContent = 
+                beijingTime.getUTCHours().toString().padStart(2, '0');
+            document.getElementById('beijing-minutes').textContent = 
+                beijingTime.getUTCMinutes().toString().padStart(2, '0');
+            document.getElementById('beijing-seconds').textContent = 
+                beijingTime.getUTCSeconds().toString().padStart(2, '0');
+            
+            document.getElementById('la-hours').textContent = 
+                laTime.getUTCHours().toString().padStart(2, '0');
+            document.getElementById('la-minutes').textContent = 
+                laTime.getUTCMinutes().toString().padStart(2, '0');
+            document.getElementById('la-seconds').textContent = 
+                laTime.getUTCSeconds().toString().padStart(2, '0');
+            
+            // 更新日期显示
+            const weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+            const beijingDateStr = `${beijingTime.getUTCFullYear()}年${(beijingTime.getUTCMonth() + 1).toString().padStart(2, '0')}月${beijingTime.getUTCDate().toString().padStart(2, '0')}日 ${weekdays[beijingTime.getUTCDay()]}`;
+            const laDateStr = `${laTime.getUTCFullYear()}年${(laTime.getUTCMonth() + 1).toString().padStart(2, '0')}月${laTime.getUTCDate().toString().padStart(2, '0')}日 ${weekdays[laTime.getUTCDay()]}`;
+            
+            document.getElementById('beijing-date').innerHTML = `
+                <span>${beijingDateStr}</span>
+            `;
+            
+            document.getElementById('la-date').innerHTML = `
+                <span>${laDateStr}</span>
+            `;
+        }
+        
+        // 初始更新时间
+        updateTime();
+        
+        // 每秒更新时间
+        setInterval(updateTime, 1000);
+        
+        // 创建动态背景元素
+        function createBackgroundCircles() {
+            const container = document.body;
+            for (let i = 0; i < 5; i++) {
+                const circle = document.createElement('div');
+                circle.classList.add('bg-circle');
+                const size = Math.random() * 200 + 50;
+                const posX = Math.random() * 100;
+                const posY = Math.random() * 100;
+                
+                circle.style.width = `${size}px`;
+                circle.style.height = `${size}px`;
+                circle.style.left = `${posX}%`;
+                circle.style.top = `${posY}%`;
+                circle.style.opacity = Math.random() * 0.1 + 0.05;
+                
+                container.appendChild(circle);
+            }
+        }
+        
+        createBackgroundCircles();
+    </script>
+</body>
+</html>

@@ -10,5 +10,5 @@ export const showWeather = new SettingItem({
   name: () => t('settings.showWeather.title'),
   key: 'showWeather',
   children: showWeatherOptions,
-  defaultKey: 'Show',
+  defaultKey: 'Hide',
 })

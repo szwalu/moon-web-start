@@ -9,5 +9,5 @@ export const showTime = new SettingItem({
   name: () => t('settings.showTime.title'),
   key: 'ShowTime',
   children: showTimeList,
-  defaultKey: 'Hide',
+  defaultKey: 'Show',
 })
