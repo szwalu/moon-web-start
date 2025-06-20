@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
-
-// 【修正1】：调整了 import 顺序以符合规范
 
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
@@ -31,9 +29,6 @@ watch(
   () => {
     if (settingStore.settings.websitePreference !== 'Customize')
       settingStore.setSettings({ websitePreference: 'Customize' })
-
-    // 【修正2】：移除了不符合规范的 console.log
-    // console.log('在主页侦听到数据变化，准备自动保存...')
     autoSaveData()
   },
   { deep: true },
@@ -48,9 +43,11 @@ onMounted(() => {
   showMobileToast()
 })
 
+// ========== 以下是天气功能 ==========
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
+// 天气加载控制
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     fetchWeather()
@@ -62,65 +59,126 @@ watchEffect(() => {
 })
 
 async function fetchWeather() {
-  if (weatherCity.value === '' || weatherCity.value === '天气加载失败' || weatherCity.value === '加载中...') {
+  if (
+    weatherCity.value === ''
+    || weatherCity.value === '天气加载失败'
+    || weatherCity.value === '加载中...'
+  ) {
     try {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
 
-      // 第一步：用 IP 定位获取经纬度
-      const locationResp = await fetch('https://ipapi.co/json/')
-      const locationData = await locationResp.json()
-      const lat = locationData.latitude
-      const lon = locationData.longitude
-      const city = locationData.city || `${lat.toFixed(2)},${lon.toFixed(2)}`
+      // 获取 IP 定位
+      const locRes = await fetch('https://ipapi.co/json/')
+      const locData = await locRes.json()
+      const lat = locData.latitude
+      const lon = locData.longitude
+      const enCity = locData.city
+      const city = getChineseCityName(enCity)
 
-      // 第二步：获取天气数据
-      const weatherResp = await fetch(
+      // 获取 Open-Meteo 天气数据
+      const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
       )
-      const weatherData = await weatherResp.json()
-
-      const temp = weatherData.current.temperature_2m
-      const code = weatherData.current.weathercode
-      const weatherText = getWeatherText(code)
+      const data = await res.json()
+      const temp = data.current.temperature_2m
+      const code = data.current.weathercode
+      const { text, icon } = getWeatherText(code)
 
       weatherCity.value = city
-      weatherInfo.value = `${temp}°C ${weatherText}`
+      weatherInfo.value = `${temp}°C ${text} ${icon}`
     }
-    catch (error) {
+    catch (e) {
       weatherCity.value = '天气加载失败'
       weatherInfo.value = ''
     }
   }
 }
 
-// 将 weathercode 转换为中文天气描述
-function getWeatherText(code: number): string {
-  const weatherMap: Record<number, string> = {
-    0: '晴朗',
-    1: '主要晴天',
-    2: '部分多云',
-    3: '多云',
-    45: '雾',
-    48: '霜雾',
-    51: '毛毛雨',
-    53: '中等毛毛雨',
-    55: '浓密毛毛雨',
-    61: '小雨',
-    63: '中雨',
-    65: '大雨',
-    71: '小雪',
-    73: '中雪',
-    75: '大雪',
-    80: '阵雨',
-    81: '中等阵雨',
-    82: '强阵雨',
-    95: '雷雨',
-    96: '雷雨伴小冰雹',
-    99: '雷雨伴大冰雹',
+function getWeatherText(code: number): { text: string; icon: string } {
+  const weatherMap: Record<number, { text: string; icon: string }> = {
+    0: { text: '晴朗', icon: '☀️' },
+    1: { text: '主要晴天', icon: '🌤️' },
+    2: { text: '部分多云', icon: '⛅' },
+    3: { text: '多云', icon: '☁️' },
+    45: { text: '雾', icon: '🌫️' },
+    48: { text: '霜雾', icon: '🌁' },
+    51: { text: '毛毛雨', icon: '🌦️' },
+    53: { text: '中等毛毛雨', icon: '🌧️' },
+    55: { text: '浓密毛毛雨', icon: '🌧️' },
+    61: { text: '小雨', icon: '🌧️' },
+    63: { text: '中雨', icon: '🌧️' },
+    65: { text: '大雨', icon: '🌧️' },
+    71: { text: '小雪', icon: '🌨️' },
+    73: { text: '中雪', icon: '🌨️' },
+    75: { text: '大雪', icon: '❄️' },
+    80: { text: '阵雨', icon: '🌦️' },
+    81: { text: '中等阵雨', icon: '🌧️' },
+    82: { text: '强阵雨', icon: '🌧️' },
+    95: { text: '雷雨', icon: '⛈️' },
+    96: { text: '雷雨伴小冰雹', icon: '⛈️' },
+    99: { text: '雷雨伴大冰雹', icon: '⛈️' },
   }
 
-  return weatherMap[code] || '未知天气'
+  return weatherMap[code] || { text: '未知天气', icon: '❓' }
+}
+
+function getChineseCityName(enCity: string): string {
+  const cityMap: Record<string, string> = {
+    'Beijing': '北京',
+    'Shanghai': '上海',
+    'Guangzhou': '广州',
+    'Shenzhen': '深圳',
+    'Hangzhou': '杭州',
+    'Chengdu': '成都',
+    'Wuhan': '武汉',
+    'Nanjing': '南京',
+    'Tianjin': '天津',
+    'Chongqing': '重庆',
+    'Xi\'an': '西安',
+    'Changsha': '长沙',
+    'Zhengzhou': '郑州',
+    'Fuzhou': '福州',
+    'Xiamen': '厦门',
+    'Ningbo': '宁波',
+    'Suzhou': '苏州',
+    'Qingdao': '青岛',
+    'Jinan': '济南',
+    'Shenyang': '沈阳',
+    'Dalian': '大连',
+    'Harbin': '哈尔滨',
+    'Kunming': '昆明',
+    'Hefei': '合肥',
+    'Nanchang': '南昌',
+    'Urumqi': '乌鲁木齐',
+    'Heyuan': '河源',
+    'Hong Kong': '香港',
+    'Macau': '澳门',
+    'Taipei': '台北',
+    'Kaohsiung': '高雄',
+    'Taichung': '台中',
+    'Tainan': '台南',
+    'New York': '纽约',
+    'Los Angeles': '洛杉矶',
+    'San Francisco': '旧金山',
+    'London': '伦敦',
+    'Paris': '巴黎',
+    'Tokyo': '东京',
+    'Seoul': '首尔',
+    'Bangkok': '曼谷',
+    'Singapore': '新加坡',
+    'Berlin': '柏林',
+    'Sydney': '悉尼',
+    'Moscow': '莫斯科',
+    'Toronto': '多伦多',
+    'Vancouver': '温哥华',
+  }
+
+  for (const [key, value] of Object.entries(cityMap)) {
+    if (enCity.toLowerCase().includes(key.toLowerCase()))
+      return value
+  }
+  return enCity
 }
 
 function showMobileToast() {
