@@ -176,3 +176,7 @@ auth:
     reset_failed: 送信に失敗しました
     enter_email: メールアドレスを入力してください。
     enter_registered_email: 登録済みのメールアドレスを入力してください：
+autoSave:
+  restored: ユーザーデータをクラウドから復元しました ✨
+  parse_failed: クラウドデータの解析に失敗しました
+  load_failed: データの読み込み中にエラーが発生しました

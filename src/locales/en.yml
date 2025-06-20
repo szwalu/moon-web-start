@@ -178,3 +178,7 @@ auth:
     enter_registered_email: Please enter your registered email：
     operation_failed: '❌ Operation failed: '
     passwords_do_not_match: ❌ The passwords entered do not match!
+autoSave:
+  restored: User data has been restored from the cloud ✨
+  parse_failed: Failed to parse cloud data
+  load_failed: Error loading data

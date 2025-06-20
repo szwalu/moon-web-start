@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { debounce } from 'lodash-es'
+
+import { useI18n } from 'vue-i18n'
+
+// ✅ 加入国际化支持
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 
@@ -18,6 +22,7 @@ const supabase = createClient(
 export function useAutoSave() {
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
+  const { t } = useI18n() // ✅ 获取 t 函数
 
   const autoLoadData = async ($message: any) => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -47,17 +52,17 @@ export function useAutoSave() {
           settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
-          $message.success('用户数据已从云端恢复 ✨')
+          $message.success(t('autoSave.restored')) // ✅ 国际化
         }
       }
       catch (e) {
         console.error('❌ 解析云端数据失败:', e)
-        $message.error('解析云端数据失败')
+        $message.error(t('autoSave.parse_failed')) // ✅ 国际化
       }
     }
     else if (error && error.code !== 'PGRST116') {
       console.error('❌ 加载数据时出错:', error)
-      $message.error('加载用户数据失败')
+      $message.error(t('autoSave.load_failed')) // ✅ 国际化
     }
   }
 

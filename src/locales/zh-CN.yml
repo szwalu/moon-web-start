@@ -178,3 +178,7 @@ auth:
     reset_failed: 发送失败
     enter_email: 请输入您的邮箱地址。
     enter_registered_email: 请输入您的注册邮箱：
+autoSave:
+  restored: 用户数据已从云端恢复 ✨
+  parse_failed: 解析云端数据失败
+  load_failed: 加载数据时出错
