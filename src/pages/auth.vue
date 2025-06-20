@@ -25,7 +25,7 @@ const pageTitle = computed(() => {
     return t('auth.login')
   if (mode.value === 'register')
     return t('auth.register')
-  return '重置密码'
+  return t('auth.reset_password')
 })
 
 // 切换模式时，重置所有相关状态
