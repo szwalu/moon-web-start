@@ -91,8 +91,8 @@ async function handleSubmit() {
 
     <form class="auth-form" @submit.prevent="handleSubmit">
       <label>
-        {{ mode === 'forgotPassword' ? '您的注册邮箱' : $t('auth.email') }}
-        <input v-model="email" type="email" :placeholder="mode === 'forgotPassword' ? '请输入您的注册邮箱' : $t('auth.email_placeholder')" :disabled="mode === 'forgotPassword' && resetEmailSent" required>
+        {{ mode === 'forgotPassword' ? $t('auth.messages.enter_email') : $t('auth.email') }}
+        <input v-model="email" type="email" :placeholder="mode === 'forgotPassword' ? $t('auth.messages.enter_registered_email') : $t('auth.email_placeholder')" :disabled="mode === 'forgotPassword' && resetEmailSent" required>
       </label>
 
       <label v-if="mode !== 'forgotPassword'">
@@ -107,7 +107,7 @@ async function handleSubmit() {
 
       <template v-if="mode === 'forgotPassword' && resetEmailSent">
         <button type="button" @click="setMode('login')">
-          返回
+          {{ $t('auth.return') }}
         </button>
       </template>
       <template v-else>
@@ -115,7 +115,7 @@ async function handleSubmit() {
           <span v-if="loading">{{ $t('auth.loading') }}</span>
           <span v-else-if="mode === 'login'">{{ $t('auth.login') }}</span>
           <span v-else-if="mode === 'register'">{{ $t('auth.register') }}</span>
-          <span v-else>确定</span>
+          <span v-else>{{ $t('auth.confirm') }}</span>
         </button>
       </template>
 
@@ -135,9 +135,9 @@ async function handleSubmit() {
           </a>
         </template>
         <template v-else>
-          <span>已有账号？</span>
+          <span>{{ $t('auth.prompt_to_login') }}</span>
           <a href="#" @click.prevent="setMode('login')">
-            登录
+            {{ $t('auth.login') }}
           </a>
         </template>
       </p>

@@ -155,6 +155,7 @@ auth:
   forgot_password: パスワードをお忘れですか？
   confirm: 確認
   cancel: キャンセル
+  return: 戻る
   reset_password: パスワードのリセット
   invalid_link: リセットリンクが無効か期限切れです。再度リクエストしてください。
   enter_and_confirm: 新しいパスワードを入力して確認してください。

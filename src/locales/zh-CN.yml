@@ -157,6 +157,7 @@ auth:
   forgot_password: 忘记密码？
   confirm: 确定
   cancel: 取消
+  return: 返回
   reset_password: 重设密码
   invalid_link: 密码重设链接无效或已过期，请重新请求重设密码。
   enter_and_confirm: 请输入并确认新密码。
@@ -176,7 +177,7 @@ auth:
     passwords_do_not_match: ❌ 两次输入的密码不一致！
     reset_success: 重置密码邮件已发送，请前往邮箱查收。
     reset_failed: 发送失败
-    enter_email: 请输入您的邮箱地址。
+    enter_email: 请输入您的邮箱地址
     enter_registered_email: 请输入您的注册邮箱：
 autoSave:
   restored: 用户数据已从云端恢复 ✨
