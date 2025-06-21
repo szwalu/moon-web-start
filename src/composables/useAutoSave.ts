@@ -1,7 +1,7 @@
-import { createClient } from '@supabase/supabase-js'
 import { debounce } from 'lodash-es'
 
 import { useI18n } from 'vue-i18n'
+import { supabase } from '@/utils/supabaseClient'
 
 // ✅ 加入国际化支持
 import { useSettingStore } from '@/stores/setting'
@@ -13,11 +13,6 @@ function toggleTheme(theme: string) {
   else
     document.documentElement.classList.remove('dark')
 }
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-)
 
 export function useAutoSave() {
   const settingStore = useSettingStore()
