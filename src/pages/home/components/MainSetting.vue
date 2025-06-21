@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import type { VNode } from 'vue'
-
 import SettingSelection from './SettingSelection.vue'
 
 import { supabase } from '@/utils/supabaseClient'
-
-// <-- 修改这里
 
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
