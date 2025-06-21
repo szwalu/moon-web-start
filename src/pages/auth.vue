@@ -93,12 +93,12 @@ async function handleSubmit() {
       })
       if (error)
         throw error
-      message.value = t('auth.messages.password_reset_sent')
+      message.value = t('auth.messages.reset_success')
       resetEmailSent.value = true
     }
   }
   catch (err: any) {
-    message.value = err.message || t('auth.messages.operation_failed')
+    message.value = err.message || t('auth.messages.reset_failed')
   }
   finally {
     loading.value = false
