@@ -84,6 +84,7 @@ messages:
   warnCustomize: 请先将网站偏好设置为“自定义”
   warnInvalidImport: 请导入合法的数据文件
   warnResetData: 数据重置后无法恢复，确认要重置数据吗？
+  warn_logout_to_reset: 请先登出您的账户，再进行重置数据操作。
   exported: 已导出~
   imported: 导入成功
   reset: 已重置~

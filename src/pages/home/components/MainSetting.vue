@@ -82,20 +82,32 @@ function importData() {
   inputElement.click()
 }
 
-function resetData() {
+async function resetData() {
+  // 1. 首先获取当前用户状态
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // 2. 如果用户存在 (已登录)，弹出提示并阻止后续操作
+  if (user) {
+    $message.warning(t('messages.warn_logout_to_reset'))
+    return
+  }
+
+  // 3. 如果用户不存在 (未登录)，则执行重置确认流程
   $dialog.warning({
     title: t('messages.tip'),
     content: t('messages.warnResetData'),
     positiveText: t('button.confirm'),
     negativeText: t('button.cancel'),
     onPositiveClick() {
-      siteStore.restoreData()
-      settingStore.restoreSettings()
-      toggleTheme(settingStore.settings.theme)
-      loadLanguageAsync(settingStore.settings.language)
-      settingStore.refreshSiteContainer()
-      $message.success(t('messages.reset'))
-      siteStore.setCateIndex(0)
+      // 【核心修正】: 不再调用 store 的 action，而是直接操作 localStorage
+      localStorage.removeItem('settings')
+      localStorage.removeItem('cache')
+
+      // 强制刷新页面来应用重置
+      window.location.reload()
+
+      // 刷新后会自动恢复，下面的消息提示可以省略或保留
+      // $message.success(t('messages.reset'))
     },
   })
 }

@@ -83,6 +83,8 @@ messages:
   tip: ヒント
   warnCustomize: サイトの好みを「カスタマイズ」に設定してください
   warnInvalidImport: 正しいデータファイルをインポートしてください
+  warnResetData: リセット後はデータを復元できません。データをリセットしてもよろしいですか?
+  warn_logout_to_reset: データをリセットするには、まずアカウントからログアウトしてください。
   exported: インポート成功
   reset: リセットされました~
   loading: ロード中...

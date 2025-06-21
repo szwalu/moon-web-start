@@ -84,6 +84,7 @@ messages:
   warnCustomize: Please set the site preference to "Customize" first
   warnInvalidImport: Please import a valid data file
   warnResetData: Data cannot be recovered after reset, are you sure to reset data?
+  warn_logout_to_reset: Please log out of your account before resetting data.
   exported: Exported~
   imported: Imported successfully
   reset: Reset~
