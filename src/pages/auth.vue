@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-
 import { useMessage } from 'naive-ui'
 
 // 【修正1】: 重新导入 useMessage
@@ -28,6 +27,8 @@ const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
 
+const lastBackupTime = ref('N/A') // 【新增】创建一个 ref 来存储备份时间
+
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
     return new Date(user.value.last_sign_in_at).toLocaleString()
@@ -35,8 +36,25 @@ const lastLoginTime = computed(() => {
 })
 
 onMounted(() => {
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange(async (_event, session) => { // 【修改】将此回调函数标记为 async
     user.value = session?.user ?? null
+    if (session) {
+      // 【新增】如果用户登录了，就去获取上次备份时间
+      const { data, _error } = await supabase
+        .from('profiles')
+        .select('updated_at')
+        .eq('id', session.user.id)
+        .single()
+
+      if (data && data.updated_at)
+        lastBackupTime.value = new Date(data.updated_at).toLocaleString()
+      else
+        lastBackupTime.value = '暂无备份' // 或者 'No backup yet'
+    }
+    else {
+      lastBackupTime.value = 'N/A' // 登出后重置
+    }
+
     if (!session)
       mode.value = 'login'
   })
@@ -118,6 +136,10 @@ async function handleSubmit() {
         <p>
           <span class="info-label">{{ $t('auth.account_last_login_label') }}</span>
           <span class="info-value">{{ lastLoginTime }}</span>
+        </p>
+        <p>
+          <span class="info-label">{{ $t('auth.account_last_backup_label') }}</span>
+          <span class="info-value">{{ lastBackupTime }}</span>
         </p>
       </div>
       <button :disabled="loading" @click="handleLogout">
