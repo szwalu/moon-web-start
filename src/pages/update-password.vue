@@ -46,9 +46,9 @@ async function handleReset() {
     message.value = `${t('auth.reset_failed')}：${error.message}`
   }
   else {
-    message.value = t('auth.reset_success')
-    sessionStorage.setItem('justLoggedIn', 'true')
-    setTimeout(() => router.push('/'), 2000)
+    await supabase.auth.signOut()
+    message.value = t('auth.messages.reset_success_redirect')
+    setTimeout(() => router.push('/auth'), 2000)
   }
 
   loading.value = false

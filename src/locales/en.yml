@@ -162,7 +162,7 @@ auth:
   forgot_password: Forgot Password?
   confirm: Confirm
   cancel: Cancel
-  return: 返回
+  return: return
   reset_password: Reset Password
   invalid_link: The reset link is invalid or has expired. Please request a new one.
   enter_and_confirm: Please enter and confirm your new password.
@@ -184,6 +184,7 @@ auth:
     enter_registered_email: Please enter your registered email：
     operation_failed: '❌ Operation failed: '
     passwords_do_not_match: ❌ The passwords entered do not match!
+    reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
 autoSave:
   restored: User data has been restored from the cloud ✨
   parse_failed: Failed to parse cloud data
