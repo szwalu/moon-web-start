@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
 
@@ -72,10 +71,6 @@ function handleSubMenuClick(subItem: any) {
   }
 }
 
-// 确保这个路径是正确的
-
-const router = useRouter()
-
 // 创建一个本地的响应式变量来存储用户状态
 const user = ref<any>(null)
 
@@ -85,17 +80,6 @@ onMounted(() => {
     user.value = session?.user ?? null
   })
 })
-
-// 定义登出函数
-async function handleLogout() {
-  const { error } = await supabase.auth.signOut()
-  if (!error) {
-    // 登出成功后，可以跳转到主页或登录页
-    // 同时刷新页面以确保所有状态都已重置
-    await router.push('/')
-    window.location.reload()
-  }
-}
 </script>
 
 <template>
@@ -206,16 +190,15 @@ async function handleLogout() {
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 
-      <a
+      <router-link
         v-else
-        href="#"
+        to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
-        @click.prevent="handleLogout"
       >
-        <span class="flex-grow truncate text-center">{{ $t('navbar.logout') }}</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
-      </a>
+      </router-link>
     </div>
   </section>
 </template>

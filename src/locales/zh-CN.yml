@@ -107,6 +107,7 @@ navbar:
   about: 关于
   auth: 注册/登录
   logout: 登出
+  account: 我的账户
 footer:
   disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
   contactLink: 点击联系
@@ -148,6 +149,10 @@ auth:
   login: 登录
   register: 注册
   loading: 处理中...
+  logout: 登出
+  account_title: 我的账户
+  account_email_label: 账户邮箱
+  account_last_login_label: 上次登录
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？

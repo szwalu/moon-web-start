@@ -107,6 +107,7 @@ navbar:
   about: About
   auth: Register/Login
   logout: Logout
+  account: My Account
 footer:
   disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
   contactLink: Contact Us
@@ -148,6 +149,10 @@ auth:
   login: Login
   register: Register
   loading: Processing...
+  logout: Logout
+  account_title: My Account
+  account_email_label: Account Email
+  account_last_login_label: Last Login
   email: Email
   password: Password
   prompt_to_register: Don't have an account?
