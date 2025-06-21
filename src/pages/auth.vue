@@ -1,20 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-
-// 1. 导入 onMounted
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
+
+import { useMessage } from 'naive-ui'
+
+// 【修正1】: 重新导入 useMessage
+import { useAutoSave } from '@/composables/useAutoSave'
+
+// 【修正2】: 重新导入 useAutoSave
 import { supabase } from '@/utils/supabaseClient'
 
 useDark()
 const router = useRouter()
 const { t } = useI18n()
+const messageHook = useMessage() // 【修正3】: 重新获取 message 实例
+const { autoLoadData } = useAutoSave() // 【修正4】: 重新获取 autoLoadData 函数
 
-// --- 【新增】管理用户登录状态 ---
-const user = ref<any>(null) // 用于存储当前登录的用户信息
-
-// --- 原有的表单状态 ---
+// --- 以下是您现有的状态变量，保持不变 ---
+const user = ref<any>(null)
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
 const password = ref('')
@@ -23,33 +28,26 @@ const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
 
-// --- 【新增】一个计算属性，用于格式化登录时间 ---
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
     return new Date(user.value.last_sign_in_at).toLocaleString()
-
   return 'N/A'
 })
 
-// --- 【新增】页面加载时，检查并监听用户状态 ---
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
-    // 如果用户登出了，确保视图回到登录模式
     if (!session)
       mode.value = 'login'
   })
 })
 
-// --- 【新增】登出函数 ---
 async function handleLogout() {
   loading.value = true
   await supabase.auth.signOut()
-  // 登出后，user ref 会通过上面的 onAuthStateChange 自动变为 null，UI会自动更新
   loading.value = false
 }
 
-// --- 以下是您原有的函数，保持不变 ---
 function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   mode.value = newMode
   message.value = ''
@@ -63,6 +61,7 @@ async function handleSubmit() {
     message.value = t('auth.messages.passwords_do_not_match')
     return
   }
+
   loading.value = true
   message.value = ''
   try {
@@ -73,6 +72,10 @@ async function handleSubmit() {
       })
       if (error)
         throw error
+
+      // 【核心修正】: 在这里重新调用 autoLoadData，以在登录成功后恢复数据
+      await autoLoadData({ $message: messageHook, t })
+
       await router.push('/')
     }
     else if (mode.value === 'register') {
@@ -84,7 +87,7 @@ async function handleSubmit() {
         throw error
       message.value = t('auth.messages.check_email_for_verification')
     }
-    else {
+    else { // 'forgotPassword' 模式
       const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
         redirectTo: `${window.location.origin}/update-password`,
       })
