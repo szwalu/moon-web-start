@@ -47,6 +47,7 @@ async function handleReset() {
   }
   else {
     message.value = t('auth.reset_success')
+    sessionStorage.setItem('justLoggedIn', 'true')
     setTimeout(() => router.push('/'), 2000)
   }
 
