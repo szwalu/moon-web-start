@@ -142,9 +142,15 @@ async function handleSubmit() {
           <span class="info-value">{{ lastBackupTime }}</span>
         </p>
       </div>
-      <button :disabled="loading" @click="handleLogout">
-        {{ loading ? $t('auth.loading') : $t('auth.logout') }}
-      </button>
+
+      <div class="button-group">
+        <button class="button--secondary" @click="router.push('/')">
+          {{ $t('auth.return_home') }}
+        </button>
+        <button :disabled="loading" @click="handleLogout">
+          {{ loading ? $t('auth.loading') : $t('auth.logout') }}
+        </button>
+      </div>
     </div>
 
     <div v-else>
@@ -337,6 +343,40 @@ button:disabled {
 }
 .dark .info-value {
   color: #ffffff;
+}
+
+/* 【新增】为按钮组和次要按钮添加样式 */
+.button-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.button--secondary {
+  width: 100%;
+  padding: 0.8rem;
+  background-color: #f0f0f0; /* 浅灰色背景 */
+  color: #333; /* 深色文字 */
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background-color 0.2s ease;
+}
+
+.button--secondary:hover {
+  background-color: #e0e0e0;
+}
+
+.dark .button--secondary {
+  background-color: #3a3a3c;
+  color: #e0e0e0;
+  border-color: #555;
+}
+
+.dark .button--secondary:hover {
+  background-color: #48484a;
 }
 </style>
 
