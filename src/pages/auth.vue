@@ -75,8 +75,8 @@ async function handleSubmit() {
         throw error
 
       // 【核心修正】: 在这里重新调用 autoLoadData，以在登录成功后恢复数据
-      await autoLoadData({ $message: messageHook, t })
       await router.push('/')
+      await autoLoadData({ $message: messageHook, t })
     }
     else if (mode.value === 'register') {
       const { error } = await supabase.auth.signUp({
