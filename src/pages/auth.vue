@@ -15,7 +15,7 @@ import { supabase } from '@/utils/supabaseClient'
 useDark()
 const router = useRouter()
 const { t } = useI18n()
-const messageHook = useMessage() // 【修正3】: 重新获取 message 实例
+const messageHook = useMessage() // 【修正3】 重新获取 message 实例
 const { autoLoadData } = useAutoSave() // 【修正4】: 重新获取 autoLoadData 函数
 
 // --- 以下是您现有的状态变量，保持不变 ---
