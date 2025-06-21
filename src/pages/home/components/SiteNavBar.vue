@@ -17,6 +17,17 @@ const { draggableOptions, handleStart, handleEnd } = useDrag()
 
 const activeSubMenuIndex = ref(-1)
 
+const isMobile = ref(false)
+
+onMounted(() => {
+  // 检查初始状态
+  isMobile.value = window.innerWidth <= 768
+  // 监听窗口大小变化
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 768
+  })
+})
+
 function checkIsMobileDevice(): boolean {
   if (typeof navigator !== 'undefined')
     return /Mobi|Android|iPhone/i.test(navigator.userAgent)
@@ -86,7 +97,7 @@ onMounted(() => {
   <section
     class="site-navbar-sidebar pb-12 text-16" :class="{ 'is-open': settingStore.isSideNavOpen }"
   >
-    <div class="sidebar-logo-container flex items-center justify-center py-7 p-4">
+    <div v-if="isMobile && settingStore.isSideNavOpen" class="sidebar-logo-container flex items-center justify-center py-7 p-4">
       <img src="/logo.jpg" alt="Logo" class="w-auto h-40">
     </div>
 

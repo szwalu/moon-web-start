@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+
+import { onMounted, ref } from 'vue'
+
+// 1. 导入 ref 和 onMounted
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 
 const route = useRoute()
 const settingStore = useSettingStore()
-// 假设 toggleDark 是全局可用的，或者您有自己的方式来获取它
-// const { toggleDark } = useTheme()
+
+// 2. 增加 isMobile 状态，用于判断是否为移动端尺寸
+const isMobile = ref(false)
+onMounted(() => {
+  isMobile.value = window.innerWidth <= 768
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 768
+  })
+})
 
 function getIconClass(routeName: string) {
   return {
@@ -17,13 +28,21 @@ function getIconClass(routeName: string) {
 
 <template>
   <div class="flex items-center justify-between px-4 pt-12 lg:px-8 md:px-6">
-    <div class="flex items-center gap-x-4">
+    <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
-      <RouterLink to="/">
+
+      <RouterLink v-if="!isMobile" to="/">
         <div text="$primary-c" class="flex items-center justify-center">
           <span i-cus-moonset class="inline-block text-32 transition-300 hover:opacity-80" />
         </div>
       </RouterLink>
+
+      <img
+        v-if="isMobile && !settingStore.isSideNavOpen"
+        src="/logo.jpg"
+        alt="Logo"
+        class="w-auto h-32"
+      >
     </div>
 
     <div class="flex items-center gap-x-8">
