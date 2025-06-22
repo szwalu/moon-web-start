@@ -49,7 +49,7 @@ onMounted(() => {
       if (data && data.updated_at)
         lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
       else
-        lastBackupTime.value = '暂无备份' // 或者 'No backup yet'
+        lastBackupTime.value = '暂无备份' // 或者'No backup yet'.
     }
     else {
       lastBackupTime.value = 'N/A' // 登出后重置
