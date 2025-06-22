@@ -46,13 +46,10 @@ onMounted(() => {
         .eq('id', session.user.id)
         .single()
 
-      if (data && data.updated_at) {
-        // 【核心修正】：只对备份时间使用更明确的格式化，并手动添加 'Z'
-        lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString('zh-CN', { hour12: false })
-      }
-      else {
-        lastBackupTime.value = t('auth.messages.no_backup_yet')
-      }
+      if (data && data.updated_at)
+        lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
+      else
+        lastBackupTime.value = '暂无备份' // 或者 'No backup yet'
     }
     else {
       lastBackupTime.value = 'N/A' // 登出后重置
