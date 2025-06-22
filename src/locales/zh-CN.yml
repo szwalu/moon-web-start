@@ -188,6 +188,7 @@ auth:
     enter_email: 请输入您的邮箱地址
     enter_registered_email: 请输入您的注册邮箱：
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
+    no_backup_yet: 暂无备份
 autoSave:
   restored: 用户数据已从云端恢复 ✨
   parse_failed: 解析云端数据失败

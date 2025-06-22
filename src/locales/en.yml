@@ -188,6 +188,7 @@ auth:
     operation_failed: '❌ Operation failed: '
     passwords_do_not_match: ❌ The passwords entered do not match!
     reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
+    no_backup_yet: No backup yet
 autoSave:
   restored: User data has been restored from the cloud ✨
   parse_failed: Failed to parse cloud data

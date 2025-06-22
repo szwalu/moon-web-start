@@ -71,7 +71,7 @@ onUnmounted(() => {
         <span>&nbsp;|&nbsp;</span>
         <a href="https://www.woabc.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkWoabcNav') }}</a>
         <span>&nbsp;|&nbsp;</span>
-        <a href="https://www.woabc.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkAbcSite') }}</a>
+        <a href="https://www.tqabc.com/" target="_blank" rel="noopener noreferrer" class="footer-link">{{ $t('footer.linkAbcSite') }}</a>
       </p>
     </div>
   </footer>

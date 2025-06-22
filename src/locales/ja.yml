@@ -187,6 +187,7 @@ auth:
     enter_email: メールアドレスを入力してください。
     enter_registered_email: 登録済みのメールアドレスを入力してください：
     reset_success_redirect: ✅ パスワードが正常にリセットされました。ログインページにリダイレクトします...
+    no_backup_yet: バックアップなし
 autoSave:
   restored: ユーザーデータをクラウドから復元しました ✨
   parse_failed: クラウドデータの解析に失敗しました
