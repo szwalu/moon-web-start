@@ -30,7 +30,7 @@ watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
     if (newJson === lastJson) {
-      // 跳过首次加载触发，仅在用户修改数据后自动备份
+      // 跳过首次加载触发，仅在用户修改数据后自动备份。
       return
     }
 
