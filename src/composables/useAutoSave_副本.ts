@@ -1,11 +1,11 @@
 import { debounce } from 'lodash-es'
-import { ref } from 'vue'
+
+import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
+
+// ✅ 加入国际化支持
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
-
-// ✅ 全局导出用于判断是否是初次加载的数据（可选）
-export const restoredContentJson = ref('')
 
 function toggleTheme(theme: string) {
   if (theme === 'dark')
@@ -17,9 +17,9 @@ function toggleTheme(theme: string) {
 export function useAutoSave() {
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
+  const { t } = useI18n() // ✅ 获取 t 函数
 
-  // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
-  const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
+  const autoLoadData = async ($message: any) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
       return
@@ -33,7 +33,6 @@ export function useAutoSave() {
     if (data && data.content) {
       try {
         const parsed = JSON.parse(data.content)
-
         if (parsed.data && Array.isArray(parsed.data)) {
           parsed.data.forEach((category: any) => {
             if (!category.groupList)
@@ -44,29 +43,21 @@ export function useAutoSave() {
             })
           })
         }
-
         if (parsed.data && parsed.settings) {
           settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
-
-          // ✅ 标记内容（可选用于对比是否改变）
-          restoredContentJson.value = JSON.stringify({
-            data: parsed.data,
-            settings: parsed.settings,
-          })
-
-          $message.success(t('autoSave.restored'))
+          $message.success(t('autoSave.restored')) // ✅ 国际化
         }
       }
       catch (e) {
         console.error('❌ 解析云端数据失败:', e)
-        $message.error(t('autoSave.parse_failed'))
+        $message.error(t('autoSave.parse_failed')) // ✅ 国际化
       }
     }
     else if (error && error.code !== 'PGRST116') {
       console.error('❌ 加载数据时出错:', error)
-      $message.error(t('autoSave.load_failed'))
+      $message.error(t('autoSave.load_failed')) // ✅ 国际化
     }
   }
 
@@ -89,6 +80,8 @@ export function useAutoSave() {
     if (error)
       console.error('❌ 自动保存失败:', error)
   }, 2000)
+
+  // 【核心修正】：删除了不再需要的 startWatching 函数
 
   return {
     autoLoadData,

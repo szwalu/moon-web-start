@@ -53,6 +53,7 @@ declare global {
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const isDark: typeof import('./composables/app')['isDark']
   const isDataInitialized: typeof import('./composables/useAutoSave')['isDataInitialized']
+  const isDataRestoring: typeof import('./composables/useAutoSave')['isDataRestoring']
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isInitialLoad: typeof import('./composables/useAutoSave')['isInitialLoad']
   const isLgScreen: typeof import('./composables/app')['isLgScreen']
@@ -61,9 +62,11 @@ declare global {
   const isReactive: typeof import('vue')['isReactive']
   const isReadonly: typeof import('vue')['isReadonly']
   const isRef: typeof import('vue')['isRef']
+  const isRestoring: typeof import('./composables/useAutoSave')['isRestoring']
   const isSmScreen: typeof import('./composables/app')['isSmScreen']
   const isXlScreen: typeof import('./composables/app')['isXlScreen']
   const isXsScreen: typeof import('./composables/app')['isXsScreen']
+  const lastJson: typeof import('./composables/useAutoSave')['lastJson']
   const loadSettings: typeof import('./stores/setting')['loadSettings']
   const makeDestructurable: typeof import('@vueuse/core')['makeDestructurable']
   const mapActions: typeof import('pinia')['mapActions']
@@ -104,6 +107,7 @@ declare global {
   const reactiveOmit: typeof import('@vueuse/core')['reactiveOmit']
   const reactivePick: typeof import('@vueuse/core')['reactivePick']
   const readonly: typeof import('vue')['readonly']
+  const readyToSave: typeof import('./composables/useAutoSave')['readyToSave']
   const ref: typeof import('vue')['ref']
   const refAutoReset: typeof import('@vueuse/core')['refAutoReset']
   const refDebounced: typeof import('@vueuse/core')['refDebounced']
@@ -113,6 +117,7 @@ declare global {
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
+  const restoredContentJson: typeof import('./composables/useAutoSave')['restoredContentJson']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
@@ -159,7 +164,7 @@ declare global {
   const useAsyncQueue: typeof import('@vueuse/core')['useAsyncQueue']
   const useAsyncState: typeof import('@vueuse/core')['useAsyncState']
   const useAttrs: typeof import('vue')['useAttrs']
-  const useAutoSave: typeof import('./composables/useAutoSave')['useAutoSave']
+  const useAutoSave: typeof import('./composables/useAutoSave_副本')['useAutoSave']
   const useBase64: typeof import('@vueuse/core')['useBase64']
   const useBattery: typeof import('@vueuse/core')['useBattery']
   const useBluetooth: typeof import('@vueuse/core')['useBluetooth']
@@ -446,6 +451,7 @@ declare module 'vue' {
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
+    readonly restoredContentJson: UnwrapRef<typeof import('./composables/useAutoSave')['restoredContentJson']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
@@ -492,7 +498,7 @@ declare module 'vue' {
     readonly useAsyncQueue: UnwrapRef<typeof import('@vueuse/core')['useAsyncQueue']>
     readonly useAsyncState: UnwrapRef<typeof import('@vueuse/core')['useAsyncState']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
-    readonly useAutoSave: UnwrapRef<typeof import('./composables/useAutoSave')['useAutoSave']>
+    readonly useAutoSave: UnwrapRef<typeof import('./composables/useAutoSave_副本')['useAutoSave']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
     readonly useBattery: UnwrapRef<typeof import('@vueuse/core')['useBattery']>
     readonly useBluetooth: UnwrapRef<typeof import('@vueuse/core')['useBluetooth']>
