@@ -24,14 +24,19 @@ const settingStore = useSettingStore()
 const { autoSaveData } = useAutoSave()
 const siteStore = useSiteStore()
 
+let lastJson = ''
+
 watch(
-  () => siteStore.customData,
-  () => {
-    if (settingStore.settings.websitePreference !== 'Customize')
-      settingStore.setSettings({ websitePreference: 'Customize' })
+  () => JSON.stringify(siteStore.customData),
+  (newJson) => {
+    if (newJson === lastJson) {
+      // 跳过首次加载触发，仅在用户修改数据后自动备份
+      return
+    }
+
+    lastJson = newJson
     autoSaveData()
   },
-  { deep: true },
 )
 
 const isMobile = ref(false)

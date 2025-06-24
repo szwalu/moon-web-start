@@ -176,6 +176,7 @@ auth:
   submit_new_password: Submit New Password
   account_last_backup_label: Last Backup
   return_home: Back to Home
+  please_login: Please log in to your account first!
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'

@@ -175,6 +175,7 @@ auth:
   submit_new_password: 新しいパスワードを送信
   account_last_backup_label: 最終バックアップ
   return_home: ホームに戻る
+  please_login: 最初にアカウントにログインしてください！
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
