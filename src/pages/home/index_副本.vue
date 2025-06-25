@@ -2,7 +2,6 @@
 import { onMounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
 
-import { useMessage } from 'naive-ui'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
@@ -16,34 +15,25 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 
-// ✅ 新增：用于判断用户是否登录并提醒
-
 defineOptions({
   name: 'HomePage',
 })
 
 const settingStore = useSettingStore()
-const siteStore = useSiteStore()
+
 const { autoSaveData } = useAutoSave()
-
-const $message = useMessage()
-
-// ✅ 新增：任何数据变动前，若未登录，弹出提醒
-watch(
-  siteStore.customData,
-  () => {
-    if (!window.__currentUser)
-      $message.warning(t('auth.please_login'))
-  },
-  { deep: true },
-)
+const siteStore = useSiteStore()
 
 let lastJson = ''
+
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
-    if (newJson === lastJson)
+    if (newJson === lastJson) {
+      // 跳过首次加载触发，仅在用户修改数据后自动备份。
       return
+    }
+
     lastJson = newJson
     autoSaveData()
   },
@@ -62,6 +52,7 @@ onMounted(() => {
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
+// 天气加载控制
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     fetchWeather()
@@ -82,6 +73,7 @@ async function fetchWeather() {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
 
+      // 获取 IP 定位
       const locRes = await fetch('https://ipapi.co/json/')
       const locData = await locRes.json()
       const lat = locData.latitude
@@ -89,6 +81,7 @@ async function fetchWeather() {
       const enCity = locData.city
       const city = getChineseCityName(enCity)
 
+      // 获取 Open-Meteo 天气数据
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
       )
@@ -131,6 +124,7 @@ function getWeatherText(code: number): { text: string; icon: string } {
     96: { text: '雷雨伴小冰雹', icon: '⛈️' },
     99: { text: '雷雨伴大冰雹', icon: '⛈️' },
   }
+
   return weatherMap[code] || { text: '未知天气', icon: '❓' }
 }
 
@@ -184,6 +178,7 @@ function getChineseCityName(enCity: string): string {
     'Toronto': '多伦多',
     'Vancouver': '温哥华',
   }
+
   for (const [key, value] of Object.entries(cityMap)) {
     if (enCity.toLowerCase().includes(key.toLowerCase()))
       return value
@@ -236,22 +231,35 @@ function showMobileToast() {
 <template>
   <TheDoc>
     <SiteNavBar />
-    <div v-if="settingStore.isSideNavOpen && isMobile" class="mobile-overlay" @click="settingStore.toggleSideNav()" />
+
+    <div
+      v-if="settingStore.isSideNavOpen && isMobile"
+      class="mobile-overlay"
+      @click="settingStore.toggleSideNav()"
+    />
+
     <div
       class="main-content-area"
-      px="6 sm:12"
-      pb="12 sm:24"
+
+      px="6 sm:12" pb="12 sm:24"
+
       sm:auto my-0 w-full pt-0 bg-transparent sm:pt-0
       :class="{
         'no_select': settingStore.isSetting,
         'content-shifted': settingStore.isSideNavOpen,
       }"
     >
-      <div class="sticky z-[1010] w-full left-0 top-0" bg="$main-bg-c">
+      <div
+        class="sticky z-[1010] w-full left-0 top-0"
+        bg="$main-bg-c"
+      >
         <MainHeader />
       </div>
 
-      <MainClock v-if="!settingStore.isSetting" class="mt-4" />
+      <MainClock
+        v-if="!settingStore.isSetting"
+        class="mt-4"
+      />
 
       <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showWeather')" class="weather-container">
         <div v-if="weatherCity !== '天气加载失败'" class="weather-content">
@@ -264,26 +272,33 @@ function showMobileToast() {
         </div>
       </div>
 
-      <MainSearch my-24 />
+      <MainSearch
+        my-24
+      />
       <SiteContainer :key="settingStore.siteContainerKey" />
       <MainSetting />
-      <TheFooter v-if="settingStore.getSettingValue('showFooter')" />
+      <TheFooter
+        v-if="settingStore.getSettingValue('showFooter')"
+      />
     </div>
     <Blank />
   </TheDoc>
 </template>
 
 <style scoped>
+/* CSS部分与上一版完全一致，此处省略以保持简洁 */
 .main-content-area {
   transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
   position: relative;
   box-sizing: border-box;
 }
+
 .content-shifted {
   margin-left: 130px;
   width: calc(100% - 130px);
   padding-left: 0 !important;
 }
+
 .mobile-overlay {
   position: fixed;
   top: 0;
@@ -293,6 +308,7 @@ function showMobileToast() {
   background-color: rgba(0, 0, 0, 0.4);
   z-index: 999;
 }
+
 .weather-container {
   display: flex;
   justify-content: center;
@@ -311,10 +327,12 @@ function showMobileToast() {
   margin: 0 8px;
   opacity: 0.5;
 }
+
 :deep(.mobile-guide-toast) {
   padding: 0 !important;
   overflow: visible !important;
 }
+
 :deep(.swal2-popup.swal2-toast) {
   background: transparent !important;
   box-shadow: none !important;
