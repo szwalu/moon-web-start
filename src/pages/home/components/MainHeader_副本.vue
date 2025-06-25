@@ -32,6 +32,12 @@ onMounted(() => {
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
 
+      <RouterLink v-if="!isMobile" to="/">
+        <div text="$primary-c" class="flex items-center justify-center">
+          <span i-cus-moonset class="inline-block text-32 transition-300 hover:opacity-80" />
+        </div>
+      </RouterLink>
+
       <img
         v-if="isMobile && !settingStore.isSideNavOpen"
         src="/logo.jpg"
@@ -42,11 +48,10 @@ onMounted(() => {
 
     <!-- ✅ 页眉右侧：注册 / 登录 / 账户 按钮 -->
     <div class="flex items-center gap-x-4">
-      <!-- 页眉右侧：登录按钮 -->
       <RouterLink
         to="/auth"
-        class="inline-block rounded-xl px-3 py-1 text-[14px] font-normal transition-colors md:px-5 md:py-2 md:text-[16px] hover:text-$primary-c"
-        style="min-width: 80px; text-align: center;"
+        class="inline-block rounded-xl px-5 py-2 text-[16px] font-normal transition-colors sm:px-3 sm:py-1 sm:text-[14px] hover:text-$primary-c"
+        style="min-width: 100px; text-align: center;"
       >
         {{ user ? $t('navbar.account') : $t('navbar.auth') }}
       </RouterLink>

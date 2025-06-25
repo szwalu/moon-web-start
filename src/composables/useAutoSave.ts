@@ -20,7 +20,7 @@ export function useAutoSave() {
 
   // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = window.__currentUser
     if (!user)
       return
 
@@ -71,7 +71,7 @@ export function useAutoSave() {
   }
 
   const autoSaveData = debounce(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = window.__currentUser
     if (!user)
       return
 

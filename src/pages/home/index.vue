@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, watchEffect } from 'vue'
+import { onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 
 import { useMessage } from 'naive-ui'
@@ -9,26 +10,23 @@ import MainSearch from './components/MainSearch.vue'
 import SiteContainer from './components/SiteContainer.vue'
 import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
-
 import 'sweetalert2/dist/sweetalert2.min.css'
 import shareIconPath from './1122.jpg'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
+import { supabase } from '@/utils/supabaseClient'
 
-// ✅ 新增：用于判断用户是否登录并提醒
-
-defineOptions({
-  name: 'HomePage',
-})
+defineOptions({ name: 'HomePage' })
 
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
 const { autoSaveData } = useAutoSave()
-
 const $message = useMessage()
+const router = useRouter()
+const route = useRoute()
 
-// ✅ 新增：任何数据变动前，若未登录，弹出提醒
+// 自动保存数据逻辑
 watch(
   siteStore.customData,
   () => {
@@ -58,7 +56,66 @@ onMounted(() => {
   showMobileToast()
 })
 
-// ========== 以下是天气功能 ==========
+// ========== 浮动按钮逻辑 ==========
+const user = ref<any>(null)
+
+supabase.auth.getSession().then(({ data }) => {
+  user.value = data?.session?.user ?? null
+})
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  user.value = session?.user ?? null
+})
+
+function handleSettingsClick() {
+  if (route.path === '/setting') {
+    // 当前在设置页 → 回首页，不提示
+    router.push('/')
+  }
+  else {
+    if (user.value) {
+      // 已登录 → 跳转到设置页
+      router.push('/setting')
+    }
+    else {
+      // 未登录 → 提示后跳转
+      $message.warning(t('auth.please_login'))
+      setTimeout(() => {
+        router.push('/setting')
+      }, 800)
+    }
+  }
+}
+
+declare function toggleDark(event?: MouseEvent): void
+function toggleDarkMode(event?: MouseEvent) {
+  toggleDark(event!)
+}
+
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth',
+  })
+}
+
+const showFloatingButtons = ref(true)
+let scrollTimeout: ReturnType<typeof setTimeout>
+function handleScroll() {
+  showFloatingButtons.value = false
+  clearTimeout(scrollTimeout)
+  scrollTimeout = setTimeout(() => {
+    showFloatingButtons.value = true
+  }, 300)
+}
+onMounted(() => {
+  window.addEventListener('scroll', handleScroll)
+})
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll)
+})
+
+// ========== 天气功能 ==========
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
@@ -81,7 +138,6 @@ async function fetchWeather() {
     try {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
-
       const locRes = await fetch('https://ipapi.co/json/')
       const locData = await locRes.json()
       const lat = locData.latitude
@@ -89,9 +145,7 @@ async function fetchWeather() {
       const enCity = locData.city
       const city = getChineseCityName(enCity)
 
-      const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
-      )
+      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
       const data = await res.json()
       const temp = data.current.temperature_2m
       const code = data.current.weathercode
@@ -146,7 +200,7 @@ function getChineseCityName(enCity: string): string {
     'Nanjing': '南京',
     'Tianjin': '天津',
     'Chongqing': '重庆',
-    'Xi\'an': '西安',
+    "Xi'an": '西安',
     'Changsha': '长沙',
     'Zhengzhou': '郑州',
     'Fuzhou': '福州',
@@ -269,6 +323,40 @@ function showMobileToast() {
       <MainSetting />
       <TheFooter v-if="settingStore.getSettingValue('showFooter')" />
     </div>
+
+    <!-- ✅ 浮动按钮区域 -->
+    <div
+      v-show="showFloatingButtons"
+      class="floating-buttons fixed z-[9999] flex flex-col transition-opacity duration-300 gap-12 bottom-15 right-10"
+    >
+      <!-- 🔝 返回顶部按钮 -->
+      <div
+        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
+        title="返回顶部"
+        @click="scrollToTop"
+      >
+        <div class="i-carbon-arrow-up" />
+      </div>
+
+      <!-- ⚙️ 设置 / 首页 切换 -->
+      <div
+        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
+        title="设置"
+        @click="handleSettingsClick"
+      >
+        <div :class="route.path === '/setting' ? 'i-carbon-home' : 'i-carbon-settings'" />
+      </div>
+
+      <!-- 🌙 日夜间切换 -->
+      <div
+        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
+        title="切换日夜间模式"
+        @click="toggleDarkMode"
+      >
+        <div class="i-carbon-moon dark:i-carbon-light" />
+      </div>
+    </div>
+
     <Blank />
   </TheDoc>
 </template>
@@ -310,6 +398,12 @@ function showMobileToast() {
 .separator {
   margin: 0 8px;
   opacity: 0.5;
+}
+.floating-buttons {
+  opacity: 1;
+}
+.floating-buttons[style*="display: none"] {
+  opacity: 0;
 }
 :deep(.mobile-guide-toast) {
   padding: 0 !important;
