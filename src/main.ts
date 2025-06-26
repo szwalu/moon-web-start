@@ -39,7 +39,7 @@ async function setupApp() {
 
   await waitForSessionInit()
 
-  // ✅ 后续状态监听（如自动刷新 token、登出等）
+  // ✅ 后续状态监听（如自动刷新 token、登出等.）
   supabase.auth.onAuthStateChange((_event, session) => {
     window.__currentUser = session?.user || null
     // console.log('[auth event]', _event, session)
