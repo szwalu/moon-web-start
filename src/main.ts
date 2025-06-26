@@ -22,7 +22,7 @@ async function waitForSessionInit(): Promise<void> {
     return
   }
 
-  // ✅ Step 3: 等待首次登录状态事件
+  // ✅ Step 3: 等待首次登录状态事件.
   return new Promise((resolve) => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       window.__currentUser = session?.user || null
