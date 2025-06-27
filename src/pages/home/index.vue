@@ -69,7 +69,7 @@ supabase.auth.onAuthStateChange((_event, session) => {
 
 function handleSettingsClick() {
   if (route.path === '/setting') {
-    // 当前在设置页 → 回首页，不提示
+    // 当前在设置页 → 回首页，不提示.
     router.push('/')
   }
   else {
