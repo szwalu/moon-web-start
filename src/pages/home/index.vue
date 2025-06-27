@@ -76,7 +76,7 @@ function handleSettingsClick() {
   else {
   // 如果用户未登录，弹出提示
     $message.warning(t('auth.please_login')) // ✅ 国际化
-    // 等待 0.3 秒后跳转到设置页面
+    // 等待 0.3秒后跳转到设置页面
     setTimeout(() => {
       router.push('/setting')
     }, 300)
