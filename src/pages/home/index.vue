@@ -16,6 +16,7 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 import { supabase } from '@/utils/supabaseClient'
+import { cityMap, weatherMap } from '@/utils/weatherMap'
 
 defineOptions({ name: 'HomePage' })
 
@@ -151,88 +152,24 @@ async function fetchWeather() {
   }
 }
 
-function getWeatherText(code: number): { text: string; icon: string } {
-  const weatherMap: Record<number, { text: string; icon: string }> = {
-    0: { text: '晴朗', icon: '☀️' },
-    1: { text: '主要晴天', icon: '🌤️' },
-    2: { text: '部分多云', icon: '⛅' },
-    3: { text: '多云', icon: '☁️' },
-    45: { text: '雾', icon: '🌫️' },
-    48: { text: '霜雾', icon: '🌁' },
-    51: { text: '毛毛雨', icon: '🌦️' },
-    53: { text: '中等毛毛雨', icon: '🌧️' },
-    55: { text: '浓密毛毛雨', icon: '🌧️' },
-    61: { text: '小雨', icon: '🌧️' },
-    63: { text: '中雨', icon: '🌧️' },
-    65: { text: '大雨', icon: '🌧️' },
-    71: { text: '小雪', icon: '🌨️' },
-    73: { text: '中雪', icon: '🌨️' },
-    75: { text: '大雪', icon: '❄️' },
-    80: { text: '阵雨', icon: '🌦️' },
-    81: { text: '中等阵雨', icon: '🌧️' },
-    82: { text: '强阵雨', icon: '🌧️' },
-    95: { text: '雷雨', icon: '⛈️' },
-    96: { text: '雷雨伴小冰雹', icon: '⛈️' },
-    99: { text: '雷雨伴大冰雹', icon: '⛈️' },
-  }
-  return weatherMap[code] || { text: '未知天气', icon: '❓' }
-}
-
 function getChineseCityName(enCity: string): string {
-  const cityMap: Record<string, string> = {
-    'Beijing': '北京',
-    'Shanghai': '上海',
-    'Guangzhou': '广州',
-    'Shenzhen': '深圳',
-    'Hangzhou': '杭州',
-    'Chengdu': '成都',
-    'Wuhan': '武汉',
-    'Nanjing': '南京',
-    'Tianjin': '天津',
-    'Chongqing': '重庆',
-    "Xi'an": '西安',
-    'Changsha': '长沙',
-    'Zhengzhou': '郑州',
-    'Fuzhou': '福州',
-    'Xiamen': '厦门',
-    'Ningbo': '宁波',
-    'Suzhou': '苏州',
-    'Qingdao': '青岛',
-    'Jinan': '济南',
-    'Shenyang': '沈阳',
-    'Dalian': '大连',
-    'Harbin': '哈尔滨',
-    'Kunming': '昆明',
-    'Hefei': '合肥',
-    'Nanchang': '南昌',
-    'Urumqi': '乌鲁木齐',
-    'Heyuan': '河源',
-    'Hong Kong': '香港',
-    'Macau': '澳门',
-    'Taipei': '台北',
-    'Kaohsiung': '高雄',
-    'Taichung': '台中',
-    'Tainan': '台南',
-    'New York': '纽约',
-    'Los Angeles': '洛杉矶',
-    'San Francisco': '旧金山',
-    'London': '伦敦',
-    'Paris': '巴黎',
-    'Tokyo': '东京',
-    'Seoul': '首尔',
-    'Bangkok': '曼谷',
-    'Singapore': '新加坡',
-    'Berlin': '柏林',
-    'Sydney': '悉尼',
-    'Moscow': '莫斯科',
-    'Toronto': '多伦多',
-    'Vancouver': '温哥华',
-  }
+  enCity = enCity.trim().toLowerCase()
+
   for (const [key, value] of Object.entries(cityMap)) {
-    if (enCity.toLowerCase().includes(key.toLowerCase()))
+    const keyLower = key.toLowerCase()
+    if (
+      enCity === keyLower
+      || enCity === `${keyLower} city`
+      || enCity === `${keyLower} shi`
+      || enCity.includes(keyLower)
+    )
       return value
   }
-  return enCity
+  return enCity // fallback
+}
+
+function getWeatherText(code: number): { text: string; icon: string } {
+  return weatherMap[code] || { text: '未知天气', icon: '❓' }
 }
 
 function showMobileToast() {

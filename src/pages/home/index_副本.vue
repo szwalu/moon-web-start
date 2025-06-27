@@ -69,21 +69,11 @@ supabase.auth.onAuthStateChange((_event, session) => {
 
 function handleSettingsClick() {
   if (route.path === '/setting') {
-    // 当前在设置页 → 回首页，不提示
+    // 当前在设置页 → 回首页，不提示.
     router.push('/')
   }
   else {
-    if (user.value) {
-      // 已登录 → 跳转到设置页
-      router.push('/setting')
-    }
-    else {
-      // 未登录 → 提示后跳转
-      $message.warning(t('auth.please_login'))
-      setTimeout(() => {
-        router.push('/setting')
-      }, 800)
-    }
+    location.href = '/setting'
   }
 }
 
