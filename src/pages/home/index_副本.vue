@@ -73,7 +73,17 @@ function handleSettingsClick() {
     router.push('/')
   }
   else {
-    location.href = '/setting'
+    if (user.value) {
+      // 已登录 → 跳转到设置页
+      router.push('/setting')
+    }
+    else {
+      // 未登录 → 提示后跳转
+      $message.warning(t('auth.please_login'))
+      setTimeout(() => {
+        router.push('/setting')
+      }, 800)
+    }
   }
 }
 
