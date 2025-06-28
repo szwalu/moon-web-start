@@ -1,48 +1,39 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onMounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
 
-import { useMessage } from 'naive-ui'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
 import SiteContainer from './components/SiteContainer.vue'
 import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
+
 import 'sweetalert2/dist/sweetalert2.min.css'
 import shareIconPath from './1122.jpg'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
-import { supabase } from '@/utils/supabaseClient'
-import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-defineOptions({ name: 'HomePage' })
+defineOptions({
+  name: 'HomePage',
+})
 
 const settingStore = useSettingStore()
-const siteStore = useSiteStore()
-const { autoSaveData } = useAutoSave()
-const $message = useMessage()
-const router = useRouter()
-const route = useRoute()
 
-// 自动保存数据逻辑
-watch(
-  siteStore.customData,
-  () => {
-    if (!window.__currentUser)
-      $message.warning(t('auth.please_login'))
-  },
-  { deep: true },
-)
+const { autoSaveData } = useAutoSave()
+const siteStore = useSiteStore()
 
 let lastJson = ''
+
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
-    if (newJson === lastJson)
+    if (newJson === lastJson) {
+      // 跳过首次加载触发，仅在用户修改数据后自动备份
       return
+    }
+
     lastJson = newJson
     autoSaveData()
   },
@@ -57,64 +48,11 @@ onMounted(() => {
   showMobileToast()
 })
 
-// ========== 浮动按钮逻辑 ==========
-const user = ref<any>(null)
-
-supabase.auth.getSession().then(({ data }) => {
-  user.value = data?.session?.user ?? null
-})
-
-supabase.auth.onAuthStateChange((_event, session) => {
-  user.value = session?.user ?? null
-})
-
-function handleSettingsClick() {
-  if (route.path === '/setting') {
-    // 当前在设置页 → 回首页，不提示.
-    router.push('/')
-  }
-  else {
-  // 如果用户未登录，弹出提示
-    $message.warning(t('auth.please_login')) // ✅ 国际化
-    // 等待 0.3秒后跳转到设置页面
-    setTimeout(() => {
-      router.push('/setting')
-    }, 300)
-  }
-}
-
-declare function toggleDark(event?: MouseEvent): void
-function toggleDarkMode(event?: MouseEvent) {
-  toggleDark(event!)
-}
-
-function scrollToTop() {
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth',
-  })
-}
-
-const showFloatingButtons = ref(true)
-let scrollTimeout: ReturnType<typeof setTimeout>
-function handleScroll() {
-  showFloatingButtons.value = false
-  clearTimeout(scrollTimeout)
-  scrollTimeout = setTimeout(() => {
-    showFloatingButtons.value = true
-  }, 300)
-}
-onMounted(() => {
-  window.addEventListener('scroll', handleScroll)
-})
-onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
-})
-
-// ========== 天气功能 ==========
+// ========== 以下是天气功能 ==========
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
+// 天气加载控制
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     fetchWeather()
@@ -134,6 +72,8 @@ async function fetchWeather() {
     try {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
+
+      // 获取 IP 定位
       const locRes = await fetch('https://ipapi.co/json/')
       const locData = await locRes.json()
       const lat = locData.latitude
@@ -141,7 +81,10 @@ async function fetchWeather() {
       const enCity = locData.city
       const city = getChineseCityName(enCity)
 
-      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
+      // 获取 Open-Meteo 天气数据
+      const res = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
+      )
       const data = await res.json()
       const temp = data.current.temperature_2m
       const code = data.current.weathercode
@@ -157,24 +100,90 @@ async function fetchWeather() {
   }
 }
 
-function getChineseCityName(enCity: string): string {
-  enCity = enCity.trim().toLowerCase()
-
-  for (const [key, value] of Object.entries(cityMap)) {
-    const keyLower = key.toLowerCase()
-    if (
-      enCity === keyLower
-      || enCity === `${keyLower} city`
-      || enCity === `${keyLower} shi`
-      || enCity.includes(keyLower)
-    )
-      return value
+function getWeatherText(code: number): { text: string; icon: string } {
+  const weatherMap: Record<number, { text: string; icon: string }> = {
+    0: { text: '晴朗', icon: '☀️' },
+    1: { text: '主要晴天', icon: '🌤️' },
+    2: { text: '部分多云', icon: '⛅' },
+    3: { text: '多云', icon: '☁️' },
+    45: { text: '雾', icon: '🌫️' },
+    48: { text: '霜雾', icon: '🌁' },
+    51: { text: '毛毛雨', icon: '🌦️' },
+    53: { text: '中等毛毛雨', icon: '🌧️' },
+    55: { text: '浓密毛毛雨', icon: '🌧️' },
+    61: { text: '小雨', icon: '🌧️' },
+    63: { text: '中雨', icon: '🌧️' },
+    65: { text: '大雨', icon: '🌧️' },
+    71: { text: '小雪', icon: '🌨️' },
+    73: { text: '中雪', icon: '🌨️' },
+    75: { text: '大雪', icon: '❄️' },
+    80: { text: '阵雨', icon: '🌦️' },
+    81: { text: '中等阵雨', icon: '🌧️' },
+    82: { text: '强阵雨', icon: '🌧️' },
+    95: { text: '雷雨', icon: '⛈️' },
+    96: { text: '雷雨伴小冰雹', icon: '⛈️' },
+    99: { text: '雷雨伴大冰雹', icon: '⛈️' },
   }
-  return enCity // fallback
+
+  return weatherMap[code] || { text: '未知天气', icon: '❓' }
 }
 
-function getWeatherText(code: number): { text: string; icon: string } {
-  return weatherMap[code] || { text: '未知天气', icon: '❓' }
+function getChineseCityName(enCity: string): string {
+  const cityMap: Record<string, string> = {
+    'Beijing': '北京',
+    'Shanghai': '上海',
+    'Guangzhou': '广州',
+    'Shenzhen': '深圳',
+    'Hangzhou': '杭州',
+    'Chengdu': '成都',
+    'Wuhan': '武汉',
+    'Nanjing': '南京',
+    'Tianjin': '天津',
+    'Chongqing': '重庆',
+    'Xi\'an': '西安',
+    'Changsha': '长沙',
+    'Zhengzhou': '郑州',
+    'Fuzhou': '福州',
+    'Xiamen': '厦门',
+    'Ningbo': '宁波',
+    'Suzhou': '苏州',
+    'Qingdao': '青岛',
+    'Jinan': '济南',
+    'Shenyang': '沈阳',
+    'Dalian': '大连',
+    'Harbin': '哈尔滨',
+    'Kunming': '昆明',
+    'Hefei': '合肥',
+    'Nanchang': '南昌',
+    'Urumqi': '乌鲁木齐',
+    'Heyuan': '河源',
+    'Hong Kong': '香港',
+    'Macau': '澳门',
+    'Taipei': '台北',
+    'Kaohsiung': '高雄',
+    'Taichung': '台中',
+    'Tainan': '台南',
+    'New York': '纽约',
+    'Los Angeles': '洛杉矶',
+    'San Francisco': '旧金山',
+    'London': '伦敦',
+    'Paris': '巴黎',
+    'Tokyo': '东京',
+    'Seoul': '首尔',
+    'Bangkok': '曼谷',
+    'Singapore': '新加坡',
+    'Berlin': '柏林',
+    'Sydney': '悉尼',
+    'Moscow': '莫斯科',
+    'Toronto': '多伦多',
+    'Vancouver': '温哥华',
+  }
+
+  for (const [key, value] of Object.entries(cityMap)) {
+    if (enCity.toLowerCase().includes(key.toLowerCase()))
+      return value
+  }
+  return enCity
 }
 
 function showMobileToast() {
@@ -222,22 +231,35 @@ function showMobileToast() {
 <template>
   <TheDoc>
     <SiteNavBar />
-    <div v-if="settingStore.isSideNavOpen && isMobile" class="mobile-overlay" @click="settingStore.toggleSideNav()" />
+
+    <div
+      v-if="settingStore.isSideNavOpen && isMobile"
+      class="mobile-overlay"
+      @click="settingStore.toggleSideNav()"
+    />
+
     <div
       class="main-content-area"
-      px="6 sm:12"
-      pb="12 sm:24"
+
+      px="6 sm:12" pb="12 sm:24"
+
       sm:auto my-0 w-full pt-0 bg-transparent sm:pt-0
       :class="{
         'no_select': settingStore.isSetting,
         'content-shifted': settingStore.isSideNavOpen,
       }"
     >
-      <div class="sticky z-[1010] w-full left-0 top-0" bg="$main-bg-c">
+      <div
+        class="sticky z-[1010] w-full left-0 top-0"
+        bg="$main-bg-c"
+      >
         <MainHeader />
       </div>
 
-      <MainClock v-if="!settingStore.isSetting" class="mt-4" />
+      <MainClock
+        v-if="!settingStore.isSetting"
+        class="mt-4"
+      />
 
       <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showWeather')" class="weather-container">
         <div v-if="weatherCity !== '天气加载失败'" class="weather-content">
@@ -250,60 +272,33 @@ function showMobileToast() {
         </div>
       </div>
 
-      <MainSearch my-24 />
+      <MainSearch
+        my-24
+      />
       <SiteContainer :key="settingStore.siteContainerKey" />
       <MainSetting />
-      <TheFooter v-if="settingStore.getSettingValue('showFooter')" />
+      <TheFooter
+        v-if="settingStore.getSettingValue('showFooter')"
+      />
     </div>
-
-    <!-- ✅ 浮动按钮区域 -->
-    <div
-      v-show="showFloatingButtons"
-      class="floating-buttons fixed z-[9999] flex flex-col transition-opacity duration-300 gap-12 bottom-15 right-10"
-    >
-      <!-- 🔝 返回顶部按钮 -->
-      <div
-        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
-        title="返回顶部"
-        @click="scrollToTop"
-      >
-        <div class="i-carbon-arrow-up" />
-      </div>
-
-      <!-- ⚙️ 设置 / 首页 切换 -->
-      <div
-        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
-        title="设置"
-        @click="handleSettingsClick"
-      >
-        <div :class="route.path === '/setting' ? 'i-carbon-home' : 'i-carbon-settings'" />
-      </div>
-
-      <!-- 🌙 日夜间切换 -->
-      <div
-        class="cursor-pointer rounded-full shadow-md bg-white icon-btn dark:bg-gray-800 hover:opacity-80"
-        title="切换日夜间模式"
-        @click="toggleDarkMode"
-      >
-        <div class="i-carbon-moon dark:i-carbon-light" />
-      </div>
-    </div>
-
     <Blank />
   </TheDoc>
 </template>
 
 <style scoped>
+/* CSS部分与上一版完全一致，此处省略以保持简洁 */
 .main-content-area {
   transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
   position: relative;
   box-sizing: border-box;
 }
+
 .content-shifted {
   margin-left: 130px;
   width: calc(100% - 130px);
   padding-left: 0 !important;
 }
+
 .mobile-overlay {
   position: fixed;
   top: 0;
@@ -313,6 +308,7 @@ function showMobileToast() {
   background-color: rgba(0, 0, 0, 0.4);
   z-index: 999;
 }
+
 .weather-container {
   display: flex;
   justify-content: center;
@@ -331,16 +327,12 @@ function showMobileToast() {
   margin: 0 8px;
   opacity: 0.5;
 }
-.floating-buttons {
-  opacity: 1;
-}
-.floating-buttons[style*="display: none"] {
-  opacity: 0;
-}
+
 :deep(.mobile-guide-toast) {
   padding: 0 !important;
   overflow: visible !important;
 }
+
 :deep(.swal2-popup.swal2-toast) {
   background: transparent !important;
   box-shadow: none !important;
