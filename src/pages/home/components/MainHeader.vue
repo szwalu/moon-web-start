@@ -82,7 +82,7 @@ declare function toggleDark(event: MouseEvent): void
         class="w-auto h-32"
       >
     </div>
-    // 下面是页面图标大小和左右间距
+
     <div class="flex items-center gap-x-11">
       <RouterLink
         v-if="settingStore.isSetting"
