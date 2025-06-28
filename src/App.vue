@@ -1,8 +1,29 @@
 <script setup>
 import { RouterView } from 'vue-router'
 
-// 【重要】导入所有需要的 Provider 组件和我们新建的逻辑组件
+// ✅ 新增：导入 Supabase 实例
 import { NDialogProvider, NMessageProvider, NNotificationProvider } from 'naive-ui'
+import { supabase } from '@/utils/supabaseClient'
+
+// ✅ 保留原逻辑
+
+// ✅ 新增：监听页面唤醒时刷新 session
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      // 强制刷新 session
+      const { data: refreshed } = await supabase.auth.refreshSession()
+      if (refreshed?.session?.user)
+        window.__currentUser = refreshed.session.user
+      else
+        window.__currentUser = null
+    }
+    else {
+      window.__currentUser = session.user
+    }
+  }
+})
 </script>
 
 <template>
@@ -20,7 +41,7 @@ import { NDialogProvider, NMessageProvider, NNotificationProvider } from 'naive-
 </template>
 
 <style>
-/* 您的样式代码保持不变 */
+/* 样式保持不变 */
 body, html {
   background-color: #e9ecef;
   background-image:
