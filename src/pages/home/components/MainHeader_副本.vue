@@ -82,29 +82,13 @@ declare function toggleDark(event: MouseEvent): void
         class="w-auto h-32"
       >
     </div>
-    // 下面是页面图标大小和左右间距
+
     <div class="flex items-center gap-x-11">
-      <RouterLink
-        v-if="settingStore.isSetting"
-        class="text-7xl" :class="[getIconClass('home')]"
-        to="/"
-        i-carbon:home
-        icon-btn
-      />
-      <div
-        v-else
-        class="text-7xl"
-        i-carbon:settings
-        icon-btn
-        @click="handleSettingsClick"
-      />
-      <div
-        class="text-7xl"
-        i-carbon:moon
-        dark:i-carbon:light
-        icon-btn
-        @click="(e) => toggleDark(e)"
-      />
+      <RouterLink v-if="settingStore.isSetting" :class="getIconClass('home')" to="/" i-carbon:home icon-btn />
+
+      <div v-else i-carbon:settings icon-btn @click="handleSettingsClick" />
+
+      <div i-carbon:moon dark:i-carbon:light icon-btn @click="(e) => toggleDark(e)" />
     </div>
   </div>
 </template>
