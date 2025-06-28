@@ -1,15 +1,10 @@
 <script setup lang="ts">
 import type { VNode } from 'vue'
-import { createClient } from '@supabase/supabase-js'
 import SettingSelection from './SettingSelection.vue'
+import { supabase } from '@/utils/supabaseClient'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-)
 
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
