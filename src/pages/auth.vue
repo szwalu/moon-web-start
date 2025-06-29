@@ -11,6 +11,10 @@ import { useAutoSave } from '@/composables/useAutoSave'
 // 【修正2】: 重新导入 useAutoSave
 import { supabase } from '@/utils/supabaseClient'
 
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+
 useDark()
 const router = useRouter()
 const { t } = useI18n()
@@ -94,6 +98,8 @@ async function handleSubmit() {
 
       // 【核心修正】: 在这里重新调用 autoLoadData，以在登录成功后恢复数据
       await router.push('/')
+      // ✅ 【新增】刷新全局用户状态
+      await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
     }
     else if (mode.value === 'register') {

@@ -1,21 +1,41 @@
 <script setup lang="ts">
-import type { VNode } from 'vue'
+import { h, onMounted, ref } from 'vue'
 import SettingSelection from './SettingSelection.vue'
 import { supabase } from '@/utils/supabaseClient'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
 
+// ✅ 页面激活时强制刷新会话，防止假登出
+async function refreshSession() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    const { data } = await supabase.auth.refreshSession()
+    if (data?.session)
+      window.__currentUser = data.session.user
+    else
+      window.__currentUser = null
+  }
+  else {
+    window.__currentUser = session.user
+  }
+}
+onMounted(refreshSession)
+
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
 
-function renderThemeLabel(option: SettingItem<Theme>): VNode {
+function renderThemeLabel(option: SettingItem<Theme>) {
   const currentTheme = S.theme.children.find(item => item.key === option.key)!
   const bgColor = currentTheme.value!.bgC
   return h('div', { class: 'flex items-center gap-x-8' }, [
     h('div', { class: 'w-16 h-16 circle border-1 border-fff', style: { backgroundColor: bgColor } }),
     h('div', getText(option.name)),
   ])
+}
+
+function toggleTheme(theme: string) {
+  settingStore.setSettings({ language: settingStore.settings.language, theme })
 }
 
 function toggleLanguage(language: string) {
@@ -78,31 +98,21 @@ function importData() {
 }
 
 async function resetData() {
-  // 1. 首先获取当前用户状态
   const { data: { user } } = await supabase.auth.getUser()
-
-  // 2. 如果用户存在 (已登录)，弹出提示并阻止后续操作
   if (user) {
     $message.warning(t('messages.warn_logout_to_reset'))
     return
   }
 
-  // 3. 如果用户不存在 (未登录)，则执行重置确认流程
   $dialog.warning({
     title: t('messages.tip'),
     content: t('messages.warnResetData'),
     positiveText: t('button.confirm'),
     negativeText: t('button.cancel'),
     onPositiveClick() {
-      // 【核心修正】: 不再调用 store 的 action，而是直接操作 localStorage
       localStorage.removeItem('settings')
       localStorage.removeItem('cache')
-
-      // 强制刷新页面来应用重置
       window.location.reload()
-
-      // 刷新后会自动恢复，下面的消息提示可以省略或保留
-      // $message.success(t('messages.reset'))
     },
   })
 }

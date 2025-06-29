@@ -15,12 +15,31 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 
+// ✅ 新增的用户状态逻辑
+import { useAuthStore } from '@/stores/auth'
+
 defineOptions({
   name: 'HomePage',
 })
 
-const settingStore = useSettingStore()
+const authStore = useAuthStore()
 
+onMounted(() => {
+  authStore.refreshUser()
+
+  // 页面切回来时刷新登录状态（防止假登出）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible')
+      authStore.refreshUser()
+  })
+
+  // 某些浏览器不触发 visibilitychange，用 focus 兜底
+  window.addEventListener('focus', () => {
+    authStore.refreshUser()
+  })
+})
+
+const settingStore = useSettingStore()
 const { autoSaveData } = useAutoSave()
 const siteStore = useSiteStore()
 
@@ -29,10 +48,8 @@ let lastJson = ''
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
-    if (newJson === lastJson) {
-      // 跳过首次加载触发，仅在用户修改数据后自动备份
+    if (newJson === lastJson)
       return
-    }
 
     lastJson = newJson
     autoSaveData()
@@ -52,7 +69,6 @@ onMounted(() => {
 const weatherCity = ref('加载中...')
 const weatherInfo = ref('...')
 
-// 天气加载控制
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     fetchWeather()
@@ -73,7 +89,6 @@ async function fetchWeather() {
       weatherCity.value = '加载中...'
       weatherInfo.value = '...'
 
-      // 获取 IP 定位
       const locRes = await fetch('https://ipapi.co/json/')
       const locData = await locRes.json()
       const lat = locData.latitude
@@ -81,7 +96,6 @@ async function fetchWeather() {
       const enCity = locData.city
       const city = getChineseCityName(enCity)
 
-      // 获取 Open-Meteo 天气数据
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
       )
