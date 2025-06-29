@@ -36,6 +36,14 @@ onMounted(() => {
   })
 })
 
+const logoPath = ref('/logow.jpg') // 默认未登录
+
+onMounted(async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user)
+    logoPath.value = '/logo.jpg'
+})
+
 function getIconClass(routeName: string) {
   return {
     'text-$primary-c opacity-100': routeName === route.name,
@@ -71,7 +79,7 @@ declare function toggleDark(event: MouseEvent): void
 
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
         <img
-          src="/logo.jpg"
+          :src="logoPath"
           alt="Logo"
           class="w-auto h-32"
         >
