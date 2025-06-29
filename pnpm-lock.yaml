@@ -44,6 +44,9 @@ importers:
       pinia:
         specifier: ^2.0.32
         version: 2.2.6(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3))
+      pinia-plugin-persistedstate:
+        specifier: ^2.4.0
+        version: 2.4.0(pinia@2.2.6(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3)))
       solarlunar-es:
         specifier: ^1.0.9
         version: 1.0.9
@@ -2938,6 +2941,14 @@ packages:
     resolution: {integrity: sha512-eG2dWTVw5bzqGRztnHExczNxt5VGsE6OwTeCG3fdUf9KBsZzO3R5OIIIzWR+iZA0NtZ+RDVdaoE2dK1cn6jH4g==}
     engines: {node: '>=0.10'}
     hasBin: true
+
+  pinia-plugin-persistedstate@2.4.0:
+    resolution: {integrity: sha512-bQcpv47jk3ISl+InuJWsFaS/K7pRZ97kfoD2WCf/suhnlLy48k3BnFM2tI6YZ1xMsDaPv4yOsaPuPAUuSmEO2Q==}
+    peerDependencies:
+      pinia: ^2.0.0
+    peerDependenciesMeta:
+      pinia:
+        optional: true
 
   pinia@2.2.6:
     resolution: {integrity: sha512-vIsR8JkDN5Ga2vAxqOE2cJj4VtsHnzpR1Fz30kClxlh0yCHfec6uoMeM3e/ddqmwFUejK3NlrcQa/shnpyT4hA==}
@@ -6716,6 +6727,10 @@ snapshots:
   picomatch@4.0.2: {}
 
   pidtree@0.6.0: {}
+
+  pinia-plugin-persistedstate@2.4.0(pinia@2.2.6(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3))):
+    optionalDependencies:
+      pinia: 2.2.6(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3))
 
   pinia@2.2.6(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3)):
     dependencies:
