@@ -11,14 +11,12 @@ export const useAuthStore = defineStore('auth', () => {
     const { data: { session } } = await supabase.auth.getSession()
     user.value = session?.user ?? null
 
-    // ✅ 确保自动刷新循环只启动一次
     if (session && !hasStarted) {
       await supabase.auth.startAutoRefresh()
       hasStarted = true
     }
   }
 
-  // ✅ 会话状态变化监听（登录/登出/刷新）
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
   })
@@ -27,4 +25,6 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     refreshUser,
   }
+}, {
+  persist: true, // ✅ 正确的位置：defineStore 的第二个参数
 })

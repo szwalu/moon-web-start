@@ -190,6 +190,6 @@ auth:
     reset_success_redirect: ✅ パスワードが正常にリセットされました。ログインページにリダイレクトします...
     no_backup_yet: バックアップなし
 autoSave:
-  restored: ユーザーデータをクラウドから復元しました ✨
+  restored: 'アカウント {{ email }} で復元されました✨'
   parse_failed: クラウドデータの解析に失敗しました
   load_failed: データの読み込み中にエラーが発生しました

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
+import { useAuthStore } from '@/stores/auth'
 
 // ✅ 全局导出用于判断是否是初次加载的数据（可选）
 export const restoredContentJson = ref('')
@@ -17,6 +18,7 @@ function toggleTheme(theme: string) {
 export function useAutoSave() {
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
+  const authStore = useAuthStore()
 
   // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
@@ -56,7 +58,7 @@ export function useAutoSave() {
             settings: parsed.settings,
           })
 
-          $message.success(t('autoSave.restored'))
+          $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
       }
       catch (e) {

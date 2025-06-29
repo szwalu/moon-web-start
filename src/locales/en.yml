@@ -191,6 +191,6 @@ auth:
     reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
     no_backup_yet: No backup yet
 autoSave:
-  restored: User data has been restored from the cloud ✨
+  restored: Welcome, {email}, your data has been restored ✨
   parse_failed: Failed to parse cloud data
   load_failed: Error loading data

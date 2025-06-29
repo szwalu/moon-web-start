@@ -191,6 +191,6 @@ auth:
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
     no_backup_yet: 暂无备份
 autoSave:
-  restored: 用户数据已从云端恢复 ✨
+  restored: 欢迎，{email}，数据已恢复 ✨
   parse_failed: 解析云端数据失败
   load_failed: 加载数据时出错
