@@ -69,18 +69,13 @@ declare function toggleDark(event: MouseEvent): void
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
 
-      <RouterLink v-if="!isMobile" to="/">
-        <div text="$primary-c" class="flex items-center justify-center">
-          <span i-cus-moonset class="inline-block text-32 transition-300 hover:opacity-80" />
-        </div>
+      <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
+        <img
+          src="/logo.jpg"
+          alt="Logo"
+          class="w-auto h-32"
+        >
       </RouterLink>
-
-      <img
-        v-if="isMobile && !settingStore.isSideNavOpen"
-        src="/logo.jpg"
-        alt="Logo"
-        class="w-auto h-32"
-      >
     </div>
 
     <div class="flex items-center gap-x-11">
