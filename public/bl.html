@@ -52,7 +52,8 @@
       font-size: 1rem;
       border-radius: 8px;
       border: none;
-      min-width: 180px;
+      width: 100%;
+      max-width: 180px;
     }
 
     button {
@@ -103,13 +104,24 @@
         align-items: center;
       }
 
-      select, input[type="datetime-local"], button {
-        min-width: 90vw;
-      }
-
       .controls {
+        display: flex;
         flex-direction: column;
         align-items: center;
+        gap: 10px;
+      }
+
+      .time-controls, .city-controls, .lang-control {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        gap: 10px;
+      }
+
+      select, input[type="datetime-local"], button {
+        max-width: 90vw;
+        width: 100%;
       }
     }
   </style>
@@ -213,7 +225,9 @@
           const option = document.createElement("option");
           option.value = key;
           option.textContent = getCityName(key);
-          if (selectedCities[i - 1] === key) option.selected = true;
+          if (selectedCities[i - 1] === key) {
+            option.selected = true;
+          }
           select.appendChild(option);
         }
       }
