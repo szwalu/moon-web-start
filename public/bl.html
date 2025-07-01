@@ -13,115 +13,92 @@
       color: #fff;
       text-align: center;
     }
-
     h1 {
       margin-top: 20px;
       font-size: 2.5rem;
     }
-
     .controls {
-      margin: 20px auto;
       max-width: 1200px;
-      display: grid;
-      grid-template-rows: auto auto auto;
-      gap: 15px;
-      padding: 0 20px;
-    }
-
-    .time-controls {
+      margin: 20px auto;
+      padding: 0 15px;
       display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
     }
-
-    .city-controls {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
-    }
-
-    .lang-control {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      align-items: center;
-    }
-
-    select, input[type="datetime-local"], button {
-      padding: 10px;
+    .row select,
+    .row input,
+    .row button {
       font-size: 1rem;
       border-radius: 8px;
+      padding: 8px 10px;
       border: none;
-      width: 100%;
-      max-width: 180px;
-    }
-
-    button {
-      background-color: #4db6ac;
-      color: white;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
       cursor: pointer;
     }
-
+    select, input {
+      width: 200px;
+    }
+    button {
+      min-width: 120px;
+    }
     .card-container {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 20px;
-      margin-bottom: 40px;
+      gap: 15px;
+      max-width: 1200px;
+      margin: 15px auto 30px;
+      padding: 0 10px;
     }
-
     .time-card {
       background: rgba(255, 255, 255, 0.1);
-      padding: 20px;
+      padding: 15px;
       border-radius: 12px;
-      width: 300px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+      width: 280px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+      text-align: center;
     }
-
     .time-card h2 {
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
-
     .time-display {
-      font-size: 2rem;
-      margin: 10px 0;
+      font-size: 1.8rem;
+      margin: 8px 0;
     }
-
     .date-info {
-      font-size: 1.1rem;
+      font-size: 1rem;
       color: #bbdefb;
     }
-
     .diff-info {
-      font-size: 1rem;
+      font-size: 0.95rem;
       color: #ffd54f;
-      margin-top: 8px;
+      margin-top: 6px;
     }
-
     @media (max-width: 768px) {
-      .card-container {
+      .row {
         flex-direction: column;
         align-items: center;
+        gap: 6px;
       }
-
       .controls {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
+        gap: 8px;
       }
-
-      .time-controls, .city-controls, .lang-control {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 100%;
-        gap: 10px;
+      .time-card {
+        width: 90%;
+        padding: 12px;
       }
-
-      select, input[type="datetime-local"], button {
-        max-width: 90vw;
-        width: 100%;
+      .time-display {
+        font-size: 1.6rem;
+      }
+      .date-info {
+        font-size: 0.95rem;
       }
     }
   </style>
@@ -130,25 +107,24 @@
   <h1 id="page-title">全球时间对照</h1>
 
   <div class="controls">
-    <div class="time-controls">
+    <div class="row time-row">
       <input type="datetime-local" id="customTimeInput" />
-      <button onclick="applyCustomTime()" id="btn-use-time">使用此时间</button>
-      <button onclick="resetToNow()" id="btn-reset">恢复当前时间</button>
+      <button onclick="applyCustomTime()" id="btn-use-time">选择时间</button>
+      <button onclick="resetToNow()" id="btn-reset">当前时间</button>
     </div>
-    <div class="city-controls">
-      <select id="city1"></select>
-      <select id="city2"></select>
-      <select id="city3"></select>
-      <select id="city4"></select>
-      <select id="city5"></select>
+
+    <div class="row city-row">
+      <select id="city1" onchange="updateTime()"></select>
+      <select id="city2" onchange="updateTime()"></select>
+      <select id="city3" onchange="updateTime()"></select>
     </div>
-    <div class="lang-control">
-      <label for="lang">语言：</label>
+
+    <div class="row lang-row">
+      <label id="label-lang" for="lang">语言</label>
       <select id="lang" onchange="changeLanguage()">
         <option value="zh">中文</option>
         <option value="en">English</option>
       </select>
-      <button onclick="applyCities()" id="btn-update">更新城市</button>
     </div>
   </div>
 
@@ -158,83 +134,135 @@
     const translations = {
       zh: {
         pageTitle: "全球时间对照",
-        useTime: "使用此时间",
-        resetTime: "恢复当前时间",
-        updateCities: "更新城市",
+        useTime: "选择时间",
+        resetTime: "当前时间",
         baseTimeLabel: "当前标准时间",
         faster: "快",
         slower: "慢",
         than: "比",
         hour: "小时",
+        labelLang: "语言",
         cities: {
           "Beijing": "北京 🇨🇳",
           "Los Angeles": "洛杉矶 🇺🇸",
           "New York": "纽约 🇺🇸",
           "Tokyo": "东京 🇯🇵",
-          "London": "伦敦 🇬🇧"
+          "London": "伦敦 🇬🇧",
+          "Paris": "巴黎 🇫🇷",
+          "Berlin": "柏林 🇩🇪",
+          "Sydney": "悉尼 🇦🇺",
+          "Moscow": "莫斯科 🇷🇺",
+          "Dubai": "迪拜 🇦🇪",
+          "Singapore": "新加坡 🇸🇬",
+          "Mumbai": "孟买 🇮🇳"
         }
       },
       en: {
         pageTitle: "World Time Comparison",
-        useTime: "Use This Time",
-        resetTime: "Reset to Now",
-        updateCities: "Update Cities",
+        useTime: "Select Time",
+        resetTime: "Current Time",
         baseTimeLabel: "Reference Time",
         faster: "ahead",
         slower: "behind",
         than: "than",
         hour: "hour(s)",
+        labelLang: "Language",
         cities: {
           "Beijing": "Beijing 🇨🇳",
           "Los Angeles": "Los Angeles 🇺🇸",
           "New York": "New York 🇺🇸",
           "Tokyo": "Tokyo 🇯🇵",
-          "London": "London 🇬🇧"
+          "London": "London 🇬🇧",
+          "Paris": "Paris 🇫🇷",
+          "Berlin": "Berlin 🇩🇪",
+          "Sydney": "Sydney 🇦🇺",
+          "Moscow": "Moscow 🇷🇺",
+          "Dubai": "Dubai 🇦🇪",
+          "Singapore": "Singapore 🇸🇬",
+          "Mumbai": "Mumbai 🇮🇳"
         }
       }
     };
 
     let currentLang = 'zh';
+    let isCustomTime = false;
+    let customTime = '';
 
     const rawCityList = {
       "Beijing": "Asia/Shanghai",
       "Los Angeles": "America/Los_Angeles",
       "New York": "America/New_York",
       "Tokyo": "Asia/Tokyo",
-      "London": "Europe/London"
+      "London": "Europe/London",
+      "Paris": "Europe/Paris",
+      "Berlin": "Europe/Berlin",
+      "Sydney": "Australia/Sydney",
+      "Moscow": "Europe/Moscow",
+      "Dubai": "Asia/Dubai",
+      "Singapore": "Asia/Singapore",
+      "Mumbai": "Asia/Kolkata"
     };
+
+    let selectedCities = ["Beijing", "Los Angeles", "Tokyo"];
 
     function getCityName(key) {
       return translations[currentLang].cities[key] || key;
     }
 
-    function getCityKey(label) {
-      for (const key in translations[currentLang].cities) {
-        if (translations[currentLang].cities[key] === label) return key;
-      }
-      return label;
+    function setInputNow() {
+      const now = new Date();
+      const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+      document.getElementById("customTimeInput").value = localISO;
     }
 
-    let selectedCities = Object.keys(rawCityList).slice(0, 5);
-
     function populateCitySelects() {
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= 3; i++) {
         const select = document.getElementById(`city${i}`);
         select.innerHTML = '';
         for (const key in rawCityList) {
           const option = document.createElement("option");
           option.value = key;
           option.textContent = getCityName(key);
-          if (selectedCities[i - 1] === key) {
-            option.selected = true;
-          }
+          if (selectedCities[i - 1] === key) option.selected = true;
           select.appendChild(option);
         }
       }
     }
 
+    function applyCustomTime() {
+      const input = document.getElementById("customTimeInput").value;
+      if (input) {
+        isCustomTime = true;
+        customTime = input;
+        updateTime();
+      }
+    }
+
+    function resetToNow() {
+      isCustomTime = false;
+      setInputNow();
+      updateTime();
+    }
+
+    function changeLanguage() {
+      currentLang = document.getElementById("lang").value;
+      const lang = translations[currentLang];
+      document.getElementById("page-title").textContent = lang.pageTitle;
+      document.getElementById("btn-use-time").textContent = lang.useTime;
+      document.getElementById("btn-reset").textContent = lang.resetTime;
+      document.getElementById("label-lang").textContent = lang.labelLang;
+      populateCitySelects();
+      updateTime();
+    }
+
     function updateTime() {
       const baseDate = isCustomTime ? new Date(customTime) : new Date();
+      selectedCities = [
+        document.getElementById("city1").value,
+        document.getElementById("city2").value,
+        document.getElementById("city3").value
+      ];
+
       const container = document.getElementById("card-container");
       container.innerHTML = '';
       const baseLang = translations[currentLang];
@@ -256,8 +284,8 @@
           acc[part.type] = part.value;
           return acc;
         }, {});
-
         const localTime = new Date(baseDate.toLocaleString('en-US', { timeZone: tz }));
+
         const card = document.createElement("div");
         card.className = "time-card";
         card.innerHTML = `
@@ -272,61 +300,22 @@
 
       const baseTime = times[0];
       for (let i = 0; i < times.length; i++) {
-        const diffMs = (times[i] - baseTime);
+        const diffMs = times[i] - baseTime;
         const diffHours = Math.round(diffMs / 3600000);
-        const target = document.getElementById(`diff-${i}`);
+        const label = document.getElementById(`diff-${i}`);
         if (i === 0) {
-          target.textContent = baseLang.baseTimeLabel;
+          label.textContent = baseLang.baseTimeLabel;
         } else {
-          const direction = diffHours > 0 ? baseLang.faster : baseLang.slower;
-          const diff = Math.abs(diffHours);
-          target.textContent = `${baseLang.than} ${getCityName(selectedCities[0])} ${direction} ${diff} ${baseLang.hour}`;
+          label.textContent = `${baseLang.than} ${getCityName(selectedCities[0])} ${Math.abs(diffHours)} ${baseLang.hour} ${diffHours > 0 ? baseLang.faster : baseLang.slower}`;
         }
       }
     }
 
-    let isCustomTime = false;
-    let customTime = null;
-
-    function applyCustomTime() {
-      const input = document.getElementById("customTimeInput").value;
-      if (!input) return;
-      customTime = new Date(input);
-      isCustomTime = true;
-      updateTime();
-    }
-
-    function resetToNow() {
-      isCustomTime = false;
-      customTime = null;
-      document.getElementById("customTimeInput").value = '';
-      updateTime();
-    }
-
-    function applyCities() {
-      selectedCities = [];
-      for (let i = 1; i <= 5; i++) {
-        selectedCities.push(document.getElementById(`city${i}`).value);
-      }
-      updateTime();
-    }
-
-    function changeLanguage() {
-      currentLang = document.getElementById("lang").value;
-      const langMap = translations[currentLang];
-      document.getElementById("page-title").textContent = langMap.pageTitle;
-      document.getElementById("btn-use-time").textContent = langMap.useTime;
-      document.getElementById("btn-reset").textContent = langMap.resetTime;
-      document.getElementById("btn-update").textContent = langMap.updateCities;
-      populateCitySelects();
-      updateTime();
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      populateCitySelects();
-      updateTime();
-      setInterval(updateTime, 1000);
-    });
+    // 初始化
+    setInputNow();
+    populateCitySelects();
+    updateTime();
+    setInterval(updateTime, 1000);
   </script>
 </body>
 </html>
