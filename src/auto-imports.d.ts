@@ -164,6 +164,7 @@ declare global {
   const useAsyncQueue: typeof import('@vueuse/core')['useAsyncQueue']
   const useAsyncState: typeof import('@vueuse/core')['useAsyncState']
   const useAttrs: typeof import('vue')['useAttrs']
+  const useAuthRefresh: typeof import('./composables/useAuthRefresh')['useAuthRefresh']
   const useAuthStore: typeof import('./stores/auth')['useAuthStore']
   const useAutoSave: typeof import('./composables/useAutoSave')['useAutoSave']
   const useBase64: typeof import('@vueuse/core')['useBase64']
@@ -500,6 +501,7 @@ declare module 'vue' {
     readonly useAsyncQueue: UnwrapRef<typeof import('@vueuse/core')['useAsyncQueue']>
     readonly useAsyncState: UnwrapRef<typeof import('@vueuse/core')['useAsyncState']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
+    readonly useAuthRefresh: UnwrapRef<typeof import('./composables/useAuthRefresh')['useAuthRefresh']>
     readonly useAuthStore: UnwrapRef<typeof import('./stores/auth')['useAuthStore']>
     readonly useAutoSave: UnwrapRef<typeof import('./composables/useAutoSave')['useAutoSave']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
