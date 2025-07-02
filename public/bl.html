@@ -13,24 +13,42 @@
       color: #fff;
       text-align: center;
     }
-    h1 {
-      margin-top: 20px;
-      font-size: 2.5rem;
+
+    #lang {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 0.9rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      width: 48px;
     }
+
+    h1 {
+      margin-top: 30px;
+      font-size: 2.2rem;
+    }
+
     .controls {
-      max-width: 1200px;
+      max-width: 1000px;
       margin: 20px auto;
       padding: 0 15px;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
+
     .row {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
     }
+
     .row select,
     .row input,
     .row button {
@@ -42,12 +60,11 @@
       color: #fff;
       cursor: pointer;
     }
+
     select, input {
       width: 200px;
     }
-    button {
-      min-width: 120px;
-    }
+
     .card-container {
       display: flex;
       flex-wrap: wrap;
@@ -57,6 +74,7 @@
       margin: 15px auto 30px;
       padding: 0 10px;
     }
+
     .time-card {
       background: rgba(255, 255, 255, 0.1);
       padding: 15px;
@@ -65,22 +83,27 @@
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
       text-align: center;
     }
+
     .time-card h2 {
       margin-bottom: 8px;
     }
+
     .time-display {
       font-size: 1.8rem;
       margin: 8px 0;
     }
+
     .date-info {
       font-size: 1rem;
       color: #bbdefb;
     }
+
     .diff-info {
       font-size: 0.95rem;
       color: #ffd54f;
       margin-top: 6px;
     }
+
     @media (max-width: 768px) {
       .row {
         flex-direction: column;
@@ -104,12 +127,16 @@
   </style>
 </head>
 <body>
+  <select id="lang" onchange="changeLanguage()">
+    <option value="zh">中</option>
+    <option value="en">En</option>
+  </select>
+
   <h1 id="page-title">全球时间对照</h1>
 
   <div class="controls">
     <div class="row time-row">
-      <input type="datetime-local" id="customTimeInput" />
-      <button onclick="applyCustomTime()" id="btn-use-time">选择时间</button>
+      <input type="datetime-local" id="customTimeInput" onchange="applyCustomTime()" />
       <button onclick="resetToNow()" id="btn-reset">当前时间</button>
     </div>
 
@@ -117,14 +144,6 @@
       <select id="city1" onchange="updateTime()"></select>
       <select id="city2" onchange="updateTime()"></select>
       <select id="city3" onchange="updateTime()"></select>
-    </div>
-
-    <div class="row lang-row">
-      <label id="label-lang" for="lang">语言</label>
-      <select id="lang" onchange="changeLanguage()">
-        <option value="zh">中文</option>
-        <option value="en">English</option>
-      </select>
     </div>
   </div>
 
@@ -134,14 +153,12 @@
     const translations = {
       zh: {
         pageTitle: "全球时间对照",
-        useTime: "选择时间",
         resetTime: "当前时间",
         baseTimeLabel: "当前标准时间",
         faster: "快",
         slower: "慢",
         than: "比",
         hour: "小时",
-        labelLang: "语言",
         cities: {
           "Beijing": "北京 🇨🇳",
           "Los Angeles": "洛杉矶 🇺🇸",
@@ -159,14 +176,12 @@
       },
       en: {
         pageTitle: "World Time Comparison",
-        useTime: "Select Time",
-        resetTime: "Current Time",
+        resetTime: "Now",
         baseTimeLabel: "Reference Time",
         faster: "ahead",
         slower: "behind",
         than: "than",
         hour: "hour(s)",
-        labelLang: "Language",
         cities: {
           "Beijing": "Beijing 🇨🇳",
           "Los Angeles": "Los Angeles 🇺🇸",
@@ -203,7 +218,7 @@
       "Mumbai": "Asia/Kolkata"
     };
 
-    let selectedCities = ["Beijing", "Los Angeles", "Tokyo"];
+    let selectedCities = ["Beijing", "New York", "Tokyo"];
 
     function getCityName(key) {
       return translations[currentLang].cities[key] || key;
@@ -248,9 +263,7 @@
       currentLang = document.getElementById("lang").value;
       const lang = translations[currentLang];
       document.getElementById("page-title").textContent = lang.pageTitle;
-      document.getElementById("btn-use-time").textContent = lang.useTime;
       document.getElementById("btn-reset").textContent = lang.resetTime;
-      document.getElementById("label-lang").textContent = lang.labelLang;
       populateCitySelects();
       updateTime();
     }
@@ -306,7 +319,7 @@
         if (i === 0) {
           label.textContent = baseLang.baseTimeLabel;
         } else {
-          label.textContent = `${baseLang.than} ${getCityName(selectedCities[0])} ${Math.abs(diffHours)} ${baseLang.hour} ${diffHours > 0 ? baseLang.faster : baseLang.slower}`;
+          label.textContent = `${baseLang.than} ${getCityName(selectedCities[0])} ${diffHours > 0 ? baseLang.faster : baseLang.slower} ${Math.abs(diffHours)} ${baseLang.hour}`;
         }
       }
     }
