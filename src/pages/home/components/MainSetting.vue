@@ -5,6 +5,7 @@ import { supabase } from '@/utils/supabaseClient'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
+import { toggleTheme } from '@/composables/theme'
 
 // ✅ 页面激活时强制刷新会话，防止假登出
 async function refreshSession() {
@@ -34,8 +35,13 @@ function renderThemeLabel(option: SettingItem<Theme>) {
   ])
 }
 
-function toggleTheme(theme: string) {
-  settingStore.setSettings({ language: settingStore.settings.language, theme })
+function handleThemeChange(theme: string) {
+  // 只更新 theme，不影响其他设置
+  settingStore.setSettings({
+    ...settingStore.settings,
+    theme,
+  })
+  toggleTheme(theme)
 }
 
 function toggleLanguage(language: string) {
@@ -204,7 +210,15 @@ function handleStopSync() {
       {{ $t('settings.title') }}
     </div>
     <div grid grid-cols-2 md="grid-cols-3" lg="grid-cols-4" justify-between gap-12>
-      <SettingSelection v-model="settingStore.settings.theme" :title="S.theme.name" :options="S.theme.children" :render-label="renderThemeLabel" label-field="name" value-field="key" :on-update-value="(theme: string) => toggleTheme(theme)" />
+      <SettingSelection
+        v-model="settingStore.settings.theme"
+        :title="S.theme.name"
+        :options="S.theme.children"
+        :render-label="renderThemeLabel"
+        label-field="name"
+        value-field="key"
+        :on-update-value="handleThemeChange"
+      />
       <SettingSelection v-model="settingStore.settings.language" :title="S.language.name" :options="S.language.children" label-field="name" value-field="key" :on-update-value="(key: string) => toggleLanguage(key)" />
       <SettingSelection v-model="settingStore.settings.websitePreference" :title="S.websitePreference.name" :options="S.websitePreference.children" label-field="name" value-field="key" :on-update-value="handleWebsitePreferenceChange" />
       <SettingSelection v-model="settingStore.settings.tagMode" :title="S.tagMode.name" :options="S.tagMode.children" label-field="name" value-field="key" :on-update-value="(key: TagMode) => settingStore.setSettings({ tagMode: key })" />
