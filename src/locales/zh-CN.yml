@@ -142,7 +142,7 @@ about:
   themeSwitch: 主题切换 - 内置多种主题样式，可自由切换
   darkMode: 夜间模式 - 爱护你的双眼
   i18nSupport: I18n - 支持简体中文、英文和日文
-  importExport: 三种方式储存数据（注册登陆、输入ID、导入导出） - 在不同设备间同步数据
+  importExport: 三种方式储存数据（注册登陆、输入ID、导入导出） - 在不同设备间同步数据<注册登陆方式中，登陆后若退出了登陆，刷新网页即可自动重新登陆>
   browserPlugin: 浏览器插件 - 新建标签页时打开 Moon
   dockerSupport: 容器化部署 - 支持 Docker 一键部署
   thanks: 特别感谢
@@ -157,6 +157,7 @@ auth:
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？
+  Log_in_again: (刷新网页可自动重新登陆)
   prompt_to_login: 已有账号？
   confirm_password: 确认密码
   email_placeholder: 请输入您的邮箱地址

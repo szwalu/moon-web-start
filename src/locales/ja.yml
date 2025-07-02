@@ -141,7 +141,7 @@ about:
   themeSwitch: テーマ切り替え - 複数の内蔵テーマを自由に切り替え可能。
   darkMode: ダークモード - あなたの目を大切に。
   i18nSupport: I18n - 中国語（簡体字）、英語、日本語に対応。
-  importExport: データを保存する3つの方法（登録とログイン、ID入力、インポートとエクスポート） - デバイス間でデータを同期。
+  importExport: データを保存する3つの方法（登録とログイン、ID入力、インポートとエクスポート） - デバイス間でデータを同期<登録ログイン方式では、ログイン後にログアウトしても、ウェブページを更新すると自動的に再度ログインできます>
   browserPlugin: ブラウザ拡張機能 - 新しいタブでMoonを開きます。
   dockerSupport: コンテナ化デプロイ - Dockerによるワンクリックデプロイに対応。
   thanks: スペシャルサンクス
@@ -156,6 +156,7 @@ auth:
   email: メールアドレス
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
+  Log_in_again: (ページを更新すると自動的に再度ログインします)
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
   email_placeholder: メールアドレスを入力してください

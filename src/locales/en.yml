@@ -142,7 +142,7 @@ about:
   themeSwitch: Theme Switching - Multiple built-in themes to switch between freely.
   darkMode: Dark Mode - Easy on your eyes.
   i18nSupport: I18n - Supports Simplified Chinese, English, and Japanese.
-  importExport: Three ways to store data (register and log in, input ID, import and export) - Sync your data across different devices.
+  importExport: Three ways to store data (register and log in, input ID, import and export) - Sync your data across different devices.(In the registration login method, if you log out after logging in, you can automatically log in again by refreshing the webpage)
   browserPlugin: Browser Extension - Open Moon in every new tab.
   dockerSupport: Containerized Deployment - Supports one-click deployment with Docker.
   thanks: Special Thanks
@@ -157,6 +157,7 @@ auth:
   email: Email
   password: Password
   prompt_to_register: Don't have an account?
+  Log_in_again: (Refresh the page to automatically log in again)
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address

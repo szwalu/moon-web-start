@@ -194,6 +194,7 @@ async function handleSubmit() {
             <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
             <span> | </span>
             <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
+            <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
           </template>
           <template v-else>
             <span>{{ $t('auth.prompt_to_login') }}</span>
