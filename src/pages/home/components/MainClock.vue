@@ -68,13 +68,23 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div text-center>
-    <div v-if="settingStore.getSettingValue('showTime')" ref="$time" text-48 tracking-wide>
+  <div class="clock-container text-center">
+    <div
+      v-if="settingStore.getSettingValue('showTime')"
+      ref="$time"
+      class="text-[40px] leading-tight"
+    >
       {{ time }}
     </div>
-    <p text="14 $text-c-1">
-      <span v-if="settingStore.getSettingValue('showDate')">{{ date }}<span ml-8>{{ week }}</span></span>
-      <span v-if="settingStore.getSettingValue('showLunar')" ml-8>{{ lunarDate }}</span>
+    <p
+      class="mt-1 text-[13px] leading-snug text-gray-500"
+    >
+      <span v-if="settingStore.getSettingValue('showDate')">
+        {{ date }}<span class="ml-4">{{ week }}</span>
+      </span>
+      <span v-if="settingStore.getSettingValue('showLunar')" class="ml-4">
+        {{ lunarDate }}
+      </span>
     </p>
   </div>
 </template>

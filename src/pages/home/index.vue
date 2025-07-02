@@ -221,9 +221,9 @@ function showMobileToast() {
         </div>
       </div>
 
-      <MainSearch
-        my-24
-      />
+      <div class="mb-6 mt-8">
+        <MainSearch />
+      </div>
       <SiteContainer :key="settingStore.siteContainerKey" />
       <MainSetting />
       <TheFooter
@@ -262,11 +262,11 @@ function showMobileToast() {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding-top: 4px;
+  padding-top: 0px;
   width: 100%;
   color: var(--text-c-1);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.2;
 }
 .weather-content {
   display: flex;
