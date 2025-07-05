@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>拼图工具</title>
+  <title>高级拼图工具</title>
   <style>
     body {
       font-family: sans-serif;
@@ -182,6 +182,32 @@ function handleFiles() {
   });
 }
 
+function drawCoverImage(img, x, y, w, h, radius = 0) {
+  const imgRatio = img.width / img.height;
+  const frameRatio = w / h;
+  let drawW, drawH;
+  if (imgRatio > frameRatio) {
+    drawH = h;
+    drawW = h * imgRatio;
+  } else {
+    drawW = w;
+    drawH = w / imgRatio;
+  }
+  const offsetX = x - (drawW - w) / 2;
+  const offsetY = y - (drawH - h) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + radius, radius);
+  ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+  ctx.arcTo(x, y + h, x, y + h - radius, radius);
+  ctx.arcTo(x, y, x + radius, y, radius);
+  ctx.clip();
+  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+  ctx.restore();
+}
+
 function generate() {
   if (imgs.length === 0) return;
   const size = +sizeEl.value;
@@ -196,48 +222,38 @@ function generate() {
   ctx.fillRect(0, 0, size, size);
 
   if (layout === '1x3' && imgs.length >= 4) {
-    const bigW = size * 0.6;
-    const bigH = size;
-    ctx.drawImage(imgs[0], borderW, borderW, bigW - gap, bigH - 2 * borderW);
-    const smallH = (bigH - 2 * borderW - 2 * gap) / 3;
-    const smallW = size - bigW - 2 * borderW - gap;
+    const bigW = size * 0.6 - gap;
+    const smallW = (size * 0.4 - gap * 2) / 1;
+    const smallH = (size - gap * 2) / 3;
+    drawCoverImage(imgs[0], borderW, borderW, bigW, size - borderW * 2, radius);
     for (let i = 1; i <= 3; i++) {
-      const x = bigW + gap;
       const y = borderW + (i - 1) * (smallH + gap);
-      ctx.drawImage(imgs[i], x, y, smallW, smallH);
+      drawCoverImage(imgs[i], bigW + gap * 2, y, smallW, smallH, radius);
     }
     return;
   }
 
   if (layout === '2+3' && imgs.length >= 5) {
-    const bigW = size * 0.6;
-    const smallW = (size - bigW - borderW * 2 - gap);
-    const halfH = (size - borderW * 2 - gap) / 2;
-    ctx.drawImage(imgs[0], borderW, borderW, bigW, halfH);
-    ctx.drawImage(imgs[1], borderW, borderW + halfH + gap, bigW, halfH);
-    const smallH = (size - borderW * 2 - 2 * gap) / 3;
+    const colW = (size - gap * 3) / 3;
+    const colH = (size - gap) / 1;
+    drawCoverImage(imgs[0], borderW, borderW, colW, colH, radius);
+    drawCoverImage(imgs[1], colW + gap * 2, borderW, colW, colH, radius);
+    const smallH = (size - gap * 2) / 3;
     for (let i = 2; i <= 4; i++) {
-      const y = borderW + (i - 2) * (smallH + gap);
-      ctx.drawImage(imgs[i], bigW + gap + borderW, y, smallW, smallH);
+      drawCoverImage(imgs[i], colW * 2 + gap * 3, borderW + (i - 2) * (smallH + gap), colW, smallH, radius);
     }
     return;
   }
 
   if (layout === '3+4' && imgs.length >= 7) {
-    const bigW = size * 0.6;
-    const thirdH = (size - borderW * 2 - 2 * gap) / 3;
-    ctx.drawImage(imgs[0], borderW, borderW, bigW, thirdH);
-    ctx.drawImage(imgs[1], borderW, borderW + thirdH + gap, bigW, thirdH);
-    ctx.drawImage(imgs[2], borderW, borderW + 2 * (thirdH + gap), bigW, thirdH);
-    const smallW = (size - bigW - borderW * 2 - 2 * gap) / 2;
-    const smallH = (size - borderW * 2 - gap) / 2;
-    let idx = 3;
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 2; c++) {
-        const x = bigW + gap + c * (smallW + gap);
-        const y = borderW + r * (smallH + gap);
-        ctx.drawImage(imgs[idx++], x, y, smallW, smallH);
-      }
+    const colW = (size - gap * 4) / 4;
+    const colH = size - borderW * 2;
+    for (let i = 0; i < 3; i++) {
+      drawCoverImage(imgs[i], borderW + i * (colW + gap), borderW, colW, colH, radius);
+    }
+    const smallH = (size - gap * 3) / 4;
+    for (let i = 3; i < 7; i++) {
+      drawCoverImage(imgs[i], borderW + 3 * (colW + gap), borderW + (i - 3) * (smallH + gap), colW, smallH, radius);
     }
     return;
   }
@@ -248,6 +264,7 @@ function generate() {
   else if (layout === '2x3') { cols = 2; rows = 3; }
   else if (layout === '3x2') { cols = 3; rows = 2; }
   else if (layout === '2x4') { cols = 2; rows = 4; }
+  else if (layout === '3x3') { cols = 3; rows = 3; }
 
   const cellW = (size - borderW * 2 - gap * (cols - 1)) / cols;
   const cellH = (size - borderW * 2 - gap * (rows - 1)) / rows;
@@ -256,16 +273,7 @@ function generate() {
     const img = imgs[i];
     const x = borderW + (i % cols) * (cellW + gap);
     const y = borderW + Math.floor(i / cols) * (cellH + gap);
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.arcTo(x + cellW, y, x + cellW, y + radius, radius);
-    ctx.arcTo(x + cellW, y + cellH, x + cellW - radius, y + cellH, radius);
-    ctx.arcTo(x, y + cellH, x, y + cellH - radius, radius);
-    ctx.arcTo(x, y, x + radius, y, radius);
-    ctx.clip();
-    ctx.drawImage(img, x, y, cellW, cellH);
-    ctx.restore();
+    drawCoverImage(img, x, y, cellW, cellH, radius);
   }
 }
 
