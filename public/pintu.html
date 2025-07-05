@@ -282,8 +282,8 @@ layoutEl.addEventListener('change', generate);
 
 dlBtn.addEventListener('click', () => {
   const link = document.createElement('a');
-  link.download = '拼图图.png';
-  link.href = canvas.toDataURL('image/png', 0.9);
+  link.download = '拼图.jpg'; // 改为 JPG
+  link.href = canvas.toDataURL('image/jpeg', 0.92); // 使用高质量 JPEG
   link.click();
 });
 </script>
