@@ -170,8 +170,10 @@
     function drawMosaic() {
       const layout = layoutEl.value;
       const outputSize = parseInt(sizeEl.value);
-      canvas.width = outputSize;
-      canvas.height = outputSize;
+      const scaleFactor = 2;
+canvas.width = outputSize * scaleFactor;
+canvas.height = outputSize * scaleFactor;
+ctx.scale(scaleFactor, scaleFactor); // 缩放上下文
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const gap = 8;
@@ -227,8 +229,8 @@
 
     dlBtn.addEventListener('click', () => {
       const link = document.createElement('a');
-      link.download = '拼图图.jpg';
-      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      link.download = '拼图.jpg';
+      link.href = canvas.toDataURL('image/jpeg', 1.0);
       link.click();
     });
   </script>
