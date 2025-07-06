@@ -540,27 +540,10 @@ function createAndDownloadImage(gridPreview) {
     });
 
     Promise.all(drawPromises).then(() => {
-        const dataUrl = canvas.toDataURL('image/png');
-
-        // ✅ 弹出图片供用户长按保存
-        const imgPreview = document.createElement('img');
-        imgPreview.src = dataUrl;
-        imgPreview.style = 'max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 0 12px rgba(0,0,0,0.3);';
-
-        const modal = document.createElement('div');
-        modal.style = `
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 10000;
-        `;
-        modal.appendChild(imgPreview);
-
-        modal.onclick = () => document.body.removeChild(modal);
-        document.body.appendChild(modal);
-
-        alert('长按图片即可保存到相册');
+        canvas.toBlob(function (blob) {
+            const filename = `grid-image-${Date.now()}.png`;
+            saveAs(blob, filename);  // ✅ 使用 FileSaver.js 触发下载
+        }, 'image/png');
     });
 }
 
