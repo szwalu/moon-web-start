@@ -228,30 +228,31 @@ ctx.scale(scaleFactor, scaleFactor); // 缩放上下文
     }
 
 dlBtn.addEventListener('click', () => {
-  canvas.toBlob(blob => {
-    if (!blob) return alert("生成图片失败");
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '拼图.jpg';
+  const layout = layoutEl.value;
+  const outputSize = parseInt(sizeEl.value);
+  const scaleFactor = 2;
+  
+  // 重新设置 canvas 尺寸
+  canvas.width = outputSize * scaleFactor;
+  canvas.height = outputSize * scaleFactor;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // 重置 transform，避免叠加缩放
+  ctx.scale(scaleFactor, scaleFactor);
 
-    // iOS 特别处理：新建窗口预览图
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (isIOS) {
-      const newWin = window.open();
-      if (newWin) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          newWin.document.write(`<img src="${e.target.result}" style="width:100%">`);
-        };
-        reader.readAsDataURL(blob);
-      } else {
-        alert("请允许弹出窗口以保存图片");
-      }
-    } else {
-      a.click();
-      URL.revokeObjectURL(url);
-    }
+  drawMosaic(); // 重新绘制当前布局
+
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '拼图.jpg';
+    
+    // 模拟点击下载
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // 清除临时 URL
+    URL.revokeObjectURL(url);
   }, 'image/jpeg', 1.0);
 });
   </script>
