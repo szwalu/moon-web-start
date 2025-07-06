@@ -59,7 +59,29 @@
 
             <!-- 合成预览区域 -->
             <div class="preview-section">
-                <div class="preview-container">
+                <!-- 导出设置 -->
+<div class="export-settings" style="margin-bottom: 1rem; text-align: center;">
+    <label style="margin-right: 1rem;">
+        分辨率宽度：
+        <select id="exportWidth">
+            <option value="1000">1000px</option>
+            <option value="1500" selected>1500px</option>
+            <option value="2000">2000px</option>
+            <option value="3000">3000px</option>
+        </select>
+    </label>
+    <label>
+        图片质量：
+        <select id="exportQuality">
+            <option value="1.0">100%</option>
+            <option value="0.9" selected>90%</option>
+            <option value="0.8">80%</option>
+            <option value="0.7">70%</option>
+        </select>
+    </label>
+</div>
+
+<div class="preview-container">
                     <h3>布局预览</h3>
                     <div class="grid-preview" id="gridPreview">
                         <!-- 网格预览将通过 JavaScript 动态生成 -->

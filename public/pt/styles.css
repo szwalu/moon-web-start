@@ -738,3 +738,11 @@ body { /* 设置页面主体样式 */
     gap: 1rem;
     z-index: 1;
 }
+
+.export-settings select {
+    font-size: 1rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    margin-left: 0.25rem;
+}

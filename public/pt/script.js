@@ -406,9 +406,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function createPreviewImage(gridPreview) {
         return new Promise(resolve => {
             const canvas = document.createElement('canvas');
-            const width = 3000;
-            canvas.width = width;
-            canvas.height = (width / 3) * 4;
+            const width = parseInt(document.getElementById('exportWidth')?.value || '1500');
+const quality = parseFloat(document.getElementById('exportQuality')?.value || '0.9');
+
+canvas.width = width;
+canvas.height = (width / 3) * 4;
 
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = 'white';
@@ -479,9 +481,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 添加下载单个预览图的函数
 function createAndDownloadImage(gridPreview) {
     const canvas = document.createElement('canvas');
-    const width = 3000;
-    canvas.width = width;
-    canvas.height = (width / 3) * 4;
+    const width = parseInt(document.getElementById('exportWidth')?.value || '1500');
+const quality = parseFloat(document.getElementById('exportQuality')?.value || '0.9');
+
+canvas.width = width;
+canvas.height = (width / 3) * 4;
 
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'white';
@@ -540,10 +544,10 @@ function createAndDownloadImage(gridPreview) {
     });
 
     Promise.all(drawPromises).then(() => {
-        canvas.toBlob(function (blob) {
-            const filename = `grid-image-${Date.now()}.png`;
-            saveAs(blob, filename);  // ✅ 使用 FileSaver.js 触发下载
-        }, 'image/png');
+const filename = `grid-image-${Date.now()}.jpg`;
+canvas.toBlob(function (blob) {
+    saveAs(blob, filename);
+}, 'image/jpeg', quality);
     });
 }
 
