@@ -78,7 +78,23 @@ document.addEventListener('DOMContentLoaded', () => {
             rows: 4,
             cols: 2,
             cells: 8
-        }
+        },
+{
+  id: 'grid5x_custom',
+  name: '5 张布局',
+  rows: 2,
+  cols: 3,
+  cells: 5,
+  custom: true
+},
+{
+  id: 'grid7x_custom',
+  name: '7 张布局',
+  rows: 2,
+  cols: 4,
+  cells: 7,
+  custom: true
+}
     ];
 
     let selectedTemplate = null;
@@ -126,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             templateGrid.appendChild(templateItem);
         });
-
+        
         // 添加生成预览按钮
         const generatePreviewBtn = document.createElement('button');
         generatePreviewBtn.className = 'generate-preview-button';
@@ -221,11 +237,106 @@ document.addEventListener('DOMContentLoaded', () => {
         const downloadBtn = document.getElementById('downloadBtn');
         const previewContainer = document.querySelector('.preview-container');
         
+       // 清空样式防止切换模板出现残留
+if (gridPreview && gridPreview.classList.contains('grid-preview')) {
+    gridPreview.style.display = '';
+    gridPreview.style.gridTemplateColumns = '';
+    gridPreview.style.gridTemplateRows = '';
+    gridPreview.style.gap = '';
+    gridPreview.innerHTML = '';
+}
+
+        
         if (!selectedTemplate || selectedImages.size === 0) {
             gridPreview.innerHTML = '<div class="empty-preview">请选择模板和图片</div>';
             downloadBtn.disabled = true;
             return;
         }
+
+// 自定义布局处理
+if (selectedTemplate.custom) {
+  const selectedImagesArray = Array.from(selectedImages).slice(0, selectedTemplate.cells);
+
+  const previewContainer = document.querySelector('.preview-container');
+  previewContainer.innerHTML = '';
+
+  const previewSection = document.createElement('div');
+  previewSection.className = 'preview-section';
+
+  const grid = document.createElement('div');
+  grid.className = 'grid-preview';
+  grid.style.display = 'grid';
+
+  // 5张图：上2下3（上大下小）
+  if (selectedTemplate.id === 'grid5x_custom') {
+    grid.style.gridTemplateRows = '2fr 1fr';
+    grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    grid.style.gap = '4px';
+
+    const layout = [
+      { gridColumn: '1 / 3', gridRow: '1' },
+      { gridColumn: '3 / 4', gridRow: '1' },
+      { gridColumn: '1 / 2', gridRow: '2' },
+      { gridColumn: '2 / 3', gridRow: '2' },
+      { gridColumn: '3 / 4', gridRow: '2' },
+    ];
+
+    for (let i = 0; i < selectedImagesArray.length; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      Object.assign(cell.style, layout[i]);
+
+      const img = selectedImagesArray[i].cloneNode();
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+
+      const container = document.createElement('div');
+      container.className = 'img-container';
+      container.appendChild(img);
+      cell.appendChild(container);
+      grid.appendChild(cell);
+    }
+  }
+
+  // 7张图：上3下4（都均分）
+  if (selectedTemplate.id === 'grid7x_custom') {
+    grid.style.gridTemplateRows = '1fr 1fr';
+    grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    grid.style.gap = '4px';
+
+    const layout = [
+      { gridColumn: '1 / 2', gridRow: '1' },
+      { gridColumn: '2 / 3', gridRow: '1' },
+      { gridColumn: '3 / 4', gridRow: '1' },
+      { gridColumn: '1 / 2', gridRow: '2' },
+      { gridColumn: '2 / 3', gridRow: '2' },
+      { gridColumn: '3 / 4', gridRow: '2' },
+      { gridColumn: '4 / 5', gridRow: '2' },
+    ];
+
+    for (let i = 0; i < selectedImagesArray.length; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      Object.assign(cell.style, layout[i]);
+
+      const img = selectedImagesArray[i].cloneNode();
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+
+      const container = document.createElement('div');
+      container.className = 'img-container';
+      container.appendChild(img);
+      cell.appendChild(container);
+      grid.appendChild(cell);
+    }
+  }
+
+  previewSection.appendChild(grid);
+  previewContainer.appendChild(previewSection);
+  return; // 结束函数，防止走默认逻辑
+}
 
         const selectedImagesArray = Array.from(selectedImages);
         
@@ -234,6 +345,15 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedImagesArray,
             Math.min(selectedTemplate.cells, selectedImagesArray.length)
         );
+        
+            // ✅ 若是自定义布局模板，则调用 renderCustomLayout 并退出
+const combination = generateCombinations(selectedImages, selectedTemplate.cells)[0];
+
+// ✅ 加这段在 combination 后
+if (selectedTemplate.customLayout) {
+    renderCustomLayout(gridPreview, selectedTemplate, combination);
+    return;
+}
 
         // 清空预览区域前，先移除已存在的操作栏
         const existingActionBar = document.querySelector('.preview-action-bar');
@@ -338,6 +458,80 @@ document.addEventListener('DOMContentLoaded', () => {
         // 将操作栏添加到预览容器后面
         previewContainer.parentNode.insertBefore(actionBar, previewContainer.nextSibling);
     }
+    
+function renderCustomLayout(gridPreview, template, combination) {
+    gridPreview.innerHTML = '';
+
+    // 🧩 5 张图布局：上 2 下 3（上图大）
+    if (template.id === 'grid5-custom') {
+        gridPreview.style.display = 'grid';
+        gridPreview.style.gridTemplateColumns = '1fr 1fr 1fr';
+        gridPreview.style.gridTemplateRows = '2fr 1fr';
+        gridPreview.style.gap = '4px';
+
+        const layout = [
+            { gridColumn: '1 / span 2', gridRow: '1' },
+            { gridColumn: '3 / span 1', gridRow: '1' },
+            { gridColumn: '1 / span 1', gridRow: '2' },
+            { gridColumn: '2 / span 1', gridRow: '2' },
+            { gridColumn: '3 / span 1', gridRow: '2' }
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell';
+            Object.assign(cell.style, layout[i]);
+
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'img-container';
+
+            const img = combination[i].cloneNode();
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+
+            imgContainer.appendChild(img);
+            cell.appendChild(imgContainer);
+            gridPreview.appendChild(cell);
+        }
+    }
+
+    // 🧩 7 张图布局：上 3 下 4
+    if (template.id === 'grid7-custom') {
+        gridPreview.style.display = 'grid';
+        gridPreview.style.gridTemplateColumns = 'repeat(4, 1fr)';
+        gridPreview.style.gridTemplateRows = '1fr 1fr';
+        gridPreview.style.gap = '4px';
+
+        const layout = [
+            { gridColumn: '1 / span 1', gridRow: '1' },
+            { gridColumn: '2 / span 1', gridRow: '1' },
+            { gridColumn: '3 / span 1', gridRow: '1' },
+            { gridColumn: '1 / span 1', gridRow: '2' },
+            { gridColumn: '2 / span 1', gridRow: '2' },
+            { gridColumn: '3 / span 1', gridRow: '2' },
+            { gridColumn: '4 / span 1', gridRow: '2' }
+        ];
+
+        for (let i = 0; i < 7; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell';
+            Object.assign(cell.style, layout[i]);
+
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'img-container';
+
+            const img = combination[i].cloneNode();
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+
+            imgContainer.appendChild(img);
+            cell.appendChild(imgContainer);
+            gridPreview.appendChild(cell);
+        }
+    }
+}
 
     // 修改全选/取消全选功能
     function toggleSelectAll() {
