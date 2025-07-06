@@ -228,21 +228,31 @@ ctx.scale(scaleFactor, scaleFactor); // 缩放上下文
     }
 
 dlBtn.addEventListener('click', () => {
-  const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if (isIOS) {
-    const win = window.open();
-    if (win) {
-      win.document.write(`<iframe src="${dataUrl}" frameborder="0" style="border:0;width:100%;height:100%;" allowfullscreen></iframe>`);
+  canvas.toBlob(blob => {
+    if (!blob) return alert("生成图片失败");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '拼图.jpg';
+
+    // iOS 特别处理：新建窗口预览图
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+      const newWin = window.open();
+      if (newWin) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          newWin.document.write(`<img src="${e.target.result}" style="width:100%">`);
+        };
+        reader.readAsDataURL(blob);
+      } else {
+        alert("请允许弹出窗口以保存图片");
+      }
     } else {
-      alert('请允许弹出窗口以保存图片，或使用 Safari 浏览器下载');
+      a.click();
+      URL.revokeObjectURL(url);
     }
-  } else {
-    const link = document.createElement('a');
-    link.download = '拼图.jpg';
-    link.href = dataUrl;
-    link.click();
-  }
+  }, 'image/jpeg', 1.0);
 });
   </script>
 </body>
