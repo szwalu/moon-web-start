@@ -227,12 +227,23 @@ ctx.scale(scaleFactor, scaleFactor); // 缩放上下文
       }
     }
 
-    dlBtn.addEventListener('click', () => {
-      const link = document.createElement('a');
-      link.download = '拼图.jpg';
-      link.href = canvas.toDataURL('image/jpeg', 1.0);
-      link.click();
-    });
+dlBtn.addEventListener('click', () => {
+  const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIOS) {
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${dataUrl}" frameborder="0" style="border:0;width:100%;height:100%;" allowfullscreen></iframe>`);
+    } else {
+      alert('请允许弹出窗口以保存图片，或使用 Safari 浏览器下载');
+    }
+  } else {
+    const link = document.createElement('a');
+    link.download = '拼图.jpg';
+    link.href = dataUrl;
+    link.click();
+  }
+});
   </script>
 </body>
 </html>
