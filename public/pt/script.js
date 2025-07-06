@@ -477,80 +477,92 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 添加下载单个预览图的函数
-    function createAndDownloadImage(gridPreview) {
-        const canvas = document.createElement('canvas');
-        const width = 3000;
-        canvas.width = width;
-        canvas.height = (width / 3) * 4;
+function createAndDownloadImage(gridPreview) {
+    const canvas = document.createElement('canvas');
+    const width = 3000;
+    canvas.width = width;
+    canvas.height = (width / 3) * 4;
 
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const cellWidth = canvas.width / selectedTemplate.cols;
-        const cellHeight = canvas.height / selectedTemplate.rows;
-        const gap = Math.floor(width / 750);
+    const cellWidth = canvas.width / selectedTemplate.cols;
+    const cellHeight = canvas.height / selectedTemplate.rows;
+    const gap = Math.floor(width / 750);
 
-        const drawPromises = Array.from(gridPreview.querySelectorAll('.grid-cell')).map((cell, index) => {
-            return new Promise((resolve) => {
-                const img = cell.querySelector('img');
-                if (!img) {
-                    resolve();
-                    return;
-                }
+    const drawPromises = Array.from(gridPreview.querySelectorAll('.grid-cell')).map((cell, index) => {
+        return new Promise((resolve) => {
+            const img = cell.querySelector('img');
+            if (!img) {
+                resolve();
+                return;
+            }
 
-                const row = Math.floor(index / selectedTemplate.cols);
-                const col = index % selectedTemplate.cols;
-                const x = col * (cellWidth + gap);
-                const y = row * (cellHeight + gap);
+            const row = Math.floor(index / selectedTemplate.cols);
+            const col = index % selectedTemplate.cols;
+            const x = col * (cellWidth + gap);
+            const y = row * (cellHeight + gap);
 
-                // 创建临时 canvas 用于裁切图片
-                const tempCanvas = document.createElement('canvas');
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCanvas.width = cellWidth;
-                tempCanvas.height = cellHeight;
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = cellWidth;
+            tempCanvas.height = cellHeight;
 
-                // 计算裁切参数
-                const imgRatio = img.naturalWidth / img.naturalHeight;
-                const cellRatio = cellWidth / cellHeight;
-                let sWidth, sHeight, sx, sy;
+            const imgRatio = img.naturalWidth / img.naturalHeight;
+            const cellRatio = cellWidth / cellHeight;
+            let sWidth, sHeight, sx, sy;
 
-                if (imgRatio > cellRatio) {
-                    // 图片更宽，需要裁切两边
-                    sHeight = img.naturalHeight;
-                    sWidth = sHeight * cellRatio;
-                    sx = (img.naturalWidth - sWidth) / 2;
-                    sy = 0;
-                } else {
-                    // 图片更高，需要裁切上下
-                    sWidth = img.naturalWidth;
-                    sHeight = sWidth / cellRatio;
-                    sx = 0;
-                    sy = (img.naturalHeight - sHeight) / 2;
-                }
+            if (imgRatio > cellRatio) {
+                sHeight = img.naturalHeight;
+                sWidth = sHeight * cellRatio;
+                sx = (img.naturalWidth - sWidth) / 2;
+                sy = 0;
+            } else {
+                sWidth = img.naturalWidth;
+                sHeight = sWidth / cellRatio;
+                sx = 0;
+                sy = (img.naturalHeight - sHeight) / 2;
+            }
 
-                // 绘制裁切后的图片
-                if (img.complete) {
+            if (img.complete) {
+                tempCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, cellWidth, cellHeight);
+                ctx.drawImage(tempCanvas, x, y);
+                resolve();
+            } else {
+                img.onload = () => {
                     tempCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, cellWidth, cellHeight);
                     ctx.drawImage(tempCanvas, x, y);
                     resolve();
-                } else {
-                    img.onload = () => {
-                        tempCtx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, cellWidth, cellHeight);
-                        ctx.drawImage(tempCanvas, x, y);
-                        resolve();
-                    };
-                }
-            });
+                };
+            }
         });
+    });
 
-        Promise.all(drawPromises).then(() => {
-            const link = document.createElement('a');
-            link.download = `grid-image-${Date.now()}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        });
-    }
+    Promise.all(drawPromises).then(() => {
+        const dataUrl = canvas.toDataURL('image/png');
+
+        // ✅ 弹出图片供用户长按保存
+        const imgPreview = document.createElement('img');
+        imgPreview.src = dataUrl;
+        imgPreview.style = 'max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 0 12px rgba(0,0,0,0.3);';
+
+        const modal = document.createElement('div');
+        modal.style = `
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10000;
+        `;
+        modal.appendChild(imgPreview);
+
+        modal.onclick = () => document.body.removeChild(modal);
+        document.body.appendChild(modal);
+
+        alert('长按图片即可保存到相册');
+    });
+}
 
     // 初始化模板
     initializeTemplates();
