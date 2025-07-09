@@ -125,9 +125,12 @@ watchEffect(() => {
 })
 
 function showQuote() {
-  const dayOfYear = new Date().getFullYear() * 366 + new Date().getMonth() * 31 + new Date().getDate()
-  const index = dayOfYear % quotes.length
-  dailyQuote.value = quotes[index]?.zh || ''
+  // 1. 获取引言库中的总数量
+  const totalQuotes = quotes.length
+  // 2. 生成一个从 0 到 (总数量 - 1) 之间的随机整数作为索引
+  const randomIndex = Math.floor(Math.random() * totalQuotes)
+  // 3. 根据这个随机索引，从数组中取出一条引言
+  dailyQuote.value = quotes[randomIndex]?.zh || ''
 }
 
 function getChineseCityName(enCity: string): string {
@@ -239,7 +242,7 @@ function showMobileToast() {
 
       <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showDailyQuote')" class="weather-container mt-9">
         <div class="weather-content">
-          <span><strong>每日一句：</strong>{{ dailyQuote }}</span>
+          <span><strong>金句：</strong>{{ dailyQuote }}</span>
         </div>
       </div>
 
