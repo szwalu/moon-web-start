@@ -18,6 +18,6 @@ export const showDailyQuote = new SettingItem({
   // 'children' 使用我们上面新命名的选项变量
   children: showDailyQuoteOptions,
 
-  // 'defaultKey' 设置默认是显示还是隐藏，这里我们默认设置为 'Show'
-  defaultKey: 'Show',
+  // 'defaultKey' 设置默认是显示还是隐藏，这里我们默认设置为 'Hide'
+  defaultKey: 'Hide',
 })
