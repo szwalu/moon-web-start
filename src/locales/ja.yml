@@ -76,6 +76,8 @@ settings:
     full: 完全
   showWeather:
     title: 天気予報
+  showDailyQuote:
+    title: 今日の名言
   common:
     show: 表示
     hide: 非表示

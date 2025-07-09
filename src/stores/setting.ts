@@ -58,10 +58,19 @@ export const useSettingStore = defineStore('setting', () => {
   }, { deep: true })
 
   function getSettingItem(key: keyof typeof settingData) {
-    return settingData[key].children.find(item => item.key === settings[key])!
+  // 关键：在这里加上安全检查！
+    const settingGroup = settingData[key]
+    if (!settingGroup) {
+      console.warn(`[setting] getSettingItem: 尝试获取一个未在 settings.ts 中定义的设置项 '${key}'`)
+      return undefined // 安全地返回 undefined
+    }
+    return settingGroup.children.find(item => item.key === settings[key])
   }
+
   function getSettingValue(key: keyof typeof settingData) {
-    return getSettingItem(key).value
+    const item = getSettingItem(key)
+    // 如果 item 不存在，返回 null 或其他默认值，而不是尝试访问 .value
+    return item ? item.value : null
   }
 
   function setSettings(newSettings: Partial<Settings>) {

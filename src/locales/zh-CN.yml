@@ -76,6 +76,8 @@ settings:
     full: 完全
   showWeather:
     title: 显示天气
+  showDailyQuote:
+    title: 每日一句
   common:
     show: 显示
     hide: 隐藏

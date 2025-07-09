@@ -76,6 +76,8 @@ settings:
     full: Full
   showWeather:
     title: Show Weather
+  showDailyQuote:
+    title: Daily Quote
   common:
     show: Show
     hide: Hide

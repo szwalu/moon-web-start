@@ -228,6 +228,14 @@ function handleStopSync() {
       <SettingSelection v-model="settingStore.settings.showTime" :title="S.showTime.name" :options="S.showTime.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showTime: key })" />
       <SettingSelection v-model="settingStore.settings.showDate" :title="S.showDate.name" :options="S.showDate.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showDate: key })" />
       <SettingSelection v-model="settingStore.settings.showWeather" :title="S.showWeather.name" :options="S.showWeather.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showWeather: key })" />
+      <SettingSelection
+        v-model="settingStore.settings.showDailyQuote"
+        :title="S.showDailyQuote.name"
+        :options="S.showDailyQuote.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ showDailyQuote: key })"
+      />
       <SettingSelection v-model="settingStore.settings.showSecond" :title="S.showSecond.name" :options="S.showSecond.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showSecond: key })" />
       <SettingSelection v-model="settingStore.settings.showLunar" :title="S.showLunar.name" :options="S.showLunar.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showLunar: key })" />
       <SettingSelection v-model="settingStore.settings.showFooter" :title="S.showFooter.name" :options="S.showFooter.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showFooter: key })" />

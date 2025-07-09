@@ -14,6 +14,7 @@ import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
+import quotes from '@/utils/daily_quotes_zh.json'
 
 // ✅ 新增的用户状态逻辑
 import { useAuthStore } from '@/stores/auth'
@@ -21,6 +22,8 @@ import { useAuthStore } from '@/stores/auth'
 defineOptions({
   name: 'HomePage',
 })
+
+const dailyQuote = ref('')
 
 const authStore = useAuthStore()
 
@@ -112,6 +115,19 @@ async function fetchWeather() {
       weatherInfo.value = ''
     }
   }
+}
+
+watchEffect(() => {
+  if (settingStore.getSettingValue('showDailyQuote'))
+    showQuote()
+  else
+    dailyQuote.value = ''
+})
+
+function showQuote() {
+  const dayOfYear = new Date().getFullYear() * 366 + new Date().getMonth() * 31 + new Date().getDate()
+  const index = dayOfYear % quotes.length
+  dailyQuote.value = quotes[index]?.zh || ''
 }
 
 function getChineseCityName(enCity: string): string {
@@ -218,6 +234,12 @@ function showMobileToast() {
         </div>
         <div v-else class="weather-content">
           <span>{{ weatherCity }}</span>
+        </div>
+      </div>
+
+      <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showDailyQuote')" class="weather-container mt-9">
+        <div class="weather-content">
+          <span><strong>每日一句：</strong>{{ dailyQuote }}</span>
         </div>
       </div>
 
