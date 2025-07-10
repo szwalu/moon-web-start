@@ -30,10 +30,16 @@ function performLocalSearch(query: string) {
     if (category.groupList) {
       for (const group of category.groupList) {
         if (group.siteList) {
-          const foundSite = group.siteList.find(site =>
-            site.name.toLowerCase().includes(lowerCaseQuery)
-            || site.desc?.toLowerCase().includes(lowerCaseQuery),
-          )
+          const keywords = lowerCaseQuery.split(/\s+/).filter(k => k)
+
+          const foundSite = group.siteList.find((site) => {
+            const name = site.name.toLowerCase()
+            const desc = site.desc?.toLowerCase() || ''
+            const url = site.url?.toLowerCase() || ''
+            const combined = `${name} ${desc} ${url}`
+
+            return keywords.some(k => combined.includes(k))
+          })
 
           if (foundSite) {
             siteStore.setCateIndex(cateIndex)
