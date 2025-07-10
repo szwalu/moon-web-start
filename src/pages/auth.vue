@@ -13,6 +13,10 @@ import { supabase } from '@/utils/supabaseClient'
 
 import { useAuthStore } from '@/stores/auth'
 
+let autoSaveInterval: NodeJS.Timeout | null = null
+
+const noteText = ref('')
+
 const authStore = useAuthStore()
 
 useDark()
@@ -30,6 +34,8 @@ const passwordConfirm = ref('')
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
+
+const maxChars = 3000
 
 const lastBackupTime = ref('N/A') // 【新增】创建一个 ref 来存储备份时间
 
@@ -54,6 +60,13 @@ onMounted(() => {
         lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
       else
         lastBackupTime.value = '暂无备份' // 或者'No backup yet'
+
+      // ✅ 恢复每15秒自动保存便笺
+      if (!autoSaveInterval) {
+        autoSaveInterval = setInterval(() => {
+          saveNote()
+        }, 15000)
+      }
     }
     else {
       lastBackupTime.value = 'N/A' // 登出后重置.
@@ -62,10 +75,78 @@ onMounted(() => {
     if (!session)
       mode.value = 'login'
   })
+  window.addEventListener('beforeunload', saveNote)
 })
+
+const charCount = computed(() => noteText.value.length)
+const LOCAL_KEY = 'cached_note'
+
+// 自动加载便笺内容：优先加载本地缓存，其次从 Supabase 加载
+watchEffect(async () => {
+  if (!user.value)
+    return
+
+  const cached = localStorage.getItem(LOCAL_KEY)
+  if (cached) {
+    noteText.value = cached
+    return
+  }
+
+  const { data } = await supabase
+    .from('notes')
+    .select('content')
+    .eq('user_id', user.value.id)
+    .single()
+
+  noteText.value = data?.content || ''
+})
+
+// 内容变化立即写入本地缓存
+watch(noteText, (val) => {
+  localStorage.setItem(LOCAL_KEY, val)
+})
+
+// 保存到 Supabase 并清除本地缓存
+async function saveNote() {
+  if (!user.value)
+    return
+
+  const { error } = await supabase
+    .from('notes')
+    .upsert({ user_id: user.value.id, content: noteText.value })
+
+  if (!error)
+    localStorage.removeItem(LOCAL_KEY)
+  else
+    console.error('保存便笺失败:', error.message)
+}
+
+// 页面卸载时清除定时器
+onUnmounted(() => {
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
+  window.removeEventListener('beforeunload', saveNote)
+})
+
+function onInput(e: Event) {
+  const target = e.target as HTMLTextAreaElement
+  if (target.value.length > maxChars) {
+    target.value = target.value.slice(0, maxChars)
+    noteText.value = target.value
+  }
+}
 
 async function handleLogout() {
   loading.value = true
+  // ✅ 清除便笺缓存
+  localStorage.removeItem(LOCAL_KEY)
+
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
   await supabase.auth.signOut()
   await router.push('/')
   loading.value = false
@@ -147,6 +228,19 @@ async function handleSubmit() {
           <span class="info-label">{{ $t('auth.account_last_backup_label') }}</span>
           <span class="info-value">{{ lastBackupTime }}</span>
         </p>
+
+        <div class="note-container">
+          <span class="info-label">{{ $t('auth.note_label') }}</span>
+          <textarea
+            v-model="noteText"
+            class="note-textarea"
+            :placeholder="$t('auth.note_placeholder')"
+            :maxlength="maxChars"
+            @blur="saveNote"
+            @input="onInput"
+          />
+          <p class="char-counter">{{ charCount }} / {{ maxChars }}</p>
+        </div>
       </div>
 
       <div class="button-group">
@@ -384,6 +478,38 @@ button:disabled {
 
 .dark .button--secondary:hover {
   background-color: #48484a;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.6rem;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  color: #111;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+.note-textarea:focus {
+  border-color: #00b386;
+  outline: none;
+}
+.dark .note-textarea {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #ffffff;
+}
+
+.char-counter {
+  text-align: right;
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+.dark .char-counter {
+  color: #aaa;
 }
 </style>
 
