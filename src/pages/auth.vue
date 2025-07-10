@@ -244,10 +244,10 @@ async function handleSubmit() {
       </div>
 
       <div class="button-group">
-        <button class="button--secondary" @click="router.push('/')">
+        <button :disabled="loading" @click="router.push('/')">
           {{ $t('auth.return_home') }}
         </button>
-        <button :disabled="loading" @click="handleLogout">
+        <button class="button--secondary" :disabled="loading" @click="handleLogout">
           {{ loading ? $t('auth.loading') : $t('auth.logout') }}
         </button>
       </div>
