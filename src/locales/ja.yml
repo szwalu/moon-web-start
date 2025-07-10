@@ -158,7 +158,7 @@ auth:
   email: メールアドレス
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
-  Log_in_again: (ページを更新すると自動的に再度ログインします)
+  Log_in_again: (ログイン後、ウェブサイトのデータを保存し、ホームページに戻って更新し、自動的に再度ログインすることができます。)
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
   email_placeholder: メールアドレスを入力してください
