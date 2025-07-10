@@ -230,7 +230,7 @@ async function handleSubmit() {
         </p>
 
         <div class="note-container">
-          <span class="info-label">{{ $t('auth.note_label') }}</span>
+          <span class="info-label">{{ $t('auth.info_label') }}</span>
           <textarea
             v-model="noteText"
             class="note-textarea"
