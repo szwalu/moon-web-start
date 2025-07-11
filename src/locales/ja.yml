@@ -181,6 +181,10 @@ auth:
   please_login: 最初にアカウントにログインしてください！
   info_label: メモ
   note_placeholder: 何かを書いてください...
+  note_conflict_title: コンテンツの競合が検出されました
+  note_conflict_content: 他のデバイスでも便箋が編集されました。リモートの内容を上書きしますか？
+  note_conflict_confirm: 上書き
+  note_conflict_cancel: キャンセル
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。

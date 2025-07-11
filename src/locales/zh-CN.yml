@@ -182,6 +182,10 @@ auth:
   please_login: 请先登录您的账户！
   info_label: 便笺
   note_placeholder: 写点什么...
+  note_conflict_title: 内容冲突提示
+  note_conflict_content: 检测到其他设备也修改了便笺，是否确定要覆盖远程内容？
+  note_conflict_confirm: 覆盖
+  note_conflict_cancel: 取消
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。

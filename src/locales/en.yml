@@ -182,6 +182,10 @@ auth:
   please_login: Please log in to your account first!
   info_label: Note
   note_placeholder: Write something...
+  note_conflict_title: Content Conflict Detected
+  note_conflict_content: Your note has also been modified on another device. Do you want to overwrite the remote content?
+  note_conflict_confirm: Overwrite
+  note_conflict_cancel: Cancel
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'

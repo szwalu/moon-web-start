@@ -124,10 +124,10 @@ async function saveNote() {
 
   if (serverNote?.content !== lastSavedContent.value && serverNote?.content !== noteText.value) {
     dialog.warning({
-      title: '内容冲突提示',
-      content: '检测到其他设备也修改了便笺，是否确定要覆盖 Supabase 中的内容？',
-      positiveText: '覆盖',
-      negativeText: '取消',
+      title: t('auth.note_conflict_title'),
+      content: t('auth.note_conflict_content'),
+      positiveText: t('auth.note_conflict_confirm'),
+      negativeText: t('auth.note_conflict_cancel'),
       onPositiveClick: async () => {
         await forceSaveToSupabase()
       },
