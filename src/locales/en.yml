@@ -204,3 +204,4 @@ autoSave:
     content: Changes were made from another device. How would you like to proceed?
     merge: Merge Changes
     overwrite: Overwrite Remote
+    useRemote: Overwrite Local with Remote

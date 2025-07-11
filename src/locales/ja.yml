@@ -203,3 +203,4 @@ autoSave:
     content: 他のデバイスでもデータが変更されています。どうしますか？
     merge: 変更をマージ
     overwrite: リモートを上書き
+    useRemote: ローカルをリモートで上書き

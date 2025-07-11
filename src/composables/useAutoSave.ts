@@ -1,5 +1,5 @@
 import { debounce } from 'lodash-es'
-import { ref } from 'vue'
+import { h, ref } from 'vue'
 import { useDialog } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting'
@@ -90,12 +90,10 @@ export function useAutoSave() {
         }
       }
       catch (e) {
-        // console.error('❌ 解析云端数据失败:', e)
         $message.error(t('autoSave.parse_failed'))
       }
     }
     else if (error && error.code !== 'PGRST116') {
-      // console.error('❌ 加载数据时出错:', error)
       $message.error(t('autoSave.load_failed'))
     }
   }
@@ -120,82 +118,157 @@ export function useAutoSave() {
       .eq('id', user.id)
       .single()
 
-    if (error && error.code !== 'PGRST116') {
-      // console.error('❌ 读取远程数据失败:', error)
+    if (error && error.code !== 'PGRST116')
       return
-    }
 
     const remoteJson = serverData?.content ?? ''
 
     if (remoteJson && remoteJson !== lastSavedContent && remoteJson !== newJson) {
-      // 🚨 冲突，弹出选择
-      dialog.warning({
+      dialog.create({
         title: t('autoSave.conflict.title'),
         content: t('autoSave.conflict.content'),
-        positiveText: t('autoSave.conflict.merge'),
-        negativeText: t('autoSave.conflict.overwrite'),
-        onPositiveClick: async () => {
-          try {
-            const remoteParsed = JSON.parse(remoteJson)
-            const mergedSites = mergeSiteData(siteStore.customData, remoteParsed.data)
+        action: () =>
+          h(
+            'div',
+            {
+              style: `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        justify-content: center;
+        padding-top: 12px;
+        width: 100%;
+      `,
+            },
+            [
+              h(
+                'button',
+                {
+                  style: `
+            background-color: #fadb14;
+            color: #000;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 160px;
+          `,
+                  onClick: async () => {
+                    try {
+                      const remoteParsed = JSON.parse(remoteJson)
+                      const mergedSites = mergeSiteData(siteStore.customData, remoteParsed.data)
 
-            // 合并后更新远程
-            const mergedJson = JSON.stringify({
-              data: mergedSites,
-              settings: settingStore.settings,
-            })
+                      const mergedJson = JSON.stringify({
+                        data: mergedSites,
+                        settings: settingStore.settings,
+                      })
 
-            const { error: mergeError } = await supabase.from('profiles').upsert({
-              id: user.id,
-              content: mergedJson,
-              updated_at: new Date().toISOString(),
-            })
+                      const { error: mergeError } = await supabase.from('profiles').upsert({
+                        id: user.id,
+                        content: mergedJson,
+                        updated_at: new Date().toISOString(),
+                      })
 
-            if (!mergeError) {
-              lastSavedContent = mergedJson
-              siteStore.setData(mergedSites) // ✅ 更新本地数据
-              //  console.log('✅ 合并并保存成功')
-            }
-            else {
-              //  console.error('❌ 合并保存失败:', mergeError)
-            }
-          }
-          catch (e) {
-            //  console.error('❌ 合并处理失败:', e)
-          }
-        },
-        onNegativeClick: async () => {
-          const { error: overwriteError } = await supabase.from('profiles').upsert({
-            id: user.id,
-            content: newJson,
-            updated_at: new Date().toISOString(),
-          })
+                      if (!mergeError) {
+                        lastSavedContent = mergedJson
+                        siteStore.setData(mergedSites)
+                      }
+                    }
+                    catch (e) {
+                      // 合并处理失败
+                    }
 
-          if (!overwriteError) {
-            lastSavedContent = newJson
-            //  console.log('✅ 覆盖保存成功')
-          }
-          else {
-            //  console.error('❌ 覆盖失败:', overwriteError)
-          }
-        },
+                    dialog.destroyAll()
+                  },
+                },
+                t('autoSave.conflict.merge'),
+              ),
+              h(
+                'button',
+                {
+                  style: `
+            background-color: #f0f0f0;
+            color: #000;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 160px;
+          `,
+                  onClick: async () => {
+                    const { error: overwriteError } = await supabase.from('profiles').upsert({
+                      id: user.id,
+                      content: newJson,
+                      updated_at: new Date().toISOString(),
+                    })
+
+                    if (!overwriteError)
+                      lastSavedContent = newJson
+
+                    dialog.destroyAll()
+                  },
+                },
+                t('autoSave.conflict.overwrite'),
+              ),
+              h(
+                'button',
+                {
+                  style: `
+            background-color: #f0f0f0;
+            color: #000;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 160px;
+          `,
+                  onClick: async () => {
+                    try {
+                      const remoteParsed = JSON.parse(remoteJson)
+                      if (remoteParsed.data && Array.isArray(remoteParsed.data)) {
+                        remoteParsed.data.forEach((category: any) => {
+                          if (!category.groupList)
+                            category.groupList = []
+                          category.groupList.forEach((group: any) => {
+                            if (!group.siteList)
+                              group.siteList = []
+                          })
+                        })
+                      }
+
+                      siteStore.setData(remoteParsed.data)
+                      settingStore.setSettings({ ...remoteParsed.settings, websitePreference: 'Customize' })
+
+                      const fullJson = JSON.stringify({
+                        data: remoteParsed.data,
+                        settings: remoteParsed.settings,
+                      })
+                      restoredContentJson.value = fullJson
+                      lastSavedContent = fullJson
+                    }
+                    catch (e) {
+                      // 解析失败
+                    }
+
+                    dialog.destroyAll()
+                  },
+                },
+                t('autoSave.conflict.useRemote'),
+              ),
+            ],
+          ),
       })
-
       return
     }
 
-    // ✅ 无冲突，直接保存
     const { error: upsertError } = await supabase.from('profiles').upsert({
       id: user.id,
       content: newJson,
       updated_at: new Date().toISOString(),
     })
-    if (!upsertError) {
+    if (!upsertError)
       lastSavedContent = newJson
-    }
-    else {
-      // console.error('❌ 保存失败:', upsertError)
-    }
   }, 2000)
 
   return {
