@@ -7,13 +7,41 @@ import { useSiteStore } from '@/stores/site'
 import { useAuthStore } from '@/stores/auth'
 
 export const restoredContentJson = ref('')
-let lastSavedContent = '' // 🔁 用于防止重复保存
+let lastSavedContent = ''
 
 function toggleTheme(theme: string) {
   if (theme === 'dark')
     document.documentElement.classList.add('dark')
   else
     document.documentElement.classList.remove('dark')
+}
+
+function deepMergeSites(localData: any[], remoteData: any[]): any[] {
+  const merged = structuredClone(localData)
+
+  remoteData.forEach((remoteCategory: any) => {
+    const localCategory = merged.find(c => c.name === remoteCategory.name)
+    if (!localCategory) {
+      merged.push(remoteCategory)
+      return
+    }
+
+    remoteCategory.groupList?.forEach((remoteGroup: any) => {
+      const localGroup = localCategory.groupList.find((g: any) => g.name === remoteGroup.name)
+      if (!localGroup) {
+        localCategory.groupList.push(remoteGroup)
+        return
+      }
+
+      remoteGroup.siteList?.forEach((remoteSite: any) => {
+        const exists = localGroup.siteList.some((s: any) => s.name === remoteSite.name)
+        if (!exists)
+          localGroup.siteList.push(remoteSite)
+      })
+    })
+  })
+
+  return merged
 }
 
 export function useAutoSave() {
@@ -76,14 +104,14 @@ export function useAutoSave() {
     if (!user)
       return
 
-    const contentToSave = {
+    const localContent = {
       data: siteStore.customData,
       settings: settingStore.settings,
     }
-    const newJson = JSON.stringify(contentToSave)
+    const newJson = JSON.stringify(localContent)
 
     if (newJson === lastSavedContent)
-      return // ⚠️ 无变更不保存
+      return
 
     const { data: serverData, error } = await supabase
       .from('profiles')
@@ -98,29 +126,52 @@ export function useAutoSave() {
 
     const remoteJson = serverData?.content ?? ''
     if (remoteJson && remoteJson !== lastSavedContent && remoteJson !== newJson) {
-      // ⚠️ 远程与本地均已修改，可能冲突
+      // ⚠️ 冲突，提示用户选择合并或覆盖
       dialog.warning({
-        title: '同步冲突提示',
-        content: '检测到其他设备也修改了数据，是否覆盖远程？',
-        positiveText: '覆盖保存',
-        negativeText: '取消',
+        title: '同步冲突',
+        content: '检测到其他设备也修改了内容，你希望如何处理？',
+        positiveText: '合并（保留远程新增）',
+        negativeText: '覆盖（保存本地为准）',
         onPositiveClick: async () => {
-          const { error: saveError } = await supabase.from('profiles').upsert({
+          try {
+            const remoteParsed = JSON.parse(remoteJson)
+            const mergedData = deepMergeSites(siteStore.customData, remoteParsed.data || [])
+            const mergedContent = {
+              data: mergedData,
+              settings: settingStore.settings,
+            }
+            const mergedJson = JSON.stringify(mergedContent)
+
+            const { error: mergeError } = await supabase.from('profiles').upsert({
+              id: user.id,
+              content: mergedJson,
+              updated_at: new Date().toISOString(),
+            })
+            if (!mergeError)
+              lastSavedContent = mergedJson
+            else
+              console.error('❌ 合并保存失败:', mergeError)
+          }
+          catch (e) {
+            console.error('❌ 合并处理异常:', e)
+          }
+        },
+        onNegativeClick: async () => {
+          const { error: overwriteError } = await supabase.from('profiles').upsert({
             id: user.id,
             content: newJson,
             updated_at: new Date().toISOString(),
           })
-          if (!saveError)
+          if (!overwriteError)
             lastSavedContent = newJson
           else
-            console.error('❌ 冲突保存失败:', saveError)
+            console.error('❌ 覆盖保存失败:', overwriteError)
         },
-        onNegativeClick: () => {},
       })
       return
     }
 
-    // ✅ 无冲突，直接保存
+    // ✅ 无冲突，正常保存
     const { error: upsertError } = await supabase.from('profiles').upsert({
       id: user.id,
       content: newJson,
