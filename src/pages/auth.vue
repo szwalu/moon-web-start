@@ -128,13 +128,18 @@ async function saveNote() {
       content: t('auth.note_conflict_content'),
       positiveText: t('auth.note_conflict_confirm'),
       negativeText: t('auth.note_conflict_cancel'),
-      onPositiveClick: async () => {
-        await forceSaveToSupabase()
-      },
-      onNegativeClick: () => {
+      async onPositiveClick() {
+        const { error } = await supabase
+          .from('notes')
+          .upsert({ user_id: user.value.id, content: noteText.value })
+
+        if (!error)
+          lastSavedContent.value = noteText.value
+        else
+          console.error('覆盖保存失败:', error.message)
       },
     })
-    return // 提前 return，等待用户确认操作
+    return
   }
 
   const { error } = await supabase
