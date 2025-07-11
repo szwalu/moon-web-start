@@ -199,3 +199,8 @@ autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨
   parse_failed: 解析云端数据失败
   load_failed: 加载数据时出错
+  conflict:
+    title: 同步冲突提示
+    content: 检测到其他设备也修改了数据，你希望怎么处理？
+    merge: 合并内容
+    overwrite: 覆盖远程

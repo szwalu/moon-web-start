@@ -130,10 +130,10 @@ export function useAutoSave() {
     if (remoteJson && remoteJson !== lastSavedContent && remoteJson !== newJson) {
       // 🚨 冲突，弹出选择
       dialog.warning({
-        title: '同步冲突提示',
-        content: '检测到其他设备也修改了数据，你希望怎么处理？',
-        positiveText: '合并新增内容',
-        negativeText: '仅保存本地',
+        title: t('autoSave.conflict.title'),
+        content: t('autoSave.conflict.content'),
+        positiveText: t('autoSave.conflict.merge'),
+        negativeText: t('autoSave.conflict.overwrite'),
         onPositiveClick: async () => {
           try {
             const remoteParsed = JSON.parse(remoteJson)

@@ -199,3 +199,8 @@ autoSave:
   restored: Welcome, {email}, your data has been restored ✨
   parse_failed: Failed to parse cloud data
   load_failed: Error loading data
+  conflict:
+    title: Sync Conflict Detected
+    content: Changes were made from another device. How would you like to proceed?
+    merge: Merge Changes
+    overwrite: Overwrite Remote
