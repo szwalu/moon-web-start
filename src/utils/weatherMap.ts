@@ -225,20 +225,15 @@ export const cityMap: Record<string, string> = {
   'Pingshan': '坪山区',
   'Guangming': '光明区',
   'Dapeng': '大鹏新区',
-
-  // — 福田区（10）
   'Shatou': '沙头街道',
   'Nanyuan': '南园街道',
   'Yuanling': '园岭街道',
   'Huafu': '华富街道',
-  'Futian': '福田街道',
   'Xiangmihu': '香蜜湖街道',
   'Lianhua': '莲花街道',
   'Meilin': '梅林街道',
   'Huaqiangbei': '华强北街道',
   'Fubao': '福保街道',
-
-  // — 罗湖区（10）
   'Huangbei': '黄贝街道',
   'Guiyuan': '桂园街道',
   'Dongmen': '东门街道',
@@ -249,26 +244,17 @@ export const cityMap: Record<string, string> = {
   'Donghu': '东湖街道',
   'Liantang': '莲塘街道',
   'Qingshuihe': '清水河街道',
-
-  // — 南山区（8）
   'Nantou': '南头街道',
-  'Nanshan': '南山街道',
   'Shahe': '沙河街道',
   'Xili': '西丽街道',
   'Shekou': '蛇口街道',
   'Zhaoshang': '招商街道',
   'Yuehai': '粤海街道',
   'Taoyuan': '桃源街道',
-
-  // — 盐田区（4）
   'Haishan': '海山街道',
-  'Yantian': '盐田街道',
   'Meisha': '梅沙街道',
   'Shatoujiao': '沙头角街道',
-
-  // — 宝安区（10）
   'Xin’an': '新安街道',
-  'Shiyan': '石岩街道',
   'Xixiang': '西乡街道',
   'Fuyong': '福永街道',
   'Shajing': '沙井街道',
@@ -277,49 +263,32 @@ export const cityMap: Record<string, string> = {
   'Fuhai': '福海街道',
   'Xinqiao': '新桥街道',
   'Yanluo': '燕罗街道',
-
-  // — 龙岗区（11）
   'Longcheng': '龙城街道',
-  'Longgang': '龙岗街道',
   'Henggang': '横岗街道',
   'Buji': '布吉街道',
   'Bantian': '坂田街道',
   'Nanwan': '南湾街道',
-  'Pinghu': '平湖街道',
   'Pingdi': '坪地街道',
   'Baolong': '宝龙街道',
   'Jihua': '吉华街道',
   'Yuanshan': '园山街道',
-
-  // — 龙华区（6）
-  'Longhua': '龙华街道',
   'Minzhi': '民治街道',
   'Dalang': '大浪街道',
   'Guanlan': '观澜街道',
   'Fucheng': '福城街道',
   'Guanhu': '观湖街道',
-
-  // — 坪山区（6）
-  'Pingshan': '坪山街道',
   'Biling': '碧岭街道',
   'Shijing': '石井街道',
   'Kengzi': '坑梓街道',
   'Longtian': '龙田街道',
   'Maluan': '马峦街道',
-
-  // — 光明区（6）
-  'Guangming': '光明街道',
   'Gongming': '公明街道',
   'Xinhu': '新湖街道',
   'Fenghuang': '凤凰街道',
   'Yutang': '玉塘街道',
   'Matian': '马田街道',
-
-  // — 大鹏新区（3）
-  'Dapeng': '大鹏街道',
   'Kuichong': '葵涌街道',
   'Nanao': '南澳街道',
-
   'Zhuhai': '珠海',
   'Shantou': '汕头',
   'Foshan': '佛山',
@@ -348,7 +317,6 @@ export const cityMap: Record<string, string> = {
   'Chengdong': '城东街道',
   'Xiantang': '仙塘镇',
   'Dengta': '灯塔镇',
-  'Luohu': '骆湖镇',
   'Chuantang': '船塘镇',
   'Shuntian': '顺天镇',
   'Shangguan': '上莞镇',
@@ -398,7 +366,6 @@ export const cityMap: Record<string, string> = {
   'Longmu': '龙母镇',
   'Tianxin': '田心镇',
   'Lijiao': '黎咀镇',
-  'Huangshi': '黄石镇',
   'Chiguang': '赤光镇',
   'Huilong': '廻龙镇',
   'Xintian': '新田镇',
@@ -426,7 +393,6 @@ export const cityMap: Record<string, string> = {
   'Suqiu': '苏区镇',
   'Waxi': '瓦溪镇',
   'Haoyi': '好义镇',
-  'Yuanshan': '元善镇',
   'Neiguan': '内莞镇',
   'Peitou': '陂头镇',
   'Xishan': '溪山镇',
