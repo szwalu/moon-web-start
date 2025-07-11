@@ -1,31 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { useMessage } from 'naive-ui'
-
-// 【修正1】: 重新导入 useMessage
+import { useDialog, useMessage } from 'naive-ui'
 import { useAutoSave } from '@/composables/useAutoSave'
-
-// 【修正2】: 重新导入 useAutoSave
 import { supabase } from '@/utils/supabaseClient'
-
 import { useAuthStore } from '@/stores/auth'
 
-let autoSaveInterval: NodeJS.Timeout | null = null
-
+const dialog = useDialog()
 const noteText = ref('')
+const lastSavedContent = ref('') // 保存最近一次成功保存到 Supabase 的内容
 
 const authStore = useAuthStore()
-
 useDark()
 const router = useRouter()
 const { t } = useI18n()
-const messageHook = useMessage() // 【修正3】 重新获取 message 实例
-const { autoLoadData } = useAutoSave() // 【修正4】: 重新获取 autoLoadData 函数
+const messageHook = useMessage()
+const { autoLoadData } = useAutoSave()
 
-// --- 以下是您现有的状态变量，保持不变 ---
+let autoSaveInterval: NodeJS.Timeout | null = null
+
 const user = ref<any>(null)
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
@@ -34,10 +29,9 @@ const passwordConfirm = ref('')
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
-
+const charCount = computed(() => noteText.value.length)
 const maxChars = 3000
-
-const lastBackupTime = ref('N/A') // 【新增】创建一个 ref 来存储备份时间
+const lastBackupTime = ref('N/A')
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
@@ -45,23 +39,25 @@ const lastLoginTime = computed(() => {
   return 'N/A'
 })
 
+const LOCAL_KEY = ref('')
+
 onMounted(() => {
-  supabase.auth.onAuthStateChange(async (_event, session) => { // 【修改】将此回调函数标记为 async
+  supabase.auth.onAuthStateChange(async (_event, session) => {
     user.value = session?.user ?? null
     if (session) {
-      // 【新增】如果用户登录了，就去获取上次备份时间
-      const { data, _error } = await supabase
+      LOCAL_KEY.value = `cached_note_${session.user.id}`
+
+      const { data } = await supabase
         .from('profiles')
         .select('updated_at')
         .eq('id', session.user.id)
         .single()
 
-      if (data && data.updated_at)
+      if (data?.updated_at)
         lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
       else
-        lastBackupTime.value = '暂无备份' // 或者'No backup yet'
+        lastBackupTime.value = '暂无备份'
 
-      // ✅ 恢复每15秒自动保存便笺
       if (!autoSaveInterval) {
         autoSaveInterval = setInterval(() => {
           saveNote()
@@ -69,59 +65,17 @@ onMounted(() => {
       }
     }
     else {
-      lastBackupTime.value = 'N/A' // 登出后重置.
+      lastBackupTime.value = 'N/A'
+      LOCAL_KEY.value = ''
     }
 
     if (!session)
       mode.value = 'login'
   })
+
   window.addEventListener('beforeunload', saveNote)
 })
 
-const charCount = computed(() => noteText.value.length)
-const LOCAL_KEY = 'cached_note'
-
-// 自动加载便笺内容：优先加载本地缓存，其次从 Supabase 加载
-watchEffect(async () => {
-  if (!user.value)
-    return
-
-  const cached = localStorage.getItem(LOCAL_KEY)
-  if (cached) {
-    noteText.value = cached
-    return
-  }
-
-  const { data } = await supabase
-    .from('notes')
-    .select('content')
-    .eq('user_id', user.value.id)
-    .single()
-
-  noteText.value = data?.content || ''
-})
-
-// 内容变化立即写入本地缓存
-watch(noteText, (val) => {
-  localStorage.setItem(LOCAL_KEY, val)
-})
-
-// 保存到 Supabase 并清除本地缓存
-async function saveNote() {
-  if (!user.value)
-    return
-
-  const { error } = await supabase
-    .from('notes')
-    .upsert({ user_id: user.value.id, content: noteText.value })
-
-  if (!error)
-    localStorage.removeItem(LOCAL_KEY)
-  else
-    console.error('保存便笺失败:', error.message)
-}
-
-// 页面卸载时清除定时器
 onUnmounted(() => {
   if (autoSaveInterval) {
     clearInterval(autoSaveInterval)
@@ -129,6 +83,69 @@ onUnmounted(() => {
   }
   window.removeEventListener('beforeunload', saveNote)
 })
+
+watchEffect(async () => {
+  if (!user.value)
+    return
+
+  const { data } = await supabase
+    .from('notes')
+    .select('content')
+    .eq('user_id', user.value.id)
+    .single()
+
+  if (data?.content) {
+    noteText.value = data.content
+    lastSavedContent.value = data.content
+    localStorage.setItem(LOCAL_KEY.value, data.content)
+  }
+  else {
+    noteText.value = ''
+  }
+})
+
+watch(noteText, (val) => {
+  if (LOCAL_KEY.value)
+    localStorage.setItem(LOCAL_KEY.value, val)
+})
+
+async function saveNote() {
+  if (!user.value)
+    return
+
+  if (noteText.value === lastSavedContent.value)
+    return // 无变化不保存
+
+  const { data: serverNote } = await supabase
+    .from('notes')
+    .select('content')
+    .eq('user_id', user.value.id)
+    .single()
+
+  if (serverNote?.content !== lastSavedContent.value && serverNote?.content !== noteText.value) {
+    dialog.warning({
+      title: '内容冲突提示',
+      content: '检测到其他设备也修改了便笺，是否确定要覆盖 Supabase 中的内容？',
+      positiveText: '覆盖',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        await forceSaveToSupabase()
+      },
+      onNegativeClick: () => {
+      },
+    })
+    return // 提前 return，等待用户确认操作
+  }
+
+  const { error } = await supabase
+    .from('notes')
+    .upsert({ user_id: user.value.id, content: noteText.value })
+
+  if (!error)
+    lastSavedContent.value = noteText.value
+  else
+    console.error('保存便笺失败:', error.message)
+}
 
 function onInput(e: Event) {
   const target = e.target as HTMLTextAreaElement
@@ -140,9 +157,6 @@ function onInput(e: Event) {
 
 async function handleLogout() {
   loading.value = true
-  // ✅ 清除便笺缓存
-  localStorage.removeItem(LOCAL_KEY)
-
   if (autoSaveInterval) {
     clearInterval(autoSaveInterval)
     autoSaveInterval = null
@@ -177,9 +191,7 @@ async function handleSubmit() {
       if (error)
         throw error
 
-      // 【核心修正】: 在这里重新调用 autoLoadData，以在登录成功后恢复数据
       await router.push('/')
-      // ✅ 【新增】刷新全局用户状态
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
     }
@@ -192,7 +204,7 @@ async function handleSubmit() {
         throw error
       message.value = t('auth.messages.check_email_for_verification')
     }
-    else { // 'forgotPassword' 模式
+    else {
       const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
         redirectTo: `${window.location.origin}/update-password`,
       })
