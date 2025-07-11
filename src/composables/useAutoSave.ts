@@ -5,15 +5,45 @@ import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 import { useAuthStore } from '@/stores/auth'
 
+// ✅ 标记是否成功恢复内容（可选）
 export const restoredContentJson = ref('')
-const lastSavedContent = ref('')
-const lastSavedTime = ref(0) // 本地最后保存的时间戳（毫秒）
 
 function toggleTheme(theme: string) {
   if (theme === 'dark')
     document.documentElement.classList.add('dark')
   else
     document.documentElement.classList.remove('dark')
+}
+
+// ✅ 合并远程数据到本地数据（以本地为主，但保留远程新增）
+function mergeData(remote: any[], local: any[]): any[] {
+  const merged = [...local]
+  for (const remoteCategory of remote) {
+    const localCategory = merged.find(c => c.id === remoteCategory.id)
+    if (!localCategory) {
+      merged.push(remoteCategory)
+    }
+    else {
+      // 合并 groupList
+      localCategory.groupList = localCategory.groupList || []
+      for (const remoteGroup of remoteCategory.groupList || []) {
+        const localGroup = localCategory.groupList.find(g => g.id === remoteGroup.id)
+        if (!localGroup) {
+          localCategory.groupList.push(remoteGroup)
+        }
+        else {
+          // 合并 siteList
+          localGroup.siteList = localGroup.siteList || []
+          for (const remoteSite of remoteGroup.siteList || []) {
+            const exists = localGroup.siteList.some(s => s.id === remoteSite.id)
+            if (!exists)
+              localGroup.siteList.push(remoteSite)
+          }
+        }
+      }
+    }
+  }
+  return merged
 }
 
 export function useAutoSave() {
@@ -28,45 +58,45 @@ export function useAutoSave() {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('content, updated_at')
+      .select('content')
       .eq('id', user.id)
       .single()
 
-    if (data?.content) {
+    if (data && data.content) {
       try {
         const parsed = JSON.parse(data.content)
 
-        parsed.data?.forEach((category: any) => {
-          if (!category.groupList)
-            category.groupList = []
-          category.groupList.forEach((group: any) => {
-            if (!group.siteList)
-              group.siteList = []
+        if (parsed.data && Array.isArray(parsed.data)) {
+          parsed.data.forEach((category: any) => {
+            if (!category.groupList)
+              category.groupList = []
+            category.groupList.forEach((group: any) => {
+              if (!group.siteList)
+                group.siteList = []
+            })
           })
-        })
+        }
 
         if (parsed.data && parsed.settings) {
           settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
 
-          const json = JSON.stringify({ data: parsed.data, settings: parsed.settings })
-          restoredContentJson.value = json
-          lastSavedContent.value = json
-
-          // 记录云端的更新时间
-          lastSavedTime.value = new Date(`${data.updated_at}Z`).getTime()
+          restoredContentJson.value = JSON.stringify({
+            data: parsed.data,
+            settings: parsed.settings,
+          })
 
           $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
       }
       catch (e) {
-        // console.error('❌ 解析云端数据失败:', e)
+        console.error('❌ 解析云端数据失败:', e)
         $message.error(t('autoSave.parse_failed'))
       }
     }
     else if (error && error.code !== 'PGRST116') {
-      // console.error('❌ 加载数据时出错:', error)
+      console.error('❌ 加载数据时出错:', error)
       $message.error(t('autoSave.load_failed'))
     }
   }
@@ -76,51 +106,36 @@ export function useAutoSave() {
     if (!user)
       return
 
-    const newContent = {
+    const contentToSave = {
       data: siteStore.customData,
       settings: settingStore.settings,
     }
-    const newContentJson = JSON.stringify(newContent)
 
-    if (newContentJson === lastSavedContent.value)
-      return
+    try {
+      const { data: remoteData } = await supabase
+        .from('profiles')
+        .select('content')
+        .eq('id', user.id)
+        .single()
 
-    // 读取最新的远程更新时间戳
-    const { data: remote, error } = await supabase
-      .from('profiles')
-      .select('updated_at')
-      .eq('id', user.id)
-      .single()
-
-    if (error) {
-      // console.error('❌ 获取远程更新时间失败:', error)
-      return
+      if (remoteData?.content) {
+        const parsed = JSON.parse(remoteData.content)
+        if (Array.isArray(parsed.data))
+          contentToSave.data = mergeData(parsed.data, contentToSave.data)
+      }
+    }
+    catch (e) {
+      console.warn('⚠️ 获取远程数据失败，跳过合并：', e)
     }
 
-    const remoteUpdatedTime = new Date(`${remote.updated_at}Z`).getTime()
-
-    // 🔍 核心判断：本地时间是否更晚
-    if (lastSavedTime.value && remoteUpdatedTime > lastSavedTime.value) {
-      // console.warn('⚠️ 云端数据比本地新，取消保存以避免覆盖')
-      return
-    }
-
-    // 保存数据到 Supabase
-    const now = new Date()
-    const { error: saveError } = await supabase.from('profiles').upsert({
+    const { error } = await supabase.from('profiles').upsert({
       id: user.id,
-      content: newContentJson,
-      updated_at: now.toISOString(),
+      content: JSON.stringify(contentToSave),
+      updated_at: new Date().toISOString(),
     })
 
-    if (!saveError) {
-      lastSavedContent.value = newContentJson
-      lastSavedTime.value = now.getTime()
-      // console.log('✅ 自动保存成功')
-    }
-    else {
-      // console.error('❌ 自动保存失败:', saveError)
-    }
+    if (error)
+      console.error('❌ 自动保存失败:', error)
   }, 2000)
 
   return {
