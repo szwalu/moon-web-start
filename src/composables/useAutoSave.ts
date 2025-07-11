@@ -5,8 +5,9 @@ import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 import { useAuthStore } from '@/stores/auth'
 
-// ✅ 全局导出用于判断是否是初次加载的数据（可选）
 export const restoredContentJson = ref('')
+const lastSavedContent = ref('')
+const lastSavedTime = ref(0) // 本地最后保存的时间戳（毫秒）
 
 function toggleTheme(theme: string) {
   if (theme === 'dark')
@@ -20,7 +21,6 @@ export function useAutoSave() {
   const siteStore = useSiteStore()
   const authStore = useAuthStore()
 
-  // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -28,46 +28,45 @@ export function useAutoSave() {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('content')
+      .select('content, updated_at')
       .eq('id', user.id)
       .single()
 
-    if (data && data.content) {
+    if (data?.content) {
       try {
         const parsed = JSON.parse(data.content)
 
-        if (parsed.data && Array.isArray(parsed.data)) {
-          parsed.data.forEach((category: any) => {
-            if (!category.groupList)
-              category.groupList = []
-            category.groupList.forEach((group: any) => {
-              if (!group.siteList)
-                group.siteList = []
-            })
+        parsed.data?.forEach((category: any) => {
+          if (!category.groupList)
+            category.groupList = []
+          category.groupList.forEach((group: any) => {
+            if (!group.siteList)
+              group.siteList = []
           })
-        }
+        })
 
         if (parsed.data && parsed.settings) {
           settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
 
-          // ✅ 标记内容（可选用于对比是否改变）
-          restoredContentJson.value = JSON.stringify({
-            data: parsed.data,
-            settings: parsed.settings,
-          })
+          const json = JSON.stringify({ data: parsed.data, settings: parsed.settings })
+          restoredContentJson.value = json
+          lastSavedContent.value = json
+
+          // 记录云端的更新时间
+          lastSavedTime.value = new Date(`${data.updated_at}Z`).getTime()
 
           $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
       }
       catch (e) {
-        console.error('❌ 解析云端数据失败:', e)
+        // console.error('❌ 解析云端数据失败:', e)
         $message.error(t('autoSave.parse_failed'))
       }
     }
     else if (error && error.code !== 'PGRST116') {
-      console.error('❌ 加载数据时出错:', error)
+      // console.error('❌ 加载数据时出错:', error)
       $message.error(t('autoSave.load_failed'))
     }
   }
@@ -77,19 +76,51 @@ export function useAutoSave() {
     if (!user)
       return
 
-    const contentToSave = {
+    const newContent = {
       data: siteStore.customData,
       settings: settingStore.settings,
     }
+    const newContentJson = JSON.stringify(newContent)
 
-    const { error } = await supabase.from('profiles').upsert({
+    if (newContentJson === lastSavedContent.value)
+      return
+
+    // 读取最新的远程更新时间戳
+    const { data: remote, error } = await supabase
+      .from('profiles')
+      .select('updated_at')
+      .eq('id', user.id)
+      .single()
+
+    if (error) {
+      // console.error('❌ 获取远程更新时间失败:', error)
+      return
+    }
+
+    const remoteUpdatedTime = new Date(`${remote.updated_at}Z`).getTime()
+
+    // 🔍 核心判断：本地时间是否更晚
+    if (lastSavedTime.value && remoteUpdatedTime > lastSavedTime.value) {
+      // console.warn('⚠️ 云端数据比本地新，取消保存以避免覆盖')
+      return
+    }
+
+    // 保存数据到 Supabase
+    const now = new Date()
+    const { error: saveError } = await supabase.from('profiles').upsert({
       id: user.id,
-      content: JSON.stringify(contentToSave),
-      updated_at: new Date().toISOString(),
+      content: newContentJson,
+      updated_at: now.toISOString(),
     })
 
-    if (error)
-      console.error('❌ 自动保存失败:', error)
+    if (!saveError) {
+      lastSavedContent.value = newContentJson
+      lastSavedTime.value = now.getTime()
+      // console.log('✅ 自动保存成功')
+    }
+    else {
+      // console.error('❌ 自动保存失败:', saveError)
+    }
   }, 2000)
 
   return {
