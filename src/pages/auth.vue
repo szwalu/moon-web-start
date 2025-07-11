@@ -461,7 +461,7 @@ button:disabled {
 /* 【新增】为按钮组和次要按钮添加样式 */
 .button-group {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 5fr 1fr; /* 改成返回主页宽，登出窄 */
   gap: 1rem;
   margin-top: 2rem;
 }
@@ -474,7 +474,7 @@ button:disabled {
   border: 1px solid #ddd;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 13px;
   transition: background-color 0.2s ease;
 }
 
@@ -494,7 +494,7 @@ button:disabled {
 
 .note-textarea {
   width: 100%;
-  min-height: 80px;
+  min-height: 160px;
   padding: 0.6rem;
   font-size: 14px;
   border: 1px solid #ccc;
