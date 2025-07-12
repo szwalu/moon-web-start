@@ -510,7 +510,7 @@ button:disabled {
 
 .note-textarea {
   width: 100%;
-  min-height: 300px;
+  min-height: 290px;
   padding: 0.6rem;
   font-size: 14px;
   border: 1px solid #ccc;
