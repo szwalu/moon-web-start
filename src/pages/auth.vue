@@ -231,7 +231,7 @@ async function handleSubmit() {
 <template>
   <div class="auth-container">
     <div v-if="user" class="account-info">
-      <h1>{{ $t('auth.account_title') }}</h1>
+      <h1 class="account-title">{{ $t('auth.account_title') }}</h1>
       <div class="info-grid">
         <p>
           <span class="info-label">{{ $t('auth.account_email_label') }}</span>
@@ -429,15 +429,26 @@ button:disabled {
   color: #2dd4bf;
 }
 
+.account-title {
+  font-size: 18px; /* 原先是 28px */
+}
+
+.note-container {
+  margin-top: 3rem; /* 增加与上面三行的垂直距离 */
+}
 /* 【新增】为账户信息视图添加一些样式 */
 .account-info {
   text-align: center;
 }
-.info-grid {
-  margin: 2rem 0;
-  text-align: left;
-  display: grid;
-  gap: 1rem;
+.info-grid p {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eee;
+  padding: 2.0rem 0;
+  margin: 0;
+}
+.dark .info-grid p {
+  border-bottom-color: #333;
 }
 .info-grid p {
   display: flex;
@@ -499,7 +510,7 @@ button:disabled {
 
 .note-textarea {
   width: 100%;
-  min-height: 160px;
+  min-height: 280px;
   padding: 0.6rem;
   font-size: 14px;
   border: 1px solid #ccc;

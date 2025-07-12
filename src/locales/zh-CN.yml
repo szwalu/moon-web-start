@@ -180,7 +180,7 @@ auth:
   account_last_backup_label: 上次备份
   return_home: 返回主页
   please_login: 请先登录您的账户！
-  info_label: 便笺
+  info_label: 便 笺
   note_placeholder: 写点什么...
   note_conflict_title: 内容冲突提示
   note_conflict_content: 检测到其他设备也修改了便笺，是否确定要覆盖远程内容？
