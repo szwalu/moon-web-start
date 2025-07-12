@@ -202,9 +202,3 @@ autoSave:
   restored: アカウント {email} で復元されました✨
   parse_failed: クラウドデータの解析に失敗しました
   load_failed: データの読み込み中にエラーが発生しました
-  conflict:
-    title: 同期の競合が検出されました
-    content: 他のデバイスでもデータが変更されています。どうしますか？
-    merge: 変更をマージ
-    overwrite: リモートを上書き
-    useRemote: ローカルをリモートで上書き
