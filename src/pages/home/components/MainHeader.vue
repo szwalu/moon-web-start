@@ -1,24 +1,22 @@
 <script setup lang="ts">
-import { RouterLink, useRouter } from 'vue-router'
-
-// 1. 导入 useRouter
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
-
 import { useMessage } from 'naive-ui'
-
-// 2. 导入 naive-ui 的 useMessage
 import { useI18n } from 'vue-i18n'
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
 
-// 3. 导入 supabase 客户端
+// ✅ 导入 autoSave 手动保存
+import { useAutoSave } from '@/composables/useAutoSave'
+
+const { manualSaveData } = useAutoSave()
 
 const { t } = useI18n()
 const route = useRoute()
 const settingStore = useSettingStore()
-const router = useRouter() // 4. 获取 router 实例，用于手动跳转
-const $message = useMessage() // 5. 获取 message 实例，用于弹窗提示
+const router = useRouter()
+const $message = useMessage()
 
 const isMobile = ref(false)
 onMounted(() => {
@@ -28,7 +26,6 @@ onMounted(() => {
   })
 })
 
-// 6. 【新增】获取并监听用户登录状态
 const user = ref<any>(null)
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -36,7 +33,7 @@ onMounted(() => {
   })
 })
 
-const logoPath = ref('/logow.jpg') // 默认未登录
+const logoPath = ref('/logow.jpg')
 
 onMounted(async () => {
   const { data: { user } } = await supabase.auth.getUser()
@@ -50,25 +47,28 @@ function getIconClass(routeName: string) {
   }
 }
 
-// 7. 【新增】处理设置按钮点击事件的函数
 function handleSettingsClick() {
   if (user.value) {
-  // 如果用户已登录，正常跳转到设置页面
     router.push('/setting')
   }
   else {
-  // 如果用户未登录，弹出提示
-    $message.warning(t('auth.please_login')) // ✅ 国际化
-
-    // 等待 0.5 秒后跳转到设置页面
+    $message.warning(t('auth.please_login'))
     setTimeout(() => {
       router.push('/setting')
     }, 300)
   }
 }
 
-// 8. 确保 toggleDark 函数可用（如果它在别处定义，请确保已导入）
-// 假设它是一个全局函数或在父组件中处理
+// ✅ 点击“小房子”按钮时手动保存后再跳转
+async function handleBackHomeClick() {
+  const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
+  await manualSaveData()
+  loadingRef.destroy()
+  $message.success(t('messages.saveSuccess'))
+  router.push('/')
+}
+
+// 假设 toggleDark 为全局函数
 declare function toggleDark(event: MouseEvent): void
 </script>
 
@@ -76,7 +76,6 @@ declare function toggleDark(event: MouseEvent): void
   <div class="flex items-center justify-between px-4 pt-12 lg:px-8 md:px-6">
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
-
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
         <img
           :src="logoPath"
@@ -87,12 +86,14 @@ declare function toggleDark(event: MouseEvent): void
     </div>
 
     <div class="flex items-center gap-x-11">
-      <RouterLink
+      <!-- ✅ 小房子按钮：点击后保存并跳转 -->
+      <div
         v-if="settingStore.isSetting"
-        class="text-7xl" :class="[getIconClass('home')]"
-        to="/"
+        class="text-7xl"
+        :class="[getIconClass('home')]"
         i-carbon:home
         icon-btn
+        @click="handleBackHomeClick"
       />
       <div
         v-else

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { h, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import SettingSelection from './SettingSelection.vue'
 import { supabase } from '@/utils/supabaseClient'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
@@ -7,7 +8,11 @@ import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/util
 import * as S from '@/utils/settings'
 import { toggleTheme } from '@/composables/theme'
 
-// ✅ 页面激活时强制刷新会话，防止假登出
+// ✅ 引入手动保存逻辑
+import { useAutoSave } from '@/composables/useAutoSave'
+
+const { manualSaveData } = useAutoSave()
+const router = useRouter()
 async function refreshSession() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) {
@@ -36,7 +41,6 @@ function renderThemeLabel(option: SettingItem<Theme>) {
 }
 
 function handleThemeChange(theme: string) {
-  // 只更新 theme，不影响其他设置
   settingStore.setSettings({
     ...settingStore.settings,
     theme,
@@ -202,6 +206,14 @@ function handleStopSync() {
   secretIdStorage.remove()
   secretId.value = ''
 }
+
+async function handleCompleteClick() {
+  const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
+  await manualSaveData()
+  loadingRef.destroy()
+  $message.success(t('messages.saveSuccess'))
+  router.back() // ✅ 正确跳转
+}
 </script>
 
 <template>
@@ -240,6 +252,7 @@ function handleStopSync() {
       <SettingSelection v-model="settingStore.settings.showLunar" :title="S.showLunar.name" :options="S.showLunar.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showLunar: key })" />
       <SettingSelection v-model="settingStore.settings.showFooter" :title="S.showFooter.name" :options="S.showFooter.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showFooter: key })" />
     </div>
+
     <div v-if="WITH_SERVER" mt-16 flex-center py-12>
       <div flex-center gap-12>
         <n-input v-if="!secretId" v-model:value="syncId" :placeholder="$t('inputIdPlaceholder')" />
@@ -251,13 +264,22 @@ function handleStopSync() {
         <n-button v-else secondary @click="handleStopSync">{{ $t('button.stopSync') }}</n-button>
       </div>
     </div>
+
     <div mt-16 flex flex-wrap justify-center gap-12>
       <n-button type="primary" quaternary @click="resetData">{{ $t('button.resetData') }}</n-button>
       <n-button type="success" tertiary @click="importData">{{ $t('button.importData') }}</n-button>
       <n-button type="success" secondary @click="exportData">{{ $t('button.exportData') }}</n-button>
     </div>
+
+    <!-- ✅ 修改完成按钮：触发 handleComplete -->
     <div my-16 flex-center>
-      <n-button size="large" type="primary" @click="$router.back()">{{ $t('button.complete') }}</n-button>
+      <n-button
+        size="large"
+        type="primary"
+        @click="handleCompleteClick"
+      >
+        {{ $t('button.complete') }}
+      </n-button>
     </div>
   </section>
 </template>

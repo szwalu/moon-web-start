@@ -20,7 +20,7 @@ export function useAutoSave() {
   const siteStore = useSiteStore()
   const authStore = useAuthStore()
 
-  // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
+  // ✅ 云端数据加载函数
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -52,7 +52,6 @@ export function useAutoSave() {
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
 
-          // ✅ 标记内容（可选用于对比是否改变）
           restoredContentJson.value = JSON.stringify({
             data: parsed.data,
             settings: parsed.settings,
@@ -72,6 +71,7 @@ export function useAutoSave() {
     }
   }
 
+  // ✅ 自动保存（带 debounce）
   const autoSaveData = debounce(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -92,8 +92,32 @@ export function useAutoSave() {
       console.error('❌ 自动保存失败:', error)
   }, 2000)
 
+  // ✅ 新增：手动保存（不带 debounce，用于点击按钮保存）
+  const manualSaveData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user)
+      return
+
+    const contentToSave = {
+      data: siteStore.customData,
+      settings: settingStore.settings,
+    }
+
+    const { error } = await supabase.from('profiles').upsert({
+      id: user.id,
+      content: JSON.stringify(contentToSave),
+      updated_at: new Date().toISOString(),
+    })
+
+    if (error)
+      console.error('❌ 手动保存失败:', error)
+    else
+      console.log('调试信息') // eslint-disable-line no-console
+  }
+
   return {
     autoLoadData,
     autoSaveData,
+    manualSaveData, // ✅ 导出
   }
 }
