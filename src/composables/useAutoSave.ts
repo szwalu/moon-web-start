@@ -1,4 +1,3 @@
-import { debounce } from 'lodash-es'
 import { ref } from 'vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting'
@@ -71,27 +70,6 @@ export function useAutoSave() {
     }
   }
 
-  // ✅ 自动保存（带 debounce）
-  const autoSaveData = debounce(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user)
-      return
-
-    const contentToSave = {
-      data: siteStore.customData,
-      settings: settingStore.settings,
-    }
-
-    const { error } = await supabase.from('profiles').upsert({
-      id: user.id,
-      content: JSON.stringify(contentToSave),
-      updated_at: new Date().toISOString(),
-    })
-
-    if (error)
-      console.error('❌ 自动保存失败:', error)
-  }, 2000)
-
   // ✅ 新增：手动保存（不带 debounce，用于点击按钮保存）
   const manualSaveData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -117,7 +95,6 @@ export function useAutoSave() {
 
   return {
     autoLoadData,
-    autoSaveData,
-    manualSaveData, // ✅ 导出
+    manualSaveData,
   }
 }
