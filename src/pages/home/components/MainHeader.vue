@@ -64,7 +64,7 @@ async function handleBackHomeClick() {
   const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
   await manualSaveData()
   loadingRef.destroy()
-  $message.success(t('messages.saveSuccess'))
+  // $message.success(t('messages.saveSuccess'))
   router.push('/')
 }
 

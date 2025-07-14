@@ -169,7 +169,7 @@ async function handleSaveData() {
     ])
     if (error)
       throw error
-    $message.success(t('messages.saveSuccess'))
+    //  $message.success(t('messages.saveSuccess'))
     secretIdStorage.set(syncId.value)
     syncId.value = ''
     secretId.value = ''
@@ -216,7 +216,7 @@ async function handleCompleteClick() {
   const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
   try {
     await manualSaveData()
-    $message.success(t('messages.saveSuccess'))
+    //  $message.success(t('messages.saveSuccess'))
     router.back()
   }
   finally {
