@@ -8,11 +8,16 @@ import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/util
 import * as S from '@/utils/settings'
 import { toggleTheme } from '@/composables/theme'
 
-// ✅ 引入手动保存逻辑
 import { useAutoSave } from '@/composables/useAutoSave'
 
-const { manualSaveData } = useAutoSave()
+const { manualSaveData, autoLoadData } = useAutoSave()
 const router = useRouter()
+
+onMounted(async () => {
+  await refreshSession()
+  await autoLoadData({ $message, t })
+})
+
 async function refreshSession() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) {
@@ -26,7 +31,6 @@ async function refreshSession() {
     window.__currentUser = session.user
   }
 }
-onMounted(refreshSession)
 
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
@@ -122,6 +126,7 @@ async function resetData() {
     onPositiveClick() {
       localStorage.removeItem('settings')
       localStorage.removeItem('cache')
+      localStorage.removeItem('hasRestoredData') // ✅ 清除恢复标记
       window.location.reload()
     },
   })
@@ -209,10 +214,14 @@ function handleStopSync() {
 
 async function handleCompleteClick() {
   const loadingRef = $message.loading(t('messages.saving'), { duration: 0 })
-  await manualSaveData()
-  loadingRef.destroy()
-  $message.success(t('messages.saveSuccess'))
-  router.back() // ✅ 正确跳转
+  try {
+    await manualSaveData()
+    $message.success(t('messages.saveSuccess'))
+    router.back()
+  }
+  finally {
+    loadingRef.destroy()
+  }
 }
 </script>
 
@@ -273,11 +282,7 @@ async function handleCompleteClick() {
 
     <!-- ✅ 修改完成按钮：触发 handleComplete -->
     <div my-16 flex-center>
-      <n-button
-        size="large"
-        type="primary"
-        @click="handleCompleteClick"
-      >
+      <n-button size="large" type="primary" @click="handleCompleteClick">
         {{ $t('button.complete') }}
       </n-button>
     </div>

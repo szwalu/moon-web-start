@@ -51,6 +51,7 @@ declare global {
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
+  const isAutoLoadFinished: typeof import('./composables/useAutoSave')['isAutoLoadFinished']
   const isDark: typeof import('./composables/app')['isDark']
   const isDataInitialized: typeof import('./composables/useAutoSave')['isDataInitialized']
   const isDataRestoring: typeof import('./composables/useAutoSave')['isDataRestoring']
@@ -63,6 +64,7 @@ declare global {
   const isReactive: typeof import('vue')['isReactive']
   const isReadonly: typeof import('vue')['isReadonly']
   const isRef: typeof import('vue')['isRef']
+  const isRemoteSnapshotReady: typeof import('./composables/useAutoSave')['isRemoteSnapshotReady']
   const isRestoring: typeof import('./composables/useAutoSave')['isRestoring']
   const isSmScreen: typeof import('./composables/app')['isSmScreen']
   const isXlScreen: typeof import('./composables/app')['isXlScreen']
@@ -119,6 +121,7 @@ declare global {
   const refDefault: typeof import('@vueuse/core')['refDefault']
   const refThrottled: typeof import('@vueuse/core')['refThrottled']
   const refWithControl: typeof import('@vueuse/core')['refWithControl']
+  const remoteSnapshotReady: typeof import('./composables/useAutoSave')['remoteSnapshotReady']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
@@ -327,6 +330,7 @@ declare global {
   const useWindowFocus: typeof import('@vueuse/core')['useWindowFocus']
   const useWindowScroll: typeof import('@vueuse/core')['useWindowScroll']
   const useWindowSize: typeof import('@vueuse/core')['useWindowSize']
+  const waitForRemoteSnapshot: typeof import('./composables/useAutoSave')['waitForRemoteSnapshot']
   const watch: typeof import('vue')['watch']
   const watchArray: typeof import('@vueuse/core')['watchArray']
   const watchAtMost: typeof import('@vueuse/core')['watchAtMost']
@@ -457,6 +461,7 @@ declare module 'vue' {
     readonly refDefault: UnwrapRef<typeof import('@vueuse/core')['refDefault']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly remoteSnapshotReady: UnwrapRef<typeof import('./composables/useAutoSave')['remoteSnapshotReady']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
@@ -661,6 +666,7 @@ declare module 'vue' {
     readonly useWindowFocus: UnwrapRef<typeof import('@vueuse/core')['useWindowFocus']>
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
+    readonly waitForRemoteSnapshot: UnwrapRef<typeof import('./composables/useAutoSave')['waitForRemoteSnapshot']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>

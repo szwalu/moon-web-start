@@ -1,3 +1,4 @@
+import { defineStore } from 'pinia'
 import { reqPostData } from '@/api'
 import preset from '@/preset.json'
 import globalPreset from '@/preset_global.json'
@@ -8,29 +9,36 @@ function loadData(): Category[] | undefined {
   const data = localStorage.getItem('cache')
   return data ? JSON.parse(data) : undefined
 }
+
 export const useSiteStore = defineStore('site', () => {
   const settingStore = useSettingStore()
   const websitePreference = computed(() => settingStore.settings.websitePreference as WebsitePreference)
 
-  const preferredPresetData = computed(() => firstPreferredLanguage.value === 'zh-CN' ? preset.data : globalPreset.data)
+  const preferredPresetData = computed(() =>
+    firstPreferredLanguage.value === 'zh-CN' ? preset.data : globalPreset.data,
+  )
 
-  // Custom data
   const customData = ref<Category[]>(loadData() || [])
-  watch(customData, () => {
-    const secretId = secretIdStorage.get()
-    if (secretId && customData.value.length) {
-      reqPostData({
-        secretId,
-        data: {
-          data: customData.value,
-          settings: settingStore.settings,
-        },
-      })
-    }
-    cachingData()
-  }, { deep: true })
+  const isModified = ref(false) // ✅ 新增：记录是否有变动
 
-  // Display data
+  watch(
+    customData,
+    () => {
+      const secretId = secretIdStorage.get()
+      if (secretId && customData.value.length) {
+        reqPostData({
+          secretId,
+          data: {
+            data: customData.value,
+            settings: settingStore.settings,
+          },
+        })
+      }
+      cachingData()
+    },
+    { deep: true },
+  )
+
   const data = computed((): Category[] => {
     if (websitePreference.value === 'ChineseMainland')
       return preset.data
@@ -39,9 +47,9 @@ export const useSiteStore = defineStore('site', () => {
     if (websitePreference.value === 'Auto')
       return preferredPresetData.value
 
-    // ? init custom data
     if (websitePreference.value === 'Customize' && customData.value.length === 0)
       customData.value = deepClone(data.value)
+
     return customData.value
   })
 
@@ -49,54 +57,83 @@ export const useSiteStore = defineStore('site', () => {
   const groupIndex = ref(0)
   const siteIndex = ref(0)
 
-  const setCateIndex = (i: number) => cateIndex.value = i
-  const setGroupIndex = (i: number) => groupIndex.value = i
-  const setSiteIndex = (i: number) => siteIndex.value = i
+  const setCateIndex = (i: number) => {
+    cateIndex.value = i
+  }
+  const setGroupIndex = (i: number) => {
+    groupIndex.value = i
+  }
+  const setSiteIndex = (i: number) => {
+    siteIndex.value = i
+  }
 
-  const cateList = computed(() => data.value.map(cate => ({ id: cate.id, name: cate.name })))
+  const cateList = computed(() =>
+    data.value.map(cate => ({ id: cate.id, name: cate.name })),
+  )
   const currentCateData = computed(() => data.value[cateIndex.value] || { groupList: [] })
+
+  const setModified = (val: boolean) => {
+    isModified.value = val
+  }
 
   function addSite(site: Site) {
     customData.value[cateIndex.value].groupList[groupIndex.value].siteList.push(site)
+    setModified(true)
   }
+
   function addGroup(group: Group) {
     customData.value[cateIndex.value].groupList.push(group)
+    setModified(true)
   }
+
   function addCate(cate: Category) {
     customData.value.push(cate)
+    setModified(true)
   }
+
   function updateSite(site: Partial<Site>) {
-    Object.assign(customData.value[cateIndex.value].groupList[groupIndex.value].siteList[siteIndex.value], site)
+    Object.assign(
+      customData.value[cateIndex.value].groupList[groupIndex.value].siteList[siteIndex.value],
+      site,
+    )
+    setModified(true)
   }
+
   function updateGroup(group: Partial<Group>) {
     Object.assign(customData.value[cateIndex.value].groupList[groupIndex.value], group)
+    setModified(true)
   }
+
   function updateCate(cate: Partial<Category>) {
     Object.assign(customData.value[cateIndex.value], cate)
+    setModified(true)
   }
+
   function deleteSite() {
     customData.value[cateIndex.value].groupList[groupIndex.value].siteList.splice(siteIndex.value, 1)
+    setModified(true)
   }
+
   function deleteGroup() {
     customData.value[cateIndex.value].groupList.splice(groupIndex.value, 1)
+    setModified(true)
   }
+
   function deleteCate() {
     customData.value.splice(cateIndex.value, 1)
+    setModified(true)
   }
+
   function cachingData() {
     localStorage.setItem('cache', JSON.stringify(customData.value))
   }
+
   function setData(value: Category[]) {
     customData.value = value
+    setModified(false)
   }
+
   function restoreData() {
-    /**
-     * 清空 customData 和 localStorage
-     * 以便用户重置数据后可以选择其他预设进行自定义
-     *
-     * Clear customData and localStorage
-     * So that users can select other presets for customize after restoring the data
-     */
     settingStore.setSettings({ websitePreference: 'Auto' })
     setData([])
     localStorage.removeItem('cache')
@@ -127,5 +164,7 @@ export const useSiteStore = defineStore('site', () => {
     setData,
     restoreData,
     getCurrentSite,
+    isModified, // ✅ 暴露
+    setModified, // ✅ 暴露
   }
 })
