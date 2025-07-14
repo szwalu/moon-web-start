@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
-import { reqPostData } from '@/api'
 import preset from '@/preset.json'
 import globalPreset from '@/preset_global.json'
 import type { Category, Group, Site, WebsitePreference } from '@/types'
-import { deepClone, secretIdStorage } from '@/utils'
+import { deepClone } from '@/utils'
 
 function loadData(): Category[] | undefined {
   const data = localStorage.getItem('cache')
@@ -24,16 +23,18 @@ export const useSiteStore = defineStore('site', () => {
   watch(
     customData,
     () => {
-      const secretId = secretIdStorage.get()
-      if (secretId && customData.value.length) {
-        reqPostData({
-          id: secretId, // ✅ 修正这里的字段名
-          data: {
-            data: customData.value,
-            settings: settingStore.settings,
-          },
-        })
-      }
+      // ✅ 整块注释，避免语法残留
+    /*
+    if (secretId && customData.value.length) {
+      reqPostData({
+        id: secretId,
+        data: {
+          data: customData.value,
+          settings: settingStore.settings,
+        },
+      })
+    }
+    */
       cachingData()
     },
     { deep: true },
