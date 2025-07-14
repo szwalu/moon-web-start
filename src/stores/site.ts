@@ -27,7 +27,7 @@ export const useSiteStore = defineStore('site', () => {
       const secretId = secretIdStorage.get()
       if (secretId && customData.value.length) {
         reqPostData({
-          secretId,
+          id: secretId, // ✅ 修正这里的字段名
           data: {
             data: customData.value,
             settings: settingStore.settings,
