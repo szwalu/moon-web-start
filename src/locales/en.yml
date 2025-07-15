@@ -203,3 +203,10 @@ autoSave:
   restored: Welcome, {email}, your data has been restored ✨
   parse_failed: Failed to parse cloud data
   load_failed: Error loading data
+index:
+  add_to_home: Add website shortcut to home screen
+  click_below: Tap the button below
+  choose_add_to_screen: Then choose “Add to Home Screen”
+  quote_prefix: Quote：
+  weather_loading: Loading...
+  weather_failed: Failed to load weather

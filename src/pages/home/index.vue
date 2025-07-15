@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
+import { useI18n } from 'vue-i18n'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
@@ -22,7 +23,7 @@ import { useAuthStore } from '@/stores/auth'
 defineOptions({
   name: 'HomePage',
 })
-
+const { t } = useI18n()
 const dailyQuote = ref('')
 
 const authStore = useAuthStore()
@@ -81,7 +82,7 @@ onMounted(() => {
 })
 
 // ========== 以下是天气功能 ==========
-const weatherCity = ref('加载中...')
+const weatherCity = ref(t('index.weather_loading'))
 const weatherInfo = ref('...')
 
 watchEffect(() => {
@@ -191,12 +192,12 @@ function showMobileToast() {
       html: `
         <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
           <div style="text-align: center;">
-            <div style="margin-bottom: 4px;">添加网址导航到桌面</div>
+            <div style="margin-bottom: 4px;">{{ t('index.add_to_home') }}</div>
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
-              <span>点击下面的</span>
+              <span>{{ t('index.click_below') }}</span>
               <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
             </div>
-            <div>然后选择“添加到主屏幕”</div>
+            <div>{{ t('index.choose_add_to_screen') }}</div>
           </div>
           <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
             <polygon points="0,0 16,0 8,8" style="fill:white;"/>
@@ -254,7 +255,7 @@ function showMobileToast() {
 
       <div v-if="!settingStore.isSetting && settingStore.getSettingValue('showDailyQuote')" class="weather-container mt-9">
         <div class="weather-content">
-          <span><strong>金句：</strong>{{ dailyQuote }}</span>
+          <span><strong>{{ t('index.quote_prefix') }}</strong>{{ dailyQuote }}</span>
         </div>
       </div>
 

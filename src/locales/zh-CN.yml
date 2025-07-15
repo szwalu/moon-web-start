@@ -135,7 +135,7 @@ form:
   selectError: 请在列表中选择一项
   error: 提交失败，请稍后再试
 about:
-  title: 我WOabc导航站特性
+  title: 我abc导航站特性
   efficientNav: 高效导航 - 极简样式，快速访问
   freedomEdit: 从心所欲 - 完全自由地增删改网站，支持自定义网站图标
   dragSort: 拖拽排序 - 快速调整网站顺序
@@ -203,3 +203,10 @@ autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨
   parse_failed: 解析云端数据失败
   load_failed: 加载数据时出错
+index:
+  add_to_home: 添加网址导航到桌面
+  click_below: 点击下面的
+  choose_add_to_screen: 然后选择“添加到主屏幕”
+  quote_prefix: 金句：
+  weather_loading: 加载中...
+  weather_failed: 天气加载失败
