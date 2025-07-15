@@ -1,4 +1,3 @@
-import { debounce } from 'lodash-es'
 import { ref } from 'vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting'
@@ -20,7 +19,7 @@ export function useAutoSave() {
   const siteStore = useSiteStore()
   const authStore = useAuthStore()
 
-  // ✅ 使用结构参数方式，确保 t() 和 $message 都是调用时传入的
+  // ✅ 加载远程数据逻辑
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -52,7 +51,6 @@ export function useAutoSave() {
           siteStore.setData(parsed.data)
           toggleTheme(parsed.settings.theme)
 
-          // ✅ 标记内容（可选用于对比是否改变）
           restoredContentJson.value = JSON.stringify({
             data: parsed.data,
             settings: parsed.settings,
@@ -72,7 +70,16 @@ export function useAutoSave() {
     }
   }
 
-  const autoSaveData = debounce(async () => {
+  // ✅ 批处理合并保存逻辑
+  let pending = false
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  const SAVE_DELAY = 4000 // 保存延迟时间（单位：毫秒）
+
+  const performAutoSave = async () => {
+    if (!pending)
+      return
+    pending = false
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
       return
@@ -90,10 +97,19 @@ export function useAutoSave() {
 
     if (error)
       console.error('❌ 自动保存失败:', error)
-  }, 2000)
+  }
+
+  const triggerAutoSave = () => {
+    if (saveTimer)
+      clearTimeout(saveTimer)
+    pending = true
+    saveTimer = setTimeout(() => {
+      performAutoSave()
+    }, SAVE_DELAY)
+  }
 
   return {
     autoLoadData,
-    autoSaveData,
+    autoSaveData: triggerAutoSave, // 暴露新的节流函数
   }
 }

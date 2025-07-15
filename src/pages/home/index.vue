@@ -59,6 +59,18 @@ watch(
   },
 )
 
+let lastSettingJson = ''
+
+watch(
+  () => JSON.stringify(settingStore.settings),
+  (newJson) => {
+    if (newJson === lastSettingJson)
+      return
+    lastSettingJson = newJson
+    autoSaveData()
+  },
+)
+
 const isMobile = ref(false)
 onMounted(() => {
   isMobile.value = window.innerWidth <= 768
