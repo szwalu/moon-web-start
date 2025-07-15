@@ -190,20 +190,20 @@ function showMobileToast() {
     })
     Toast.fire({
       html: `
-        <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
-          <div style="text-align: center;">
-            <div style="margin-bottom: 4px;">{{ t('index.add_to_home') }}</div>
-            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
-              <span>{{ t('index.click_below') }}</span>
-              <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
-            </div>
-            <div>{{ t('index.choose_add_to_screen') }}</div>
-          </div>
-          <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
-            <polygon points="0,0 16,0 8,8" style="fill:white;"/>
-          </svg>
+    <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
+      <div style="text-align: center;">
+        <div style="margin-bottom: 4px;">${t('index.add_to_home')}</div>
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
+          <span>${t('index.click_below')}</span>
+          <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
         </div>
-      `,
+        <div>${t('index.choose_add_to_screen')}</div>
+      </div>
+      <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
+        <polygon points="0,0 16,0 8,8" style="fill:white;"/>
+      </svg>
+    </div>
+  `,
     })
   }
 }
