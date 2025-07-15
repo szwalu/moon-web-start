@@ -10,6 +10,7 @@ import { presetScalpel } from 'unocss-preset-scalpel'
 import { FileSystemIconLoader } from '@iconify/utils/lib/loader/node-loaders'
 
 export default defineConfig({
+  dark: 'class',
   shortcuts: {
     'flex-center': 'flex justify-center items-center',
     'btn': 'px-4 py-1 inline-block bg-$search-btn-c text-white cursor-pointer hover:op-75 active:brightness-80 disabled:cursor-default disabled:bg-gray-600 disabled:opacity-50 transition-300 duration-200',

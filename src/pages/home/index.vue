@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watchEffect } from 'vue'
+import { onMounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
@@ -11,7 +11,9 @@ import SiteNavBar from './components/SiteNavBar.vue'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import shareIconPath from './1122.jpg'
 import { cityMap, weatherMap } from '@/utils/weatherMap'
+import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
+import { useSiteStore } from '@/stores/site'
 import quotes from '@/utils/daily_quotes_zh.json'
 
 // ✅ 新增的用户状态逻辑
@@ -41,6 +43,21 @@ onMounted(() => {
 })
 
 const settingStore = useSettingStore()
+const { autoSaveData } = useAutoSave()
+const siteStore = useSiteStore()
+
+let lastJson = ''
+
+watch(
+  () => JSON.stringify(siteStore.customData),
+  (newJson) => {
+    if (newJson === lastJson)
+      return
+
+    lastJson = newJson
+    autoSaveData()
+  },
+)
 
 const isMobile = ref(false)
 onMounted(() => {
