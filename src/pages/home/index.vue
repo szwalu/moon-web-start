@@ -29,19 +29,40 @@ const dailyQuote = ref('')
 const authStore = useAuthStore()
 
 onMounted(() => {
+  // ✅ 1. 页面首次加载时刷新用户登录状态
+  // 主要用于刷新后立即同步登录信息，防止初始状态为 null
   authStore.refreshUser()
 
-  // 页面切回来时刷新登录状态（防止假登出）
+  // ✅ 2. 设置监听器：页面切回前台时刷新用户状态（防假登出）
+  setupVisibilityListeners()
+
+  // ✅ 3. 每 5 分钟自动刷新一次登录状态（长期停留页面时防止 token 过期）
+  setInterval(() => {
+    authStore.refreshUser()
+  }, 5 * 60 * 1000) // 5 分钟
+})
+
+function setupVisibilityListeners() {
+  // 抽出的刷新函数，避免重复写
+  const refreshUser = () => authStore.refreshUser()
+
+  // 当用户切换标签页后再切回来时，会触发 visibilitychange 事件
+  // 用于刷新用户状态，防止假登出
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible')
-      authStore.refreshUser()
+      refreshUser()
   })
 
-  // 某些浏览器不触发 visibilitychange，用 focus 兜底
-  window.addEventListener('focus', () => {
-    authStore.refreshUser()
+  // 某些浏览器（尤其是移动端或 Safari）不触发 visibilitychange
+  // 用 window 的 focus 事件做兜底处理
+  window.addEventListener('focus', refreshUser)
+
+  // 在组件卸载时移除监听器，避免重复绑定或内存泄漏
+  onBeforeUnmount(() => {
+    document.removeEventListener('visibilitychange', refreshUser)
+    window.removeEventListener('focus', refreshUser)
   })
-})
+}
 
 const settingStore = useSettingStore()
 const { autoSaveData } = useAutoSave()
