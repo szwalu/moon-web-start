@@ -75,23 +75,33 @@ export function useAutoSave() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const SAVE_DELAY = 4000 // 保存延迟时间（单位：毫秒）
 
+  let lastSavedJson = ''
+
   const performAutoSave = async () => {
     if (!pending)
       return
     pending = false
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user)
-      return
 
     const contentToSave = {
       data: siteStore.customData,
       settings: settingStore.settings,
     }
 
+    const currentJson = JSON.stringify(contentToSave)
+
+    // ✅ 如果和上次保存的内容一样，就跳过
+    if (currentJson === lastSavedJson)
+      return
+
+    lastSavedJson = currentJson // ✅ 更新快照
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user)
+      return
+
     const { error } = await supabase.from('profiles').upsert({
       id: user.id,
-      content: JSON.stringify(contentToSave),
+      content: currentJson,
       updated_at: new Date().toISOString(),
     })
 
