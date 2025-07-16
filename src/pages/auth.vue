@@ -4,13 +4,14 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { useMessage } from 'naive-ui'
+import { debounce } from 'lodash-es'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
-
+import 'emoji-picker-element'
 const noteText = ref('')
 const lastSavedContent = ref('') // 保存最近一次成功保存到 Supabase 的内容
-
+const lastSavedTime = ref('')
 const authStore = useAuthStore()
 useDark()
 const router = useRouter()
@@ -103,26 +104,43 @@ watchEffect(async () => {
   }
 })
 
+const debouncedSaveNote = debounce(() => {
+  saveNote()
+}, 3000)
+
 watch(noteText, (val) => {
   if (LOCAL_KEY.value)
     localStorage.setItem(LOCAL_KEY.value, val)
+  debouncedSaveNote()
 })
 
-async function saveNote() {
+let lastSaveTime = 0
+
+async function saveNote(showMessage = false) {
   if (!user.value)
     return
-
   if (noteText.value === lastSavedContent.value)
-    return // 无变化不保存
+    return
 
   const { error } = await supabase
     .from('notes')
     .upsert({ user_id: user.value.id, content: noteText.value })
 
-  if (!error)
+  if (!error) {
     lastSavedContent.value = noteText.value
-  else
-    console.error('保存便笺失败:', error.message)
+    lastSavedTime.value = new Date().toLocaleString()
+
+    if (showMessage) {
+      const now = Date.now()
+      if (now - lastSaveTime > 2000) { // 避免 2 秒内重复弹出提示
+        lastSaveTime = now
+        messageHook.success('便笺已保存')
+      }
+    }
+  }
+  else {
+    console.error('保存失败:', error.message)
+  }
 }
 
 function onInput(e: Event) {
@@ -199,6 +217,18 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+const showEmojiPicker = ref(false)
+
+function onEmojiSelect(event: any) {
+  const emoji = event.detail.unicode
+  const textarea = document.querySelector('.note-textarea') as HTMLTextAreaElement
+  const cursorPos = textarea.selectionStart || 0
+  const before = noteText.value.slice(0, cursorPos)
+  const after = noteText.value.slice(cursorPos)
+  noteText.value = before + emoji + after
+  showEmojiPicker.value = false
+}
 </script>
 
 <template>
@@ -229,7 +259,19 @@ async function handleSubmit() {
             @blur="saveNote"
             @input="onInput"
           />
+          <div class="emoji-bar">
+            <button @click="saveNote(true)">💾 保存</button>
+            <button @click="showEmojiPicker = !showEmojiPicker">😊 插入 Emoji</button>
+          </div>
+
+          <emoji-picker
+            v-if="showEmojiPicker"
+            @emoji-click="onEmojiSelect"
+          />
           <p class="char-counter">{{ charCount }} / {{ maxChars }}</p>
+          <p v-if="lastSavedTime" class="char-counter">
+            💾 上次保存：{{ lastSavedTime }}
+          </p>
         </div>
       </div>
 
@@ -529,5 +571,54 @@ body, html {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+}
+
+.emoji-bar {
+  margin-top: 1rem;
+  text-align: left;
+}
+emoji-picker {
+  width: 100%;
+  max-width: 100%;
+  height: 320px;
+  margin-top: 0.5rem;
+  --emoji-size: 20px; /* 默认是 20px，我们调大一点 */
+  --font-size: 14px;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+}
+.emoji-bar {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.emoji-bar button {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  background: #f9f9f9;
+}
+
+.dark .emoji-bar button {
+  background-color: #2c2c2e;
+  color: #fff;
+  border-color: #444;
+}
+.emoji-bar button {
+  color: #111; /* 明亮模式下的文字 */
+}
+.dark .emoji-bar button {
+  color: #fff; /* 暗色模式下的文字 */
+}
+emoji-picker {
+  width: 100%;
+  max-width: 100%;
+  height: 320px;
+  margin-top: 0.5rem;
+  --emoji-size: 20px;
 }
 </style>
