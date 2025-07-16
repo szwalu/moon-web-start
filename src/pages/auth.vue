@@ -114,13 +114,20 @@ watch(noteText, (val) => {
   debouncedSaveNote()
 })
 
-let lastSaveTime = 0
+async function saveNote({ showMessage = false } = {}) {
+  // console.log('👉 saveNote 被调用，是否提示:', showMessage)
 
-async function saveNote(showMessage = false) {
   if (!user.value)
     return
-  if (noteText.value === lastSavedContent.value)
+
+  const contentUnchanged = noteText.value === lastSavedContent.value
+
+  if (contentUnchanged) {
+    if (showMessage)
+      messageHook.success('便笺已保存')
+
     return
+  }
 
   const { error } = await supabase
     .from('notes')
@@ -130,13 +137,8 @@ async function saveNote(showMessage = false) {
     lastSavedContent.value = noteText.value
     lastSavedTime.value = new Date().toLocaleString()
 
-    if (showMessage) {
-      const now = Date.now()
-      if (now - lastSaveTime > 2000) { // 避免 2 秒内重复弹出提示
-        lastSaveTime = now
-        messageHook.success('便笺已保存')
-      }
-    }
+    if (showMessage)
+      messageHook.success('便笺已保存')
   }
   else {
     console.error('保存失败:', error.message)
@@ -260,7 +262,7 @@ function onEmojiSelect(event: any) {
             @input="onInput"
           />
           <div class="emoji-bar">
-            <button @click="saveNote(true)">💾 保存</button>
+            <button @click="saveNote({ showMessage: true })">💾 保存</button>
             <button @click="showEmojiPicker = !showEmojiPicker">😊 插入 Emoji</button>
           </div>
 
@@ -576,15 +578,6 @@ body, html {
 .emoji-bar {
   margin-top: 1rem;
   text-align: left;
-}
-emoji-picker {
-  width: 100%;
-  max-width: 100%;
-  height: 320px;
-  margin-top: 0.5rem;
-  --emoji-size: 20px; /* 默认是 20px，我们调大一点 */
-  --font-size: 14px;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
 }
 .emoji-bar {
   margin-top: 1rem;
