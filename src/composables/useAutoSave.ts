@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 
 // ✅ 全局导出用于判断是否是初次加载的数据（可选）
 export const restoredContentJson = ref('')
-
+let lastSavedJson = ''
 function toggleTheme(theme: string) {
   if (theme === 'dark')
     document.documentElement.classList.add('dark')
@@ -87,7 +87,7 @@ export function useAutoSave() {
     }
 
     const currentJson = JSON.stringify(contentToSave)
-    let lastSavedJson = ''
+
     // ✅ 如果和上次保存的内容一样，就跳过
     if (currentJson === lastSavedJson)
       return
