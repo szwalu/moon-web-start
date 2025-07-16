@@ -41,6 +41,11 @@ onMounted(() => {
   window.addEventListener('focus', () => {
     authStore.refreshUser()
   })
+
+  // 每 5 分钟刷新一次登录状态（增强防止假登出）
+  setInterval(() => {
+    authStore.refreshUser()
+  }, 300000)
 })
 
 const settingStore = useSettingStore()

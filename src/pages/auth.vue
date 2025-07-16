@@ -3,12 +3,11 @@ import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { useDialog, useMessage } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
-const dialog = useDialog()
 const noteText = ref('')
 const lastSavedContent = ref('') // 保存最近一次成功保存到 Supabase 的内容
 
@@ -115,32 +114,6 @@ async function saveNote() {
 
   if (noteText.value === lastSavedContent.value)
     return // 无变化不保存
-
-  const { data: serverNote } = await supabase
-    .from('notes')
-    .select('content')
-    .eq('user_id', user.value.id)
-    .single()
-
-  if (serverNote?.content !== lastSavedContent.value && serverNote?.content !== noteText.value) {
-    dialog.warning({
-      title: t('auth.note_conflict_title'),
-      content: t('auth.note_conflict_content'),
-      positiveText: t('auth.note_conflict_confirm'),
-      negativeText: t('auth.note_conflict_cancel'),
-      async onPositiveClick() {
-        const { error } = await supabase
-          .from('notes')
-          .upsert({ user_id: user.value.id, content: noteText.value })
-
-        if (!error)
-          lastSavedContent.value = noteText.value
-        else
-          console.error('覆盖保存失败:', error.message)
-      },
-    })
-    return
-  }
 
   const { error } = await supabase
     .from('notes')
