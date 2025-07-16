@@ -9,6 +9,9 @@ import { supabase } from '@/utils/supabaseClient'
 
 // ✅ 导入主题切换函数
 import { toggleDark } from '@/utils/dark'
+import { useAutoSave } from '@/composables/useAutoSave'
+
+const { manualSaveData } = useAutoSave()
 
 const { t } = useI18n()
 const route = useRoute()
@@ -44,7 +47,8 @@ function getIconClass(routeName: string) {
   }
 }
 
-function handleSettingsClick() {
+async function handleSettingsClick() {
+  await manualSaveData() // 🟢 强制保存
   if (user.value) {
     router.push('/setting')
   }

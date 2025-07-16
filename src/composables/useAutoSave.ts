@@ -55,6 +55,7 @@ export function useAutoSave() {
             data: parsed.data,
             settings: parsed.settings,
           })
+          lastSavedJson = restoredContentJson.value // ✅ 加上这行，防止刷新后误保存
 
           $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
@@ -75,8 +76,6 @@ export function useAutoSave() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const SAVE_DELAY = 4000 // 保存延迟时间（单位：毫秒）
 
-  let lastSavedJson = ''
-
   const performAutoSave = async () => {
     if (!pending)
       return
@@ -88,7 +87,7 @@ export function useAutoSave() {
     }
 
     const currentJson = JSON.stringify(contentToSave)
-
+    let lastSavedJson = ''
     // ✅ 如果和上次保存的内容一样，就跳过
     if (currentJson === lastSavedJson)
       return
@@ -119,7 +118,8 @@ export function useAutoSave() {
   }
 
   return {
-    autoLoadData,
-    autoSaveData: triggerAutoSave, // 暴露新的节流函数
+    autoLoadData, // 初始化加载远程数据
+    autoSaveData: triggerAutoSave, // 防抖自动保存（用户操作后 4 秒触发）
+    manualSaveData: performAutoSave, // 手动立即保存（用于关键跳转前强制保存）
   }
 }

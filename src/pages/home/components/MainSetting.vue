@@ -6,6 +6,9 @@ import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
 import { toggleTheme } from '@/composables/theme'
+import { useAutoSave } from '@/composables/useAutoSave'
+
+const { manualSaveData } = useAutoSave()
 
 // ✅ 页面激活时强制刷新会话，防止假登出
 async function refreshSession() {
@@ -257,7 +260,15 @@ function handleStopSync() {
       <n-button type="success" secondary @click="exportData">{{ $t('button.exportData') }}</n-button>
     </div>
     <div my-16 flex-center>
-      <n-button size="large" type="primary" @click="$router.back()">{{ $t('button.complete') }}</n-button>
+      <n-button
+        size="large"
+        type="primary"
+        @click="() => {
+          manualSaveData().then(() => $router.back())
+        }"
+      >
+        {{ $t('button.complete') }}
+      </n-button>
     </div>
   </section>
 </template>
