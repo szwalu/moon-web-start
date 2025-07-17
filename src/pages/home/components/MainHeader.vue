@@ -48,11 +48,25 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 🟢 强制保存
-  if (user.value) {
+  await manualSaveData() // 🟢 手动保存数据
+
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
+  const token = session?.access_token
+
+  if (user && token) {
+    // ✅ 已登录
     router.push('/setting')
   }
+  else if (!user && token) {
+    // ⚠️ 假登出
+    $message.warning(t('auth.please_refresh'))
+    setTimeout(() => {
+      router.push('/setting')
+    }, 300)
+  }
   else {
+    // ❌ 真登出或未登录
     $message.warning(t('auth.please_login'))
     setTimeout(() => {
       router.push('/setting')
