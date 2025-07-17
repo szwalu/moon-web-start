@@ -23,6 +23,9 @@ import { useAuthStore } from '@/stores/auth'
 defineOptions({
   name: 'HomePage',
 })
+
+const hasFetchedWeather = ref(false)
+
 const { t } = useI18n()
 const dailyQuote = ref('')
 
@@ -92,46 +95,43 @@ const weatherInfo = ref('...')
 
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
-    fetchWeather()
+    if (!hasFetchedWeather.value)
+      fetchWeather()
   }
   else {
     weatherCity.value = ''
     weatherInfo.value = ''
+    hasFetchedWeather.value = false
   }
 })
 
 async function fetchWeather() {
-  if (
-    weatherCity.value === ''
-    || weatherCity.value === '天气加载失败'
-    || weatherCity.value === '加载中...'
-  ) {
-    try {
-      weatherCity.value = '加载中...'
-      weatherInfo.value = '...'
+  hasFetchedWeather.value = true
+  try {
+    weatherCity.value = t('index.weather_loading')
+    weatherInfo.value = '...'
 
-      const locRes = await fetch('https://ipapi.co/json/')
-      const locData = await locRes.json()
-      const lat = locData.latitude
-      const lon = locData.longitude
-      const enCity = locData.city
-      const city = getChineseCityName(enCity)
+    const locRes = await fetch('https://ipapi.co/json/')
+    const locData = await locRes.json()
+    const lat = locData.latitude
+    const lon = locData.longitude
+    const enCity = locData.city
+    const city = getChineseCityName(enCity)
 
-      const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
-      )
-      const data = await res.json()
-      const temp = data.current.temperature_2m
-      const code = data.current.weathercode
-      const { text, icon } = getWeatherText(code)
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
+    )
+    const data = await res.json()
+    const temp = data.current.temperature_2m
+    const code = data.current.weathercode
+    const { text, icon } = getWeatherText(code)
 
-      weatherCity.value = city
-      weatherInfo.value = `${temp}°C ${text} ${icon}`
-    }
-    catch (e) {
-      weatherCity.value = '天气加载失败'
-      weatherInfo.value = ''
-    }
+    weatherCity.value = city
+    weatherInfo.value = `${temp}°C ${text} ${icon}`
+  }
+  catch (e) {
+    weatherCity.value = t('index.weather_failed') // 也改为国际化
+    weatherInfo.value = ''
   }
 }
 

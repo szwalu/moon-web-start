@@ -182,6 +182,10 @@ auth:
   please_login: 请先登录您的账户！
   info_label: 便 笺
   note_placeholder: 写点什么...
+  save: 保存
+  insert_emoji: 插入 Emoji
+  saved_message: 便笺已保存
+  last_saved: 上次保存
   note_conflict_title: 内容冲突提示
   note_conflict_content: 检测到其他设备也修改了便笺，是否确定要覆盖远程内容？
   note_conflict_confirm: 覆盖
@@ -208,6 +212,6 @@ index:
   add_to_home: 添加网址导航到桌面
   click_below: 点击下面的
   choose_add_to_screen: 然后选择“添加到主屏幕”
-  quote_prefix: 金句：
+  quote_prefix: 每日一句：
   weather_loading: 加载中...
   weather_failed: 天气加载失败

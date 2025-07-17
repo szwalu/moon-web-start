@@ -124,7 +124,7 @@ async function saveNote({ showMessage = false } = {}) {
 
   if (contentUnchanged) {
     if (showMessage)
-      messageHook.success('便笺已保存')
+      messageHook.success(t('auth.saved_message'))
 
     return
   }
@@ -138,7 +138,7 @@ async function saveNote({ showMessage = false } = {}) {
     lastSavedTime.value = new Date().toLocaleString()
 
     if (showMessage)
-      messageHook.success('便笺已保存')
+      messageHook.success(t('auth.saved_message'))
   }
   else {
     console.error('保存失败:', error.message)
@@ -262,8 +262,8 @@ function onEmojiSelect(event: any) {
             @input="onInput"
           />
           <div class="emoji-bar">
-            <button @click="saveNote({ showMessage: true })">💾 保存</button>
-            <button @click="showEmojiPicker = !showEmojiPicker">😊 插入 Emoji</button>
+            <button @click="saveNote({ showMessage: true })">💾 {{ t('auth.save') }}</button>
+            <button @click="showEmojiPicker = !showEmojiPicker">😊 {{ t('auth.insert_emoji') }}</button>
           </div>
 
           <emoji-picker
@@ -272,7 +272,7 @@ function onEmojiSelect(event: any) {
           />
           <p class="char-counter">{{ charCount }} / {{ maxChars }}</p>
           <p v-if="lastSavedTime" class="char-counter">
-            💾 上次保存：{{ lastSavedTime }}
+            💾 {{ t('auth.last_saved') }}：{{ lastSavedTime }}
           </p>
         </div>
       </div>

@@ -182,6 +182,10 @@ auth:
   please_login: Please log in to your account first!
   info_label: Note
   note_placeholder: Write something...
+  save: Save
+  insert_emoji: Insert Emoji
+  saved_message: Note saved
+  last_saved: Last saved
   note_conflict_title: Content Conflict Detected
   note_conflict_content: Your note has also been modified on another device. Do you want to overwrite the remote content?
   note_conflict_confirm: Overwrite
