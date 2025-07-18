@@ -48,9 +48,24 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData()
+  try {
+    await manualSaveData() // 🟢 手动保存数据
+  }
+  catch (e) {
+    // console.warn('保存数据失败:', e)
+  }
 
-  const { data: { session } } = await supabase.auth.getSession()
+  let sessionInfo
+  try {
+    sessionInfo = await supabase.auth.getSession()
+  }
+  catch (e) {
+    // console.error('获取 session 失败:', e)
+    $message.warning('获取登录状态失败，请稍后重试')
+    return
+  }
+
+  const session = sessionInfo?.data?.session
   const user = session?.user
   const token = session?.access_token
 
@@ -59,24 +74,22 @@ async function handleSettingsClick() {
     router.push('/setting')
   }
   else if (!user && token) {
-    // ⚠️ 假登出，尝试刷新 session
+    // ⚠️ 假登出：尝试刷新
     try {
-      const { data: refreshed, error: _error } = await supabase.auth.refreshSession()
-      const refreshedUser = refreshed?.session?.user
-      const refreshedToken = refreshed?.session?.access_token
-
-      if (refreshedUser && refreshedToken) {
-        // console.log('✅ 假登出已恢复，刷新页面')
-        location.reload()
+      const { data: refreshed, error } = await supabase.auth.refreshSession()
+      if (error)
+        throw error
+      if (refreshed?.session?.user) {
+        // ✅ 恢复成功，再获取一次 session 并跳转
+        router.push('/setting')
       }
       else {
-        console.warn('⚠️ 刷新失败，保持在当前页')
-        //     $message.warning(t('auth.please_refresh'))
+        $message.warning('请手动刷新页面后再试')
       }
     }
-    catch (err) {
-      console.error('❌ 会话刷新异常', err)
-      $message.warning(t('auth.please_refresh'))
+    catch (e) {
+      // console.error('刷新 session 异常:', e)
+      $message.warning('会话刷新失败，请手动刷新页面')
     }
   }
   else {
