@@ -68,43 +68,68 @@ async function handleSettingsClick() {
 
   const session = sessionInfo?.data?.session
 
+  // 检查客户端状态与后端会话是否一致
   if (session?.user) {
-    // ✅ 已登录：后端会话有效，检查客户端状态
     if (!user.value) {
-      // ⚠️ 假登出：后端会话有效，但客户端状态未同步
-      // console.log('检测到假登出，同步客户端状态');
-      user.value = session.user // 更新客户端状态
+      // console.log('假登出：后端会话有效，同步客户端状态');
+      user.value = session.user // 修复客户端状态
     }
     router.push('/setting')
   }
   else {
-    // ❌ 真登出或未登录
+    // 尝试刷新会话
     try {
-      // 尝试刷新会话
       const { data: refreshed, error } = await supabase.auth.refreshSession()
-      if (error)
+      if (error) {
+        // console.error('刷新 session 失败:', error);
         throw error
+      }
       if (refreshed?.session?.user) {
-        // ✅ 刷新成功，更新客户端状态并跳转
+        // console.log('刷新会话成功，同步客户端状态');
         user.value = refreshed.session.user
         router.push('/setting')
       }
       else {
-        // ❌ 刷新失败，确认真登出
+        // 真登出：无有效会话
+        // console.log('真登出：无有效会话');
+        $message.warning(t('auth.please_login'))
+        setTimeout(() => {
+          router.push('/setting') // 跳转到登录页面
+        }, 300)
+      }
+    }
+    catch (e) {
+      console.error('刷新 session 异常:', e)
+      // 额外检查本地 token
+      if (checkLocalToken()) {
+        // 本地 token 存在，可能是网络或服务端问题
+        $message.warning('会话刷新失败，请检查网络后重试')
+      }
+      else {
+        // 无本地 token，确认真登出
         $message.warning(t('auth.please_login'))
         setTimeout(() => {
           router.push('/setting')
         }, 300)
       }
     }
+  }
+}
+
+// 检查本地 token
+function checkLocalToken() {
+  const tokenKey = Object.keys(localStorage).find(key => key.startsWith('sb-') && key.endsWith('-auth-token'))
+  if (tokenKey) {
+    try {
+      const tokenData = JSON.parse(localStorage.getItem(tokenKey))
+      return tokenData?.access_token && tokenData?.refresh_token
+    }
     catch (e) {
-      // console.error('刷新 session 异常:', e);
-      $message.warning('会话刷新失败，请重新登录')
-      setTimeout(() => {
-        router.push('/setting')
-      }, 300)
+      // console.error('本地 token 解析失败:', e);
+      return false
     }
   }
+  return false
 }
 </script>
 
