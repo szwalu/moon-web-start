@@ -48,40 +48,11 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  // 保存数据
-  try {
-    await manualSaveData()
-  }
-  catch (e) {
-    $message.warning('保存数据失败，请稍后重试')
-    // 继续执行，不中断
-  }
-
-  // 检查后端会话状态
-  let sessionInfo
-  try {
-    sessionInfo = await supabase.auth.getSession()
-  }
-  catch (e) {
-    $message.warning('获取登录状态失败，请稍后重试')
-    return
-  }
-
-  const session = sessionInfo?.data?.session
-
-  if (session?.user) {
-    // 后端会话有效
-    if (!user.value) {
-      // 假登出：后端会话有效，但客户端状态未同步
-      $message.warning('请重新刷新主页')
-    }
-    else {
-      // 已登录：客户端状态一致
-      router.push('/setting')
-    }
+  await manualSaveData() // 🟢 强制保存
+  if (user.value) {
+    router.push('/setting')
   }
   else {
-    // 真登出：后端无会话
     $message.warning(t('auth.please_login'))
     setTimeout(() => {
       router.push('/setting')
