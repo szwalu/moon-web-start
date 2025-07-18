@@ -48,88 +48,45 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
+  // 保存数据
   try {
-    await manualSaveData() // 保存数据
+    await manualSaveData()
   }
   catch (e) {
-    // console.warn('保存数据失败:', e);
     $message.warning('保存数据失败，请稍后重试')
+    // 继续执行，不中断
   }
 
+  // 检查后端会话状态
   let sessionInfo
   try {
     sessionInfo = await supabase.auth.getSession()
   }
   catch (e) {
-    // console.error('获取 session 失败:', e);
     $message.warning('获取登录状态失败，请稍后重试')
     return
   }
 
   const session = sessionInfo?.data?.session
 
-  // 检查客户端状态与后端会话是否一致
   if (session?.user) {
+    // 后端会话有效
     if (!user.value) {
-      // console.log('假登出：后端会话有效，同步客户端状态');
-      user.value = session.user // 修复客户端状态
+      // 假登出：后端会话有效，但客户端状态未同步
+      $message.warning('请重新刷新主页')
     }
-    router.push('/setting')
+    else {
+      // 已登录：客户端状态一致
+      router.push('/setting')
+    }
   }
   else {
-    // 尝试刷新会话
-    try {
-      const { data: refreshed, error } = await supabase.auth.refreshSession()
-      if (error) {
-        // console.error('刷新 session 失败:', error);
-        throw error
-      }
-      if (refreshed?.session?.user) {
-        // console.log('刷新会话成功，同步客户端状态');
-        user.value = refreshed.session.user
-        router.push('/setting')
-      }
-      else {
-        // 真登出：无有效会话
-        // console.log('真登出：无有效会话');
-        $message.warning(t('auth.please_login'))
-        setTimeout(() => {
-          router.push('/setting') // 跳转到登录页面
-        }, 300)
-      }
-    }
-    catch (e) {
-      console.error('刷新 session 异常:', e)
-      // 额外检查本地 token
-      if (checkLocalToken()) {
-        // 本地 token 存在，可能是网络或服务端问题
-        $message.warning('会话刷新失败，请检查网络后重试')
-      }
-      else {
-        // 无本地 token，确认真登出
-        $message.warning(t('auth.please_login'))
-        setTimeout(() => {
-          router.push('/setting')
-        }, 300)
-      }
-    }
+    // 真登出：后端无会话
+    $message.warning(t('auth.please_login'))
+    setTimeout(() => {
+      router.push('/setting')
+    }, 300)
   }
-}
-
-// 检查本地 token
-function checkLocalToken() {
-  const tokenKey = Object.keys(localStorage).find(key => key.startsWith('sb-') && key.endsWith('-auth-token'))
-  if (tokenKey) {
-    try {
-      const tokenData = JSON.parse(localStorage.getItem(tokenKey))
-      return tokenData?.access_token && tokenData?.refresh_token
-    }
-    catch (e) {
-      // console.error('本地 token 解析失败:', e);
-      return false
-    }
-  }
-  return false
 }
 </script>
 
