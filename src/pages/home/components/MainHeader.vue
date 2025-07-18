@@ -48,7 +48,7 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 🟢 手动保存数据
+  await manualSaveData()
 
   const { data: { session } } = await supabase.auth.getSession()
   const user = session?.user
@@ -59,11 +59,25 @@ async function handleSettingsClick() {
     router.push('/setting')
   }
   else if (!user && token) {
-    // ⚠️ 假登出
-    $message.warning(t('auth.please_refresh'))
-    setTimeout(() => {
-      router.push('/setting')
-    }, 300)
+    // ⚠️ 假登出，尝试刷新 session
+    try {
+      const { data: refreshed, error: _error } = await supabase.auth.refreshSession()
+      const refreshedUser = refreshed?.session?.user
+      const refreshedToken = refreshed?.session?.access_token
+
+      if (refreshedUser && refreshedToken) {
+        // console.log('✅ 假登出已恢复，刷新页面')
+        location.reload()
+      }
+      else {
+        console.warn('⚠️ 刷新失败，保持在当前页')
+        //     $message.warning(t('auth.please_refresh'))
+      }
+    }
+    catch (err) {
+      console.error('❌ 会话刷新异常', err)
+      $message.warning(t('auth.please_refresh'))
+    }
   }
   else {
     // ❌ 真登出或未登录
