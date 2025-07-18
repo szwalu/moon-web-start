@@ -49,10 +49,11 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   try {
-    await manualSaveData() // 🟢 手动保存数据
+    await manualSaveData() // 保存数据
   }
   catch (e) {
-    // console.warn('保存数据失败:', e)
+    // console.warn('保存数据失败:', e);
+    $message.warning('保存数据失败，请稍后重试')
   }
 
   let sessionInfo
@@ -60,44 +61,49 @@ async function handleSettingsClick() {
     sessionInfo = await supabase.auth.getSession()
   }
   catch (e) {
-    // console.error('获取 session 失败:', e)
+    // console.error('获取 session 失败:', e);
     $message.warning('获取登录状态失败，请稍后重试')
     return
   }
 
   const session = sessionInfo?.data?.session
-  const user = session?.user
-  const token = session?.access_token
 
-  if (user && token) {
-    // ✅ 已登录
+  if (session?.user) {
+    // ✅ 已登录：后端会话有效，检查客户端状态
+    if (!user.value) {
+      // ⚠️ 假登出：后端会话有效，但客户端状态未同步
+      // console.log('检测到假登出，同步客户端状态');
+      user.value = session.user // 更新客户端状态
+    }
     router.push('/setting')
   }
-  else if (!user && token) {
-    // ⚠️ 假登出：尝试刷新
+  else {
+    // ❌ 真登出或未登录
     try {
+      // 尝试刷新会话
       const { data: refreshed, error } = await supabase.auth.refreshSession()
       if (error)
         throw error
       if (refreshed?.session?.user) {
-        // ✅ 恢复成功，再获取一次 session 并跳转
+        // ✅ 刷新成功，更新客户端状态并跳转
+        user.value = refreshed.session.user
         router.push('/setting')
       }
       else {
-        $message.warning('请手动刷新页面后再试')
+        // ❌ 刷新失败，确认真登出
+        $message.warning(t('auth.please_login'))
+        setTimeout(() => {
+          router.push('/setting')
+        }, 300)
       }
     }
     catch (e) {
-      // console.error('刷新 session 异常:', e)
-      $message.warning('会话刷新失败，请手动刷新页面')
+      // console.error('刷新 session 异常:', e);
+      $message.warning('会话刷新失败，请重新登录')
+      setTimeout(() => {
+        router.push('/setting')
+      }, 300)
     }
-  }
-  else {
-    // ❌ 真登出或未登录
-    $message.warning(t('auth.please_login'))
-    setTimeout(() => {
-      router.push('/setting')
-    }, 300)
   }
 }
 </script>
