@@ -4,9 +4,9 @@ import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
 import { useAuthStore } from '@/stores/auth'
 
-// ✅ 全局导出用于判断是否是初次加载的数据（可选）
 export const restoredContentJson = ref('')
 let lastSavedJson = ''
+
 function toggleTheme(theme: string) {
   if (theme === 'dark')
     document.documentElement.classList.add('dark')
@@ -14,12 +14,71 @@ function toggleTheme(theme: string) {
     document.documentElement.classList.remove('dark')
 }
 
+function safeClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj))
+}
+
+// ✅ 合并 siteList，远程优先，保留本地新增
+function mergeSiteList(remoteList: any[] = [], localList: any[] = []) {
+  const result = [...remoteList.map(safeClone)]
+  const remoteIds = new Set(remoteList.map(site => site.id))
+  for (const site of localList) {
+    if (!remoteIds.has(site.id))
+      result.push(safeClone(site))
+  }
+  return result
+}
+
+// ✅ 合并 groupList，远程优先，保留本地新增，合并 siteList
+function mergeGroupList(remoteList: any[] = [], localList: any[] = []) {
+  const result: any[] = []
+
+  for (const remoteGroup of remoteList) {
+    const localMatch = localList.find(g => g.id === remoteGroup.id)
+    const mergedGroup = {
+      ...safeClone(remoteGroup),
+      siteList: mergeSiteList(remoteGroup.siteList || [], localMatch?.siteList || []),
+    }
+    result.push(mergedGroup)
+  }
+
+  // 加入本地独有的 group
+  const remoteIds = new Set(remoteList.map(g => g.id))
+  for (const group of localList) {
+    if (!remoteIds.has(group.id))
+      result.push(safeClone(group))
+  }
+
+  return result
+}
+
+// ✅ 合并 categoryList，远程优先，保留本地新增，合并 groupList
+function mergeDataById(remoteList: any[], localList: any[]) {
+  const result: any[] = []
+
+  for (const remoteCategory of remoteList) {
+    const localMatch = localList.find(c => c.id === remoteCategory.id)
+    const mergedCategory = {
+      ...safeClone(remoteCategory),
+      groupList: mergeGroupList(remoteCategory.groupList || [], localMatch?.groupList || []),
+    }
+    result.push(mergedCategory)
+  }
+
+  const remoteIds = new Set(remoteList.map(c => c.id))
+  for (const category of localList) {
+    if (!remoteIds.has(category.id))
+      result.push(safeClone(category))
+  }
+
+  return result
+}
+
 export function useAutoSave() {
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
   const authStore = useAuthStore()
 
-  // ✅ 加载远程数据逻辑
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -48,14 +107,19 @@ export function useAutoSave() {
 
         if (parsed.data && parsed.settings) {
           settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
-          siteStore.setData(parsed.data)
+
+          const localData = siteStore.customData
+          const remoteData = parsed.data
+          const mergedData = mergeDataById(remoteData, localData)
+
+          siteStore.setData(mergedData)
           toggleTheme(parsed.settings.theme)
 
           restoredContentJson.value = JSON.stringify({
             data: parsed.data,
             settings: parsed.settings,
           })
-          lastSavedJson = restoredContentJson.value // ✅ 加上这行，防止刷新后误保存
+          lastSavedJson = restoredContentJson.value
 
           $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
@@ -71,10 +135,9 @@ export function useAutoSave() {
     }
   }
 
-  // ✅ 批处理合并保存逻辑
   let pending = false
   let saveTimer: ReturnType<typeof setTimeout> | null = null
-  const SAVE_DELAY = 4000 // 保存延迟时间（单位：毫秒）
+  const SAVE_DELAY = 4000
 
   const performAutoSave = async () => {
     if (!pending)
@@ -87,12 +150,10 @@ export function useAutoSave() {
     }
 
     const currentJson = JSON.stringify(contentToSave)
-
-    // ✅ 如果和上次保存的内容一样，就跳过
     if (currentJson === lastSavedJson)
       return
 
-    lastSavedJson = currentJson // ✅ 更新快照
+    lastSavedJson = currentJson
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -118,8 +179,8 @@ export function useAutoSave() {
   }
 
   return {
-    autoLoadData, // 初始化加载远程数据
-    autoSaveData: triggerAutoSave, // 防抖自动保存（用户操作后 4 秒触发）
-    manualSaveData: performAutoSave, // 手动立即保存（用于关键跳转前强制保存）
+    autoLoadData,
+    autoSaveData: triggerAutoSave,
+    manualSaveData: performAutoSave,
   }
 }
