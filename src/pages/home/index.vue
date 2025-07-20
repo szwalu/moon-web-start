@@ -31,15 +31,63 @@ const dailyQuote = ref('')
 
 const authStore = useAuthStore()
 
+// index.vue - 在 onMounted 钩子中
 onMounted(() => {
   authStore.refreshUser()
 
-  // ✅ 使用Supabase原生事件监听
-  supabase.auth.onAuthStateChange((event) => {
+  // ✅ 1. Supabase原生事件监听（处理令牌刷新）
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    // console.log('Auth event:', event)
     if (event === 'TOKEN_REFRESHED')
       authStore.refreshUser()
+
     if (event === 'USER_UNAUTHENTICATED')
       supabase.auth.refreshSession()
+  })
+
+  // ✅ 2. 静默刷新（防止1小时强制超时）
+  const refreshTimer = setInterval(async () => {
+    if (!authStore.user)
+      return
+    try {
+    //  console.log('静默刷新触发:', new Date().toLocaleTimeString())
+      await supabase.auth.getSession()
+    }
+    catch (error) {
+      // console.error('静默刷新失败:', error)
+    }
+  }, 50 * 60 * 1000) // 50分钟
+
+  // ✅ 3. 免费版专属策略：可见性变化刷新（核心位置）
+  let visibilityCooldown = false
+  const handleVisibilityChange = async () => {
+    // 仅当页面从隐藏变为可见，且冷却期结束时执行
+    if (document.visibilityState === 'visible' && !visibilityCooldown) {
+      try {
+        visibilityCooldown = true
+        // console.log('页面可见性刷新触发')
+        await supabase.auth.getSession()
+
+        // 60秒冷却期（防止频繁刷新）
+        setTimeout(() => {
+          visibilityCooldown = false
+        }, 60000)
+      }
+      catch (error) {
+        // console.error('可见性刷新失败:', error)
+        visibilityCooldown = false
+      }
+    }
+  }
+
+  // 注册事件监听
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  // ✅ 4. 卸载清理（必须添加）
+  onUnmounted(() => {
+    subscription.unsubscribe()
+    clearInterval(refreshTimer)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 })
 
