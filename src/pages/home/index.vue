@@ -29,64 +29,65 @@ const hasFetchedWeather = ref(false)
 const { t } = useI18n()
 const dailyQuote = ref('')
 
-const authStore = useAuthStore()
+const _authStore = useAuthStore()
 
 // index.vue - 在 onMounted 钩子中
 onMounted(() => {
-  authStore.refreshUser()
+  const authStore = useAuthStore()
+  authStore.refreshUser() // 初始化用户状态
 
-  // ✅ 1. Supabase原生事件监听（处理令牌刷新）
+  // ✅ 1. 监听认证状态变化（处理令牌刷新事件）
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-    // console.log('Auth event:', event)
+    //  console.log('[认证事件]', event)
     if (event === 'TOKEN_REFRESHED')
-      authStore.refreshUser()
+      authStore.refreshUser() // 更新用户状态
 
     if (event === 'USER_UNAUTHENTICATED')
-      supabase.auth.refreshSession()
+      supabase.auth.refreshSession() // 尝试恢复会话
   })
 
-  // ✅ 2. 静默刷新（防止1小时强制超时）
-  const refreshTimer = setInterval(async () => {
+  // ✅ 2. 双重保活核心代码
+  // 2.1 静默刷新（每50分钟执行一次）
+  const intervalId = setInterval(async () => {
     if (!authStore.user)
-      return
+      return // 未登录时不执行
+
     try {
-    //  console.log('静默刷新触发:', new Date().toLocaleTimeString())
-      await supabase.auth.getSession()
+    //   console.log('[保活] 触发静默刷新', new Date().toLocaleTimeString())
+      await supabase.auth.getSession() // 关键保活调用
     }
     catch (error) {
-      // console.error('静默刷新失败:', error)
+      //    console.error('[保活] 静默刷新失败:', error)
     }
-  }, 50 * 60 * 1000) // 50分钟
+  }, 50 * 60 * 1000) // 50分钟（3000000毫秒）
 
-  // ✅ 3. 免费版专属策略：可见性变化刷新（核心位置）
+  // 2.2 可见性变化刷新（免费版增强保活）
   let visibilityCooldown = false
   const handleVisibilityChange = async () => {
     // 仅当页面从隐藏变为可见，且冷却期结束时执行
     if (document.visibilityState === 'visible' && !visibilityCooldown) {
       try {
         visibilityCooldown = true
-        // console.log('页面可见性刷新触发')
+        //    console.log('[保活] 标签页重新聚焦', new Date().toLocaleTimeString())
         await supabase.auth.getSession()
-
-        // 60秒冷却期（防止频繁刷新）
+      }
+      catch (error) {
+      //   console.error('[保活] 可见性刷新失败:', error)
+      }
+      finally {
+        // 60秒冷却期（防止短时间内多次触发）
         setTimeout(() => {
           visibilityCooldown = false
         }, 60000)
       }
-      catch (error) {
-        // console.error('可见性刷新失败:', error)
-        visibilityCooldown = false
-      }
     }
   }
-
-  // 注册事件监听
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // ✅ 4. 卸载清理（必须添加）
+  // ✅ 3. 清理函数（重要！避免内存泄漏）
   onUnmounted(() => {
+    clearInterval(intervalId)
     subscription.unsubscribe()
-    clearInterval(refreshTimer)
     document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 })
