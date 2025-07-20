@@ -8,9 +8,9 @@ import MainSearch from './components/MainSearch.vue'
 import SiteContainer from './components/SiteContainer.vue'
 import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
-
-import 'sweetalert2/dist/sweetalert2.min.css'
 import shareIconPath from './1122.jpg'
+import { supabase } from '@/utils/supabaseClient'
+import 'sweetalert2/dist/sweetalert2.min.css'
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
@@ -34,21 +34,13 @@ const authStore = useAuthStore()
 onMounted(() => {
   authStore.refreshUser()
 
-  // 页面切回来时刷新登录状态（防止假登出）
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible')
+  // ✅ 使用Supabase原生事件监听
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'TOKEN_REFRESHED')
       authStore.refreshUser()
+    if (event === 'USER_UNAUTHENTICATED')
+      supabase.auth.refreshSession()
   })
-
-  // 某些浏览器不触发 visibilitychange，用 focus 兜底
-  window.addEventListener('focus', () => {
-    authStore.refreshUser()
-  })
-
-  // 每 5 分钟刷新一次登录状态（增强防止假登出）
-  setInterval(() => {
-    authStore.refreshUser()
-  }, 300000)
 })
 
 const settingStore = useSettingStore()
