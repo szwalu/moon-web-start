@@ -49,33 +49,30 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData() // 🟢 强制保存
+  // 1. 本地读取 session（不可靠，只用于提示）
+  const localSession = await supabase.auth.getSession()
 
-  const { data, error } = await supabase.auth.getSession()
+  // 2. 尝试远程确认用户是否真的登录
+  const { data, error } = await supabase.auth.getUser()
 
-  if (error) {
-    // ⛔ 网络问题或刷新失败，避免跳转，只提示
-    $message.error(t('auth.refresh_failed') || '刷新失败，请稍后再试')
-    return
-  }
-
-  if (!data.session) {
-    // ✅ session 为空，说明是假登出或真登出
-    if (user.value) {
-      // ✅ 本地还有 user，但 session 无效 —— 判定为“假登出”
-      $message.warning('检测到登录状态异常，请刷新主页后重试')
+  if (!data.user || error) {
+    if (localSession.data.session) {
+      // ✅ 情况一：本地有 session，但 getUser 拉不到 → 假登出
+      // console.warn('⚠️ 假登出：本地 session 存在，但远程 user 拉不到')
+      window.$message?.error('⚠️ 登录状态已失效，请刷新主页重新登录')
     }
     else {
-      // ✅ 真登出或未登录
-      $message.warning(t('auth.please_login') || '请先登录您的账户')
+      // ✅ 情况二：本地也没有 session → 真登出
+      $message.warning(t('auth.please_login'))
       setTimeout(() => {
-        router.push('/setting')
+        router.push('/setting') // 根据你的项目路由调整
       }, 300)
     }
-    return
   }
-
-  // ✅ session 正常，允许跳转
-  router.push('/setting')
+  else {
+    // ✅ 情况三：登录状态有效，进入设置页
+    router.push('/setting')
+  }
 }
 </script>
 
