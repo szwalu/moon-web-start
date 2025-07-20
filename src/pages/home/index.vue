@@ -38,55 +38,55 @@ onMounted(() => {
 
   // ✅ 1. 监听认证状态变化（处理令牌刷新事件）
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-    //  console.log('[认证事件]', event)
     if (event === 'TOKEN_REFRESHED')
-      authStore.refreshUser() // 更新用户状态
+      authStore.refreshUser()
 
     if (event === 'USER_UNAUTHENTICATED')
-      supabase.auth.refreshSession() // 尝试恢复会话
+      supabase.auth.refreshSession()
   })
 
-  // ✅ 2. 双重保活核心代码
-  // 2.1 静默刷新（每50分钟执行一次）
+  // ✅ 2. 静默刷新（每 50 分钟）
   const intervalId = setInterval(async () => {
     if (!authStore.user)
-      return // 未登录时不执行
-
+      return
     try {
-    //   console.log('[保活] 触发静默刷新', new Date().toLocaleTimeString())
-      await supabase.auth.getSession() // 关键保活调用
+      await supabase.auth.getSession()
     }
-    catch (error) {
-      //    console.error('[保活] 静默刷新失败:', error)
-    }
-  }, 50 * 60 * 1000) // 50分钟（3000000毫秒）
+    catch {}
+  }, 50 * 60 * 1000)
 
-  // 2.2 可见性变化刷新（免费版增强保活）
+  // ✅ 3. 页面可见性变化 → getSession（保持活性）
   let visibilityCooldown = false
   const handleVisibilityChange = async () => {
-    // 仅当页面从隐藏变为可见，且冷却期结束时执行
     if (document.visibilityState === 'visible' && !visibilityCooldown) {
+      visibilityCooldown = true
       try {
-        visibilityCooldown = true
-        //    console.log('[保活] 标签页重新聚焦', new Date().toLocaleTimeString())
         await supabase.auth.getSession()
       }
-      catch (error) {
-      //   console.error('[保活] 可见性刷新失败:', error)
-      }
-      finally {
-        // 60秒冷却期（防止短时间内多次触发）
-        setTimeout(() => {
-          visibilityCooldown = false
-        }, 60000)
-      }
+      catch {}
+      setTimeout(() => (visibilityCooldown = false), 60000)
     }
   }
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // ✅ 3. 清理函数（重要！避免内存泄漏）
+  // ✅ 4. ✨ 方案二中的关键增强 → refreshUser()（防止假登出）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible')
+      authStore.refreshUser()
+  })
+  window.addEventListener('focus', () => {
+    authStore.refreshUser()
+  })
+
+  // ✅ 5. 定期 refreshUser（每 5 分钟）增强可靠性
+  const userRefreshInterval = setInterval(() => {
+    authStore.refreshUser()
+  }, 300000)
+
+  // ✅ 6. 清理
   onUnmounted(() => {
     clearInterval(intervalId)
+    clearInterval(userRefreshInterval)
     subscription.unsubscribe()
     document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
