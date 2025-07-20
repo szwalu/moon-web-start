@@ -49,15 +49,33 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData() // 🟢 强制保存
-  if (user.value) {
-    router.push('/setting')
+
+  const { data, error } = await supabase.auth.getSession()
+
+  if (error) {
+    // ⛔ 网络问题或刷新失败，避免跳转，只提示
+    $message.error(t('auth.refresh_failed') || '刷新失败，请稍后再试')
+    return
   }
-  else {
-    $message.warning(t('auth.please_login'))
-    setTimeout(() => {
-      router.push('/setting')
-    }, 300)
+
+  if (!data.session) {
+    // ✅ session 为空，说明是假登出或真登出
+    if (user.value) {
+      // ✅ 本地还有 user，但 session 无效 —— 判定为“假登出”
+      $message.warning('检测到登录状态异常，请刷新主页后重试')
+    }
+    else {
+      // ✅ 真登出或未登录
+      $message.warning(t('auth.please_login') || '请先登录您的账户')
+      setTimeout(() => {
+        router.push('/setting')
+      }, 300)
+    }
+    return
   }
+
+  // ✅ session 正常，允许跳转
+  router.push('/setting')
 }
 </script>
 
