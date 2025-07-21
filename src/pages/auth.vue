@@ -316,18 +316,23 @@ function onEmojiSelect(event: any) {
           </button>
         </template>
         <p v-if="message" class="message">{{ message }}</p>
-        <p v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle" /><div v-if="mode === 'login'" class="login-links-container">
-          <div class="left-part">
-            <span>{{ $t('auth.prompt_to_register') }}</span>
-            <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
+        <template v-if="mode === 'login'">
+          <div class="toggle-row">
+            <div class="toggle-left">
+              <span>{{ $t('auth.prompt_to_register') }}</span>
+              <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
+            </div>
+            <div class="toggle-right">
+              <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
+            </div>
           </div>
-          <div class="right-part">
-            <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
-          </div>
-        </div>
+          <p class="log-in-again-note center-note">{{ $t('auth.Log_in_again') }}</p>
+        </template>
         <template v-else>
-          <span>{{ $t('auth.prompt_to_login') }}</span>
-          <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
+          <p class="toggle">
+            <span>{{ $t('auth.prompt_to_login') }}</span>
+            <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
+          </p>
         </template>
       </form>
     </div>
@@ -614,46 +619,51 @@ emoji-picker {
   margin-top: 0.5rem;
   --emoji-size: 20px;
 }
-.login-links-container {
+.toggle-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
   margin-top: 1rem;
-  flex-wrap: wrap; /* 允许在小屏幕上换行 */
+  font-size: 14px;
+  color: #666;
+  flex-wrap: nowrap; /* ⚠️ 保持一行，不换行 */
 }
 
-.left-part {
-  text-align: left;
+.toggle-left,
+.toggle-right {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  white-space: nowrap; /* ❗ 避免换行 */
 }
 
-.right-part {
-  text-align: right;
+.toggle-left {
+  flex: 1;
+  min-width: 0;
 }
 
-/* 移动端适配 */
-@media (max-width: 480px) {
-  .login-links-container {
-    flex-direction: column; /* 小屏幕时垂直排列 */
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-
-  .left-part, .right-part {
-    text-align: center; /* 小屏幕时居中显示 */
-  }
-
-  .left-part {
-    order: 1; /* 确保"还没有账号"在上方 */
-  }
-
-  .right-part {
-    order: 2; /* "忘记密码"在下方 */
-  }
+.toggle-right {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
-/* 如果夜间模式有特殊样式 */
-.dark .login-links-container {
-  color: #888;
+.toggle-left a,
+.toggle-right a {
+  color: #00b386;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dark .toggle-left a,
+.dark .toggle-right a {
+  color: #2dd4bf;
+}
+
+/* ✅ 居中 log-in-again-note */
+.center-note {
+  text-align: center;
+  margin-top: 0.5rem;
+  color: #999;
+  font-size: 13px;
 }
 </style>
