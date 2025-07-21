@@ -316,24 +316,19 @@ function onEmojiSelect(event: any) {
           </button>
         </template>
         <p v-if="message" class="message">{{ message }}</p>
-        <template v-if="mode === 'login'">
-          <div class="toggle-row">
-            <div class="toggle-left">
-              <span>{{ $t('auth.prompt_to_register') }}</span>
-              <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
-            </div>
-            <div class="toggle-right">
-              <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
-            </div>
-          </div>
-          <p class="log-in-again-note center-note">{{ $t('auth.Log_in_again') }}</p>
-        </template>
-        <template v-else>
-          <p class="toggle">
+        <p v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle">
+          <template v-if="mode === 'login'">
+            <span>{{ $t('auth.prompt_to_register') }}</span>
+            <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
+            <span> | </span>
+            <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
+            <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
+          </template>
+          <template v-else>
             <span>{{ $t('auth.prompt_to_login') }}</span>
             <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
-          </p>
-        </template>
+          </template>
+        </p>
       </form>
     </div>
   </div>
@@ -618,52 +613,5 @@ emoji-picker {
   height: 320px;
   margin-top: 0.5rem;
   --emoji-size: 20px;
-}
-.toggle-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 1rem;
-  font-size: 14px;
-  color: #666;
-  flex-wrap: nowrap; /* ⚠️ 保持一行，不换行 */
-}
-
-.toggle-left,
-.toggle-right {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  white-space: nowrap; /* ❗ 避免换行 */
-}
-
-.toggle-left {
-  flex: 1;
-  min-width: 0;
-}
-
-.toggle-right {
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.toggle-left a,
-.toggle-right a {
-  color: #00b386;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.dark .toggle-left a,
-.dark .toggle-right a {
-  color: #2dd4bf;
-}
-
-/* ✅ 居中 log-in-again-note */
-.center-note {
-  text-align: center;
-  margin-top: 0.5rem;
-  color: #999;
-  font-size: 13px;
 }
 </style>

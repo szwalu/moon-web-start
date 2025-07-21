@@ -47,33 +47,16 @@ function getIconClass(routeName: string) {
   }
 }
 
-async function waitForSupabaseReady(maxWaitMs = 1000) {
-  const start = Date.now()
-  while (Date.now() - start < maxWaitMs) {
-    const { data } = await supabase.auth.getSession()
-    if (data.session)
-      return true
-    await new Promise(resolve => setTimeout(resolve, 100)) // 等 100ms 再试
-  }
-  return false
-}
-
 async function handleSettingsClick() {
-  await manualSaveData()
-
-  // 等待 Supabase session 准备就绪（避免“假登出”点击无反应）
-  await waitForSupabaseReady()
-
-  // 获取当前用户
-  const { data } = await supabase.auth.getUser()
-  user.value = data?.user ?? null
-
+  await manualSaveData() // 🟢 强制保存
   if (user.value) {
     router.push('/setting')
   }
   else {
     $message.warning(t('auth.please_login'))
-    setTimeout(() => router.push('/setting'), 300)
+    setTimeout(() => {
+      router.push('/setting')
+    }, 300)
   }
 }
 </script>
