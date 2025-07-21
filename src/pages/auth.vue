@@ -316,19 +316,19 @@ function onEmojiSelect(event: any) {
           </button>
         </template>
         <p v-if="message" class="message">{{ message }}</p>
-        <p v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle">
-          <template v-if="mode === 'login'">
+        <p v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle" /><div v-if="mode === 'login'" class="login-links-container">
+          <div class="left-part">
             <span>{{ $t('auth.prompt_to_register') }}</span>
             <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
-            <span> | </span>
+          </div>
+          <div class="right-part">
             <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
-            <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
-          </template>
-          <template v-else>
-            <span>{{ $t('auth.prompt_to_login') }}</span>
-            <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
-          </template>
-        </p>
+          </div>
+        </div>
+        <template v-else>
+          <span>{{ $t('auth.prompt_to_login') }}</span>
+          <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
+        </template>
       </form>
     </div>
   </div>
@@ -613,5 +613,47 @@ emoji-picker {
   height: 320px;
   margin-top: 0.5rem;
   --emoji-size: 20px;
+}
+.login-links-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 1rem;
+  flex-wrap: wrap; /* 允许在小屏幕上换行 */
+}
+
+.left-part {
+  text-align: left;
+}
+
+.right-part {
+  text-align: right;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .login-links-container {
+    flex-direction: column; /* 小屏幕时垂直排列 */
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .left-part, .right-part {
+    text-align: center; /* 小屏幕时居中显示 */
+  }
+
+  .left-part {
+    order: 1; /* 确保"还没有账号"在上方 */
+  }
+
+  .right-part {
+    order: 2; /* "忘记密码"在下方 */
+  }
+}
+
+/* 如果夜间模式有特殊样式 */
+.dark .login-links-container {
+  color: #888;
 }
 </style>
