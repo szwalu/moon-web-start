@@ -49,20 +49,20 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData()
-  // 人为触发一次 onAuthStateChange 以获取 session（虽然不推荐，但符合你的意图）
-  supabase.auth.onAuthStateChange((_event, session) => {
-    user.value = session?.user ?? null
 
-    if (user.value) {
+  const { data, _error } = await supabase.auth.getSession()
+  const session = data?.session
+  user.value = session?.user ?? null
+
+  if (user.value) {
+    router.push('/setting')
+  }
+  else {
+    $message.warning(t('auth.please_login'))
+    setTimeout(() => {
       router.push('/setting')
-    }
-    else {
-      $message.warning(t('auth.please_login'))
-      setTimeout(() => {
-        router.push('/setting')
-      }, 300)
-    }
-  })
+    }, 300)
+  }
 }
 </script>
 
