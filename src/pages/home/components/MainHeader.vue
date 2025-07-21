@@ -32,6 +32,10 @@ onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
   })
+  // 初始化时获取一次 session，确保刷新后仍能正确识别已登录
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    user.value = session?.user ?? null
+  })
 })
 
 const logoPath = ref('/logow.jpg')
@@ -48,30 +52,16 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 🟢 强制保存
-  // 1. 本地读取 session（不可靠，只用于提示）
-  const localSession = await supabase.auth.getSession()
+  await manualSaveData()
 
-  // 2. 尝试远程确认用户是否真的登录
-  const { data, error } = await supabase.auth.getUser()
-
-  if (!data.user || error) {
-    if (localSession.data.session) {
-      // ✅ 情况一：本地有 session，但 getUser 拉不到 → 假登出
-      // console.warn('⚠️ 假登出：本地 session 存在，但远程 user 拉不到')
-      window.$message?.error('⚠️ 登录状态已失效，请刷新主页重新登录')
-    }
-    else {
-      // ✅ 情况二：本地也没有 session → 真登出
-      $message.warning(t('auth.please_login'))
-      setTimeout(() => {
-        router.push('/setting') // 根据你的项目路由调整
-      }, 300)
-    }
+  if (user.value) {
+    router.push('/setting')
   }
   else {
-    // ✅ 情况三：登录状态有效，进入设置页
-    router.push('/setting')
+    $message.warning(t('auth.please_login'))
+    setTimeout(() => {
+      router.push('/setting')
+    }, 300)
   }
 }
 </script>
