@@ -50,9 +50,9 @@ function getIconClass(routeName: string) {
 async function handleSettingsClick() {
   await manualSaveData()
 
-  const { data, _error } = await supabase.auth.getSession()
-  const session = data?.session
-  user.value = session?.user ?? null
+  // 🔥 不再监听，而是主动请求服务端获取真实用户状态
+  const { data } = await supabase.auth.getUser()
+  user.value = data?.user ?? null
 
   if (user.value) {
     router.push('/setting')

@@ -1,4 +1,4 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
+# Sample workflow for building and deploying a site to GitHub Pages
 name: Deploy moon-web-start with GitHub Pages dependencies preinstalled
 
 on:
@@ -31,34 +31,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4 # 建议更新到较新版本
+        uses: pnpm/action-setup@v4
         with:
-          version: 6.32.9 # 您可以根据项目实际使用的 pnpm 版本调整
+          version: 6.32.9
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: pnpm # 指定缓存 pnpm
+          cache: pnpm
+
       - name: Install dependencies
         run: pnpm install
+
       - name: Build
         env:
           REPOSITORY: ${{ github.repository }}
         run: pnpm build
 
-      # --- 👇 新增的步骤：复制 index.html 到 404.html ---
       - name: Prepare 404 page for SPA
         run: cp dist/index.html dist/404.html
-      # --- 👆 新增步骤结束 ---
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          name: github-pages
-        path: ./dist
+          path: ./dist # ✅ 正确写法：必须写在 with: 里
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
