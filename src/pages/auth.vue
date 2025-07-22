@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { useMessage } from 'naive-ui'
@@ -9,12 +9,14 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import 'emoji-picker-element'
+
 const noteText = ref('')
 const lastSavedContent = ref('') // 保存最近一次成功保存到 Supabase 的内容
 const lastSavedTime = ref('')
 const authStore = useAuthStore()
 useDark()
 const router = useRouter()
+const route = useRoute() // 新增：获取当前路由信息
 const { t } = useI18n()
 const messageHook = useMessage()
 const { autoLoadData } = useAutoSave()
@@ -62,6 +64,13 @@ onMounted(() => {
         autoSaveInterval = setInterval(() => {
           saveNote()
         }, 15000)
+      }
+
+      // 新增：如果从“设置”按钮进入且用户已登录，2秒后跳转到 /setting
+      if (route.query.from === 'settings') {
+        setTimeout(() => {
+          router.push('/setting')
+        }, 2000)
       }
     }
     else {
@@ -115,8 +124,6 @@ watch(noteText, (val) => {
 })
 
 async function saveNote({ showMessage = false } = {}) {
-  // console.log('👉 saveNote 被调用，是否提示:', showMessage)
-
   if (!user.value)
     return
 
@@ -189,9 +196,13 @@ async function handleSubmit() {
       if (error)
         throw error
 
-      await router.push('/')
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
+      // 修改：根据查询参数决定登录后跳转
+      if (route.query.from === 'settings')
+        await router.push('/setting')
+      else
+        await router.push('/')
     }
     else if (mode.value === 'register') {
       const { error } = await supabase.auth.signUp({
@@ -335,7 +346,6 @@ function onEmojiSelect(event: any) {
 </template>
 
 <style scoped>
-/* 样式部分保持不变 */
 .auth-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -384,7 +394,6 @@ h1 {
   color: #111;
 }
 
-/* 为禁用状态添加样式 */
 .auth-form input:disabled {
   background-color: #f0f0f0;
   cursor: not-allowed;
@@ -396,7 +405,6 @@ h1 {
   color: #ffffff;
 }
 
-/* 为禁用状态添加样式 (Dark Mode) */
 .dark .auth-form input:disabled {
     background-color: #3a3a3c;
     opacity: 0.7;
@@ -447,13 +455,13 @@ button:disabled {
 }
 
 .account-title {
-  font-size: 18px; /* 原先是 28px */
+  font-size: 18px;
 }
 
 .note-container {
-  margin-top: 3rem; /* 增加与上面三行的垂直距离 */
+  margin-top: 3rem;
 }
-/* 【新增】为账户信息视图添加一些样式 */
+
 .account-info {
   text-align: center;
 }
@@ -491,10 +499,9 @@ button:disabled {
   color: #ffffff;
 }
 
-/* 【新增】为按钮组和次要按钮添加样式 */
 .button-group {
   display: grid;
-  grid-template-columns: 5fr 1fr; /* 改成返回主页宽，登出窄 */
+  grid-template-columns: 5fr 1fr;
   gap: 1rem;
   margin-top: 2rem;
 }
@@ -502,8 +509,8 @@ button:disabled {
 .button--secondary {
   width: 100%;
   padding: 0.8rem;
-  background-color: #f0f0f0; /* 浅灰色背景 */
-  color: #333; /* 深色文字 */
+  background-color: #f0f0f0;
+  color: #333;
   border: 1px solid #ddd;
   border-radius: 6px;
   cursor: pointer;
@@ -559,7 +566,6 @@ button:disabled {
 </style>
 
 <style>
-/* 全局样式保持不变 */
 body, html {
   background-color: #f8f9fa;
   background-image:
@@ -602,10 +608,10 @@ body, html {
   border-color: #444;
 }
 .emoji-bar button {
-  color: #111; /* 明亮模式下的文字 */
+  color: #111;
 }
 .dark .emoji-bar button {
-  color: #fff; /* 暗色模式下的文字 */
+  color: #fff;
 }
 emoji-picker {
   width: 100%;

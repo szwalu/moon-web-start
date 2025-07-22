@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
-import { useMessage } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -13,11 +11,11 @@ import { useAutoSave } from '@/composables/useAutoSave'
 
 const { manualSaveData } = useAutoSave()
 
-const { t } = useI18n()
+// const { t } = useI18n()
 const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
-const $message = useMessage()
+// const $message = useMessage()
 
 const isMobile = ref(false)
 onMounted(() => {
@@ -48,16 +46,8 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 🟢 强制保存
-  if (user.value) {
-    router.push('/setting')
-  }
-  else {
-    $message.warning(t('auth.please_login'))
-    setTimeout(() => {
-      router.push('/setting')
-    }, 300)
-  }
+  await manualSaveData() // 保留手动保存逻辑
+  router.push({ path: '/auth', query: { from: 'settings' } }) // 添加查询参数
 }
 </script>
 
