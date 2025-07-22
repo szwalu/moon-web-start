@@ -159,7 +159,9 @@ auth:
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？
-  Log_in_again: (登陆后可保存网站数据，返回首页刷新可自动重新登陆)
+  Log_in_again_prefix: 登陆后可保存网站数据，
+  Log_in_again_link: 返回首页
+  Log_in_again_suffix: 刷新可自动重新登陆
   prompt_to_login: 已有账号？
   confirm_password: 确认密码
   email_placeholder: 请输入您的邮箱地址

@@ -242,6 +242,12 @@ function onEmojiSelect(event: any) {
   noteText.value = before + emoji + after
   showEmojiPicker.value = false
 }
+
+function goHomeAndRefresh() {
+  router.push('/').then(() => {
+    window.location.reload()
+  })
+}
 </script>
 
 <template>
@@ -345,7 +351,20 @@ function onEmojiSelect(event: any) {
         </p>
 
         <!-- 登录模式下显示的提示语，保持居中 -->
-        <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
+        <p
+          class="text-center leading-relaxed text-gray-500"
+          style="font-size: 14px;"
+        >
+          {{ t('auth.Log_in_again_prefix') }}
+          <a
+            href="/"
+            class="cursor-pointer text-green-600 underline"
+            @click.prevent="goHomeAndRefresh"
+          >
+            {{ t('auth.Log_in_again_link') }}
+          </a>
+          {{ t('auth.Log_in_again_suffix') }}
+        </p>
       </form>
     </div>
   </div>

@@ -159,7 +159,9 @@ auth:
   email: Email
   password: Password
   prompt_to_register: Don't have an account?
-  Log_in_again: (After logging in, you can save the website data, and return to the homepage to refresh and log in again automatically)
+  Log_in_again_prefix: After logging in, your data will be saved.
+  Log_in_again_link: Return to Home
+  Log_in_again_suffix: Refresh the page to log in again automatically,
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address

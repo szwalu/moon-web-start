@@ -16,17 +16,23 @@ export const useSiteStore = defineStore('site', () => {
 
   // Custom data
   const customData = ref<Category[]>(loadData() || [])
-  watch(customData, () => {
+  watch(customData, async () => {
     const secretId = secretIdStorage.get()
     if (secretId && customData.value.length) {
-      reqPostData({
-        secretId,
-        data: {
-          data: customData.value,
-          settings: settingStore.settings,
-        },
-      })
+      try {
+        await reqPostData({
+          id: secretId, // ⚠️ 注意你的接口是要求 "id"，你原来写的是 "secretId"
+          data: {
+            data: customData.value,
+            settings: settingStore.settings,
+          },
+        })
+      }
+      catch (err) {
+        // console.error('❌ 数据同步失败:', err)
+      }
     }
+
     cachingData()
   }, { deep: true })
 
