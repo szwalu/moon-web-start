@@ -327,19 +327,16 @@ function onEmojiSelect(event: any) {
           </button>
         </template>
         <p v-if="message" class="message">{{ message }}</p>
-        <p v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle">
-          <template v-if="mode === 'login'">
+        <div v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle-row">
+          <div class="toggle-left">
             <span>{{ $t('auth.prompt_to_register') }}</span>
             <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
-            <span> | </span>
+          </div>
+          <div class="toggle-right">
             <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
-            <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
-          </template>
-          <template v-else>
-            <span>{{ $t('auth.prompt_to_login') }}</span>
-            <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
-          </template>
-        </p>
+          </div>
+        </div>
+        <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
       </form>
     </div>
   </div>
@@ -619,5 +616,34 @@ emoji-picker {
   height: 320px;
   margin-top: 0.5rem;
   --emoji-size: 20px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  font-size: 14px;
+  color: #666;
+}
+.toggle-left,
+.toggle-right {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.toggle-left a,
+.toggle-right a {
+  color: #00b386;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dark .toggle-row {
+  color: #aaa;
+}
+.dark .toggle-left a,
+.dark .toggle-right a {
+  color: #2dd4bf;
 }
 </style>
