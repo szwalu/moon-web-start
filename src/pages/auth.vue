@@ -353,7 +353,7 @@ function goHomeAndRefresh() {
         <!-- 登录模式下显示的提示语，保持居中 -->
         <p
           class="text-center leading-relaxed text-gray-500"
-          style="font-size: 14px;"
+          style="font-size: 13px;"
         >
           {{ t('auth.Log_in_again_prefix') }}
           <a
