@@ -158,9 +158,9 @@ auth:
   email: メールアドレス
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
-  Log_in_again_prefix: ログインするとデータが保存されます。
-  Log_in_again_link: ホームに戻る
-  Log_in_again_suffix: 再読み込みすると自動的に再ログインされます,
+  Log_in_again_prefix: ログインしている場合,
+  Log_in_again_link: 👉️ここをクリック
+  Log_in_again_suffix: 再読み込みすると自動的に再ログインされます
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
   email_placeholder: メールアドレスを入力してください
@@ -187,10 +187,6 @@ auth:
   insert_emoji: 絵文字を挿入
   saved_message: メモが保存されました
   last_saved: 最終保存
-  note_conflict_title: コンテンツの競合が検出されました
-  note_conflict_content: 他のデバイスでも便箋が編集されました。リモートの内容を上書きしますか？
-  note_conflict_confirm: 上書き
-  note_conflict_cancel: キャンセル
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。

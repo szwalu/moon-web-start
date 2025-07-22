@@ -12,7 +12,7 @@ time_units:
   hours: 时
   minutes: 分
   seconds: 秒
-Alreadyrunning: WOabc已运行：
+Alreadyrunning: 我abc已运行：
 button:
   resetData: 重置数据
   importData: 导入数据
@@ -92,9 +92,9 @@ messages:
   reset: 已重置~
   loading: 加载中...
   warnSyncIdRequired: 请输入ID
-  saving: 保存中
+  saving: 保存中...
   saveSuccess: 保存成功
-  reading: 读取中
+  reading: 读取中...
   readSuccess: 读取成功
   readFailed: 读取失败
   warnValidateId: ID 应为 5-20 位数字、字母或下划线组合
@@ -159,8 +159,8 @@ auth:
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？
-  Log_in_again_prefix: 登陆可保存数据，
-  Log_in_again_link: 返回首页
+  Log_in_again_prefix: 若曾经登陆，
+  Log_in_again_link: 👉️点击这里
   Log_in_again_suffix: 刷新可重新登陆
   prompt_to_login: 已有账号？
   confirm_password: 确认密码
@@ -188,11 +188,6 @@ auth:
   insert_emoji: 插入 Emoji
   saved_message: 便笺已保存
   last_saved: 上次保存
-  note_conflict_title: 内容冲突提示
-  note_conflict_content: 检测到其他设备也修改了便笺，是否确定要覆盖远程内容？
-  note_conflict_confirm: 覆盖
-  note_conflict_cancel: 取消
-  session_expired: 登录状态已失效，请刷新首页或重新登录
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。

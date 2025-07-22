@@ -77,7 +77,7 @@ settings:
   showWeather:
     title: Show Weather
   showDailyQuote:
-    title: Golden Line
+    title: Quote
   common:
     show: Show
     hide: Hide
@@ -159,9 +159,9 @@ auth:
   email: Email
   password: Password
   prompt_to_register: Don't have an account?
-  Log_in_again_prefix: After logging in, your data will be saved.
-  Log_in_again_link: Return to Home
-  Log_in_again_suffix: Refresh the page to log in again automatically,
+  Log_in_again_prefix: If you have logged in,
+  Log_in_again_link: 👉️Click here
+  Log_in_again_suffix: Refresh the page to log in again automatically
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address
@@ -188,10 +188,6 @@ auth:
   insert_emoji: Insert Emoji
   saved_message: Note saved
   last_saved: Last saved
-  note_conflict_title: Content Conflict Detected
-  note_conflict_content: Your note has also been modified on another device. Do you want to overwrite the remote content?
-  note_conflict_confirm: Overwrite
-  note_conflict_cancel: Cancel
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
