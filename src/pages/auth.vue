@@ -11,12 +11,12 @@ import { useAuthStore } from '@/stores/auth'
 import 'emoji-picker-element'
 
 const noteText = ref('')
-const lastSavedContent = ref('') // 保存最近一次成功保存到 Supabase 的内容
+const lastSavedContent = ref('')
 const lastSavedTime = ref('')
 const authStore = useAuthStore()
 useDark()
 const router = useRouter()
-const route = useRoute() // 新增：获取当前路由信息
+const route = useRoute()
 const { t } = useI18n()
 const messageHook = useMessage()
 const { autoLoadData } = useAutoSave()
@@ -34,6 +34,7 @@ const resetEmailSent = ref(false)
 const charCount = computed(() => noteText.value.length)
 const maxChars = 3000
 const lastBackupTime = ref('N/A')
+const hasRedirected = ref(false) // 新增：标志变量，防止重复跳转
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
@@ -66,11 +67,12 @@ onMounted(() => {
         }, 15000)
       }
 
-      // 新增：如果从“设置”按钮进入且用户已登录，0.1秒后跳转到 /setting
-      if (route.query.from === 'settings') {
+      // 修改：仅在首次进入且 from=settings 时跳转
+      if (route.query.from === 'settings' && !hasRedirected.value) {
+        hasRedirected.value = true // 设置标志，防止重复跳转
         // setTimeout(() => {
-        router.push('/setting')
-        // }, 100)
+        router.replace('/setting') // 使用 replace 避免堆叠路由
+        // }, 2000)
       }
     }
     else {
@@ -198,11 +200,11 @@ async function handleSubmit() {
 
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
-      // 修改：根据查询参数决定登录后跳转
+      // 保持：根据查询参数决定登录后跳转
       if (route.query.from === 'settings')
-        await router.push('/setting')
+        await router.replace('/setting') // 使用 replace
       else
-        await router.push('/')
+        await router.replace('/') // 使用 replace
     }
     else if (mode.value === 'register') {
       const { error } = await supabase.auth.signUp({

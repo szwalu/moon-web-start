@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { h, onMounted, ref } from 'vue'
+
+import { useRouter } from 'vue-router'
+
+// 新增：引入 useRouter
 import SettingSelection from './SettingSelection.vue'
 import { supabase } from '@/utils/supabaseClient'
 import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference } from '@/types'
@@ -9,6 +13,7 @@ import { toggleTheme } from '@/composables/theme'
 import { useAutoSave } from '@/composables/useAutoSave'
 
 const { manualSaveData } = useAutoSave()
+const router = useRouter() // 新增：用于跳转
 
 // ✅ 页面激活时强制刷新会话，防止假登出
 async function refreshSession() {
@@ -264,7 +269,7 @@ function handleStopSync() {
         size="large"
         type="primary"
         @click="() => {
-          manualSaveData().then(() => $router.back())
+          manualSaveData().then(() => router.replace('/'))
         }"
       >
         {{ $t('button.complete') }}
