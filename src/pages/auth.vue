@@ -327,7 +327,8 @@ function onEmojiSelect(event: any) {
           </button>
         </template>
         <p v-if="message" class="message">{{ message }}</p>
-        <div v-if="!(mode === 'forgotPassword' && resetEmailSent)" class="toggle-row">
+        <!-- 登录模式：左右布局 -->
+        <div v-if="mode === 'login'" class="toggle-row">
           <div class="toggle-left">
             <span>{{ $t('auth.prompt_to_register') }}</span>
             <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
@@ -336,6 +337,14 @@ function onEmojiSelect(event: any) {
             <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
           </div>
         </div>
+
+        <!-- 其它模式：保留居中 -->
+        <p v-else class="toggle">
+          <span>{{ $t('auth.prompt_to_login') }}</span>
+          <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
+        </p>
+
+        <!-- 登录模式下显示的提示语，保持居中 -->
         <p v-if="mode === 'login'" class="log-in-again-note">{{ $t('auth.Log_in_again') }}</p>
       </form>
     </div>
@@ -645,5 +654,12 @@ emoji-picker {
 .dark .toggle-left a,
 .dark .toggle-right a {
   color: #2dd4bf;
+}
+
+.log-in-again-note {
+  margin-top: 0.5rem;
+  text-align: center;
+  color: #888;
+  font-size: 13px;
 }
 </style>
