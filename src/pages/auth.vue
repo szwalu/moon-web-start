@@ -66,11 +66,11 @@ onMounted(() => {
         }, 15000)
       }
 
-      // 新增：如果从“设置”按钮进入且用户已登录，2秒后跳转到 /setting
+      // 新增：如果从“设置”按钮进入且用户已登录，0.1秒后跳转到 /setting
       if (route.query.from === 'settings') {
-        setTimeout(() => {
-          router.push('/setting')
-        }, 2000)
+        // setTimeout(() => {
+        router.push('/setting')
+        // }, 100)
       }
     }
     else {
