@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { h, onMounted, ref } from 'vue'
-
 import { useRouter } from 'vue-router'
 
 // 新增：引入 useRouter
@@ -10,9 +9,8 @@ import type { Category, SettingItem, Settings, TagMode, Theme, WebsitePreference
 import { WITH_SERVER, getText, loadLanguageAsync, secretIdStorage } from '@/utils'
 import * as S from '@/utils/settings'
 import { toggleTheme } from '@/composables/theme'
-import { useAutoSave } from '@/composables/useAutoSave'
+import { manualSaveData, mergeDataById } from '@/composables/useAutoSave'
 
-const { manualSaveData } = useAutoSave()
 const router = useRouter() // 新增：用于跳转
 
 // ✅ 页面激活时强制刷新会话，防止假登出
@@ -112,21 +110,83 @@ function importData() {
 }
 
 async function resetData() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
-    $message.warning(t('messages.warn_logout_to_reset'))
-    return
-  }
-
   $dialog.warning({
     title: t('messages.tip'),
     content: t('messages.warnResetData'),
     positiveText: t('button.confirm'),
     negativeText: t('button.cancel'),
-    onPositiveClick() {
+    async onPositiveClick() {
+      // ✅ 1. 清除本地缓存
       localStorage.removeItem('settings')
       localStorage.removeItem('cache')
-      window.location.reload()
+
+      const localData = siteStore.customData
+      const _localSettings = settingStore.settings
+
+      siteStore.setData([])
+      settingStore.setSettings(S.defaultSettings)
+
+      // ✅ 2. 获取远程数据
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        $message.warning(t('messages.warnValidateId'))
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('content')
+        .eq('id', user.id)
+        .single()
+
+      if (error || !data?.content) {
+        $message.error(t('messages.readFailed'))
+        console.error('❌ 无法获取远程数据：', error)
+        return
+      }
+
+      try {
+        const parsed = JSON.parse(data.content)
+
+        // ✅ 3. 数据结构容错补全
+        if (parsed.data && Array.isArray(parsed.data)) {
+          parsed.data.forEach((category: any) => {
+            if (!category.groupList)
+              category.groupList = []
+            category.groupList.forEach((group: any) => {
+              if (!group.siteList)
+                group.siteList = []
+            })
+          })
+        }
+
+        // ✅ 4. 合并逻辑
+        const remoteData = parsed.data || []
+        const remoteSettings = parsed.settings || {}
+
+        const mergedData = mergeDataById(remoteData, localData)
+        const mergedSettings = {
+          ...S.defaultSettings,
+          ...remoteSettings,
+          websitePreference: 'Customize',
+        }
+
+        // ✅ 5. 写入合并后的数据
+        siteStore.setData(mergedData)
+        settingStore.setSettings(mergedSettings)
+        toggleTheme(mergedSettings.theme)
+
+        restoredContentJson.value = JSON.stringify({
+          data: remoteData,
+          settings: remoteSettings,
+        })
+
+        $message.success(t('messages.readSuccess'))
+      }
+      catch (e) {
+        console.error('❌ 数据合并失败:', e)
+        $message.error(t('messages.readFailed'))
+      }
     },
   })
 }

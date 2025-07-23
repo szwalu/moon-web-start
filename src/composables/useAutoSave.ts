@@ -184,3 +184,10 @@ export function useAutoSave() {
     manualSaveData: performAutoSave,
   }
 }
+
+// 👇 ✅ 添加命名导出
+export {
+  mergeSiteList,
+  mergeGroupList,
+  mergeDataById,
+}
