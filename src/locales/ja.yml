@@ -172,6 +172,8 @@ auth:
   Log_in_again_prefix: ログインしている場合,
   Log_in_again_link: 👉️ここをクリック
   Log_in_again_suffix: 再読み込みすると自動的に再ログインされます
+  Log_in_again_link2: 👉️ここをクリック
+  Log_in_again_setting: 設定画面へ
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワードを再入力
   email_placeholder: メールアドレスを入力してください

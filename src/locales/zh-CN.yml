@@ -169,9 +169,11 @@ auth:
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？
-  Log_in_again_prefix: 若曾经登陆，
-  Log_in_again_link: 👉️点击这里
-  Log_in_again_suffix: 刷新可重新登陆
+  Log_in_again_prefix: 若曾登陆，
+  Log_in_again_link: 👉️点这里
+  Log_in_again_suffix: 重新登陆；
+  Log_in_again_link2: 👉️点这里
+  Log_in_again_setting: 到设置界面
   prompt_to_login: 已有账号？
   confirm_password: 确认密码
   email_placeholder: 请输入您的邮箱地址

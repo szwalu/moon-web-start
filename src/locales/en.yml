@@ -173,6 +173,8 @@ auth:
   Log_in_again_prefix: If you have logged in,
   Log_in_again_link: 👉️Click here
   Log_in_again_suffix: Refresh the page to log in again automatically
+  Log_in_again_link2: 👉️Click here
+  Log_in_again_setting: Go to settings
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address

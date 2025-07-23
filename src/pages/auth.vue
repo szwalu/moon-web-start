@@ -366,6 +366,13 @@ function goHomeAndRefresh() {
             {{ t('auth.Log_in_again_link') }}
           </a>
           {{ t('auth.Log_in_again_suffix') }}
+          <router-link
+            to="/setting"
+            class="cursor-pointer text-green-600 underline"
+          >
+            {{ t('auth.Log_in_again_link2') }}
+          </router-link>
+          {{ t('auth.Log_in_again_setting') }}
         </p>
       </form>
     </div>
