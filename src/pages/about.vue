@@ -29,7 +29,7 @@ const features = computed(() => {
     <ul class="features">
       <li v-for="(item, index) in features" :key="index">
         <span class="icon" />
-        <span class="text">{{ item }}</span>
+        <span class="text" v-html="item.replace(/\n/g, '<br>')" />
       </li>
     </ul>
 
@@ -62,7 +62,7 @@ const features = computed(() => {
   transition: background-color 0.3s ease, color 0.3s ease;
 
   /* 3. 优化基础字体 */
-  font-size: 16px; /* 提高基础字号，增强可读性 */
+  font-size: 15px; /* 提高基础字号，增强可读性 */
   color: #34495e; /* 使用更柔和的深灰色 */
 }
 
@@ -96,7 +96,7 @@ const features = computed(() => {
 }
 
 .features li .icon::before {
-  content: '📌';
+  content: '•';
   font-size: 1.2em;
   line-height: 1.5;
   margin-right: 2.5rem; /* 调整为更合理的间距 */

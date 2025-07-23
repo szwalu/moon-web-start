@@ -146,7 +146,18 @@ about:
   i18nSupport: I18n - Supports Simplified Chinese, English, and Japanese.
   importExport: Three ways to store data (register and log in, input ID, import and export) - Sync your data across different devices.(In the registration login method, if you log out after logging in, you can automatically log in again by refreshing the webpage)
   browserPlugin: Browser Extension - Open Moon in every new tab.
-  dockerSupport: Containerized Deployment - Supports one-click deployment with Docker.
+  dockerSupport: |
+    Three methods to store your data:
+    📎 Register & Login:
+    Select "Register/Login" from the side navigation bar, or tap the "我abc" logo at the top of the page on mobile to enter the login screen. Follow the prompts to log in, or register first using your email.
+    After logging in, any changes to your homepage—adding, sorting websites, or changing settings—will be automatically saved to the cloud.
+    If you've edited your homepage on different devices, content will automatically merge after login.
+    If you log out, simply refresh the homepage to log in again automatically.
+    📎 Enter ID:
+    After logging in, click the settings button in the fixed header. Scroll down to the "Enter ID" field in the settings page, input a 5–20 character alphanumeric ID, and click "Save" to upload your current data to the cloud.
+    To restore, click "Load" and your cloud data will overwrite the local version. Please remember your ID.
+    📎 Import & Export:
+    On the settings page, click "Export Data" to save your data to a file on your computer or mobile device. Click "Import Data" to restore previously saved data.
   thanks: Special Thanks
 auth:
   login: Login
