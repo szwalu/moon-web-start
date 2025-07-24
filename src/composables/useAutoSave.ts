@@ -184,3 +184,44 @@ export function useAutoSave() {
     manualSaveData: performAutoSave,
   }
 }
+
+/**
+ * 手动加载远程数据并合并到本地（用于点击设置按钮时）
+ */
+export async function loadRemoteDataOnceAndMergeToLocal() {
+  const settingStore = useSettingStore()
+  const siteStore = useSiteStore()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user)
+    return
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('content')
+    .eq('id', user.id)
+    .single()
+
+  if (data?.content) {
+    try {
+      const parsed = JSON.parse(data.content)
+
+      if (parsed.data && parsed.settings) {
+        const localData = siteStore.customData
+        const remoteData = parsed.data
+        const mergedData = mergeDataById(remoteData, localData)
+
+        siteStore.setData(mergedData)
+        settingStore.setSettings({ ...parsed.settings, websitePreference: 'Customize' })
+
+        if (parsed.settings.theme)
+          toggleTheme(parsed.settings.theme)
+
+        // console.info('✅ 已合并远程数据到本地')
+      }
+    }
+    catch (_error) {
+      console.error('❌ 合并失败', _error)
+    }
+  }
+}

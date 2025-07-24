@@ -7,7 +7,7 @@ import { supabase } from '@/utils/supabaseClient'
 
 // ✅ 导入主题切换函数
 import { toggleDark } from '@/utils/dark'
-import { useAutoSave } from '@/composables/useAutoSave'
+import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/useAutoSave'
 
 const { manualSaveData } = useAutoSave()
 
@@ -47,6 +47,7 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData() // 保留手动保存逻辑
+  await loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
   router.push({ path: '/auth', query: { from: 'settings' } }) // 添加查询参数
 }
 </script>

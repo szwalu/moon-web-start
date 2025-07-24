@@ -73,6 +73,7 @@ declare global {
   const lastSavedContent: typeof import('./composables/useAutoSave')['lastSavedContent']
   const lastSavedContentJson: typeof import('./composables/useAutoSave')['lastSavedContentJson']
   const lastSyncedContentJson: typeof import('./composables/useAutoSave')['lastSyncedContentJson']
+  const loadRemoteDataOnceAndMergeToLocal: typeof import('./composables/useAutoSave')['loadRemoteDataOnceAndMergeToLocal']
   const loadSettings: typeof import('./stores/setting')['loadSettings']
   const makeDestructurable: typeof import('@vueuse/core')['makeDestructurable']
   const manualSaveData: typeof import('./composables/useAutoSave')['manualSaveData']
@@ -418,6 +419,7 @@ declare module 'vue' {
     readonly isSmScreen: UnwrapRef<typeof import('./composables/app')['isSmScreen']>
     readonly isXlScreen: UnwrapRef<typeof import('./composables/app')['isXlScreen']>
     readonly isXsScreen: UnwrapRef<typeof import('./composables/app')['isXsScreen']>
+    readonly loadRemoteDataOnceAndMergeToLocal: UnwrapRef<typeof import('./composables/useAutoSave')['loadRemoteDataOnceAndMergeToLocal']>
     readonly loadSettings: UnwrapRef<typeof import('./stores/setting')['loadSettings']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly mapActions: UnwrapRef<typeof import('pinia')['mapActions']>
