@@ -46,11 +46,12 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData()
-  router.push({ path: '/auth', query: { from: 'settings' } })
+  await manualSaveData() // 保留手动保存逻辑
+  // 已登录：先跳转到设置页，再延迟2.5秒合并远程数据，避免卡顿
+  router.push({ path: '/auth', query: { from: 'settings' } }) // 添加查询参数
   setTimeout(() => {
-    loadRemoteDataOnceAndMergeToLocal()
-  }, 1500)
+    loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
+  }, 2500)
 }
 </script>
 
