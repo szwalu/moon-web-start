@@ -197,14 +197,12 @@ export function isMerging() {
 /**
  * 手动加载远程数据并合并到本地（用于点击设置按钮时）
  */
+let hasMerged = false
 export async function loadRemoteDataOnceAndMergeToLocal() {
-  if (isMergingRemoteData)
-    return
+  if (hasMerged || isMergingRemoteData)
+    return // ✅ 提前返回
+
   isMergingRemoteData = true
-
-  const settingStore = useSettingStore()
-  const siteStore = useSiteStore()
-
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user)
@@ -220,6 +218,9 @@ export async function loadRemoteDataOnceAndMergeToLocal() {
       const parsed = JSON.parse(data.content)
 
       if (parsed.data && parsed.settings) {
+        const siteStore = useSiteStore()
+        const settingStore = useSettingStore()
+
         const localData = siteStore.customData
         const remoteData = parsed.data
         const mergedData = mergeDataById(remoteData, localData)
@@ -231,9 +232,11 @@ export async function loadRemoteDataOnceAndMergeToLocal() {
           toggleTheme(parsed.settings.theme)
       }
     }
+
+    hasMerged = true // ✅ 合并成功后再标记
   }
-  catch (_error) {
-    console.error('❌ 合并失败', _error)
+  catch (error) {
+    console.error('❌ 合并失败', error)
   }
   finally {
     isMergingRemoteData = false
