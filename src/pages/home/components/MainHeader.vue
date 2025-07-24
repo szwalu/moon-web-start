@@ -46,9 +46,11 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 保留手动保存逻辑
-  await loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
-  router.push({ path: '/auth', query: { from: 'settings' } }) // 添加查询参数
+  await manualSaveData()
+  router.push({ path: '/auth', query: { from: 'settings' } })
+  setTimeout(() => {
+    loadRemoteDataOnceAndMergeToLocal()
+  }, 1500)
 }
 </script>
 
