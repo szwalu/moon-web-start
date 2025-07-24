@@ -19,7 +19,7 @@ export default async function handler(
           return response.status(400).json({ code: -1, msg: '请求体无效或为空。' })
 
         const { id, data } = request.body
-        if (!id || !data)
+        if (!id || data === undefined || data === null)
           return response.status(400).json({ code: -1, msg: '请求参数错误，必须提供 "id" 和 "data" 字段。' })
 
         await kv.set(`config:${id}`, data)

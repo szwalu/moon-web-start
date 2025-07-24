@@ -60,6 +60,7 @@ declare global {
   const isInitialLoad: typeof import('./composables/useAutoSave')['isInitialLoad']
   const isLgScreen: typeof import('./composables/app')['isLgScreen']
   const isMdScreen: typeof import('./composables/app')['isMdScreen']
+  const isMerging: typeof import('./composables/useAutoSave')['isMerging']
   const isProxy: typeof import('vue')['isProxy']
   const isReactive: typeof import('vue')['isReactive']
   const isReadonly: typeof import('vue')['isReadonly']
@@ -412,6 +413,7 @@ declare module 'vue' {
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isLgScreen: UnwrapRef<typeof import('./composables/app')['isLgScreen']>
     readonly isMdScreen: UnwrapRef<typeof import('./composables/app')['isMdScreen']>
+    readonly isMerging: UnwrapRef<typeof import('./composables/useAutoSave')['isMerging']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>

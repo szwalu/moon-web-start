@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 
 export const restoredContentJson = ref('')
 let lastSavedJson = ''
+let isMergingRemoteData = false // ✅ 合并锁
 
 function toggleTheme(theme: string) {
   if (theme === 'dark')
@@ -81,17 +82,18 @@ export function useAutoSave() {
 
   const autoLoadData = async ({ $message, t }: { $message: any; t: Function }) => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user)
+    if (!user || isMergingRemoteData) // ✅ 合并锁保护
       return
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('content')
-      .eq('id', user.id)
-      .single()
+    isMergingRemoteData = true
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('content')
+        .eq('id', user.id)
+        .single()
 
-    if (data && data.content) {
-      try {
+      if (data && data.content) {
         const parsed = JSON.parse(data.content)
 
         if (parsed.data && Array.isArray(parsed.data)) {
@@ -124,14 +126,17 @@ export function useAutoSave() {
           $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
       }
-      catch (e) {
-        console.error('❌ 解析云端数据失败:', e)
-        $message.error(t('autoSave.parse_failed'))
+      else if (error && error.code !== 'PGRST116') {
+        console.error('❌ 加载数据时出错:', error)
+        $message.error(t('autoSave.load_failed'))
       }
     }
-    else if (error && error.code !== 'PGRST116') {
-      console.error('❌ 加载数据时出错:', error)
-      $message.error(t('autoSave.load_failed'))
+    catch (e) {
+      console.error('❌ 解析云端数据失败:', e)
+      $message.error(t('autoSave.parse_failed'))
+    }
+    finally {
+      isMergingRemoteData = false
     }
   }
 
@@ -185,25 +190,33 @@ export function useAutoSave() {
   }
 }
 
+export function isMerging() {
+  return isMergingRemoteData
+}
+
 /**
  * 手动加载远程数据并合并到本地（用于点击设置按钮时）
  */
 export async function loadRemoteDataOnceAndMergeToLocal() {
+  if (isMergingRemoteData)
+    return
+  isMergingRemoteData = true
+
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user)
-    return
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user)
+      return
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('content')
-    .eq('id', user.id)
-    .single()
+    const { data } = await supabase
+      .from('profiles')
+      .select('content')
+      .eq('id', user.id)
+      .single()
 
-  if (data?.content) {
-    try {
+    if (data?.content) {
       const parsed = JSON.parse(data.content)
 
       if (parsed.data && parsed.settings) {
@@ -216,12 +229,13 @@ export async function loadRemoteDataOnceAndMergeToLocal() {
 
         if (parsed.settings.theme)
           toggleTheme(parsed.settings.theme)
-
-        // console.info('✅ 已合并远程数据到本地')
       }
     }
-    catch (_error) {
-      console.error('❌ 合并失败', _error)
-    }
+  }
+  catch (_error) {
+    console.error('❌ 合并失败', _error)
+  }
+  finally {
+    isMergingRemoteData = false
   }
 }
