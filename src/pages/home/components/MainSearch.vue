@@ -56,7 +56,7 @@ const handleScroll = debounce(() => {
     }
     else {
       headerHeight.value = 80
-      isSticky.value = searchBarRef.value.getBoundingClientRect().top <= 40
+      isSticky.value = searchBarRef.value.getBoundingClientRect().top <= 80
       parentLeft.value = 0
       parentWidth.value = window.innerWidth
     }
@@ -68,6 +68,7 @@ interface LocalSearchResult {
   name: string
   desc?: string
   url: string
+  favicon?: string
 }
 const localSearchResults = ref<LocalSearchResult[]>([])
 const showLocalResults = ref(false)
@@ -97,6 +98,7 @@ function performLocalSearch(query: string) {
                   name: site.name,
                   desc: site.desc,
                   url: site.url || '#',
+                  favicon: site.favicon,
                 })
               }
             }
@@ -106,10 +108,15 @@ function performLocalSearch(query: string) {
     }
   }
   results.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  localSearchResults.value = results
+  localSearchResults.value = results.slice(0, 10)
   showLocalResults.value = results.length > 0
   if (results.length === 0)
-    $message.info(`${t('messages.noResultsPre') + query} ${t('messages.noResultsPost')}`)
+    $message.info(t('messages.noResultsPre') + query + t('messages.noResultsPost'))
+}
+
+function handleFaviconError(event: Event) {
+  const img = event.target as HTMLImageElement
+  img.src = '/default-favicon.png'
 }
 
 function visitSite(index: number) {
@@ -349,7 +356,16 @@ onUnmounted(() => {
             @click="visitSite(i)"
           >
             <div class="flex-left flex-col gap-y-2" style="margin: 0.75rem; margin-left: 2rem;">
-              <div class="text-15 font-medium">{{ site.name }}</div>
+              <div class="flex items-center">
+                <img
+                  v-if="site.url && site.url !== '#'"
+                  :src="site.favicon || getFaviconUrl(site.url)"
+                  style="width: 24px; height: 24px; margin-right: 12px; border-radius: 2px;"
+                  loading="lazy"
+                  @error="handleFaviconError($event)"
+                >
+                <div class="text-15 font-medium">{{ site.name }}</div>
+              </div>
               <div v-if="site.desc" class="line-clamp-2 text-13 text-gray-500 dark:text-gray-400">{{ site.desc }}</div>
             </div>
           </div>
