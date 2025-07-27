@@ -224,3 +224,26 @@ index:
   quote_prefix: 名言：
   weather_loading: 読み込み中...
   weather_failed: 天気情報の取得に失敗しました
+notes:
+  notes: ノート
+  save_note: 保存
+  more_notes: もっと見る >>
+  content_placeholder: 何かを書いてください…
+  add_success: 追加に成功しました
+  add_error: 追加に失敗しました
+  update_success: 更新に成功しました
+  update_error: 更新に失敗しました
+  operation_error: 操作に失敗しました
+  delete_success: 削除に成功しました
+  delete_error: 削除に失敗しました
+  update_note: ノートを更新
+  loading: 読み込み中…
+  no_notes: ノートがありません
+  updated_at: 更新日時
+  edit: 編集
+  delete: 削除
+  auto_saved_at: 自動保存時刻
+  search_placeholder: 検索🔍
+  next_page: 次のページ
+  previous_page: 前のページ
+  auto_saved: 保存しました

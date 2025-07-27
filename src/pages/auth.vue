@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
@@ -54,8 +54,19 @@ function addNoteToList(newNote) {
   if (!allNotes.value.some(note => note.id === newNote.id)) {
     allNotes.value.unshift(newNote)
     filteredNotes.value.unshift(newNote)
-    if (currentPage.value === 1)
+    // 如果在第一页且列表可见，直接更新 notes.value
+    if (currentPage.value === 1 && showNotesList.value) {
       notes.value.unshift(newNote)
+      notes.value = notes.value.slice(0, notesPerPage)
+    }
+    // 更新分页状态
+    totalNotes.value += 1
+    hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+    hasPreviousNotes.value = currentPage.value > 1
+    // 调试日志
+    // console.log('addNoteToList:', { noteId: newNote.id, notes: notes.value.map(n => n.id) })
+    // 强制 UI 刷新
+    nextTick()
   }
 }
 
@@ -68,6 +79,10 @@ function updateNoteInList(updatedNote) {
   updateInArray(allNotes.value)
   updateInArray(notes.value)
   updateInArray(filteredNotes.value)
+  // 调试日志
+  // console.log('updateNoteInList:', { noteId: updatedNote.id, notes: notes.value.map(n => n.id) })
+  // 强制 UI 刷新
+  nextTick()
 }
 
 const lastLoginTime = computed(() => {
@@ -95,33 +110,33 @@ async function fetchNotes() {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
 
-    // 检查是否需要从 Supabase 加载新笔记
-    if (to >= allNotes.value.length && hasMoreNotes.value) {
-      const query = supabase
-        .from('notes')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.value.id)
-        .order('updated_at', { ascending: false })
-        .range(allNotes.value.length, allNotes.value.length + notesPerPage - 1)
+    // 从 Supabase 获取当前分页的笔记
+    const query = supabase
+      .from('notes')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.value.id)
+      .order('updated_at', { ascending: false })
+      .range(from, to)
 
-      const { data, error, count } = await query
-      if (error) {
-        // console.error('获取笔记失败:', error.message)
-        messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-        notes.value = []
-        hasMoreNotes.value = false
-        hasPreviousNotes.value = false
-        return
-      }
-
-      // 更新总笔记数
-      totalNotes.value = count || 0
-
-      // 去重后追加到 allNotes
-      const existingIds = new Set(allNotes.value.map(note => note.id))
-      const newNotes = (data || []).filter(note => !existingIds.has(note.id))
-      allNotes.value.push(...newNotes)
+    const { data, error, count } = await query
+    if (error) {
+      // console.error('获取笔记失败:', error.message)
+      messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
+      notes.value = []
+      hasMoreNotes.value = false
+      hasPreviousNotes.value = false
+      return
     }
+
+    // 更新总笔记数
+    totalNotes.value = count || 0
+
+    // 去重后追加到 allNotes
+    const existingIds = new Set(allNotes.value.map(note => note.id))
+    const newNotes = (data || []).filter(note => !existingIds.has(note.id))
+    allNotes.value = [...newNotes, ...allNotes.value].sort((a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    )
 
     // 按搜索关键字过滤
     filteredNotes.value = searchQuery.value
@@ -146,6 +161,7 @@ async function fetchNotes() {
   }
   finally {
     isLoadingNotes.value = false
+    nextTick()
   }
 }
 
@@ -203,45 +219,88 @@ async function saveNote({ showMessage = false } = {}) {
   let savedNote
   try {
     if (lastSavedId.value) {
-      const { error, data } = await supabase
+      // 验证 lastSavedId 是否存在
+      const { data: existing } = await supabase
+        .from('notes')
+        .select('id')
+        .eq('id', lastSavedId.value)
+        .eq('user_id', user.value.id)
+      if (!existing || existing.length === 0) {
+        console.warn('lastSavedId 无效，尝试新建笔记:', lastSavedId.value)
+        lastSavedId.value = null // 重置无效 ID
+      }
+    }
+
+    if (editingNote.value?.id) {
+      // 验证 editingNote.id 是否存在
+      const { data: existing } = await supabase
+        .from('notes')
+        .select('id')
+        .eq('id', editingNote.value.id)
+        .eq('user_id', user.value.id)
+      if (!existing || existing.length === 0) {
+        console.warn('editingNote.id 无效，尝试新建笔记:', editingNote.value.id)
+        editingNote.value = null // 重置无效 ID
+      }
+    }
+
+    if (lastSavedId.value) {
+      // 更新现有笔记
+      const { data, error } = await supabase
         .from('notes')
         .update(note)
         .eq('id', lastSavedId.value)
         .eq('user_id', user.value.id)
         .select()
-        .single()
       if (error)
         throw error
-      savedNote = data
+      if (!data || data.length === 0)
+        throw new Error('更新失败：笔记不存在')
+
+      if (data.length > 1)
+        throw new Error('更新失败：找到多条匹配的笔记')
+
+      savedNote = data[0]
+      updateNoteInList(savedNote)
     }
     else if (editingNote.value?.id) {
-      const { error, data } = await supabase
+      // 更新编辑中的笔记
+      const { data, error } = await supabase
         .from('notes')
         .update(note)
         .eq('id', editingNote.value.id)
         .eq('user_id', user.value.id)
         .select()
-        .single()
       if (error)
         throw error
-      savedNote = data
+      if (!data || data.length === 0)
+        throw new Error('更新失败：笔记不存在')
+
+      if (data.length > 1)
+        throw new Error('更新失败：找到多条匹配的笔记')
+
+      savedNote = data[0]
       lastSavedId.value = savedNote.id
+      updateNoteInList(savedNote)
     }
     else {
+      // 新建笔记
       const newId = generateUniqueId()
-      const { error, data } = await supabase
+      const { data, error } = await supabase
         .from('notes')
         .insert({ ...note, id: newId })
         .select()
-        .single()
       if (error)
         throw error
-      savedNote = data
+      if (!data || data.length === 0)
+        throw new Error('插入失败：无法创建新笔记')
+
+      savedNote = data[0]
       lastSavedId.value = savedNote.id
+      addNoteToList(savedNote)
     }
 
     lastSavedAt.value = now
-    updateNoteInList(savedNote)
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '.')
     if (LOCAL_ID_KEY.value)
       localStorage.setItem(LOCAL_ID_KEY.value, lastSavedId.value || '')
@@ -252,7 +311,7 @@ async function saveNote({ showMessage = false } = {}) {
     return savedNote
   }
   catch (error) {
-    // console.error('保存失败:', error)
+    // console.error('保存失败:', error.message)
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
@@ -351,18 +410,10 @@ async function handleSubmit() {
   try {
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-
     if (saved) {
-      if (editingNote.value?.id || lastSavedId.value) {
-        updateNoteInList(saved)
-      }
-      else {
-        addNoteToList(saved)
-        totalNotes.value += 1
-        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-      }
-      editingNote.value = null
+      // 清空输入框和状态
       content.value = ''
+      editingNote.value = null
       lastSavedId.value = null
       lastSavedAt.value = null
       localStorage.removeItem(LOCAL_KEY.value)
@@ -381,7 +432,7 @@ async function handleSubmit() {
 // 显示/隐藏笔记列表
 function toggleNotesList() {
   showNotesList.value = !showNotesList.value
-  if (showNotesList.value && allNotes.value.length === 0) {
+  if (showNotesList.value) {
     currentPage.value = 1
     fetchNotes()
   }

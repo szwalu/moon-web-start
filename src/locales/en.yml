@@ -225,3 +225,26 @@ index:
   quote_prefix: Quote：
   weather_loading: Loading...
   weather_failed: Failed to load weather
+notes:
+  notes: Notes
+  save_note: Save
+  more_notes: More Notes >>
+  content_placeholder: Write something...
+  add_success: Added successfully
+  add_error: Failed to add
+  update_success: Updated successfully
+  update_error: Failed to update
+  operation_error: Operation failed
+  delete_success: Deleted successfully
+  delete_error: Failed to delete
+  update_note: Update Note
+  loading: Loading...
+  no_notes: No notes
+  updated_at: Updated at
+  edit: Edit
+  delete: Delete
+  auto_saved_at: Auto-saved at
+  search_placeholder: Search 🔍
+  next_page: Next Page
+  previous_page: Previous Page
+  auto_saved: Saved successfully
