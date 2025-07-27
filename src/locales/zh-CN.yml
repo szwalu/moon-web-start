@@ -224,3 +224,26 @@ index:
   quote_prefix: 每日一句：
   weather_loading: 加载中...
   weather_failed: 天气加载失败
+notes:
+  notes: 笔 记
+  save_note: 保存
+  more_notes: 更多笔记>>
+  content_placeholder: 写点什么。。。
+  add_success: 添加成功
+  add_error: 添加失败
+  update_success: 更新成功
+  update_error: 更新失败
+  operation_error: 操作失败
+  delete_success: 删除成功
+  delete_error: 删除失败
+  update_note: 更新笔记
+  loading: 载入中。。。
+  no_notes: 没有笔记
+  updated_at: 修改时间
+  edit: 编辑
+  delete: 删除
+  auto_saved_at: 自动保存
+  search_placeholder: 搜索🔍
+  next_page: 下一页
+  previous_page: 上一页
+  auto_saved: 保存成功
