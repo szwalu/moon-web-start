@@ -63,8 +63,8 @@ function addNoteToList(newNote) {
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-    // 调试日志
-    // console.log('addNoteToList:', { noteId: newNote.id, notes: notes.value.map(n => n.id) })
+    // 限制 allNotes 最多缓存 200 条
+    allNotes.value = allNotes.value.slice(0, 200)
     // 强制 UI 刷新
     nextTick()
   }
@@ -79,8 +79,6 @@ function updateNoteInList(updatedNote) {
   updateInArray(allNotes.value)
   updateInArray(notes.value)
   updateInArray(filteredNotes.value)
-  // 调试日志
-  // console.log('updateNoteInList:', { noteId: updatedNote.id, notes: notes.value.map(n => n.id) })
   // 强制 UI 刷新
   nextTick()
 }
@@ -120,7 +118,6 @@ async function fetchNotes() {
 
     const { data, error, count } = await query
     if (error) {
-      // console.error('获取笔记失败:', error.message)
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
       notes.value = []
       hasMoreNotes.value = false
@@ -138,6 +135,9 @@ async function fetchNotes() {
       new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     )
 
+    // 限制 allNotes 最多缓存 200 条
+    allNotes.value = allNotes.value.slice(0, 200)
+
     // 按搜索关键字过滤
     filteredNotes.value = searchQuery.value
       ? allNotes.value.filter(note =>
@@ -153,7 +153,6 @@ async function fetchNotes() {
     hasPreviousNotes.value = currentPage.value > 1
   }
   catch (err) {
-    // console.error('获取笔记异常:', err)
     messageHook.error(t('notes.fetch_error'))
     notes.value = []
     hasMoreNotes.value = false
@@ -225,10 +224,8 @@ async function saveNote({ showMessage = false } = {}) {
         .select('id')
         .eq('id', lastSavedId.value)
         .eq('user_id', user.value.id)
-      if (!existing || existing.length === 0) {
-        console.warn('lastSavedId 无效，尝试新建笔记:', lastSavedId.value)
+      if (!existing || existing.length === 0)
         lastSavedId.value = null // 重置无效 ID
-      }
     }
 
     if (editingNote.value?.id) {
@@ -238,10 +235,8 @@ async function saveNote({ showMessage = false } = {}) {
         .select('id')
         .eq('id', editingNote.value.id)
         .eq('user_id', user.value.id)
-      if (!existing || existing.length === 0) {
-        console.warn('editingNote.id 无效，尝试新建笔记:', editingNote.value.id)
+      if (!existing || existing.length === 0)
         editingNote.value = null // 重置无效 ID
-      }
     }
 
     if (lastSavedId.value) {
@@ -311,17 +306,14 @@ async function saveNote({ showMessage = false } = {}) {
     return savedNote
   }
   catch (error) {
-    // console.error('保存失败:', error.message)
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
 }
 
 const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id) {
-    // console.log('触发自动保存', { lastSavedId: lastSavedId.value, editingNoteId: editingNote.value?.id })
+  if (content.value && user.value?.id)
     saveNote({ showMessage: false })
-  }
 }, 10000)
 
 onMounted(() => {
@@ -421,7 +413,6 @@ async function handleSubmit() {
     }
   }
   catch (err) {
-    // console.error('操作失败:', err)
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
@@ -481,7 +472,6 @@ async function handleDelete(id: string) {
     messageHook.success(t('notes.delete_success'))
   }
   catch (err) {
-    // console.error('删除笔记失败:', err)
     messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
   }
   finally {
@@ -934,6 +924,8 @@ button:disabled {
   background-color: #fff;
   color: #111;
   height: 300px;
+  font-size: 16px;
+  line-height: 1.5;
 }
 .notes-container textarea:focus {
   border-color: #00b386;
@@ -943,6 +935,8 @@ button:disabled {
   background-color: #2c2c2e;
   border-color: #48484a;
   color: #ffffff;
+  font-size: 16px;
+  line-height: 1.5;
 }
 .notes-container .bg-gray-100 {
   background-color: #f3f4f6;
