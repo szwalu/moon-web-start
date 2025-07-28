@@ -1,3 +1,4 @@
+```vue
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -30,8 +31,7 @@ const lastBackupTime = ref('N/A')
 const hasRedirected = ref(false)
 
 // 笔记系统状态
-const notes = ref<any[]>([]) // 当前页显示的笔记
-const allNotes = ref<any[]>([]) // 缓存所有已加载的笔记
+const notes = ref<any[]>([])
 const content = ref('')
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
@@ -41,31 +41,36 @@ const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
 const lastSavedAt = ref<number | null>(null)
 const searchQuery = ref('')
-// 分页状态
+const sessionExpired = ref(false)
 const currentPage = ref(1)
 const notesPerPage = 15
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
-const filteredNotes = ref<any[]>([]) // 搜索过滤后的笔记
+const filteredNotes = ref<any[]>([])
+const maxNoteLength = 1000
+const maxNotesPerUser = 500 // 用户笔记上限
+const isNotesCached = ref(false) // 控制列表和初始加载缓存
+const cachedNotes = ref<any[]>([]) // 存储所有已加载笔记
+const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean }>()) // 按页面缓存状态
 
 function addNoteToList(newNote) {
-  // 防止重复添加
-  if (!allNotes.value.some(note => note.id === newNote.id)) {
-    allNotes.value.unshift(newNote)
+  if (!notes.value.some(note => note.id === newNote.id)) {
+    notes.value.unshift(newNote)
     filteredNotes.value.unshift(newNote)
-    // 如果在第一页且列表可见，直接更新 notes.value
+    cachedNotes.value.unshift(newNote)
     if (currentPage.value === 1 && showNotesList.value) {
-      notes.value.unshift(newNote)
       notes.value = notes.value.slice(0, notesPerPage)
+      filteredNotes.value = filteredNotes.value.slice(0, notesPerPage)
     }
-    // 更新分页状态
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-    // 限制 allNotes 最多缓存 200 条
-    allNotes.value = allNotes.value.slice(0, 200)
-    // 强制 UI 刷新
+    cachedPages.value.set(currentPage.value, {
+      totalNotes: totalNotes.value,
+      hasMoreNotes: hasMoreNotes.value,
+      hasPreviousNotes: hasPreviousNotes.value,
+    })
     nextTick()
   }
 }
@@ -74,12 +79,11 @@ function updateNoteInList(updatedNote) {
   const updateInArray = (arr: any[]) => {
     const index = arr.findIndex(n => n.id === updatedNote.id)
     if (index !== -1)
-      arr[index] = { ...updatedNote } // 替换现有笔记
+      arr[index] = { ...updatedNote }
   }
-  updateInArray(allNotes.value)
   updateInArray(notes.value)
   updateInArray(filteredNotes.value)
-  // 强制 UI 刷新
+  updateInArray(cachedNotes.value)
   nextTick()
 }
 
@@ -97,66 +101,103 @@ const pageTitle = computed(() => {
   return t('auth.forgot_password')
 })
 
-const LOCAL_KEY = ref('')
-const LOCAL_ID_KEY = ref('')
+const charCount = computed(() => {
+  return content.value.length
+})
+
 let autoSaveInterval: NodeJS.Timeout | null = null
 
-// 获取笔记函数（支持分页）
 async function fetchNotes() {
   try {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
 
-    // 从 Supabase 获取当前分页的笔记
-    const query = supabase
-      .from('notes')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.value.id)
-      .order('updated_at', { ascending: false })
-      .range(from, to)
+    // 检查 cachedNotes 是否包含足够数据
+    const hasEnoughCachedNotes = cachedNotes.value.length >= to + 1
+    let newNotes: any[] = []
+    let count: number | null = null
 
-    const { data, error, count } = await query
-    if (error) {
-      messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-      notes.value = []
-      hasMoreNotes.value = false
-      hasPreviousNotes.value = false
-      return
+    if (hasEnoughCachedNotes && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
+      // 使用缓存数据
+      newNotes = searchQuery.value
+        ? cachedNotes.value.filter(note =>
+          note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
+        )
+        : cachedNotes.value
+      // 单独查询匹配笔记总数
+      const { count: totalCount, error: countError } = await supabase
+        .from('notes')
+        .select('id', { count: 'exact' })
+        .eq('user_id', user.value.id)
+        .ilike('content', searchQuery.value ? `%${searchQuery.value}%` : '%')
+      if (countError)
+        throw countError
+      count = totalCount || 0
+    }
+    else {
+      // 发起 Supabase 请求获取数据
+      const query = supabase
+        .from('notes')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.value.id)
+      if (searchQuery.value)
+        query.ilike('content', `%${searchQuery.value}%`)
+
+      query.order('updated_at', { ascending: false })
+      query.range(from, to)
+
+      const { data, error, count: fetchedCount } = await query
+      if (error) {
+        messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
+        notes.value = []
+        filteredNotes.value = []
+        cachedNotes.value = []
+        hasMoreNotes.value = false
+        hasPreviousNotes.value = false
+        isNotesCached.value = false
+        cachedPages.value.clear()
+        return
+      }
+
+      newNotes = data || []
+      count = fetchedCount || 0
+
+      // 更新 cachedNotes（仅在无搜索或缓存不足时）
+      if (!searchQuery.value) {
+        const existingIds = new Set(cachedNotes.value.map(n => n.id))
+        cachedNotes.value = [
+          ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
+          ...newNotes.filter(n => !existingIds.has(n.id)),
+        ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      }
     }
 
-    // 更新总笔记数
     totalNotes.value = count || 0
-
-    // 去重后追加到 allNotes
-    const existingIds = new Set(allNotes.value.map(note => note.id))
-    const newNotes = (data || []).filter(note => !existingIds.has(note.id))
-    allNotes.value = [...newNotes, ...allNotes.value].sort((a, b) =>
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    )
-
-    // 限制 allNotes 最多缓存 200 条
-    allNotes.value = allNotes.value.slice(0, 200)
-
-    // 按搜索关键字过滤
     filteredNotes.value = searchQuery.value
-      ? allNotes.value.filter(note =>
-        note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
-      )
-      : [...allNotes.value]
-
-    // 更新当前页笔记
-    notes.value = filteredNotes.value.slice(from, to + 1)
-
-    // 判断是否还有更多笔记和上一页
-    hasMoreNotes.value = filteredNotes.value.length < totalNotes.value || to + 1 < filteredNotes.value.length
+      ? newNotes
+      : newNotes.slice(0, notesPerPage)
+    notes.value = filteredNotes.value.slice(0, notesPerPage)
+    hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
+
+    // 更新分页缓存
+    cachedPages.value.set(currentPage.value, {
+      totalNotes: totalNotes.value,
+      hasMoreNotes: hasMoreNotes.value,
+      hasPreviousNotes: hasPreviousNotes.value,
+    })
+    isNotesCached.value = true
   }
   catch (err) {
     messageHook.error(t('notes.fetch_error'))
     notes.value = []
+    filteredNotes.value = []
+    cachedNotes.value = []
     hasMoreNotes.value = false
     hasPreviousNotes.value = false
+    isNotesCached.value = false
+    cachedPages.value.clear()
   }
   finally {
     isLoadingNotes.value = false
@@ -164,28 +205,66 @@ async function fetchNotes() {
   }
 }
 
-// 下一页
 async function nextPage() {
-  currentPage.value += 1
-  await fetchNotes()
-}
-
-// 上一页
-async function previousPage() {
-  if (currentPage.value > 1) {
-    currentPage.value -= 1
+  const targetPage = currentPage.value + 1
+  const from = (targetPage - 1) * notesPerPage
+  const to = from + notesPerPage - 1
+  if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
+    // 使用缓存数据
+    currentPage.value = targetPage
+    const filtered = searchQuery.value
+      ? cachedNotes.value.filter(note =>
+        note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
+      )
+      : cachedNotes.value
+    notes.value = filtered.slice(from, to)
+    filteredNotes.value = notes.value
+    const pageState = cachedPages.value.get(targetPage)!
+    totalNotes.value = pageState.totalNotes
+    hasMoreNotes.value = pageState.hasMoreNotes
+    hasPreviousNotes.value = pageState.hasPreviousNotes
+    nextTick()
+  }
+  else {
+    currentPage.value = targetPage
     await fetchNotes()
   }
 }
 
-// 截断内容函数
+async function previousPage() {
+  if (currentPage.value > 1) {
+    const targetPage = currentPage.value - 1
+    const from = (targetPage - 1) * notesPerPage
+    const to = from + notesPerPage - 1
+    if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
+      // 使用缓存数据
+      currentPage.value = targetPage
+      const filtered = searchQuery.value
+        ? cachedNotes.value.filter(note =>
+          note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
+        )
+        : cachedNotes.value
+      notes.value = filtered.slice(from, to)
+      filteredNotes.value = notes.value
+      const pageState = cachedPages.value.get(targetPage)!
+      totalNotes.value = pageState.totalNotes
+      hasMoreNotes.value = pageState.hasMoreNotes
+      hasPreviousNotes.value = pageState.hasPreviousNotes
+      nextTick()
+    }
+    else {
+      currentPage.value = targetPage
+      await fetchNotes()
+    }
+  }
+}
+
 function truncateContent(text: string, maxLength: number = 150) {
   if (text.length <= maxLength)
     return text
   return `${text.slice(0, maxLength)}...`
 }
 
-// 高亮搜索关键字
 function highlightText(text: string, query: string) {
   if (!query)
     return text
@@ -193,20 +272,37 @@ function highlightText(text: string, query: string) {
   return text.replace(regex, '<span class="highlight">$1</span>')
 }
 
-// 生成唯一 ID
 function generateUniqueId() {
   return uuidv4()
 }
 
-// 切换笔记展开状态
 function toggleExpand(noteId: string) {
   expandedNote.value = expandedNote.value === noteId ? null : noteId
 }
 
-// 自动保存函数
 async function saveNote({ showMessage = false } = {}) {
-  if (!content.value || !user.value?.id)
+  if (!content.value)
     return null
+  if (!user.value?.id) {
+    sessionExpired.value = true
+    messageHook.warning(t('notes.session_expired'))
+    return null
+  }
+  if (content.value.length > maxNoteLength) {
+    messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return null
+  }
+  // 检查内容是否变化
+  if (content.value.trim() === editingNote.value?.content?.trim()) {
+    if (showMessage)
+      messageHook.info(t('notes.no_changes'))
+    return null
+  }
+  // 检查笔记总数（仅对新笔记）
+  if (!lastSavedId.value && !editingNote.value?.id && totalNotes.value >= maxNotesPerUser) {
+    messageHook.error(t('notes.max_notes_exceeded', { max: maxNotesPerUser }))
+    return null
+  }
 
   const now = Date.now()
   const note = {
@@ -218,78 +314,44 @@ async function saveNote({ showMessage = false } = {}) {
   let savedNote
   try {
     if (lastSavedId.value) {
-      // 验证 lastSavedId 是否存在
-      const { data: existing } = await supabase
-        .from('notes')
-        .select('id')
-        .eq('id', lastSavedId.value)
-        .eq('user_id', user.value.id)
-      if (!existing || existing.length === 0)
-        lastSavedId.value = null // 重置无效 ID
-    }
-
-    if (editingNote.value?.id) {
-      // 验证 editingNote.id 是否存在
-      const { data: existing } = await supabase
-        .from('notes')
-        .select('id')
-        .eq('id', editingNote.value.id)
-        .eq('user_id', user.value.id)
-      if (!existing || existing.length === 0)
-        editingNote.value = null // 重置无效 ID
-    }
-
-    if (lastSavedId.value) {
-      // 更新现有笔记
       const { data, error } = await supabase
         .from('notes')
         .update(note)
         .eq('id', lastSavedId.value)
         .eq('user_id', user.value.id)
         .select()
-      if (error)
-        throw error
-      if (!data || data.length === 0)
-        throw new Error('更新失败：笔记不存在')
-
-      if (data.length > 1)
-        throw new Error('更新失败：找到多条匹配的笔记')
-
+      if (error || !data?.length) {
+        messageHook.error(t('notes.operation_error'))
+        lastSavedId.value = null
+        return null
+      }
       savedNote = data[0]
       updateNoteInList(savedNote)
     }
     else if (editingNote.value?.id) {
-      // 更新编辑中的笔记
       const { data, error } = await supabase
         .from('notes')
         .update(note)
         .eq('id', editingNote.value.id)
         .eq('user_id', user.value.id)
         .select()
-      if (error)
-        throw error
-      if (!data || data.length === 0)
-        throw new Error('更新失败：笔记不存在')
-
-      if (data.length > 1)
-        throw new Error('更新失败：找到多条匹配的笔记')
-
+      if (error || !data?.length) {
+        messageHook.error(t('notes.operation_error'))
+        editingNote.value = null
+        return null
+      }
       savedNote = data[0]
       lastSavedId.value = savedNote.id
       updateNoteInList(savedNote)
     }
     else {
-      // 新建笔记
       const newId = generateUniqueId()
       const { data, error } = await supabase
         .from('notes')
         .insert({ ...note, id: newId })
         .select()
-      if (error)
-        throw error
-      if (!data || data.length === 0)
+      if (error || !data?.length)
         throw new Error('插入失败：无法创建新笔记')
-
       savedNote = data[0]
       lastSavedId.value = savedNote.id
       addNoteToList(savedNote)
@@ -297,12 +359,14 @@ async function saveNote({ showMessage = false } = {}) {
 
     lastSavedAt.value = now
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '.')
-    if (LOCAL_ID_KEY.value)
-      localStorage.setItem(LOCAL_ID_KEY.value, lastSavedId.value || '')
-
     if (showMessage)
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
-
+    sessionExpired.value = false
+    isNotesCached.value = false
+    cachedNotes.value = []
+    cachedPages.value.clear()
+    if (showNotesList.value)
+      await fetchNotes()
     return savedNote
   }
   catch (error) {
@@ -312,49 +376,62 @@ async function saveNote({ showMessage = false } = {}) {
 }
 
 const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id)
+  if (content.value && user.value?.id && !sessionExpired.value)
     saveNote({ showMessage: false })
-}, 10000)
+}, 12000)
 
-onMounted(() => {
-  supabase.auth.onAuthStateChange(async (_event, session) => {
+onMounted(async () => {
+  // 恢复会话
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error) {
+    messageHook.error(t('auth.session_restore_error'))
+  }
+  else {
     user.value = session?.user ?? null
     if (session) {
-      LOCAL_KEY.value = `cached_note_${session.user.id}`
-      LOCAL_ID_KEY.value = `last_saved_id_${session.user.id}`
       const { data } = await supabase
         .from('profiles')
         .select('updated_at')
         .eq('id', session.user.id)
         .single()
-      if (data?.updated_at)
-        lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
-      else lastBackupTime.value = '暂无备份'
+      lastBackupTime.value = data?.updated_at
+        ? new Date(`${data.updated_at}Z`).toLocaleString()
+        : '暂无备份'
+    }
+  }
+
+  // 监听会话变化
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    const prevUser = user.value
+    user.value = session?.user ?? null
+    if (session) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('updated_at')
+        .eq('id', session.user.id)
+        .single()
+      lastBackupTime.value = data?.updated_at
+        ? new Date(`${data.updated_at}Z`).toLocaleString()
+        : '暂无备份'
       if (route.query.from === 'settings' && !hasRedirected.value) {
         hasRedirected.value = true
         router.replace('/setting')
       }
-      if (localStorage.getItem(LOCAL_KEY.value))
-        content.value = localStorage.getItem(LOCAL_KEY.value) || ''
-
-      if (localStorage.getItem(LOCAL_ID_KEY.value))
-        lastSavedId.value = localStorage.getItem(LOCAL_ID_KEY.value) || null
     }
     else {
       lastBackupTime.value = 'N/A'
-      LOCAL_KEY.value = ''
-      LOCAL_ID_KEY.value = ''
-      content.value = ''
+      if (prevUser && content.value) {
+        sessionExpired.value = true
+        lastSavedTime.value = ''
+        lastSavedAt.value = null
+        messageHook.warning(t('notes.session_expired'))
+      }
+      // content.value = content.value
       lastSavedId.value = null
-    }
-    if (!session)
       mode.value = 'login'
-  })
-  window.addEventListener('beforeunload', () => {
-    if (content.value && user.value?.id) {
-      saveNote({ showMessage: false })
-      localStorage.setItem(LOCAL_KEY.value, content.value)
-      localStorage.setItem(LOCAL_ID_KEY.value, lastSavedId.value || '')
+      isNotesCached.value = false
+      cachedNotes.value = []
+      cachedPages.value.clear()
     }
   })
 })
@@ -364,38 +441,44 @@ onUnmounted(() => {
     clearInterval(autoSaveInterval)
     autoSaveInterval = null
   }
-  window.removeEventListener('beforeunload', () => {
-    if (content.value && user.value?.id) {
-      saveNote({ showMessage: false })
-      localStorage.setItem(LOCAL_KEY.value, content.value)
-      localStorage.setItem(LOCAL_ID_KEY.value, lastSavedId.value || '')
-    }
-  })
 })
 
 watchEffect(async () => {
   if (!user.value)
     return
-  await fetchNotes()
+  if (!isNotesCached.value)
+    await fetchNotes()
 })
 
 watch(searchQuery, debounce(() => {
   if (showNotesList.value) {
-    currentPage.value = 1 // 重置分页
+    currentPage.value = 1
+    isNotesCached.value = false // 触发 fetchNotes 检查缓存
     fetchNotes()
   }
 }, 300))
 
 watch(content, (val) => {
-  if (LOCAL_KEY.value)
-    localStorage.setItem(LOCAL_KEY.value, val)
+  if (val.length > maxNoteLength) {
+    content.value = val.slice(0, maxNoteLength)
+    messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
+  }
+  if (!user.value?.id) {
+    sessionExpired.value = true
+    messageHook.warning(t('notes.session_expired'))
+    return
+  }
   debouncedSaveNote()
 })
 
-// 添加或更新笔记
 async function handleSubmit() {
   if (!content.value) {
     messageHook.warning(t('notes.content_required'))
+    return
+  }
+  if (!user.value?.id) {
+    sessionExpired.value = true
+    messageHook.warning(t('notes.session_expired'))
     return
   }
 
@@ -403,13 +486,10 @@ async function handleSubmit() {
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
-      // 清空输入框和状态
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
       lastSavedAt.value = null
-      localStorage.removeItem(LOCAL_KEY.value)
-      localStorage.removeItem(LOCAL_ID_KEY.value)
     }
   }
   catch (err) {
@@ -420,26 +500,22 @@ async function handleSubmit() {
   }
 }
 
-// 显示/隐藏笔记列表
 function toggleNotesList() {
   showNotesList.value = !showNotesList.value
-  if (showNotesList.value) {
+  if (showNotesList.value && !isNotesCached.value) {
     currentPage.value = 1
     fetchNotes()
   }
 }
 
-// 编辑笔记
 function handleEdit(note: any) {
   if (!note?.id)
     return
   editingNote.value = { ...note }
   content.value = note.content
   lastSavedId.value = note.id
-  localStorage.setItem(LOCAL_ID_KEY.value, note.id)
 }
 
-// 删除笔记
 async function handleDelete(id: string) {
   if (!id || !user.value?.id) {
     messageHook.error('无效的笔记ID或未登录')
@@ -452,24 +528,27 @@ async function handleDelete(id: string) {
       .delete()
       .eq('id', id)
       .eq('user_id', user.value.id)
-
     if (error)
       throw new Error(error.message || '删除失败')
-
-    // 从 allNotes、notes 和 filteredNotes 中移除
-    allNotes.value = allNotes.value.filter(note => note.id !== id)
     notes.value = notes.value.filter(note => note.id !== id)
     filteredNotes.value = filteredNotes.value.filter(note => note.id !== id)
+    cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
     totalNotes.value -= 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
+    cachedPages.value.set(currentPage.value, {
+      totalNotes: totalNotes.value,
+      hasMoreNotes: hasMoreNotes.value,
+      hasPreviousNotes: hasPreviousNotes.value,
+    })
     if (id === lastSavedId.value) {
       content.value = ''
       lastSavedId.value = null
-      localStorage.removeItem(LOCAL_KEY.value)
-      localStorage.removeItem(LOCAL_ID_KEY.value)
     }
     messageHook.success(t('notes.delete_success'))
+    isNotesCached.value = false
+    if (showNotesList.value)
+      await fetchNotes()
   }
   catch (err) {
     messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
@@ -564,13 +643,28 @@ function goHomeAndRefresh() {
               :placeholder="$t('notes.content_placeholder')"
               class="mb-2 w-full border rounded h-80 p-2"
               required
-              :disabled="loading"
+              :disabled="loading || sessionExpired"
+              :maxlength="maxNoteLength"
             />
+            <div class="status-bar">
+              <span class="char-counter">
+                {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+              </span>
+              <span class="char-counter ml-4">
+                {{ t('notes.notes_count') }}: {{ totalNotes }}/{{ maxNotesPerUser }}
+              </span>
+              <span v-if="sessionExpired" class="char-counter ml-4 text-red-500">
+                ⚠️ {{ t('notes.session_expired') }}
+              </span>
+              <span v-else-if="lastSavedTime" class="char-counter ml-4">
+                💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+              </span>
+            </div>
             <div class="emoji-bar">
               <button
                 type="submit"
                 class="form-button flex-2"
-                :disabled="loading"
+                :disabled="loading || sessionExpired"
               >
                 💾 {{ editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
               </button>
@@ -583,9 +677,6 @@ function goHomeAndRefresh() {
                 {{ $t('notes.more_notes') }}
               </button>
             </div>
-            <p v-if="lastSavedTime" class="char-counter">
-              💾 {{ t('notes.auto_saved_at') }}：{{ lastSavedTime }}
-            </p>
           </form>
           <div v-if="showNotesList" class="notes-list h-80">
             <div class="notes-list-header">
@@ -613,14 +704,14 @@ function goHomeAndRefresh() {
                 <div class="flex-1 min-w-0">
                   <p
                     v-if="expandedNote === note.id"
-                    class="whitespace-pre-wrap text-xs text-gray-700"
-                    style="font-size: 12px !important; line-height: 1.6;"
+                    class="whitespace-pre-wrap text-sm text-gray-700"
+                    style="font-size: 14px !important; line-height: 1.6;"
                     v-html="highlightText(note.content, searchQuery.value)"
                   />
                   <p
                     v-else
-                    class="truncate text-xs text-gray-700"
-                    style="font-size: 12px !important; line-height: 1.6;"
+                    class="truncate text-sm text-gray-700"
+                    style="font-size: 14px !important; line-height: 1.6;"
                     v-html="highlightText(truncateContent(note.content), searchQuery.value)"
                   />
                   <p class="text-xxs text-gray-500" style="font-size: 10px !important; line-height: 1.0;">
@@ -918,13 +1009,13 @@ button:disabled {
 .notes-container textarea {
   width: 100%;
   padding: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.2rem;
   border: 1px solid #ccc;
   border-radius: 6px;
   background-color: #fff;
   color: #111;
   height: 300px;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .notes-container textarea:focus {
@@ -935,7 +1026,7 @@ button:disabled {
   background-color: #2c2c2e;
   border-color: #48484a;
   color: #ffffff;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .notes-container .bg-gray-100 {
@@ -957,8 +1048,15 @@ button:disabled {
   color: #d1d5db;
 }
 
+.status-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+}
+
 .emoji-bar {
-  margin-top: 1rem;
+  margin-top: 0.2rem;
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
@@ -1028,10 +1126,8 @@ form .emoji-bar .form-button:disabled {
   font-size: 15px;
 }
 .char-counter {
-  text-align: right;
   font-size: 12px;
   color: #999;
-  margin-top: 4px;
 }
 .dark .char-counter {
   color: #aaa;
@@ -1133,3 +1229,4 @@ html {
   color: #2dd4bf;
 }
 </style>
+```

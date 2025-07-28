@@ -200,6 +200,8 @@ auth:
   insert_emoji: 插入 Emoji
   saved_message: 便笺已保存
   last_saved: 上次保存
+  session_restore_error: 无法恢复会话，请重新登录
+  session_refresh_error: 会话刷新失败，请重新登录
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -247,3 +249,8 @@ notes:
   next_page: 下一页
   previous_page: 上一页
   auto_saved: 保存成功
+  char_count: 字数
+  session_expired: 会话已过期，请重新登录
+  max_notes_exceeded: 已达到笔记数量上限
+  notes_count: 笔记数量
+  no_changes: 内容未更改，无需保存
