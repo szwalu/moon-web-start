@@ -248,3 +248,8 @@ notes:
   next_page: Next Page
   previous_page: Previous Page
   auto_saved: Saved successfully
+  char_count: Character count
+  session_expired: Session expired. Please refresh or log in again.
+  max_notes_exceeded: Maximum number of notes reached
+  notes_count: Total notes
+  no_changes: No changes made, save not necessary

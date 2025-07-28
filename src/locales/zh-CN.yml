@@ -250,7 +250,7 @@ notes:
   previous_page: 上一页
   auto_saved: 保存成功
   char_count: 字数
-  session_expired: 会话已过期，请重新登录
+  session_expired: 会话已过期，请刷新网页或重新登录
   max_notes_exceeded: 已达到笔记数量上限
   notes_count: 笔记数量
   no_changes: 内容未更改，无需保存

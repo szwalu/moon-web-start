@@ -247,3 +247,8 @@ notes:
   next_page: 次のページ
   previous_page: 前のページ
   auto_saved: 保存しました
+  char_count: 文字数
+  session_expired: セッションの有効期限が切れました。ページを再読み込みするか、再ログインしてください。
+  max_notes_exceeded: ノートの最大数に達しました
+  notes_count: ノート数
+  no_changes: 内容が変更されていないため、保存は不要です

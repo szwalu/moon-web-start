@@ -1,7 +1,9 @@
+```vue
 <script setup lang="ts">
-import { onMounted, ref, watch, watchEffect } from 'vue'
+import { onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
 import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
@@ -15,101 +17,41 @@ import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
-import quotes from '@/utils/daily_quotes_zh.json'
-
-// ✅ 新增的用户状态逻辑
 import { useAuthStore } from '@/stores/auth'
+import quotes from '@/utils/daily_quotes_zh.json'
 
 defineOptions({
   name: 'HomePage',
 })
 
-const hasFetchedWeather = ref(false)
-
 const { t } = useI18n()
+const messageHook = useMessage()
 const dailyQuote = ref('')
-
-const _authStore = useAuthStore()
-
-// index.vue - 在 onMounted 钩子中
-onMounted(() => {
-  const authStore = useAuthStore()
-  authStore.refreshUser() // 初始化用户状态
-
-  // ✅ 1. 监听认证状态变化（处理令牌刷新事件）
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-    if (event === 'TOKEN_REFRESHED')
-      authStore.refreshUser()
-
-    if (event === 'USER_UNAUTHENTICATED')
-      supabase.auth.refreshSession()
-  })
-
-  // ✅ 2. 静默刷新（每 50 分钟）
-  const intervalId = setInterval(async () => {
-    if (!authStore.user)
-      return
-    try {
-      await supabase.auth.getSession()
-    }
-    catch {}
-  }, 50 * 60 * 1000)
-
-  // ✅ 3. 页面可见性变化 → getSession（保持活性）
-  let visibilityCooldown = false
-  const handleVisibilityChange = async () => {
-    if (document.visibilityState === 'visible' && !visibilityCooldown) {
-      visibilityCooldown = true
-      try {
-        await supabase.auth.getSession()
-      }
-      catch {}
-      setTimeout(() => (visibilityCooldown = false), 60000)
-    }
-  }
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-
-  // ✅ 4. ✨ 方案二中的关键增强 → refreshUser()（防止假登出）
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible')
-      authStore.refreshUser()
-  })
-  window.addEventListener('focus', () => {
-    authStore.refreshUser()
-  })
-
-  // ✅ 5. 定期 refreshUser（每 5 分钟）增强可靠性
-  const userRefreshInterval = setInterval(() => {
-    authStore.refreshUser()
-  }, 300000)
-
-  // ✅ 6. 清理
-  onUnmounted(() => {
-    clearInterval(intervalId)
-    clearInterval(userRefreshInterval)
-    subscription.unsubscribe()
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
-  })
-})
+const hasFetchedWeather = ref(false)
+const weatherCity = ref(t('index.weather_loading'))
+const weatherInfo = ref('...')
+const isMobile = ref(false)
+const authStore = useAuthStore()
+const user = ref<any>(null) // 用户状态
+const sessionExpired = ref(false) // 会话过期标志
 
 const settingStore = useSettingStore()
 const { autoSaveData } = useAutoSave()
 const siteStore = useSiteStore()
 
 let lastJson = ''
+let lastSettingJson = ''
 
+// 监听 siteStore 和 settingStore 的变化以自动保存
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
     if (newJson === lastJson)
       return
-
     lastJson = newJson
     autoSaveData()
   },
 )
-
-let lastSettingJson = ''
 
 watch(
   () => JSON.stringify(settingStore.settings),
@@ -121,7 +63,7 @@ watch(
   },
 )
 
-const isMobile = ref(false)
+// 初始化移动端检测
 onMounted(() => {
   isMobile.value = window.innerWidth <= 768
   window.addEventListener('resize', () => {
@@ -130,10 +72,77 @@ onMounted(() => {
   showMobileToast()
 })
 
-// ========== 以下是天气功能 ==========
-const weatherCity = ref(t('index.weather_loading'))
-const weatherInfo = ref('...')
+// 认证状态管理
+onMounted(async () => {
+  // 1. 恢复会话
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error) {
+      // 仅在非会话不存在的错误时记录日志
+      if (error.status !== 401 && error.message !== 'No session found')
+        console.error('会话恢复失败:', error)
+    }
+    else {
+      user.value = session?.user ?? null
+      if (session)
+        await authStore.refreshUser()
+    }
+  }
+  catch (err: any) {
+    // 仅在严重错误时记录日志
+    if (err.status !== 401 && err.message !== 'No session found')
+      console.error('会话恢复严重错误:', err)
+  }
 
+  // 2. 监听认证状态变化
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const prevUser = user.value
+    user.value = session?.user ?? null
+    if (session) {
+      await authStore.refreshUser()
+    }
+    else {
+      if (prevUser) {
+        sessionExpired.value = true
+        messageHook.warning(t('notes.session_expired'))
+      }
+    }
+  })
+
+  // 3. 定期刷新会话（每59分钟）
+  const sessionInterval = setInterval(async () => {
+    if (!user.value)
+      return
+    try {
+      await supabase.auth.getSession()
+    }
+    catch {}
+  }, 59 * 60 * 1000)
+
+  // 4. 页面可见性变化时刷新会话
+  let visibilityCooldown = false
+  const handleVisibilityChange = async () => {
+    if (document.visibilityState === 'visible' && !visibilityCooldown) {
+      visibilityCooldown = true
+      try {
+        await supabase.auth.getSession()
+        await authStore.refreshUser()
+      }
+      catch {}
+      setTimeout(() => (visibilityCooldown = false), 90000)
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  // 5. 清理
+  onUnmounted(() => {
+    clearInterval(sessionInterval)
+    subscription.unsubscribe()
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  })
+})
+
+// 天气功能
 watchEffect(() => {
   if (settingStore.getSettingValue('showWeather')) {
     if (!hasFetchedWeather.value)
@@ -171,11 +180,12 @@ async function fetchWeather() {
     weatherInfo.value = `${temp}°C ${text} ${icon}`
   }
   catch (e) {
-    weatherCity.value = t('index.weather_failed') // 也改为国际化
+    weatherCity.value = t('index.weather_failed')
     weatherInfo.value = ''
   }
 }
 
+// 每日引言
 watchEffect(() => {
   if (settingStore.getSettingValue('showDailyQuote'))
     showQuote()
@@ -184,17 +194,13 @@ watchEffect(() => {
 })
 
 function showQuote() {
-  // 1. 获取引言库中的总数量
   const totalQuotes = quotes.length
-  // 2. 生成一个从 0 到 (总数量 - 1) 之间的随机整数作为索引
   const randomIndex = Math.floor(Math.random() * totalQuotes)
-  // 3. 根据这个随机索引，从数组中取出一条引言
   dailyQuote.value = quotes[randomIndex]?.zh || ''
 }
 
 function getChineseCityName(enCity: string): string {
   enCity = enCity?.trim().toLowerCase()
-
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
     if (
@@ -205,7 +211,6 @@ function getChineseCityName(enCity: string): string {
     )
       return value
   }
-
   return enCity
 }
 
@@ -213,6 +218,7 @@ function getWeatherText(code: number): { text: string; icon: string } {
   return weatherMap[code] || { text: '未知天气', icon: '❓' }
 }
 
+// 移动端提示
 function showMobileToast() {
   if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
     const Toast = Swal.mixin({
@@ -236,20 +242,20 @@ function showMobileToast() {
     })
     Toast.fire({
       html: `
-    <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
-      <div style="text-align: center;">
-        <div style="margin-bottom: 4px;">${t('index.add_to_home')}</div>
-        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
-          <span>${t('index.click_below')}</span>
-          <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
+        <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
+          <div style="text-align: center;">
+            <div style="margin-bottom: 4px;">${t('index.add_to_home')}</div>
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
+              <span>${t('index.click_below')}</span>
+              <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
+            </div>
+            <div>${t('index.choose_add_to_screen')}</div>
+          </div>
+          <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
+            <polygon points="0,0 16,0 8,8" style="fill:white;"/>
+          </svg>
         </div>
-        <div>${t('index.choose_add_to_screen')}</div>
-      </div>
-      <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
-        <polygon points="0,0 16,0 8,8" style="fill:white;"/>
-      </svg>
-    </div>
-  `,
+      `,
     })
   }
 }
@@ -267,15 +273,18 @@ function showMobileToast() {
 
     <div
       class="main-content-area"
-
       px="6 sm:12" pb="12 sm:24"
-
       sm:auto my-0 w-full pt-0 bg-transparent sm:pt-0
       :class="{
         'no_select': settingStore.isSetting,
         'content-shifted': settingStore.isSideNavOpen,
       }"
     >
+      <!-- 显示会话过期提示 -->
+      <div v-if="sessionExpired" class="session-expired-notice">
+        <p class="text-red-500">{{ t('notes.session_expired') }}</p>
+      </div>
+
       <div
         class="sticky z-[1010] w-full left-0 top-0"
         bg="$main-bg-c"
@@ -319,7 +328,6 @@ function showMobileToast() {
 </template>
 
 <style scoped>
-/* CSS部分与上一版完全一致，此处省略以保持简洁 */
 .main-content-area {
   transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
   position: relative;
@@ -361,6 +369,19 @@ function showMobileToast() {
   opacity: 0.5;
 }
 
+.session-expired-notice {
+  text-align: center;
+  padding: 10px;
+  background-color: #fff1f1;
+  border: 1px solid #ff4d4f;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+.dark .session-expired-notice {
+  background-color: #4b1c1c;
+  border-color: #ff7875;
+}
+
 :deep(.mobile-guide-toast) {
   padding: 0 !important;
   overflow: visible !important;
@@ -379,3 +400,4 @@ children:
     path: setting
     component: /src/components/Blank.vue
 </route>
+```
