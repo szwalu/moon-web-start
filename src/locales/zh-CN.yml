@@ -171,7 +171,7 @@ auth:
   prompt_to_register: 还没有账号？
   Log_in_again_prefix: 若曾登陆，
   Log_in_again_link: 👉️点这里
-  Log_in_again_suffix: 重新登陆；
+  Log_in_again_suffix: 刷新重新登陆；
   Log_in_again_link2: 👉️点这里
   Log_in_again_setting: 到设置界面
   prompt_to_login: 已有账号？

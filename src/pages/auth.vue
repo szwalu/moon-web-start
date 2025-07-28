@@ -1,4 +1,3 @@
-```vue
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -49,10 +48,9 @@ const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
 const filteredNotes = ref<any[]>([])
 const maxNoteLength = 3000
-const maxNotesPerUser = 500 // 用户笔记上限
-const isNotesCached = ref(false) // 控制列表和初始加载缓存
-const cachedNotes = ref<any[]>([]) // 存储所有已加载笔记
-const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean }>()) // 按页面缓存状态
+const isNotesCached = ref(false)
+const cachedNotes = ref<any[]>([])
+const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean }>())
 
 function addNoteToList(newNote) {
   if (!notes.value.some(note => note.id === newNote.id)) {
@@ -113,19 +111,16 @@ async function fetchNotes() {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
 
-    // 检查 cachedNotes 是否包含足够数据
     const hasEnoughCachedNotes = cachedNotes.value.length >= to + 1
     let newNotes: any[] = []
     let count: number | null = null
 
     if (hasEnoughCachedNotes && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
-      // 使用缓存数据
       newNotes = searchQuery.value
         ? cachedNotes.value.filter(note =>
           note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
         )
         : cachedNotes.value
-      // 单独查询匹配笔记总数
       const { count: totalCount, error: countError } = await supabase
         .from('notes')
         .select('id', { count: 'exact' })
@@ -136,7 +131,6 @@ async function fetchNotes() {
       count = totalCount || 0
     }
     else {
-      // 发起 Supabase 请求获取数据
       const query = supabase
         .from('notes')
         .select('*', { count: 'exact' })
@@ -163,7 +157,6 @@ async function fetchNotes() {
       newNotes = data || []
       count = fetchedCount || 0
 
-      // 更新 cachedNotes（仅在无搜索或缓存不足时）
       if (!searchQuery.value) {
         const existingIds = new Set(cachedNotes.value.map(n => n.id))
         cachedNotes.value = [
@@ -181,7 +174,6 @@ async function fetchNotes() {
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
 
-    // 更新分页缓存
     cachedPages.value.set(currentPage.value, {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
@@ -210,14 +202,13 @@ async function nextPage() {
   const from = (targetPage - 1) * notesPerPage
   const to = from + notesPerPage - 1
   if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
-    // 使用缓存数据
     currentPage.value = targetPage
     const filtered = searchQuery.value
       ? cachedNotes.value.filter(note =>
         note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
       )
       : cachedNotes.value
-    notes.value = filtered.slice(from, to)
+    notes.value = filtered.slice(from, to + 1)
     filteredNotes.value = notes.value
     const pageState = cachedPages.value.get(targetPage)!
     totalNotes.value = pageState.totalNotes
@@ -237,14 +228,13 @@ async function previousPage() {
     const from = (targetPage - 1) * notesPerPage
     const to = from + notesPerPage - 1
     if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
-      // 使用缓存数据
       currentPage.value = targetPage
       const filtered = searchQuery.value
         ? cachedNotes.value.filter(note =>
           note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
         )
         : cachedNotes.value
-      notes.value = filtered.slice(from, to)
+      notes.value = filtered.slice(from, to + 1)
       filteredNotes.value = notes.value
       const pageState = cachedPages.value.get(targetPage)!
       totalNotes.value = pageState.totalNotes
@@ -292,15 +282,9 @@ async function saveNote({ showMessage = false } = {}) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  // 检查内容是否变化
   if (content.value.trim() === editingNote.value?.content?.trim()) {
     if (showMessage)
       messageHook.info(t('notes.no_changes'))
-    return null
-  }
-  // 检查笔记总数（仅对新笔记）
-  if (!lastSavedId.value && !editingNote.value?.id && totalNotes.value >= maxNotesPerUser) {
-    messageHook.error(t('notes.max_notes_exceeded', { max: maxNotesPerUser }))
     return null
   }
 
@@ -362,11 +346,6 @@ async function saveNote({ showMessage = false } = {}) {
     if (showMessage)
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
     sessionExpired.value = false
-    isNotesCached.value = false
-    cachedNotes.value = []
-    cachedPages.value.clear()
-    if (showNotesList.value)
-      await fetchNotes()
     return savedNote
   }
   catch (error) {
@@ -381,7 +360,6 @@ const debouncedSaveNote = debounce(() => {
 }, 12000)
 
 onMounted(async () => {
-  // 恢复会话
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error) {
     messageHook.error(t('auth.session_restore_error'))
@@ -400,7 +378,6 @@ onMounted(async () => {
     }
   }
 
-  // 监听会话变化
   supabase.auth.onAuthStateChange(async (_event, session) => {
     const prevUser = user.value
     user.value = session?.user ?? null
@@ -426,7 +403,6 @@ onMounted(async () => {
         lastSavedAt.value = null
         messageHook.warning(t('notes.session_expired'))
       }
-      // content.value = content.value
       lastSavedId.value = null
       mode.value = 'login'
       isNotesCached.value = false
@@ -453,7 +429,7 @@ watchEffect(async () => {
 watch(searchQuery, debounce(() => {
   if (showNotesList.value) {
     currentPage.value = 1
-    isNotesCached.value = false // 触发 fetchNotes 检查缓存
+    isNotesCached.value = false
     fetchNotes()
   }
 }, 300))
@@ -546,9 +522,6 @@ async function handleDelete(id: string) {
       lastSavedId.value = null
     }
     messageHook.success(t('notes.delete_success'))
-    isNotesCached.value = false
-    if (showNotesList.value)
-      await fetchNotes()
   }
   catch (err) {
     messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
@@ -649,9 +622,6 @@ function goHomeAndRefresh() {
             <div class="status-bar">
               <span class="char-counter">
                 {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-              </span>
-              <span class="char-counter ml-4">
-                {{ t('notes.notes_count') }}: {{ totalNotes }}/{{ maxNotesPerUser }}
               </span>
               <span v-if="sessionExpired" class="char-counter ml-4 text-red-500">
                 ⚠️ {{ t('notes.session_expired') }}
@@ -1229,4 +1199,3 @@ html {
   color: #2dd4bf;
 }
 </style>
-```
