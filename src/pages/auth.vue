@@ -52,6 +52,8 @@ const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean }>())
 
+const LOCAL_CONTENT_KEY = 'note_content'
+
 function addNoteToList(newNote) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
@@ -346,6 +348,7 @@ async function saveNote({ showMessage = false } = {}) {
     if (showMessage)
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
     sessionExpired.value = false
+    localStorage.removeItem(LOCAL_CONTENT_KEY)
     return savedNote
   }
   catch (error) {
@@ -360,6 +363,12 @@ const debouncedSaveNote = debounce(() => {
 }, 12000)
 
 onMounted(async () => {
+  // 恢复本地缓存的输入内容
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  if (savedContent)
+    content.value = savedContent
+
+  // 恢复会话
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error) {
     messageHook.error(t('auth.session_restore_error'))
@@ -378,6 +387,7 @@ onMounted(async () => {
     }
   }
 
+  // 监听会话变化
   supabase.auth.onAuthStateChange(async (_event, session) => {
     const prevUser = user.value
     user.value = session?.user ?? null
@@ -397,7 +407,7 @@ onMounted(async () => {
     }
     else {
       lastBackupTime.value = 'N/A'
-      if (prevUser && content.value) {
+      if (prevUser) {
         sessionExpired.value = true
         lastSavedTime.value = ''
         lastSavedAt.value = null
@@ -434,16 +444,33 @@ watch(searchQuery, debounce(() => {
   }
 }, 300))
 
-watch(content, (val) => {
+watch(content, async (val) => {
+  // 保存输入内容到本地缓存
+  if (val)
+    localStorage.setItem(LOCAL_CONTENT_KEY, val)
+  else
+    localStorage.removeItem(LOCAL_CONTENT_KEY)
+
   if (val.length > maxNoteLength) {
     content.value = val.slice(0, maxNoteLength)
     messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
-  }
-  if (!user.value?.id) {
-    sessionExpired.value = true
-    messageHook.warning(t('notes.session_expired'))
     return
   }
+
+  // 检查会话状态
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error || !session?.user) {
+    sessionExpired.value = true
+    messageHook.warning(`${t('notes.session_expired')}，请刷新网页`)
+    return
+  }
+
+  if (!user.value?.id) {
+    sessionExpired.value = true
+    messageHook.warning(`${t('notes.session_expired')}，请刷新网页`)
+    return
+  }
+
   debouncedSaveNote()
 })
 
@@ -624,7 +651,7 @@ function goHomeAndRefresh() {
                 {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
               </span>
               <span v-if="sessionExpired" class="char-counter ml-4 text-red-500">
-                ⚠️ {{ t('notes.session_expired') }}
+                ⚠️ {{ t('notes.session_expired') }}，请刷新网页
               </span>
               <span v-else-if="lastSavedTime" class="char-counter ml-4">
                 💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
