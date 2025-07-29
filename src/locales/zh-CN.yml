@@ -202,6 +202,8 @@ auth:
   last_saved: 上次保存
   session_restore_error: 无法恢复会话，请重新登录
   session_refresh_error: 会话刷新失败，请重新登录
+  invite_code: 邀请码
+  invite_code_placeholder: 请输入五位数字邀请码
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -215,6 +217,7 @@ auth:
     enter_registered_email: 请输入您的注册邮箱：
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
     no_backup_yet: 暂无备份
+    invalid_invite_code: 无效的邀请码
 autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨
   parse_failed: 解析云端数据失败

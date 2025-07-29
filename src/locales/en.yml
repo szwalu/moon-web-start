@@ -201,6 +201,8 @@ auth:
   insert_emoji: Insert Emoji
   saved_message: Note saved
   last_saved: Last saved
+  invite_code: Invite Code
+  invite_code_placeholder: Please enter the five-digit invite code
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
@@ -214,6 +216,7 @@ auth:
     passwords_do_not_match: ❌ The passwords entered do not match!
     reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
     no_backup_yet: No backup yet
+    invalid_invite_code: Invalid invite code
 autoSave:
   restored: Welcome, {email}, your data has been restored ✨
   parse_failed: Failed to parse cloud data

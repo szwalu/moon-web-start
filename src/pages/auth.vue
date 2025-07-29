@@ -23,6 +23,7 @@ const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
+const inviteCode = ref('') // 新增邀请码输入框
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
@@ -41,7 +42,7 @@ const lastSavedTime = ref('')
 const lastSavedAt = ref<number | null>(null)
 const searchQuery = ref('')
 const currentPage = ref(1)
-const notesPerPage = 25
+const notesPerPage = 20
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
@@ -559,13 +560,26 @@ function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   message.value = ''
   password.value = ''
   passwordConfirm.value = ''
+  inviteCode.value = '' // 重置邀请码
   resetEmailSent.value = false
 }
 
 async function handleSubmitAuth() {
-  if (mode.value === 'register' && password.value !== passwordConfirm.value) {
-    message.value = t('auth.messages.passwords_do_not_match')
-    return
+  if (mode.value === 'register') {
+    if (password.value !== passwordConfirm.value) {
+      message.value = t('auth.messages.passwords_do_not_match')
+      return
+    }
+    // 验证邀请码
+    const { data, error } = await supabase
+      .from('invite_codes')
+      .select('code')
+      .eq('code', inviteCode.value)
+      .single()
+    if (error || !data) {
+      message.value = t('auth.messages.invalid_invite_code')
+      return
+    }
   }
   loading.value = true
   message.value = ''
@@ -765,6 +779,10 @@ function goHomeAndRefresh() {
         <label v-if="mode === 'register'">
           {{ $t('auth.confirm_password') }}
           <input v-model="passwordConfirm" type="password" required>
+        </label>
+        <label v-if="mode === 'register'">
+          {{ $t('auth.invite_code') }}
+          <input v-model="inviteCode" type="text" :placeholder="$t('auth.invite_code_placeholder')" required>
         </label>
         <template v-if="mode === 'forgotPassword' && resetEmailSent">
           <button type="button" @click="setMode('login')">

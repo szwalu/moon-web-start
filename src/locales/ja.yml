@@ -200,6 +200,8 @@ auth:
   insert_emoji: 絵文字を挿入
   saved_message: メモが保存されました
   last_saved: 最終保存
+  invite_code: 招待コード
+  invite_code_placeholder: 5桁の招待コードを入力してください
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
@@ -213,6 +215,7 @@ auth:
     enter_registered_email: 登録済みのメールアドレスを入力してください：
     reset_success_redirect: ✅ パスワードが正常にリセットされました。ログインページにリダイレクトします...
     no_backup_yet: バックアップなし
+    invalid_invite_code: 無効な招待コードです
 autoSave:
   restored: アカウント {email} で復元されました✨
   parse_failed: クラウドデータの解析に失敗しました
