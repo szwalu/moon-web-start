@@ -413,6 +413,11 @@ onMounted(async () => {
         lastSavedAt.value = null
         messageHook.warning(t('notes.session_expired'))
       }
+      if (route.query.from === 'settings' && !hasRedirected.value) {
+        hasRedirected.value = true
+        messageHook.warning(t('auth.please_login')) // 未登录，提示“请登录”
+        router.replace('/setting') // 跳转到设置页
+      }
       lastSavedId.value = null
       mode.value = 'login'
       isNotesCached.value = false
@@ -813,10 +818,6 @@ function goHomeAndRefresh() {
             {{ t('auth.Log_in_again_link') }}
           </a>
           {{ t('auth.Log_in_again_suffix') }}
-          <router-link to="/setting" class="cursor-pointer text-green-600 underline">
-            {{ t('auth.Log_in_again_link2') }}
-          </router-link>
-          {{ t('auth.Log_in_again_setting') }}
         </p>
       </form>
     </div>
