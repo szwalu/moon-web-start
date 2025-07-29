@@ -50,7 +50,7 @@ const filteredNotes = ref<any[]>([])
 const maxNoteLength = 3000
 const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
-const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean }>())
+const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 
 const LOCAL_CONTENT_KEY = 'note_content'
 
@@ -70,6 +70,7 @@ function addNoteToList(newNote) {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
       hasPreviousNotes: hasPreviousNotes.value,
+      notes: notes.value.slice(),
     })
     nextTick()
   }
@@ -84,6 +85,11 @@ function updateNoteInList(updatedNote) {
   updateInArray(notes.value)
   updateInArray(filteredNotes.value)
   updateInArray(cachedNotes.value)
+  const cachedPage = cachedPages.value.get(currentPage.value)
+  if (cachedPage) {
+    updateInArray(cachedPage.notes)
+    cachedPages.value.set(currentPage.value, { ...cachedPage })
+  }
   nextTick()
 }
 
@@ -113,73 +119,62 @@ async function fetchNotes() {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
 
-    const hasEnoughCachedNotes = cachedNotes.value.length >= to + 1
-    let newNotes: any[] = []
-    let count: number | null = null
-
-    if (hasEnoughCachedNotes && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
-      newNotes = searchQuery.value
-        ? cachedNotes.value.filter(note =>
-          note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
-        )
-        : cachedNotes.value
-      const { count: totalCount, error: countError } = await supabase
-        .from('notes')
-        .select('id', { count: 'exact' })
-        .eq('user_id', user.value.id)
-        .ilike('content', searchQuery.value ? `%${searchQuery.value}%` : '%')
-      if (countError)
-        throw countError
-      count = totalCount || 0
-    }
-    else {
-      const query = supabase
-        .from('notes')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.value.id)
-      if (searchQuery.value)
-        query.ilike('content', `%${searchQuery.value}%`)
-
-      query.order('updated_at', { ascending: false })
-      query.range(from, to)
-
-      const { data, error, count: fetchedCount } = await query
-      if (error) {
-        messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-        notes.value = []
-        filteredNotes.value = []
-        cachedNotes.value = []
-        hasMoreNotes.value = false
-        hasPreviousNotes.value = false
-        isNotesCached.value = false
-        cachedPages.value.clear()
-        return
-      }
-
-      newNotes = data || []
-      count = fetchedCount || 0
-
-      if (!searchQuery.value) {
-        const existingIds = new Set(cachedNotes.value.map(n => n.id))
-        cachedNotes.value = [
-          ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
-          ...newNotes.filter(n => !existingIds.has(n.id)),
-        ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      }
+    const cachedPage = cachedPages.value.get(currentPage.value)
+    if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
+      notes.value = cachedPage.notes.slice()
+      filteredNotes.value = notes.value
+      totalNotes.value = cachedPage.totalNotes
+      hasMoreNotes.value = cachedPage.hasMoreNotes
+      hasPreviousNotes.value = cachedPage.hasPreviousNotes
+      isNotesCached.value = true
+      isLoadingNotes.value = false
+      nextTick()
+      return
     }
 
+    const query = supabase
+      .from('notes')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.value.id)
+    if (searchQuery.value)
+      query.ilike('content', `%${searchQuery.value}%`)
+
+    query.order('updated_at', { ascending: false })
+    query.range(from, to)
+
+    const { data, error, count } = await query
+    if (error) {
+      messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
+      notes.value = []
+      filteredNotes.value = []
+      cachedNotes.value = []
+      hasMoreNotes.value = false
+      hasPreviousNotes.value = false
+      isNotesCached.value = false
+      cachedPages.value.clear()
+      return
+    }
+
+    const newNotes = data || []
     totalNotes.value = count || 0
-    filteredNotes.value = searchQuery.value
-      ? newNotes
-      : newNotes.slice(0, notesPerPage)
+    filteredNotes.value = searchQuery.value ? newNotes : newNotes.slice(0, notesPerPage)
     notes.value = filteredNotes.value.slice(0, notesPerPage)
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
+
+    if (!searchQuery.value) {
+      const existingIds = new Set(cachedNotes.value.map(n => n.id))
+      cachedNotes.value = [
+        ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
+        ...newNotes.filter(n => !existingIds.has(n.id)),
+      ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    }
 
     cachedPages.value.set(currentPage.value, {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
       hasPreviousNotes: hasPreviousNotes.value,
+      notes: notes.value.slice(),
     })
     isNotesCached.value = true
   }
@@ -201,21 +196,14 @@ async function fetchNotes() {
 
 async function nextPage() {
   const targetPage = currentPage.value + 1
-  const from = (targetPage - 1) * notesPerPage
-  const to = from + notesPerPage - 1
-  if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
+  const cachedPage = cachedPages.value.get(targetPage)
+  if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
     currentPage.value = targetPage
-    const filtered = searchQuery.value
-      ? cachedNotes.value.filter(note =>
-        note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
-      )
-      : cachedNotes.value
-    notes.value = filtered.slice(from, to + 1)
+    notes.value = cachedPage.notes.slice()
     filteredNotes.value = notes.value
-    const pageState = cachedPages.value.get(targetPage)!
-    totalNotes.value = pageState.totalNotes
-    hasMoreNotes.value = pageState.hasMoreNotes
-    hasPreviousNotes.value = pageState.hasPreviousNotes
+    totalNotes.value = cachedPage.totalNotes
+    hasMoreNotes.value = cachedPage.hasMoreNotes
+    hasPreviousNotes.value = cachedPage.hasPreviousNotes
     nextTick()
   }
   else {
@@ -227,21 +215,14 @@ async function nextPage() {
 async function previousPage() {
   if (currentPage.value > 1) {
     const targetPage = currentPage.value - 1
-    const from = (targetPage - 1) * notesPerPage
-    const to = from + notesPerPage - 1
-    if (cachedPages.value.has(targetPage) && cachedNotes.value.length >= to + 1) {
+    const cachedPage = cachedPages.value.get(targetPage)
+    if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
       currentPage.value = targetPage
-      const filtered = searchQuery.value
-        ? cachedNotes.value.filter(note =>
-          note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
-        )
-        : cachedNotes.value
-      notes.value = filtered.slice(from, to + 1)
+      notes.value = cachedPage.notes.slice()
       filteredNotes.value = notes.value
-      const pageState = cachedPages.value.get(targetPage)!
-      totalNotes.value = pageState.totalNotes
-      hasMoreNotes.value = pageState.hasMoreNotes
-      hasPreviousNotes.value = pageState.hasPreviousNotes
+      totalNotes.value = cachedPage.totalNotes
+      hasMoreNotes.value = cachedPage.hasMoreNotes
+      hasPreviousNotes.value = cachedPage.hasPreviousNotes
       nextTick()
     }
     else {
@@ -533,6 +514,7 @@ async function handleDelete(id: string) {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
       hasPreviousNotes: hasPreviousNotes.value,
+      notes: notes.value.slice(),
     })
     if (id === lastSavedId.value) {
       content.value = ''
