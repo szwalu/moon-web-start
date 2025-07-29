@@ -98,10 +98,9 @@ onMounted(async () => {
       await authStore.refreshUser()
     }
     else {
-      if (prevUser) {
+      if (prevUser)
         sessionExpired.value = true
-        messageHook.warning(t('notes.session_expired'))
-      }
+      // messageHook.warning(t('notes.session_expired'))
     }
   })
 
@@ -276,11 +275,6 @@ function showMobileToast() {
         'content-shifted': settingStore.isSideNavOpen,
       }"
     >
-      <!-- 显示会话过期提示 -->
-      <div v-if="sessionExpired" class="session-expired-notice">
-        <p class="text-red-500">{{ t('notes.session_expired') }}</p>
-      </div>
-
       <div
         class="sticky z-[1010] w-full left-0 top-0"
         bg="$main-bg-c"

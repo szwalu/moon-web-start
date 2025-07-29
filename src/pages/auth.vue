@@ -40,7 +40,6 @@ const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
 const lastSavedAt = ref<number | null>(null)
 const searchQuery = ref('')
-const sessionExpired = ref(false)
 const currentPage = ref(1)
 const notesPerPage = 25
 const totalNotes = ref(0)
@@ -275,11 +274,9 @@ function toggleExpand(noteId: string) {
 async function saveNote({ showMessage = false } = {}) {
   if (!content.value)
     return null
-  if (!user.value?.id) {
-    sessionExpired.value = true
-    messageHook.warning(t('notes.session_expired'))
+  if (!user.value?.id)
     return null
-  }
+
   if (content.value.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
@@ -347,7 +344,6 @@ async function saveNote({ showMessage = false } = {}) {
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '.')
     if (showMessage)
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
-    sessionExpired.value = false
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     return savedNote
   }
@@ -358,7 +354,7 @@ async function saveNote({ showMessage = false } = {}) {
 }
 
 const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id && !sessionExpired.value)
+  if (content.value && user.value?.id)
     saveNote({ showMessage: false })
 }, 12000)
 
@@ -408,15 +404,12 @@ onMounted(async () => {
     else {
       lastBackupTime.value = 'N/A'
       if (prevUser) {
-        sessionExpired.value = true
         lastSavedTime.value = ''
         lastSavedAt.value = null
-        messageHook.warning(t('notes.session_expired'))
       }
       if (route.query.from === 'settings' && !hasRedirected.value) {
         hasRedirected.value = true
-        // messageHook.warning(t('auth.please_login')) // 未登录，提示“请登录”
-        router.replace('/setting') // 跳转到设置页
+        router.replace('/setting')
       }
       lastSavedId.value = null
       mode.value = 'login'
@@ -464,17 +457,11 @@ watch(content, async (val) => {
 
   // 检查会话状态
   const { data: { session }, error } = await supabase.auth.getSession()
-  if (error || !session?.user) {
-    sessionExpired.value = true
-    messageHook.warning(`${t('notes.session_expired')}，请刷新网页`)
+  if (error || !session?.user)
     return
-  }
 
-  if (!user.value?.id) {
-    sessionExpired.value = true
-    messageHook.warning(`${t('notes.session_expired')}，请刷新网页`)
+  if (!user.value?.id)
     return
-  }
 
   debouncedSaveNote()
 })
@@ -484,11 +471,8 @@ async function handleSubmit() {
     messageHook.warning(t('notes.content_required'))
     return
   }
-  if (!user.value?.id) {
-    sessionExpired.value = true
-    messageHook.warning(t('notes.session_expired'))
+  if (!user.value?.id)
     return
-  }
 
   try {
     loading.value = true
@@ -648,17 +632,14 @@ function goHomeAndRefresh() {
               :placeholder="$t('notes.content_placeholder')"
               class="mb-2 w-full border rounded h-80 p-2"
               required
-              :disabled="loading || sessionExpired"
+              :disabled="loading"
               :maxlength="maxNoteLength"
             />
             <div class="status-bar">
               <span class="char-counter">
                 {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
               </span>
-              <span v-if="sessionExpired" class="char-counter ml-4 text-red-500">
-                ⚠️ {{ t('notes.session_expired') }}，请刷新网页
-              </span>
-              <span v-else-if="lastSavedTime" class="char-counter ml-4">
+              <span v-if="lastSavedTime" class="char-counter ml-4">
                 💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
               </span>
             </div>
@@ -666,7 +647,7 @@ function goHomeAndRefresh() {
               <button
                 type="submit"
                 class="form-button flex-2"
-                :disabled="loading || sessionExpired"
+                :disabled="loading"
               >
                 💾 {{ editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
               </button>
