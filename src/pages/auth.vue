@@ -42,7 +42,7 @@ const lastSavedAt = ref<number | null>(null)
 const searchQuery = ref('')
 const sessionExpired = ref(false)
 const currentPage = ref(1)
-const notesPerPage = 15
+const notesPerPage = 25
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
@@ -389,6 +389,7 @@ onMounted(async () => {
 
   // 监听会话变化
   supabase.auth.onAuthStateChange(async (_event, session) => {
+  // console.log('onAuthStateChange triggered, session:', session, 'route.query:', route.query, 'hasRedirected:', hasRedirected.value)
     const prevUser = user.value
     user.value = session?.user ?? null
     if (session) {
@@ -402,6 +403,7 @@ onMounted(async () => {
         : '暂无备份'
       if (route.query.from === 'settings' && !hasRedirected.value) {
         hasRedirected.value = true
+        // console.log('Redirecting to /setting (logged in)')
         router.replace('/setting')
       }
     }
@@ -415,6 +417,7 @@ onMounted(async () => {
       }
       if (route.query.from === 'settings' && !hasRedirected.value) {
         hasRedirected.value = true
+        // console.log('Showing login prompt and redirecting to /setting (not logged in)')
         messageHook.warning(t('auth.please_login')) // 未登录，提示“请登录”
         router.replace('/setting') // 跳转到设置页
       }
