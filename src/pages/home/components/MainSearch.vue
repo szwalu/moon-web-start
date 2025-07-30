@@ -1,4 +1,3 @@
-```vue
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { vOnClickOutside } from '@vueuse/components'
@@ -69,6 +68,7 @@ interface LocalSearchResult {
   desc?: string
   url: string
   favicon?: string
+  category?: string
 }
 const localSearchResults = ref<LocalSearchResult[]>([])
 const showLocalResults = ref(false)
@@ -99,6 +99,7 @@ function performLocalSearch(query: string) {
                   desc: site.desc,
                   url: site.url || '#',
                   favicon: site.favicon,
+                  category: `${getText(category.name)}-${getText(group.name)}`,
                 })
               }
             }
@@ -364,7 +365,7 @@ onUnmounted(() => {
                   loading="lazy"
                   @error="handleFaviconError($event)"
                 >
-                <div class="text-15 font-medium">{{ site.name }}</div>
+                <div class="text-15 font-medium">{{ site.name }}<span v-if="site.category" class="text-13 text-gray-500 dark:text-gray-400"> [{{ site.category }}]</span></div>
               </div>
               <div v-if="site.desc" class="line-clamp-2 text-13 text-gray-500 dark:text-gray-400">{{ site.desc }}</div>
             </div>
@@ -430,4 +431,3 @@ onUnmounted(() => {
   background-color: var(--site-hover-c);
 }
 </style>
-```
