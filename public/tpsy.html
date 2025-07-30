@@ -128,8 +128,10 @@
             box-sizing: border-box;
             width: 100%;
             max-width: 100%;
+            height: auto; /* 保持宽高比 */
             border: 1px dashed #AAA;
             cursor: pointer;
+            display: block; /* 防止 inline 样式导致偏移 */
         }
 
         .label {
@@ -215,6 +217,11 @@
                 flex-wrap: wrap;
                 gap: 10px;
             }
+
+            canvas {
+                max-width: 100%;
+                height: auto; /* 确保移动端保持宽高比 */
+            }
         }
 
         @media (max-width: 480px) {
@@ -249,6 +256,7 @@
 
             canvas {
                 max-width: 100%;
+                height: auto;
             }
         }
     </style>
@@ -356,8 +364,10 @@
 
         const redrawCanvas = (canvas, img, scaledWidth, scaledHeight) => {
             const dpr = window.devicePixelRatio || 1;
+            // Set canvas pixel dimensions
             canvas.width = scaledWidth * dpr;
             canvas.height = scaledHeight * dpr;
+            // Set CSS dimensions to maintain aspect ratio
             canvas.style.width = `${scaledWidth}px`;
             canvas.style.height = `${scaledHeight}px`;
             let ctx = canvas.getContext('2d', { alpha: true, desynchronized: false });
@@ -404,8 +414,8 @@
                                 let scaledWidth = img.width;
                                 let scaledHeight = img.height;
 
-                                // Limit canvas size for memory efficiency, but keep original aspect ratio
-                                const maxDimension = 3840; // Reasonable limit for most devices
+                                // Adjust size for mobile devices to fit screen
+                                const maxDimension = window.innerWidth < 768 ? Math.min(768, window.innerWidth) : 3840;
                                 if (scaledWidth > maxDimension || scaledHeight > maxDimension) {
                                     const ratio = Math.min(maxDimension / scaledWidth, maxDimension / scaledHeight);
                                     scaledWidth = Math.round(scaledWidth * ratio);
@@ -520,8 +530,9 @@
             allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                 scaledWidth = img.width;
                 scaledHeight = img.height;
-                if (scaledWidth > 3840 || scaledHeight > 3840) {
-                    const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                const maxDimension = window.innerWidth < 768 ? Math.min(768, window.innerWidth) : 3840;
+                if (scaledWidth > maxDimension || scaledHeight > maxDimension) {
+                    const ratio = Math.min(maxDimension / scaledWidth, maxDimension / scaledHeight);
                     scaledWidth = Math.round(scaledWidth * ratio);
                     scaledHeight = Math.round(scaledHeight * ratio);
                 }
@@ -534,8 +545,9 @@
             allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                 scaledWidth = img.width;
                 scaledHeight = img.height;
-                if (scaledWidth > 3840 || scaledHeight > 3840) {
-                    const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                const maxDimension = window.innerWidth < 768 ? Math.min(768, window.innerWidth) : 3840;
+                if (scaledWidth > maxDimension || scaledHeight > maxDimension) {
+                    const ratio = Math.min(maxDimension / scaledWidth, maxDimension / scaledHeight);
                     scaledWidth = Math.round(scaledWidth * ratio);
                     scaledHeight = Math.round(scaledHeight * ratio);
                 }
@@ -553,8 +565,9 @@
                 allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                     scaledWidth = img.width;
                     scaledHeight = img.height;
-                    if (scaledWidth > 3840 || scaledHeight > 3840) {
-                        const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                    const maxDimension = window.innerWidth < 768 ? Math.min(768, window.innerWidth) : 3840;
+                    if (scaledWidth > maxDimension || scaledHeight > maxDimension) {
+                        const ratio = Math.min(maxDimension / scaledWidth, maxDimension / scaledHeight);
                         scaledWidth = Math.round(scaledWidth * ratio);
                         scaledHeight = Math.round(scaledHeight * ratio);
                     }
