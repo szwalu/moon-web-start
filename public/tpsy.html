@@ -358,9 +358,9 @@
             const dpr = window.devicePixelRatio || 1;
             canvas.width = scaledWidth * dpr;
             canvas.height = scaledHeight * dpr;
-            canvas.style.width = scaledWidth + 'px';
-            canvas.style.height = scaledHeight + 'px';
-            let ctx = canvas.getContext('2d');
+            canvas.style.width = `${scaledWidth}px`;
+            canvas.style.height = `${scaledHeight}px`;
+            let ctx = canvas.getContext('2d', { alpha: true, desynchronized: false });
             ctx.scale(dpr, dpr);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
@@ -371,7 +371,7 @@
             let type = configInputSetting["pic-type"] || "image/png";
             let link = document.createElement('a');
             link.download = fileName + "_watermark." + type.split("/")[1];
-            let quality = type === "image/png" ? 1 : parseFloat($("#pic-quality").value) / 100;
+            let quality = type === "image/png" ? undefined : parseFloat($("#pic-quality").value) / 100;
             let imageData = canvas.toDataURL(type, quality);
             let blob = dataURItoBlob(imageData, type);
             link.href = URL.createObjectURL(blob);
@@ -404,13 +404,15 @@
                                 let scaledWidth = img.width;
                                 let scaledHeight = img.height;
 
-                                canvas.width = scaledWidth;
-                                canvas.height = scaledHeight;
-                                let ctx = canvas.getContext('2d');
-                                ctx.imageSmoothingEnabled = true;
-                                ctx.imageSmoothingQuality = 'high';
-                                ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+                                // Limit canvas size for memory efficiency, but keep original aspect ratio
+                                const maxDimension = 3840; // Reasonable limit for most devices
+                                if (scaledWidth > maxDimension || scaledHeight > maxDimension) {
+                                    const ratio = Math.min(maxDimension / scaledWidth, maxDimension / scaledHeight);
+                                    scaledWidth = Math.round(scaledWidth * ratio);
+                                    scaledHeight = Math.round(scaledHeight * ratio);
+                                }
 
+                                redrawCanvas(canvas, img, scaledWidth, scaledHeight);
                                 allCanvas.push({img, canvas, fileName: file.name});
 
                                 drawText(canvas, img, scaledWidth, scaledHeight);
@@ -456,7 +458,7 @@
             }
 
             let textSize = configInputSetting.size.value * Math.max(15, Math.min(scaledWidth, scaledHeight) / 25);
-            let textCtx = canvas.getContext('2d');
+            let textCtx = canvas.getContext('2d', { alpha: true });
             textCtx.fillStyle = makeStyle();
             textCtx.font = textSize + "px " + $("#fontSelect").value;
             textCtx.textRendering = 'optimizeLegibility';
@@ -518,6 +520,11 @@
             allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                 scaledWidth = img.width;
                 scaledHeight = img.height;
+                if (scaledWidth > 3840 || scaledHeight > 3840) {
+                    const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                    scaledWidth = Math.round(scaledWidth * ratio);
+                    scaledHeight = Math.round(scaledHeight * ratio);
+                }
                 drawText(canvas, img, scaledWidth, scaledHeight);
             });
         });
@@ -527,6 +534,11 @@
             allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                 scaledWidth = img.width;
                 scaledHeight = img.height;
+                if (scaledWidth > 3840 || scaledHeight > 3840) {
+                    const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                    scaledWidth = Math.round(scaledWidth * ratio);
+                    scaledHeight = Math.round(scaledHeight * ratio);
+                }
                 drawText(canvas, img, scaledWidth, scaledHeight);
             });
         });
@@ -541,6 +553,11 @@
                 allCanvas.forEach(({canvas, img, scaledWidth, scaledHeight}) => {
                     scaledWidth = img.width;
                     scaledHeight = img.height;
+                    if (scaledWidth > 3840 || scaledHeight > 3840) {
+                        const ratio = Math.min(3840 / scaledWidth, 3840 / scaledHeight);
+                        scaledWidth = Math.round(scaledWidth * ratio);
+                        scaledHeight = Math.round(scaledHeight * ratio);
+                    }
                     drawText(canvas, img, scaledWidth, scaledHeight);
                 });
             });
