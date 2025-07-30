@@ -23,7 +23,7 @@ const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
-const inviteCode = ref('') // 新增邀请码输入框
+const inviteCode = ref('')
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
@@ -40,29 +40,37 @@ const expandedNote = ref<string | null>(null)
 const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
 const lastSavedAt = ref<number | null>(null)
-const searchQuery = ref('')
 const currentPage = ref(1)
 const notesPerPage = 20
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
-const filteredNotes = ref<any[]>([])
 const maxNoteLength = 3000
 const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
+const isRestoringFromCache = ref(false)
+const searchQuery = ref('') // 搜索关键字状态
 
 const LOCAL_CONTENT_KEY = 'note_content'
+const LOCAL_NOTE_ID_KEY = 'note_id'
+
+// 计算过滤后的笔记列表，从 cachedNotes 搜索
+const filteredNotes = computed(() => {
+  if (!searchQuery.value.trim())
+    return notes.value
+  return cachedNotes.value.filter(note =>
+    note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
+  )
+})
 
 function addNoteToList(newNote) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
-    filteredNotes.value.unshift(newNote)
     cachedNotes.value.unshift(newNote)
-    if (currentPage.value === 1 && showNotesList.value) {
+    if (currentPage.value === 1 && showNotesList.value)
       notes.value = notes.value.slice(0, notesPerPage)
-      filteredNotes.value = filteredNotes.value.slice(0, notesPerPage)
-    }
+
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
@@ -83,7 +91,6 @@ function updateNoteInList(updatedNote) {
       arr[index] = { ...updatedNote }
   }
   updateInArray(notes.value)
-  updateInArray(filteredNotes.value)
   updateInArray(cachedNotes.value)
   const cachedPage = cachedPages.value.get(currentPage.value)
   if (cachedPage) {
@@ -120,9 +127,8 @@ async function fetchNotes() {
     const to = from + notesPerPage - 1
 
     const cachedPage = cachedPages.value.get(currentPage.value)
-    if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
+    if (cachedPage) {
       notes.value = cachedPage.notes.slice()
-      filteredNotes.value = notes.value
       totalNotes.value = cachedPage.totalNotes
       hasMoreNotes.value = cachedPage.hasMoreNotes
       hasPreviousNotes.value = cachedPage.hasPreviousNotes
@@ -132,21 +138,16 @@ async function fetchNotes() {
       return
     }
 
-    const query = supabase
+    const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
       .eq('user_id', user.value.id)
-    if (searchQuery.value)
-      query.ilike('content', `%${searchQuery.value}%`)
+      .order('updated_at', { ascending: false })
+      .range(from, to)
 
-    query.order('updated_at', { ascending: false })
-    query.range(from, to)
-
-    const { data, error, count } = await query
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
       notes.value = []
-      filteredNotes.value = []
       cachedNotes.value = []
       hasMoreNotes.value = false
       hasPreviousNotes.value = false
@@ -157,18 +158,15 @@ async function fetchNotes() {
 
     const newNotes = data || []
     totalNotes.value = count || 0
-    filteredNotes.value = searchQuery.value ? newNotes : newNotes.slice(0, notesPerPage)
-    notes.value = filteredNotes.value.slice(0, notesPerPage)
+    notes.value = newNotes.slice(0, notesPerPage)
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
 
-    if (!searchQuery.value) {
-      const existingIds = new Set(cachedNotes.value.map(n => n.id))
-      cachedNotes.value = [
-        ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
-        ...newNotes.filter(n => !existingIds.has(n.id)),
-      ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    }
+    const existingIds = new Set(cachedNotes.value.map(n => n.id))
+    cachedNotes.value = [
+      ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
+      ...newNotes.filter(n => !existingIds.has(n.id)),
+    ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 
     cachedPages.value.set(currentPage.value, {
       totalNotes: totalNotes.value,
@@ -181,7 +179,6 @@ async function fetchNotes() {
   catch (err) {
     messageHook.error(t('notes.fetch_error'))
     notes.value = []
-    filteredNotes.value = []
     cachedNotes.value = []
     hasMoreNotes.value = false
     hasPreviousNotes.value = false
@@ -197,10 +194,9 @@ async function fetchNotes() {
 async function nextPage() {
   const targetPage = currentPage.value + 1
   const cachedPage = cachedPages.value.get(targetPage)
-  if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
+  if (cachedPage) {
     currentPage.value = targetPage
     notes.value = cachedPage.notes.slice()
-    filteredNotes.value = notes.value
     totalNotes.value = cachedPage.totalNotes
     hasMoreNotes.value = cachedPage.hasMoreNotes
     hasPreviousNotes.value = cachedPage.hasPreviousNotes
@@ -216,10 +212,9 @@ async function previousPage() {
   if (currentPage.value > 1) {
     const targetPage = currentPage.value - 1
     const cachedPage = cachedPages.value.get(targetPage)
-    if (cachedPage && (!searchQuery.value || cachedNotes.value.some(note => note.content.toLowerCase().includes(searchQuery.value.toLowerCase())))) {
+    if (cachedPage) {
       currentPage.value = targetPage
       notes.value = cachedPage.notes.slice()
-      filteredNotes.value = notes.value
       totalNotes.value = cachedPage.totalNotes
       hasMoreNotes.value = cachedPage.hasMoreNotes
       hasPreviousNotes.value = cachedPage.hasPreviousNotes
@@ -238,13 +233,6 @@ function truncateContent(text: string, maxLength: number = 150) {
   return `${text.slice(0, maxLength)}...`
 }
 
-function highlightText(text: string, query: string) {
-  if (!query)
-    return text
-  const regex = new RegExp(`(${query})`, 'gi')
-  return text.replace(regex, '<span class="highlight">$1</span>')
-}
-
 function generateUniqueId() {
   return uuidv4()
 }
@@ -254,16 +242,13 @@ function toggleExpand(noteId: string) {
 }
 
 async function saveNote({ showMessage = false } = {}) {
-  if (!content.value)
+  if (!content.value || !user.value?.id)
     return null
-  if (!user.value?.id)
-    return null
-
   if (content.value.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  if (content.value.trim() === editingNote.value?.content?.trim()) {
+  if (editingNote.value && content.value.trim() === editingNote.value.content?.trim()) {
     if (showMessage)
       messageHook.info(t('notes.no_changes'))
     return null
@@ -278,55 +263,72 @@ async function saveNote({ showMessage = false } = {}) {
 
   let savedNote
   try {
-    if (lastSavedId.value) {
+    const noteId = lastSavedId.value || editingNote.value?.id
+    if (noteId) {
       const { data, error } = await supabase
         .from('notes')
-        .update(note)
-        .eq('id', lastSavedId.value)
+        .select('*')
+        .eq('id', noteId)
         .eq('user_id', user.value.id)
-        .select()
-      if (error || !data?.length) {
-        messageHook.error(t('notes.operation_error'))
-        lastSavedId.value = null
-        return null
+        .single()
+      if (data && !error) {
+        const { data: updatedData, error: updateError } = await supabase
+          .from('notes')
+          .update(note)
+          .eq('id', noteId)
+          .eq('user_id', user.value.id)
+          .select()
+        if (updateError || !updatedData?.length)
+          throw new Error('更新失败')
+
+        savedNote = updatedData[0]
+        updateNoteInList(savedNote)
       }
-      savedNote = data[0]
-      updateNoteInList(savedNote)
-    }
-    else if (editingNote.value?.id) {
-      const { data, error } = await supabase
-        .from('notes')
-        .update(note)
-        .eq('id', editingNote.value.id)
-        .eq('user_id', user.value.id)
-        .select()
-      if (error || !data?.length) {
-        messageHook.error(t('notes.operation_error'))
-        editingNote.value = null
-        return null
+      else {
+        const newId = generateUniqueId()
+        const { data: insertedData, error: insertError } = await supabase
+          .from('notes')
+          .insert({ ...note, id: newId })
+          .select()
+        if (insertError || !insertedData?.length)
+          throw new Error('插入失败：无法创建新笔记')
+
+        savedNote = insertedData[0]
+        addNoteToList(savedNote)
+        lastSavedId.value = savedNote.id
       }
-      savedNote = data[0]
-      lastSavedId.value = savedNote.id
-      updateNoteInList(savedNote)
     }
     else {
       const newId = generateUniqueId()
-      const { data, error } = await supabase
+      const { data: insertedData, error: insertError } = await supabase
         .from('notes')
         .insert({ ...note, id: newId })
         .select()
-      if (error || !data?.length)
+      if (insertError || !insertedData?.length)
         throw new Error('插入失败：无法创建新笔记')
-      savedNote = data[0]
-      lastSavedId.value = savedNote.id
+
+      savedNote = insertedData[0]
       addNoteToList(savedNote)
+      lastSavedId.value = savedNote.id
     }
 
+    localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
     lastSavedAt.value = now
-    lastSavedTime.value = new Date(now).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '.')
-    if (showMessage)
+    lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).replace(/\//g, '.')
+    if (showMessage) {
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
+      content.value = ''
+      lastSavedId.value = null
+      editingNote.value = null
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+    }
     return savedNote
   }
   catch (error) {
@@ -336,17 +338,45 @@ async function saveNote({ showMessage = false } = {}) {
 }
 
 const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id)
+  if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
 }, 12000)
 
 onMounted(async () => {
-  // 恢复本地缓存的输入内容
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  if (savedContent)
-    content.value = savedContent
+  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
 
-  // 恢复会话
+  if (savedContent && savedNoteId) {
+    isRestoringFromCache.value = true
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('id', savedNoteId)
+        .eq('user_id', session.user.id)
+        .single()
+      if (!error && data) {
+        editingNote.value = data
+        lastSavedId.value = savedNoteId
+        content.value = savedContent
+      }
+      else {
+        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+        content.value = savedContent
+      }
+    }
+    else {
+      content.value = savedContent
+    }
+    isRestoringFromCache.value = false
+  }
+  else if (savedContent) {
+    isRestoringFromCache.value = true
+    content.value = savedContent
+    isRestoringFromCache.value = false
+  }
+
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error) {
     messageHook.error(t('auth.session_restore_error'))
@@ -365,7 +395,6 @@ onMounted(async () => {
     }
   }
 
-  // 监听会话变化
   supabase.auth.onAuthStateChange(async (_event, session) => {
     const prevUser = user.value
     user.value = session?.user ?? null
@@ -394,6 +423,8 @@ onMounted(async () => {
         router.replace('/setting')
       }
       lastSavedId.value = null
+      editingNote.value = null
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
       mode.value = 'login'
       isNotesCached.value = false
       cachedNotes.value = []
@@ -407,25 +438,17 @@ onUnmounted(() => {
     clearInterval(autoSaveInterval)
     autoSaveInterval = null
   }
+  debouncedSaveNote.cancel()
 })
 
 watchEffect(async () => {
-  if (!user.value)
+  if (!user.value || isRestoringFromCache.value)
     return
   if (!isNotesCached.value)
     await fetchNotes()
 })
 
-watch(searchQuery, debounce(() => {
-  if (showNotesList.value) {
-    currentPage.value = 1
-    isNotesCached.value = false
-    fetchNotes()
-  }
-}, 300))
-
-watch(content, async (val) => {
-  // 保存输入内容到本地缓存
+watch(content, async (val, oldVal) => {
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
   else
@@ -437,7 +460,6 @@ watch(content, async (val) => {
     return
   }
 
-  // 检查会话状态
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error || !session?.user)
     return
@@ -445,7 +467,8 @@ watch(content, async (val) => {
   if (!user.value?.id)
     return
 
-  debouncedSaveNote()
+  if (val && val !== oldVal && !isRestoringFromCache.value)
+    debouncedSaveNote()
 })
 
 async function handleSubmit() {
@@ -464,6 +487,8 @@ async function handleSubmit() {
       editingNote.value = null
       lastSavedId.value = null
       lastSavedAt.value = null
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
   catch (err) {
@@ -480,6 +505,7 @@ function toggleNotesList() {
     currentPage.value = 1
     fetchNotes()
   }
+  searchQuery.value = '' // 清空搜索框
 }
 
 function handleEdit(note: any) {
@@ -488,6 +514,7 @@ function handleEdit(note: any) {
   editingNote.value = { ...note }
   content.value = note.content
   lastSavedId.value = note.id
+  localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
 }
 
 async function handleDelete(id: string) {
@@ -505,7 +532,6 @@ async function handleDelete(id: string) {
     if (error)
       throw new Error(error.message || '删除失败')
     notes.value = notes.value.filter(note => note.id !== id)
-    filteredNotes.value = filteredNotes.value.filter(note => note.id !== id)
     cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
     totalNotes.value -= 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
@@ -519,6 +545,8 @@ async function handleDelete(id: string) {
     if (id === lastSavedId.value) {
       content.value = ''
       lastSavedId.value = null
+      editingNote.value = null
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
     }
     messageHook.success(t('notes.delete_success'))
   }
@@ -542,7 +570,7 @@ function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   message.value = ''
   password.value = ''
   passwordConfirm.value = ''
-  inviteCode.value = '' // 重置邀请码
+  inviteCode.value = ''
   resetEmailSent.value = false
 }
 
@@ -552,7 +580,6 @@ async function handleSubmitAuth() {
       message.value = t('auth.messages.passwords_do_not_match')
       return
     }
-    // 验证邀请码
     const { data, error } = await supabase
       .from('invite_codes')
       .select('code')
@@ -658,24 +685,21 @@ function goHomeAndRefresh() {
             </div>
           </form>
           <div v-if="showNotesList" class="notes-list h-80">
-            <div class="notes-list-header">
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="$t('notes.search_placeholder')"
-                class="search-input"
-                @keyup.enter="fetchNotes()"
-              >
-            </div>
+            <input
+              v-model="searchQuery"
+              type="text"
+              :placeholder="$t('notes.search_placeholder')"
+              class="mb-2 w-full border rounded p-2"
+            >
             <div v-if="isLoadingNotes" class="py-4 text-center text-gray-500">
               {{ $t('notes.loading') }}
             </div>
-            <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
+            <div v-else-if="filteredNotes.length === 0" class="py-4 text-center text-gray-500">
               {{ $t('notes.no_notes') }}
             </div>
             <div v-else class="space-y-6">
               <div
-                v-for="note in notes"
+                v-for="note in filteredNotes"
                 :key="note.id"
                 class="block cursor-pointer rounded-lg bg-gray-100 shadow-md p-1"
                 @click="toggleExpand(note.id)"
@@ -685,14 +709,16 @@ function goHomeAndRefresh() {
                     v-if="expandedNote === note.id"
                     class="whitespace-pre-wrap text-sm text-gray-700"
                     style="font-size: 14px !important; line-height: 1.6;"
-                    v-html="highlightText(note.content, searchQuery.value)"
-                  />
+                  >
+                    {{ note.content }}
+                  </p>
                   <p
                     v-else
                     class="truncate text-sm text-gray-700"
                     style="font-size: 14px !important; line-height: 1.6;"
-                    v-html="highlightText(truncateContent(note.content), searchQuery.value)"
-                  />
+                  >
+                    {{ truncateContent(note.content) }}
+                  </p>
                   <p class="text-xxs text-gray-500" style="font-size: 10px !important; line-height: 1.0;">
                     {{ $t('notes.updated_at') }}: {{ new Date(note.updated_at).toLocaleString() }}
                   </p>
@@ -1051,7 +1077,6 @@ form .emoji-bar .form-button {
   background: #d3d3d3;
   color: #111;
 }
-
 .dark form .emoji-bar .form-button {
   background-color: #404040;
   color: #fff;
@@ -1112,38 +1137,6 @@ form .emoji-bar .form-button:disabled {
   color: #aaa;
 }
 
-.notes-list-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.25rem;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background-color: #fff;
-  color: #111;
-}
-
-.dark .search-input {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-
-.search-input:focus {
-  border-color: #00b386;
-  outline: none;
-}
-
-.highlight {
-  background-color: #ffff00;
-  color: #000;
-}
-
 .notes-list .form-button {
   padding: 0.5rem 1rem;
   font-size: 14px;
@@ -1161,6 +1154,25 @@ form .emoji-bar .form-button:disabled {
 .notes-list .form-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.notes-list input {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  color: #111;
+}
+.dark .notes-list input {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #ffffff;
+}
+.notes-list input:focus {
+  border-color: #00b386;
+  outline: none;
 }
 </style>
 
