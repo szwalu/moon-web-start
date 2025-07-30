@@ -505,7 +505,7 @@ function toggleNotesList() {
     currentPage.value = 1
     fetchNotes()
   }
-  searchQuery.value = '' // 清空搜索框
+  searchQuery.value = '' // 清空搜索框。
 }
 
 function handleEdit(note: any) {
