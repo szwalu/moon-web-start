@@ -248,11 +248,6 @@ async function saveNote({ showMessage = false } = {}) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  if (editingNote.value && content.value.trim() === editingNote.value.content?.trim()) {
-    if (showMessage)
-      messageHook.info(t('notes.no_changes'))
-    return null
-  }
 
   const now = Date.now()
   const note = {
@@ -684,7 +679,7 @@ function goHomeAndRefresh() {
               </button>
             </div>
           </form>
-          <div v-if="showNotesList" class="notes-list h-80">
+          <div v-if="showNotesList" class="notes-list h-80 overflow-auto">
             <input
               v-model="searchQuery"
               type="text"
@@ -701,7 +696,7 @@ function goHomeAndRefresh() {
               <div
                 v-for="note in filteredNotes"
                 :key="note.id"
-                class="block cursor-pointer rounded-lg bg-gray-100 shadow-md p-1"
+                class="mb-3 block w-full cursor-pointer rounded-lg bg-gray-100 shadow-md p-4"
                 @click="toggleExpand(note.id)"
               >
                 <div class="flex-1 min-w-0">
@@ -723,20 +718,21 @@ function goHomeAndRefresh() {
                     {{ $t('notes.updated_at') }}: {{ new Date(note.updated_at).toLocaleString() }}
                   </p>
                 </div>
-                <div class="mt-2 flex space-x-3">
+                <div class="mt-3 flex justify-between">
                   <button
-                    class="text-xs text-blue-500 hover:underline"
+                    class="edit-btn action-button"
                     style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
                     :disabled="loading"
-                    @click="handleEdit(note)"
+                    @click.stop="handleEdit(note)"
                   >
                     {{ $t('notes.edit') }}
                   </button>
+                  <div class="w-4" />
                   <button
-                    class="text-xs text-red-500 hover:underline"
+                    class="action-button delete-btn"
                     style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
                     :disabled="loading"
-                    @click="handleDelete(note.id)"
+                    @click.stop="handleDelete(note.id)"
                   >
                     {{ $t('notes.delete') }}
                   </button>
@@ -1174,6 +1170,14 @@ form .emoji-bar .form-button:disabled {
   border-color: #00b386;
   outline: none;
 }
+
+@media (max-width: 640px) {
+  .action-button {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.875rem !important;
+    min-width: 80px;
+  }
+}
 </style>
 
 <style>
@@ -1218,5 +1222,21 @@ html {
 .dark .toggle-left a,
 .dark .toggle-right a {
   color: #2dd4bf;
+}
+
+/* 在style区域添加 */
+.edit-btn {
+  background-color: #e9f7fe !important;
+  color: #0c7abf !important;
+  border: 1px solid #bae0f7 !important;
+}
+.delete-btn {
+  background-color: #fef0f0 !important;
+  color: #e53e3e !important;
+  border: 1px solid #fbd5d5 !important;
+}
+.mt-3.flex > button {
+  margin: 0 0.5rem !important; /* 增加左右间距 */
+  flex-grow: 1; /* 等宽分配 */
 }
 </style>
