@@ -278,7 +278,7 @@
     <div class="align-center-box">
         <div class="control-group">
             <label for="color">颜色</label>
-            <input type="color" id="color" value="#FFFFFF">
+            <input type="color" id="color" value="#000000">
             <label class="label" id="label-color"></label>
         </div>
 
@@ -307,23 +307,23 @@
     </div>
 
     <div class="align-center-box">
-        <label for="text">第三步：点击图片进行单个图片下载</label>
+        <label for="text">第三步：手机端点击图片进行单个图片下载，电脑端可👉</label>
         <button onclick="downloadAllPic()">下载全部</button>
         <div class="format-group">
             <label>
                 PNG格式
-                <input type="radio" value="image/png" name="pic-type" class="pic-type" checked>
+                <input type="radio" value="image/png" name="pic-type" class="pic-type">
             </label>
             <label>
                 JPEG格式
-                <input type="radio" value="image/jpeg" name="pic-type" class="pic-type">
+                <input type="radio" value="image/jpeg" name="pic-type" class="pic-type" checked>
             </label>
             <label>
                 Webp格式
                 <input type="radio" value="image/webp" name="pic-type" class="pic-type">
             </label>
         </div>
-        <span id="pic-quality-div" style="display: none">
+        <span id="pic-quality-div" style="display: block">
             <label for="pic-quality">图像质量</label>
             <input type="range" id="pic-quality" min="1" max="100" step="1" autocomplete="off" value="95">
             <label class="label" id="label-pic-quality"></label>
