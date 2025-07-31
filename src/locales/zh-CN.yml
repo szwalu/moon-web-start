@@ -128,6 +128,7 @@ form:
     applySite: 申请收录网站
     applyLink: 申请友情链接
     feedback: 意见反馈
+    applyinvitecode: 申请邀请码
   messageLabel: 请输入
   emailLabel: 联系邮箱（可选）
   submit: 提交
@@ -204,6 +205,8 @@ auth:
   session_refresh_error: 会话刷新失败，请重新登录
   invite_code: 邀请码
   invite_code_placeholder: 请输入五位数字邀请码
+  password_placeholder: 请输入六位数字或字母
+  login_password_placeholder: 请输入六位数字或字母密码
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -233,7 +236,7 @@ notes:
   notes: 笔 记
   save_note: 保存
   more_notes: 更多笔记>>
-  content_placeholder: 写点什么。。。
+  content_placeholder: 写点什么...
   add_success: 添加成功
   add_error: 添加失败
   update_success: 更新成功
@@ -242,7 +245,7 @@ notes:
   delete_success: 删除成功
   delete_error: 删除失败
   update_note: 更新笔记
-  loading: 载入中。。。
+  loading: 载入中...
   no_notes: 没有笔记
   updated_at: 修改时间
   edit: 编辑
@@ -254,6 +257,4 @@ notes:
   auto_saved: 保存成功
   char_count: 字数
   session_expired: 会话已过期，请刷新网页或重新登录
-  max_notes_exceeded: 已达到笔记数量上限
-  notes_count: 笔记数量
   no_changes: 内容未更改，无需保存

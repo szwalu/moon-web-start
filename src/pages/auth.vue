@@ -778,11 +778,21 @@ function goHomeAndRefresh() {
         </label>
         <label v-if="mode !== 'forgotPassword'">
           {{ $t('auth.password') }}
-          <input v-model="password" type="password" required>
+          <input
+            v-model="password"
+            type="password"
+            :placeholder="mode === 'register' ? $t('auth.password_placeholder') : $t('auth.login_password_placeholder')"
+            required
+          >
         </label>
         <label v-if="mode === 'register'">
           {{ $t('auth.confirm_password') }}
-          <input v-model="passwordConfirm" type="password" required>
+          <input
+            v-model="passwordConfirm"
+            type="password"
+            :placeholder="$t('auth.password_placeholder')"
+            required
+          >
         </label>
         <label v-if="mode === 'register'">
           {{ $t('auth.invite_code') }}

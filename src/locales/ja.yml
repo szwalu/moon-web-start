@@ -202,6 +202,8 @@ auth:
   last_saved: 最終保存
   invite_code: 招待コード
   invite_code_placeholder: 5桁の招待コードを入力してください
+  password_placeholder: 6桁の数字または文字を入力してください
+  login_password_placeholder: 6桁の数字または文字のパスワードを入力してください
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
@@ -252,6 +254,4 @@ notes:
   auto_saved: 保存しました
   char_count: 文字数
   session_expired: セッションの有効期限が切れました。ページを再読み込みするか、再ログインしてください。
-  max_notes_exceeded: ノートの最大数に達しました
-  notes_count: ノート数
   no_changes: 内容が変更されていないため、保存は不要です

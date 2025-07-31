@@ -203,6 +203,8 @@ auth:
   last_saved: Last saved
   invite_code: Invite Code
   invite_code_placeholder: Please enter the five-digit invite code
+  password_placeholder: Please enter six digits or letters
+  login_password_placeholder: Please enter a six-digit numeric or alphabetic password
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
@@ -253,6 +255,4 @@ notes:
   auto_saved: Saved successfully
   char_count: Character count
   session_expired: Session expired. Please refresh or log in again.
-  max_notes_exceeded: Maximum number of notes reached
-  notes_count: Total notes
   no_changes: No changes made, save not necessary
