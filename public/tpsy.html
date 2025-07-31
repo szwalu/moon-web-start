@@ -407,25 +407,37 @@
         };
 
         const downloadCanvasAsImage = (canvas, fileName) => {
-            let type = configInputSetting["pic-type"] || "image/jpeg";
-            let link = document.createElement('a');
-            link.download = fileName + "_watermark." + type.split("/")[1];
-            let quality = type === "image/png" ? undefined : parseFloat($("#pic-quality").value) / 100;
-            let imageData = canvas.toDataURL(type, quality);
-            let blob = dataURItoBlob(imageData, type);
-            link.href = URL.createObjectURL(blob);
-            graph.appendChild(link);
-            setTimeout(() => {
-                link.click();
-                graph.removeChild(link);
-            }, 10);
-        };
+    // 检查水印文字是否为空
+    if (!configInputSetting.text.value.trim()) {
+        alert('请先输入水印文字！');
+        return;
+    }
+    
+    let type = configInputSetting["pic-type"] || "image/jpeg";
+    let link = document.createElement('a');
+    link.download = fileName + "_watermark." + type.split("/")[1];
+    let quality = type === "image/png" ? undefined : parseFloat($("#pic-quality").value) / 100;
+    let imageData = canvas.toDataURL(type, quality);
+    let blob = dataURItoBlob(imageData, type);
+    link.href = URL.createObjectURL(blob);
+    graph.appendChild(link);
+    setTimeout(() => {
+        link.click();
+        graph.removeChild(link);
+    }, 10);
+};
 
         const downloadAllPic = async () => {
-            allCanvas.forEach(({canvas, img, fileName}) => {
-                downloadCanvasAsImage(canvas, fileName);
-            });
-        };
+    // 检查水印文字是否为空
+    if (!configInputSetting.text.value.trim()) {
+        alert('请先输入水印文字！');
+        return;
+    }
+    
+    allCanvas.forEach(({canvas, fileName}) => {
+        downloadCanvasAsImage(canvas, fileName);
+    });
+};
 
         let readFile = file => {
             if (!file) {
