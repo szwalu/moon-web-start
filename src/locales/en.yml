@@ -254,5 +254,12 @@ notes:
   previous_page: Previous Page
   auto_saved: Saved successfully
   char_count: Character count
-  session_expired: Session expired. Please refresh or log in again.
-  no_changes: No changes made, save not necessary
+  session_expired: Session expired. Please refresh or log in again
+  export: Export
+  export_success: Export successful
+  export_error: Export failed
+  export_empty: Cannot export empty note
+  delete_confirm_title: Delete Confirmation
+  delete_confirm_content: Are you sure you want to delete this note?
+  confirm_delete: Confirm Delete
+  cancel: Cancel

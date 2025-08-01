@@ -253,5 +253,12 @@ notes:
   previous_page: 前のページ
   auto_saved: 保存しました
   char_count: 文字数
-  session_expired: セッションの有効期限が切れました。ページを再読み込みするか、再ログインしてください。
-  no_changes: 内容が変更されていないため、保存は不要です
+  session_expired: セッションの有効期限が切れました。ページを再読み込みするか、再ログインしてください
+  export: エクスポート
+  export_success: エクスポート成功
+  export_error: エクスポート失敗
+  export_empty: 空のノートはエクスポートできません
+  delete_confirm_title: 削除の確認
+  delete_confirm_content: このノートを削除してもよろしいですか？
+  confirm_delete: 削除を確認
+  cancel: キャンセル

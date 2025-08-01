@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } f
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -54,6 +54,8 @@ const searchQuery = ref('') // 搜索关键字状态
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
+
+const dialog = useDialog()
 
 // 计算过滤后的笔记列表，从 cachedNotes 搜索
 const filteredNotes = computed(() => {
@@ -547,58 +549,61 @@ async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
 
-  // 添加 ESLint 禁用注释 - 确保格式正确
-  // eslint-disable-next-line no-alert
-  const isConfirmed = window.confirm(t('notes.delete_confirm'))
+  // 使用 Naive UI 对话框
+  dialog.warning({
+    title: t('notes.delete_confirm_title'),
+    content: t('notes.delete_confirm_content'),
+    positiveText: t('notes.confirm_delete'),
+    negativeText: t('notes.cancel'),
+    onPositiveClick: async () => {
+      try {
+        loading.value = true
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.value.id)
 
-  if (isConfirmed) {
-    try {
-      loading.value = true
-      const { error } = await supabase
-        .from('notes')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.value.id)
+        if (error)
+          throw new Error(error.message || '删除失败')
 
-      if (error)
-        throw new Error(error.message || '删除失败')
+        // 更新本地数据
+        notes.value = notes.value.filter(note => note.id !== id)
+        cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
+        totalNotes.value -= 1
 
-      // 更新本地数据
-      notes.value = notes.value.filter(note => note.id !== id)
-      cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
-      totalNotes.value -= 1
+        // 更新缓存页面
+        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+        hasPreviousNotes.value = currentPage.value > 1
 
-      // 更新缓存页面
-      hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-      hasPreviousNotes.value = currentPage.value > 1
+        if (cachedPages.value.has(currentPage.value)) {
+          cachedPages.value.set(currentPage.value, {
+            ...cachedPages.value.get(currentPage.value),
+            totalNotes: totalNotes.value,
+            hasMoreNotes: hasMoreNotes.value,
+            hasPreviousNotes: hasPreviousNotes.value,
+            notes: notes.value.filter(n => n.id !== id),
+          })
+        }
 
-      if (cachedPages.value.has(currentPage.value)) {
-        cachedPages.value.set(currentPage.value, {
-          ...cachedPages.value.get(currentPage.value),
-          totalNotes: totalNotes.value,
-          hasMoreNotes: hasMoreNotes.value,
-          hasPreviousNotes: hasPreviousNotes.value,
-          notes: notes.value.filter(n => n.id !== id),
-        })
+        // 处理当前编辑的笔记
+        if (id === lastSavedId.value) {
+          content.value = ''
+          lastSavedId.value = null
+          editingNote.value = null
+          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+        }
+
+        messageHook.success(t('notes.delete_success'))
       }
-
-      // 处理当前编辑的笔记
-      if (id === lastSavedId.value) {
-        content.value = ''
-        lastSavedId.value = null
-        editingNote.value = null
-        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+      catch (err) {
+        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
       }
-
-      messageHook.success(t('notes.delete_success'))
-    }
-    catch (err) {
-      messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
-    }
-    finally {
-      loading.value = false
-    }
-  }
+      finally {
+        loading.value = false
+      }
+    },
+  })
 }
 
 async function handleLogout() {
