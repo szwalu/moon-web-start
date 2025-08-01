@@ -257,4 +257,7 @@ notes:
   auto_saved: 保存成功
   char_count: 字数
   session_expired: 会话已过期，请刷新网页或重新登录
-  no_changes: 内容未更改，无需保存
+  export: 导出
+  export_success: 导出成功
+  export_error: 导出失败
+  export_empty: 无法导出空笔记

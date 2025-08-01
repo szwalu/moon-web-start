@@ -84,6 +84,37 @@ function addNoteToList(newNote) {
   }
 }
 
+async function handleExport(note: any) {
+  if (!note || !note.content) {
+    messageHook.warning(t('notes.export_empty'))
+    return
+  }
+
+  try {
+    // 创建Blob对象
+    const blob = new Blob([note.content], { type: 'text/plain' })
+    // 创建下载链接
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    // 生成文件名：笔记内容前20个字符+日期
+    const fileName = `note_${note.id.substring(0, 8)}_${new Date(note.updated_at).toISOString().split('T')[0]}.txt`
+    a.download = fileName
+    document.body.appendChild(a)
+    a.click()
+    // 清理
+    setTimeout(() => {
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }, 100)
+
+    messageHook.success(t('notes.export_success'))
+  }
+  catch (error) {
+    messageHook.error(`${t('notes.export_error')}: ${error.message}`)
+  }
+}
+
 function updateNoteInList(updatedNote) {
   const updateInArray = (arr: any[]) => {
     const index = arr.findIndex(n => n.id === updatedNote.id)
@@ -512,44 +543,61 @@ function handleEdit(note: any) {
   localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
 }
 
-async function handleDelete(id: string) {
-  if (!id || !user.value?.id) {
-    messageHook.error('无效的笔记ID或未登录')
+async function triggerDeleteConfirmation(id: string) {
+  if (!id || !user.value?.id)
     return
-  }
-  try {
-    loading.value = true
-    const { error } = await supabase
-      .from('notes')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.value.id)
-    if (error)
-      throw new Error(error.message || '删除失败')
-    notes.value = notes.value.filter(note => note.id !== id)
-    cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
-    totalNotes.value -= 1
-    hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-    hasPreviousNotes.value = currentPage.value > 1
-    cachedPages.value.set(currentPage.value, {
-      totalNotes: totalNotes.value,
-      hasMoreNotes: hasMoreNotes.value,
-      hasPreviousNotes: hasPreviousNotes.value,
-      notes: notes.value.slice(),
-    })
-    if (id === lastSavedId.value) {
-      content.value = ''
-      lastSavedId.value = null
-      editingNote.value = null
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+
+  // 添加 ESLint 禁用注释 - 确保格式正确
+  // eslint-disable-next-line no-alert
+  const isConfirmed = window.confirm(t('notes.delete_confirm'))
+
+  if (isConfirmed) {
+    try {
+      loading.value = true
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.value.id)
+
+      if (error)
+        throw new Error(error.message || '删除失败')
+
+      // 更新本地数据
+      notes.value = notes.value.filter(note => note.id !== id)
+      cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
+      totalNotes.value -= 1
+
+      // 更新缓存页面
+      hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+      hasPreviousNotes.value = currentPage.value > 1
+
+      if (cachedPages.value.has(currentPage.value)) {
+        cachedPages.value.set(currentPage.value, {
+          ...cachedPages.value.get(currentPage.value),
+          totalNotes: totalNotes.value,
+          hasMoreNotes: hasMoreNotes.value,
+          hasPreviousNotes: hasPreviousNotes.value,
+          notes: notes.value.filter(n => n.id !== id),
+        })
+      }
+
+      // 处理当前编辑的笔记
+      if (id === lastSavedId.value) {
+        content.value = ''
+        lastSavedId.value = null
+        editingNote.value = null
+        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+      }
+
+      messageHook.success(t('notes.delete_success'))
     }
-    messageHook.success(t('notes.delete_success'))
-  }
-  catch (err) {
-    messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
-  }
-  finally {
-    loading.value = false
+    catch (err) {
+      messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+    }
+    finally {
+      loading.value = false
+    }
   }
 }
 
@@ -718,6 +766,8 @@ function goHomeAndRefresh() {
                     {{ $t('notes.updated_at') }}: {{ new Date(note.updated_at).toLocaleString() }}
                   </p>
                 </div>
+
+                <!-- 这里是修复后的按钮区域 -->
                 <div class="mt-3 flex justify-between">
                   <button
                     class="edit-btn action-button"
@@ -727,15 +777,24 @@ function goHomeAndRefresh() {
                   >
                     {{ $t('notes.edit') }}
                   </button>
-                  <div class="w-4" />
-                  <button
-                    class="action-button delete-btn"
-                    style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
-                    :disabled="loading"
-                    @click.stop="handleDelete(note.id)"
-                  >
-                    {{ $t('notes.delete') }}
-                  </button>
+                  <div class="flex space-x-2">
+                    <button
+                      class="action-button export-btn"
+                      style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
+                      :disabled="loading"
+                      @click.stop="handleExport(note)"
+                    >
+                      {{ $t('notes.export') }}
+                    </button>
+                    <button
+                      class="action-button delete-btn"
+                      style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
+                      :disabled="loading"
+                      @click.stop="triggerDeleteConfirmation(note.id)"
+                    >
+                      {{ $t('notes.delete') }}
+                    </button>
+                  </div>
                 </div>
               </div>
               <div v-if="hasPreviousNotes || hasMoreNotes" class="mt-4 flex justify-center text-center gap-4">
@@ -1248,5 +1307,16 @@ html {
 .mt-3.flex > button {
   margin: 0 0.5rem !important; /* 增加左右间距 */
   flex-grow: 1; /* 等宽分配 */
+}
+
+.export-btn {
+  background-color: #f0fdf4 !important;
+  color: #16a34a !important;
+  border: 1px solid #bbf7d0 !important;
+}
+
+/* 调整按钮间距 */
+.flex.space-x-2 > button {
+  margin-left: 0.5rem;
 }
 </style>
