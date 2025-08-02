@@ -262,8 +262,10 @@ function toggleExpand(noteId: string) {
 }
 
 async function saveNote({ showMessage = false } = {}) {
+  // console.log('saveNote triggered') // 调试日志：确认函数触发
   if (!content.value || !user.value?.id) {
     if (!user.value?.id) {
+      // console.error('saveNote: No user session')
       messageHook.error(t('auth.session_expired'))
       setMode('login')
     }
@@ -349,6 +351,7 @@ async function saveNote({ showMessage = false } = {}) {
     return savedNote
   }
   catch (error) {
+    // console.error('saveNote failed:', error.message)
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
@@ -396,6 +399,7 @@ onMounted(async () => {
 
   const { data: { session }, error } = await supabase.auth.getSession()
   if (error) {
+    // console.error('Initial session check failed:', error.message)
     messageHook.error(t('auth.session_restore_error'))
   }
   else {
@@ -413,6 +417,7 @@ onMounted(async () => {
   }
 
   supabase.auth.onAuthStateChange(async (_event, session) => {
+    // console.log('onAuthStateChange triggered:', _event, !!session) // 调试日志
     const prevUser = user.value
     user.value = session?.user ?? null
     if (session) {
@@ -432,6 +437,7 @@ onMounted(async () => {
     else {
       lastBackupTime.value = 'N/A'
       if (prevUser) {
+        console.warn('Session expired, clearing state')
         messageHook.warning(t('auth.session_expired'))
         lastSavedTime.value = ''
         lastSavedAt.value = null
@@ -474,9 +480,24 @@ watch(content, async (val, oldVal) => {
     return
   }
 
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error || !session?.user)
+  // 优化自动保存会话检查，添加重试机制
+  let retries = 2
+  let sessionValid = false
+  while (retries > 0) {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (!error && session?.user) {
+      sessionValid = true
+      break
+    }
+    console.warn(`Auto-save session check failed, retrying (${retries} left):`, error?.message)
+    retries--
+    await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
+  }
+
+  if (!sessionValid) {
+    console.error('Auto-save: No valid session after retries')
     return
+  }
 
   if (val && val !== oldVal && !isRestoringFromCache.value)
     debouncedSaveNote()
@@ -484,25 +505,32 @@ watch(content, async (val, oldVal) => {
 
 async function handleSubmit() {
   // console.log('handleSubmit triggered') // 调试日志：确认函数触发
+  // 延长超时时间到 30 秒，适应网络延迟
   const timeout = setTimeout(() => {
+    // console.error('handleSubmit timed out')
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
     user.value = null
     setMode('login')
-  }, 10000)
+  }, 30000)
 
   try {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (error) {
-      console.error('Session check failed:', error.message)
-      messageHook.error(t('auth.session_expired'))
-      user.value = null
-      setMode('login')
-      clearTimeout(timeout)
-      return
+    // 优化会话检查，添加重试机制
+    let retries = 2
+    let session = null
+    while (retries > 0) {
+      const { data, error } = await supabase.auth.getSession()
+      if (!error && data.session?.user) {
+        session = data.session
+        break
+      }
+      console.warn(`Session check failed, retrying (${retries} left):`, error?.message)
+      retries--
+      await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
     }
+
     if (!session?.user) {
-      console.error('No active session')
+      // console.error('No active session after retries')
       messageHook.error(t('auth.session_expired'))
       user.value = null
       setMode('login')
@@ -519,7 +547,7 @@ async function handleSubmit() {
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
-      // console.log('Save successful:', saved.id) // 调试日志：确认保存成功
+    //  console.log('Save successful:', saved.id) // 调试日志：确认保存成功
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
@@ -529,7 +557,7 @@ async function handleSubmit() {
     }
   }
   catch (err) {
-    console.error('Save failed:', err.message)
+    // console.error('Save failed:', err.message)
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
