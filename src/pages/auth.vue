@@ -291,6 +291,11 @@ async function saveNote({ showMessage = false } = {}) {
 
   let savedNote
   try {
+    // ✅ 强制刷新 Supabase 会话，确保 token 最新
+    const { error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError)
+      throw new Error('登录状态失效，请重新登录')
+
     const noteId = lastSavedId.value || editingNote.value?.id
     if (noteId) {
       const { data, error } = await supabase
@@ -299,6 +304,7 @@ async function saveNote({ showMessage = false } = {}) {
         .eq('id', noteId)
         .eq('user_id', user.value.id)
         .single()
+
       if (data && !error) {
         const { data: updatedData, error: updateError } = await supabase
           .from('notes')
@@ -306,8 +312,9 @@ async function saveNote({ showMessage = false } = {}) {
           .eq('id', noteId)
           .eq('user_id', user.value.id)
           .select()
+
         if (updateError || !updatedData?.length)
-          throw new Error('更新失败')
+          throw new Error(updateError?.message || '更新失败')
 
         savedNote = updatedData[0]
         updateNoteInList(savedNote)
@@ -319,7 +326,7 @@ async function saveNote({ showMessage = false } = {}) {
           .insert({ ...note, id: newId })
           .select()
         if (insertError || !insertedData?.length)
-          throw new Error('插入失败：无法创建新笔记')
+          throw new Error(insertError?.message || '插入失败：无法创建新笔记')
 
         savedNote = insertedData[0]
         addNoteToList(savedNote)
@@ -333,7 +340,7 @@ async function saveNote({ showMessage = false } = {}) {
         .insert({ ...note, id: newId })
         .select()
       if (insertError || !insertedData?.length)
-        throw new Error('插入失败：无法创建新笔记')
+        throw new Error(insertError?.message || '插入失败：无法创建新笔记')
 
       savedNote = insertedData[0]
       addNoteToList(savedNote)
@@ -349,6 +356,7 @@ async function saveNote({ showMessage = false } = {}) {
       hour: '2-digit',
       minute: '2-digit',
     }).replace(/\//g, '.')
+
     if (showMessage) {
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
       content.value = ''
@@ -357,10 +365,26 @@ async function saveNote({ showMessage = false } = {}) {
       localStorage.removeItem(LOCAL_NOTE_ID_KEY)
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
+
     return savedNote
   }
-  catch (error) {
-    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
+  catch (error: any) {
+    const msg = error.message || '未知错误'
+
+    // ✅ 检查是否 token 过期（JWT 过期或 401）
+    if (
+      msg.includes('JWT expired')
+      || msg.includes('Invalid token')
+      || msg.includes('登录状态')
+      || error.status === 401
+    ) {
+      messageHook.error('登录状态已过期，请重新登录')
+      await supabase.auth.signOut()
+      router.push('/auth')
+      return null
+    }
+
+    messageHook.error(`${t('notes.operation_error')}: ${msg}`)
     return null
   }
 }
