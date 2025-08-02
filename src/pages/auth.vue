@@ -50,14 +50,14 @@ const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const isRestoringFromCache = ref(false)
-const searchQuery = ref('') // 搜索关键字状态
+const searchQuery = ref('')
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 
 const dialog = useDialog()
 
-// 计算过滤后的笔记列表，从 cachedNotes 搜索
+// 计算过滤后的笔记列表
 const filteredNotes = computed(() => {
   if (!searchQuery.value.trim())
     return notes.value
@@ -72,7 +72,6 @@ function addNoteToList(newNote) {
     cachedNotes.value.unshift(newNote)
     if (currentPage.value === 1 && showNotesList.value)
       notes.value = notes.value.slice(0, notesPerPage)
-
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
@@ -91,25 +90,19 @@ async function handleExport(note: any) {
     messageHook.warning(t('notes.export_empty'))
     return
   }
-
   try {
-    // 创建Blob对象
     const blob = new Blob([note.content], { type: 'text/plain' })
-    // 创建下载链接
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    // 生成文件名：笔记内容前20个字符+日期
     const fileName = `note_${note.id.substring(0, 8)}_${new Date(note.updated_at).toISOString().split('T')[0]}.txt`
     a.download = fileName
     document.body.appendChild(a)
     a.click()
-    // 清理
     setTimeout(() => {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     }, 100)
-
     messageHook.success(t('notes.export_success'))
   }
   catch (error) {
@@ -158,7 +151,6 @@ async function fetchNotes() {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-
     const cachedPage = cachedPages.value.get(currentPage.value)
     if (cachedPage) {
       notes.value = cachedPage.notes.slice()
@@ -170,14 +162,12 @@ async function fetchNotes() {
       nextTick()
       return
     }
-
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
       .eq('user_id', user.value.id)
       .order('updated_at', { ascending: false })
       .range(from, to)
-
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
       notes.value = []
@@ -188,19 +178,16 @@ async function fetchNotes() {
       cachedPages.value.clear()
       return
     }
-
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = newNotes.slice(0, notesPerPage)
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-
     const existingIds = new Set(cachedNotes.value.map(n => n.id))
     cachedNotes.value = [
       ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
       ...newNotes.filter(n => !existingIds.has(n.id)),
     ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-
     cachedPages.value.set(currentPage.value, {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
@@ -275,8 +262,13 @@ function toggleExpand(noteId: string) {
 }
 
 async function saveNote({ showMessage = false } = {}) {
-  if (!content.value || !user.value?.id)
+  if (!content.value || !user.value?.id) {
+    if (!user.value?.id) {
+      messageHook.error(t('auth.session_expired'))
+      setMode('login')
+    }
     return null
+  }
   if (content.value.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
@@ -291,11 +283,6 @@ async function saveNote({ showMessage = false } = {}) {
 
   let savedNote
   try {
-    // ✅ 强制刷新 Supabase 会话，确保 token 最新
-    const { error: refreshError } = await supabase.auth.refreshSession()
-    if (refreshError)
-      throw new Error('登录状态失效，请重新登录')
-
     const noteId = lastSavedId.value || editingNote.value?.id
     if (noteId) {
       const { data, error } = await supabase
@@ -304,7 +291,6 @@ async function saveNote({ showMessage = false } = {}) {
         .eq('id', noteId)
         .eq('user_id', user.value.id)
         .single()
-
       if (data && !error) {
         const { data: updatedData, error: updateError } = await supabase
           .from('notes')
@@ -312,10 +298,8 @@ async function saveNote({ showMessage = false } = {}) {
           .eq('id', noteId)
           .eq('user_id', user.value.id)
           .select()
-
         if (updateError || !updatedData?.length)
-          throw new Error(updateError?.message || '更新失败')
-
+          throw new Error('更新失败')
         savedNote = updatedData[0]
         updateNoteInList(savedNote)
       }
@@ -326,8 +310,7 @@ async function saveNote({ showMessage = false } = {}) {
           .insert({ ...note, id: newId })
           .select()
         if (insertError || !insertedData?.length)
-          throw new Error(insertError?.message || '插入失败：无法创建新笔记')
-
+          throw new Error('插入失败：无法创建新笔记')
         savedNote = insertedData[0]
         addNoteToList(savedNote)
         lastSavedId.value = savedNote.id
@@ -340,8 +323,7 @@ async function saveNote({ showMessage = false } = {}) {
         .insert({ ...note, id: newId })
         .select()
       if (insertError || !insertedData?.length)
-        throw new Error(insertError?.message || '插入失败：无法创建新笔记')
-
+        throw new Error('插入失败：无法创建新笔记')
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       lastSavedId.value = savedNote.id
@@ -356,7 +338,6 @@ async function saveNote({ showMessage = false } = {}) {
       hour: '2-digit',
       minute: '2-digit',
     }).replace(/\//g, '.')
-
     if (showMessage) {
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
       content.value = ''
@@ -365,26 +346,10 @@ async function saveNote({ showMessage = false } = {}) {
       localStorage.removeItem(LOCAL_NOTE_ID_KEY)
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
-
     return savedNote
   }
-  catch (error: any) {
-    const msg = error.message || '未知错误'
-
-    // ✅ 检查是否 token 过期（JWT 过期或 401）
-    if (
-      msg.includes('JWT expired')
-      || msg.includes('Invalid token')
-      || msg.includes('登录状态')
-      || error.status === 401
-    ) {
-      messageHook.error('登录状态已过期，请重新登录')
-      await supabase.auth.signOut()
-      router.push('/auth')
-      return null
-    }
-
-    messageHook.error(`${t('notes.operation_error')}: ${msg}`)
+  catch (error) {
+    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
 }
@@ -467,20 +432,18 @@ onMounted(async () => {
     else {
       lastBackupTime.value = 'N/A'
       if (prevUser) {
+        messageHook.warning(t('auth.session_expired'))
         lastSavedTime.value = ''
         lastSavedAt.value = null
+        lastSavedId.value = null
+        editingNote.value = null
+        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+        isNotesCached.value = false
+        cachedNotes.value = []
+        cachedPages.value.clear()
+        setMode('login')
+        router.push('/')
       }
-      if (route.query.from === 'settings' && !hasRedirected.value) {
-        hasRedirected.value = true
-        router.replace('/setting')
-      }
-      lastSavedId.value = null
-      editingNote.value = null
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-      mode.value = 'login'
-      isNotesCached.value = false
-      cachedNotes.value = []
-      cachedPages.value.clear()
     }
   })
 })
@@ -503,8 +466,7 @@ watchEffect(async () => {
 watch(content, async (val, oldVal) => {
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
-  else
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
+  else localStorage.removeItem(LOCAL_CONTENT_KEY)
 
   if (val.length > maxNoteLength) {
     content.value = val.slice(0, maxNoteLength)
@@ -516,25 +478,48 @@ watch(content, async (val, oldVal) => {
   if (error || !session?.user)
     return
 
-  if (!user.value?.id)
-    return
-
   if (val && val !== oldVal && !isRestoringFromCache.value)
     debouncedSaveNote()
 })
 
 async function handleSubmit() {
-  if (!content.value) {
-    messageHook.warning(t('notes.content_required'))
-    return
-  }
-  if (!user.value?.id)
-    return
+  // console.log('handleSubmit triggered') // 调试日志：确认函数触发
+  const timeout = setTimeout(() => {
+    messageHook.error(t('auth.session_expired_or_timeout'))
+    loading.value = false
+    user.value = null
+    setMode('login')
+  }, 10000)
 
   try {
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error) {
+      console.error('Session check failed:', error.message)
+      messageHook.error(t('auth.session_expired'))
+      user.value = null
+      setMode('login')
+      clearTimeout(timeout)
+      return
+    }
+    if (!session?.user) {
+      console.error('No active session')
+      messageHook.error(t('auth.session_expired'))
+      user.value = null
+      setMode('login')
+      clearTimeout(timeout)
+      return
+    }
+
+    if (!content.value) {
+      messageHook.warning(t('notes.content_required'))
+      clearTimeout(timeout)
+      return
+    }
+
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
+      // console.log('Save successful:', saved.id) // 调试日志：确认保存成功
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
@@ -544,9 +529,11 @@ async function handleSubmit() {
     }
   }
   catch (err) {
+    console.error('Save failed:', err.message)
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
+    clearTimeout(timeout)
     loading.value = false
   }
 }
@@ -557,7 +544,7 @@ function toggleNotesList() {
     currentPage.value = 1
     fetchNotes()
   }
-  searchQuery.value = '' // 清空搜索框。
+  searchQuery.value = ''
 }
 
 function handleEdit(note: any) {
@@ -572,8 +559,6 @@ function handleEdit(note: any) {
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
-
-  // 使用 Naive UI 对话框
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -587,19 +572,13 @@ async function triggerDeleteConfirmation(id: string) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.value.id)
-
         if (error)
           throw new Error(error.message || '删除失败')
-
-        // 更新本地数据
         notes.value = notes.value.filter(note => note.id !== id)
         cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
-
-        // 更新缓存页面
         hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
         hasPreviousNotes.value = currentPage.value > 1
-
         if (cachedPages.value.has(currentPage.value)) {
           cachedPages.value.set(currentPage.value, {
             ...cachedPages.value.get(currentPage.value),
@@ -609,15 +588,12 @@ async function triggerDeleteConfirmation(id: string) {
             notes: notes.value.filter(n => n.id !== id),
           })
         }
-
-        // 处理当前编辑的笔记
         if (id === lastSavedId.value) {
           content.value = ''
           lastSavedId.value = null
           editingNote.value = null
           localStorage.removeItem(LOCAL_NOTE_ID_KEY)
         }
-
         messageHook.success(t('notes.delete_success'))
       }
       catch (err) {
@@ -744,7 +720,7 @@ function goHomeAndRefresh() {
                 class="form-button flex-2"
                 :disabled="loading"
               >
-                💾 {{ editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+                💾 {{ loading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
               </button>
               <button
                 type="button"
@@ -756,6 +732,7 @@ function goHomeAndRefresh() {
               </button>
             </div>
           </form>
+          <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
           <div v-if="showNotesList" class="notes-list h-80 overflow-auto">
             <input
               v-model="searchQuery"
@@ -795,8 +772,6 @@ function goHomeAndRefresh() {
                     {{ $t('notes.updated_at') }}: {{ new Date(note.updated_at).toLocaleString() }}
                   </p>
                 </div>
-
-                <!-- 这里是修复后的按钮区域 -->
                 <div class="mt-3 flex justify-between">
                   <button
                     class="edit-btn action-button"
@@ -1322,7 +1297,6 @@ html {
   color: #2dd4bf;
 }
 
-/* 在style区域添加 */
 .edit-btn {
   background-color: #e9f7fe !important;
   color: #0c7abf !important;
@@ -1334,8 +1308,8 @@ html {
   border: 1px solid #fbd5d5 !important;
 }
 .mt-3.flex > button {
-  margin: 0 0.5rem !important; /* 增加左右间距 */
-  flex-grow: 1; /* 等宽分配 */
+  margin: 0 0.5rem !important;
+  flex-grow: 1;
 }
 
 .export-btn {
@@ -1344,7 +1318,6 @@ html {
   border: 1px solid #bbf7d0 !important;
 }
 
-/* 调整按钮间距 */
 .flex.space-x-2 > button {
   margin-left: 0.5rem;
 }
