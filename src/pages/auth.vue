@@ -261,11 +261,34 @@ function toggleExpand(noteId: string) {
   expandedNote.value = expandedNote.value === noteId ? null : noteId
 }
 
+// 新增会话检查函数（带令牌刷新机制）
+async function checkSession() {
+  let retries = 2
+  while (retries > 0) {
+    const { data, error } = await supabase.auth.getSession()
+
+    // 会话有效时直接返回
+    if (!error && data.session?.user)
+      return true
+
+    // 当检测到401错误时尝试刷新令牌
+    if (error?.status === 401) {
+      const { error: refreshError } = await supabase.auth.refreshSession()
+      if (!refreshError)
+        return true
+    }
+
+    retries--
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  return false
+}
+
 async function saveNote({ showMessage = false } = {}) {
-  // console.log('saveNote triggered') // 调试日志：确认函数触发
+  // 前置检查增加会话检查
   if (!content.value || !user.value?.id) {
-    if (!user.value?.id) {
-      // console.error('saveNote: No user session')
+    const sessionValid = await checkSession()
+    if (!sessionValid) {
       messageHook.error(t('auth.session_expired'))
       setMode('login')
     }
@@ -273,6 +296,13 @@ async function saveNote({ showMessage = false } = {}) {
   }
   if (content.value.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return null
+  }
+
+  // 保存前验证会话有效性
+  if (!(await checkSession())) {
+    messageHook.error(t('auth.session_expired'))
+    setMode('login')
     return null
   }
 
@@ -351,8 +381,14 @@ async function saveNote({ showMessage = false } = {}) {
     return savedNote
   }
   catch (error) {
-    // console.error('saveNote failed:', error.message)
-    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
+    if (error.message === 'SESSION_EXPIRED') {
+      messageHook.error(t('auth.session_expired'))
+      setMode('login')
+    }
+    else {
+      // console.error('笔记保存失败:', error.message);
+      messageHook.error(`${t('notes.operation_error')}: ${error.status || '服务不可用'}`)
+    }
     return null
   }
 }
@@ -368,26 +404,35 @@ onMounted(async () => {
 
   if (savedContent && savedNoteId) {
     isRestoringFromCache.value = true
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('id', savedNoteId)
-        .eq('user_id', session.user.id)
-        .single()
-      if (!error && data) {
-        editingNote.value = data
-        lastSavedId.value = savedNoteId
-        content.value = savedContent
+
+    // 使用新的会话检查方法
+    const sessionValid = await checkSession()
+    if (sessionValid) {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('id', savedNoteId)
+          .eq('user_id', session.user.id)
+          .single()
+        if (!error && data) {
+          editingNote.value = data
+          lastSavedId.value = savedNoteId
+          content.value = savedContent
+        }
+        else {
+          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+          content.value = savedContent
+        }
       }
       else {
-        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
         content.value = savedContent
       }
     }
     else {
-      content.value = savedContent
+      messageHook.warning(t('auth.session_expired'))
+      setMode('login')
     }
     isRestoringFromCache.value = false
   }
@@ -397,12 +442,14 @@ onMounted(async () => {
     isRestoringFromCache.value = false
   }
 
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error) {
-    // console.error('Initial session check failed:', error.message)
-    messageHook.error(t('auth.session_restore_error'))
-  }
-  else {
+  try {
+    const sessionValid = await checkSession()
+    if (!sessionValid) {
+      messageHook.warning(t('auth.session_expired'))
+      return setMode('login')
+    }
+
+    const { data: { session } } = await supabase.auth.getSession()
     user.value = session?.user ?? null
     if (session) {
       const { data } = await supabase
@@ -415,9 +462,16 @@ onMounted(async () => {
         : '暂无备份'
     }
   }
+  catch (error) {
+    messageHook.error(t('auth.session_restore_error'))
+  }
 
   supabase.auth.onAuthStateChange(async (_event, session) => {
-    // console.log('onAuthStateChange triggered:', _event, !!session) // 调试日志
+    // 增加令牌刷新事件处理
+    if (_event === 'TOKEN_REFRESHED') {
+      // console.log('访问令牌静默刷新成功');
+    }
+
     const prevUser = user.value
     user.value = session?.user ?? null
     if (session) {
@@ -437,7 +491,7 @@ onMounted(async () => {
     else {
       lastBackupTime.value = 'N/A'
       if (prevUser) {
-        console.warn('Session expired, clearing state')
+        console.warn('会话过期，正在清理状态')
         messageHook.warning(t('auth.session_expired'))
         lastSavedTime.value = ''
         lastSavedAt.value = null
@@ -480,22 +534,10 @@ watch(content, async (val, oldVal) => {
     return
   }
 
-  // 优化自动保存会话检查，添加重试机制
-  let retries = 2
-  let sessionValid = false
-  while (retries > 0) {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (!error && session?.user) {
-      sessionValid = true
-      break
-    }
-    console.warn(`Auto-save session check failed, retrying (${retries} left):`, error?.message)
-    retries--
-    await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
-  }
-
+  // 简化会话检查 - 使用新的统一方法
+  const sessionValid = await checkSession()
   if (!sessionValid) {
-    console.error('Auto-save: No valid session after retries')
+    console.warn('自动保存已跳过：会话无效')
     return
   }
 
@@ -504,50 +546,22 @@ watch(content, async (val, oldVal) => {
 })
 
 async function handleSubmit() {
-  // console.log('handleSubmit triggered') // 调试日志：确认函数触发
-  // 延长超时时间到 30 秒，适应网络延迟
-  const timeout = setTimeout(() => {
-    // console.error('handleSubmit timed out')
-    messageHook.error(t('auth.session_expired_or_timeout'))
-    loading.value = false
-    user.value = null
+  // 优先检查会话状态
+  if (!(await checkSession())) {
+    messageHook.error(t('auth.session_expired'))
     setMode('login')
-  }, 30000)
+    return
+  }
 
   try {
-    // 优化会话检查，添加重试机制
-    let retries = 2
-    let session = null
-    while (retries > 0) {
-      const { data, error } = await supabase.auth.getSession()
-      if (!error && data.session?.user) {
-        session = data.session
-        break
-      }
-      console.warn(`Session check failed, retrying (${retries} left):`, error?.message)
-      retries--
-      await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
-    }
-
-    if (!session?.user) {
-      // console.error('No active session after retries')
-      messageHook.error(t('auth.session_expired'))
-      user.value = null
-      setMode('login')
-      clearTimeout(timeout)
-      return
-    }
-
     if (!content.value) {
       messageHook.warning(t('notes.content_required'))
-      clearTimeout(timeout)
       return
     }
 
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
-    //  console.log('Save successful:', saved.id) // 调试日志：确认保存成功
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
@@ -557,11 +571,10 @@ async function handleSubmit() {
     }
   }
   catch (err) {
-    // console.error('Save failed:', err.message)
-    messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
+    if (err.message !== 'SESSION_EXPIRED')
+      messageHook.error(`${t('notes.operation_error')}: ${err.status || '服务不可用'}`)
   }
   finally {
-    clearTimeout(timeout)
     loading.value = false
   }
 }
