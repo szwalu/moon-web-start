@@ -170,7 +170,7 @@ auth:
   email: 邮箱
   password: 密码
   prompt_to_register: 还没有账号？
-  Log_in_again_prefix: 若曾登陆，
+  Log_in_again_prefix: 若曾经登陆，
   Log_in_again_link: 👉️点这里
   Log_in_again_suffix: 刷新重新登陆
   Log_in_again_link2: 👉️点这里
@@ -208,7 +208,7 @@ auth:
   password_placeholder: 请输入6位数字或字母
   login_password_placeholder: 请输入5位数字或字母密码
   session_expired: 会话已过期，请重新登录
-  session_expired_or_timeout: 请求超时或会话已过期，请重新登录
+  session_expired_or_timeout: 会话已过期，请刷新网页或重新登录
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
