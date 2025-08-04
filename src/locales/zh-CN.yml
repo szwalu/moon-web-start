@@ -204,9 +204,9 @@ auth:
   session_restore_error: 无法恢复会话，请重新登录
   session_refresh_error: 会话刷新失败，请重新登录
   invite_code: 邀请码
-  invite_code_placeholder: 请输入五位数字邀请码
-  password_placeholder: 请输入六位数字或字母
-  login_password_placeholder: 请输入六位数字或字母密码
+  invite_code_placeholder: 请输入5位数字邀请码
+  password_placeholder: 请输入6位数字或字母
+  login_password_placeholder: 请输入5位数字或字母密码
   session_expired: 会话已过期，请重新登录
   session_expired_or_timeout: 请求超时或会话已过期，请重新登录
   messages:

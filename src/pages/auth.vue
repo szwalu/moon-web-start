@@ -504,10 +504,8 @@ watch(content, async (val, oldVal) => {
 })
 
 async function handleSubmit() {
-  // console.log('handleSubmit triggered') // 调试日志：确认函数触发
-  // 延长超时时间到 30 秒，适应网络延迟
+  // console.log('handleSubmit triggered')
   const timeout = setTimeout(() => {
-    // console.error('handleSubmit timed out')
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
     user.value = null
@@ -515,22 +513,10 @@ async function handleSubmit() {
   }, 30000)
 
   try {
-    // 优化会话检查，添加重试机制
-    let retries = 2
-    let session = null
-    while (retries > 0) {
-      const { data, error } = await supabase.auth.getSession()
-      if (!error && data.session?.user) {
-        session = data.session
-        break
-      }
-      console.warn(`Session check failed, retrying (${retries} left):`, error?.message)
-      retries--
-      await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
-    }
-
-    if (!session?.user) {
-      // console.error('No active session after retries')
+    // 优化会话检查，仅检查一次
+    const { data, error } = await supabase.auth.getSession()
+    if (error || !data.session?.user) {
+      // console.error('No active session')
       messageHook.error(t('auth.session_expired'))
       user.value = null
       setMode('login')
@@ -547,7 +533,7 @@ async function handleSubmit() {
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
-    //  console.log('Save successful:', saved.id) // 调试日志：确认保存成功
+      // console.log('Save successful:', saved.id)
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
