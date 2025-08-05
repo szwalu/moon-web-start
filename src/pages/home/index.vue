@@ -104,7 +104,7 @@ onMounted(async () => {
     }
   })
 
-  // 3. 定期刷新会话（每6分钟）
+  // 3. 定期刷新会话（每59分钟）
   const sessionInterval = setInterval(async () => {
     if (!user.value)
       return
@@ -112,7 +112,7 @@ onMounted(async () => {
       await supabase.auth.getSession()
     }
     catch {}
-  }, 6 * 60 * 1000)
+  }, 59 * 60 * 1000)
 
   // 4. 页面可见性变化时刷新会话
   let visibilityCooldown = false
