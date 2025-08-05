@@ -690,6 +690,11 @@ async function handleSubmitAuth() {
 function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
+
+// 添加一个简单的刷新函数
+function refresh() {
+  location.reload()
+}
 </script>
 
 <template>
@@ -840,6 +845,9 @@ function goHomeAndRefresh() {
       <div class="button-group">
         <button :disabled="loading" @click="router.push('/')">
           {{ $t('auth.return_home') }}
+        </button>
+        <button class="button--secondary" @click="refresh">
+          {{ $t('auth.refresh') }}
         </button>
         <button class="button--secondary" :disabled="loading" @click="handleLogout">
           {{ loading ? $t('auth.loading') : $t('auth.logout') }}
@@ -1059,9 +1067,16 @@ button:disabled {
 
 .button-group {
   display: grid;
-  grid-template-columns: 5fr 1fr;
+  grid-template-columns: 3fr 1fr 1fr; /* 调整比例：3份用于返回主页，1份用于刷新，1份用于登出 */
   gap: 1rem;
   margin-top: 2rem;
+}
+/* 添加响应式样式，确保在窄屏幕上按钮文字不会溢出 */
+@media (max-width: 640px) {
+  .button--secondary {
+    font-size: 0.75rem;
+    padding: 0.6rem;
+  }
 }
 
 .button--secondary {
