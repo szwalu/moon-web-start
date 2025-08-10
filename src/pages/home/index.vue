@@ -100,40 +100,12 @@ onMounted(async () => {
     else {
       if (prevUser)
         sessionExpired.value = true
-      // messageHook.warning(t('notes.session_expired'))
     }
   })
 
-  // 3. 定期刷新会话（每59分钟）
-  const sessionInterval = setInterval(async () => {
-    if (!user.value)
-      return
-    try {
-      await supabase.auth.getSession()
-    }
-    catch {}
-  }, 59 * 60 * 1000)
-
-  // 4. 页面可见性变化时刷新会话
-  let visibilityCooldown = false
-  const handleVisibilityChange = async () => {
-    if (document.visibilityState === 'visible' && !visibilityCooldown) {
-      visibilityCooldown = true
-      try {
-        await supabase.auth.getSession()
-        await authStore.refreshUser()
-      }
-      catch {}
-      setTimeout(() => (visibilityCooldown = false), 60000)
-    }
-  }
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-
-  // 5. 清理
+  // 3. 清理
   onUnmounted(() => {
-    clearInterval(sessionInterval)
     subscription.unsubscribe()
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
   })
 })
 
