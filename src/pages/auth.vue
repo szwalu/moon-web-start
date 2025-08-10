@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { useDialog, useMessage } from 'naive-ui'
@@ -13,7 +13,6 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 useDark()
 const router = useRouter()
-const route = useRoute()
 const { t } = useI18n()
 const messageHook = useMessage()
 const { autoLoadData } = useAutoSave()
@@ -28,7 +27,6 @@ const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
 const lastBackupTime = ref('N/A')
-const hasRedirected = ref(false)
 
 // 笔记系统状态
 const notes = ref<any[]>([])
@@ -449,10 +447,6 @@ onMounted(async () => {
       lastBackupTime.value = data?.updated_at
         ? new Date(`${data.updated_at}Z`).toLocaleString()
         : '暂无备份'
-      if (route.query.from === 'settings' && !hasRedirected.value) {
-        hasRedirected.value = true
-        router.replace('/setting')
-      }
     }
     else {
       lastBackupTime.value = 'N/A'
@@ -681,9 +675,7 @@ async function handleSubmitAuth() {
         throw error
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
-      if (route.query.from === 'settings')
-        await router.replace('/setting')
-      else await router.replace('/')
+      await router.replace('/')
     }
     else if (mode.value === 'register') {
       const { error } = await supabase.auth.signUp({ email: email.value, password: password.value })

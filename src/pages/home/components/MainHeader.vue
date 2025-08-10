@@ -34,8 +34,8 @@ onMounted(() => {
 
 const logoPath = ref('/logow.jpg')
 onMounted(async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user)
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session)
     logoPath.value = '/logo.jpg'
 })
 
@@ -47,11 +47,23 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData() // 保留手动保存逻辑
-  // 已登录：先跳转到设置页，再延迟2.5秒合并远程数据，避免卡顿
-  router.push({ path: '/auth', query: { from: 'settings' } }) // 添加查询参数
-  setTimeout(() => {
-    loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
-  }, 2500)
+
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    // 用户未登录
+    $message.warning(t('auth.please_login'))
+    router.push('/setting') // 转到设置页
+  }
+  else {
+    // 用户已登录
+    router.push('/setting') // 直接转到设置页
+
+    // 保留延迟合并数据的逻辑
+    setTimeout(() => {
+      loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
+    }, 2500)
+  }
 }
 </script>
 
