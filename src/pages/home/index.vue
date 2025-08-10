@@ -150,19 +150,62 @@ watchEffect(() => {
   }
 })
 
+// 获取缓存，带过期时间检查
+function getCachedWeather() {
+  const cached = localStorage.getItem('weatherData')
+  if (!cached)
+    return null
+
+  const { data, timestamp } = JSON.parse(cached)
+  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000 // 6小时过期
+  return isExpired ? null : data
+}
+
+// 存储缓存，记录当前时间
+function setCachedWeather(data) {
+  const cache = {
+    data,
+    timestamp: Date.now(),
+  }
+  localStorage.setItem('weatherData', JSON.stringify(cache))
+}
+
 async function fetchWeather() {
+  // 如果已缓存且未过期，直接使用
+  const cached = getCachedWeather()
+  if (cached) {
+    weatherCity.value = cached.city
+    weatherInfo.value = cached.info
+    return
+  }
+
   hasFetchedWeather.value = true
   try {
     weatherCity.value = t('index.weather_loading')
     weatherInfo.value = '...'
 
-    const locRes = await fetch('https://ipapi.co/json/')
-    const locData = await locRes.json()
+    // 尝试获取地理位置（ipapi.co -> ip-api.com 回退）
+    let locData
+    try {
+      const locRes = await fetch('https://ipapi.co/json/')
+      locData = await locRes.json()
+    }
+    catch (ipapiError) {
+      console.warn('ipapi.co failed, trying ip-api.com...')
+      const backupRes = await fetch('http://ip-api.com/json/')
+      locData = await backupRes.json()
+      // 字段名适配
+      locData.city = locData.city || locData.regionName
+      locData.latitude = locData.lat
+      locData.longitude = locData.lon
+    }
+
     const lat = locData.latitude
     const lon = locData.longitude
     const enCity = locData.city
     const city = getChineseCityName(enCity)
 
+    // 获取天气数据
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
@@ -171,12 +214,20 @@ async function fetchWeather() {
     const code = data.current.weathercode
     const { text, icon } = getWeatherText(code)
 
+    const weatherText = `${temp}°C ${text} ${icon}`
     weatherCity.value = city
-    weatherInfo.value = `${temp}°C ${text} ${icon}`
+    weatherInfo.value = weatherText
+
+    // 缓存天气数据（城市 + 天气信息）
+    setCachedWeather({
+      city,
+      info: weatherText,
+    })
   }
   catch (e) {
     weatherCity.value = t('index.weather_failed')
     weatherInfo.value = ''
+    console.error('Weather fetch failed:', e)
   }
 }
 

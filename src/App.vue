@@ -1,8 +1,12 @@
 <script setup>
 import { RouterView } from 'vue-router'
+import { NDialogProvider, NMessageProvider, NNotificationProvider } from 'naive-ui'
+import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
 // 【重要】导入所有需要的 Provider 组件和我们新建的逻辑组件
-import { NDialogProvider, NMessageProvider, NNotificationProvider } from 'naive-ui'
+
+// 启动令牌刷新
+useSupabaseTokenRefresh()
 </script>
 
 <template>

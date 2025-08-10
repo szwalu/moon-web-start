@@ -362,6 +362,26 @@ const debouncedSaveNote = debounce(() => {
     saveNote({ showMessage: false })
 }, 12000)
 
+onMounted(() => {
+  const timer = setInterval(async () => {
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session)
+      return
+
+    const exp = session.expires_at! * 1000
+    const now = Date.now()
+    if (exp - now < 60 * 1000) {
+      await supabase.auth.refreshSession().catch(() => {
+        router.push('/auth')
+      })
+    }
+  }, 60 * 1000)
+
+  onUnmounted(() => {
+    clearInterval(timer)
+  })
+})
+
 onMounted(async () => {
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
