@@ -3,7 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { supabase } from '@/utils/supabaseClient'
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
-const REFRESH_DELAY = 30 // 过期后30秒刷新页面
+const REFRESH_DELAY = 20 // 过期后20秒刷新页面
 let networkRetries = 0
 const MAX_NETWORK_RETRIES = 5
 
