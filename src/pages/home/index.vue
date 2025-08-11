@@ -1,4 +1,3 @@
-```vue
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import Swal from 'sweetalert2'
@@ -30,6 +29,7 @@ const dailyQuote = ref('')
 const hasFetchedWeather = ref(false)
 const weatherCity = ref(t('index.weather_loading'))
 const weatherInfo = ref('...')
+const isWeatherRefreshing = ref(false) // 添加天气刷新状态
 const isMobile = ref(false)
 const authStore = useAuthStore()
 const user = ref<any>(null) // 用户状态
@@ -129,7 +129,7 @@ function getCachedWeather() {
     return null
 
   const { data, timestamp } = JSON.parse(cached)
-  const isExpired = Date.now() - timestamp > 1 * 60 * 60 * 1000 // 6小时过期
+  const isExpired = Date.now() - timestamp > 2 * 60 * 60 * 1000 // 6小时过期
   return isExpired ? null : data
 }
 
@@ -142,16 +142,19 @@ function setCachedWeather(data) {
   localStorage.setItem('weatherData', JSON.stringify(cache))
 }
 
-async function fetchWeather() {
-  // 如果已缓存且未过期，直接使用
+async function fetchWeather(bypassCache = false) {
+  // 如果已缓存且未过期，并且不是强制刷新，直接使用
   const cached = getCachedWeather()
-  if (cached) {
+  if (cached && !bypassCache) {
     weatherCity.value = cached.city
     weatherInfo.value = cached.info
     return
   }
 
+  // 设置刷新状态
+  isWeatherRefreshing.value = true
   hasFetchedWeather.value = true
+
   try {
     weatherCity.value = t('index.weather_loading')
     weatherInfo.value = '...'
@@ -201,6 +204,14 @@ async function fetchWeather() {
     weatherInfo.value = ''
     console.error('Weather fetch failed:', e)
   }
+  finally {
+    isWeatherRefreshing.value = false
+  }
+}
+
+// 添加手动刷新天气函数
+function refreshWeather() {
+  fetchWeather(true) // true表示跳过缓存
 }
 
 // 每日引言
@@ -315,9 +326,27 @@ function showMobileToast() {
           <span><strong>{{ weatherCity }}</strong></span>
           <span class="separator">/</span>
           <span>{{ weatherInfo }}</span>
+          <button
+            class="refresh-btn ml-2"
+            :disabled="isWeatherRefreshing"
+            :title="t('index.refresh_weather')"
+            @click="refreshWeather"
+          >
+            <span v-if="isWeatherRefreshing" class="refresh-icon animate-spin">↻</span>
+            <span v-else>↻</span>
+          </button>
         </div>
         <div v-else class="weather-content">
           <span>{{ weatherCity }}</span>
+          <button
+            class="refresh-btn ml-2"
+            :disabled="isWeatherRefreshing"
+            :title="t('index.refresh_weather')"
+            @click="refreshWeather"
+          >
+            <span v-if="isWeatherRefreshing" class="refresh-icon animate-spin">↻</span>
+            <span v-else>↻</span>
+          </button>
         </div>
       </div>
 
@@ -404,6 +433,32 @@ function showMobileToast() {
   background: transparent !important;
   box-shadow: none !important;
 }
+
+/* 新增刷新按钮样式 */
+.refresh-btn {
+  font-size: 0.85em;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+.refresh-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+.refresh-btn:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+.refresh-icon {
+  display: inline-block;
+  font-size: 1em;
+}
 </style>
 
 <route lang="yaml">
@@ -413,4 +468,3 @@ children:
     path: setting
     component: /src/components/Blank.vue
 </route>
-```

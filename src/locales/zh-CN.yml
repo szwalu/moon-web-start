@@ -235,6 +235,7 @@ index:
   quote_prefix: 每日一句：
   weather_loading: 加载中...
   weather_failed: 天气加载失败
+  refresh_weather: 刷新天气
 notes:
   notes: 笔 记
   save_note: 保存
