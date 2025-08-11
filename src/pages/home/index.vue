@@ -129,7 +129,7 @@ function getCachedWeather() {
     return null
 
   const { data, timestamp } = JSON.parse(cached)
-  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000 // 6小时过期
+  const isExpired = Date.now() - timestamp > 1 * 60 * 60 * 1000 // 6小时过期
   return isExpired ? null : data
 }
 
