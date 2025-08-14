@@ -3,7 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { supabase } from '@/utils/supabaseClient'
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
-const REFRESH_DELAY = 20 // 过期后20秒刷新页面
+const REFRESH_DELAY = 10 // 过期后10秒刷新页面
 let networkRetries = 0
 const MAX_NETWORK_RETRIES = 5
 
@@ -98,12 +98,12 @@ export function useSupabaseTokenRefresh() {
   const handleAwakeRefresh = async () => {
   // console.log('[唤醒] 开始处理唤醒流程')
 
-    // 添加全局超时机制（20秒）
+    // 添加全局超时机制（15秒）
     let globalTimeoutId: ReturnType<typeof setTimeout> | null = null
     const globalTimeoutPromise = new Promise((_, reject) => {
       globalTimeoutId = setTimeout(() => {
-        reject(new Error('唤醒处理超时（20秒）'))
-      }, 20000) // 20秒全局超时
+        reject(new Error('唤醒处理超时（15秒）'))
+      }, 15000) // 20秒全局超时
     })
 
     try {
@@ -134,7 +134,7 @@ export function useSupabaseTokenRefresh() {
 
       // 特殊处理超时错误
       if (error.message.includes('唤醒处理超时')) {
-      // console.error('[唤醒] ⚠️ 处理超过20秒，强制刷新页面')
+      // console.error('[唤醒] ⚠️ 处理超过15秒，强制刷新页面')
       }
       else {
       // console.error('[唤醒] ⚠️ 其他错误，强制刷新页面')
