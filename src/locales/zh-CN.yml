@@ -194,7 +194,7 @@ auth:
   submit_new_password: 提交新密码
   account_last_backup_label: 上次备份
   return_home: 返回主页
-  please_login: 请先登录您的账户！
+  please_login: 登录后可实时保存数据！
   info_label: 便 笺
   note_placeholder: 写点什么...
   save: 保存

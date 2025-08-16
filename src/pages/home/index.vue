@@ -110,8 +110,6 @@ watchEffect(() => {
     dailyQuote.value = ''
 })
 
-// ... [此处省略了所有 function 定义，它们保持不变] ...
-// getCachedWeather, setCachedWeather, fetchWeather, refreshWeather, showQuote 等函数无需改动
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData')
   if (!cached)

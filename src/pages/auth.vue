@@ -755,7 +755,7 @@ function goHomeAndRefresh() {
         </div>
       </div>
       <div class="button-group">
-        <button :disabled="loading" @click="router.push('/')">
+        <button :disabled="loading" @click="router.back()">
           {{ $t('auth.return_home') }}
         </button>
         <button class="button--secondary" :disabled="loading" @click="handleLogout">
