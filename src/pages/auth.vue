@@ -976,16 +976,9 @@ button:disabled {
 
 .button-group {
   display: grid;
-  grid-template-columns: 3fr 1fr 1fr; /* 调整比例：3份用于返回主页，1份用于刷新，1份用于登出 */
+  grid-template-columns: 1fr auto;
   gap: 1rem;
   margin-top: 2rem;
-}
-/* 添加响应式样式，确保在窄屏幕上按钮文字不会溢出 */
-@media (max-width: 640px) {
-  .button--secondary {
-    font-size: 0.75rem;
-    padding: 0.6rem;
-  }
 }
 
 .button--secondary {
