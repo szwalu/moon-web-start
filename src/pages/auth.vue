@@ -607,9 +607,6 @@ async function handleSubmitAuth() {
 function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
-function refresh() {
-  location.reload()
-}
 </script>
 
 <template>
@@ -760,9 +757,6 @@ function refresh() {
       <div class="button-group">
         <button :disabled="loading" @click="router.push('/')">
           {{ $t('auth.return_home') }}
-        </button>
-        <button class="button--secondary" @click="refresh">
-          {{ $t('auth.refresh') }}
         </button>
         <button class="button--secondary" :disabled="loading" @click="handleLogout">
           {{ loading ? $t('auth.loading') : $t('auth.logout') }}

@@ -208,8 +208,6 @@ auth:
   password_placeholder: 请输入6位数字或字母
   login_password_placeholder: 请输入5位数字或字母密码
   session_expired: 会话已过期，请重新登录
-  session_expired_or_timeout: 会话已过期，请刷新网页或重新登录
-  refresh: 刷新
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
