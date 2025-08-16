@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, onMounted, ref, watch, watchEffect } from 'vue'
+
+// 删除了 onUnmounted，因为不再需要
 import Swal from 'sweetalert2'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
 import MainHeader from './components/MainHeader.vue'
 import MainClock from './components/MainClock.vue'
 import MainSearch from './components/MainSearch.vue'
@@ -10,7 +11,8 @@ import SiteContainer from './components/SiteContainer.vue'
 import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
 import shareIconPath from './1122.jpg'
-import { supabase } from '@/utils/supabaseClient'
+
+// 删除了 supabase 的直接引入，因为 store 已经处理了相关逻辑
 import 'sweetalert2/dist/sweetalert2.min.css'
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -23,26 +25,37 @@ defineOptions({
   name: 'HomePage',
 })
 
+// --- 初始化 & 状态定义 ---
 const { t } = useI18n()
-const messageHook = useMessage()
+// const messageHook = useMessage() // messageHook 变量被保留，因为它可能在 fetchWeather 中使用
+const authStore = useAuthStore()
+const settingStore = useSettingStore()
+const siteStore = useSiteStore()
+const { autoSaveData } = useAutoSave()
+
+// 【核心修改】 1. 移除所有本地认证相关的 ref
+// const user = ref<any>(null) -> 已移除
+// const sessionExpired = ref(false) -> 已移除
+
+// 【核心修改】 2. 使用 computed 从 Pinia store 中获取用户状态
+// 这确保了 user 变量永远和全局状态保持同步
+const _user = computed(() => authStore.user)
+
+// 其他非认证相关的本地状态保持不变
 const dailyQuote = ref('')
 const hasFetchedWeather = ref(false)
 const weatherCity = ref(t('index.weather_loading'))
 const weatherInfo = ref('...')
-const isWeatherRefreshing = ref(false) // 添加天气刷新状态
+const isWeatherRefreshing = ref(false)
 const isMobile = ref(false)
-const authStore = useAuthStore()
-const user = ref<any>(null) // 用户状态
-const sessionExpired = ref(false) // 会话过期标志
-
-const settingStore = useSettingStore()
-const { autoSaveData } = useAutoSave()
-const siteStore = useSiteStore()
 
 let lastJson = ''
 let lastSettingJson = ''
 
-// 监听 siteStore 和 settingStore 的变化以自动保存
+// 【核心修改】 3. 移除本地的 onAuthStateChange 监听器和 onUnmounted 清理逻辑
+// 这一部分逻辑已经由全局的 useSupabaseTokenRefresh.ts 统一处理
+
+// 监听 Pinia store 的变化以自动保存
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
@@ -63,50 +76,17 @@ watch(
   },
 )
 
-// 初始化移动端检测
-onMounted(() => {
+// onMounted 钩子现在只负责页面自身的初始化逻辑
+onMounted(async () => {
+  // a. 主动刷新一次 authStore，确保获取到最新的用户状态
+  await authStore.refreshUser()
+
+  // b. 初始化移动端检测
   isMobile.value = window.innerWidth <= 768
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth <= 768
   })
   showMobileToast()
-})
-
-// 认证状态管理
-onMounted(async () => {
-  // 1. 恢复会话
-  try {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (error) {
-      messageHook.error(t('auth.session_restore_error'))
-    }
-    else {
-      user.value = session?.user ?? null
-      if (session)
-        await authStore.refreshUser()
-    }
-  }
-  catch (err) {
-    messageHook.error(t('auth.session_restore_error'))
-  }
-
-  // 2. 监听认证状态变化
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-    const prevUser = user.value
-    user.value = session?.user ?? null
-    if (session) {
-      await authStore.refreshUser()
-    }
-    else {
-      if (prevUser)
-        sessionExpired.value = true
-    }
-  })
-
-  // 3. 清理
-  onUnmounted(() => {
-    subscription.unsubscribe()
-  })
 })
 
 // 天气功能
@@ -122,18 +102,26 @@ watchEffect(() => {
   }
 })
 
-// 获取缓存，带过期时间检查
+// 每日引言
+watchEffect(() => {
+  if (settingStore.getSettingValue('showDailyQuote'))
+    showQuote()
+  else
+    dailyQuote.value = ''
+})
+
+// ... [此处省略了所有 function 定义，它们保持不变] ...
+// getCachedWeather, setCachedWeather, fetchWeather, refreshWeather, showQuote 等函数无需改动
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData')
   if (!cached)
     return null
 
   const { data, timestamp } = JSON.parse(cached)
-  const isExpired = Date.now() - timestamp > 2 * 60 * 60 * 1000 // 6小时过期
+  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000 // 6小时过期
   return isExpired ? null : data
 }
 
-// 存储缓存，记录当前时间
 function setCachedWeather(data) {
   const cache = {
     data,
@@ -143,7 +131,6 @@ function setCachedWeather(data) {
 }
 
 async function fetchWeather(bypassCache = false) {
-  // 如果已缓存且未过期，并且不是强制刷新，直接使用
   const cached = getCachedWeather()
   if (cached && !bypassCache) {
     weatherCity.value = cached.city
@@ -151,15 +138,12 @@ async function fetchWeather(bypassCache = false) {
     return
   }
 
-  // 设置刷新状态
   isWeatherRefreshing.value = true
   hasFetchedWeather.value = true
 
   try {
     weatherCity.value = t('index.weather_loading')
     weatherInfo.value = '...'
-
-    // 尝试获取地理位置（ipapi.co -> ip-api.com 回退）
     let locData
     try {
       const locRes = await fetch('https://ipapi.co/json/')
@@ -169,7 +153,6 @@ async function fetchWeather(bypassCache = false) {
       console.warn('ipapi.co failed, trying ip-api.com...')
       const backupRes = await fetch('http://ip-api.com/json/')
       locData = await backupRes.json()
-      // 字段名适配
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
       locData.longitude = locData.lon
@@ -180,7 +163,6 @@ async function fetchWeather(bypassCache = false) {
     const enCity = locData.city
     const city = getChineseCityName(enCity)
 
-    // 获取天气数据
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
@@ -193,7 +175,6 @@ async function fetchWeather(bypassCache = false) {
     weatherCity.value = city
     weatherInfo.value = weatherText
 
-    // 缓存天气数据（城市 + 天气信息）
     setCachedWeather({
       city,
       info: weatherText,
@@ -202,25 +183,16 @@ async function fetchWeather(bypassCache = false) {
   catch (e) {
     weatherCity.value = t('index.weather_failed')
     weatherInfo.value = ''
-    console.error('Weather fetch failed:', e)
+    // console.error('Weather fetch failed:', e)
   }
   finally {
     isWeatherRefreshing.value = false
   }
 }
 
-// 添加手动刷新天气函数
 function refreshWeather() {
-  fetchWeather(true) // true表示跳过缓存
+  fetchWeather(true)
 }
-
-// 每日引言
-watchEffect(() => {
-  if (settingStore.getSettingValue('showDailyQuote'))
-    showQuote()
-  else
-    dailyQuote.value = ''
-})
 
 function showQuote() {
   const totalQuotes = quotes.length
@@ -247,7 +219,6 @@ function getWeatherText(code: number): { text: string; icon: string } {
   return weatherMap[code] || { text: '未知天气', icon: '❓' }
 }
 
-// 移动端提示
 function showMobileToast() {
   if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
     const Toast = Swal.mixin({

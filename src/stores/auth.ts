@@ -1,30 +1,25 @@
 // src/stores/auth.ts
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/utils/supabaseClient'
 
-export const useAuthStore = defineStore('auth', () => {
-  const user = ref<any>(null)
-  let hasStarted = false
-
-  async function refreshUser() {
-    const { data: { session } } = await supabase.auth.getSession()
-    user.value = session?.user ?? null
-
-    if (session && !hasStarted) {
-      await supabase.auth.startAutoRefresh()
-      hasStarted = true
-    }
-  }
-
-  supabase.auth.onAuthStateChange((_event, session) => {
-    user.value = session?.user ?? null
-  })
-
-  return {
-    user,
-    refreshUser,
-  }
-}, {
-  persist: true, // ✅ 正确的位置：defineStore 的第二个参数
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    user: null as User | null,
+  }),
+  actions: {
+    // 设置用户的核心 action
+    setUser(newUser: User | null) {
+      this.user = newUser
+    },
+    // 清除用户的 action
+    clearUser() {
+      this.user = null
+    },
+    // 一个方便的 action，用于从 supabase 获取当前用户并更新 store
+    async refreshUser() {
+      const { data } = await supabase.auth.getUser()
+      this.user = data.user
+    },
+  },
 })

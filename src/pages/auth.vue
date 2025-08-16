@@ -10,14 +10,19 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
-const authStore = useAuthStore()
+// --- 初始化 & 状态定义 ---
 useDark()
 const router = useRouter()
 const { t } = useI18n()
 const messageHook = useMessage()
+const dialog = useDialog()
+const authStore = useAuthStore()
 const { autoLoadData } = useAutoSave()
 
-const user = ref<any>(null)
+// 【核心修改】 1. 移除本地 user 状态，使用 computed 从 Pinia store 中获取
+const user = computed(() => authStore.user)
+
+// 其他非认证相关的本地状态
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
 const password = ref('')
@@ -28,7 +33,8 @@ const loading = ref(false)
 const resetEmailSent = ref(false)
 const lastBackupTime = ref('N/A')
 
-// 笔记系统状态
+// 【修正】补全所有笔记系统相关变量定义
+let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
 const editingNote = ref<any>(null)
@@ -53,15 +59,126 @@ const searchQuery = ref('')
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 
-const dialog = useDialog()
+// 【核心修改】 2. 移除本地的 onAuthStateChange 监听器 (由全局 useSupabaseTokenRefresh.ts 处理)
 
-// 计算过滤后的笔记列表
+const debouncedSaveNote = debounce(() => {
+  if (content.value && user.value?.id && !isRestoringFromCache.value)
+    saveNote({ showMessage: false })
+}, 12000)
+
+// 清理逻辑统一到顶层的 onUnmounted
+onUnmounted(() => {
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
+  debouncedSaveNote.cancel()
+})
+
+// onMounted 钩子负责页面自身的初始化逻辑
+onMounted(async () => {
+  await authStore.refreshUser()
+
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
+
+  if (savedContent) {
+    isRestoringFromCache.value = true
+    content.value = savedContent
+    if (savedNoteId && user.value) {
+      lastSavedId.value = savedNoteId
+      const { data: noteData } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('id', savedNoteId)
+        .eq('user_id', user.value.id)
+        .single()
+      if (noteData)
+        editingNote.value = noteData
+      else
+        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+    }
+    isRestoringFromCache.value = false
+  }
+})
+
+// --- Computed & Watchers ---
+
+// 【保留】恢复之前被省略的 computed 属性
 const filteredNotes = computed(() => {
   if (!searchQuery.value.trim())
-    return notes.value
+    return Array.isArray(notes.value) ? notes.value : []
+
+  if (!Array.isArray(cachedNotes.value))
+    return []
+
   return cachedNotes.value.filter(note =>
-    note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
+    note && note.content && typeof note.content === 'string'
+    && note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
   )
+})
+
+const lastLoginTime = computed(() => {
+  if (user.value?.last_sign_in_at)
+    return new Date(user.value.last_sign_in_at).toLocaleString()
+  return 'N/A'
+})
+
+const pageTitle = computed(() => {
+  if (mode.value === 'login')
+    return t('auth.login')
+  if (mode.value === 'register')
+    return t('auth.register')
+  return t('auth.forgot_password')
+})
+
+const charCount = computed(() => {
+  return content.value.length
+})
+
+// 【核心修改】 3. 使用 watchEffect 响应 user 状态的变化
+watchEffect(async () => {
+  if (user.value) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('updated_at')
+      .eq('id', user.value.id)
+      .single()
+    lastBackupTime.value = data?.updated_at
+      ? new Date(`${data.updated_at}Z`).toLocaleString()
+      : '暂无备份'
+
+    if (!isRestoringFromCache.value && !isNotesCached.value)
+      await fetchNotes()
+  }
+  else {
+    lastBackupTime.value = 'N/A'
+    notes.value = []
+    cachedNotes.value = []
+    isNotesCached.value = false
+    cachedPages.value.clear()
+    editingNote.value = null
+  }
+})
+
+watch(content, async (val, oldVal) => {
+  if (val)
+    localStorage.setItem(LOCAL_CONTENT_KEY, val)
+  else localStorage.removeItem(LOCAL_CONTENT_KEY)
+
+  if (val.length > maxNoteLength) {
+    content.value = val.slice(0, maxNoteLength)
+    messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return
+  }
+
+  if (!authStore.user) {
+    console.error('Auto-save: No valid session in authStore')
+    return
+  }
+
+  if (val && val !== oldVal && !isRestoringFromCache.value)
+    debouncedSaveNote()
 })
 
 function addNoteToList(newNote) {
@@ -82,7 +199,6 @@ function addNoteToList(newNote) {
     nextTick()
   }
 }
-
 async function handleExport(note: any) {
   if (!note || !note.content) {
     messageHook.warning(t('notes.export_empty'))
@@ -107,7 +223,6 @@ async function handleExport(note: any) {
     messageHook.error(`${t('notes.export_error')}: ${error.message}`)
   }
 }
-
 function updateNoteInList(updatedNote) {
   const updateInArray = (arr: any[]) => {
     const index = arr.findIndex(n => n.id === updatedNote.id)
@@ -123,27 +238,6 @@ function updateNoteInList(updatedNote) {
   }
   nextTick()
 }
-
-const lastLoginTime = computed(() => {
-  if (user.value?.last_sign_in_at)
-    return new Date(user.value.last_sign_in_at).toLocaleString()
-  return 'N/A'
-})
-
-const pageTitle = computed(() => {
-  if (mode.value === 'login')
-    return t('auth.login')
-  if (mode.value === 'register')
-    return t('auth.register')
-  return t('auth.forgot_password')
-})
-
-const charCount = computed(() => {
-  return content.value.length
-})
-
-let autoSaveInterval: NodeJS.Timeout | null = null
-
 async function fetchNotes() {
   try {
     isLoadingNotes.value = true
@@ -208,7 +302,6 @@ async function fetchNotes() {
     nextTick()
   }
 }
-
 async function nextPage() {
   const targetPage = currentPage.value + 1
   const cachedPage = cachedPages.value.get(targetPage)
@@ -225,7 +318,6 @@ async function nextPage() {
     await fetchNotes()
   }
 }
-
 async function previousPage() {
   if (currentPage.value > 1) {
     const targetPage = currentPage.value - 1
@@ -244,26 +336,20 @@ async function previousPage() {
     }
   }
 }
-
 function truncateContent(text: string, maxLength: number = 150) {
   if (text.length <= maxLength)
     return text
   return `${text.slice(0, maxLength)}...`
 }
-
 function generateUniqueId() {
   return uuidv4()
 }
-
 function toggleExpand(noteId: string) {
   expandedNote.value = expandedNote.value === noteId ? null : noteId
 }
-
 async function saveNote({ showMessage = false } = {}) {
-  // console.log('saveNote triggered') // 调试日志：确认函数触发
   if (!content.value || !user.value?.id) {
     if (!user.value?.id) {
-      // console.error('saveNote: No user session')
       messageHook.error(t('auth.session_expired'))
       setMode('login')
     }
@@ -273,14 +359,12 @@ async function saveNote({ showMessage = false } = {}) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-
   const now = Date.now()
   const note = {
     content: content.value.trim(),
     updated_at: new Date().toISOString(),
     user_id: user.value.id,
   }
-
   let savedNote
   try {
     const noteId = lastSavedId.value || editingNote.value?.id
@@ -328,7 +412,6 @@ async function saveNote({ showMessage = false } = {}) {
       addNoteToList(savedNote)
       lastSavedId.value = savedNote.id
     }
-
     localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
     lastSavedAt.value = now
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
@@ -349,205 +432,35 @@ async function saveNote({ showMessage = false } = {}) {
     return savedNote
   }
   catch (error) {
-    // console.error('saveNote failed:', error.message)
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
 }
 
-const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id && !isRestoringFromCache.value)
-    saveNote({ showMessage: false })
-}, 12000)
-
-onMounted(() => {
-  const timer = setInterval(async () => {
-    const session = (await supabase.auth.getSession()).data.session
-    if (!session)
-      return
-
-    const exp = session.expires_at! * 1000
-    const now = Date.now()
-    if (exp - now < 60 * 1000) {
-      await supabase.auth.refreshSession().catch(() => {
-        router.push('/auth')
-      })
-    }
-  }, 60 * 1000)
-
-  onUnmounted(() => {
-    clearInterval(timer)
-  })
-})
-
-onMounted(async () => {
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
-
-  if (savedContent && savedNoteId) {
-    isRestoringFromCache.value = true
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('id', savedNoteId)
-        .eq('user_id', session.user.id)
-        .single()
-      if (!error && data) {
-        editingNote.value = data
-        lastSavedId.value = savedNoteId
-        content.value = savedContent
-      }
-      else {
-        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-        content.value = savedContent
-      }
-    }
-    else {
-      content.value = savedContent
-    }
-    isRestoringFromCache.value = false
-  }
-  else if (savedContent) {
-    isRestoringFromCache.value = true
-    content.value = savedContent
-    isRestoringFromCache.value = false
-  }
-
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error) {
-    // console.error('Initial session check failed:', error.message)
-    messageHook.error(t('auth.session_restore_error'))
-  }
-  else {
-    user.value = session?.user ?? null
-    if (session) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('updated_at')
-        .eq('id', session.user.id)
-        .single()
-      lastBackupTime.value = data?.updated_at
-        ? new Date(`${data.updated_at}Z`).toLocaleString()
-        : '暂无备份'
-    }
-  }
-
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    // console.log('onAuthStateChange triggered:', _event, !!session) // 调试日志
-    const prevUser = user.value
-    user.value = session?.user ?? null
-    if (session) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('updated_at')
-        .eq('id', session.user.id)
-        .single()
-      lastBackupTime.value = data?.updated_at
-        ? new Date(`${data.updated_at}Z`).toLocaleString()
-        : '暂无备份'
-    }
-    else {
-      lastBackupTime.value = 'N/A'
-      if (prevUser) {
-        console.warn('Session expired, clearing state')
-        messageHook.warning(t('auth.session_expired'))
-        lastSavedTime.value = ''
-        lastSavedAt.value = null
-        lastSavedId.value = null
-        editingNote.value = null
-        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-        isNotesCached.value = false
-        cachedNotes.value = []
-        cachedPages.value.clear()
-        setMode('login')
-        router.push('/')
-      }
-    }
-  })
-})
-
-onUnmounted(() => {
-  if (autoSaveInterval) {
-    clearInterval(autoSaveInterval)
-    autoSaveInterval = null
-  }
-  debouncedSaveNote.cancel()
-})
-
-watchEffect(async () => {
-  if (!user.value || isRestoringFromCache.value)
-    return
-  if (!isNotesCached.value)
-    await fetchNotes()
-})
-
-watch(content, async (val, oldVal) => {
-  if (val)
-    localStorage.setItem(LOCAL_CONTENT_KEY, val)
-  else localStorage.removeItem(LOCAL_CONTENT_KEY)
-
-  if (val.length > maxNoteLength) {
-    content.value = val.slice(0, maxNoteLength)
-    messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
-    return
-  }
-
-  // 优化自动保存会话检查，添加重试机制
-  let retries = 2
-  let sessionValid = false
-  while (retries > 0) {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (!error && session?.user) {
-      sessionValid = true
-      break
-    }
-    console.warn(`Auto-save session check failed, retrying (${retries} left):`, error?.message)
-    retries--
-    await new Promise(resolve => setTimeout(resolve, 1000)) // 等待 1 秒后重试
-  }
-
-  if (!sessionValid) {
-    console.error('Auto-save: No valid session after retries')
-    return
-  }
-
-  if (val && val !== oldVal && !isRestoringFromCache.value)
-    debouncedSaveNote()
-})
-
 async function handleSubmit() {
-  // console.log('handleSubmit triggered')
   const timeout = setTimeout(() => {
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
     user.value = null
     setMode('login')
   }, 30000)
-
   try {
-    // 优化会话检查，仅检查一次
     const { data, error } = await supabase.auth.getSession()
     if (error || !data.session?.user) {
-      // console.error('No active session')
       messageHook.error(t('auth.session_expired'))
       user.value = null
       setMode('login')
       clearTimeout(timeout)
       return
     }
-
     if (!content.value) {
       messageHook.warning(t('notes.content_required'))
       clearTimeout(timeout)
       return
     }
-
     loading.value = true
     const saved = await saveNote({ showMessage: true })
     if (saved) {
-      // console.log('Save successful:', saved.id)
       content.value = ''
       editingNote.value = null
       lastSavedId.value = null
@@ -557,7 +470,6 @@ async function handleSubmit() {
     }
   }
   catch (err) {
-    // console.error('Save failed:', err.message)
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
@@ -565,7 +477,6 @@ async function handleSubmit() {
     loading.value = false
   }
 }
-
 function toggleNotesList() {
   showNotesList.value = !showNotesList.value
   if (showNotesList.value && !isNotesCached.value) {
@@ -574,7 +485,6 @@ function toggleNotesList() {
   }
   searchQuery.value = ''
 }
-
 function handleEdit(note: any) {
   if (!note?.id)
     return
@@ -583,7 +493,6 @@ function handleEdit(note: any) {
   lastSavedId.value = note.id
   localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
 }
-
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
@@ -633,14 +542,12 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
-
 async function handleLogout() {
   loading.value = true
   await supabase.auth.signOut()
   await router.push('/')
   loading.value = false
 }
-
 function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   mode.value = newMode
   message.value = ''
@@ -649,7 +556,6 @@ function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   inviteCode.value = ''
   resetEmailSent.value = false
 }
-
 async function handleSubmitAuth() {
   if (mode.value === 'register') {
     if (password.value !== passwordConfirm.value) {
@@ -698,12 +604,9 @@ async function handleSubmitAuth() {
     loading.value = false
   }
 }
-
 function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
-
-// 添加一个简单的刷新函数
 function refresh() {
   location.reload()
 }
