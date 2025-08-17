@@ -46,24 +46,29 @@ function getIconClass(routeName: string) {
 }
 
 async function handleSettingsClick() {
-  await manualSaveData() // 保留手动保存逻辑
-
+  // 1. 首先，执行所有与导航无关的操作
+  await manualSaveData()
   const { data: { session } } = await supabase.auth.getSession()
 
-  if (!session) {
-    // 用户未登录
-    $message.warning(t('auth.please_login'))
-    router.push('/setting') // 转到设置页
-  }
-  else {
-    // 用户已登录
-    router.push('/setting') // 直接转到设置页
-
-    // 保留延迟合并数据的逻辑
+  // 2. 根据会话状态，处理各自的特定逻辑
+  if (session) {
+    // 如果用户已登录，则设置一个延迟任务来合并远程数据
     setTimeout(() => {
-      loadRemoteDataOnceAndMergeToLocal() // ✅ 合并远程数据进来（一次性）
+      loadRemoteDataOnceAndMergeToLocal()
     }, 2500)
   }
+  else {
+    // 如果用户未登录，再检查 localStorage
+    const savedSettings = localStorage.getItem('settings')
+    if (savedSettings) {
+      // 仅当用户是“曾经登录过但已登出”的状态时，才显示提示信息
+      $message.warning(t('auth.please_login'))
+    }
+    // 对于“从未登录过”的用户，则不显示任何消息，直接跳转
+  }
+
+  // 3. 最后，无论用户处于何种状态，都执行统一的导航操作
+  router.push('/setting')
 }
 </script>
 

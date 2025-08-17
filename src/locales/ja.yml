@@ -264,7 +264,7 @@ notes:
   cancel: キャンセル
   export_all: ノートをエクスポート
   exporting: エクスポート中...
-  export_confirm_title: エクスポートの確認
+  export_confirm_title: 日付範囲を選択
   export_confirm_content: 条件に一致するノートをエクスポートします。この処理には時間がかかる場合があります。
   confirm_export: エクスポートを確認
   export_preparing: エクスポートファイルを準備しています。しばらくお待ちください。

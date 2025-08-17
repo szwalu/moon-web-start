@@ -265,7 +265,7 @@ notes:
   cancel: Cancel
   export_all: Export Notes
   exporting: Exporting...
-  export_confirm_title: Confirm Export
+  export_confirm_title: Select a date range
   export_confirm_content: This will export the notes that match your criteria. This operation may take some time.
   confirm_export: Confirm & Export
   export_preparing: Preparing the export file, please wait...
