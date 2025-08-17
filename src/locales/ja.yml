@@ -262,3 +262,14 @@ notes:
   delete_confirm_content: このノートを削除してもよろしいですか？
   confirm_delete: 削除を確認
   cancel: キャンセル
+  export_all: ノートをエクスポート
+  exporting: エクスポート中...
+  export_confirm_title: エクスポートの確認
+  export_confirm_content: 条件に一致するノートをエクスポートします。この処理には時間がかかる場合があります。
+  confirm_export: エクスポートを確認
+  export_preparing: エクスポートファイルを準備しています。しばらくお待ちください。
+  export_all_success: '{count}件のノートをエクスポートしました。'
+  export_all_error: ノートのエクスポート中にエラーが発生しました
+  no_notes_to_export: エクスポートできるノートがありません。
+  no_notes_to_export_in_range: 選択した日付範囲にノートが見つかりませんでした。
+  select_date_range_placeholder: エクスポートする日付範囲で絞り込む

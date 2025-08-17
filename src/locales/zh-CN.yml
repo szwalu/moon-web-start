@@ -269,3 +269,14 @@ notes:
   cancel: 取消
   fetch_error: 获取笔记失败
   saving: 保存中...
+  export_all: 导出笔记
+  exporting: 导出中...
+  export_confirm_title: 确认导出
+  export_confirm_content: 即将导出符合条件的笔记。此操作可能需要一些时间
+  confirm_export: 确认导出
+  export_preparing: 正在准备导出文件，请稍候...
+  export_all_success: 成功导出 {count} 条笔记！
+  export_all_error: 导出笔记时出错
+  no_notes_to_export: 您没有任何笔记可以导出
+  no_notes_to_export_in_range: 在您选择的日期范围内没有找到任何笔记
+  select_date_range_placeholder: 筛选要导出的日期范围

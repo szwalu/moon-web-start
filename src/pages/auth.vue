@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { useDialog, useMessage } from 'naive-ui'
+import { NDatePicker, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -19,7 +19,6 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 const { autoLoadData } = useAutoSave()
 
-// 【核心修改】 1. 移除本地 user 状态，使用 computed 从 Pinia store 中获取
 const user = computed(() => authStore.user)
 
 // 其他非认证相关的本地状态
@@ -33,7 +32,6 @@ const loading = ref(false)
 const resetEmailSent = ref(false)
 const lastBackupTime = ref('N/A')
 
-// 【修正】补全所有笔记系统相关变量定义
 let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
@@ -55,18 +53,16 @@ const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const isRestoringFromCache = ref(false)
 const searchQuery = ref('')
+const isExporting = ref(false)
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
-
-// 【核心修改】 2. 移除本地的 onAuthStateChange 监听器 (由全局 useSupabaseTokenRefresh.ts 处理)
 
 const debouncedSaveNote = debounce(() => {
   if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
 }, 12000)
 
-// 清理逻辑统一到顶层的 onUnmounted
 onUnmounted(() => {
   if (autoSaveInterval) {
     clearInterval(autoSaveInterval)
@@ -75,13 +71,10 @@ onUnmounted(() => {
   debouncedSaveNote.cancel()
 })
 
-// onMounted 钩子负责页面自身的初始化逻辑
 onMounted(async () => {
   await authStore.refreshUser()
-
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
-
   if (savedContent) {
     isRestoringFromCache.value = true
     content.value = savedContent
@@ -102,16 +95,11 @@ onMounted(async () => {
   }
 })
 
-// --- Computed & Watchers ---
-
-// 【保留】恢复之前被省略的 computed 属性
 const filteredNotes = computed(() => {
   if (!searchQuery.value.trim())
     return Array.isArray(notes.value) ? notes.value : []
-
   if (!Array.isArray(cachedNotes.value))
     return []
-
   return cachedNotes.value.filter(note =>
     note && note.content && typeof note.content === 'string'
     && note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
@@ -136,7 +124,6 @@ const charCount = computed(() => {
   return content.value.length
 })
 
-// 【核心修改】 3. 使用 watchEffect 响应 user 状态的变化
 watchEffect(async () => {
   if (user.value) {
     const { data } = await supabase
@@ -147,7 +134,6 @@ watchEffect(async () => {
     lastBackupTime.value = data?.updated_at
       ? new Date(`${data.updated_at}Z`).toLocaleString()
       : '暂无备份'
-
     if (!isRestoringFromCache.value && !isNotesCached.value)
       await fetchNotes()
   }
@@ -181,7 +167,124 @@ watch(content, async (val, oldVal) => {
     debouncedSaveNote()
 })
 
-function addNoteToList(newNote) {
+async function handleBatchExport() {
+  if (isExporting.value)
+    return
+  if (!user.value?.id) {
+    messageHook.error(t('auth.session_expired'))
+    return
+  }
+
+  // 1. 在函数内部创建一个临时的 ref，专门给弹窗内的日期选择器使用
+  const dialogDateRange = ref<[number, number] | null>(null)
+
+  dialog.info({
+    title: t('notes.export_confirm_title'),
+
+    // 2. 使用 h 函数动态创建 VNode 作为弹窗内容
+    // 这样就可以在弹窗里渲染任何 Vue 组件
+    content: () => h(NDatePicker, {
+      'value': dialogDateRange.value,
+      'type': 'daterange',
+      'clearable': true,
+      'placeholder': t('notes.select_date_range_placeholder'),
+      'class': 'dialog-date-picker',
+      // 监听组件的更新事件，并将新值赋给我们的临时 ref
+      'onUpdate:value': (newValue) => {
+        dialogDateRange.value = newValue
+      },
+    }),
+
+    positiveText: t('notes.confirm_export'),
+    negativeText: t('notes.cancel'),
+    onPositiveClick: async () => {
+      isExporting.value = true
+      messageHook.info(t('notes.export_preparing'), { duration: 5000 })
+
+      // 3. 内部的导出逻辑不变，只是数据源从全局 ref 变成了弹窗内的临时 ref
+      try {
+        const [startDate, endDate] = dialogDateRange.value || [null, null]
+        const BATCH_SIZE = 100
+        let allNotes: any[] = []
+        let page = 0
+        let hasMore = true
+
+        while (hasMore) {
+          let query = supabase
+            .from('notes')
+            .select('content, updated_at')
+            .eq('user_id', user.value!.id)
+            .order('updated_at', { ascending: false })
+            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+
+          if (startDate)
+            query = query.gte('updated_at', new Date(startDate).toISOString())
+
+          if (endDate) {
+            const endOfDay = new Date(endDate)
+            endOfDay.setHours(23, 59, 59, 999)
+            query = query.lte('updated_at', endOfDay.toISOString())
+          }
+
+          const { data, error } = await query
+
+          if (error)
+            throw error
+
+          if (data && data.length > 0) {
+            allNotes = allNotes.concat(data)
+            page++
+          }
+          else {
+            hasMore = false
+          }
+          if (data && data.length < BATCH_SIZE)
+            hasMore = false
+        }
+
+        if (allNotes.length === 0) {
+          messageHook.warning(t('notes.no_notes_to_export_in_range'))
+          return
+        }
+
+        const textContent = allNotes.map((note) => {
+          const separator = '----------------------------------------'
+          const date = new Date(note.updated_at).toLocaleString('zh-CN')
+          return `${separator}\n更新于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+        }).join('')
+
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+
+        const datePart = startDate && endDate
+          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
+          : 'all'
+        const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+        a.download = `notes_export_${datePart}_${timestamp}.txt`
+
+        document.body.appendChild(a)
+        a.click()
+
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 100)
+
+        messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
+      }
+      catch (error: any) {
+        messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
+      }
+      finally {
+        isExporting.value = false
+      }
+    },
+  })
+}
+
+function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
     cachedNotes.value.unshift(newNote)
@@ -219,11 +322,11 @@ async function handleExport(note: any) {
     }, 100)
     messageHook.success(t('notes.export_success'))
   }
-  catch (error) {
+  catch (error: any) {
     messageHook.error(`${t('notes.export_error')}: ${error.message}`)
   }
 }
-function updateNoteInList(updatedNote) {
+function updateNoteInList(updatedNote: any) {
   const updateInArray = (arr: any[]) => {
     const index = arr.findIndex(n => n.id === updatedNote.id)
     if (index !== -1)
@@ -257,7 +360,7 @@ async function fetchNotes() {
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
-      .eq('user_id', user.value.id)
+      .eq('user_id', user.value!.id)
       .order('updated_at', { ascending: false })
       .range(from, to)
     if (error) {
@@ -431,7 +534,7 @@ async function saveNote({ showMessage = false } = {}) {
     }
     return savedNote
   }
-  catch (error) {
+  catch (error: any) {
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
@@ -441,14 +544,12 @@ async function handleSubmit() {
   const timeout = setTimeout(() => {
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
-    user.value = null
     setMode('login')
   }, 30000)
   try {
     const { data, error } = await supabase.auth.getSession()
     if (error || !data.session?.user) {
       messageHook.error(t('auth.session_expired'))
-      user.value = null
       setMode('login')
       clearTimeout(timeout)
       return
@@ -469,7 +570,7 @@ async function handleSubmit() {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
-  catch (err) {
+  catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
@@ -508,7 +609,7 @@ async function triggerDeleteConfirmation(id: string) {
           .from('notes')
           .delete()
           .eq('id', id)
-          .eq('user_id', user.value.id)
+          .eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message || '删除失败')
         notes.value = notes.value.filter(note => note.id !== id)
@@ -517,13 +618,16 @@ async function triggerDeleteConfirmation(id: string) {
         hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
         hasPreviousNotes.value = currentPage.value > 1
         if (cachedPages.value.has(currentPage.value)) {
-          cachedPages.value.set(currentPage.value, {
-            ...cachedPages.value.get(currentPage.value),
-            totalNotes: totalNotes.value,
-            hasMoreNotes: hasMoreNotes.value,
-            hasPreviousNotes: hasPreviousNotes.value,
-            notes: notes.value.filter(n => n.id !== id),
-          })
+          const pageData = cachedPages.value.get(currentPage.value)
+          if (pageData) {
+            cachedPages.value.set(currentPage.value, {
+              ...pageData,
+              totalNotes: totalNotes.value,
+              hasMoreNotes: hasMoreNotes.value,
+              hasPreviousNotes: hasPreviousNotes.value,
+              notes: notes.value.filter(n => n.id !== id),
+            })
+          }
         }
         if (id === lastSavedId.value) {
           content.value = ''
@@ -533,7 +637,7 @@ async function triggerDeleteConfirmation(id: string) {
         }
         messageHook.success(t('notes.delete_success'))
       }
-      catch (err) {
+      catch (err: any) {
         messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
       }
       finally {
@@ -665,12 +769,21 @@ function goHomeAndRefresh() {
           </form>
           <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
           <div v-if="showNotesList" class="notes-list h-80 overflow-auto">
-            <input
-              v-model="searchQuery"
-              type="text"
-              :placeholder="$t('notes.search_placeholder')"
-              class="mb-2 w-full border rounded p-2"
-            >
+            <div class="search-export-bar">
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="$t('notes.search_placeholder')"
+                class="search-input"
+              >
+              <button
+                class="export-all-button"
+                :disabled="isExporting"
+                @click="handleBatchExport"
+              >
+                {{ isExporting ? $t('notes.exporting') : $t('notes.export_all') }}
+              </button>
+            </div>
             <div v-if="isLoadingNotes" class="py-4 text-center text-gray-500">
               {{ $t('notes.loading') }}
             </div>
@@ -817,7 +930,7 @@ function goHomeAndRefresh() {
         </div>
         <p v-else class="toggle">
           <span>{{ $t('auth.prompt_to_login') }}</span>
-          <a href="#" @click.prevent="setMode('login')">{{ $t('auth.login') }}</a>
+          <a href="#" @click.prevent="setMode('login')">{{ t('auth.login') }}</a>
         </p>
         <p class="text-center leading-relaxed text-gray-500" style="font-size: 13px;">
           {{ t('auth.Log_in_again_prefix') }}
@@ -832,6 +945,61 @@ function goHomeAndRefresh() {
 </template>
 
 <style scoped>
+.search-export-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.search-input {
+  flex: 4;
+  padding: 0.5rem;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  color: #111;
+  min-width: 0;
+}
+
+.dark .search-input {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #ffffff;
+}
+
+.search-input:focus {
+  border-color: #00b386;
+  outline: none;
+}
+
+.export-all-button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  margin: 0 !important;
+  font-size: 12px !important;
+  border-radius: 6px;
+  border: 1px solid #bbf7d0 !important;
+  cursor: pointer;
+  background-color: #f0fdf4 !important;
+  color: #16a34a !important;
+  white-space: nowrap;
+  text-align: center;
+  height: 23px;
+}
+
+.dark .export-all-button {
+  border-color: #22c55e !important;
+  background-color: #166534 !important;
+  color: #dcfce7 !important;
+}
+
+.export-all-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .auth-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -1156,25 +1324,6 @@ form .emoji-bar .form-button:disabled {
   cursor: not-allowed;
 }
 
-.notes-list input {
-  width: 100%;
-  padding: 0.5rem;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background-color: #fff;
-  color: #111;
-}
-.dark .notes-list input {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-.notes-list input:focus {
-  border-color: #00b386;
-  outline: none;
-}
-
 @media (max-width: 640px) {
   .action-button {
     padding: 0.5rem 1rem !important;
@@ -1251,5 +1400,8 @@ html {
 
 .flex.space-x-2 > button {
   margin-left: 0.5rem;
+}
+:deep(.dialog-date-picker) {
+  margin-top: 12px;
 }
 </style>
