@@ -1,36 +1,41 @@
 // /api/get-favicon.js
 
 export default async function handler(request, response) {
-  // 从请求的 URL 中获取 host 参数, e.g., /api/get-favicon?host=google.com
   const host = request.query.host
+  // console.log(`[LOG] Function invoked for host: ${host}`); // 增加日志
 
-  if (!host)
+  if (!host) {
+    console.error('[ERROR] Host parameter is missing.')
     return response.status(400).send('Query parameter "host" is required.')
+  }
 
-  // 这是 Google 的图标服务 URL
   const googleFaviconURL = `https://www.google.com/s2/favicons?domain=${host}&sz=128`
 
   try {
-    // Vercel 服务器在后端发起请求。这里使用内建的 fetch API
+    // console.log(`[LOG] Fetching from Google: ${googleFaviconURL}`);
     const faviconResponse = await fetch(googleFaviconURL)
 
-    // 如果 Google 返回了错误（例如 404 Not Found），则将错误信息传递给前端
-    if (!faviconResponse.ok)
+    if (!faviconResponse.ok) {
+      console.error(`[ERROR] Google API returned an error: ${faviconResponse.status} ${faviconResponse.statusText}`)
       return response.status(faviconResponse.status).send(faviconResponse.statusText)
+    }
 
-    // 获取从 Google 返回的图片内容 (ArrayBuffer)
+    const contentType = faviconResponse.headers.get('Content-Type')
     const imageBuffer = await faviconResponse.arrayBuffer()
 
-    // 设置正确的响应头，告诉浏览器这是一个图片
-    response.setHeader('Content-Type', faviconResponse.headers.get('Content-Type'))
-    // 设置 Vercel CDN 缓存，缓存一天。这能极大提升性能并减少函数调用次数
-    response.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate')
+    // console.log(`[LOG] Successfully fetched icon. Content-Type: ${contentType}, Size: ${imageBuffer.byteLength} bytes.`);
 
-    // 将图片内容返回给前端
+    if (contentType)
+      response.setHeader('Content-Type', contentType)
+
+    // 关键：设置缓存。s-maxage 用于 Vercel CDN，max-age 用于浏览器
+    response.setHeader('Cache-Control', 'public, s-maxage=86400, max-age=86400, stale-while-revalidate')
+
+    // 发送图片 Buffer
     return response.status(200).send(Buffer.from(imageBuffer))
   }
   catch (error) {
-    console.error(error)
+    console.error(`[FATAL] An unexpected error occurred:`, error)
     return response.status(500).send('Internal Server Error')
   }
 }
