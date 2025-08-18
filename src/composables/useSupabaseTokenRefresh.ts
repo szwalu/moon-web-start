@@ -28,6 +28,8 @@ export function useSupabaseTokenRefresh() {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         // 当登录或令牌刷新成功时，将用户信息更新到 Pinia store
         authStore.setUser(session?.user ?? null)
+        // ✅ 在这里设置最准确的标记
+        localStorage.setItem('hasLoggedInBefore', 'true')
       }
       else if (event === 'SIGNED_OUT') {
         // 当登出时，清除 Pinia store 中的用户信息，然后刷新页面

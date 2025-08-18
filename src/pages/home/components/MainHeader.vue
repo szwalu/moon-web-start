@@ -59,8 +59,8 @@ async function handleSettingsClick() {
   }
   else {
     // 如果用户未登录，再检查 localStorage
-    const savedSettings = localStorage.getItem('settings')
-    if (savedSettings) {
+    const hasLoggedInBefore = localStorage.getItem('hasLoggedInBefore')
+    if (hasLoggedInBefore) {
       // 仅当用户是“曾经登录过但已登出”的状态时，才显示提示信息
       $message.warning(t('auth.please_login'))
     }
