@@ -115,8 +115,19 @@ function performLocalSearch(query: string) {
     $message.info(t('messages.noResultsPre') + query + t('messages.noResultsPost'))
 }
 
+// MainSearch.vue
+
 function handleFaviconError(event: Event) {
   const img = event.target as HTMLImageElement
+
+  // 为了防止本地默认图标也加载失败导致的死循环，
+  // 我们检查一下当前失败的 src是不是已经是默认图标了。
+  if (img.src.includes('/default-favicon.png')) {
+    img.onerror = null // 如果是，就移除错误处理器，彻底停止尝试。
+    return
+  }
+
+  // 任何来自代理的错误，都直接降级到本地的最终备用图标。
   img.src = '/default-favicon.png'
 }
 
