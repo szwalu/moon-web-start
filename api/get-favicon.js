@@ -1,47 +1,45 @@
-// /api/get-favicon.js
+import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-// 切换到 Vercel Edge Runtime，性能更好，日志更可靠
-export const config = {
-  runtime: 'edge',
-}
+const cache: Record<string, { data: Buffer; expires: number }> = {}
+const CACHE_TTL = 1000 * 60 * 60 // 缓存 1 小时
 
-export default async function handler(request) {
-  // 从请求 URL 中解析出 host 参数
-  const { searchParams } = new URL(request.url)
-  const host = searchParams.get('host')
-
-  // 增加日志，Edge Runtime 的日志前缀不同，更容易识别
-  // console.log(`Edge function invoked for host: ${host}`);
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const host = req.query.host as string
 
   if (!host) {
-    // // console.error('Host parameter is missing.');
-    return new Response('Query parameter "host" is required.', { status: 400 })
+    res.status(400).json({ error: 'Missing host parameter' })
+    return
   }
 
-  const googleFaviconURL = `https://www.google.com/s2/favicons?domain=${host}&sz=128`
+  // 命中缓存
+  const cached = cache[host]
+  if (cached && cached.expires > Date.now()) {
+    res.setHeader('Content-Type', 'image/png')
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.send(cached.data)
+    return
+  }
 
   try {
-    // console.log(`Fetching from Google: ${googleFaviconURL}`);
-    const faviconResponse = await fetch(googleFaviconURL)
+    const url = `https://www.google.com/s2/favicons?domain=${host}&sz=64`
+    const response = await fetch(url)
 
-    if (!faviconResponse.ok) {
-      // console.error(`Google API returned an error: ${faviconResponse.status}`);
-      return new Response(faviconResponse.statusText, { status: faviconResponse.status })
+    if (!response.ok)
+      throw new Error(`Failed to fetch favicon: ${response.status}`)
+
+    const buffer = Buffer.from(await response.arrayBuffer())
+
+    // 存入内存缓存
+    cache[host] = {
+      data: buffer,
+      expires: Date.now() + CACHE_TTL,
     }
 
-    // console.log(`Successfully fetched icon. Content-Type: ${faviconResponse.headers.get('Content-Type')}`);
-
-    // 使用 Web API 的 Response 对象来返回图片，这是最标准的方式
-    return new Response(faviconResponse.body, {
-      status: 200,
-      headers: {
-        'Content-Type': faviconResponse.headers.get('Content-Type'),
-        'Cache-Control': 'public, s-maxage=86400, max-age=86400, stale-while-revalidate',
-      },
-    })
+    res.setHeader('Content-Type', 'image/png')
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.send(buffer)
   }
-  catch (error) {
-    // console.error('An unexpected error occurred:', error);
-    return new Response('Internal Server Error', { status: 500 })
+  catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 }
