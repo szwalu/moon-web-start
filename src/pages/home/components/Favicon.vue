@@ -41,21 +41,16 @@ let hasFinalDecision = false // 新增：标记是否已做出最终显示决定
 // console.count(`[Favicon ${props.site.id}] Instance`);
 // watchEffect(() => { /* 日志 */ });
 
-function generateCombinedFallbackSources(siteDomain: string, siteHostname: string) {
+function generateCombinedFallbackSources(siteDomain: string) {
   const sizeParam = props.size > 32 ? 64 : 32
-  const sources = [ // 确保这个列表是您期望的顺序和内容
-    props.site.favicon, // 永远第一优先（如果存在）
-    `/images/${siteDomain}.png`, // 本地public (如果您的项目使用这种约定)
-    `https://favicon.im/${siteHostname}`,
-    `https://${siteDomain}/logo.svg`,
-    `https://${siteDomain}/logo.png`,
-    `https://${siteDomain}/apple-touch-icon.png`,
-    `https://${siteDomain}/apple-touch-icon-precomposed.png`,
+  const sources = [
+    `/images/${siteDomain}.png`,
+    props.site.favicon,
     `https://www.google.com/s2/favicons?domain=${siteDomain}&sz=${sizeParam}`,
+    `https://0x3.com/icon?host=${siteDomain}`,
     `https://icons.duckduckgo.com/ip3/${siteDomain}.ico`,
     `https://${siteDomain}/favicon.ico`,
   ]
-  // 过滤掉 props.site.favicon 可能产生的 null/undefined/空字符串
   return sources.filter(src => typeof src === 'string' && src.trim() !== '') as string[]
 }
 
@@ -173,8 +168,7 @@ function handleVisibleImageError() {
 }
 
 function initializeFavicon() {
-  // console.count(`[Favicon INIT ${props.site.id}]`);
-  hasFinalDecision = false // 重置最终决定标记
+  hasFinalDecision = false
   currentAttemptIndex = 0
   allFallbackSources = []
   imgSrcToAttempt.value = ''
@@ -195,22 +189,21 @@ function initializeFavicon() {
 
   const cachedStatus = faviconCache.get(props.site.id)
   if (cachedStatus) {
-    isLoading.value = false // 有缓存，不需要初始占位符
+    isLoading.value = false
     if (cachedStatus === 'LETTER') {
-      setDisplayToLetter(false) // isFinal=false,因为这只是从缓存恢复，可能之后会变
+      setDisplayToLetter(false)
     }
     else {
       finalDisplaySrc.value = cachedStatus
-      showLetterFallback.value = false // 确保字母不高亮
-      hasFinalDecision = true // 从缓存中成功恢复图片，视为最终决定
+      showLetterFallback.value = false
+      hasFinalDecision = true
     }
     return
   }
 
   const siteDomain = getDomain(props.site.url || '')
-  const siteHostname = getHostname(props.site.url || '')
 
-  allFallbackSources = generateCombinedFallbackSources(siteDomain, siteHostname)
+  allFallbackSources = generateCombinedFallbackSources(siteDomain) // 这里是修改后的正确调用
 
   if (allFallbackSources.length === 0) {
     setDisplayToLetter()
