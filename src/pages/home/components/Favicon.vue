@@ -2,7 +2,7 @@
 import type { PropType } from 'vue'
 import { nextTick, onMounted, ref } from 'vue'
 import type { Site } from '@/types'
-import { getDomain, getHostname } from '@/utils'
+import { getHostname } from '@/utils'
 import { faviconCache } from '@/utils/faviconCache'
 
 const props = defineProps({
@@ -208,7 +208,7 @@ function initializeFavicon() {
     return
   }
 
-  const siteDomain = getDomain(props.site.url || '')
+  const siteDomain = getHostname(props.site.url || '')
   const siteHostname = getHostname(props.site.url || '')
 
   allFallbackSources = generateCombinedFallbackSources(siteDomain, siteHostname)
