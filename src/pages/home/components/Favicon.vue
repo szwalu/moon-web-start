@@ -52,6 +52,7 @@ function generateCombinedFallbackSources(siteDomain: string, siteHostname: strin
     `https://${siteDomain}/apple-touch-icon.png`,
     `https://${siteDomain}/apple-touch-icon-precomposed.png`,
     `https://www.google.com/s2/favicons?domain=${siteDomain}&sz=${sizeParam}`,
+    `https://0x3.com/icon?host=${domain}`,
     `https://icons.duckduckgo.com/ip3/${siteDomain}.ico`,
     `https://${siteDomain}/favicon.ico`,
   ]
