@@ -71,6 +71,49 @@ onUnmounted(() => {
   debouncedSaveNote.cancel()
 })
 
+// 【新增】使用 watch 实现全局实时搜索
+const debouncedSearch = debounce(async () => {
+  // 如果搜索框被清空，则恢复正常的分页列表
+  if (!searchQuery.value.trim()) {
+    // 重新获取当前页的笔记
+    await fetchNotes()
+    return
+  }
+
+  isLoadingNotes.value = true
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', user.value.id)
+      // 使用 ilike 进行不区分大小写的模糊搜索
+      .ilike('content', `%${searchQuery.value.trim()}%`)
+      .order('updated_at', { ascending: false })
+      // 限制最多返回100条搜索结果，避免返回内容过多
+      .limit(100)
+
+    if (error)
+      throw error
+
+    // 直接将搜索结果更新到笔记列表
+    notes.value = data || []
+
+    // 在搜索模式下，我们隐藏分页按钮
+    hasMoreNotes.value = false
+    hasPreviousNotes.value = false
+  }
+  catch (err: any) {
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
+  }
+  finally {
+    isLoadingNotes.value = false
+  }
+}, 500) // 添加 500ms 的防抖，停止输入半秒后才开始搜索
+
+watch(searchQuery, () => {
+  debouncedSearch()
+})
+
 onMounted(async () => {
   await authStore.refreshUser()
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
@@ -93,17 +136,6 @@ onMounted(async () => {
     }
     isRestoringFromCache.value = false
   }
-})
-
-const filteredNotes = computed(() => {
-  if (!searchQuery.value.trim())
-    return Array.isArray(notes.value) ? notes.value : []
-  if (!Array.isArray(cachedNotes.value))
-    return []
-  return cachedNotes.value.filter(note =>
-    note && note.content && typeof note.content === 'string'
-    && note.content.toLowerCase().includes(searchQuery.value.toLowerCase()),
-  )
 })
 
 const lastLoginTime = computed(() => {
@@ -302,30 +334,38 @@ function addNoteToList(newNote: any) {
     nextTick()
   }
 }
-async function handleExport(note: any) {
-  if (!note || !note.content) {
-    messageHook.warning(t('notes.export_empty'))
+
+// 【新增】置顶/取消置顶笔记的函数
+async function handlePinToggle(note: any) {
+  if (!note || !user.value)
     return
-  }
+
+  const newPinStatus = !note.is_pinned
+
   try {
-    const blob = new Blob([note.content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const fileName = `note_${note.id.substring(0, 8)}_${new Date(note.updated_at).toISOString().split('T')[0]}.txt`
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    setTimeout(() => {
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }, 100)
-    messageHook.success(t('notes.export_success'))
+    const { error } = await supabase
+      .from('notes')
+      .update({ is_pinned: newPinStatus })
+      .eq('id', note.id)
+      .eq('user_id', user.value.id)
+
+    if (error)
+      throw error
+
+    messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+
+    // 【核心修正】在重新获取数据前，清空所有页面的缓存
+    // 这会强制 fetchNotes 去数据库拉取最新、正确排序的数据
+    cachedPages.value.clear()
+
+    // 现在，这个 fetchNotes 调用将获取到最新的数据
+    await fetchNotes()
   }
-  catch (error: any) {
-    messageHook.error(`${t('notes.export_error')}: ${error.message}`)
+  catch (err: any) {
+    messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
   }
 }
+
 function updateNoteInList(updatedNote: any) {
   const updateInArray = (arr: any[]) => {
     const index = arr.findIndex(n => n.id === updatedNote.id)
@@ -360,8 +400,9 @@ async function fetchNotes() {
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
-      .eq('user_id', user.value!.id)
-      .order('updated_at', { ascending: false })
+      .eq('user_id', user.value.id)
+      .order('is_pinned', { ascending: false }) // 【新增】优先按 is_pinned 降序排（true在前）
+      .order('updated_at', { ascending: false }) // 然后再按更新时间降序排
       .range(from, to)
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
@@ -770,12 +811,21 @@ function goHomeAndRefresh() {
           <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
           <div v-if="showNotesList" class="notes-list h-80 overflow-auto">
             <div class="search-export-bar">
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="$t('notes.search_placeholder')"
-                class="search-input"
-              >
+              <div class="search-input-wrapper">
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  :placeholder="$t('notes.search_placeholder')"
+                  class="search-input"
+                >
+                <button
+                  v-if="searchQuery"
+                  class="clear-search-button"
+                  @click="searchQuery = ''"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="export-all-button"
                 :disabled="isExporting"
@@ -787,12 +837,12 @@ function goHomeAndRefresh() {
             <div v-if="isLoadingNotes" class="py-4 text-center text-gray-500">
               {{ $t('notes.loading') }}
             </div>
-            <div v-else-if="filteredNotes.length === 0" class="py-4 text-center text-gray-500">
+            <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
               {{ $t('notes.no_notes') }}
             </div>
             <div v-else class="space-y-6">
               <div
-                v-for="note in filteredNotes"
+                v-for="note in notes"
                 :key="note.id"
                 class="mb-3 block w-full cursor-pointer rounded-lg bg-gray-100 shadow-md p-4"
                 @click="toggleExpand(note.id)"
@@ -827,12 +877,12 @@ function goHomeAndRefresh() {
                   </button>
                   <div class="flex space-x-2">
                     <button
-                      class="action-button export-btn"
+                      class="action-button pin-btn"
                       style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
                       :disabled="loading"
-                      @click.stop="handleExport(note)"
+                      @click.stop="handlePinToggle(note)"
                     >
-                      {{ $t('notes.export') }}
+                      {{ note.is_pinned ? $t('notes.unpin') : $t('notes.pin') }}
                     </button>
                     <button
                       class="action-button delete-btn"
@@ -950,6 +1000,53 @@ function goHomeAndRefresh() {
   gap: 0.5rem;
   margin-bottom: 1rem;
   align-items: center;
+}
+
+/* 【新增】搜索框容器和清除按钮的样式 */
+.search-input-wrapper {
+  position: relative; /* 关键：作为内部绝对定位按钮的参考点 */
+  flex: 4; /* 保持原有的宽度比例 */
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  /* 让输入框的 padding-right 变大，为清除按钮留出空间 */
+  padding-right: 2rem;
+}
+
+.clear-search-button {
+  position: absolute; /* 关键：让按钮脱离文档流，浮动起来 */
+  right: 0.5rem;    /* 定位在容器的右侧 */
+  top: 50%;         /* 垂直居中 */
+  transform: translateY(-50%); /* 精准垂直居中 */
+
+  /* 按钮本身的美化样式 */
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 20px;   /* 让 "×" 字符看起来更清晰 */
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dark .clear-search-button {
+  color: #aaa;
+}
+
+.clear-search-button:hover {
+  color: #333;
+}
+
+.dark .clear-search-button:hover {
+  color: #fff;
 }
 
 .search-input {
@@ -1392,10 +1489,10 @@ html {
   flex-grow: 1;
 }
 
-.export-btn {
-  background-color: #f0fdf4 !important;
-  color: #16a34a !important;
-  border: 1px solid #bbf7d0 !important;
+.pin-btn {
+  background-color: #fefce8 !important; /* 淡黄色背景 */
+  color: #ca8a04 !important; /* 黄褐色文字 */
+  border: 1px solid #fde68a !important; /* 黄色边框 */
 }
 
 .flex.space-x-2 > button {

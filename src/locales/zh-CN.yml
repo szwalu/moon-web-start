@@ -281,3 +281,7 @@ notes:
   no_notes_to_export: 您没有任何笔记可以导出
   no_notes_to_export_in_range: 在您选择的日期范围内没有找到任何笔记
   select_date_range_placeholder: 筛选要导出的日期范围
+  pin: 置顶
+  unpin: 取消置顶
+  pinned_success: 笔记已置顶
+  unpinned_success: 已取消置顶
