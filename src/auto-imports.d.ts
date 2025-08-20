@@ -181,6 +181,7 @@ declare global {
   const useAttrs: typeof import('vue')['useAttrs']
   const useAuthStore: typeof import('./stores/auth')['useAuthStore']
   const useAutoSave: typeof import('./composables/useAutoSave')['useAutoSave']
+  const useAutosizeTextarea: typeof import('./composables/useAutosizeTextarea')['useAutosizeTextarea']
   const useBase64: typeof import('@vueuse/core')['useBase64']
   const useBattery: typeof import('@vueuse/core')['useBattery']
   const useBluetooth: typeof import('@vueuse/core')['useBluetooth']
@@ -523,6 +524,7 @@ declare module 'vue' {
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
     readonly useAuthStore: UnwrapRef<typeof import('./stores/auth')['useAuthStore']>
     readonly useAutoSave: UnwrapRef<typeof import('./composables/useAutoSave')['useAutoSave']>
+    readonly useAutosizeTextarea: UnwrapRef<typeof import('./composables/useAutosizeTextarea')['useAutosizeTextarea']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
     readonly useBattery: UnwrapRef<typeof import('@vueuse/core')['useBattery']>
     readonly useBluetooth: UnwrapRef<typeof import('@vueuse/core')['useBluetooth']>

@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+import { useAutosizeTextarea } from '@/composables/useAutosizeTextarea'
 
 // --- 初始化 & 状态定义 ---
 useDark()
@@ -35,6 +36,9 @@ const lastBackupTime = ref('N/A')
 let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+// 【新增】调用自动高度调整函数
+useAutosizeTextarea(content, textareaRef)
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 const showNotesList = ref(false)
@@ -775,9 +779,9 @@ function goHomeAndRefresh() {
           <form class="mb-6" @submit.prevent="handleSubmit">
             <span class="info-label">{{ $t('notes.notes') }}</span>
             <textarea
-              v-model="content"
+              ref="textareaRef" v-model="content"
               :placeholder="$t('notes.content_placeholder')"
-              class="mb-2 w-full border rounded h-80 p-2"
+              class="mb-2 w-full border rounded p-2"
               required
               :disabled="loading"
               :maxlength="maxNoteLength"
@@ -1284,7 +1288,14 @@ button:disabled {
   border-radius: 6px;
   background-color: #fff;
   color: #111;
-  height: 300px;
+  /* height: 192px; */ /* 【删除】或注释掉固定的 height */
+
+  /* 【新增】推荐的样式 */
+  min-height: 120px; /* 设置一个初始的最小高度 */
+  max-height: 400px; /* 设置一个最大高度，防止无限拉伸 */
+  resize: none;      /* 隐藏浏览器右下角的拖拽手柄 */
+  overflow-y: auto;/* 当内容超出最大高度时，显示滚动条 */
+
   font-size: 14px;
   line-height: 1.5;
 }
@@ -1355,7 +1366,7 @@ form .emoji-bar .form-button:disabled {
 
 .notes-list {
   margin-top: 1rem;
-  height: 300px;
+  height: 400px;
   overflow-y: auto;
   position: relative;
 }
