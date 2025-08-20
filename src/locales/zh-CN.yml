@@ -260,10 +260,6 @@ notes:
   auto_saved: 保存成功
   char_count: 字数
   session_expired: 会话已过期，请刷新网页或重新登录
-  export: 导出
-  export_success: 导出成功
-  export_error: 导出失败
-  export_empty: 无法导出空笔记
   delete_confirm_title: 删除确认
   delete_confirm_content: 确定要删除此笔记吗？
   confirm_delete: 确认删除
@@ -285,3 +281,5 @@ notes:
   unpin: 取消置顶
   pinned_success: 笔记已置顶
   unpinned_success: 已取消置顶
+  expand: 展开>>
+  collapse: <<收起

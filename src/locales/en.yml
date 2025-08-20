@@ -255,10 +255,6 @@ notes:
   auto_saved: Saved successfully
   char_count: Character count
   session_expired: Session expired. Please refresh or log in again
-  export: Export
-  export_success: Export successful
-  export_error: Export failed
-  export_empty: Cannot export empty note
   delete_confirm_title: Delete Confirmation
   delete_confirm_content: Are you sure you want to delete this note?
   confirm_delete: Confirm Delete
@@ -274,3 +270,9 @@ notes:
   no_notes_to_export: You have no notes to export.
   no_notes_to_export_in_range: No notes were found in the selected date range.
   select_date_range_placeholder: Filter by date range for export
+  pin: Pin
+  unpin: Unpin
+  pinned_success: Note pinned
+  unpinned_success: Note unpinned
+  expand: Expand >>
+  collapse: << Collapse

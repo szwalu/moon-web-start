@@ -6,6 +6,7 @@ import { useDark } from '@vueuse/core'
 import { NDatePicker, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
+import MarkdownIt from 'markdown-it'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +14,21 @@ import { useAutosizeTextarea } from '@/composables/useAutosizeTextarea'
 
 // --- 初始化 & 状态定义 ---
 useDark()
+
+// 【新增】创建一个 markdown-it 实例
+// 我们进行一些基础配置，让它更符合常见用法
+const md = new MarkdownIt({
+  html: false, // 禁止解析内容中的 HTML 标签，更安全
+  linkify: true, // 自动将链接文字转换为链接
+  breaks: true, // 将换行符 (\n) 转换为 <br>
+})
+
+// 【新增】一个专门用于渲染的函数
+function renderMarkdown(content: string) {
+  if (!content)
+    return ''
+  return md.render(content)
+}
 const router = useRouter()
 const { t } = useI18n()
 const messageHook = useMessage()
@@ -39,6 +55,9 @@ const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 // 【新增】调用自动高度调整函数
 useAutosizeTextarea(content, textareaRef)
+
+// 在您的其他 ref 定义旁边，添加下面这行
+const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 const showNotesList = ref(false)
@@ -74,6 +93,20 @@ onUnmounted(() => {
   }
   debouncedSaveNote.cancel()
 })
+
+// 【新增】检查笔记内容是否溢出的函数
+function checkIfNoteOverflows(el: Element | null, noteId: string) {
+  if (el) {
+    // el.scrollHeight是元素内容的总高度
+    // el.clientHeight是元素在页面上可见的高度
+    // 如果内容总高度大于可见高度，说明内容被截断了
+    const isOverflowing = el.scrollHeight > el.clientHeight
+
+    // 只有当状态变化时才更新，避免不必要的重新渲染
+    if (noteOverflowStatus.value[noteId] !== isOverflowing)
+      noteOverflowStatus.value[noteId] = isOverflowing
+  }
+}
 
 // 【新增】使用 watch 实现全局实时搜索
 const debouncedSearch = debounce(async () => {
@@ -484,11 +517,7 @@ async function previousPage() {
     }
   }
 }
-function truncateContent(text: string, maxLength: number = 150) {
-  if (text.length <= maxLength)
-    return text
-  return `${text.slice(0, maxLength)}...`
-}
+
 function generateUniqueId() {
   return uuidv4()
 }
@@ -779,7 +808,8 @@ function goHomeAndRefresh() {
           <form class="mb-6" @submit.prevent="handleSubmit">
             <span class="info-label">{{ $t('notes.notes') }}</span>
             <textarea
-              ref="textareaRef" v-model="content"
+              ref="textareaRef"
+              v-model="content"
               :placeholder="$t('notes.content_placeholder')"
               class="mb-2 w-full border rounded p-2"
               required
@@ -848,28 +878,37 @@ function goHomeAndRefresh() {
               <div
                 v-for="note in notes"
                 :key="note.id"
-                class="mb-3 block w-full cursor-pointer rounded-lg bg-gray-100 shadow-md p-4"
-                @click="toggleExpand(note.id)"
+                class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
               >
                 <div class="flex-1 min-w-0">
-                  <p
-                    v-if="expandedNote === note.id"
-                    class="whitespace-pre-wrap text-sm text-gray-700"
-                    style="font-size: 14px !important; line-height: 1.6;"
-                  >
-                    {{ note.content }}
-                  </p>
-                  <p
-                    v-else
-                    class="truncate text-sm text-gray-700"
-                    style="font-size: 14px !important; line-height: 1.6;"
-                  >
-                    {{ truncateContent(note.content) }}
-                  </p>
-                  <p class="text-xxs text-gray-500" style="font-size: 10px !important; line-height: 1.0;">
-                    {{ $t('notes.updated_at') }}: {{ new Date(note.updated_at).toLocaleString() }}
-                  </p>
+                  <div v-if="expandedNote === note.id">
+                    <div
+                      class="prose dark:prose-invert max-w-none"
+                      style="font-size: 14px !important; line-height: 1.6;"
+                      v-html="renderMarkdown(note.content)"
+                    />
+                    <button class="toggle-button" @click="toggleExpand(note.id)">
+                      {{ $t('notes.collapse') }}
+                    </button>
+                  </div>
+
+                  <div v-else>
+                    <div
+                      :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
+                      class="prose dark:prose-invert line-clamp-3 max-w-none"
+                      style="font-size: 14px !important; line-height: 1.6;"
+                      v-html="renderMarkdown(note.content)"
+                    />
+                    <button
+                      v-if="noteOverflowStatus[note.id]"
+                      class="toggle-button"
+                      @click="toggleExpand(note.id)"
+                    >
+                      {{ $t('notes.expand') }}
+                    </button>
+                  </div>
                 </div>
+
                 <div class="mt-3 flex justify-between">
                   <button
                     class="edit-btn action-button"
@@ -899,7 +938,7 @@ function goHomeAndRefresh() {
                   </div>
                 </div>
               </div>
-              <div v-if="hasPreviousNotes || hasMoreNotes" class="mt-4 flex justify-center text-center gap-4">
+              <div v-if="(hasPreviousNotes || hasMoreNotes) && !searchQuery" class="mt-4 flex justify-center text-center gap-4">
                 <button
                   v-if="hasPreviousNotes"
                   class="form-button"
@@ -1511,5 +1550,35 @@ html {
 }
 :deep(.dialog-date-picker) {
   margin-top: 12px;
+}
+
+/* 【新增】用于将文本截断为3行的工具类 */
+.line-clamp-3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* 【修改】“展开”和“收起”按钮的样式 - 蓝色版 */
+.toggle-button {
+  background: none;
+  border: none;
+  color: #007bff !important; /* 【修改】改为蓝色 */
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: normal;
+  font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
+}
+
+.dark .toggle-button {
+  color: #38bdf8 !important; /* 【修改】改为暗黑模式下的亮蓝色 */
+}
+
+.toggle-button:hover {
+  text-decoration: underline;
 }
 </style>
