@@ -884,7 +884,7 @@ function goHomeAndRefresh() {
                   <div v-if="expandedNote === note.id">
                     <div
                       class="prose dark:prose-invert max-w-none"
-                      style="font-size: 14px !important; line-height: 1.6;"
+                      style="font-size: 16px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
                     <button class="toggle-button" @click="toggleExpand(note.id)">
@@ -896,7 +896,7 @@ function goHomeAndRefresh() {
                     <div
                       :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
                       class="prose dark:prose-invert line-clamp-3 max-w-none"
-                      style="font-size: 14px !important; line-height: 1.6;"
+                      style="font-size: 16px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
                     <button
@@ -1335,7 +1335,7 @@ button:disabled {
   resize: none;      /* 隐藏浏览器右下角的拖拽手柄 */
   overflow-y: auto;/* 当内容超出最大高度时，显示滚动条 */
 
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
 }
 .notes-container textarea:focus {
@@ -1346,7 +1346,7 @@ button:disabled {
   background-color: #2c2c2e;
   border-color: #48484a;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
 }
 .notes-container .bg-gray-100 {
