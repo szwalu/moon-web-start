@@ -56,7 +56,9 @@ useAutosizeTextarea(content, textareaRef)
 const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
-const showNotesList = ref(false)
+// MODIFICATION START: Display notes list by default
+const showNotesList = ref(true)
+// MODIFICATION END
 const expandedNote = ref<string | null>(null)
 const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
@@ -76,6 +78,30 @@ const isExporting = ref(false)
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
+
+// MODIFICATION START: Add ref for notes list element and implement infinite scroll
+const notesListRef = ref<HTMLElement | null>(null)
+
+const handleScroll = debounce(() => {
+  const el = notesListRef.value
+  // Return if element doesn't exist, is already loading, or there are no more notes
+  if (!el || isLoadingNotes.value || !hasMoreNotes.value)
+    return
+
+  // Load next page when user scrolls near the bottom (50px threshold)
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
+    nextPage()
+}, 200)
+
+// Watch for the notes list element to appear/disappear and add/remove scroll listener
+watch(notesListRef, (newEl, oldEl) => {
+  if (oldEl)
+    oldEl.removeEventListener('scroll', handleScroll)
+
+  if (newEl)
+    newEl.addEventListener('scroll', handleScroll)
+})
+// MODIFICATION END
 
 function checkIfNoteOverflows(el: Element | null, noteId: string) {
   if (el) {
@@ -130,6 +156,11 @@ onUnmounted(() => {
     autoSaveInterval = null
   }
   debouncedSaveNote.cancel()
+  // MODIFICATION START: Clean up scroll handler
+  handleScroll.cancel()
+  if (notesListRef.value)
+    notesListRef.value.removeEventListener('scroll', handleScroll)
+  // MODIFICATION END
 })
 
 onMounted(async () => {
@@ -408,7 +439,12 @@ async function fetchNotes() {
     }
     const newNotes = data || []
     totalNotes.value = count || 0
-    notes.value = newNotes.slice(0, notesPerPage)
+    // MODIFICATION START: Append new notes instead of replacing for infinite scroll
+    if (currentPage.value > 1)
+      notes.value = [...notes.value, ...newNotes]
+    else
+      notes.value = newNotes.slice(0, notesPerPage)
+    // MODIFICATION END
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
     const existingIds = new Set(cachedNotes.value.map(n => n.id))
@@ -439,38 +475,12 @@ async function fetchNotes() {
   }
 }
 async function nextPage() {
-  const targetPage = currentPage.value + 1
-  const cachedPage = cachedPages.value.get(targetPage)
-  if (cachedPage) {
-    currentPage.value = targetPage
-    notes.value = cachedPage.notes.slice()
-    totalNotes.value = cachedPage.totalNotes
-    hasMoreNotes.value = cachedPage.hasMoreNotes
-    hasPreviousNotes.value = cachedPage.hasPreviousNotes
-    nextTick()
-  }
-  else {
-    currentPage.value = targetPage
-    await fetchNotes()
-  }
-}
-async function previousPage() {
-  if (currentPage.value > 1) {
-    const targetPage = currentPage.value - 1
-    const cachedPage = cachedPages.value.get(targetPage)
-    if (cachedPage) {
-      currentPage.value = targetPage
-      notes.value = cachedPage.notes.slice()
-      totalNotes.value = cachedPage.totalNotes
-      hasMoreNotes.value = cachedPage.hasMoreNotes
-      hasPreviousNotes.value = cachedPage.hasPreviousNotes
-      nextTick()
-    }
-    else {
-      currentPage.value = targetPage
-      await fetchNotes()
-    }
-  }
+  // MODIFICATION START: Simplified nextPage for infinite scroll
+  if (isLoadingNotes.value || !hasMoreNotes.value)
+    return
+  currentPage.value++
+  await fetchNotes()
+  // MODIFICATION END
 }
 
 function generateUniqueId() {
@@ -607,14 +617,10 @@ async function handleSubmit() {
     loading.value = false
   }
 }
-function toggleNotesList() {
-  showNotesList.value = !showNotesList.value
-  if (showNotesList.value && !isNotesCached.value) {
-    currentPage.value = 1
-    fetchNotes()
-  }
-  searchQuery.value = ''
-}
+// MODIFICATION START: Removed toggleNotesList function as it's no longer needed
+// function toggleNotesList() { ... }
+// MODIFICATION END
+
 function handleEdit(note: any) {
   if (!note?.id)
     return
@@ -852,175 +858,153 @@ function handleDropdownSelect(key: string, note: any) {
           <span class="info-label">{{ $t('auth.account_last_backup_label') }}</span>
           <span class="info-value">{{ lastBackupTime }}</span>
         </p>
-        <div class="notes-container">
-          <form class="mb-6" @submit.prevent="handleSubmit">
-            <span class="info-label">{{ $t('notes.notes') }}</span>
-            <textarea
-              ref="textareaRef"
-              v-model="content"
-              :placeholder="$t('notes.content_placeholder')"
-              class="mb-2 w-full border rounded p-2"
-              required
-              :disabled="loading"
-              :maxlength="maxNoteLength"
-            />
-            <div class="status-bar">
-              <span class="char-counter">
-                {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-              </span>
-              <span v-if="lastSavedTime" class="char-counter ml-4">
-                💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-              </span>
-            </div>
-            <div class="emoji-bar">
-              <button
-                type="submit"
-                class="form-button flex-2"
-                :disabled="loading"
-              >
-                💾 {{ loading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-              </button>
-              <button
-                type="button"
-                class="form-button flex-1"
-                :disabled="loading"
-                @click="toggleNotesList"
-              >
-                {{ $t('notes.more_notes') }}
-              </button>
-            </div>
-          </form>
-          <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
-          <div v-if="showNotesList" class="notes-list h-80 overflow-auto" @click="handleNoteContentClick">
-            <div class="search-export-bar">
-              <div class="search-input-wrapper">
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  :placeholder="$t('notes.search_placeholder')"
-                  class="search-input"
-                >
-                <button
-                  v-if="searchQuery"
-                  class="clear-search-button"
-                  @click="searchQuery = ''"
-                >
-                  ×
-                </button>
-              </div>
-              <button
-                class="export-all-button"
-                :disabled="isExporting"
-                @click="handleBatchExport"
-              >
-                {{ isExporting ? $t('notes.exporting') : $t('notes.export_all') }}
-              </button>
-            </div>
-            <div v-if="isLoadingNotes" class="py-4 text-center text-gray-500">
-              {{ $t('notes.loading') }}
-            </div>
-            <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
-              {{ $t('notes.no_notes') }}
-            </div>
-            <div v-else class="space-y-6">
-              <div
-                v-for="note in notes"
-                :key="note.id"
-                :data-note-id="note.id"
-                class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
-              >
-                <div class="note-card-top-bar">
-                  <div class="note-meta-left">
-                    <p class="note-date">
-                      {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
-                    </p>
-
-                    <span v-if="note.is_pinned" class="pinned-indicator">
-                      {{ $t('notes.pinned_label') }}
-                    </span>
-                  </div>
-
-                  <n-dropdown
-                    trigger="click"
-                    placement="bottom-end"
-                    :options="[{
-                      label: t('notes.edit'),
-                      key: 'edit',
-                    }, {
-                      label: t('notes.copy'),
-                      key: 'copy',
-                    }, {
-                      label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
-                      key: 'pin',
-                    }, {
-                      label: t('notes.delete'),
-                      key: 'delete',
-                    }]"
-                    @select="(key) => handleDropdownSelect(key, note)"
-                  >
-                    <div class="kebab-menu">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
-                    </div>
-                  </n-dropdown>
-                </div>
-
-                <div class="flex-1 min-w-0">
-                  <div v-if="expandedNote === note.id">
-                    <div
-                      class="prose dark:prose-invert max-w-none"
-                      style="font-size: 17px !important; line-height: 1.6;"
-                      v-html="renderMarkdown(note.content)"
-                    />
-                    <button class="toggle-button collapse-button" @click.stop="toggleExpand(note.id)">
-                      {{ $t('notes.collapse') }}
-                    </button>
-                  </div>
-                  <div v-else>
-                    <div
-                      :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
-                      class="prose dark:prose-invert line-clamp-3 max-w-none"
-                      style="font-size: 17px !important; line-height: 1.6;"
-                      v-html="renderMarkdown(note.content)"
-                    />
-                    <button
-                      v-if="noteOverflowStatus[note.id]"
-                      class="toggle-button"
-                      @click.stop="toggleExpand(note.id)"
-                    >
-                      {{ $t('notes.expand') }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div v-if="(hasPreviousNotes || hasMoreNotes) && !searchQuery" class="mt-4 flex justify-center text-center gap-4">
-                <button
-                  v-if="hasPreviousNotes"
-                  class="form-button"
-                  :disabled="isLoadingNotes"
-                  @click="previousPage"
-                >
-                  {{ $t('notes.previous_page') }}
-                </button>
-                <button
-                  v-if="hasMoreNotes"
-                  class="form-button"
-                  :disabled="isLoadingNotes"
-                  @click="nextPage"
-                >
-                  {{ $t('notes.next_page') }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
-      <div class="button-group">
+
+      <div class="button-group" style="margin-top: 1.5rem; margin-bottom: 2rem;">
         <button :disabled="loading" @click="router.back()">
           {{ $t('auth.return_home') }}
         </button>
         <button class="button--secondary" :disabled="loading" @click="handleLogout">
           {{ loading ? $t('auth.loading') : $t('auth.logout') }}
         </button>
+      </div>
+      <div class="notes-container">
+        <form class="mb-6" @submit.prevent="handleSubmit">
+          <span class="info-label">{{ $t('notes.notes') }}</span>
+          <textarea
+            ref="textareaRef"
+            v-model="content"
+            :placeholder="$t('notes.content_placeholder')"
+            class="mb-2 w-full border rounded p-2"
+            required
+            :disabled="loading"
+            :maxlength="maxNoteLength"
+          />
+          <div class="status-bar">
+            <span class="char-counter">
+              {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+            </span>
+            <span v-if="lastSavedTime" class="char-counter ml-4">
+              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+            </span>
+          </div>
+          <div class="emoji-bar">
+            <button
+              type="submit"
+              class="form-button flex-2"
+              :disabled="loading"
+            >
+              💾 {{ loading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+            </button>
+          </div>
+        </form>
+        <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
+        <div v-if="showNotesList" ref="notesListRef" class="notes-list h-80 overflow-auto" @click="handleNoteContentClick">
+          <div class="search-export-bar">
+            <div class="search-input-wrapper">
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="$t('notes.search_placeholder')"
+                class="search-input"
+              >
+              <button
+                v-if="searchQuery"
+                class="clear-search-button"
+                @click="searchQuery = ''"
+              >
+                ×
+              </button>
+            </div>
+            <button
+              class="export-all-button"
+              :disabled="isExporting"
+              @click="handleBatchExport"
+            >
+              {{ isExporting ? $t('notes.exporting') : $t('notes.export_all') }}
+            </button>
+          </div>
+          <div v-if="isLoadingNotes && notes.length === 0" class="py-4 text-center text-gray-500">
+            {{ $t('notes.loading') }}
+          </div>
+          <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
+            {{ $t('notes.no_notes') }}
+          </div>
+          <div v-else class="space-y-6">
+            <div
+              v-for="note in notes"
+              :key="note.id"
+              :data-note-id="note.id"
+              class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
+            >
+              <div class="note-card-top-bar">
+                <div class="note-meta-left">
+                  <p class="note-date">
+                    {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+                  </p>
+
+                  <span v-if="note.is_pinned" class="pinned-indicator">
+                    {{ $t('notes.pinned_label') }}
+                  </span>
+                </div>
+
+                <n-dropdown
+                  trigger="click"
+                  placement="bottom-end"
+                  :options="[{
+                    label: t('notes.edit'),
+                    key: 'edit',
+                  }, {
+                    label: t('notes.copy'),
+                    key: 'copy',
+                  }, {
+                    label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
+                    key: 'pin',
+                  }, {
+                    label: t('notes.delete'),
+                    key: 'delete',
+                  }]"
+                  @select="(key) => handleDropdownSelect(key, note)"
+                >
+                  <div class="kebab-menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+                  </div>
+                </n-dropdown>
+              </div>
+
+              <div class="flex-1 min-w-0">
+                <div v-if="expandedNote === note.id">
+                  <div
+                    class="prose dark:prose-invert max-w-none"
+                    style="font-size: 17px !important; line-height: 1.6;"
+                    v-html="renderMarkdown(note.content)"
+                  />
+                  <button class="toggle-button collapse-button" @click.stop="toggleExpand(note.id)">
+                    {{ $t('notes.collapse') }}
+                  </button>
+                </div>
+                <div v-else>
+                  <div
+                    :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
+                    class="prose dark:prose-invert line-clamp-3 max-w-none"
+                    style="font-size: 17px !important; line-height: 1.6;"
+                    v-html="renderMarkdown(note.content)"
+                  />
+                  <button
+                    v-if="noteOverflowStatus[note.id]"
+                    class="toggle-button"
+                    @click.stop="toggleExpand(note.id)"
+                  >
+                    {{ $t('notes.expand') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-if="isLoadingNotes && notes.length > 0" class="py-4 text-center text-gray-500">
+              {{ $t('notes.loading') }}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div v-else>
@@ -1413,7 +1397,9 @@ button:disabled {
 }
 
 .notes-container {
-  margin-top: 3rem;
+  /* MODIFICATION START: Adjusted margin */
+  margin-top: 0;
+  /* MODIFICATION END */
 }
 
 .notes-container textarea {
