@@ -283,3 +283,6 @@ notes:
   unpinned_success: 已取消置顶
   expand: 展开>>
   collapse: <<收起
+  copy: 复制内容
+  copy_success: 笔记内容已复制到剪贴板！
+  copy_error: 复制失败

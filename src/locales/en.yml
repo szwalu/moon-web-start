@@ -276,3 +276,6 @@ notes:
   unpinned_success: Note unpinned
   expand: Expand >>
   collapse: << Collapse
+  copy: Copy Content
+  copy_success: Note content copied to clipboard!
+  copy_error: Failed to copy

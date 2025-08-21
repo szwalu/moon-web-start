@@ -7,21 +7,25 @@ import { NDatePicker, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import MarkdownIt from 'markdown-it'
+import taskLists from 'markdown-it-task-lists'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useAutosizeTextarea } from '@/composables/useAutosizeTextarea'
 
+// 【新增】创建一个 markdown-it 实例
+// 我们进行一些基础配置，让它更符合常见用法
+// 【新增】引入插件
+
 // --- 初始化 & 状态定义 ---
 useDark()
 
-// 【新增】创建一个 markdown-it 实例
-// 我们进行一些基础配置，让它更符合常见用法
 const md = new MarkdownIt({
-  html: false, // 禁止解析内容中的 HTML 标签，更安全
-  linkify: true, // 自动将链接文字转换为链接
-  breaks: true, // 将换行符 (\n) 转换为 <br>
+  html: false,
+  linkify: true,
+  breaks: true,
 })
+  .use(taskLists) // 【新增】启用待办事项列表插件
 
 // 【新增】一个专门用于渲染的函数
 function renderMarkdown(content: string) {
@@ -785,6 +789,101 @@ async function handleSubmitAuth() {
 function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
+
+// 【最终完美版】请用这个新版本替换旧的 handleNoteContentClick 函数
+
+async function handleNoteContentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+
+  const listItem = target.closest('li.task-list-item')
+  if (!listItem)
+    return
+
+  const noteCard = target.closest('[data-note-id]') as HTMLElement
+  const noteId = noteCard?.dataset.noteId
+  if (!noteId)
+    return
+
+  const noteToUpdate = notes.value.find(n => n.id === noteId)
+  if (!noteToUpdate)
+    return
+
+  // --- 这是全新的、更可靠的逻辑 ---
+
+  // 1. 获取这张笔记卡片中所有的待办事项列表项
+  const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
+
+  // 2. 确定被点击的是第几个列表项 (从0开始计数)
+  const itemIndex = allListItems.indexOf(listItem)
+  if (itemIndex === -1)
+    return
+
+  // 3. 找到 Markdown 原文中所有匹配待办事项的行
+  const lines = noteToUpdate.content.split('\n')
+  const taskLineIndexes: number[] = []
+  lines.forEach((line, index) => {
+    // 使用正则表达式匹配以 `- [ ]` 或 `- [x]` 开头的行
+    if (line.trim().match(/^-\s\[( |x)\]/))
+      taskLineIndexes.push(index)
+  })
+
+  // 4. 根据点击的顺序，找到原文中对应的行号
+  if (itemIndex < taskLineIndexes.length) {
+    const lineIndexToChange = taskLineIndexes[itemIndex]
+    const lineContent = lines[lineIndexToChange]
+
+    // 5. 切换状态并更新内容
+    if (lineContent.includes('[ ]'))
+      lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
+    else if (lineContent.includes('[x]'))
+      lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
+
+    const newContent = lines.join('\n')
+    noteToUpdate.content = newContent
+
+    // 6. 异步保存到数据库
+    try {
+      await supabase
+        .from('notes')
+        .update({ content: newContent, updated_at: new Date().toISOString() })
+        .eq('id', noteId)
+    }
+    catch (err: any) {
+      messageHook.error(`更新失败: ${err.message}`)
+    }
+  }
+}
+
+// 【新增】复制笔记内容的函数
+async function handleCopy(noteContent: string) {
+  if (!noteContent)
+    return
+  try {
+    await navigator.clipboard.writeText(noteContent)
+    messageHook.success(t('notes.copy_success'))
+  }
+  catch (err) {
+    messageHook.error(t('notes.copy_error'))
+  }
+}
+
+// 【新增】处理下拉菜单选项点击的函数
+function handleDropdownSelect(key: string, note: any) {
+  switch (key) {
+    case 'edit':
+      handleEdit(note)
+      break
+    case 'copy':
+      handleCopy(note.content)
+      break
+    case 'pin':
+      handlePinToggle(note)
+      break
+    case 'delete':
+      triggerDeleteConfirmation(note.id)
+      break
+  }
+}
 </script>
 
 <template>
@@ -843,7 +942,7 @@ function goHomeAndRefresh() {
             </div>
           </form>
           <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
-          <div v-if="showNotesList" class="notes-list h-80 overflow-auto">
+          <div v-if="showNotesList" class="notes-list h-80 overflow-auto" @click="handleNoteContentClick">
             <div class="search-export-bar">
               <div class="search-input-wrapper">
                 <input
@@ -878,62 +977,61 @@ function goHomeAndRefresh() {
               <div
                 v-for="note in notes"
                 :key="note.id"
+                :data-note-id="note.id"
                 class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
               >
+                <div class="note-card-top-bar">
+                  <p class="note-date">
+                    {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+                  </p>
+                  <n-dropdown
+                    trigger="click"
+                    placement="bottom-end"
+                    :options="[{
+                      label: t('notes.edit'),
+                      key: 'edit',
+                    }, {
+                      label: t('notes.copy'),
+                      key: 'copy',
+                    }, {
+                      label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
+                      key: 'pin',
+                    }, {
+                      label: t('notes.delete'),
+                      key: 'delete',
+                    }]"
+                    @select="(key) => handleDropdownSelect(key, note)"
+                  >
+                    <div class="kebab-menu">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+                    </div>
+                  </n-dropdown>
+                </div>
+
                 <div class="flex-1 min-w-0">
                   <div v-if="expandedNote === note.id">
                     <div
                       class="prose dark:prose-invert max-w-none"
-                      style="font-size: 17px !important; line-height: 1.6;"
+                      style="font-size: 14px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
-                    <button class="toggle-button" @click="toggleExpand(note.id)">
+                    <button class="toggle-button" @click.stop="toggleExpand(note.id)">
                       {{ $t('notes.collapse') }}
                     </button>
                   </div>
-
                   <div v-else>
                     <div
                       :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
                       class="prose dark:prose-invert line-clamp-3 max-w-none"
-                      style="font-size: 17px !important; line-height: 1.6;"
+                      style="font-size: 14px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
                     <button
                       v-if="noteOverflowStatus[note.id]"
                       class="toggle-button"
-                      @click="toggleExpand(note.id)"
+                      @click.stop="toggleExpand(note.id)"
                     >
                       {{ $t('notes.expand') }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="mt-3 flex justify-between">
-                  <button
-                    class="edit-btn action-button"
-                    style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
-                    :disabled="loading"
-                    @click.stop="handleEdit(note)"
-                  >
-                    {{ $t('notes.edit') }}
-                  </button>
-                  <div class="flex space-x-2">
-                    <button
-                      class="action-button pin-btn"
-                      style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
-                      :disabled="loading"
-                      @click.stop="handlePinToggle(note)"
-                    >
-                      {{ note.is_pinned ? $t('notes.unpin') : $t('notes.pin') }}
-                    </button>
-                    <button
-                      class="action-button delete-btn"
-                      style="font-size: 12px !important; padding: 0.75rem 1.5rem !important; min-height: 2.5rem !important; border: 1px solid #ccc !important; border-radius: 4px !important;"
-                      :disabled="loading"
-                      @click.stop="triggerDeleteConfirmation(note.id)"
-                    >
-                      {{ $t('notes.delete') }}
                     </button>
                   </div>
                 </div>
@@ -1053,11 +1151,6 @@ function goHomeAndRefresh() {
   align-items: center;
 }
 
-.search-input {
-  /* 让输入框的 padding-right 变大，为清除按钮留出空间 */
-  padding-right: 2rem;
-}
-
 .clear-search-button {
   position: absolute; /* 关键：让按钮脱离文档流，浮动起来 */
   right: 0.5rem;    /* 定位在容器的右侧 */
@@ -1094,7 +1187,7 @@ function goHomeAndRefresh() {
 
 .search-input {
   flex: 4;
-  padding: 0.5rem;
+  padding: 0.5rem 2rem 0.5rem 0.5rem; /* 上 右 下 左，保留了右侧空间 */
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -1409,31 +1502,11 @@ form .emoji-bar .form-button:disabled {
   overflow-y: auto;
   position: relative;
 }
-.notes-list > div {
-  padding: 0.8rem;
-  line-height: 0.8;
-  width: 100%;
-  overflow-y: auto;
-  text-align: left;
-}
-.notes-list > div:hover {
-  background-color: #e5e7eb;
-}
+
 .notes-list .flex-1 {
   text-align: left;
 }
-.notes-list .flex button {
-  width: auto;
-  padding: 0.75rem 1.5rem;
-  min-height: 2.5rem;
-  margin-top: 0;
-  background-color: transparent;
-  color: inherit;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
+
 .notes-container button {
   width: auto;
   padding: 0.8rem;
@@ -1469,14 +1542,6 @@ form .emoji-bar .form-button:disabled {
 .notes-list .form-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-@media (max-width: 640px) {
-  .action-button {
-    padding: 0.5rem 1rem !important;
-    font-size: 0.875rem !important;
-    min-width: 80px;
-  }
 }
 </style>
 
@@ -1524,30 +1589,6 @@ html {
   color: #2dd4bf;
 }
 
-.edit-btn {
-  background-color: #e9f7fe !important;
-  color: #0c7abf !important;
-  border: 1px solid #bae0f7 !important;
-}
-.delete-btn {
-  background-color: #fef0f0 !important;
-  color: #e53e3e !important;
-  border: 1px solid #fbd5d5 !important;
-}
-.mt-3.flex > button {
-  margin: 0 0.5rem !important;
-  flex-grow: 1;
-}
-
-.pin-btn {
-  background-color: #fefce8 !important; /* 淡黄色背景 */
-  color: #ca8a04 !important; /* 黄褐色文字 */
-  border: 1px solid #fde68a !important; /* 黄色边框 */
-}
-
-.flex.space-x-2 > button {
-  margin-left: 0.5rem;
-}
 :deep(.dialog-date-picker) {
   margin-top: 12px;
 }
@@ -1580,5 +1621,45 @@ html {
 
 .toggle-button:hover {
   text-decoration: underline;
+}
+
+/* 【新增】为笔记卡片顶部栏、日期和三点菜单添加样式 */
+.note-card-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px; /* 与内容区域隔开一点距离 */
+  height: 24px;
+}
+
+.note-date {
+  font-size: 11px;
+  color: #888;
+  margin: 0;
+  padding: 0;
+}
+
+.dark .note-date {
+  color: #aaa;
+}
+
+.kebab-menu {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.kebab-menu:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark .kebab-menu:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 </style>
