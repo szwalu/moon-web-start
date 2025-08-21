@@ -1012,7 +1012,7 @@ function handleDropdownSelect(key: string, note: any) {
                   <div v-if="expandedNote === note.id">
                     <div
                       class="prose dark:prose-invert max-w-none"
-                      style="font-size: 14px !important; line-height: 1.6;"
+                      style="font-size: 17px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
                     <button class="toggle-button" @click.stop="toggleExpand(note.id)">
@@ -1023,7 +1023,7 @@ function handleDropdownSelect(key: string, note: any) {
                     <div
                       :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
                       class="prose dark:prose-invert line-clamp-3 max-w-none"
-                      style="font-size: 14px !important; line-height: 1.6;"
+                      style="font-size: 17px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
                     <button
