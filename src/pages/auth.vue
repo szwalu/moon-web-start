@@ -1707,4 +1707,12 @@ html {
 .dark .collapse-button:hover {
     background-color: rgba(51, 65, 85, 1);
 }
+
+/* 【新增】针对移动端设备的响应式修复 */
+@media (max-width: 768px) {
+  .notes-list {
+    height: auto;      /* 取消固定高度 */
+    overflow: visible; /* 移除内部滚动条，让其内容自然撑开 */
+  }
+}
 </style>
