@@ -13,10 +13,6 @@ import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useAutosizeTextarea } from '@/composables/useAutosizeTextarea'
 
-// 【新增】创建一个 markdown-it 实例
-// 我们进行一些基础配置，让它更符合常见用法
-// 【新增】引入插件
-
 // --- 初始化 & 状态定义 ---
 useDark()
 
@@ -25,9 +21,8 @@ const md = new MarkdownIt({
   linkify: true,
   breaks: true,
 })
-  .use(taskLists) // 【新增】启用待办事项列表插件
+  .use(taskLists)
 
-// 【新增】一个专门用于渲染的函数
 function renderMarkdown(content: string) {
   if (!content)
     return ''
@@ -42,7 +37,6 @@ const { autoLoadData } = useAutoSave()
 
 const user = computed(() => authStore.user)
 
-// 其他非认证相关的本地状态
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 const email = ref('')
 const password = ref('')
@@ -57,10 +51,8 @@ let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-// 【新增】调用自动高度调整函数
 useAutosizeTextarea(content, textareaRef)
 
-// 在您的其他 ref 定义旁边，添加下面这行
 const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
@@ -85,6 +77,48 @@ const isExporting = ref(false)
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 
+function checkIfNoteOverflows(el: Element | null, noteId: string) {
+  if (el) {
+    const isOverflowing = el.scrollHeight > el.clientHeight
+    if (noteOverflowStatus.value[noteId] !== isOverflowing)
+      noteOverflowStatus.value[noteId] = isOverflowing
+  }
+}
+
+const debouncedSearch = debounce(async () => {
+  if (!searchQuery.value.trim()) {
+    await fetchNotes()
+    return
+  }
+
+  isLoadingNotes.value = true
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', user.value.id)
+      .ilike('content', `%${searchQuery.value.trim()}%`)
+      .order('updated_at', { ascending: false })
+      .limit(100)
+
+    if (error)
+      throw error
+    notes.value = data || []
+    hasMoreNotes.value = false
+    hasPreviousNotes.value = false
+  }
+  catch (err: any) {
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
+  }
+  finally {
+    isLoadingNotes.value = false
+  }
+}, 500)
+
+watch(searchQuery, () => {
+  debouncedSearch()
+})
+
 const debouncedSaveNote = debounce(() => {
   if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
@@ -96,63 +130,6 @@ onUnmounted(() => {
     autoSaveInterval = null
   }
   debouncedSaveNote.cancel()
-})
-
-// 【新增】检查笔记内容是否溢出的函数
-function checkIfNoteOverflows(el: Element | null, noteId: string) {
-  if (el) {
-    // el.scrollHeight是元素内容的总高度
-    // el.clientHeight是元素在页面上可见的高度
-    // 如果内容总高度大于可见高度，说明内容被截断了
-    const isOverflowing = el.scrollHeight > el.clientHeight
-
-    // 只有当状态变化时才更新，避免不必要的重新渲染
-    if (noteOverflowStatus.value[noteId] !== isOverflowing)
-      noteOverflowStatus.value[noteId] = isOverflowing
-  }
-}
-
-// 【新增】使用 watch 实现全局实时搜索
-const debouncedSearch = debounce(async () => {
-  // 如果搜索框被清空，则恢复正常的分页列表
-  if (!searchQuery.value.trim()) {
-    // 重新获取当前页的笔记
-    await fetchNotes()
-    return
-  }
-
-  isLoadingNotes.value = true
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('user_id', user.value.id)
-      // 使用 ilike 进行不区分大小写的模糊搜索
-      .ilike('content', `%${searchQuery.value.trim()}%`)
-      .order('updated_at', { ascending: false })
-      // 限制最多返回100条搜索结果，避免返回内容过多
-      .limit(100)
-
-    if (error)
-      throw error
-
-    // 直接将搜索结果更新到笔记列表
-    notes.value = data || []
-
-    // 在搜索模式下，我们隐藏分页按钮
-    hasMoreNotes.value = false
-    hasPreviousNotes.value = false
-  }
-  catch (err: any) {
-    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
-  }
-  finally {
-    isLoadingNotes.value = false
-  }
-}, 500) // 添加 500ms 的防抖，停止输入半秒后才开始搜索
-
-watch(searchQuery, () => {
-  debouncedSearch()
 })
 
 onMounted(async () => {
@@ -248,33 +225,25 @@ async function handleBatchExport() {
     return
   }
 
-  // 1. 在函数内部创建一个临时的 ref，专门给弹窗内的日期选择器使用
   const dialogDateRange = ref<[number, number] | null>(null)
 
   dialog.info({
     title: t('notes.export_confirm_title'),
-
-    // 2. 使用 h 函数动态创建 VNode 作为弹窗内容
-    // 这样就可以在弹窗里渲染任何 Vue 组件
     content: () => h(NDatePicker, {
       'value': dialogDateRange.value,
       'type': 'daterange',
       'clearable': true,
       'placeholder': t('notes.select_date_range_placeholder'),
       'class': 'dialog-date-picker',
-      // 监听组件的更新事件，并将新值赋给我们的临时 ref
       'onUpdate:value': (newValue) => {
         dialogDateRange.value = newValue
       },
     }),
-
     positiveText: t('notes.confirm_export'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       isExporting.value = true
       messageHook.info(t('notes.export_preparing'), { duration: 5000 })
-
-      // 3. 内部的导出逻辑不变，只是数据源从全局 ref 变成了弹窗内的临时 ref
       try {
         const [startDate, endDate] = dialogDateRange.value || [null, null]
         const BATCH_SIZE = 100
@@ -289,7 +258,6 @@ async function handleBatchExport() {
             .eq('user_id', user.value!.id)
             .order('updated_at', { ascending: false })
             .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
-
           if (startDate)
             query = query.gte('updated_at', new Date(startDate).toISOString())
 
@@ -298,12 +266,9 @@ async function handleBatchExport() {
             endOfDay.setHours(23, 59, 59, 999)
             query = query.lte('updated_at', endOfDay.toISOString())
           }
-
           const { data, error } = await query
-
           if (error)
             throw error
-
           if (data && data.length > 0) {
             allNotes = allNotes.concat(data)
             page++
@@ -330,21 +295,17 @@ async function handleBatchExport() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-
         const datePart = startDate && endDate
           ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
           : 'all'
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
-
         document.body.appendChild(a)
         a.click()
-
         setTimeout(() => {
           document.body.removeChild(a)
           URL.revokeObjectURL(url)
         }, 100)
-
         messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
       }
       catch (error: any) {
@@ -376,30 +337,20 @@ function addNoteToList(newNote: any) {
   }
 }
 
-// 【新增】置顶/取消置顶笔记的函数
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
-
   const newPinStatus = !note.is_pinned
-
   try {
     const { error } = await supabase
       .from('notes')
       .update({ is_pinned: newPinStatus })
       .eq('id', note.id)
       .eq('user_id', user.value.id)
-
     if (error)
       throw error
-
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
-
-    // 【核心修正】在重新获取数据前，清空所有页面的缓存
-    // 这会强制 fetchNotes 去数据库拉取最新、正确排序的数据
     cachedPages.value.clear()
-
-    // 现在，这个 fetchNotes 调用将获取到最新的数据
     await fetchNotes()
   }
   catch (err: any) {
@@ -442,8 +393,8 @@ async function fetchNotes() {
       .from('notes')
       .select('*', { count: 'exact' })
       .eq('user_id', user.value.id)
-      .order('is_pinned', { ascending: false }) // 【新增】优先按 is_pinned 降序排（true在前）
-      .order('updated_at', { ascending: false }) // 然后再按更新时间降序排
+      .order('is_pinned', { ascending: false })
+      .order('updated_at', { ascending: false })
       .range(from, to)
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
@@ -790,8 +741,6 @@ function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
 
-// 【最终完美版】请用这个新版本替换旧的 handleNoteContentClick 函数
-
 async function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
@@ -981,9 +930,16 @@ function handleDropdownSelect(key: string, note: any) {
                 class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
               >
                 <div class="note-card-top-bar">
-                  <p class="note-date">
-                    {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
-                  </p>
+                  <div class="note-meta-left">
+                    <p class="note-date">
+                      {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+                    </p>
+
+                    <span v-if="note.is_pinned" class="pinned-indicator">
+                      {{ $t('notes.pinned_label') }}
+                    </span>
+                  </div>
+
                   <n-dropdown
                     trigger="click"
                     placement="bottom-end"
@@ -1136,6 +1092,37 @@ function handleDropdownSelect(key: string, note: any) {
 </template>
 
 <style scoped>
+/* 【最终修正】强制重置并美化Prose内部的复选框样式 */
+
+/* 1. 强制让原始的、有功能的 checkbox 重新显示出来，并使其可交互 */
+:deep(.prose .task-list-item input[type="checkbox"]) {
+  /* --- 强制恢复其“原始”形态，对抗全局重置 --- */
+  appearance: auto !important;
+  opacity: 1 !important;
+  position: static !important;
+
+  /* --- 强制恢复其交互性 --- */
+  pointer-events: auto !important;
+  cursor: pointer !important;
+
+  /* --- 统一其尺寸和位置，确保美观 --- */
+  width: 1em !important;
+  height: 1em !important;
+  margin-top: 0 !important;
+  margin-right: 0.5em !important;
+  vertical-align: middle !important;
+  border: 1px solid #ccc !important;
+}
+
+/* 2. 为恢复显示的 checkbox 设置勾选后的颜色 */
+:deep(.prose .task-list-item input[type="checkbox"]:checked) {
+  accent-color: #374151 !important; /* 明亮模式下，勾选后为深灰色 */
+}
+
+:deep(.dark .prose .task-list-item input[type="checkbox"]:checked) {
+  accent-color: #4ade80 !important; /* 暗黑模式下，勾选后为亮绿色 */
+}
+
 .search-export-bar {
   display: flex;
   gap: 0.5rem;
@@ -1420,13 +1407,11 @@ button:disabled {
   border-radius: 6px;
   background-color: #fff;
   color: #111;
-  /* height: 192px; */ /* 【删除】或注释掉固定的 height */
 
-  /* 【新增】推荐的样式 */
-  min-height: 120px; /* 设置一个初始的最小高度 */
-  max-height: 400px; /* 设置一个最大高度，防止无限拉伸 */
-  resize: none;      /* 隐藏浏览器右下角的拖拽手柄 */
-  overflow-y: auto;/* 当内容超出最大高度时，显示滚动条 */
+  min-height: 120px;
+  max-height: 400px;
+  resize: none;
+  overflow-y: auto;
 
   font-size: 17px;
   line-height: 1.5;
@@ -1543,6 +1528,9 @@ form .emoji-bar .form-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+:deep(.prose > :first-child) {
+  margin-top: 0 !important;
+}
 </style>
 
 <style>
@@ -1622,16 +1610,12 @@ html {
   text-decoration: underline;
 }
 
-.toggle-button:hover {
-  text-decoration: underline;
-}
-
 /* 【新增】为笔记卡片顶部栏、日期和三点菜单添加样式 */
 .note-card-top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px; /* 与内容区域隔开一点距离 */
+  margin-bottom: 4px;
   height: 24px;
 }
 
@@ -1666,28 +1650,26 @@ html {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* 【新增】为“收起”按钮添加粘性定位和浮动样式 */
-.collapse-button {
-  position: fixed;
-  position: sticky;
-  bottom: 1rem;
-  left: 1rem;
-  z-index: 10;
-
-  background-color: white;
-  opacity: 1 !important; /* 【新增】强制按钮为完全不透明 */
-
-  border: 1px solid #e2e8f0;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: background-color 0.2s, box-shadow 0.2s;
+/* 【新增】用于包裹日期和置顶标识的左侧容器 */
+.note-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* 在日期和“置顶”之间增加一点间距 */
 }
 
-/* 暗黑模式下的浮动按钮样式 */
-.dark .collapse-button {
-  background-color: #2d3748;
-  opacity: 1 !important; /* 【新增】暗黑模式下也强制为完全不透明 */
-  border-color: #4a5568;
+/* 【新增】“置顶”标识的标签样式 */
+.pinned-indicator {
+  font-size: 10px;
+  font-weight: bold;
+  color: #c2410c; /* 琥珀色文字 */
+  background-color: #ffedd5; /* 淡琥珀色背景 */
+  padding: 2px 6px;
+  border-radius: 9999px; /* 圆角胶囊形状 */
+  line-height: 1;
+}
+
+.dark .pinned-indicator {
+  color: #fde68a; /* 暗黑模式下的亮琥珀色文字 */
+  background-color: #78350f; /* 暗黑模式下的深琥珀色背景 */
 }
 </style>
