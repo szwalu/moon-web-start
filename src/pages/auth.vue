@@ -53,7 +53,6 @@ const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 useAutosizeTextarea(content, textareaRef)
 
-const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 // MODIFICATION START: Display notes list by default
@@ -102,14 +101,6 @@ watch(notesListRef, (newEl, oldEl) => {
     newEl.addEventListener('scroll', handleScroll)
 })
 // MODIFICATION END
-
-function checkIfNoteOverflows(el: Element | null, noteId: string) {
-  if (el) {
-    const isOverflowing = el.scrollHeight > el.clientHeight
-    if (noteOverflowStatus.value[noteId] !== isOverflowing)
-      noteOverflowStatus.value[noteId] = isOverflowing
-  }
-}
 
 const debouncedSearch = debounce(async () => {
   if (!searchQuery.value.trim()) {
@@ -936,6 +927,8 @@ function handleDropdownSelect(key: string, note: any) {
               :key="note.id"
               :data-note-id="note.id"
               class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
+              :class="{ 'cursor-pointer hover:shadow-lg transition-shadow': expandedNote !== note.id }"
+              @click="expandedNote !== note.id ? toggleExpand(note.id) : null"
             >
               <div class="note-card-top-bar">
                 <div class="note-meta-left">
@@ -985,18 +978,10 @@ function handleDropdownSelect(key: string, note: any) {
                 </div>
                 <div v-else>
                   <div
-                    :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
                     class="prose dark:prose-invert line-clamp-3 max-w-none"
                     style="font-size: 17px !important; line-height: 1.6;"
                     v-html="renderMarkdown(note.content)"
                   />
-                  <button
-                    v-if="noteOverflowStatus[note.id]"
-                    class="toggle-button"
-                    @click.stop="toggleExpand(note.id)"
-                  >
-                    {{ $t('notes.expand') }}
-                  </button>
                 </div>
               </div>
             </div>
@@ -1674,45 +1659,5 @@ html {
 .dark .pinned-indicator {
   color: #fde68a; /* 暗黑模式下的亮琥珀色文字 */
   background-color: #78350f; /* 暗黑模式下的深琥珀色背景 */
-}
-
-/* 【新增】为“收起”按钮添加粘性定位样式 */
-.collapse-button {
-  position: -webkit-sticky; /* 兼容 Safari */
-  position: sticky;
-  bottom: 1rem; /* 粘在距离容器底部 1rem 的位置 */
-
-  /* 为了让按钮浮动起来更明显，添加一些样式 */
-  background-color: rgba(255, 255, 255, 0.85); /* 半透明背景，避免完全遮挡文字 */
-  backdrop-filter: blur(4px); /* 毛玻璃效果 */
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 9999px; /* 圆角胶囊形状 */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* 添加阴影使其更有立体感 */
-  z-index: 10; /* 确保它在笔记内容之上 */
-  transition: background-color 0.3s ease;
-}
-
-.collapse-button:hover {
-    background-color: rgba(248, 250, 252, 1);
-}
-
-/* 【新增】暗黑模式下的样式 */
-.dark .collapse-button {
-  background-color: rgba(30, 41, 59, 0.85);
-  border-color: #475569;
-  color: #e2e8f0;
-}
-
-.dark .collapse-button:hover {
-    background-color: rgba(51, 65, 85, 1);
-}
-
-/* 【新增】针对移动端设备的响应式修复 */
-@media (max-width: 768px) {
-  .notes-list {
-    height: auto;      /* 取消固定高度 */
-    overflow: visible; /* 移除内部滚动条，让其内容自然撑开 */
-  }
 }
 </style>
