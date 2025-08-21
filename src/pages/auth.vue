@@ -1015,7 +1015,7 @@ function handleDropdownSelect(key: string, note: any) {
                       style="font-size: 17px !important; line-height: 1.6;"
                       v-html="renderMarkdown(note.content)"
                     />
-                    <button class="toggle-button" @click.stop="toggleExpand(note.id)">
+                    <button class="toggle-button collapse-button" @click.stop="toggleExpand(note.id)">
                       {{ $t('notes.collapse') }}
                     </button>
                   </div>
@@ -1602,11 +1602,10 @@ html {
   -webkit-box-orient: vertical;
 }
 
-/* 【修改】“展开”和“收起”按钮的样式 - 蓝色版 */
+/* 【最终、合并后的版本】“展开”和“收起”按钮的样式 */
 .toggle-button {
-  background: none;
   border: none;
-  color: #007bff !important; /* 【修改】改为蓝色 */
+  color: #007bff !important;
   cursor: pointer;
   padding: 4px 0;
   margin-top: 8px;
@@ -1616,7 +1615,11 @@ html {
 }
 
 .dark .toggle-button {
-  color: #38bdf8 !important; /* 【修改】改为暗黑模式下的亮蓝色 */
+  color: #38bdf8 !important;
+}
+
+.toggle-button:hover {
+  text-decoration: underline;
 }
 
 .toggle-button:hover {
@@ -1661,5 +1664,29 @@ html {
 
 .dark .kebab-menu:hover {
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 【新增】为“收起”按钮添加粘性定位和浮动样式 */
+.collapse-button {
+  position: -webkit-sticky;
+  position: sticky;
+  bottom: 1rem;
+  z-index: 10;
+
+  background-color: white;
+  opacity: 1 !important; /* 【新增】强制按钮为完全不透明 */
+
+  border: 1px solid #e2e8f0;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+/* 暗黑模式下的浮动按钮样式 */
+.dark .collapse-button {
+  background-color: #2d3748;
+  opacity: 1 !important; /* 【新增】暗黑模式下也强制为完全不透明 */
+  border-color: #4a5568;
 }
 </style>
