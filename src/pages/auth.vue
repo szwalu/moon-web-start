@@ -1668,9 +1668,10 @@ html {
 
 /* 【新增】为“收起”按钮添加粘性定位和浮动样式 */
 .collapse-button {
-  position: -webkit-sticky;
+  position: fixed;
   position: sticky;
   bottom: 1rem;
+  left: 1rem;
   z-index: 10;
 
   background-color: white;
@@ -1688,12 +1689,5 @@ html {
   background-color: #2d3748;
   opacity: 1 !important; /* 【新增】暗黑模式下也强制为完全不透明 */
   border-color: #4a5568;
-}
-/* 【最终修正】强制重置父级容器的 overflow 属性，以确保 sticky 定位在移动端生效 */
-:deep(.auth-container),
-:deep(.account-info),
-:deep(.info-grid),
-:deep(.notes-container) {
-  overflow: visible !important;
 }
 </style>
