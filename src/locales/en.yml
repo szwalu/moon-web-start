@@ -279,3 +279,4 @@ notes:
   copy: Copy Content
   copy_success: Note content copied to clipboard!
   copy_error: Failed to copy
+  pinned_label: Pinned
