@@ -1124,10 +1124,27 @@ function handleDropdownSelect(key: string, note: any) {
 }
 
 .search-export-bar {
+  /* --- 原有样式 --- */
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
   align-items: center;
+
+  /* --- 【新增】实现粘性定位 --- */
+  position: -webkit-sticky; /* 兼容 Safari 浏览器 */
+  position: sticky;
+  top: 0; /* 粘在滚动容器的顶部 */
+  z-index: 20; /* 确保它在笔记内容之上，层级更高 */
+
+  /* --- 【新增】为粘性条添加背景色和内边距，优化视觉效果 --- */
+  background-color: #f3f4f6; /* 对应 .bg-gray-100 的颜色 */
+  padding-top: 1rem; /* 增加一点顶部内边距，让它看起来不那么拥挤 */
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem; /* 微调一下与下方内容的距离 */
+}
+
+/* 【新增】暗黑模式下的背景色 */
+.dark .search-export-bar {
+  background-color: #374151; /* 对应暗黑模式的背景色 */
 }
 
 /* 【新增】搜索框容器和清除按钮的样式 */
