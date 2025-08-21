@@ -1689,4 +1689,11 @@ html {
   opacity: 1 !important; /* 【新增】暗黑模式下也强制为完全不透明 */
   border-color: #4a5568;
 }
+/* 【最终修正】强制重置父级容器的 overflow 属性，以确保 sticky 定位在移动端生效 */
+:deep(.auth-container),
+:deep(.account-info),
+:deep(.info-grid),
+:deep(.notes-container) {
+  overflow: visible !important;
+}
 </style>
