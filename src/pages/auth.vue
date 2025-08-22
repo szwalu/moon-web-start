@@ -844,6 +844,41 @@ function handleDropdownSelect(key: string, note: any) {
       break
   }
 }
+
+// 【最终精简版】一个函数，用于动态生成下拉菜单的选项
+function getDropdownOptions(note: any) {
+  // 只计算字数
+  const charCount = note.content ? note.content.length : 0
+
+  // 返回精简后的菜单项
+  return [
+    {
+      label: t('notes.edit'),
+      key: 'edit',
+    },
+    {
+      label: t('notes.copy'),
+      key: 'copy',
+    },
+    {
+      label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
+      key: 'pin',
+    },
+    {
+      label: t('notes.delete'),
+      key: 'delete',
+    },
+    {
+      key: 'divider-1',
+      type: 'divider',
+    },
+    {
+      label: `字数: ${charCount}`,
+      key: 'char_count',
+      disabled: true,
+    },
+  ]
+}
 </script>
 
 <template>
@@ -956,19 +991,7 @@ function handleDropdownSelect(key: string, note: any) {
                 <n-dropdown
                   trigger="click"
                   placement="bottom-end"
-                  :options="[{
-                    label: t('notes.edit'),
-                    key: 'edit',
-                  }, {
-                    label: t('notes.copy'),
-                    key: 'copy',
-                  }, {
-                    label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
-                    key: 'pin',
-                  }, {
-                    label: t('notes.delete'),
-                    key: 'delete',
-                  }]"
+                  :options="getDropdownOptions(note)"
                   @select="(key) => handleDropdownSelect(key, note)"
                 >
                   <div class="kebab-menu">
