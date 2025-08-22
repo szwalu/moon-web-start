@@ -845,12 +845,25 @@ function handleDropdownSelect(key: string, note: any) {
   }
 }
 
-// 【最终精简版】一个函数，用于动态生成下拉菜单的选项
+// 【最终修正版】一个函数，用于动态生成下拉菜单的选项
 function getDropdownOptions(note: any) {
-  // 只计算字数
+  // 1. 计算字数
   const charCount = note.content ? note.content.length : 0
 
-  // 返回精简后的菜单项
+  // 2. 格式化创建时间（增加了健壮性检查）
+  const dateObj = new Date(note.created_at)
+  // 使用 Number.isNaN 替代 isNaN
+  const creationTime = !note.created_at || Number.isNaN(dateObj.getTime())
+    ? '未知' // 如果日期无效或不存在，则显示“未知”
+    : dateObj.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+  // 3. 调整了菜单项的顺序，将信息项放在底部
   return [
     {
       label: t('notes.edit'),
@@ -875,6 +888,11 @@ function getDropdownOptions(note: any) {
     {
       label: `字数: ${charCount}`,
       key: 'char_count',
+      disabled: true,
+    },
+    {
+      label: `创建于: ${creationTime}`,
+      key: 'creation_time',
       disabled: true,
     },
   ]
