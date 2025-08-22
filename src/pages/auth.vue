@@ -111,12 +111,17 @@ function checkIfNoteOverflows(el: Element | null, noteId: string) {
   }
 }
 
+// 【专家修正版】增强搜索和状态重置逻辑
 const debouncedSearch = debounce(async () => {
+  // 1. 当搜索框被清空时
   if (!searchQuery.value.trim()) {
-    await fetchNotes()
+    currentPage.value = 1 // 关键：重置到第一页
+    cachedPages.value.clear() // 关键：清除旧的分页缓存，确保加载最新数据
+    await fetchNotes() // 重新加载完整的笔记列表
     return
   }
 
+  // 2. 当有搜索词时
   isLoadingNotes.value = true
   try {
     const { data, error } = await supabase
@@ -130,7 +135,7 @@ const debouncedSearch = debounce(async () => {
     if (error)
       throw error
     notes.value = data || []
-    hasMoreNotes.value = false
+    hasMoreNotes.value = false // 搜索结果不分页
     hasPreviousNotes.value = false
   }
   catch (err: any) {
@@ -358,12 +363,16 @@ function addNoteToList(newNote: any) {
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-    cachedPages.value.set(currentPage.value, {
-      totalNotes: totalNotes.value,
-      hasMoreNotes: hasMoreNotes.value,
-      hasPreviousNotes: hasPreviousNotes.value,
-      notes: notes.value.slice(),
-    })
+
+    // 【专家修正】只有在非搜索状态下才更新缓存
+    if (!searchQuery.value) {
+      cachedPages.value.set(currentPage.value, {
+        totalNotes: totalNotes.value,
+        hasMoreNotes: hasMoreNotes.value,
+        hasPreviousNotes: hasPreviousNotes.value,
+        notes: notes.value.slice(),
+      })
+    }
     nextTick()
   }
 }
@@ -397,10 +406,14 @@ function updateNoteInList(updatedNote: any) {
   }
   updateInArray(notes.value)
   updateInArray(cachedNotes.value)
-  const cachedPage = cachedPages.value.get(currentPage.value)
-  if (cachedPage) {
-    updateInArray(cachedPage.notes)
-    cachedPages.value.set(currentPage.value, { ...cachedPage })
+
+  // 【专家修正】只有在非搜索状态下才更新缓存
+  if (!searchQuery.value) {
+    const cachedPage = cachedPages.value.get(currentPage.value)
+    if (cachedPage) {
+      updateInArray(cachedPage.notes)
+      cachedPages.value.set(currentPage.value, { ...cachedPage })
+    }
   }
   nextTick()
 }
