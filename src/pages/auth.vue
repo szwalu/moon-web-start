@@ -53,6 +53,7 @@ const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 useAutosizeTextarea(content, textareaRef)
 
+const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 // MODIFICATION START: Display notes list by default
@@ -101,6 +102,14 @@ watch(notesListRef, (newEl, oldEl) => {
     newEl.addEventListener('scroll', handleScroll)
 })
 // MODIFICATION END
+
+function checkIfNoteOverflows(el: Element | null, noteId: string) {
+  if (el) {
+    const isOverflowing = el.scrollHeight > el.clientHeight
+    if (noteOverflowStatus.value[noteId] !== isOverflowing)
+      noteOverflowStatus.value[noteId] = isOverflowing
+  }
+}
 
 const debouncedSearch = debounce(async () => {
   if (!searchQuery.value.trim()) {
@@ -932,8 +941,6 @@ function handleDropdownSelect(key: string, note: any) {
               :key="note.id"
               :data-note-id="note.id"
               class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
-              :class="{ 'cursor-pointer hover:shadow-lg transition-shadow': expandedNote !== note.id }"
-              @click="expandedNote !== note.id ? toggleExpand(note.id) : null"
             >
               <div class="note-card-top-bar">
                 <div class="note-meta-left">
@@ -942,7 +949,7 @@ function handleDropdownSelect(key: string, note: any) {
                   </p>
 
                   <span v-if="note.is_pinned" class="pinned-indicator">
-                    {{ $t('notes.pinned_label') }}
+                    {{ $t('notes.pin') }}
                   </span>
                 </div>
 
@@ -983,10 +990,18 @@ function handleDropdownSelect(key: string, note: any) {
                 </div>
                 <div v-else>
                   <div
+                    :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
                     class="prose dark:prose-invert line-clamp-3 max-w-none"
                     style="font-size: 17px !important; line-height: 1.6;"
                     v-html="renderMarkdown(note.content)"
                   />
+                  <button
+                    v-if="noteOverflowStatus[note.id]"
+                    class="toggle-button"
+                    @click.stop="toggleExpand(note.id)"
+                  >
+                    {{ $t('notes.expand') }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1314,6 +1329,10 @@ button:disabled {
 .dark .info-label {
   color: #adadad;
 }
+/* 新增这段CSS，专门为“笔记”标题设置字体大小 */
+.notes-container .info-label {
+  font-size: 18px; /* 您可以在这里设置任何想要的字体大小 */
+}
 .info-value {
   color: #111;
   word-break: break-all;
@@ -1634,6 +1653,8 @@ html {
   color: #fde68a; /* 暗黑模式下的亮琥珀色文字 */
   background-color: #78350f; /* 暗黑模式下的深琥珀色背景 */
 }
+
+/* 【最终修正】强制重置并美化Prose内部的复选框样式 */
 
 :deep(.prose .task-list-item input[type="checkbox"]) {
   appearance: auto;
