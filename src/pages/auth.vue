@@ -21,7 +21,7 @@ const md = new MarkdownIt({
   linkify: true,
   breaks: true,
 })
-  .use(taskLists)
+  .use(taskLists, { enabled: true, label: true })
 
 function renderMarkdown(content: string) {
   if (!content)
@@ -738,65 +738,70 @@ function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
 
+// 请确保您使用的是这个版本的 handleNoteContentClick 函数
 async function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
+  // 1. 找到被点击的最外层列表项
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
 
-  const noteCard = target.closest('[data-note-id]') as HTMLElement
+  // 2. 找到该列表项所属的笔记卡片和ID
+  const noteCard = listItem.closest('[data-note-id]') as HTMLElement
   const noteId = noteCard?.dataset.noteId
   if (!noteId)
     return
 
+  // 3. 在当前笔记数据中找到要更新的对象
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
 
-  // --- 这是全新的、更可靠的逻辑 ---
+  const originalContent = noteToUpdate.content
 
-  // 1. 获取这张笔记卡片中所有的待办事项列表项
-  const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
+  try {
+    // 4. 找到笔记卡片中所有的任务列表项，并确定点击的是第几个
+    const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
+    const itemIndex = allListItems.indexOf(listItem)
+    if (itemIndex === -1)
+      return
 
-  // 2. 确定被点击的是第几个列表项 (从0开始计数)
-  const itemIndex = allListItems.indexOf(listItem)
-  if (itemIndex === -1)
-    return
+    // 5. 在原始笔记文本中，找到所有任务行的索引
+    const lines = originalContent.split('\n')
+    const taskLineIndexes: number[] = []
+    lines.forEach((line, index) => {
+      if (line.trim().match(/^-\s\[( |x)\]/))
+        taskLineIndexes.push(index)
+    })
 
-  // 3. 找到 Markdown 原文中所有匹配待办事项的行
-  const lines = noteToUpdate.content.split('\n')
-  const taskLineIndexes: number[] = []
-  lines.forEach((line, index) => {
-    // 使用正则表达式匹配以 `- [ ]` 或 `- [x]` 开头的行
-    if (line.trim().match(/^-\s\[( |x)\]/))
-      taskLineIndexes.push(index)
-  })
+    // 6. 如果索引匹配，就修改对应行的文本状态
+    if (itemIndex < taskLineIndexes.length) {
+      const lineIndexToChange = taskLineIndexes[itemIndex]
+      const lineContent = lines[lineIndexToChange]
 
-  // 4. 根据点击的顺序，找到原文中对应的行号
-  if (itemIndex < taskLineIndexes.length) {
-    const lineIndexToChange = taskLineIndexes[itemIndex]
-    const lineContent = lines[lineIndexToChange]
+      if (lineContent.includes('[ ]'))
+        lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
+      else if (lineContent.includes('[x]'))
+        lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
 
-    // 5. 切换状态并更新内容
-    if (lineContent.includes('[ ]'))
-      lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
-    else if (lineContent.includes('[x]'))
-      lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
+      const newContent = lines.join('\n')
 
-    const newContent = lines.join('\n')
-    noteToUpdate.content = newContent
+      // 7.【关键】立即更新前端UI（乐观更新）
+      noteToUpdate.content = newContent
 
-    // 6. 异步保存到数据库
-    try {
+      // 8. 然后在后台将改动保存到数据库
       await supabase
         .from('notes')
         .update({ content: newContent, updated_at: new Date().toISOString() })
         .eq('id', noteId)
+        .eq('user_id', user.value.id)
     }
-    catch (err: any) {
-      messageHook.error(`更新失败: ${err.message}`)
-    }
+  }
+  catch (err: any) {
+    // 如果后台保存失败，则恢复UI并提示用户
+    noteToUpdate.content = originalContent
+    messageHook.error(`更新失败: ${err.message}`)
   }
 }
 
@@ -1061,37 +1066,6 @@ function handleDropdownSelect(key: string, note: any) {
 </template>
 
 <style scoped>
-/* 【最终修正】强制重置并美化Prose内部的复选框样式 */
-
-/* 1. 强制让原始的、有功能的 checkbox 重新显示出来，并使其可交互 */
-:deep(.prose .task-list-item input[type="checkbox"]) {
-  /* --- 强制恢复其“原始”形态，对抗全局重置 --- */
-  appearance: auto !important;
-  opacity: 1 !important;
-  position: static !important;
-
-  /* --- 强制恢复其交互性 --- */
-  pointer-events: auto !important;
-  cursor: pointer !important;
-
-  /* --- 统一其尺寸和位置，确保美观 --- */
-  width: 1em !important;
-  height: 1em !important;
-  margin-top: 0 !important;
-  margin-right: 0.5em !important;
-  vertical-align: middle !important;
-  border: 1px solid #ccc !important;
-}
-
-/* 2. 为恢复显示的 checkbox 设置勾选后的颜色 */
-:deep(.prose .task-list-item input[type="checkbox"]:checked) {
-  accent-color: #374151 !important; /* 明亮模式下，勾选后为深灰色 */
-}
-
-:deep(.dark .prose .task-list-item input[type="checkbox"]:checked) {
-  accent-color: #4ade80 !important; /* 暗黑模式下，勾选后为亮绿色 */
-}
-
 .search-export-bar {
   /* --- 原有样式 --- */
   display: flex;
@@ -1659,5 +1633,18 @@ html {
 .dark .pinned-indicator {
   color: #fde68a; /* 暗黑模式下的亮琥珀色文字 */
   background-color: #78350f; /* 暗黑模式下的深琥珀色背景 */
+}
+
+:deep(.prose .task-list-item input[type="checkbox"]) {
+  appearance: auto;
+  cursor: pointer;
+}
+
+:deep(.prose .task-list-item input[type="checkbox"]:checked) {
+  accent-color: black;
+}
+
+:deep(.dark .prose .task-list-item input[type="checkbox"]:checked) {
+  accent-color: #4ade80;
 }
 </style>
