@@ -507,8 +507,29 @@ async function nextPage() {
 function generateUniqueId() {
   return uuidv4()
 }
-function toggleExpand(noteId: string) {
-  expandedNote.value = expandedNote.value === noteId ? null : noteId
+// 【专家修正版】解决收起笔记后页面乱跳的问题
+async function toggleExpand(noteId: string) {
+  // 判断当前操作是“收起”还是“展开”
+  if (expandedNote.value === noteId) {
+    // --- 如果是“收起”操作 ---
+
+    // 1. 在DOM改变前，先获取到当前笔记的HTML元素
+    const noteElement = document.querySelector(`[data-note-id="${noteId}"]`)
+
+    // 2. 触发收起动作，让笔记内容折叠
+    expandedNote.value = null
+
+    // 3. 等待Vue完成DOM更新（这是关键一步）
+    await nextTick()
+
+    // 4. DOM更新完成后，将刚刚收起的笔记元素重新滚动回视野中
+    if (noteElement)
+      noteElement.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }
+  else {
+    // --- 如果是“展开”操作，则正常执行即可 ---
+    expandedNote.value = noteId
+  }
 }
 async function saveNote({ showMessage = false } = {}) {
   if (!content.value || !user.value?.id) {
