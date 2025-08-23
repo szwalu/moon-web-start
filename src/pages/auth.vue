@@ -8,10 +8,13 @@ import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+import EasyMDE from 'easymde'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
-import { useAutosizeTextarea } from '@/composables/useAutosizeTextarea'
+
+// 【专家新增】引入EasyMDE
+import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
 useDark()
@@ -51,14 +54,14 @@ let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-useAutosizeTextarea(content, textareaRef)
+
+// 【专家新增】创建EasyMDE实例的引用
+const easymde = ref<EasyMDE | null>(null)
 
 const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
-// MODIFICATION START: Display notes list by default
 const showNotesList = ref(true)
-// MODIFICATION END
 const expandedNote = ref<string | null>(null)
 const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
@@ -75,34 +78,125 @@ const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: bool
 const isRestoringFromCache = ref(false)
 const searchQuery = ref('')
 const isExporting = ref(false)
+const isReady = ref(false) // 新增：用于控制自动保存等功能是否准备就绪的开关
+
+// 新增：定义编辑器的最小和最大高度，方便统一修改
+const minEditorHeight = 130 // 您可以在这里修改最小高度
+const maxEditorHeight = 780 // 您可以在这里修改最大高度
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-// MODIFICATION START: Add ref for notes list element and implement infinite scroll
+// --- 【最终方案】EasyMDE 编辑器核心逻辑：销毁与重建 + JS动态高度 ---
+
+/* --- 请替换为这段最终的正确代码 --- */
+function updateEditorHeight() {
+  if (!easymde.value)
+    return
+
+  const cm = easymde.value.codemirror
+  // 关键修正：获取内部sizer元素的正确方法是 cm.display.sizer
+  const sizer = cm.display.sizer
+
+  // 确保sizer元素存在
+  if (!sizer)
+    return
+
+  // 使用sizer的scrollHeight来计算内容高度，并确保高度在设定的范围内
+  const newHeight = Math.max(minEditorHeight, Math.min(sizer.scrollHeight, maxEditorHeight))
+
+  // 使用官方API设置编辑器尺寸
+  cm.setSize(null, newHeight)
+}
+
+// 销毁 EasyMDE 实例的辅助函数
+function destroyEasyMDE() {
+  if (easymde.value) {
+    easymde.value.toTextArea()
+    easymde.value = null
+  }
+}
+
+// 初始化 EasyMDE 实例的辅助函数
+function initializeEasyMDE(initialValue = '') {
+  const newEl = textareaRef.value
+  if (!newEl || easymde.value)
+    return
+
+  const customToolbar = [
+    'bold',
+    'italic',
+    'heading',
+    '|',
+    'quote',
+    'unordered-list',
+    'ordered-list',
+    {
+      name: 'taskList',
+      action: (editor: any) => {
+        const cm = editor.codemirror
+        const doc = cm.getDoc()
+        const cursor = doc.getCursor()
+        doc.replaceRange('- [ ] ', cursor)
+        cm.focus()
+      },
+      className: 'fa fa-check-square-o',
+      title: 'Task List',
+    },
+    '|',
+    'link',
+    'table',
+    '|',
+    'preview',
+    'side-by-side',
+    'fullscreen',
+  ]
+
+  easymde.value = new EasyMDE({
+    element: newEl,
+    initialValue,
+    spellChecker: false,
+    placeholder: t('notes.content_placeholder'),
+    toolbar: customToolbar,
+    status: false,
+  })
+
+  // 监听编辑器的 change 事件
+  easymde.value.codemirror.on('change', () => {
+    if (easymde.value) {
+      // 1. 将内容同步回 Vue 的 content ref
+      const editorContent = easymde.value.value()
+      if (content.value !== editorContent)
+        content.value = editorContent
+
+      // 2. 每次内容变化时，都调用函数更新编辑器高度
+      updateEditorHeight()
+    }
+  })
+
+  // 关键：在编辑器首次初始化后，立即调用一次以设置初始高度
+  nextTick(() => {
+    updateEditorHeight()
+  })
+}
+
 const notesListRef = ref<HTMLElement | null>(null)
 
 const handleScroll = debounce(() => {
   const el = notesListRef.value
-  // Return if element doesn't exist, is already loading, or there are no more notes
   if (!el || isLoadingNotes.value || !hasMoreNotes.value)
     return
-
-  // Load next page when user scrolls near the bottom (50px threshold)
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
     nextPage()
 }, 200)
 
-// Watch for the notes list element to appear/disappear and add/remove scroll listener
 watch(notesListRef, (newEl, oldEl) => {
   if (oldEl)
     oldEl.removeEventListener('scroll', handleScroll)
-
   if (newEl)
     newEl.addEventListener('scroll', handleScroll)
 })
-// MODIFICATION END
 
 function checkIfNoteOverflows(el: Element | null, noteId: string) {
   if (el) {
@@ -112,17 +206,13 @@ function checkIfNoteOverflows(el: Element | null, noteId: string) {
   }
 }
 
-// 【专家修正版】增强搜索和状态重置逻辑
 const debouncedSearch = debounce(async () => {
-  // 1. 当搜索框被清空时
   if (!searchQuery.value.trim()) {
-    currentPage.value = 1 // 关键：重置到第一页
-    cachedPages.value.clear() // 关键：清除旧的分页缓存，确保加载最新数据
-    await fetchNotes() // 重新加载完整的笔记列表
+    currentPage.value = 1
+    cachedPages.value.clear()
+    await fetchNotes()
     return
   }
-
-  // 2. 当有搜索词时
   isLoadingNotes.value = true
   try {
     const { data, error } = await supabase
@@ -132,11 +222,10 @@ const debouncedSearch = debounce(async () => {
       .ilike('content', `%${searchQuery.value.trim()}%`)
       .order('updated_at', { ascending: false })
       .limit(100)
-
     if (error)
       throw error
     notes.value = data || []
-    hasMoreNotes.value = false // 搜索结果不分页
+    hasMoreNotes.value = false
     hasPreviousNotes.value = false
   }
   catch (err: any) {
@@ -156,62 +245,76 @@ const debouncedSaveNote = debounce(() => {
     saveNote({ showMessage: false })
 }, 12000)
 
+// 组件卸载时，确保销毁编辑器实例和其他定时器
 onUnmounted(() => {
+  destroyEasyMDE()
   if (autoSaveInterval) {
     clearInterval(autoSaveInterval)
     autoSaveInterval = null
   }
   debouncedSaveNote.cancel()
-  // MODIFICATION START: Clean up scroll handler
   handleScroll.cancel()
   if (notesListRef.value)
     notesListRef.value.removeEventListener('scroll', handleScroll)
-  // MODIFICATION END
 })
 
 onMounted(async () => {
-  // 【专家修改】第一步：立即尝试从本地存储加载缓存的笔记
+  // 第1步 (同步)：立即从 localStorage 加载草稿内容
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  if (savedContent)
+    content.value = savedContent
+
+  // 第2步 (异步)：执行所有需要网络请求的异步操作
   const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
   if (cachedNotesData) {
     try {
       const parsedNotes = JSON.parse(cachedNotesData)
-      if (Array.isArray(parsedNotes) && parsedNotes.length > 0) {
+      if (Array.isArray(parsedNotes) && parsedNotes.length > 0)
         notes.value = parsedNotes
-        isNotesCached.value = true // 标记已有缓存数据
-      }
     }
     catch (e) {
       console.error('解析缓存笔记失败:', e)
-      localStorage.removeItem(CACHED_NOTES_KEY) // 如果解析失败，则清除损坏的缓存
+      localStorage.removeItem(CACHED_NOTES_KEY)
     }
   }
 
-  // 第二步：继续执行原有的初始化流程
   await authStore.refreshUser()
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+
+  // 重新检查是否处于编辑状态
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
-  if (savedContent) {
-    isRestoringFromCache.value = true
-    content.value = savedContent
-    if (savedNoteId && user.value) {
-      lastSavedId.value = savedNoteId
-      const { data: noteData } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('id', savedNoteId)
-        .eq('user_id', user.value.id)
-        .single()
-      if (noteData)
-        editingNote.value = noteData
-      else
-        localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-    }
-    isRestoringFromCache.value = false
+  if (savedContent && savedNoteId && user.value) {
+    const { data: noteData } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', savedNoteId)
+      .eq('user_id', user.value.id)
+      .single()
+    if (noteData)
+      editingNote.value = noteData
+    else
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   }
 
-  // 第三步：在所有初始化操作完成后，再去服务器获取最新笔记
-  await fetchNotes()
+  if (user.value)
+    await fetchNotes()
+    // 在所有异步加载完成后，打开“准备就绪”开关
+  isReady.value = true
 })
+
+// 监视 user 状态，确保在用户登录且 textarea 渲染后才初始化编辑器
+watch(user, (currentUser) => {
+  if (currentUser && !easymde.value) {
+    nextTick(() => {
+      initializeEasyMDE(content.value)
+      // 在编辑器创建成功后，立即让它获取焦点
+      if (easymde.value) {
+        const cm = easymde.value.codemirror
+        cm.focus()
+        cm.setCursor(0, 0)
+      }
+    })
+  }
+}, { immediate: true })
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
@@ -236,15 +339,9 @@ watchEffect(async () => {
       .select('updated_at')
       .eq('id', user.value.id)
       .single()
-
     lastBackupTime.value = data?.updated_at
       ? new Date(`${data.updated_at}Z`).toLocaleString()
       : '暂无备份'
-
-    // 原来这里是: await fetchNotes()
-    if (!isRestoringFromCache.value && !isNotesCached.value) {
-      // no-op (保留占位，避免悬空 if)
-    }
   }
   else {
     lastBackupTime.value = 'N/A'
@@ -257,21 +354,20 @@ watchEffect(async () => {
 })
 
 watch(content, async (val, oldVal) => {
+  if (!isReady.value)
+    return
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
   else localStorage.removeItem(LOCAL_CONTENT_KEY)
-
   if (val.length > maxNoteLength) {
     content.value = val.slice(0, maxNoteLength)
     messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return
   }
-
   if (!authStore.user) {
     console.error('Auto-save: No valid session in authStore')
     return
   }
-
   if (val && val !== oldVal && !isRestoringFromCache.value)
     debouncedSaveNote()
 })
@@ -283,9 +379,7 @@ async function handleBatchExport() {
     messageHook.error(t('auth.session_expired'))
     return
   }
-
   const dialogDateRange = ref<[number, number] | null>(null)
-
   dialog.info({
     title: t('notes.export_confirm_title'),
     content: () => h(NDatePicker, {
@@ -309,7 +403,6 @@ async function handleBatchExport() {
         let allNotes: any[] = []
         let page = 0
         let hasMore = true
-
         while (hasMore) {
           let query = supabase
             .from('notes')
@@ -319,7 +412,6 @@ async function handleBatchExport() {
             .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
           if (startDate)
             query = query.gte('updated_at', new Date(startDate).toISOString())
-
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
@@ -338,18 +430,15 @@ async function handleBatchExport() {
           if (data && data.length < BATCH_SIZE)
             hasMore = false
         }
-
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
-
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.updated_at).toLocaleString('zh-CN')
           return `${separator}\n更新于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
-
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -386,8 +475,6 @@ function addNoteToList(newNote: any) {
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-
-    // 【专家修正】只有在非搜索状态下才更新缓存
     if (!searchQuery.value) {
       cachedPages.value.set(currentPage.value, {
         totalNotes: totalNotes.value,
@@ -429,8 +516,6 @@ function updateNoteInList(updatedNote: any) {
   }
   updateInArray(notes.value)
   updateInArray(cachedNotes.value)
-
-  // 【专家修正】只有在非搜索状态下才更新缓存
   if (!searchQuery.value) {
     const cachedPage = cachedPages.value.get(currentPage.value)
     if (cachedPage) {
@@ -445,38 +530,25 @@ async function fetchNotes() {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-
-    // 注意：我们移除了这里的“从内存缓存加载”的逻辑，
-    // 因为现在总是先从服务器获取最新数据。
-
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
       .eq('user_id', user.value.id)
       .order('is_pinned', { ascending: false })
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .range(from, to)
-
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-      // 如果获取失败，不清空已有的缓存笔记，以提供更好的离线体验
       return
     }
-
     const newNotes = data || []
     totalNotes.value = count || 0
-
-    // 更新UI
     if (currentPage.value > 1)
       notes.value = [...notes.value, ...newNotes]
     else
       notes.value = newNotes
-
-    // 【专家修改】如果获取的是第一页数据，就将其存入本地存储
     if (currentPage.value === 1 && newNotes.length > 0)
       localStorage.setItem(CACHED_NOTES_KEY, JSON.stringify(newNotes))
-
-    // 更新分页状态和内存缓存
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
     cachedPages.value.set(currentPage.value, {
@@ -496,38 +568,24 @@ async function fetchNotes() {
   }
 }
 async function nextPage() {
-  // MODIFICATION START: Simplified nextPage for infinite scroll
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
   currentPage.value++
   await fetchNotes()
-  // MODIFICATION END
 }
 
 function generateUniqueId() {
   return uuidv4()
 }
-// 【专家修正版】解决收起笔记后页面乱跳的问题
 async function toggleExpand(noteId: string) {
-  // 判断当前操作是“收起”还是“展开”
   if (expandedNote.value === noteId) {
-    // --- 如果是“收起”操作 ---
-
-    // 1. 在DOM改变前，先获取到当前笔记的HTML元素
     const noteElement = document.querySelector(`[data-note-id="${noteId}"]`)
-
-    // 2. 触发收起动作，让笔记内容折叠
     expandedNote.value = null
-
-    // 3. 等待Vue完成DOM更新（这是关键一步）
     await nextTick()
-
-    // 4. DOM更新完成后，将刚刚收起的笔记元素重新滚动回视野中
     if (noteElement)
       noteElement.scrollIntoView({ behavior: 'auto', block: 'nearest' })
   }
   else {
-    // --- 如果是“展开”操作，则正常执行即可 ---
     expandedNote.value = noteId
   }
 }
@@ -605,20 +663,28 @@ async function saveNote({ showMessage = false } = {}) {
       hour: '2-digit',
       minute: '2-digit',
     }).replace(/\//g, '.')
-    if (showMessage) {
-      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved'))
-      content.value = ''
-      lastSavedId.value = null
-      editingNote.value = null
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
+    if (showMessage)
+      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.save_success', '保存成功'))
+
     return savedNote
   }
   catch (error: any) {
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
+}
+
+function resetEditorAndState() {
+  content.value = ''
+  editingNote.value = null
+  lastSavedId.value = null
+  lastSavedTime.value = ''
+  localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+  localStorage.removeItem(LOCAL_CONTENT_KEY)
+  destroyEasyMDE()
+  nextTick(() => {
+    initializeEasyMDE('')
+  })
 }
 
 async function handleSubmit() {
@@ -642,14 +708,8 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-    if (saved) {
-      content.value = ''
-      editingNote.value = null
-      lastSavedId.value = null
-      lastSavedAt.value = null
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
+    if (saved)
+      resetEditorAndState()
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
@@ -659,18 +719,28 @@ async function handleSubmit() {
     loading.value = false
   }
 }
-// MODIFICATION START: Removed toggleNotesList function as it's no longer needed
-// function toggleNotesList() { ... }
-// MODIFICATION END
 
 function handleEdit(note: any) {
   if (!note?.id)
     return
-  editingNote.value = { ...note }
+  destroyEasyMDE()
   content.value = note.content
+  editingNote.value = { ...note }
   lastSavedId.value = note.id
   localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
+  nextTick(() => {
+    initializeEasyMDE(note.content)
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      cm.focus()
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+      const lineContent = doc.getLine(lastLine)
+      doc.setCursor(lastLine, lineContent.length)
+    }
+  })
 }
+
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
@@ -789,59 +859,39 @@ function goHomeAndRefresh() {
   router.push('/').then(() => window.location.reload())
 }
 
-// 请确保您使用的是这个版本的 handleNoteContentClick 函数
 async function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-
-  // 1. 找到被点击的最外层列表项
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
-
-  // 2. 找到该列表项所属的笔记卡片和ID
   const noteCard = listItem.closest('[data-note-id]') as HTMLElement
   const noteId = noteCard?.dataset.noteId
   if (!noteId)
     return
-
-  // 3. 在当前笔记数据中找到要更新的对象
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
-
   const originalContent = noteToUpdate.content
-
   try {
-    // 4. 找到笔记卡片中所有的任务列表项，并确定点击的是第几个
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
     const itemIndex = allListItems.indexOf(listItem)
     if (itemIndex === -1)
       return
-
-    // 5. 在原始笔记文本中，找到所有任务行的索引
     const lines = originalContent.split('\n')
     const taskLineIndexes: number[] = []
     lines.forEach((line, index) => {
       if (line.trim().match(/^-\s\[( |x)\]/))
         taskLineIndexes.push(index)
     })
-
-    // 6. 如果索引匹配，就修改对应行的文本状态
     if (itemIndex < taskLineIndexes.length) {
       const lineIndexToChange = taskLineIndexes[itemIndex]
       const lineContent = lines[lineIndexToChange]
-
       if (lineContent.includes('[ ]'))
         lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
       else if (lineContent.includes('[x]'))
         lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
-
       const newContent = lines.join('\n')
-
-      // 7.【关键】立即更新前端UI（乐观更新）
       noteToUpdate.content = newContent
-
-      // 8. 然后在后台将改动保存到数据库
       await supabase
         .from('notes')
         .update({ content: newContent, updated_at: new Date().toISOString() })
@@ -850,13 +900,11 @@ async function handleNoteContentClick(event: MouseEvent) {
     }
   }
   catch (err: any) {
-    // 如果后台保存失败，则恢复UI并提示用户
     noteToUpdate.content = originalContent
     messageHook.error(`更新失败: ${err.message}`)
   }
 }
 
-// 【新增】复制笔记内容的函数
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
@@ -869,7 +917,6 @@ async function handleCopy(noteContent: string) {
   }
 }
 
-// 【新增】处理下拉菜单选项点击的函数
 function handleDropdownSelect(key: string, note: any) {
   switch (key) {
     case 'edit':
@@ -887,16 +934,11 @@ function handleDropdownSelect(key: string, note: any) {
   }
 }
 
-// 【最终修正版】一个函数，用于动态生成下拉菜单的选项
 function getDropdownOptions(note: any) {
-  // 1. 计算字数
   const charCount = note.content ? note.content.length : 0
-
-  // 2. 格式化创建时间（增加了健壮性检查）
   const dateObj = new Date(note.created_at)
-  // 使用 Number.isNaN 替代 isNaN
   const creationTime = !note.created_at || Number.isNaN(dateObj.getTime())
-    ? '未知' // 如果日期无效或不存在，则显示“未知”
+    ? '未知'
     : dateObj.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -904,8 +946,6 @@ function getDropdownOptions(note: any) {
       hour: '2-digit',
       minute: '2-digit',
     })
-
-  // 3. 调整了菜单项的顺序，将信息项放在底部
   return [
     {
       label: t('notes.edit'),
@@ -969,7 +1009,7 @@ function getDropdownOptions(note: any) {
         </button>
       </div>
       <div class="notes-container">
-        <form class="mb-6" @submit.prevent="handleSubmit">
+        <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
           <span class="info-label">{{ $t('notes.notes') }}</span>
           <textarea
             ref="textareaRef"
@@ -979,6 +1019,7 @@ function getDropdownOptions(note: any) {
             required
             :disabled="loading"
             :maxlength="maxNoteLength"
+            autocomplete="off"
           />
           <div class="status-bar">
             <span class="char-counter">
@@ -1416,9 +1457,17 @@ button:disabled {
 .dark .info-label {
   color: #adadad;
 }
-/* 新增这段CSS，专门为“笔记”标题设置字体大小 */
+
+.notes-container {
+  text-align: left; /* 关键修正：确保编辑器及其容器内的所有内容都默认左对齐，解决布局冲突 */
+}
+
+/* --- 请替换为这段新代码 --- */
 .notes-container .info-label {
-  font-size: 18px; /* 您可以在这里设置任何想要的字体大小 */
+  display: block; /* 必须设置为块级元素，text-align 才能生效 */
+  text-align: center; /* 将标题居中 */
+  font-size: 18px;
+  margin-bottom: 0.5rem; /* 为标题下方增加一些间距 */
 }
 .info-value {
   color: #111;
@@ -1461,13 +1510,8 @@ button:disabled {
   background-color: #48484a;
 }
 
-.notes-container {
-  /* MODIFICATION START: Adjusted margin */
-  margin-top: 0;
-  /* MODIFICATION END */
-}
-
 .notes-container textarea {
+  visibility: hidden; /* 优化：在JS初始化前，隐藏原始的textarea，防止闪烁 */
   width: 100%;
   padding: 0.5rem;
   margin-bottom: 0.2rem;
@@ -1551,7 +1595,7 @@ form .emoji-bar .form-button:disabled {
 
 .notes-list {
   margin-top: 1rem;
-  height: 400px;
+  height: 500px;
   overflow-y: auto;
   position: relative;
 }
@@ -1769,5 +1813,58 @@ html {
 
 :deep(.dark .prose .task-list-item input[type="checkbox"]:checked) {
   accent-color: #4ade80;
+}
+
+/* 【专家新增】EasyMDE暗黑模式适配 */
+:deep(.dark .editor-toolbar) {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+:deep(.dark .CodeMirror) {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #ffffff;
+}
+:deep(.dark .editor-toolbar a) {
+  color: #e0e0e0 !important;
+}
+:deep(.dark .editor-toolbar a.active) {
+  background: #404040;
+}
+
+/* --- 编辑器边框样式 --- */
+.CodeMirror {
+  /* 高度现在完全由 JavaScript 控制 */
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 16px !important; /* 在这里修改为您想要的字体大小 */
+  line-height: 1.6 !important; /* 建议同时调整行高以保持美观 */
+}
+
+/* 适配暗黑模式的边框颜色 */
+.dark .CodeMirror {
+  border-color: #48484a;
+}
+
+/* --- 缩小工具栏高度与图标尺寸 --- */
+.editor-toolbar {
+  padding: 1px 4px !important;
+  min-height: 0 !important;
+}
+.editor-toolbar a {
+  padding: 3px 6px !important;
+  line-height: 1 !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+/* 关键修正：使用更强力的选择器确保图标尺寸被修改 */
+.editor-toolbar a,
+.editor-toolbar a * {
+  font-size: 13px !important; /* 在这里调整为您希望的最终图标大小 */
+}
+.editor-toolbar i.separator {
+  margin: 2px 4px !important;
+  border-width: 0 1px 0 0 !important;
+  height: 20px !important;
 }
 </style>
