@@ -90,23 +90,23 @@ const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
 // --- 【最终方案】EasyMDE 编辑器核心逻辑：销毁与重建 + JS动态高度 ---
 
-/* --- 请替换为这段最终的正确代码 --- */
+/* --- 请替换为这段新代码 --- */
 function updateEditorHeight() {
   if (!easymde.value)
     return
 
   const cm = easymde.value.codemirror
-  // 关键修正：获取内部sizer元素的正确方法是 cm.display.sizer
   const sizer = cm.display.sizer
 
-  // 确保sizer元素存在
   if (!sizer)
     return
 
-  // 使用sizer的scrollHeight来计算内容高度，并确保高度在设定的范围内
-  const newHeight = Math.max(minEditorHeight, Math.min(sizer.scrollHeight, maxEditorHeight))
+  // 关键修正：在测量出的内容高度上，增加 5px 的缓冲空间
+  const contentHeight = sizer.scrollHeight + 5
 
-  // 使用官方API设置编辑器尺寸
+  // 使用增加了缓冲的高度来计算最终高度
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+
   cm.setSize(null, newHeight)
 }
 
@@ -1837,7 +1837,7 @@ html {
 
 /* --- 编辑器边框样式 --- */
 .CodeMirror {
-  /* 高度现在完全由 JavaScript 控制 */
+  /* 确保这里没有任何 height, min-height, 或 max-height 相关的样式 */
   border: 1px solid #ccc;
   border-radius: 6px;
   font-size: 16px !important; /* 在这里修改为您想要的字体大小 */
