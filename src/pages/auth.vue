@@ -78,6 +78,7 @@ const isExporting = ref(false)
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
+const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
 // MODIFICATION START: Add ref for notes list element and implement infinite scroll
 const notesListRef = ref<HTMLElement | null>(null)
@@ -169,10 +170,24 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
-  // First, refresh the user's session to ensure they are logged in.
-  await authStore.refreshUser()
+  // 【专家修改】第一步：立即尝试从本地存储加载缓存的笔记
+  const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
+  if (cachedNotesData) {
+    try {
+      const parsedNotes = JSON.parse(cachedNotesData)
+      if (Array.isArray(parsedNotes) && parsedNotes.length > 0) {
+        notes.value = parsedNotes
+        isNotesCached.value = true // 标记已有缓存数据
+      }
+    }
+    catch (e) {
+      console.error('解析缓存笔记失败:', e)
+      localStorage.removeItem(CACHED_NOTES_KEY) // 如果解析失败，则清除损坏的缓存
+    }
+  }
 
-  // Then, try to restore any saved content from the previous session.
+  // 第二步：继续执行原有的初始化流程
+  await authStore.refreshUser()
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
   if (savedContent) {
@@ -188,14 +203,13 @@ onMounted(async () => {
         .single()
       if (noteData)
         editingNote.value = noteData
-
       else
         localStorage.removeItem(LOCAL_NOTE_ID_KEY)
     }
     isRestoringFromCache.value = false
   }
 
-  // Finally, after all initialization is done, fetch the notes list.
+  // 第三步：在所有初始化操作完成后，再去服务器获取最新笔记
   await fetchNotes()
 })
 
@@ -431,17 +445,10 @@ async function fetchNotes() {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-    const cachedPage = cachedPages.value.get(currentPage.value)
-    if (cachedPage) {
-      notes.value = cachedPage.notes.slice()
-      totalNotes.value = cachedPage.totalNotes
-      hasMoreNotes.value = cachedPage.hasMoreNotes
-      hasPreviousNotes.value = cachedPage.hasPreviousNotes
-      isNotesCached.value = true
-      isLoadingNotes.value = false
-      nextTick()
-      return
-    }
+
+    // 注意：我们移除了这里的“从内存缓存加载”的逻辑，
+    // 因为现在总是先从服务器获取最新数据。
+
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
@@ -449,31 +456,29 @@ async function fetchNotes() {
       .order('is_pinned', { ascending: false })
       .order('updated_at', { ascending: false })
       .range(from, to)
+
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-      notes.value = []
-      cachedNotes.value = []
-      hasMoreNotes.value = false
-      hasPreviousNotes.value = false
-      isNotesCached.value = false
-      cachedPages.value.clear()
+      // 如果获取失败，不清空已有的缓存笔记，以提供更好的离线体验
       return
     }
+
     const newNotes = data || []
     totalNotes.value = count || 0
-    // MODIFICATION START: Append new notes instead of replacing for infinite scroll
+
+    // 更新UI
     if (currentPage.value > 1)
       notes.value = [...notes.value, ...newNotes]
     else
-      notes.value = newNotes.slice(0, notesPerPage)
-    // MODIFICATION END
+      notes.value = newNotes
+
+    // 【专家修改】如果获取的是第一页数据，就将其存入本地存储
+    if (currentPage.value === 1 && newNotes.length > 0)
+      localStorage.setItem(CACHED_NOTES_KEY, JSON.stringify(newNotes))
+
+    // 更新分页状态和内存缓存
     hasMoreNotes.value = to + 1 < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
-    const existingIds = new Set(cachedNotes.value.map(n => n.id))
-    cachedNotes.value = [
-      ...cachedNotes.value.filter(n => !newNotes.some(nn => nn.id === n.id)),
-      ...newNotes.filter(n => !existingIds.has(n.id)),
-    ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     cachedPages.value.set(currentPage.value, {
       totalNotes: totalNotes.value,
       hasMoreNotes: hasMoreNotes.value,
@@ -484,12 +489,6 @@ async function fetchNotes() {
   }
   catch (err) {
     messageHook.error(t('notes.fetch_error'))
-    notes.value = []
-    cachedNotes.value = []
-    hasMoreNotes.value = false
-    hasPreviousNotes.value = false
-    isNotesCached.value = false
-    cachedPages.value.clear()
   }
   finally {
     isLoadingNotes.value = false
