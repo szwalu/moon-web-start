@@ -169,7 +169,10 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
+  // First, refresh the user's session to ensure they are logged in.
   await authStore.refreshUser()
+
+  // Then, try to restore any saved content from the previous session.
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
   if (savedContent) {
@@ -185,11 +188,15 @@ onMounted(async () => {
         .single()
       if (noteData)
         editingNote.value = noteData
+
       else
         localStorage.removeItem(LOCAL_NOTE_ID_KEY)
     }
     isRestoringFromCache.value = false
   }
+
+  // Finally, after all initialization is done, fetch the notes list.
+  await fetchNotes()
 })
 
 const lastLoginTime = computed(() => {
@@ -206,9 +213,7 @@ const pageTitle = computed(() => {
   return t('auth.forgot_password')
 })
 
-const charCount = computed(() => {
-  return content.value.length
-})
+const charCount = computed(() => content.value.length)
 
 watchEffect(async () => {
   if (user.value) {
@@ -217,11 +222,15 @@ watchEffect(async () => {
       .select('updated_at')
       .eq('id', user.value.id)
       .single()
+
     lastBackupTime.value = data?.updated_at
       ? new Date(`${data.updated_at}Z`).toLocaleString()
       : '暂无备份'
-    if (!isRestoringFromCache.value && !isNotesCached.value)
-      await fetchNotes()
+
+    // 原来这里是: await fetchNotes()
+    if (!isRestoringFromCache.value && !isNotesCached.value) {
+      // no-op (保留占位，避免悬空 if)
+    }
   }
   else {
     lastBackupTime.value = 'N/A'
