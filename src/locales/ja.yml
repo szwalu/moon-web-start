@@ -278,3 +278,5 @@ notes:
   copy: 内容をコピー
   copy_success: ノートの内容をクリップボードにコピーしました
   copy_error: コピーに失敗しました
+  word_count: 文字数： {count}
+  created_at: 作成日時： {time}

@@ -207,7 +207,7 @@ auth:
   invite_code: 邀请码
   invite_code_placeholder: 请输入5位数字邀请码
   password_placeholder: 请输入6位数字或字母
-  login_password_placeholder: 请输入5位数字或字母密码
+  login_password_placeholder: 请输入6位数字或字母密码
   session_expired: 会话已过期，请重新登录
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
@@ -286,3 +286,5 @@ notes:
   copy: 复制
   copy_success: 笔记内容已复制到剪贴板！
   copy_error: 复制失败
+  word_count: 字数： {count}
+  created_at: 创建于： {time}

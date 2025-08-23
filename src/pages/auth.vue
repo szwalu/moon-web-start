@@ -908,12 +908,12 @@ function getDropdownOptions(note: any) {
       type: 'divider',
     },
     {
-      label: `字数: ${charCount}`,
+      label: t('notes.word_count', { count: charCount }),
       key: 'char_count',
       disabled: true,
     },
     {
-      label: `创建于: ${creationTime}`,
+      label: t('notes.created_at', { time: creationTime }),
       key: 'creation_time',
       disabled: true,
     },
