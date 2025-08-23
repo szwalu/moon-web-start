@@ -1835,35 +1835,45 @@ html {
   background: #404040;
 }
 
-/* --- 编辑器边框样式 --- */
-.CodeMirror {
-  /* 确保这里没有任何 height, min-height, 或 max-height 相关的样式 */
+/* --- 编辑器整体容器样式 --- */
+.editor-toolbar {
+  padding: 1px 4px !important;
+  min-height: 0 !important;
+  /* 关键：设置上、左、右边框，并添加顶部圆角 */
   border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 16px !important; /* 在这里修改为您想要的字体大小 */
-  line-height: 1.6 !important; /* 建议同时调整行高以保持美观 */
+  border-bottom: none; /* 移除与下方输入框重叠的底边框 */
+  border-radius: 6px 6px 0 0; /* 只让左上角和右上角变圆 */
 }
 
-/* 适配暗黑模式的边框颜色 */
+.CodeMirror {
+  /* 关键：只设置左、右、下边框，并添加底部圆角 */
+  border-left: 1px solid #ccc;
+  border-right: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+  border-top: none; /* 移除与上方工具栏重叠的顶边框 */
+  border-radius: 0 0 6px 6px; /* 只让左下角和右下角变圆 */
+
+  /* 保留字体和行高设置 */
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+/* --- 暗黑模式适配 --- */
+.dark .editor-toolbar,
 .dark .CodeMirror {
   border-color: #48484a;
 }
 
-/* --- 缩小工具栏高度与图标尺寸 --- */
-.editor-toolbar {
-  padding: 1px 4px !important;
-  min-height: 0 !important;
-}
+/* --- 工具栏内部图标尺寸 (保持不变) --- */
 .editor-toolbar a {
   padding: 3px 4px !important;
   line-height: 1 !important;
   height: auto !important;
   min-height: 0 !important;
 }
-/* 关键修正：使用更强力的选择器确保图标尺寸被修改 */
 .editor-toolbar a,
 .editor-toolbar a * {
-  font-size: 13px !important; /* 在这里调整为您希望的最终图标大小 */
+  font-size: 13px !important;
 }
 .editor-toolbar i.separator {
   margin: 2px 4px !important;
