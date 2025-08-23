@@ -1046,9 +1046,11 @@ function getDropdownOptions(note: any) {
                     style="font-size: 17px !important; line-height: 1.6;"
                     v-html="renderMarkdown(note.content)"
                   />
-                  <button class="toggle-button collapse-button" @click.stop="toggleExpand(note.id)">
-                    {{ $t('notes.collapse') }}
-                  </button>
+                  <div class="toggle-button-row" @click.stop="toggleExpand(note.id)">
+                    <button class="toggle-button collapse-button">
+                      {{ $t('notes.collapse') }}
+                    </button>
+                  </div>
                 </div>
                 <div v-else>
                   <div
@@ -1057,13 +1059,15 @@ function getDropdownOptions(note: any) {
                     style="font-size: 17px !important; line-height: 1.6;"
                     v-html="renderMarkdown(note.content)"
                   />
-                  <button
+                  <div
                     v-if="noteOverflowStatus[note.id]"
-                    class="toggle-button"
+                    class="toggle-button-row"
                     @click.stop="toggleExpand(note.id)"
                   >
-                    {{ $t('notes.expand') }}
-                  </button>
+                    <button class="toggle-button">
+                      {{ $t('notes.expand') }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1633,13 +1637,28 @@ html {
   -webkit-box-orient: vertical;
 }
 
-/* 【最终、合并后的版本】“展开”和“收起”按钮的样式 */
-.toggle-button {
-  border: none;
-  color: #007bff !important;
+/* 新增：可点击的“行”的样式 */
+.toggle-button-row {
+  width: 100%;
   cursor: pointer;
   padding: 4px 0;
   margin-top: 8px;
+}
+
+/* 修改：“按钮”现在只作为纯文本显示，不处理点击 */
+.toggle-button {
+  /* 移除所有交互和背景 */
+  pointer-events: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  display: block;
+  text-align: left;
+
+  /* 保留您原有的字体和颜色样式 */
+  color: #007bff !important;
   font-size: 12px;
   font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
