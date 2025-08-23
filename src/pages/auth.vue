@@ -118,6 +118,7 @@ function destroyEasyMDE() {
   }
 }
 
+const debouncedUpdateEditorHeight = debounce(() => updateEditorHeight(), 100)
 // 初始化 EasyMDE 实例的辅助函数
 function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
@@ -173,7 +174,7 @@ function initializeEasyMDE(initialValue = '') {
 
   // 关键修正：使用 'update' 事件来更新高度
   // 这个事件在编辑器 DOM 更新后触发，确保我们能获取到最准确的高度
-  easymde.value.codemirror.on('update', updateEditorHeight)
+  easymde.value.codemirror.on('update', debouncedUpdateEditorHeight)
 
   // 在编辑器首次初始化后，立即调用一次以设置初始高度
   nextTick(() => {
@@ -1852,7 +1853,7 @@ html {
   min-height: 0 !important;
 }
 .editor-toolbar a {
-  padding: 3px 6px !important;
+  padding: 3px 4px !important;
   line-height: 1 !important;
   height: auto !important;
   min-height: 0 !important;
