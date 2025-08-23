@@ -162,20 +162,20 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // 监听编辑器的 change 事件
+  // 'change' 事件只负责将内容同步回 Vue
   easymde.value.codemirror.on('change', () => {
     if (easymde.value) {
-      // 1. 将内容同步回 Vue 的 content ref
       const editorContent = easymde.value.value()
       if (content.value !== editorContent)
         content.value = editorContent
-
-      // 2. 每次内容变化时，都调用函数更新编辑器高度
-      updateEditorHeight()
     }
   })
 
-  // 关键：在编辑器首次初始化后，立即调用一次以设置初始高度
+  // 关键修正：使用 'update' 事件来更新高度
+  // 这个事件在编辑器 DOM 更新后触发，确保我们能获取到最准确的高度
+  easymde.value.codemirror.on('update', updateEditorHeight)
+
+  // 在编辑器首次初始化后，立即调用一次以设置初始高度
   nextTick(() => {
     updateEditorHeight()
   })
