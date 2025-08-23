@@ -118,7 +118,7 @@ function destroyEasyMDE() {
   }
 }
 
-const debouncedUpdateEditorHeight = debounce(() => updateEditorHeight(), 100)
+/* --- 请替换为这段新代码 --- */
 // 初始化 EasyMDE 实例的辅助函数
 function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
@@ -163,18 +163,20 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // 'change' 事件只负责将内容同步回 Vue
+  // 'change' 事件负责所有逻辑
   easymde.value.codemirror.on('change', () => {
     if (easymde.value) {
+      // 1. 将内容同步回 Vue
       const editorContent = easymde.value.value()
       if (content.value !== editorContent)
         content.value = editorContent
+
+      // 2. 关键修正：使用 nextTick 等待DOM更新完成后再计算高度
+      nextTick(() => {
+        updateEditorHeight()
+      })
     }
   })
-
-  // 关键修正：使用 'update' 事件来更新高度
-  // 这个事件在编辑器 DOM 更新后触发，确保我们能获取到最准确的高度
-  easymde.value.codemirror.on('update', debouncedUpdateEditorHeight)
 
   // 在编辑器首次初始化后，立即调用一次以设置初始高度
   nextTick(() => {
