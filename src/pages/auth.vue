@@ -1865,19 +1865,41 @@ html {
 }
 
 /* --- 工具栏内部图标尺寸 (保持不变) --- */
-.editor-toolbar a {
-  padding: 3px 4px !important;
-  line-height: 1 !important;
-  height: auto !important;
-  min-height: 0 !important;
-}
+/* --- 工具栏按钮统一大小 --- */
 .editor-toolbar a,
-.editor-toolbar a * {
-  font-size: 13px !important;
+.editor-toolbar button {
+  padding: 1px 2px !important;   /* 内边距 */
+  line-height: 1 !important;     /* 避免被撑开 */
+  height: 16px !important;       /* 按钮高度 */
+  min-height: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
+
+/* --- Font Awesome / Icon 字体 --- */
+.editor-toolbar a i,
+.editor-toolbar button i,
+.editor-toolbar a i::before,
+.editor-toolbar button i::before {
+  font-size: 15px !important;    /* 字号控制图标大小 */
+  line-height: 1 !important;
+}
+
+/* --- SVG 图标 --- */
+.editor-toolbar a svg,
+.editor-toolbar button svg {
+  width: 10px !important;        /* SVG 宽度 */
+  height: 10px !important;       /* SVG 高度 */
+  display: inline-block !important;
+  vertical-align: middle !important;
+  fill: currentColor !important; /* 跟随文字颜色 */
+}
+
+/* --- 分隔符 --- */
 .editor-toolbar i.separator {
-  margin: 2px 4px !important;
-  border-width: 0 1px 0 0 !important;
-  height: 20px !important;
+  margin: 1px 2px !important;
+  border-right: 1px solid #ccc !important;
+  height: 12px !important;
 }
 </style>
