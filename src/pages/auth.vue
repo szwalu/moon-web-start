@@ -483,14 +483,11 @@ onMounted(async () => {
   isReady.value = true
 })
 
-// 监视 user 状态，确保在用户登录且 textarea 渲染后才初始化编辑器
+// 新的逻辑 (先显示编辑器，再异步加载数据)
 watch(user, (currentUser) => {
   if (currentUser && !easymde.value) {
     nextTick(async () => {
-      if (user.value) {
-        await fetchNotes()
-        await fetchAllTags()
-      }
+      // 1. 立即初始化编辑器，不再等待
       initializeEasyMDE(content.value)
       if (easymde.value) {
         const cm = easymde.value.codemirror
@@ -505,9 +502,15 @@ watch(user, (currentUser) => {
           cm.setCursor(0, 0)
         }
       }
+
+      // 2. 然后，在后台异步获取数据，这不会再阻塞编辑器的显示
+      if (user.value) {
+        await fetchNotes()
+        await fetchAllTags()
+      }
     })
   }
-}, { immediate: true }) // immediate: true 确保组件加载时立即检查一次 user 状态
+}, { immediate: true })
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
