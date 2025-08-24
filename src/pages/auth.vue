@@ -1864,42 +1864,43 @@ html {
   border-color: #48484a;
 }
 
-/* --- 工具栏内部图标尺寸 (保持不变) --- */
-/* --- 工具栏按钮统一大小 --- */
-.editor-toolbar a,
-.editor-toolbar button {
-  padding: 1px 2px !important;   /* 内边距 */
-  line-height: 1 !important;     /* 避免被撑开 */
-  height: 16px !important;       /* 按钮高度 */
+/* --- 请替换为这段最终代码 --- */
+
+/* --- 缩小工具栏整体高度 --- */
+.auth-container .EasyMDEContainer .editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+}
+
+/* --- 统一设置所有按钮（无论是a标签还是button标签）的尺寸和内边距 --- */
+.auth-container .EasyMDEContainer .editor-toolbar a,
+.auth-container .EasyMDEContainer .editor-toolbar button {
+  /* 关键修正：分别设置左右内边距，确保规则生效 */
+  padding-left: 3px !important;   /* 您可以在这里统一调整左边距 */
+  padding-right: 0px !important;  /* 您可以在这里统一调整右边距 */
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+
+  line-height: 1 !important;
+  height: auto !important;
   min-height: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
-  justify-content: center !important;
 }
 
-/* --- Font Awesome / Icon 字体 --- */
-.editor-toolbar a i,
-.editor-toolbar button i,
-.editor-toolbar a i::before,
-.editor-toolbar button i::before {
-  font-size: 15px !important;    /* 字号控制图标大小 */
-  line-height: 1 !important;
+/* --- 统一设置所有按钮内的图标字体大小 --- */
+/* 这里我们同时选择 a 标签和 button 标签内部的 i 标签，确保覆盖所有情况 */
+.auth-container .EasyMDEContainer .editor-toolbar a i,
+.auth-container .EasyMDEContainer .editor-toolbar button i {
+  font-size: 15px !important;     /* 您期望的图标大小 */
+  vertical-align: middle;       /* 确保图标垂直居中 */
 }
 
-/* --- SVG 图标 --- */
-.editor-toolbar a svg,
-.editor-toolbar button svg {
-  width: 10px !important;        /* SVG 宽度 */
-  height: 10px !important;       /* SVG 高度 */
-  display: inline-block !important;
-  vertical-align: middle !important;
-  fill: currentColor !important; /* 跟随文字颜色 */
-}
-
-/* --- 分隔符 --- */
-.editor-toolbar i.separator {
-  margin: 1px 2px !important;
-  border-right: 1px solid #ccc !important;
-  height: 12px !important;
+/* --- 调整分隔符样式 --- */
+.auth-container .EasyMDEContainer .editor-toolbar i.separator {
+  /* 关键修正：确保分隔符左右外边距相等，实现对称 */
+  margin: 1px 4px !important;
+  border-width: 0 1px 0 0 !important;
+  height: 8px !important;
 }
 </style>
