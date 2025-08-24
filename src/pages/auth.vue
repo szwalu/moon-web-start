@@ -25,10 +25,14 @@ const md = new MarkdownIt({
 })
   .use(taskLists, { enabled: true, label: true })
 
+/* --- 请替换为这段新代码 --- */
 function renderMarkdown(content: string) {
   if (!content)
     return ''
-  return md.render(content)
+  const html = md.render(content)
+  // 使用正则表达式查找所有的 #tag 格式文本，并将其包裹在带有 custom-tag 类的 span 标签中
+  // 正则表达式 /#(\S+)/g 会匹配一个 # 号以及后面跟着的至少一个非空白字符
+  return html.replace(/#(\S+)/g, '<span class="custom-tag">#$1</span>')
 }
 const router = useRouter()
 const { t } = useI18n()
@@ -111,7 +115,28 @@ function initializeEasyMDE(initialValue = '') {
   if (!newEl || easymde.value)
     return
 
+  /* --- 请替换为这段新代码 --- */
   const customToolbar = [
+    // --- 将标签按钮移动到最前面 ---
+    {
+      name: 'tag',
+      action: (editor: any) => {
+        const cm = editor.codemirror
+        const doc = cm.getDoc()
+        const cursor = doc.getCursor()
+        const placeholder = 'your-tag'
+        const fullText = `#${placeholder}`
+        doc.replaceRange(fullText, cursor)
+        const start = { line: cursor.line, ch: cursor.ch + 1 }
+        const end = { line: cursor.line, ch: cursor.ch + 1 + placeholder.length }
+        doc.setSelection(start, end)
+        cm.focus()
+      },
+      className: 'fa fa-tag',
+      title: '插入标签',
+    },
+    '|', // 添加一个分隔符
+    // --- 其他按钮保持不变 ---
     'bold',
     'italic',
     'heading',
@@ -1898,5 +1923,24 @@ html {
 
 .dark .auth-container .EasyMDEContainer .editor-toolbar {
   border-color: #48484a;
+}
+
+/* --- 请将这段新CSS添加到全局 <style> 标签内 --- */
+
+/* --- 自定义标签样式 --- */
+.custom-tag {
+  background-color: #eef2ff; /* 标签背景色 */
+  color: #4338ca;            /* 标签文字颜色 */
+  padding: 2px 8px;           /* 内边距 */
+  border-radius: 9999px;      /* 圆角，使其成为胶囊形状 */
+  font-size: 0.875em;         /* 字体大小稍小一些 */
+  font-weight: 500;           /* 字体稍粗 */
+  margin: 0 2px;
+}
+
+/* 暗黑模式下的标签样式 */
+.dark .custom-tag {
+  background-color: #312e81;
+  color: #c7d2fe;
 }
 </style>
