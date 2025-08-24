@@ -277,18 +277,34 @@ onMounted(async () => {
   isReady.value = true
 })
 
+/* --- 请替换为这段新代码 --- */
+// 监视 user 状态，确保在用户登录且 textarea 渲染后才初始化编辑器
 watch(user, (currentUser) => {
+  // 只有当用户存在，且编辑器实例尚未创建时才执行
   if (currentUser && !easymde.value) {
+    // 使用 nextTick 确保 v-if="user" 已经将 textarea 渲染到 DOM 中
     nextTick(() => {
       initializeEasyMDE(content.value)
       if (easymde.value) {
         const cm = easymde.value.codemirror
-        cm.focus()
-        cm.setCursor(0, 0)
+        cm.focus() // 命令编辑器获取光标
+
+        // 关键修正：判断编辑器内是否有内容
+        if (content.value) {
+          // 如果有内容，将光标定位到文末
+          const doc = cm.getDoc()
+          const lastLine = doc.lastLine()
+          const lineContent = doc.getLine(lastLine)
+          doc.setCursor(lastLine, lineContent.length)
+        }
+        else {
+          // 如果没有内容，将光标定位到开头
+          cm.setCursor(0, 0)
+        }
       }
     })
   }
-}, { immediate: true })
+}, { immediate: true }) // immediate: true 确保组件加载时立即检查一次 user 状态
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
