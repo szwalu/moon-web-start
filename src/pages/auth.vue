@@ -1831,8 +1831,28 @@ html {
   line-height: 1.6 !important;
 }
 
+/* --- EasyMDE 暗黑模式适配 --- */
+/* 工具栏的暗黑模式 */
+.dark .editor-toolbar {
+  background-color: #2c2c2e;
+  border-color: #48484a !important; /* 增加!important确保覆盖 */
+}
+
+/* 编辑器输入框的暗黑模式 */
 .dark .CodeMirror {
-  border-color: #48484a;
+  background-color: #2c2c2e;
+  border-color: #48484a; /* 覆盖所有边框颜色 */
+  color: #ffffff;
+}
+
+/* 工具栏按钮的暗黑模式 */
+.dark .editor-toolbar a {
+  color: #e0e0e0 !important;
+}
+
+/* 工具栏激活按钮的暗黑模式 */
+.dark .editor-toolbar a.active {
+  background: #404040;
 }
 
 /* --- 缩小工具栏高度与图标尺寸 (高优先级版本) --- */
