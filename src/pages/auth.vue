@@ -13,7 +13,6 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
-// 【专家新增】引入EasyMDE
 import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
@@ -50,14 +49,10 @@ const loading = ref(false)
 const resetEmailSent = ref(false)
 const lastBackupTime = ref('N/A')
 
-let autoSaveInterval: NodeJS.Timeout | null = null
 const notes = ref<any[]>([])
 const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-
-// 【专家新增】创建EasyMDE实例的引用
 const easymde = ref<EasyMDE | null>(null)
-
 const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
@@ -78,11 +73,11 @@ const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: bool
 const isRestoringFromCache = ref(false)
 const searchQuery = ref('')
 const isExporting = ref(false)
-const isReady = ref(false) // 新增：用于控制自动保存等功能是否准备就绪的开关
+const isReady = ref(false)
 
-// 新增：定义编辑器的最小和最大高度，方便统一修改
-const minEditorHeight = 130 // 您可以在这里修改最小高度
-const maxEditorHeight = 780 // 您可以在这里修改最大高度
+// 定义编辑器的最小和最大高度，方便统一修改
+const minEditorHeight = 130
+const maxEditorHeight = 780
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
@@ -90,27 +85,20 @@ const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
 // --- 【最终方案】EasyMDE 编辑器核心逻辑：销毁与重建 + JS动态高度 ---
 
-/* --- 请替换为这段新代码 --- */
 function updateEditorHeight() {
   if (!easymde.value)
     return
 
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
-
   if (!sizer)
     return
 
-  // 关键修正：在测量出的内容高度上，增加 5px 的缓冲空间
   const contentHeight = sizer.scrollHeight + 5
-
-  // 使用增加了缓冲的高度来计算最终高度
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-
   cm.setSize(null, newHeight)
 }
 
-// 销毁 EasyMDE 实例的辅助函数
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -118,8 +106,6 @@ function destroyEasyMDE() {
   }
 }
 
-/* --- 请替换为这段新代码 --- */
-// 初始化 EasyMDE 实例的辅助函数
 function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
@@ -163,22 +149,17 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // 'change' 事件负责所有逻辑
   easymde.value.codemirror.on('change', () => {
     if (easymde.value) {
-      // 1. 将内容同步回 Vue
       const editorContent = easymde.value.value()
       if (content.value !== editorContent)
         content.value = editorContent
-
-      // 2. 关键修正：使用 nextTick 等待DOM更新完成后再计算高度
       nextTick(() => {
         updateEditorHeight()
       })
     }
   })
 
-  // 在编辑器首次初始化后，立即调用一次以设置初始高度
   nextTick(() => {
     updateEditorHeight()
   })
@@ -248,13 +229,8 @@ const debouncedSaveNote = debounce(() => {
     saveNote({ showMessage: false })
 }, 12000)
 
-// 组件卸载时，确保销毁编辑器实例和其他定时器
 onUnmounted(() => {
   destroyEasyMDE()
-  if (autoSaveInterval) {
-    clearInterval(autoSaveInterval)
-    autoSaveInterval = null
-  }
   debouncedSaveNote.cancel()
   handleScroll.cancel()
   if (notesListRef.value)
@@ -262,12 +238,10 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
-  // 第1步 (同步)：立即从 localStorage 加载草稿内容
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     content.value = savedContent
 
-  // 第2步 (异步)：执行所有需要网络请求的异步操作
   const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
   if (cachedNotesData) {
     try {
@@ -283,7 +257,6 @@ onMounted(async () => {
 
   await authStore.refreshUser()
 
-  // 重新检查是否处于编辑状态
   const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
   if (savedContent && savedNoteId && user.value) {
     const { data: noteData } = await supabase
@@ -300,16 +273,14 @@ onMounted(async () => {
 
   if (user.value)
     await fetchNotes()
-    // 在所有异步加载完成后，打开“准备就绪”开关
+
   isReady.value = true
 })
 
-// 监视 user 状态，确保在用户登录且 textarea 渲染后才初始化编辑器
 watch(user, (currentUser) => {
   if (currentUser && !easymde.value) {
     nextTick(() => {
       initializeEasyMDE(content.value)
-      // 在编辑器创建成功后，立即让它获取焦点
       if (easymde.value) {
         const cm = easymde.value.codemirror
         cm.focus()
@@ -1522,12 +1493,7 @@ button:disabled {
   border-radius: 6px;
   background-color: #fff;
   color: #111;
-
-  min-height: 120px;
-  max-height: 400px;
-  resize: none;
   overflow-y: auto;
-
   font-size: 17px;
   line-height: 1.5;
 }
@@ -1835,18 +1801,9 @@ html {
   background: #404040;
 }
 
-/* --- 编辑器整体容器样式 --- */
-.editor-toolbar {
-  padding: 1px 4px !important;
-  min-height: 0 !important;
-  /* 关键：设置上、左、右边框，并添加顶部圆角 */
-  border: 1px solid #ccc;
-  border-bottom: none; /* 移除与下方输入框重叠的底边框 */
-  border-radius: 6px 6px 0 0; /* 只让左上角和右上角变圆 */
-}
-
+/* --- 编辑器边框样式 --- */
 .CodeMirror {
-  /* 关键：只设置左、右、下边框，并添加底部圆角 */
+  /* 高度现在完全由 JavaScript 控制 */
   border-left: 1px solid #ccc;
   border-right: 1px solid #ccc;
   border-bottom: 1px solid #ccc;
@@ -1858,18 +1815,17 @@ html {
   line-height: 1.6 !important;
 }
 
-/* --- 暗黑模式适配 --- */
-.dark .editor-toolbar,
 .dark .CodeMirror {
   border-color: #48484a;
 }
 
-/* --- 请替换为这段最终代码 --- */
-
-/* --- 缩小工具栏整体高度 --- */
+/* --- 缩小工具栏高度与图标尺寸 (高优先级版本) --- */
 .auth-container .EasyMDEContainer .editor-toolbar {
   padding: 1px 3px !important;
   min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
 }
 
 /* --- 统一设置所有按钮（无论是a标签还是button标签）的尺寸和内边距 --- */
@@ -1902,5 +1858,9 @@ html {
   margin: 1px 4px !important;
   border-width: 0 1px 0 0 !important;
   height: 8px !important;
+}
+
+.dark .auth-container .EasyMDEContainer .editor-toolbar {
+  border-color: #48484a;
 }
 </style>
