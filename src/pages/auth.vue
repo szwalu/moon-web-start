@@ -1007,7 +1007,7 @@ function getDropdownOptions(note: any) {
             <button
               type="submit"
               class="form-button flex-2"
-              :disabled="loading"
+              :disabled="loading || !content"
             >
               💾 {{ loading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
             </button>
