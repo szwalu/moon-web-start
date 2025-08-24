@@ -25,14 +25,12 @@ const md = new MarkdownIt({
 })
   .use(taskLists, { enabled: true, label: true })
 
-/* --- 请替换为这段新代码 --- */
 function renderMarkdown(content: string) {
   if (!content)
     return ''
   const html = md.render(content)
-  // 使用正则表达式查找所有的 #tag 格式文本，并将其包裹在带有 custom-tag 类的 span 标签中
-  // 正则表达式 /#(\S+)/g 会匹配一个 # 号以及后面跟着的至少一个非空白字符
-  return html.replace(/#(\S+)/g, '<span class="custom-tag">#$1</span>')
+  // 最终修正: 更新正则表达式，确保它不会将Markdown标题 ## 误认为标签
+  return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
 }
 const router = useRouter()
 const { t } = useI18n()
@@ -79,6 +77,19 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 
+// --- State for Tag Suggestions ---
+const allTags = ref<string[]>([])
+const showSearchTagSuggestions = ref(false)
+const searchTagSuggestions = ref<string[]>([])
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const highlightedSearchIndex = ref(-1)
+
+const showEditorTagSuggestions = ref(false)
+const editorTagSuggestions = ref<string[]>([])
+const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
+const highlightedEditorIndex = ref(-1)
+const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
+
 // 定义编辑器的最小和最大高度，方便统一修改
 const minEditorHeight = 130
 const maxEditorHeight = 780
@@ -115,28 +126,25 @@ function initializeEasyMDE(initialValue = '') {
   if (!newEl || easymde.value)
     return
 
-  /* --- 请替换为这段新代码 --- */
   const customToolbar = [
-    // --- 将标签按钮移动到最前面 ---
     {
       name: 'tag',
       action: (editor: any) => {
         const cm = editor.codemirror
-        const doc = cm.getDoc()
-        const cursor = doc.getCursor()
-        const placeholder = 'your-tag'
-        const fullText = `#${placeholder}`
-        doc.replaceRange(fullText, cursor)
-        const start = { line: cursor.line, ch: cursor.ch + 1 }
-        const end = { line: cursor.line, ch: cursor.ch + 1 + placeholder.length }
-        doc.setSelection(start, end)
+        cm.getDoc().replaceSelection('#')
         cm.focus()
+        editorTagSuggestions.value = allTags.value
+        if (editorTagSuggestions.value.length > 0) {
+          const coords = cm.cursorCoords()
+          editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+          showEditorTagSuggestions.value = true
+          highlightedEditorIndex.value = 0
+        }
       },
       className: 'fa fa-tag',
-      title: '插入标签',
+      title: '插入标签 (Insert Tag)',
     },
-    '|', // 添加一个分隔符
-    // --- 其他按钮保持不变 ---
+    '|',
     'bold',
     'italic',
     'heading',
@@ -147,11 +155,8 @@ function initializeEasyMDE(initialValue = '') {
     {
       name: 'taskList',
       action: (editor: any) => {
-        const cm = editor.codemirror
-        const doc = cm.getDoc()
-        const cursor = doc.getCursor()
-        doc.replaceRange('- [ ] ', cursor)
-        cm.focus()
+        editor.codemirror.getDoc().replaceRange('- [ ] ', editor.codemirror.getDoc().getCursor())
+        editor.codemirror.focus()
       },
       className: 'fa fa-check-square-o',
       title: 'Task List',
@@ -174,20 +179,56 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  easymde.value.codemirror.on('change', () => {
+  const cm = easymde.value.codemirror
+  cm.on('change', (instance: any) => {
     if (easymde.value) {
       const editorContent = easymde.value.value()
       if (content.value !== editorContent)
         content.value = editorContent
-      nextTick(() => {
-        updateEditorHeight()
-      })
+      nextTick(() => updateEditorHeight())
+    }
+
+    // --- 最终修正: 严格的标签建议触发逻辑 ---
+    const cursor = instance.getDoc().getCursor()
+    const line = instance.getDoc().getLine(cursor.line)
+    const textBefore = line.substring(0, cursor.ch)
+
+    const lastHashIndex = textBefore.lastIndexOf('#')
+
+    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+
+    const potentialTag = textBefore.substring(lastHashIndex)
+
+    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1)) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+
+    if (/\s/.test(potentialTag)) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+
+    const term = potentialTag.substring(1)
+    editorTagSuggestions.value = allTags.value.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
+
+    if (editorTagSuggestions.value.length > 0) {
+      const coords = instance.cursorCoords()
+      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+      showEditorTagSuggestions.value = true
+      highlightedEditorIndex.value = 0
+    }
+    else {
+      showEditorTagSuggestions.value = false
     }
   })
 
-  nextTick(() => {
-    updateEditorHeight()
-  })
+  cm.on('keydown', handleEditorKeyDown)
+
+  nextTick(() => updateEditorHeight())
 }
 
 const notesListRef = ref<HTMLElement | null>(null)
@@ -199,6 +240,109 @@ const handleScroll = debounce(() => {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
     nextPage()
 }, 200)
+
+// --- Tag Suggestion Functions ---
+async function fetchAllTags() {
+  if (!user.value?.id)
+    return
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('content')
+      .eq('user_id', user.value.id)
+
+    if (error)
+      throw error
+
+    const tagSet = new Set<string>()
+
+    // 最终修正: 这是最终的、最严格的标签查找规则
+    // 它现在会排除'#'自身作为标签内容，从而完美区分Markdown标题和标签
+    const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
+
+    if (data) {
+      for (const note of data) {
+        let match
+        // eslint-disable-next-line no-cond-assign
+        while ((match = tagRegex.exec(note.content)) !== null) {
+          if (match[1])
+            tagSet.add(`#${match[1]}`)
+        }
+      }
+    }
+    allTags.value = Array.from(tagSet).sort()
+  }
+  catch (err: any) {
+    messageHook.error(`Failed to fetch tags: ${err.message}`)
+  }
+}
+
+function selectSearchTag(tag: string) {
+  if (!tag)
+    return
+  const lastHashIndex = searchQuery.value.lastIndexOf('#')
+  if (lastHashIndex !== -1)
+    searchQuery.value = `${searchQuery.value.substring(0, lastHashIndex) + tag} `
+  else
+    searchQuery.value = `${tag} `
+
+  showSearchTagSuggestions.value = false
+  nextTick(() => {
+    searchInputRef.value?.focus()
+  })
+}
+
+function moveSearchSelection(offset: number) {
+  if (showSearchTagSuggestions.value)
+    highlightedSearchIndex.value = (highlightedSearchIndex.value + offset + searchTagSuggestions.value.length) % searchTagSuggestions.value.length
+}
+
+function selectEditorTag(tag: string) {
+  if (!easymde.value)
+    return
+
+  const cm = easymde.value.codemirror
+  const doc = cm.getDoc()
+  const cursor = doc.getCursor()
+  const line = doc.getLine(cursor.line)
+  const textBeforeCursor = line.substring(0, cursor.ch)
+  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
+
+  if (lastHashIndex !== -1) {
+    const start = { line: cursor.line, ch: lastHashIndex }
+    const end = cursor
+    doc.replaceRange(`${tag} `, start, end)
+  }
+
+  showEditorTagSuggestions.value = false
+  cm.focus()
+}
+
+function moveEditorSelection(offset: number) {
+  if (showEditorTagSuggestions.value)
+    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
+}
+
+function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
+  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveEditorSelection(1)
+    }
+    else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveEditorSelection(-1)
+    }
+    else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
+    }
+    else if (event.key === 'Escape') {
+      event.preventDefault()
+      showEditorTagSuggestions.value = false
+    }
+  }
+}
 
 watch(notesListRef, (newEl, oldEl) => {
   if (oldEl)
@@ -245,7 +389,25 @@ const debouncedSearch = debounce(async () => {
   }
 }, 500)
 
-watch(searchQuery, () => {
+watch(searchQuery, (query) => {
+  const lastHashIndex = query.lastIndexOf('#')
+  if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
+    const term = query.substring(lastHashIndex + 1)
+    const potentialTag = query.substring(lastHashIndex)
+    if (!/\s/.test(potentialTag)) {
+      searchTagSuggestions.value = allTags.value.filter(tag =>
+        tag.toLowerCase().startsWith(`#${term.toLowerCase()}`))
+      showSearchTagSuggestions.value = searchTagSuggestions.value.length > 0
+      highlightedSearchIndex.value = 0
+    }
+    else {
+      showSearchTagSuggestions.value = false
+    }
+  }
+  else {
+    showSearchTagSuggestions.value = false
+  }
+
   debouncedSearch()
 })
 
@@ -254,15 +416,32 @@ const debouncedSaveNote = debounce(() => {
     saveNote({ showMessage: false })
 }, 12000)
 
+function handleGlobalClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+
+  if (searchInputRef.value && !searchInputRef.value.parentElement?.contains(target))
+    showSearchTagSuggestions.value = false
+
+  const editorContainer = textareaRef.value?.parentElement?.querySelector('.EasyMDEContainer')
+  if (
+    editorContainer && !editorContainer.contains(target)
+    && editorSuggestionsRef.value && !editorSuggestionsRef.value.contains(target)
+  )
+    showEditorTagSuggestions.value = false
+}
+
 onUnmounted(() => {
   destroyEasyMDE()
   debouncedSaveNote.cancel()
   handleScroll.cancel()
   if (notesListRef.value)
     notesListRef.value.removeEventListener('scroll', handleScroll)
+
+  document.removeEventListener('click', handleGlobalClick)
 })
 
 onMounted(async () => {
+  document.addEventListener('click', handleGlobalClick)
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     content.value = savedContent
@@ -296,34 +475,33 @@ onMounted(async () => {
       localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   }
 
-  if (user.value)
+  if (user.value) {
     await fetchNotes()
+    await fetchAllTags()
+  }
 
   isReady.value = true
 })
 
-/* --- 请替换为这段新代码 --- */
 // 监视 user 状态，确保在用户登录且 textarea 渲染后才初始化编辑器
 watch(user, (currentUser) => {
-  // 只有当用户存在，且编辑器实例尚未创建时才执行
   if (currentUser && !easymde.value) {
-    // 使用 nextTick 确保 v-if="user" 已经将 textarea 渲染到 DOM 中
-    nextTick(() => {
+    nextTick(async () => {
+      if (user.value) {
+        await fetchNotes()
+        await fetchAllTags()
+      }
       initializeEasyMDE(content.value)
       if (easymde.value) {
         const cm = easymde.value.codemirror
-        cm.focus() // 命令编辑器获取光标
-
-        // 关键修正：判断编辑器内是否有内容
+        cm.focus()
         if (content.value) {
-          // 如果有内容，将光标定位到文末
           const doc = cm.getDoc()
           const lastLine = doc.lastLine()
           const lineContent = doc.getLine(lastLine)
           doc.setCursor(lastLine, lineContent.length)
         }
         else {
-          // 如果没有内容，将光标定位到开头
           cm.setCursor(0, 0)
         }
       }
@@ -680,6 +858,9 @@ async function saveNote({ showMessage = false } = {}) {
     }).replace(/\//g, '.')
     if (showMessage)
       messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.save_success', '保存成功'))
+
+    if (savedNote)
+      await fetchAllTags()
 
     return savedNote
   }
@@ -1054,15 +1235,33 @@ function getDropdownOptions(note: any) {
             </button>
           </div>
         </form>
+        <div v-if="showEditorTagSuggestions && editorTagSuggestions.length" ref="editorSuggestionsRef" class="tag-suggestions editor-suggestions" :style="editorSuggestionsStyle">
+          <ul>
+            <li
+              v-for="(tag, index) in editorTagSuggestions"
+              :key="tag"
+              :class="{ highlighted: index === highlightedEditorIndex }"
+              @mousedown.prevent="selectEditorTag(tag)"
+            >
+              {{ tag }}
+            </li>
+          </ul>
+        </div>
         <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
         <div v-if="showNotesList" ref="notesListRef" class="notes-list h-80 overflow-auto" @click="handleNoteContentClick">
           <div class="search-export-bar">
             <div class="search-input-wrapper">
               <input
+                ref="searchInputRef"
                 v-model="searchQuery"
                 type="text"
                 :placeholder="$t('notes.search_placeholder')"
                 class="search-input"
+                autocomplete="off"
+                @keydown.down.prevent="moveSearchSelection(1)"
+                @keydown.up.prevent="moveSearchSelection(-1)"
+                @keydown.enter.prevent="selectSearchTag(searchTagSuggestions[highlightedSearchIndex])"
+                @keydown.esc="showSearchTagSuggestions = false"
               >
               <button
                 v-if="searchQuery"
@@ -1071,6 +1270,18 @@ function getDropdownOptions(note: any) {
               >
                 ×
               </button>
+              <div v-if="showSearchTagSuggestions && searchTagSuggestions.length" class="tag-suggestions search-suggestions">
+                <ul>
+                  <li
+                    v-for="(tag, index) in searchTagSuggestions"
+                    :key="tag"
+                    :class="{ highlighted: index === highlightedSearchIndex }"
+                    @click="selectSearchTag(tag)"
+                  >
+                    {{ tag }}
+                  </li>
+                </ul>
+              </div>
             </div>
             <button
               class="export-all-button"
@@ -1477,7 +1688,6 @@ button:disabled {
   text-align: left; /* 关键修正：确保编辑器及其容器内的所有内容都默认左对齐，解决布局冲突 */
 }
 
-/* --- 请替换为这段新代码 --- */
 .notes-container .info-label {
   display: block; /* 必须设置为块级元素，text-align 才能生效 */
   text-align: center; /* 将标题居中 */
@@ -1652,6 +1862,58 @@ form .emoji-bar .form-button:disabled {
 }
 :deep(.prose > :first-child) {
   margin-top: 0 !important;
+}
+
+/* --- New Styles for Tag Suggestions --- */
+.tag-suggestions {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+
+.dark .tag-suggestions {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+
+.tag-suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.tag-suggestions li {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.tag-suggestions li:hover,
+.tag-suggestions li.highlighted {
+  background-color: #f0f0f0;
+}
+
+.dark .tag-suggestions li:hover,
+.dark .tag-suggestions li.highlighted {
+  background-color: #404040;
+}
+
+.search-suggestions {
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+}
+
+.editor-suggestions {
+  position: absolute; /* 改回 absolute，使其跟随页面滚动 */
 }
 </style>
 
@@ -1924,8 +2186,6 @@ html {
 .dark .auth-container .EasyMDEContainer .editor-toolbar {
   border-color: #48484a;
 }
-
-/* --- 请将这段新CSS添加到全局 <style> 标签内 --- */
 
 /* --- 自定义标签样式 --- */
 .custom-tag {
