@@ -570,14 +570,9 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-    if (saved && !editingNote.value) { // Only reset if it was a new note
+    // 替换为这段新代码
+    if (saved)
       resetEditorAndState()
-    }
-    else if (saved && editingNote.value) { // If updating, clear editing state
-      editingNote.value = null
-      lastSavedId.value = null
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-    }
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
