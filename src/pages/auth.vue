@@ -765,7 +765,6 @@ function toggleSearchBar() {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* 关键改动2: 新增 wrapper 并设置为相对定位 */
 .user-content-wrapper {
   position: relative;
   height: 100%;
@@ -787,7 +786,7 @@ function toggleSearchBar() {
   margin-bottom: 0.75rem;
   position: relative;
   height: 28px;
-  flex-shrink: 0; /* 防止头部被压缩 */
+  flex-shrink: 0;
 }
 
 .page-title {
@@ -890,10 +889,10 @@ function toggleSearchBar() {
   color: #f0f0f0;
 }
 
-/* 关键改动3: 独立的滚动区域 */
 .scrollable-content {
   flex-grow: 1;
   overflow-y: auto;
+  min-height: 0; /* 关键改动：帮助flexbox正确计算高度，消除空白 */
 }
 
 .fab {
@@ -998,7 +997,6 @@ function toggleSearchBar() {
   max-height: 0;
 }
 
-/* 关键改动4: 调整移动端样式 */
 @media (max-width: 768px) {
   .auth-container {
     height: 100dvh;
@@ -1008,19 +1006,19 @@ function toggleSearchBar() {
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    padding: 0; /* 移除内边距，让子元素控制 */
+    padding: 0;
   }
 
   .user-content-wrapper {
-    padding: 1rem 1.5rem 0.75rem 1.5rem; /* 将内边距移到这里 */
+    padding: 1rem 1.5rem 0.75rem 1.5rem;
   }
 
   .notes-container {
-    padding-bottom: 0; /* 移除内边距，因为fab现在在外部 */
+    padding-bottom: 0;
   }
 
   .fab {
-      bottom: 5rem; /* 提高fab按钮位置，避免被系统UI遮挡 */
+      bottom: 5rem;
   }
 }
 </style>
