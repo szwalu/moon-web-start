@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDatePicker, useDialog, useMessage } from 'naive-ui'
@@ -16,18 +15,13 @@ import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
 useDark()
-
-const router = useRouter()
 const { t } = useI18n()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
 const user = computed(() => authStore.user)
-
-// --- 认证相关状态已移至 Authentication.vue ---
-const loading = ref(false) // loading 状态被认证和笔记功能共用，暂时保留
-const lastBackupTime = ref('N/A')
+const loading = ref(false)
 
 // --- 笔记相关状态 ---
 const notes = ref<any[]>([])
@@ -54,29 +48,54 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
-// --- 编辑器相关状态已移至 NoteEditor.vue ---
-
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-// --- 核心方法 ---
+// --- 核心认证逻辑 ---
+onMounted(() => {
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      const currentUser = session?.user ?? null
+      if (authStore.user?.id !== currentUser?.id)
+        authStore.user = currentUser
 
+      if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser)) && notes.value.length === 0) {
+        nextTick(() => {
+          fetchNotes()
+          fetchAllTags()
+        })
+      }
+      else if (event === 'SIGNED_OUT') {
+        notes.value = []
+        allTags.value = []
+        content.value = ''
+        editingNote.value = null
+      }
+    },
+  )
+
+  onUnmounted(() => {
+    authListener.subscription.unsubscribe()
+  })
+
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  if (savedContent)
+    content.value = savedContent
+
+  isReady.value = true
+})
+
+// --- 笔记相关方法 ---
 async function fetchAllTags() {
   if (!user.value?.id)
     return
   try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('content')
-      .eq('user_id', user.value.id)
-
+    const { data, error } = await supabase.from('notes').select('content').eq('user_id', user.value.id)
     if (error)
       throw error
-
     const tagSet = new Set<string>()
     const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
-
     if (data) {
       for (const note of data) {
         let match
@@ -103,13 +122,7 @@ const debouncedSearch = debounce(async () => {
   }
   isLoadingNotes.value = true
   try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .ilike('content', `%${searchQuery.value.trim()}%`)
-      .order('updated_at', { ascending: false })
-      .limit(100)
+    const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).ilike('content', `%${searchQuery.value.trim()}%`).order('updated_at', { ascending: false }).limit(100)
     if (error)
       throw error
     notes.value = data || []
@@ -135,85 +148,6 @@ const debouncedSaveNote = debounce(() => {
 
 onUnmounted(() => {
   debouncedSaveNote.cancel()
-})
-
-onMounted(async () => {
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  if (savedContent)
-    content.value = savedContent
-
-  const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
-  if (cachedNotesData) {
-    try {
-      const parsedNotes = JSON.parse(cachedNotesData)
-      if (Array.isArray(parsedNotes) && parsedNotes.length > 0)
-        notes.value = parsedNotes
-    }
-    catch (e) {
-      console.error('解析缓存笔记失败:', e)
-      localStorage.removeItem(CACHED_NOTES_KEY)
-    }
-  }
-
-  await authStore.refreshUser()
-
-  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
-  if (savedContent && savedNoteId && user.value) {
-    const { data: noteData } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('id', savedNoteId)
-      .eq('user_id', user.value.id)
-      .single()
-    if (noteData)
-      editingNote.value = noteData
-    else
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-  }
-
-  if (user.value) {
-    await fetchNotes()
-    await fetchAllTags()
-  }
-
-  isReady.value = true
-})
-
-watch(user, (currentUser, oldUser) => {
-  // 当用户从“未登录”变为“已登录”时，加载笔记数据
-  if (currentUser && !oldUser) {
-    nextTick(async () => {
-      await fetchNotes()
-      await fetchAllTags()
-    })
-  }
-}, { immediate: true })
-
-const lastLoginTime = computed(() => {
-  if (user.value?.last_sign_in_at)
-    return new Date(user.value.last_sign_in_at).toLocaleString()
-  return 'N/A'
-})
-
-watchEffect(async () => {
-  if (user.value) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('updated_at')
-      .eq('id', user.value.id)
-      .single()
-    lastBackupTime.value = data?.updated_at
-      ? new Date(`${data.updated_at}Z`).toLocaleString()
-      : '暂无备份'
-  }
-  else {
-    lastBackupTime.value = 'N/A'
-    notes.value = []
-    cachedNotes.value = []
-    isNotesCached.value = false
-    cachedPages.value.clear()
-    editingNote.value = null
-  }
 })
 
 watch(content, async (val, oldVal) => {
@@ -267,12 +201,7 @@ async function handleBatchExport() {
         let page = 0
         let hasMore = true
         while (hasMore) {
-          let query = supabase
-            .from('notes')
-            .select('content, updated_at')
-            .eq('user_id', user.value!.id)
-            .order('updated_at', { ascending: false })
-            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+          let query = supabase.from('notes').select('content, updated_at').eq('user_id', user.value!.id).order('updated_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
           if (startDate)
             query = query.gte('updated_at', new Date(startDate).toISOString())
           if (endDate) {
@@ -306,9 +235,7 @@ async function handleBatchExport() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        const datePart = startDate && endDate
-          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
-          : 'all'
+        const datePart = startDate && endDate ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}` : 'all'
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
         document.body.appendChild(a)
@@ -355,11 +282,7 @@ async function handlePinToggle(note: any) {
     return
   const newPinStatus = !note.is_pinned
   try {
-    const { error } = await supabase
-      .from('notes')
-      .update({ is_pinned: newPinStatus })
-      .eq('id', note.id)
-      .eq('user_id', user.value.id)
+    const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
@@ -395,13 +318,7 @@ async function fetchNotes() {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-    const { data, error, count } = await supabase
-      .from('notes')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.value.id)
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(from, to)
+    const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
     if (error) {
       messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
       return
@@ -458,7 +375,6 @@ async function saveNote({ showMessage = false } = {}) {
   if (!content.value || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (content.value.length > maxNoteLength) {
@@ -475,19 +391,9 @@ async function saveNote({ showMessage = false } = {}) {
   try {
     const noteId = lastSavedId.value || editingNote.value?.id
     if (noteId) {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('id', noteId)
-        .eq('user_id', user.value.id)
-        .single()
+      const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).eq('user_id', user.value.id).single()
       if (data && !error) {
-        const { data: updatedData, error: updateError } = await supabase
-          .from('notes')
-          .update(note)
-          .eq('id', noteId)
-          .eq('user_id', user.value.id)
-          .select()
+        const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).eq('user_id', user.value.id).select()
         if (updateError || !updatedData?.length)
           throw new Error('更新失败')
         savedNote = updatedData[0]
@@ -495,10 +401,7 @@ async function saveNote({ showMessage = false } = {}) {
       }
       else {
         const newId = generateUniqueId()
-        const { data: insertedData, error: insertError } = await supabase
-          .from('notes')
-          .insert({ ...note, id: newId })
-          .select()
+        const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
         if (insertError || !insertedData?.length)
           throw new Error('插入失败：无法创建新笔记')
         savedNote = insertedData[0]
@@ -508,10 +411,7 @@ async function saveNote({ showMessage = false } = {}) {
     }
     else {
       const newId = generateUniqueId()
-      const { data: insertedData, error: insertError } = await supabase
-        .from('notes')
-        .insert({ ...note, id: newId })
-        .select()
+      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
       if (insertError || !insertedData?.length)
         throw new Error('插入失败：无法创建新笔记')
       savedNote = insertedData[0]
@@ -548,7 +448,6 @@ function resetEditorAndState() {
   lastSavedTime.value = ''
   localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   localStorage.removeItem(LOCAL_CONTENT_KEY)
-  // Editor destruction is now handled in the child component
 }
 
 async function handleSubmit() {
@@ -570,7 +469,6 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-    // 替换为这段新代码
     if (saved)
       resetEditorAndState()
   }
@@ -603,11 +501,7 @@ async function triggerDeleteConfirmation(id: string) {
     onPositiveClick: async () => {
       try {
         loading.value = true
-        const { error } = await supabase
-          .from('notes')
-          .delete()
-          .eq('id', id)
-          .eq('user_id', user.value!.id)
+        const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message || '删除失败')
         notes.value = notes.value.filter(note => note.id !== id)
@@ -644,16 +538,13 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
-// 这是修正后的新函数
 async function handleLogout() {
   loading.value = true
   await supabase.auth.signOut()
-  // 使用 window.location.href 进行强制跳转
   window.location.href = '/'
   loading.value = false
 }
 
-// 新的 handleNoteContentClick 函数，处理子组件发出的事件
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
@@ -676,9 +567,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
         : lineContent.replace('[x]', '[ ]')
 
       const newContent = lines.join('\n')
-      // 直接在 notes ref 中更新，提供即时UI反馈
       noteToUpdate.content = newContent
-      // 异步更新到数据库
       await supabase
         .from('notes')
         .update({ content: newContent, updated_at: new Date().toISOString() })
@@ -687,7 +576,6 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
     }
   }
   catch (err: any) {
-    // 如果更新失败，恢复原始内容
     noteToUpdate.content = originalContent
     messageHook.error(`更新失败: ${err.message}`)
   }
@@ -709,30 +597,13 @@ async function handleCopy(noteContent: string) {
 <template>
   <div class="auth-container">
     <div v-if="user" class="account-info">
-      <h1 class="account-title">{{ $t('auth.account_title') }}</h1>
-      <div class="info-grid">
-        <p>
-          <span class="info-label">{{ $t('auth.account_email_label') }}</span>
-          <span class="info-value">{{ user.email }}</span>
-        </p>
-        <p>
-          <span class="info-label">{{ $t('auth.account_last_login_label') }}</span>
-          <span class="info-value">{{ lastLoginTime }}</span>
-        </p>
-        <p>
-          <span class="info-label">{{ $t('auth.account_last_backup_label') }}</span>
-          <span class="info-value">{{ lastBackupTime }}</span>
-        </p>
-      </div>
-
-      <div class="button-group" style="margin-top: 1.5rem; margin-bottom: 2rem;">
-        <button :disabled="loading" @click="router.back()">
-          {{ $t('auth.return_home') }}
-        </button>
-        <button class="button--secondary" :disabled="loading" @click="handleLogout">
-          {{ loading ? $t('auth.loading') : $t('auth.logout') }}
-        </button>
-      </div>
+      <MyAccount
+        :user-email="user.email"
+        :last-login-time="lastLoginTime"
+        :last-backup-time="lastBackupTime"
+        :is-loading="loading"
+        @logout="handleLogout"
+      />
       <div class="notes-container">
         <NoteEditor
           v-model="content"
@@ -774,8 +645,6 @@ async function handleCopy(noteContent: string) {
 </template>
 
 <style scoped>
-/* 认证表单相关的样式 (.auth-form, .toggle, .toggle-row) 已被移除 */
-
 .auth-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -794,96 +663,14 @@ async function handleCopy(noteContent: string) {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-.account-title {
-  font-size: 18px;
-  text-align: center;
-  margin-bottom: 2rem;
-  font-weight: bold;
-}
-
-.dark .account-title {
-    color: #ffffff;
-}
-
 .account-info {
+  /* 恢复: 移除 flex 布局，回归简单块状布局 */
   text-align: center;
-}
-.info-grid p {
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px solid #eee;
-  padding: 0.5rem 0;
-  margin: 0;
-}
-.dark .info-grid p {
-  border-bottom-color: #333;
-}
-.info-label {
-  color: #555;
-  font-weight: bold;
-}
-.dark .info-label {
-  color: #adadad;
-}
-
-.info-value {
-  color: #111;
-  word-break: break-all;
-}
-.dark .info-value {
-  color: #ffffff;
-}
-
-.button-group {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 1rem;
-  margin-top: 2rem;
-}
-
-/* button 的通用样式保留，因为子组件可能也需要 */
-button {
-  padding: 0.8rem;
-  background-color: #00b386;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 15px;
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.button--secondary {
-  width: 100%;
-  padding: 0.8rem;
-  background-color: #f0f0f0;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background-color 0.2s ease;
-}
-
-.button--secondary:hover {
-  background-color: #e0e0e0;
-}
-
-.dark .button--secondary {
-  background-color: #3a3a3c;
-  color: #e0e0e0;
-  border-color: #555;
-}
-
-.dark .button--secondary:hover {
-  background-color: #48484a;
 }
 
 .notes-container {
   text-align: left;
+  /* 恢复: 移除 flex 布局 */
 }
 
 /* 全局 message 样式保留 */
