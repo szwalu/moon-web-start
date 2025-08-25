@@ -24,6 +24,8 @@ const authStore = useAuthStore()
 const showEditorModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
+// 关键改动1: 为下拉菜单容器创建一个引用
+const dropdownContainerRef = ref(null)
 
 const user = computed(() => authStore.user)
 const loading = ref(false)
@@ -89,6 +91,8 @@ onMounted(() => {
 
   onUnmounted(() => {
     authListener.subscription.unsubscribe()
+    // 确保组件卸载时移除事件监听
+    document.removeEventListener('click', closeDropdownOnClickOutside)
   })
 
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
@@ -103,6 +107,25 @@ onMounted(() => {
 })
 
 // --- 笔记相关方法 ---
+
+// 关键改动2: 处理点击外部关闭菜单的逻辑
+function closeDropdownOnClickOutside(event: MouseEvent) {
+  if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
+    showDropdown.value = false
+}
+
+watch(showDropdown, (isOpen) => {
+  if (isOpen) {
+    // 使用 nextTick 确保事件监听在当前点击事件冒泡完成后再添加
+    nextTick(() => {
+      document.addEventListener('click', closeDropdownOnClickOutside)
+    })
+  }
+  else {
+    document.removeEventListener('click', closeDropdownOnClickOutside)
+  }
+})
+
 async function fetchAllTags() {
   if (!user.value?.id)
     return
@@ -641,10 +664,10 @@ function toggleSearchBar() {
             {{ $t('notes.notes') }}
           </h1>
           <div class="header-actions">
-            <button class="header-action-btn close-page-btn" @click="router.push('/')">
+            <button class="close-page-btn header-action-btn" @click="router.push('/')">
               ×
             </button>
-            <div class="dropdown-menu-container">
+            <div ref="dropdownContainerRef" class="dropdown-menu-container">
               <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 10c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0-6c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0 12c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2" /></svg>
               </button>
@@ -949,5 +972,25 @@ function toggleSearchBar() {
   opacity: 0;
   transform: translateY(-10px);
   max-height: 0;
+}
+
+/* 关键改动3: 新增移动端全屏样式 */
+@media (max-width: 768px) {
+  .auth-container {
+    height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .notes-container {
+    flex-grow: 1; /* 让笔记容器填满剩余空间 */
+    overflow-y: auto; /* 让笔记列表独立滚动 */
+    display: flex;
+    flex-direction: column;
+  }
 }
 </style>
