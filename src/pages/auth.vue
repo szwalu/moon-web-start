@@ -24,7 +24,6 @@ const authStore = useAuthStore()
 const showEditorModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
-// 关键改动1: 为下拉菜单容器创建一个引用
 const dropdownContainerRef = ref(null)
 
 const user = computed(() => authStore.user)
@@ -91,7 +90,6 @@ onMounted(() => {
 
   onUnmounted(() => {
     authListener.subscription.unsubscribe()
-    // 确保组件卸载时移除事件监听
     document.removeEventListener('click', closeDropdownOnClickOutside)
   })
 
@@ -107,8 +105,6 @@ onMounted(() => {
 })
 
 // --- 笔记相关方法 ---
-
-// 关键改动2: 处理点击外部关闭菜单的逻辑
 function closeDropdownOnClickOutside(event: MouseEvent) {
   if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
     showDropdown.value = false
@@ -116,7 +112,6 @@ function closeDropdownOnClickOutside(event: MouseEvent) {
 
 watch(showDropdown, (isOpen) => {
   if (isOpen) {
-    // 使用 nextTick 确保事件监听在当前点击事件冒泡完成后再添加
     nextTick(() => {
       document.addEventListener('click', closeDropdownOnClickOutside)
     })
@@ -739,6 +734,18 @@ function toggleSearchBar() {
   </div>
 </template>
 
+<style>
+/* Global styles for full-height mobile layout */
+@media (max-width: 768px) {
+  html, body, #app {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* 防止body在移动端出现滚动条 */
+  }
+}
+</style>
+
 <style scoped>
 .auth-container {
   max-width: 480px;
@@ -974,10 +981,10 @@ function toggleSearchBar() {
   max-height: 0;
 }
 
-/* 关键改动3: 新增移动端全屏样式 */
+/* 关键改动4: 移动端全屏样式 */
 @media (max-width: 768px) {
   .auth-container {
-    height: 100vh;
+    height: 100dvh; /* 使用动态视窗高度单位，解决移动端浏览器地址栏问题 */
     width: 100%;
     max-width: 100%;
     margin: 0;
@@ -987,8 +994,8 @@ function toggleSearchBar() {
   }
 
   .notes-container {
-    flex-grow: 1; /* 让笔记容器填满剩余空间 */
-    overflow-y: auto; /* 让笔记列表独立滚动 */
+    flex-grow: 1;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
   }
