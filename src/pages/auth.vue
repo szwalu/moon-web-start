@@ -54,13 +54,81 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
-// --- 编辑器相关状态已移至 NoteEditor.vue ---
-
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-// --- 核心方法 ---
+// --- 核心认证逻辑 (最终修正) ---
+// onMounted 是组件加载时运行一次的钩子，是设置全局监听器的最佳位置
+onMounted(() => {
+  // 关键逻辑：设置一个实时监听器来同步 Supabase 的认证状态
+  const { data: authListener } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      // 无论 Supabase 发生任何认证事件（登录、登出、密码恢复等）
+      // 我们都用最新的 session 更新 Pinia store 中的 user 状态
+      // 这是保证整个应用状态同步的唯一真实来源
+      authStore.user = session?.user ?? null
+
+      // 当用户成功登录或完成密码重置后，自动加载他们的笔记数据
+      if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') {
+        nextTick(() => {
+          fetchNotes()
+          fetchAllTags()
+        })
+      }
+      // 如果用户登出，清空笔记相关数据
+      else if (event === 'SIGNED_OUT') {
+        notes.value = []
+        allTags.value = []
+        content.value = ''
+        editingNote.value = null
+      }
+    },
+  )
+
+  // 当组件被销毁时，必须清理掉这个监听器，防止内存泄漏
+  onUnmounted(() => {
+    authListener.subscription.unsubscribe()
+  })
+
+  // 首次加载时，恢复本地缓存的笔记内容
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  if (savedContent)
+    content.value = savedContent
+
+  isReady.value = true
+})
+
+// --- 之前用于加载数据的 watch(user) 和部分 onMounted 逻辑已被 onAuthStateChange 取代 ---
+
+const lastLoginTime = computed(() => {
+  if (user.value?.last_sign_in_at)
+    return new Date(user.value.last_sign_in_at).toLocaleString()
+  return 'N/A'
+})
+
+watchEffect(async () => {
+  if (user.value) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('updated_at')
+      .eq('id', user.value.id)
+      .single()
+    lastBackupTime.value = data?.updated_at
+      ? new Date(`${data.updated_at}Z`).toLocaleString()
+      : '暂无备份'
+  }
+  else {
+    lastBackupTime.value = 'N/A'
+    notes.value = []
+    cachedNotes.value = []
+    isNotesCached.value = false
+    cachedPages.value.clear()
+    editingNote.value = null
+  }
+})
+
+// --- 笔记相关方法 ---
 
 async function fetchAllTags() {
   if (!user.value?.id)
@@ -135,85 +203,6 @@ const debouncedSaveNote = debounce(() => {
 
 onUnmounted(() => {
   debouncedSaveNote.cancel()
-})
-
-onMounted(async () => {
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  if (savedContent)
-    content.value = savedContent
-
-  const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
-  if (cachedNotesData) {
-    try {
-      const parsedNotes = JSON.parse(cachedNotesData)
-      if (Array.isArray(parsedNotes) && parsedNotes.length > 0)
-        notes.value = parsedNotes
-    }
-    catch (e) {
-      console.error('解析缓存笔记失败:', e)
-      localStorage.removeItem(CACHED_NOTES_KEY)
-    }
-  }
-
-  await authStore.refreshUser()
-
-  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
-  if (savedContent && savedNoteId && user.value) {
-    const { data: noteData } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('id', savedNoteId)
-      .eq('user_id', user.value.id)
-      .single()
-    if (noteData)
-      editingNote.value = noteData
-    else
-      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-  }
-
-  if (user.value) {
-    await fetchNotes()
-    await fetchAllTags()
-  }
-
-  isReady.value = true
-})
-
-watch(user, (currentUser, oldUser) => {
-  // 当用户从“未登录”变为“已登录”时，加载笔记数据
-  if (currentUser && !oldUser) {
-    nextTick(async () => {
-      await fetchNotes()
-      await fetchAllTags()
-    })
-  }
-}, { immediate: true })
-
-const lastLoginTime = computed(() => {
-  if (user.value?.last_sign_in_at)
-    return new Date(user.value.last_sign_in_at).toLocaleString()
-  return 'N/A'
-})
-
-watchEffect(async () => {
-  if (user.value) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('updated_at')
-      .eq('id', user.value.id)
-      .single()
-    lastBackupTime.value = data?.updated_at
-      ? new Date(`${data.updated_at}Z`).toLocaleString()
-      : '暂无备份'
-  }
-  else {
-    lastBackupTime.value = 'N/A'
-    notes.value = []
-    cachedNotes.value = []
-    isNotesCached.value = false
-    cachedPages.value.clear()
-    editingNote.value = null
-  }
 })
 
 watch(content, async (val, oldVal) => {
@@ -548,7 +537,6 @@ function resetEditorAndState() {
   lastSavedTime.value = ''
   localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   localStorage.removeItem(LOCAL_CONTENT_KEY)
-  // Editor destruction is now handled in the child component
 }
 
 async function handleSubmit() {
@@ -570,7 +558,6 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-    // 替换为这段新代码
     if (saved)
       resetEditorAndState()
   }
@@ -651,7 +638,6 @@ async function handleLogout() {
   loading.value = false
 }
 
-// 新的 handleNoteContentClick 函数，处理子组件发出的事件
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
