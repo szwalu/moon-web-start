@@ -37,6 +37,7 @@ onUnmounted(() => {
   authListener?.unsubscribe()
 })
 
+// 这是修正后的新函数
 async function handleReset() {
   if (newPassword.value !== confirmPassword.value) {
     message.value = t('auth.mismatch')
@@ -44,23 +45,27 @@ async function handleReset() {
   }
 
   loading.value = true
-  message.value = ''
+  message.value = '' // 先清空消息
 
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword.value,
-  })
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword.value,
+    })
 
-  if (error) {
-    message.value = `${t('auth.reset_failed')}：${error.message}`
-  }
-  else {
-    // 成功后，为了确保状态干净，先登出
-    await supabase.auth.signOut()
+    if (error)
+      throw error // 如果更新失败，直接抛出错误
+
+    // 密码更新成功后，直接提示并跳转，不再调用 signOut()
     message.value = t('auth.messages.reset_success_redirect')
     setTimeout(() => router.push('/auth'), 2000)
   }
-
-  loading.value = false
+  catch (err: any) {
+    // 统一在这里处理所有错误
+    message.value = `${t('auth.reset_failed')}：${err.message}`
+  }
+  finally {
+    loading.value = false
+  }
 }
 </script>
 
