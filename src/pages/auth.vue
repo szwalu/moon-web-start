@@ -644,10 +644,12 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
+// 这是修正后的新函数
 async function handleLogout() {
   loading.value = true
   await supabase.auth.signOut()
-  await router.push('/')
+  // 使用 window.location.href 进行强制跳转
+  window.location.href = '/'
   loading.value = false
 }
 
