@@ -89,10 +89,8 @@ function handleNoteContentClick(event: MouseEvent) {
   if (!listItem)
     return
 
-  // 阻止事件冒泡，防止触发整个卡片的其他点击事件
   event.stopPropagation()
 
-  // 找到被点击的任务项在当前笔记内容中的索引
   const noteCard = (event.currentTarget as HTMLElement)
   const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
   const itemIndex = allListItems.indexOf(listItem)
@@ -105,7 +103,8 @@ function handleNoteContentClick(event: MouseEvent) {
 <template>
   <div
     :data-note-id="note.id"
-    class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
+    class="note-card"
+    :class="{ 'is-expanded': isExpanded }"
     @click="handleNoteContentClick"
   >
     <div class="note-card-top-bar">
@@ -133,7 +132,6 @@ function handleNoteContentClick(event: MouseEvent) {
       <div v-if="isExpanded">
         <div
           class="prose dark:prose-invert max-w-none"
-          style="font-size: 17px !important; line-height: 1.6;"
           v-html="renderMarkdown(note.content)"
         />
         <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
@@ -146,7 +144,6 @@ function handleNoteContentClick(event: MouseEvent) {
         <div
           :ref="checkIfNoteOverflows"
           class="prose dark:prose-invert line-clamp-3 max-w-none"
-          style="font-size: 17px !important; line-height: 1.6;"
           v-html="renderMarkdown(note.content)"
         />
         <div
@@ -164,10 +161,13 @@ function handleNoteContentClick(event: MouseEvent) {
 </template>
 
 <style scoped>
-/* 这里只保留 NoteItem 自身的样式，从 auth.vue 中复制过来 */
-/* 暗黑模式相关的样式 */
-.dark .bg-gray-100 {
-  background-color: #374151;
+.note-card {
+  @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
+  /* position: relative;  为粘性定位提供一个参照上下文 */
+}
+
+.dark .note-card {
+  @apply bg-gray-700;
 }
 
 .note-card-top-bar {
@@ -233,8 +233,8 @@ function handleNoteContentClick(event: MouseEvent) {
 .toggle-button-row {
   width: 100%;
   cursor: pointer;
-  padding: 4px 0;
-  margin-top: 8px;
+  padding-top: 4px;
+  margin-top: 4px;
 }
 
 .toggle-button {
@@ -260,7 +260,6 @@ function handleNoteContentClick(event: MouseEvent) {
   text-decoration: underline;
 }
 
-/* 确保 prose 样式能正确应用 */
 :deep(.prose) {
   font-size: 17px !important;
   line-height: 1.6;
@@ -287,5 +286,38 @@ function handleNoteContentClick(event: MouseEvent) {
 .dark :deep(.custom-tag) {
   background-color: #312e81;
   color: #c7d2fe;
+}
+
+:deep(.prose > :first-child) {
+  margin-top: 0 !important;
+}
+
+:deep(.prose > :last-child) {
+  margin-bottom: 0 !important;
+}
+
+/* 关键改动2：为展开状态下的“收起”按钮行添加粘性定位 */
+.is-expanded .toggle-button-row {
+  position: -webkit-sticky;
+  position: sticky;
+  bottom: -16px; /* 粘在卡片底部，-16px是为了抵消卡片的 padding-bottom */
+  z-index: 5;
+
+  /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
+  background: #f3f4f6; /* 对应 .bg-gray-100 */
+
+  /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
+  padding-top: 8px;
+  padding-bottom: 12px;
+  margin-left: -16px; /* 抵消卡片的 padding-left */
+  margin-right: -16px; /* 抵消卡片的 padding-right */
+  padding-left: 16px;
+  padding-right: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dark .is-expanded .toggle-button-row {
+  background: #374151; /* 对应 .dark .bg-gray-700 */
+  border-top-color: #4b5563;
 }
 </style>

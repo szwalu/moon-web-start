@@ -1,66 +1,39 @@
 <script setup lang="ts">
+// --- <script setup> 部分与之前完全一样，无需改动 ---
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// --- Props and Emits ---
 const props = defineProps({
-  modelValue: {
-    type: String,
-    required: true,
-  },
-  editingNote: {
-    type: Object as () => any | null,
-    default: null,
-  },
-  isLoading: {
-    type: Boolean,
-    default: false,
-  },
-  allTags: {
-    type: Array as () => string[],
-    default: () => [],
-  },
-  maxNoteLength: {
-    type: Number,
-    default: 3000,
-  },
-  // 新增：接收自动保存时间
-  lastSavedTime: {
-    type: String,
-    default: '',
-  },
+  modelValue: { type: String, required: true },
+  editingNote: { type: Object as () => any | null, default: null },
+  isLoading: { type: Boolean, default: false },
+  allTags: { type: Array as () => string[], default: () => [] },
+  maxNoteLength: { type: Number, default: 3000 },
+  lastSavedTime: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
 
-// --- Editor State ---
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-
-// Editor-specific tag suggestions
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-
 const minEditorHeight = 130
 const maxEditorHeight = 780
 
-// --- v-model Logic ---
 const contentModel = computed({
   get: () => props.modelValue,
-  set: (value) => {
-    emit('update:modelValue', value)
-  },
+  set: (value) => { emit('update:modelValue', value) },
 })
 
 const charCount = computed(() => contentModel.value.length)
 
-// --- EasyMDE Lifecycle and Logic ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -145,26 +118,21 @@ function initializeEasyMDE(initialValue = '') {
       contentModel.value = editorContent
 
     nextTick(() => updateEditorHeight())
-
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
     const lastHashIndex = textBefore.lastIndexOf('#')
-
     if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
       showEditorTagSuggestions.value = false
       return
     }
-
     const potentialTag = textBefore.substring(lastHashIndex)
     if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
       showEditorTagSuggestions.value = false
       return
     }
-
     const term = potentialTag.substring(1)
     editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
-
     if (editorTagSuggestions.value.length > 0) {
       const coords = instance.cursorCoords()
       editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
@@ -175,11 +143,9 @@ function initializeEasyMDE(initialValue = '') {
       showEditorTagSuggestions.value = false
     }
   })
-
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
 }
-
 function selectEditorTag(tag: string) {
   if (!easymde.value)
     return
@@ -189,7 +155,6 @@ function selectEditorTag(tag: string) {
   const line = doc.getLine(cursor.line)
   const textBeforeCursor = line.substring(0, cursor.ch)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-
   if (lastHashIndex !== -1) {
     const start = { line: cursor.line, ch: lastHashIndex }
     const end = cursor
@@ -198,12 +163,10 @@ function selectEditorTag(tag: string) {
   showEditorTagSuggestions.value = false
   cm.focus()
 }
-
 function moveEditorSelection(offset: number) {
   if (showEditorTagSuggestions.value)
     highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
 }
-
 function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
   if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
     if (event.key === 'ArrowDown') {
@@ -224,23 +187,16 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
     }
   }
 }
-
-// --- Component Lifecycle ---
 onMounted(() => {
   initializeEasyMDE(props.modelValue)
 })
-
 onUnmounted(() => {
   destroyEasyMDE()
 })
-
-// --- 修正1: 恢复对 modelValue 的监听，用于处理父组件的清空操作 ---
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
 })
-
-// --- 修正1: 保留对 editingNote 的监听，用于解决光标问题 ---
 watch(() => props.editingNote, (newNote, oldNote) => {
   if (newNote?.id !== oldNote?.id) {
     destroyEasyMDE()
@@ -256,8 +212,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
     })
   }
 }, { deep: true })
-
-// --- Submit Handling ---
 function handleSubmit() {
   emit('submit')
 }
@@ -316,7 +270,6 @@ function handleSubmit() {
 </template>
 
 <style scoped>
-/* 所有与编辑器相关的样式都从 auth.vue 迁移过来 */
 .info-label {
   display: block;
   text-align: center;
@@ -329,27 +282,9 @@ function handleSubmit() {
   color: #adadad;
 }
 
+/* 隐藏原始的 textarea，因为 EasyMDE 会创建自己的UI */
 textarea {
   visibility: hidden;
-  width: 100%;
-  padding: 0.5rem;
-  margin-bottom: 0.2rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background-color: #fff;
-  color: #111;
-  overflow-y: auto;
-  font-size: 17px;
-  line-height: 1.5;
-}
-textarea:focus {
-  border-color: #00b386;
-  outline: none;
-}
-.dark textarea {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
 }
 
 .status-bar {
@@ -436,39 +371,37 @@ textarea:focus {
 .editor-suggestions {
   position: absolute;
 }
+</style>
 
-/* EasyMDE 相关的深度样式 */
-:deep(.editor-toolbar) {
+<style>
+/* --- EasyMDE 编辑器样式最终整合版 --- */
+
+/* 编辑器工具栏的基础和吸顶样式 */
+.editor-toolbar {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-bottom: none;
+  border-bottom: none !important; /* 确保底部边框被移除 */
   border-radius: 6px 6px 0 0;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #fff; /* 亮色模式背景 */
 }
 
-.dark :deep(.editor-toolbar) {
-  background-color: #2c2c2e;
-  border-color: #48484a !important;
-}
-
-:deep(.CodeMirror) {
-  border-left: 1px solid #ccc;
-  border-right: 1px solid #ccc;
-  border-bottom: 1px solid #ccc;
-  border-top: none;
+/* 编辑器输入区域的基础样式 */
+.CodeMirror {
+  border: 1px solid #ccc !important;
+  border-top: none !important; /* 确保顶部边框被移除 */
   border-radius: 0 0 6px 6px;
   font-size: 16px !important;
   line-height: 1.6 !important;
 }
 
-.dark :deep(.CodeMirror) {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-
-:deep(.editor-toolbar a),
-:deep(.editor-toolbar button) {
+/* 编辑器工具栏按钮和图标的通用样式 */
+.editor-toolbar a,
+.editor-toolbar button {
   padding-left: 3px !important;
   padding-right: 0px !important;
   padding-top: 1px !important;
@@ -480,23 +413,35 @@ textarea:focus {
   align-items: center !important;
 }
 
-.dark :deep(.editor-toolbar a) {
-  color: #e0e0e0 !important;
-}
-
-.dark :deep(.editor-toolbar a.active) {
-  background: #404040;
-}
-
-:deep(.editor-toolbar a i),
-:deep(.editor-toolbar button i) {
+.editor-toolbar a i,
+.editor-toolbar button i {
   font-size: 15px !important;
   vertical-align: middle;
 }
 
-:deep(.editor-toolbar i.separator) {
+.editor-toolbar i.separator {
   margin: 1px 4px !important;
   border-width: 0 1px 0 0 !important;
   height: 8px !important;
+}
+
+/* --- 暗黑模式的覆盖样式 --- */
+.dark .editor-toolbar {
+  background-color: #2c2c2e !important; /* 暗黑模式背景 */
+  border-color: #48484a !important;
+}
+
+.dark .CodeMirror {
+  background-color: #2c2c2e !important;
+  border-color: #48484a !important;
+  color: #ffffff !important;
+}
+
+.dark .editor-toolbar a {
+  color: #e0e0e0 !important;
+}
+
+.dark .editor-toolbar a.active {
+  background: #404040 !important;
 }
 </style>
