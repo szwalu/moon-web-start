@@ -863,7 +863,7 @@ function toggleSearchBar() {
 
 .fab {
   position: absolute;
-  bottom: 1.5rem;
+  bottom: 4.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: 48px;

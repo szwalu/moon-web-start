@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+
+// 新增 watch, onMounted, nextTick
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
@@ -21,6 +23,7 @@ const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'task
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
 const noteOverflowStatus = ref(false)
+const contentRef = ref<Element | null>(null) // 新增一个引用来访问DOM元素
 const md = new MarkdownIt({
   html: false,
   linkify: true,
@@ -36,10 +39,24 @@ function renderMarkdown(content: string) {
 }
 
 // --- DOM 相关 ---
-function checkIfNoteOverflows(el: Element | null) {
+function checkIfNoteOverflows() {
+  const el = contentRef.value
   if (el)
     noteOverflowStatus.value = el.scrollHeight > el.clientHeight
 }
+
+// 关键改动：当组件挂载和笔记内容更新时，都重新检查是否需要“展开”按钮
+onMounted(() => {
+  nextTick(() => {
+    checkIfNoteOverflows()
+  })
+})
+
+watch(() => props.note.content, () => {
+  nextTick(() => {
+    checkIfNoteOverflows()
+  })
+})
 
 // --- 下拉菜单逻辑 ---
 function getDropdownOptions(note: any) {
@@ -142,7 +159,7 @@ function handleNoteContentClick(event: MouseEvent) {
       </div>
       <div v-else>
         <div
-          :ref="checkIfNoteOverflows"
+          ref="contentRef"
           class="prose dark:prose-invert line-clamp-3 max-w-none"
           v-html="renderMarkdown(note.content)"
         />
@@ -247,7 +264,7 @@ function handleNoteContentClick(event: MouseEvent) {
   display: block;
   text-align: left;
   color: #007bff !important;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
@@ -300,7 +317,7 @@ function handleNoteContentClick(event: MouseEvent) {
 .is-expanded .toggle-button-row {
   position: -webkit-sticky;
   position: sticky;
-  bottom: -1rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
+  bottom: 0rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
   z-index: 5;
 
   /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */

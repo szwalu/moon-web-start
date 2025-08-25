@@ -106,7 +106,7 @@ onUnmounted(() => {
 /* 关键改动：使用媒体查询来设置移动端的高度 */
 @media (max-width: 768px) {
   .notes-list {
-    height: 620px; /* 移动端高度 */
+    height: 600px; /* 移动端高度 */
   }
 }
 

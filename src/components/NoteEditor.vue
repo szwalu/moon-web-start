@@ -380,29 +380,29 @@ textarea {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-bottom: none !important; /* 确保底部边框被移除 */
+  border-bottom: none !important;
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: #fff; /* 亮色模式背景 */
+  background-color: #fff;
 }
 
 /* 编辑器输入区域的基础样式 */
 .CodeMirror {
   border: 1px solid #ccc !important;
-  border-top: none !important; /* 确保顶部边框被移除 */
+  border-top: none !important;
   border-radius: 0 0 6px 6px;
   font-size: 16px !important;
   line-height: 1.6 !important;
 }
 
-/* 编辑器工具栏按钮和图标的通用样式 */
+/* 编辑器工具栏按钮和图标的通用样式 (PC端优化版) */
 .editor-toolbar a,
 .editor-toolbar button {
-  padding-left: 3px !important;
-  padding-right: 0px !important;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   line-height: 1 !important;
@@ -419,28 +419,40 @@ textarea {
 }
 
 .editor-toolbar i.separator {
-  margin: 1px 4px !important;
+  margin: 1px 3px !important;
   border-width: 0 1px 0 0 !important;
   height: 8px !important;
 }
 
 /* --- 暗黑模式的覆盖样式 --- */
 .dark .editor-toolbar {
-  background-color: #2c2c2e !important; /* 暗黑模式背景 */
+  background-color: #2c2c2e !important;
   border-color: #48484a !important;
 }
-
 .dark .CodeMirror {
   background-color: #2c2c2e !important;
   border-color: #48484a !important;
   color: #ffffff !important;
 }
-
 .dark .editor-toolbar a {
   color: #e0e0e0 !important;
 }
-
 .dark .editor-toolbar a.active {
   background: #404040 !important;
+}
+
+/* --- [新增] 移动端响应式处理 --- */
+@media (max-width: 480px) {
+  .editor-toolbar {
+    overflow-x: auto; /* 允许X轴（水平）滚动 */
+    white-space: nowrap; /* 禁止元素换行 */
+    -webkit-overflow-scrolling: touch; /* 在iOS上提供更流畅的滚动体验 */
+  }
+
+  /* 隐藏滚动条，让界面更干净 */
+  .editor-toolbar::-webkit-scrollbar {
+    display: none;
+    height: 0;
+  }
 }
 </style>
