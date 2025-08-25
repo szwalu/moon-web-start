@@ -652,62 +652,57 @@ function toggleSearchBar() {
 
 <template>
   <div class="auth-container">
-    <div v-if="user" class="user-content-wrapper">
-      <div class="notes-container">
-        <div class="page-header">
-          <h1 class="page-title">
-            {{ $t('notes.notes') }}
-          </h1>
-          <div class="header-actions">
-            <button class="close-page-btn header-action-btn" @click="router.push('/')">
-              ×
+    <div v-if="user">
+      <div class="page-header">
+        <h1 class="page-title">
+          {{ $t('notes.notes') }}
+        </h1>
+        <div class="header-actions">
+          <button class="close-page-btn header-action-btn" @click="router.push('/')">
+            ×
+          </button>
+          <div ref="dropdownContainerRef" class="dropdown-menu-container">
+            <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 10c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0-6c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0 12c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2" /></svg>
             </button>
-            <div ref="dropdownContainerRef" class="dropdown-menu-container">
-              <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 10c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0-6c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0 12c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2" /></svg>
-              </button>
-              <Transition name="fade">
-                <div v-if="showDropdown" class="dropdown-menu">
-                  <div class="dropdown-item" @click="toggleSearchBar">
-                    {{ $t('notes.search_notes') }}
-                  </div>
-                  <div class="dropdown-item" @click="handleBatchExport">
-                    {{ $t('notes.export_all') }}
-                  </div>
-                  <div class="dropdown-item" @click="handleLogout">
-                    {{ $t('auth.logout') }}
-                  </div>
+            <Transition name="fade">
+              <div v-if="showDropdown" class="dropdown-menu">
+                <div class="dropdown-item" @click="toggleSearchBar">
+                  {{ $t('notes.search_notes') }}
                 </div>
-              </Transition>
-            </div>
+                <div class="dropdown-item" @click="handleBatchExport">
+                  {{ $t('notes.export_all') }}
+                </div>
+                <div class="dropdown-item" @click="handleLogout">
+                  {{ $t('auth.logout') }}
+                </div>
+              </div>
+            </Transition>
           </div>
-        </div>
-
-        <Transition name="slide-fade">
-          <div v-if="showSearchBar" class="search-bar-container">
-            <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
-          </div>
-        </Transition>
-
-        <div v-if="showNotesList" class="scrollable-content">
-          <NoteList
-            :notes="notes"
-            :is-loading="isLoadingNotes"
-            :expanded-note-id="expandedNote"
-            :has-more="hasMoreNotes"
-            @load-more="nextPage"
-            @toggle-expand="toggleExpand"
-            @edit="handleEdit"
-            @copy="handleCopy"
-            @pin="handlePinToggle"
-            @delete="triggerDeleteConfirmation"
-            @task-toggle="handleNoteContentClick"
-          />
         </div>
       </div>
-      <button class="fab" @click="handleAddNewNoteClick">
-        +
-      </button>
+
+      <Transition name="slide-fade">
+        <div v-if="showSearchBar" class="search-bar-container">
+          <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
+        </div>
+      </Transition>
+
+      <div v-if="showNotesList" class="note-list-scroller">
+        <NoteList
+          :notes="notes"
+          :is-loading="isLoadingNotes"
+          :expanded-note-id="expandedNote"
+          :has-more="hasMoreNotes"
+          @load-more="nextPage"
+          @toggle-expand="toggleExpand"
+          @edit="handleEdit"
+          @copy="handleCopy"
+          @pin="handlePinToggle"
+          @delete="triggerDeleteConfirmation"
+          @task-toggle="handleNoteContentClick"
+        />
+      </div>
 
       <div v-if="showEditorModal" class="editor-overlay" @click.self="showEditorModal = false">
         <div class="editor-modal-content">
@@ -731,6 +726,9 @@ function toggleSearchBar() {
     <div v-else>
       <Authentication />
     </div>
+    <button v-if="user" class="fab" @click="handleAddNewNoteClick">
+      +
+    </button>
   </div>
 </template>
 
@@ -758,25 +756,12 @@ function toggleSearchBar() {
   font-size: 14px;
   color: #333;
   transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative; /* 为 fab 按钮提供定位基准 */
 }
 .dark .auth-container {
   background: #1e1e1e;
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-
-.user-content-wrapper {
-  position: relative;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.notes-container {
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 
 .page-header {
@@ -889,10 +874,10 @@ function toggleSearchBar() {
   color: #f0f0f0;
 }
 
-.scrollable-content {
-  flex-grow: 1;
+.note-list-scroller {
   overflow-y: auto;
-  min-height: 0; /* 关键改动：帮助flexbox正确计算高度，消除空白 */
+  flex-grow: 1;
+  min-height: 0;
 }
 
 .fab {
@@ -997,6 +982,7 @@ function toggleSearchBar() {
   max-height: 0;
 }
 
+/* 关键改动4: 最终的移动端布局 */
 @media (max-width: 768px) {
   .auth-container {
     height: 100dvh;
@@ -1006,19 +992,18 @@ function toggleSearchBar() {
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    padding: 0;
   }
 
-  .user-content-wrapper {
-    padding: 1rem 1.5rem 0.75rem 1.5rem;
-  }
-
-  .notes-container {
-    padding-bottom: 0;
+  /* v-if="user" 对应的根元素 */
+  .auth-container > div[v-if] {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+      min-height: 0;
   }
 
   .fab {
-      bottom: 5rem;
+    bottom: 3rem; /* 适配手机底部安全区域 */
   }
 }
 </style>
