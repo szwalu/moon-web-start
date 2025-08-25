@@ -220,7 +220,6 @@ function handleSubmit() {
 <template>
   <div>
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
-      <span class="info-label">{{ $t('notes.notes') }}</span>
       <textarea
         ref="textareaRef"
         v-model="contentModel"

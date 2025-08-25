@@ -164,7 +164,7 @@ auth:
   login: 登录
   register: 注册
   loading: 处理中...
-  logout: 登出
+  logout: 登出系统
   account_title: 我的账户
   account_email_label: 账户邮箱
   account_last_login_label: 上次登录
@@ -236,7 +236,7 @@ index:
   weather_failed: 天气加载失败
   refresh_weather: 刷新天气
 notes:
-  notes: 笔 记
+  notes: 云笔记
   save_note: 保存
   more_notes: 更多笔记>>
   content_placeholder: 写点什么...
@@ -255,6 +255,7 @@ notes:
   delete: 删除
   auto_saved_at: 自动保存
   search_placeholder: 搜索🔍
+  search_notes: 搜索笔记
   next_page: 下一页
   previous_page: 上一页
   auto_saved: 保存成功

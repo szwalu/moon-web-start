@@ -161,7 +161,35 @@ onMounted(() => {
     </div>
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
-    <div class="static-links-container flex flex-col gap-y-20 px-2 pb-4 pt-8">
+    <div class="static-links-container flex flex-col gap-y-4 px-2 pb-4 pt-8">
+      <router-link
+        to="/auth"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">云笔记</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </router-link>
+
+      <router-link
+        v-if="!user"
+        to="/auth"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </router-link>
+      <router-link
+        v-else
+        to="/my-account"
+        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
+        role="menuitem"
+      >
+        <span class="flex-grow truncate text-center">我的账户</span>
+        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
+      </router-link>
+
       <a
         href="https://www.woabc.com/apply"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
@@ -190,26 +218,6 @@ onMounted(() => {
         <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-
-      <router-link
-        v-if="!user"
-        to="/auth"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-      >
-        <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
-      </router-link>
-
-      <router-link
-        v-else
-        to="/auth"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-      >
-        <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
-      </router-link>
     </div>
   </section>
 </template>

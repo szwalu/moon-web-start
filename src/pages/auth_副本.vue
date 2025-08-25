@@ -8,6 +8,8 @@ import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+
+// NoteActions 组件已不再需要
 import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
@@ -22,6 +24,7 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const showEditorModal = ref(false)
+// 关键改动1: 新增状态控制下拉菜单和搜索框的显示
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 
@@ -218,13 +221,13 @@ async function handleBatchExport() {
         let page = 0
         let hasMore = true
         while (hasMore) {
-          let query = supabase.from('notes').select('content, created_at').eq('user_id', user.value!.id).order('created_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+          let query = supabase.from('notes').select('content, updated_at').eq('user_id', user.value!.id).order('updated_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
           if (startDate)
-            query = query.gte('created_at', new Date(startDate).toISOString())
+            query = query.gte('updated_at', new Date(startDate).toISOString())
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
-            query = query.lte('created_at', endOfDay.toISOString())
+            query = query.lte('updated_at', endOfDay.toISOString())
           }
           const { data, error } = await query
           if (error)
@@ -245,8 +248,8 @@ async function handleBatchExport() {
         }
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
-          const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+          const date = new Date(note.updated_at).toLocaleString('zh-CN')
+          return `${separator}\n更新于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
@@ -626,6 +629,7 @@ function handleAddNewNoteClick() {
   showEditorModal.value = true
 }
 
+// 关键改动2: 新增方法
 function toggleSearchBar() {
   showSearchBar.value = !showSearchBar.value
   showDropdown.value = false
@@ -638,10 +642,10 @@ function toggleSearchBar() {
       <div class="notes-container">
         <div class="page-header">
           <h1 class="page-title">
-            {{ $t('notes.notes') }}
+            云笔记
           </h1>
           <div class="header-actions">
-            <button class="header-action-btn close-page-btn" @click="router.push('/')">
+            <button class="close-page-btn header-action-btn" @click="router.push('/')">
               ×
             </button>
             <div class="dropdown-menu-container">
@@ -651,13 +655,13 @@ function toggleSearchBar() {
               <Transition name="fade">
                 <div v-if="showDropdown" class="dropdown-menu">
                   <div class="dropdown-item" @click="toggleSearchBar">
-                    {{ $t('notes.search_notes') }}
+                    搜索笔记
                   </div>
                   <div class="dropdown-item" @click="handleBatchExport">
-                    {{ $t('notes.export_all') }}
+                    导出全部
                   </div>
                   <div class="dropdown-item" @click="handleLogout">
-                    {{ $t('auth.logout') }}
+                    登出
                   </div>
                 </div>
               </Transition>
@@ -667,7 +671,7 @@ function toggleSearchBar() {
 
         <Transition name="slide-fade">
           <div v-if="showSearchBar" class="search-bar-container">
-            <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
+            <input v-model="searchQuery" type="search" placeholder="搜索..." class="search-input">
           </div>
         </Transition>
 
@@ -717,6 +721,7 @@ function toggleSearchBar() {
 </template>
 
 <style scoped>
+/* 关键改动4: 全新的样式 */
 .auth-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -743,18 +748,12 @@ function toggleSearchBar() {
 
 .page-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
-  position: relative;
-  height: 28px;
 }
 
 .page-title {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   font-size: 18px;
   font-weight: 600;
   margin: 0;

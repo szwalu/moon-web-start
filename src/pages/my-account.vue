@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
@@ -15,9 +15,16 @@ const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const loading = ref(false)
 const lastBackupTime = ref('N/A')
+// 关键改动1：新增一个 sessionReady 状态，默认为 false
+const sessionReady = ref(false)
 
 // --- 数据获取 ---
-watchEffect(async () => {
+// onMounted 会在组件挂载后执行
+onMounted(async () => {
+  // 关键改动2：主动调用 refreshUser 来确保获取最新的用户状态
+  // 这会等待 Supabase 确认完毕，再继续执行
+  await authStore.refreshUser()
+
   if (user.value) {
     const { data } = await supabase
       .from('profiles')
@@ -28,6 +35,8 @@ watchEffect(async () => {
       ? new Date(`${data.updated_at}Z`).toLocaleString()
       : '暂无备份'
   }
+  // 关键改动3：所有数据加载完毕后，才将 sessionReady 设为 true，允许页面显示内容
+  sessionReady.value = true
 })
 
 const lastLoginTime = computed(() => {
@@ -47,7 +56,7 @@ async function handleLogout() {
 
 <template>
   <div class="account-container">
-    <div v-if="user">
+    <div v-if="sessionReady && user">
       <h1 class="account-title">{{ t('auth.account_title') }}</h1>
       <div class="info-grid">
         <p>
@@ -72,6 +81,9 @@ async function handleLogout() {
           {{ loading ? t('auth.loading') : t('auth.logout') }}
         </button>
       </div>
+    </div>
+    <div v-else class="loading-container">
+      <p>正在加载用户信息...</p>
     </div>
   </div>
 </template>
@@ -157,5 +169,13 @@ button:disabled {
   background-color: #3a3a3c;
   color: #e0e0e0;
   border-color: #555;
+}
+.loading-container {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+.dark .loading-container {
+  color: #aaa;
 }
 </style>
