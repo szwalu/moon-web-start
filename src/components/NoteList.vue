@@ -3,8 +3,6 @@ import { onUnmounted, ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import NoteItem from '@/components/NoteItem.vue'
 
-// 组件卸载时，确保取消 debounce 并解绑事件
-
 // --- Props ---
 const props = defineProps({
   notes: {
@@ -19,7 +17,6 @@ const props = defineProps({
     type: String as () => string | null,
     default: null,
   },
-  // 新增一个 prop，用来判断是否还有更多笔记可加载
   hasMore: {
     type: Boolean,
     default: true,
@@ -27,7 +24,6 @@ const props = defineProps({
 })
 
 // --- Emits ---
-// 定义所有需要向父组件传递的事件
 const emit = defineEmits([
   'loadMore',
   'toggleExpand',
@@ -38,28 +34,24 @@ const emit = defineEmits([
   'taskToggle',
 ])
 
-// --- 无限滚动逻辑 (从 auth.vue 迁移过来) ---
+// --- 无限滚动逻辑 ---
 const notesListRef = ref<HTMLElement | null>(null)
 
 const handleScroll = debounce(() => {
   const el = notesListRef.value
-  // 如果正在加载或没有更多了，则不执行
   if (!el || props.isLoading || !props.hasMore)
     return
-  // 滚动到底部附近时，向父组件发出 'load-more' 事件
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
     emit('loadMore')
 }, 200)
 
-// 侦听 notesListRef 的变化，自动绑定和解绑滚动事件
-// 这使得滚动逻辑完全封装在本组件内
 watch(notesListRef, (newEl, oldEl) => {
   if (oldEl)
     oldEl.removeEventListener('scroll', handleScroll)
-
   if (newEl)
     newEl.addEventListener('scroll', handleScroll)
 })
+
 onUnmounted(() => {
   handleScroll.cancel()
   if (notesListRef.value)
@@ -92,14 +84,19 @@ onUnmounted(() => {
         加载中...
       </div>
     </div>
+
+    <div v-if="expandedNoteId" class="sticky-collapse-button-wrapper">
+      <button class="sticky-collapse-button" @click="emit('toggleExpand', expandedNoteId)">
+        {{ $t('notes.collapse') }}
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* 从 auth.vue 复制过来的样式 */
 .notes-list {
   margin-top: 1rem;
-  height: 500px; /* 您可以根据需要调整这个高度 */
+  height: 500px;
   overflow-y: auto;
   position: relative;
 }
@@ -115,5 +112,46 @@ onUnmounted(() => {
   --tw-space-y-reverse: 0;
   margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
   margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
+}
+
+.sticky-collapse-button-wrapper {
+  position: -webkit-sticky;
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  background: linear-gradient(to top, rgba(255, 255, 255, 1) 70%, rgba(255, 255, 255, 0));
+}
+
+.dark .sticky-collapse-button-wrapper {
+  background: linear-gradient(to top, rgba(26, 32, 44, 1) 70%, rgba(26, 32, 44, 0));
+}
+
+.sticky-collapse-button {
+  padding: 8px 24px;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  background-color: #fff;
+  color: #4a5568;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.sticky-collapse-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark .sticky-collapse-button {
+  background-color: #2d3748;
+  border-color: #4a5568;
+  color: #e2e8f0;
 }
 </style>

@@ -134,11 +134,6 @@ function handleNoteContentClick(event: MouseEvent) {
           class="prose dark:prose-invert max-w-none"
           v-html="renderMarkdown(note.content)"
         />
-        <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
-          <button class="toggle-button collapse-button">
-            {{ $t('notes.collapse') }}
-          </button>
-        </div>
       </div>
       <div v-else>
         <div
@@ -294,30 +289,5 @@ function handleNoteContentClick(event: MouseEvent) {
 
 :deep(.prose > :last-child) {
   margin-bottom: 0 !important;
-}
-
-/* 关键改动2：为展开状态下的“收起”按钮行添加粘性定位 */
-.is-expanded .toggle-button-row {
-  position: -webkit-sticky;
-  position: sticky;
-  bottom: -16px; /* 粘在卡片底部，-16px是为了抵消卡片的 padding-bottom */
-  z-index: 5;
-
-  /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
-  background: #f3f4f6; /* 对应 .bg-gray-100 */
-
-  /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
-  padding-top: 8px;
-  padding-bottom: 12px;
-  margin-left: -16px; /* 抵消卡片的 padding-left */
-  margin-right: -16px; /* 抵消卡片的 padding-right */
-  padding-left: 16px;
-  padding-right: 16px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.dark .is-expanded .toggle-button-row {
-  background: #374151; /* 对应 .dark .bg-gray-700 */
-  border-top-color: #4b5563;
 }
 </style>
