@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import type { Subscription } from '@supabase/supabase-js'
 import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
@@ -12,31 +13,38 @@ const confirmPassword = ref('')
 const message = ref('')
 const loading = ref(false)
 const sessionReady = ref(false)
+let authListener: Subscription | null = null
 
-onMounted(async () => {
-  const { data: userData, error } = await supabase.auth.getUser()
+// 使用 onAuthStateChange 来可靠地处理认证状态
+onMounted(() => {
+  // 设置监听器
+  const { data } = supabase.auth.onAuthStateChange((event, _session) => {
+    // 当 Supabase 确认这是一个密码重置流程时，才显示表单
+    if (event === 'PASSWORD_RECOVERY')
+      sessionReady.value = true
+  })
+  authListener = data.subscription
 
-  if (error || !userData?.user) {
-    message.value = t('auth.invalid_link')
-    sessionReady.value = false
-  }
-  else {
-    sessionReady.value = true
-  }
+  // 添加一个超时检查，以防万一
+  setTimeout(() => {
+    if (!sessionReady.value)
+      message.value = t('auth.invalid_link')
+  }, 3000)
+})
+
+// 组件卸载时，清理监听器
+onUnmounted(() => {
+  authListener?.unsubscribe()
 })
 
 async function handleReset() {
-  if (!newPassword.value || !confirmPassword.value) {
-    message.value = t('auth.enter_and_confirm')
-    return
-  }
-
   if (newPassword.value !== confirmPassword.value) {
     message.value = t('auth.mismatch')
     return
   }
 
   loading.value = true
+  message.value = ''
 
   const { error } = await supabase.auth.updateUser({
     password: newPassword.value,
@@ -46,6 +54,7 @@ async function handleReset() {
     message.value = `${t('auth.reset_failed')}：${error.message}`
   }
   else {
+    // 成功后，为了确保状态干净，先登出
     await supabase.auth.signOut()
     message.value = t('auth.messages.reset_success_redirect')
     setTimeout(() => router.push('/auth'), 2000)
@@ -59,26 +68,29 @@ async function handleReset() {
   <div class="reset-container">
     <h2>{{ $t('auth.reset_password') }}</h2>
 
-    <div v-if="!sessionReady" class="message">{{ message }}</div>
+    <div v-if="!sessionReady || message" class="message-container">
+      <p class="message">{{ message || '正在验证链接...' }}</p>
+    </div>
 
-    <div v-else>
+    <form v-if="sessionReady && !message.includes('成功')" @submit.prevent="handleReset">
       <input
         v-model="newPassword"
         type="password"
         :placeholder="$t('auth.enter_new_password')"
         class="input"
+        required
       >
       <input
         v-model="confirmPassword"
         type="password"
         :placeholder="$t('auth.confirm_new_password')"
         class="input"
+        required
       >
-      <button :disabled="loading" class="button" @click="handleReset">
+      <button :disabled="loading" class="button" type="submit">
         {{ loading ? $t('auth.submitting') : $t('auth.submit_new_password') }}
       </button>
-      <p class="message">{{ message }}</p>
-    </div>
+    </form>
   </div>
 </template>
 
@@ -95,9 +107,10 @@ async function handleReset() {
 .input {
   width: 100%;
   padding: 0.75rem;
-  margin: 1rem 0;
+  margin-bottom: 1rem; /* 调整间距 */
   border: 1px solid #ccc;
   border-radius: 6px;
+  box-sizing: border-box; /* 确保 padding 不会撑大宽度 */
 }
 .button {
   width: 100%;
@@ -108,6 +121,7 @@ async function handleReset() {
   border-radius: 6px;
   font-size: 16px;
   cursor: pointer;
+  margin-top: 1rem; /* 增加按钮上边距 */
 }
 .button:disabled {
   opacity: 0.6;
@@ -116,5 +130,8 @@ async function handleReset() {
   margin-top: 1rem;
   font-size: 14px;
   color: #666;
+}
+.message-container {
+  min-height: 50px; /* 给消息区域一个最小高度，防止跳动 */
 }
 </style>
