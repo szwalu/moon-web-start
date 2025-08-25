@@ -96,9 +96,14 @@ onUnmounted(() => {
 <style scoped>
 .notes-list {
   margin-top: 1rem;
-  height: 500px;
+  /* 移除固定的 height: 500px */
+  /* height: 500px; */
   overflow-y: auto;
   position: relative;
+  /* 新增：让列表在 flex 容器中自动伸展，填满所有可用空间 */
+  flex: 1;
+  /* 新增：一个防止 flex 溢出的 hack */
+  min-height: 0;
 }
 
 .text-gray-500 {

@@ -807,6 +807,11 @@ async function handleCopy(noteContent: string) {
 
 .account-info {
   text-align: center;
+  /* 新增：让整个“已登录”区域成为一个 flex 容器 */
+  display: flex;
+  flex-direction: column;
+  /* 新增：设置一个最小高度，至少撑满整个屏幕可视区 */
+  min-height: calc(100vh - 4rem); /* 100vh 是屏幕高度，4rem 是 auth-container 的上下 padding */
 }
 .info-grid p {
   display: flex;
@@ -884,6 +889,13 @@ button:disabled {
 
 .notes-container {
   text-align: left;
+  /* 新增：将笔记容器设置为 flex 布局，方向为垂直 */
+  display: flex;
+  flex-direction: column;
+  /* 新增：让它撑满父容器的剩余高度 */
+  flex: 1;
+  /* 新增：为了让内部的 flex: 1 生效，需要设置一个最小高度 */
+  min-height: 0;
 }
 
 /* 全局 message 样式保留 */
