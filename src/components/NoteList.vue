@@ -68,7 +68,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="notesListRef" class="notes-list h-80 overflow-auto">
+  <div ref="notesListRef" class="notes-list">
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       加载中...
     </div>
@@ -89,19 +89,25 @@ onUnmounted(() => {
         @task-toggle="payload => emit('taskToggle', payload)"
       />
       <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
-        加载中...
+        loding...
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 从 auth.vue 复制过来的样式 */
 .notes-list {
   margin-top: 1rem;
-  height: 500px; /* 您可以根据需要调整这个高度 */
+  height: 510px; /* PC端默认高度 */
   overflow-y: auto;
   position: relative;
+}
+
+/* 关键改动：使用媒体查询来设置移动端的高度 */
+@media (max-width: 768px) {
+  .notes-list {
+    height: 620px; /* 移动端高度 */
+  }
 }
 
 .text-gray-500 {

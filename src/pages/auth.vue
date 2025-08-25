@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useDark } from '@vueuse/core'
@@ -688,7 +688,7 @@ function toggleSearchBar() {
         </div>
       </Transition>
 
-      <div v-if="showNotesList" class="note-list-scroller">
+      <div v-if="showNotesList">
         <NoteList
           :notes="notes"
           :is-loading="isLoadingNotes"
@@ -733,18 +733,6 @@ function toggleSearchBar() {
   </div>
 </template>
 
-<style>
-/* Global styles for full-height mobile layout */
-@media (max-width: 768px) {
-  html, body, #app {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-  }
-}
-</style>
-
 <style scoped>
 .auth-container {
   max-width: 480px;
@@ -772,7 +760,6 @@ function toggleSearchBar() {
   margin-bottom: 0.75rem;
   position: relative;
   height: 28px;
-  flex-shrink: 0;
 }
 
 .page-title {
@@ -859,7 +846,6 @@ function toggleSearchBar() {
 
 .search-bar-container {
   margin-bottom: 0.75rem;
-  flex-shrink: 0;
 }
 
 .search-input {
@@ -873,12 +859,6 @@ function toggleSearchBar() {
   background-color: #2c2c2e;
   border-color: #444;
   color: #f0f0f0;
-}
-
-.note-list-scroller {
-  overflow-y: auto;
-  flex-grow: 1;
-  min-height: 0;
 }
 
 .fab {
@@ -981,31 +961,5 @@ function toggleSearchBar() {
   opacity: 0;
   transform: translateY(-10px);
   max-height: 0;
-}
-
-/* 关键改动：最终的移动端布局 */
-@media (max-width: 768px) {
-  .auth-container {
-    height: 100dvh;
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-    border-radius: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* template > v-if="user" 对应的根元素 */
-  .auth-container > template[v-if] + div {
-      display: flex;
-      flex-direction: column;
-      flex-grow: 1;
-      min-height: 0; /* 让这个容器可以收缩 */
-  }
-
-  /* 适配iPhone等设备的底部安全区域 */
-  .fab {
-    bottom: 3rem;
-  }
 }
 </style>
