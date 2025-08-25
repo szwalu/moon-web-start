@@ -652,7 +652,7 @@ function toggleSearchBar() {
 
 <template>
   <div class="auth-container">
-    <div v-if="user">
+    <div v-if="user" class="user-content-wrapper">
       <div class="notes-container">
         <div class="page-header">
           <h1 class="page-title">
@@ -689,7 +689,7 @@ function toggleSearchBar() {
           </div>
         </Transition>
 
-        <div v-if="showNotesList">
+        <div v-if="showNotesList" class="scrollable-content">
           <NoteList
             :notes="notes"
             :is-loading="isLoadingNotes"
@@ -704,10 +704,10 @@ function toggleSearchBar() {
             @task-toggle="handleNoteContentClick"
           />
         </div>
-        <button class="fab" @click="handleAddNewNoteClick">
-          +
-        </button>
       </div>
+      <button class="fab" @click="handleAddNewNoteClick">
+        +
+      </button>
 
       <div v-if="showEditorModal" class="editor-overlay" @click.self="showEditorModal = false">
         <div class="editor-modal-content">
@@ -741,7 +741,7 @@ function toggleSearchBar() {
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden; /* 防止body在移动端出现滚动条 */
+    overflow: hidden;
   }
 }
 </style>
@@ -765,10 +765,19 @@ function toggleSearchBar() {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
+/* 关键改动2: 新增 wrapper 并设置为相对定位 */
+.user-content-wrapper {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .notes-container {
   text-align: left;
-  position: relative;
-  padding-bottom: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .page-header {
@@ -778,6 +787,7 @@ function toggleSearchBar() {
   margin-bottom: 0.75rem;
   position: relative;
   height: 28px;
+  flex-shrink: 0; /* 防止头部被压缩 */
 }
 
 .page-title {
@@ -864,6 +874,7 @@ function toggleSearchBar() {
 
 .search-bar-container {
   margin-bottom: 0.75rem;
+  flex-shrink: 0;
 }
 
 .search-input {
@@ -877,6 +888,12 @@ function toggleSearchBar() {
   background-color: #2c2c2e;
   border-color: #444;
   color: #f0f0f0;
+}
+
+/* 关键改动3: 独立的滚动区域 */
+.scrollable-content {
+  flex-grow: 1;
+  overflow-y: auto;
 }
 
 .fab {
@@ -981,23 +998,29 @@ function toggleSearchBar() {
   max-height: 0;
 }
 
-/* 关键改动4: 移动端全屏样式 */
+/* 关键改动4: 调整移动端样式 */
 @media (max-width: 768px) {
   .auth-container {
-    height: 100dvh; /* 使用动态视窗高度单位，解决移动端浏览器地址栏问题 */
+    height: 100dvh;
     width: 100%;
     max-width: 100%;
     margin: 0;
     border-radius: 0;
     display: flex;
     flex-direction: column;
+    padding: 0; /* 移除内边距，让子元素控制 */
+  }
+
+  .user-content-wrapper {
+    padding: 1rem 1.5rem 0.75rem 1.5rem; /* 将内边距移到这里 */
   }
 
   .notes-container {
-    flex-grow: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+    padding-bottom: 0; /* 移除内边距，因为fab现在在外部 */
+  }
+
+  .fab {
+      bottom: 5rem; /* 提高fab按钮位置，避免被系统UI遮挡 */
   }
 }
 </style>
