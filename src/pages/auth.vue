@@ -54,69 +54,14 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
+// --- 编辑器相关状态已移至 NoteEditor.vue ---
+
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-// --- 核心认证逻辑 (最终修正) ---
-onMounted(() => {
-  const { data: authListener } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      authStore.user = session?.user ?? null
-      if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') {
-        nextTick(() => {
-          fetchNotes()
-          fetchAllTags()
-        })
-      }
-      else if (event === 'SIGNED_OUT') {
-        notes.value = []
-        allTags.value = []
-        content.value = ''
-        editingNote.value = null
-      }
-    },
-  )
+// --- 核心方法 ---
 
-  onUnmounted(() => {
-    authListener.subscription.unsubscribe()
-  })
-
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  if (savedContent)
-    content.value = savedContent
-
-  isReady.value = true
-})
-
-const lastLoginTime = computed(() => {
-  if (user.value?.last_sign_in_at)
-    return new Date(user.value.last_sign_in_at).toLocaleString()
-  return 'N/A'
-})
-
-watchEffect(async () => {
-  if (user.value) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('updated_at')
-      .eq('id', user.value.id)
-      .single()
-    lastBackupTime.value = data?.updated_at
-      ? new Date(`${data.updated_at}Z`).toLocaleString()
-      : '暂无备份'
-  }
-  else {
-    lastBackupTime.value = 'N/A'
-    notes.value = []
-    cachedNotes.value = []
-    isNotesCached.value = false
-    cachedPages.value.clear()
-    editingNote.value = null
-  }
-})
-
-// --- 笔记相关方法 ---
 async function fetchAllTags() {
   if (!user.value?.id)
     return
@@ -190,6 +135,85 @@ const debouncedSaveNote = debounce(() => {
 
 onUnmounted(() => {
   debouncedSaveNote.cancel()
+})
+
+onMounted(async () => {
+  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
+  if (savedContent)
+    content.value = savedContent
+
+  const cachedNotesData = localStorage.getItem(CACHED_NOTES_KEY)
+  if (cachedNotesData) {
+    try {
+      const parsedNotes = JSON.parse(cachedNotesData)
+      if (Array.isArray(parsedNotes) && parsedNotes.length > 0)
+        notes.value = parsedNotes
+    }
+    catch (e) {
+      console.error('解析缓存笔记失败:', e)
+      localStorage.removeItem(CACHED_NOTES_KEY)
+    }
+  }
+
+  await authStore.refreshUser()
+
+  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
+  if (savedContent && savedNoteId && user.value) {
+    const { data: noteData } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('id', savedNoteId)
+      .eq('user_id', user.value.id)
+      .single()
+    if (noteData)
+      editingNote.value = noteData
+    else
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+  }
+
+  if (user.value) {
+    await fetchNotes()
+    await fetchAllTags()
+  }
+
+  isReady.value = true
+})
+
+watch(user, (currentUser, oldUser) => {
+  // 当用户从“未登录”变为“已登录”时，加载笔记数据
+  if (currentUser && !oldUser) {
+    nextTick(async () => {
+      await fetchNotes()
+      await fetchAllTags()
+    })
+  }
+}, { immediate: true })
+
+const lastLoginTime = computed(() => {
+  if (user.value?.last_sign_in_at)
+    return new Date(user.value.last_sign_in_at).toLocaleString()
+  return 'N/A'
+})
+
+watchEffect(async () => {
+  if (user.value) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('updated_at')
+      .eq('id', user.value.id)
+      .single()
+    lastBackupTime.value = data?.updated_at
+      ? new Date(`${data.updated_at}Z`).toLocaleString()
+      : '暂无备份'
+  }
+  else {
+    lastBackupTime.value = 'N/A'
+    notes.value = []
+    cachedNotes.value = []
+    isNotesCached.value = false
+    cachedPages.value.clear()
+    editingNote.value = null
+  }
 })
 
 watch(content, async (val, oldVal) => {
@@ -524,6 +548,7 @@ function resetEditorAndState() {
   lastSavedTime.value = ''
   localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   localStorage.removeItem(LOCAL_CONTENT_KEY)
+  // Editor destruction is now handled in the child component
 }
 
 async function handleSubmit() {
@@ -545,6 +570,7 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
+    // 替换为这段新代码
     if (saved)
       resetEditorAndState()
   }
@@ -618,13 +644,16 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
+// 这是修正后的新函数
 async function handleLogout() {
   loading.value = true
   await supabase.auth.signOut()
+  // 使用 window.location.href 进行强制跳转
   window.location.href = '/'
   loading.value = false
 }
 
+// 新的 handleNoteContentClick 函数，处理子组件发出的事件
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
@@ -647,7 +676,9 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
         : lineContent.replace('[x]', '[ ]')
 
       const newContent = lines.join('\n')
+      // 直接在 notes ref 中更新，提供即时UI反馈
       noteToUpdate.content = newContent
+      // 异步更新到数据库
       await supabase
         .from('notes')
         .update({ content: newContent, updated_at: new Date().toISOString() })
@@ -656,6 +687,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
     }
   }
   catch (err: any) {
+    // 如果更新失败，恢复原始内容
     noteToUpdate.content = originalContent
     messageHook.error(`更新失败: ${err.message}`)
   }

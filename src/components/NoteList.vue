@@ -3,6 +3,8 @@ import { onUnmounted, ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import NoteItem from '@/components/NoteItem.vue'
 
+// 组件卸载时，确保取消 debounce 并解绑事件
+
 // --- Props ---
 const props = defineProps({
   notes: {
@@ -97,9 +99,7 @@ onUnmounted(() => {
 /* 从 auth.vue 复制过来的样式 */
 .notes-list {
   margin-top: 1rem;
-  /* 恢复布局样式，解决空白问题 */
-  flex: 1;
-  min-height: 0;
+  height: 500px; /* 您可以根据需要调整这个高度 */
   overflow-y: auto;
   position: relative;
 }

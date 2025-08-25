@@ -161,13 +161,13 @@ function handleNoteContentClick(event: MouseEvent) {
 </template>
 
 <style scoped>
+/* 为了方便，我直接使用 Tailwind 的 @apply 指令来整合基础样式 */
 .note-card {
-  /* 使用 @apply 是为了方便整合 Tailwind CSS 的原子类 */
   @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
 }
 
 .dark .note-card {
-  @apply bg-gray-700; /* 确保暗黑模式有正确的背景色 */
+  @apply bg-gray-700;
 }
 
 .note-card-top-bar {
@@ -233,7 +233,7 @@ function handleNoteContentClick(event: MouseEvent) {
 .toggle-button-row {
   width: 100%;
   cursor: pointer;
-  padding-top: 4px; /* 从 padding: 4px 0 改为只给顶部一点空间 */
+  padding: 4px 0;
   margin-top: 4px;
 }
 
@@ -300,23 +300,22 @@ function handleNoteContentClick(event: MouseEvent) {
 .is-expanded .toggle-button-row {
   position: -webkit-sticky;
   position: sticky;
-  bottom: 0; /* 粘在卡片底部 */
+  bottom: -1rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
   z-index: 5;
 
   /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
-  background: #f3f4f6; /* 对应 .bg-gray-100 */
+  background-color: #f3f4f6; /* 对应 .bg-gray-100 */
 
   /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
   /* 使用负边距让背景铺满整个卡片宽度（抵消父元素的padding） */
   margin-left: -1rem;  /* 1rem = 16px, 对应 p-4 */
   margin-right: -1rem;
-  margin-bottom: -1rem;
-  padding: 0.75rem 1rem; /* 上下0.75rem, 左右1rem */
+  padding: 0.75rem 1rem;
   border-top: 1px solid #e5e7eb;
 }
 
 .dark .is-expanded .toggle-button-row {
-  background: #374151; /* 对应 .dark .bg-gray-700 */
+  background-color: #374151; /* 对应 .dark .bg-gray-700 */
   border-top-color: #4b5563;
 }
 </style>
