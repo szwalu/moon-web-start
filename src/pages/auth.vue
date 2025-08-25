@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useDark } from '@vueuse/core'
@@ -652,7 +652,7 @@ function toggleSearchBar() {
 
 <template>
   <div class="auth-container">
-    <div v-if="user">
+    <template v-if="user">
       <div class="page-header">
         <h1 class="page-title">
           {{ $t('notes.notes') }}
@@ -704,6 +704,10 @@ function toggleSearchBar() {
         />
       </div>
 
+      <button class="fab" @click="handleAddNewNoteClick">
+        +
+      </button>
+
       <div v-if="showEditorModal" class="editor-overlay" @click.self="showEditorModal = false">
         <div class="editor-modal-content">
           <div class="modal-header">
@@ -722,13 +726,10 @@ function toggleSearchBar() {
           />
         </div>
       </div>
-    </div>
-    <div v-else>
+    </template>
+    <template v-else>
       <Authentication />
-    </div>
-    <button v-if="user" class="fab" @click="handleAddNewNoteClick">
-      +
-    </button>
+    </template>
   </div>
 </template>
 
@@ -756,7 +757,7 @@ function toggleSearchBar() {
   font-size: 14px;
   color: #333;
   transition: background-color 0.3s ease, color 0.3s ease;
-  position: relative; /* 为 fab 按钮提供定位基准 */
+  position: relative;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -982,7 +983,7 @@ function toggleSearchBar() {
   max-height: 0;
 }
 
-/* 关键改动4: 最终的移动端布局 */
+/* 关键改动：最终的移动端布局 */
 @media (max-width: 768px) {
   .auth-container {
     height: 100dvh;
@@ -994,16 +995,17 @@ function toggleSearchBar() {
     flex-direction: column;
   }
 
-  /* v-if="user" 对应的根元素 */
-  .auth-container > div[v-if] {
+  /* template > v-if="user" 对应的根元素 */
+  .auth-container > template[v-if] + div {
       display: flex;
       flex-direction: column;
       flex-grow: 1;
-      min-height: 0;
+      min-height: 0; /* 让这个容器可以收缩 */
   }
 
+  /* 适配iPhone等设备的底部安全区域 */
   .fab {
-    bottom: 3rem; /* 适配手机底部安全区域 */
+    bottom: 3rem;
   }
 }
 </style>
