@@ -6,56 +6,32 @@ import { useDark } from '@vueuse/core'
 import { NDatePicker, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
-import MarkdownIt from 'markdown-it'
-import taskLists from 'markdown-it-task-lists'
-import EasyMDE from 'easymde'
-import { useAutoSave } from '@/composables/useAutoSave'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
-
+import NoteActions from '@/components/NoteActions.vue'
+import NoteList from '@/components/NoteList.vue'
+import NoteEditor from '@/components/NoteEditor.vue'
+import Authentication from '@/components/Authentication.vue'
 import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
 useDark()
 
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: true,
-})
-  .use(taskLists, { enabled: true, label: true })
-
-function renderMarkdown(content: string) {
-  if (!content)
-    return ''
-  const html = md.render(content)
-  // 最终修正: 更新正则表达式，确保它不会将Markdown标题 ## 误认为标签
-  return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
-}
 const router = useRouter()
 const { t } = useI18n()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
-const { autoLoadData } = useAutoSave()
 
 const user = computed(() => authStore.user)
 
-const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
-const email = ref('')
-const password = ref('')
-const passwordConfirm = ref('')
-const inviteCode = ref('')
-const message = ref('')
-const loading = ref(false)
-const resetEmailSent = ref(false)
+// --- 认证相关状态已移至 Authentication.vue ---
+const loading = ref(false) // loading 状态被认证和笔记功能共用，暂时保留
 const lastBackupTime = ref('N/A')
 
+// --- 笔记相关状态 ---
 const notes = ref<any[]>([])
 const content = ref('')
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const easymde = ref<EasyMDE | null>(null)
-const noteOverflowStatus = ref<Record<string, boolean>>({})
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
@@ -76,172 +52,16 @@ const isRestoringFromCache = ref(false)
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
-
-// --- State for Tag Suggestions ---
 const allTags = ref<string[]>([])
-const showSearchTagSuggestions = ref(false)
-const searchTagSuggestions = ref<string[]>([])
-const searchInputRef = ref<HTMLInputElement | null>(null)
-const highlightedSearchIndex = ref(-1)
 
-const showEditorTagSuggestions = ref(false)
-const editorTagSuggestions = ref<string[]>([])
-const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-
-// 定义编辑器的最小和最大高度，方便统一修改
-const minEditorHeight = 130
-const maxEditorHeight = 780
+// --- 编辑器相关状态已移至 NoteEditor.vue ---
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-// --- 【最终方案】EasyMDE 编辑器核心逻辑：销毁与重建 + JS动态高度 ---
+// --- 核心方法 ---
 
-function updateEditorHeight() {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-
-  const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-  cm.setSize(null, newHeight)
-}
-
-function destroyEasyMDE() {
-  if (easymde.value) {
-    easymde.value.toTextArea()
-    easymde.value = null
-  }
-}
-
-function initializeEasyMDE(initialValue = '') {
-  const newEl = textareaRef.value
-  if (!newEl || easymde.value)
-    return
-
-  const customToolbar = [
-    {
-      name: 'tag',
-      action: (editor: any) => {
-        const cm = editor.codemirror
-        cm.getDoc().replaceSelection('#')
-        cm.focus()
-        editorTagSuggestions.value = allTags.value
-        if (editorTagSuggestions.value.length > 0) {
-          const coords = cm.cursorCoords()
-          editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-          showEditorTagSuggestions.value = true
-          highlightedEditorIndex.value = 0
-        }
-      },
-      className: 'fa fa-tag',
-      title: '插入标签 (Insert Tag)',
-    },
-    '|',
-    'bold',
-    'italic',
-    'heading',
-    '|',
-    'quote',
-    'unordered-list',
-    'ordered-list',
-    {
-      name: 'taskList',
-      action: (editor: any) => {
-        editor.codemirror.getDoc().replaceRange('- [ ] ', editor.codemirror.getDoc().getCursor())
-        editor.codemirror.focus()
-      },
-      className: 'fa fa-check-square-o',
-      title: 'Task List',
-    },
-    '|',
-    'link',
-    'table',
-    '|',
-    'preview',
-    'side-by-side',
-    'fullscreen',
-  ]
-
-  easymde.value = new EasyMDE({
-    element: newEl,
-    initialValue,
-    spellChecker: false,
-    placeholder: t('notes.content_placeholder'),
-    toolbar: customToolbar,
-    status: false,
-  })
-
-  const cm = easymde.value.codemirror
-  cm.on('change', (instance: any) => {
-    if (easymde.value) {
-      const editorContent = easymde.value.value()
-      if (content.value !== editorContent)
-        content.value = editorContent
-      nextTick(() => updateEditorHeight())
-    }
-
-    // --- 最终修正: 严格的标签建议触发逻辑 ---
-    const cursor = instance.getDoc().getCursor()
-    const line = instance.getDoc().getLine(cursor.line)
-    const textBefore = line.substring(0, cursor.ch)
-
-    const lastHashIndex = textBefore.lastIndexOf('#')
-
-    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-
-    const potentialTag = textBefore.substring(lastHashIndex)
-
-    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1)) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-
-    if (/\s/.test(potentialTag)) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-
-    const term = potentialTag.substring(1)
-    editorTagSuggestions.value = allTags.value.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
-
-    if (editorTagSuggestions.value.length > 0) {
-      const coords = instance.cursorCoords()
-      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-      showEditorTagSuggestions.value = true
-      highlightedEditorIndex.value = 0
-    }
-    else {
-      showEditorTagSuggestions.value = false
-    }
-  })
-
-  cm.on('keydown', handleEditorKeyDown)
-
-  nextTick(() => updateEditorHeight())
-}
-
-const notesListRef = ref<HTMLElement | null>(null)
-
-const handleScroll = debounce(() => {
-  const el = notesListRef.value
-  if (!el || isLoadingNotes.value || !hasMoreNotes.value)
-    return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
-    nextPage()
-}, 200)
-
-// --- Tag Suggestion Functions ---
 async function fetchAllTags() {
   if (!user.value?.id)
     return
@@ -255,9 +75,6 @@ async function fetchAllTags() {
       throw error
 
     const tagSet = new Set<string>()
-
-    // 最终修正: 这是最终的、最严格的标签查找规则
-    // 它现在会排除'#'自身作为标签内容，从而完美区分Markdown标题和标签
     const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
 
     if (data) {
@@ -274,88 +91,6 @@ async function fetchAllTags() {
   }
   catch (err: any) {
     messageHook.error(`Failed to fetch tags: ${err.message}`)
-  }
-}
-
-function selectSearchTag(tag: string) {
-  if (!tag)
-    return
-  const lastHashIndex = searchQuery.value.lastIndexOf('#')
-  if (lastHashIndex !== -1)
-    searchQuery.value = `${searchQuery.value.substring(0, lastHashIndex) + tag} `
-  else
-    searchQuery.value = `${tag} `
-
-  showSearchTagSuggestions.value = false
-  nextTick(() => {
-    searchInputRef.value?.focus()
-  })
-}
-
-function moveSearchSelection(offset: number) {
-  if (showSearchTagSuggestions.value)
-    highlightedSearchIndex.value = (highlightedSearchIndex.value + offset + searchTagSuggestions.value.length) % searchTagSuggestions.value.length
-}
-
-function selectEditorTag(tag: string) {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const doc = cm.getDoc()
-  const cursor = doc.getCursor()
-  const line = doc.getLine(cursor.line)
-  const textBeforeCursor = line.substring(0, cursor.ch)
-  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-
-  if (lastHashIndex !== -1) {
-    const start = { line: cursor.line, ch: lastHashIndex }
-    const end = cursor
-    doc.replaceRange(`${tag} `, start, end)
-  }
-
-  showEditorTagSuggestions.value = false
-  cm.focus()
-}
-
-function moveEditorSelection(offset: number) {
-  if (showEditorTagSuggestions.value)
-    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
-}
-
-function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
-  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveEditorSelection(1)
-    }
-    else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveEditorSelection(-1)
-    }
-    else if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault()
-      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
-    }
-    else if (event.key === 'Escape') {
-      event.preventDefault()
-      showEditorTagSuggestions.value = false
-    }
-  }
-}
-
-watch(notesListRef, (newEl, oldEl) => {
-  if (oldEl)
-    oldEl.removeEventListener('scroll', handleScroll)
-  if (newEl)
-    newEl.addEventListener('scroll', handleScroll)
-})
-
-function checkIfNoteOverflows(el: Element | null, noteId: string) {
-  if (el) {
-    const isOverflowing = el.scrollHeight > el.clientHeight
-    if (noteOverflowStatus.value[noteId] !== isOverflowing)
-      noteOverflowStatus.value[noteId] = isOverflowing
   }
 }
 
@@ -389,25 +124,7 @@ const debouncedSearch = debounce(async () => {
   }
 }, 500)
 
-watch(searchQuery, (query) => {
-  const lastHashIndex = query.lastIndexOf('#')
-  if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
-    const term = query.substring(lastHashIndex + 1)
-    const potentialTag = query.substring(lastHashIndex)
-    if (!/\s/.test(potentialTag)) {
-      searchTagSuggestions.value = allTags.value.filter(tag =>
-        tag.toLowerCase().startsWith(`#${term.toLowerCase()}`))
-      showSearchTagSuggestions.value = searchTagSuggestions.value.length > 0
-      highlightedSearchIndex.value = 0
-    }
-    else {
-      showSearchTagSuggestions.value = false
-    }
-  }
-  else {
-    showSearchTagSuggestions.value = false
-  }
-
+watch(searchQuery, () => {
   debouncedSearch()
 })
 
@@ -416,32 +133,11 @@ const debouncedSaveNote = debounce(() => {
     saveNote({ showMessage: false })
 }, 12000)
 
-function handleGlobalClick(event: MouseEvent) {
-  const target = event.target as HTMLElement
-
-  if (searchInputRef.value && !searchInputRef.value.parentElement?.contains(target))
-    showSearchTagSuggestions.value = false
-
-  const editorContainer = textareaRef.value?.parentElement?.querySelector('.EasyMDEContainer')
-  if (
-    editorContainer && !editorContainer.contains(target)
-    && editorSuggestionsRef.value && !editorSuggestionsRef.value.contains(target)
-  )
-    showEditorTagSuggestions.value = false
-}
-
 onUnmounted(() => {
-  destroyEasyMDE()
   debouncedSaveNote.cancel()
-  handleScroll.cancel()
-  if (notesListRef.value)
-    notesListRef.value.removeEventListener('scroll', handleScroll)
-
-  document.removeEventListener('click', handleGlobalClick)
 })
 
 onMounted(async () => {
-  document.addEventListener('click', handleGlobalClick)
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     content.value = savedContent
@@ -483,31 +179,12 @@ onMounted(async () => {
   isReady.value = true
 })
 
-// 新的逻辑 (先显示编辑器，再异步加载数据)
-watch(user, (currentUser) => {
-  if (currentUser && !easymde.value) {
+watch(user, (currentUser, oldUser) => {
+  // 当用户从“未登录”变为“已登录”时，加载笔记数据
+  if (currentUser && !oldUser) {
     nextTick(async () => {
-      // 1. 立即初始化编辑器，不再等待
-      initializeEasyMDE(content.value)
-      if (easymde.value) {
-        const cm = easymde.value.codemirror
-        cm.focus()
-        if (content.value) {
-          const doc = cm.getDoc()
-          const lastLine = doc.lastLine()
-          const lineContent = doc.getLine(lastLine)
-          doc.setCursor(lastLine, lineContent.length)
-        }
-        else {
-          cm.setCursor(0, 0)
-        }
-      }
-
-      // 2. 然后，在后台异步获取数据，这不会再阻塞编辑器的显示
-      if (user.value) {
-        await fetchNotes()
-        await fetchAllTags()
-      }
+      await fetchNotes()
+      await fetchAllTags()
     })
   }
 }, { immediate: true })
@@ -517,16 +194,6 @@ const lastLoginTime = computed(() => {
     return new Date(user.value.last_sign_in_at).toLocaleString()
   return 'N/A'
 })
-
-const pageTitle = computed(() => {
-  if (mode.value === 'login')
-    return t('auth.login')
-  if (mode.value === 'register')
-    return t('auth.register')
-  return t('auth.forgot_password')
-})
-
-const charCount = computed(() => content.value.length)
 
 watchEffect(async () => {
   if (user.value) {
@@ -722,6 +389,8 @@ function updateNoteInList(updatedNote: any) {
   nextTick()
 }
 async function fetchNotes() {
+  if (!user.value)
+    return
   try {
     isLoadingNotes.value = true
     const from = (currentPage.value - 1) * notesPerPage
@@ -787,10 +456,9 @@ async function toggleExpand(noteId: string) {
 }
 async function saveNote({ showMessage = false } = {}) {
   if (!content.value || !user.value?.id) {
-    if (!user.value?.id) {
+    if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-      setMode('login')
-    }
+
     return null
   }
   if (content.value.length > maxNoteLength) {
@@ -880,23 +548,18 @@ function resetEditorAndState() {
   lastSavedTime.value = ''
   localStorage.removeItem(LOCAL_NOTE_ID_KEY)
   localStorage.removeItem(LOCAL_CONTENT_KEY)
-  destroyEasyMDE()
-  nextTick(() => {
-    initializeEasyMDE('')
-  })
+  // Editor destruction is now handled in the child component
 }
 
 async function handleSubmit() {
   const timeout = setTimeout(() => {
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
-    setMode('login')
   }, 30000)
   try {
     const { data, error } = await supabase.auth.getSession()
     if (error || !data.session?.user) {
       messageHook.error(t('auth.session_expired'))
-      setMode('login')
       clearTimeout(timeout)
       return
     }
@@ -907,8 +570,14 @@ async function handleSubmit() {
     }
     loading.value = true
     const saved = await saveNote({ showMessage: true })
-    if (saved)
+    if (saved && !editingNote.value) { // Only reset if it was a new note
       resetEditorAndState()
+    }
+    else if (saved && editingNote.value) { // If updating, clear editing state
+      editingNote.value = null
+      lastSavedId.value = null
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+    }
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
@@ -922,22 +591,10 @@ async function handleSubmit() {
 function handleEdit(note: any) {
   if (!note?.id)
     return
-  destroyEasyMDE()
   content.value = note.content
   editingNote.value = { ...note }
   lastSavedId.value = note.id
   localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
-  nextTick(() => {
-    initializeEasyMDE(note.content)
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      cm.focus()
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
-      const lineContent = doc.getLine(lastLine)
-      doc.setCursor(lastLine, lineContent.length)
-    }
-  })
 }
 
 async function triggerDeleteConfirmation(id: string) {
@@ -998,107 +655,42 @@ async function handleLogout() {
   await router.push('/')
   loading.value = false
 }
-function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
-  mode.value = newMode
-  message.value = ''
-  password.value = ''
-  passwordConfirm.value = ''
-  inviteCode.value = ''
-  resetEmailSent.value = false
-}
-async function handleSubmitAuth() {
-  if (mode.value === 'register') {
-    if (password.value !== passwordConfirm.value) {
-      message.value = t('auth.messages.passwords_do_not_match')
-      return
-    }
-    const { data, error } = await supabase
-      .from('invite_codes')
-      .select('code')
-      .eq('code', inviteCode.value)
-      .single()
-    if (error || !data) {
-      message.value = t('auth.messages.invalid_invite_code')
-      return
-    }
-  }
-  loading.value = true
-  message.value = ''
-  try {
-    if (mode.value === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
-      if (error)
-        throw error
-      await authStore.refreshUser()
-      await autoLoadData({ $message: messageHook, t })
-      await router.replace('/')
-    }
-    else if (mode.value === 'register') {
-      const { error } = await supabase.auth.signUp({ email: email.value, password: password.value })
-      if (error)
-        throw error
-      message.value = t('auth.messages.check_email_for_verification')
-    }
-    else {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.value, { redirectTo: `${window.location.origin}/update-password` })
-      if (error)
-        throw error
-      message.value = t('auth.messages.reset_success')
-      resetEmailSent.value = true
-    }
-  }
-  catch (err: any) {
-    message.value = err.message || t('auth.messages.reset_failed')
-  }
-  finally {
-    loading.value = false
-  }
-}
-function goHomeAndRefresh() {
-  router.push('/').then(() => window.location.reload())
-}
 
-async function handleNoteContentClick(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  const listItem = target.closest('li.task-list-item')
-  if (!listItem)
-    return
-  const noteCard = listItem.closest('[data-note-id]') as HTMLElement
-  const noteId = noteCard?.dataset.noteId
-  if (!noteId)
-    return
+// 新的 handleNoteContentClick 函数，处理子组件发出的事件
+async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
+
   const originalContent = noteToUpdate.content
   try {
-    const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
-    const itemIndex = allListItems.indexOf(listItem)
-    if (itemIndex === -1)
-      return
     const lines = originalContent.split('\n')
     const taskLineIndexes: number[] = []
     lines.forEach((line, index) => {
       if (line.trim().match(/^-\s\[( |x)\]/))
         taskLineIndexes.push(index)
     })
+
     if (itemIndex < taskLineIndexes.length) {
       const lineIndexToChange = taskLineIndexes[itemIndex]
       const lineContent = lines[lineIndexToChange]
-      if (lineContent.includes('[ ]'))
-        lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
-      else if (lineContent.includes('[x]'))
-        lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
+      lines[lineIndexToChange] = lineContent.includes('[ ]')
+        ? lineContent.replace('[ ]', '[x]')
+        : lineContent.replace('[x]', '[ ]')
+
       const newContent = lines.join('\n')
+      // 直接在 notes ref 中更新，提供即时UI反馈
       noteToUpdate.content = newContent
+      // 异步更新到数据库
       await supabase
         .from('notes')
         .update({ content: newContent, updated_at: new Date().toISOString() })
         .eq('id', noteId)
-        .eq('user_id', user.value.id)
+        .eq('user_id', user.value!.id)
     }
   }
   catch (err: any) {
+    // 如果更新失败，恢复原始内容
     noteToUpdate.content = originalContent
     messageHook.error(`更新失败: ${err.message}`)
   }
@@ -1114,69 +706,6 @@ async function handleCopy(noteContent: string) {
   catch (err) {
     messageHook.error(t('notes.copy_error'))
   }
-}
-
-function handleDropdownSelect(key: string, note: any) {
-  switch (key) {
-    case 'edit':
-      handleEdit(note)
-      break
-    case 'copy':
-      handleCopy(note.content)
-      break
-    case 'pin':
-      handlePinToggle(note)
-      break
-    case 'delete':
-      triggerDeleteConfirmation(note.id)
-      break
-  }
-}
-
-function getDropdownOptions(note: any) {
-  const charCount = note.content ? note.content.length : 0
-  const dateObj = new Date(note.created_at)
-  const creationTime = !note.created_at || Number.isNaN(dateObj.getTime())
-    ? '未知'
-    : dateObj.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  return [
-    {
-      label: t('notes.edit'),
-      key: 'edit',
-    },
-    {
-      label: t('notes.copy'),
-      key: 'copy',
-    },
-    {
-      label: note.is_pinned ? t('notes.unpin') : t('notes.pin'),
-      key: 'pin',
-    },
-    {
-      label: t('notes.delete'),
-      key: 'delete',
-    },
-    {
-      key: 'divider-1',
-      type: 'divider',
-    },
-    {
-      label: t('notes.word_count', { count: charCount }),
-      key: 'char_count',
-      disabled: true,
-    },
-    {
-      label: t('notes.created_at', { time: creationTime }),
-      key: 'creation_time',
-      disabled: true,
-    },
-  ]
 }
 </script>
 
@@ -1208,349 +737,47 @@ function getDropdownOptions(note: any) {
         </button>
       </div>
       <div class="notes-container">
-        <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
-          <span class="info-label">{{ $t('notes.notes') }}</span>
-          <textarea
-            ref="textareaRef"
-            v-model="content"
-            :placeholder="$t('notes.content_placeholder')"
-            class="mb-2 w-full border rounded p-2"
-            required
-            :disabled="loading"
-            :maxlength="maxNoteLength"
-            autocomplete="off"
+        <NoteEditor
+          v-model="content"
+          :editing-note="editingNote"
+          :is-loading="loading"
+          :all-tags="allTags"
+          :max-note-length="maxNoteLength"
+          :last-saved-time="lastSavedTime"
+          @submit="handleSubmit"
+        />
+
+        <div v-if="showNotesList">
+          <NoteActions
+            v-model="searchQuery"
+            :is-exporting="isExporting"
+            :all-tags="allTags"
+            @export-all="handleBatchExport"
           />
-          <div class="status-bar">
-            <span class="char-counter">
-              {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-            </span>
-            <span v-if="lastSavedTime" class="char-counter ml-4">
-              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-            </span>
-          </div>
-          <div class="emoji-bar">
-            <button
-              type="submit"
-              class="form-button flex-2"
-              :disabled="loading || !content"
-            >
-              💾 {{ loading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-            </button>
-          </div>
-        </form>
-        <div v-if="showEditorTagSuggestions && editorTagSuggestions.length" ref="editorSuggestionsRef" class="tag-suggestions editor-suggestions" :style="editorSuggestionsStyle">
-          <ul>
-            <li
-              v-for="(tag, index) in editorTagSuggestions"
-              :key="tag"
-              :class="{ highlighted: index === highlightedEditorIndex }"
-              @mousedown.prevent="selectEditorTag(tag)"
-            >
-              {{ tag }}
-            </li>
-          </ul>
-        </div>
-        <p v-if="message" class="message mt-2 text-center text-red-500">{{ message }}</p>
-        <div v-if="showNotesList" ref="notesListRef" class="notes-list h-80 overflow-auto" @click="handleNoteContentClick">
-          <div class="search-export-bar">
-            <div class="search-input-wrapper">
-              <input
-                ref="searchInputRef"
-                v-model="searchQuery"
-                type="text"
-                :placeholder="$t('notes.search_placeholder')"
-                class="search-input"
-                autocomplete="off"
-                @keydown.down.prevent="moveSearchSelection(1)"
-                @keydown.up.prevent="moveSearchSelection(-1)"
-                @keydown.enter.prevent="selectSearchTag(searchTagSuggestions[highlightedSearchIndex])"
-                @keydown.esc="showSearchTagSuggestions = false"
-              >
-              <button
-                v-if="searchQuery"
-                class="clear-search-button"
-                @click="searchQuery = ''"
-              >
-                ×
-              </button>
-              <div v-if="showSearchTagSuggestions && searchTagSuggestions.length" class="tag-suggestions search-suggestions">
-                <ul>
-                  <li
-                    v-for="(tag, index) in searchTagSuggestions"
-                    :key="tag"
-                    :class="{ highlighted: index === highlightedSearchIndex }"
-                    @click="selectSearchTag(tag)"
-                  >
-                    {{ tag }}
-                  </li>
-                </ul>
-              </div>
-            </div>
-            <button
-              class="export-all-button"
-              :disabled="isExporting"
-              @click="handleBatchExport"
-            >
-              {{ isExporting ? $t('notes.exporting') : $t('notes.export_all') }}
-            </button>
-          </div>
-          <div v-if="isLoadingNotes && notes.length === 0" class="py-4 text-center text-gray-500">
-            {{ $t('notes.loading') }}
-          </div>
-          <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
-            {{ $t('notes.no_notes') }}
-          </div>
-          <div v-else class="space-y-6">
-            <div
-              v-for="note in notes"
-              :key="note.id"
-              :data-note-id="note.id"
-              class="mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4"
-            >
-              <div class="note-card-top-bar">
-                <div class="note-meta-left">
-                  <p class="note-date">
-                    {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
-                  </p>
-
-                  <span v-if="note.is_pinned" class="pinned-indicator">
-                    {{ $t('notes.pin') }}
-                  </span>
-                </div>
-
-                <n-dropdown
-                  trigger="click"
-                  placement="bottom-end"
-                  :options="getDropdownOptions(note)"
-                  @select="(key) => handleDropdownSelect(key, note)"
-                >
-                  <div class="kebab-menu">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
-                  </div>
-                </n-dropdown>
-              </div>
-
-              <div class="flex-1 min-w-0">
-                <div v-if="expandedNote === note.id">
-                  <div
-                    class="prose dark:prose-invert max-w-none"
-                    style="font-size: 17px !important; line-height: 1.6;"
-                    v-html="renderMarkdown(note.content)"
-                  />
-                  <div class="toggle-button-row" @click.stop="toggleExpand(note.id)">
-                    <button class="toggle-button collapse-button">
-                      {{ $t('notes.collapse') }}
-                    </button>
-                  </div>
-                </div>
-                <div v-else>
-                  <div
-                    :ref="(el) => checkIfNoteOverflows(el as Element, note.id)"
-                    class="prose dark:prose-invert line-clamp-3 max-w-none"
-                    style="font-size: 17px !important; line-height: 1.6;"
-                    v-html="renderMarkdown(note.content)"
-                  />
-                  <div
-                    v-if="noteOverflowStatus[note.id]"
-                    class="toggle-button-row"
-                    @click.stop="toggleExpand(note.id)"
-                  >
-                    <button class="toggle-button">
-                      {{ $t('notes.expand') }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-if="isLoadingNotes && notes.length > 0" class="py-4 text-center text-gray-500">
-              {{ $t('notes.loading') }}
-            </div>
-          </div>
+          <NoteList
+            :notes="notes"
+            :is-loading="isLoadingNotes"
+            :expanded-note-id="expandedNote"
+            :has-more="hasMoreNotes"
+            @load-more="nextPage"
+            @toggle-expand="toggleExpand"
+            @edit="handleEdit"
+            @copy="handleCopy"
+            @pin="handlePinToggle"
+            @delete="triggerDeleteConfirmation"
+            @task-toggle="handleNoteContentClick"
+          />
         </div>
       </div>
     </div>
     <div v-else>
-      <h1>{{ pageTitle }}</h1>
-      <form class="auth-form" @submit.prevent="handleSubmitAuth">
-        <label>
-          {{ mode === 'forgotPassword' ? $t('auth.messages.enter_email') : $t('auth.email') }}
-          <input v-model="email" type="email" :placeholder="mode === 'forgotPassword' ? $t('auth.messages.enter_registered_email') : $t('auth.email_placeholder')" :disabled="mode === 'forgotPassword' && resetEmailSent" required>
-        </label>
-        <label v-if="mode !== 'forgotPassword'">
-          {{ $t('auth.password') }}
-          <input
-            v-model="password"
-            type="password"
-            :placeholder="mode === 'register' ? $t('auth.password_placeholder') : $t('auth.login_password_placeholder')"
-            required
-          >
-        </label>
-        <label v-if="mode === 'register'">
-          {{ $t('auth.confirm_password') }}
-          <input
-            v-model="passwordConfirm"
-            type="password"
-            :placeholder="$t('auth.password_placeholder')"
-            required
-          >
-        </label>
-        <label v-if="mode === 'register'">
-          {{ $t('auth.invite_code') }}
-          <input v-model="inviteCode" type="text" :placeholder="$t('auth.invite_code_placeholder')" required>
-        </label>
-        <template v-if="mode === 'forgotPassword' && resetEmailSent">
-          <button type="button" @click="setMode('login')">
-            {{ $t('auth.return') }}
-          </button>
-        </template>
-        <template v-else>
-          <button type="submit" :disabled="loading">
-            <span v-if="loading">{{ $t('auth.loading') }}</span>
-            <span v-else-if="mode === 'login'">{{ t('auth.login') }}</span>
-            <span v-else-if="mode === 'register'">{{ t('auth.register') }}</span>
-            <span v-else>{{ t('auth.confirm') }}</span>
-          </button>
-        </template>
-        <p v-if="message" class="message">{{ message }}</p>
-        <div v-if="mode === 'login'" class="toggle-row">
-          <div class="toggle-left">
-            <span>{{ $t('auth.prompt_to_register') }}</span>
-            <a href="#" @click.prevent="setMode('register')">{{ $t('auth.register') }}</a>
-          </div>
-          <div class="toggle-right">
-            <a href="#" @click.prevent="setMode('forgotPassword')">{{ $t('auth.forgot_password') }}</a>
-          </div>
-        </div>
-        <p v-else class="toggle">
-          <span>{{ $t('auth.prompt_to_login') }}</span>
-          <a href="#" @click.prevent="setMode('login')">{{ t('auth.login') }}</a>
-        </p>
-        <p class="text-center leading-relaxed text-gray-500" style="font-size: 13px;">
-          {{ t('auth.Log_in_again_prefix') }}
-          <a href="/" class="cursor-pointer text-green-600 underline" @click.prevent="goHomeAndRefresh">
-            {{ t('auth.Log_in_again_link') }}
-          </a>
-          {{ t('auth.Log_in_again_suffix') }}
-        </p>
-      </form>
+      <Authentication />
     </div>
   </div>
 </template>
 
 <style scoped>
-.search-export-bar {
-  /* --- 原有样式 --- */
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-
-  /* --- 【新增】实现粘性定位 --- */
-  position: -webkit-sticky; /* 兼容 Safari 浏览器 */
-  position: sticky;
-  top: 0; /* 粘在滚动容器的顶部 */
-  z-index: 20; /* 确保它在笔记内容之上，层级更高 */
-
-  /* --- 【新增】为粘性条添加背景色和内边距，优化视觉效果 --- */
-  background-color: #f3f4f6; /* 对应 .bg-gray-100 的颜色 */
-  padding-top: 1rem; /* 增加一点顶部内边距，让它看起来不那么拥挤 */
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.5rem; /* 微调一下与下方内容的距离 */
-}
-
-/* 【新增】暗黑模式下的背景色 */
-.dark .search-export-bar {
-  background-color: #374151; /* 对应暗黑模式的背景色 */
-}
-
-/* 【新增】搜索框容器和清除按钮的样式 */
-.search-input-wrapper {
-  position: relative; /* 关键：作为内部绝对定位按钮的参考点 */
-  flex: 4; /* 保持原有的宽度比例 */
-  display: flex;
-  align-items: center;
-}
-
-.clear-search-button {
-  position: absolute; /* 关键：让按钮脱离文档流，浮动起来 */
-  right: 0.5rem;    /* 定位在容器的右侧 */
-  top: 50%;         /* 垂直居中 */
-  transform: translateY(-50%); /* 精准垂直居中 */
-
-  /* 按钮本身的美化样式 */
-  background: transparent;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 20px;   /* 让 "×" 字符看起来更清晰 */
-  line-height: 1;
-  padding: 0;
-  margin: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dark .clear-search-button {
-  color: #aaa;
-}
-
-.clear-search-button:hover {
-  color: #333;
-}
-
-.dark .clear-search-button:hover {
-  color: #fff;
-}
-
-.search-input {
-  flex: 4;
-  padding: 0.5rem 2rem 0.5rem 0.5rem; /* 上 右 下 左，保留了右侧空间 */
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background-color: #fff;
-  color: #111;
-  min-width: 0;
-}
-
-.dark .search-input {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-
-.search-input:focus {
-  border-color: #00b386;
-  outline: none;
-}
-
-.export-all-button {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  margin: 0 !important;
-  font-size: 12px !important;
-  border-radius: 6px;
-  border: 1px solid #bbf7d0 !important;
-  cursor: pointer;
-  background-color: #f0fdf4 !important;
-  color: #16a34a !important;
-  white-space: nowrap;
-  text-align: center;
-  height: 23px;
-}
-
-.dark .export-all-button {
-  border-color: #22c55e !important;
-  background-color: #166534 !important;
-  color: #dcfce7 !important;
-}
-
-.export-all-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* 认证表单相关的样式 (.auth-form, .toggle, .toggle-row) 已被移除 */
 
 .auth-container {
   max-width: 480px;
@@ -1570,100 +797,15 @@ function getDropdownOptions(note: any) {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-h1 {
-  text-align: center;
-  margin-bottom: 2rem;
-  font-size: 28px;
-  font-weight: bold;
-  color: #111;
-}
-.dark h1 {
-  color: #ffffff;
-}
-
-.auth-form label {
-  display: block;
-  text-align: left;
-  margin-bottom: 1.2rem;
-  color: #555;
-}
-.dark .auth-form label {
-  color: #adadad;
-}
-
-.auth-form input {
-  width: 100%;
-  padding: 0.8rem;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background-color: #fff;
-  color: #111;
-}
-
-.auth-form input:disabled {
-  background-color: #f0f0f0;
-  cursor: not-allowed;
-}
-
-.dark .auth-form input {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-
-.dark .auth-form input:disabled {
-  background-color: #3a3a3c;
-  opacity: 0.7;
-}
-
-.dark .auth-form input:focus {
-  border-color: #00b386;
-  outline: none;
-}
-
-button {
-  width: 100%;
-  padding: 0.8rem;
-  background-color: #00b386;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 15px;
-  margin-top: 1rem;
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message {
-  margin-top: 1rem;
-  text-align: center;
-  font-weight: bold;
-}
-
-.toggle {
-  text-align: center;
-  margin-top: 1rem;
-  color: #666;
-}
-.dark .toggle {
-  color: #888;
-}
-.toggle a {
-  margin-left: 0.4rem;
-  color: #00b386;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.dark .toggle a {
-  color: #2dd4bf;
-}
-
 .account-title {
   font-size: 18px;
+  text-align: center;
+  margin-bottom: 2rem;
+  font-weight: bold;
+}
+
+.dark .account-title {
+    color: #ffffff;
 }
 
 .account-info {
@@ -1687,16 +829,6 @@ button:disabled {
   color: #adadad;
 }
 
-.notes-container {
-  text-align: left; /* 关键修正：确保编辑器及其容器内的所有内容都默认左对齐，解决布局冲突 */
-}
-
-.notes-container .info-label {
-  display: block; /* 必须设置为块级元素，text-align 才能生效 */
-  text-align: center; /* 将标题居中 */
-  font-size: 18px;
-  margin-bottom: 0.5rem; /* 为标题下方增加一些间距 */
-}
 .info-value {
   color: #111;
   word-break: break-all;
@@ -1710,6 +842,21 @@ button:disabled {
   grid-template-columns: 1fr auto;
   gap: 1rem;
   margin-top: 2rem;
+}
+
+/* button 的通用样式保留，因为子组件可能也需要 */
+button {
+  padding: 0.8rem;
+  background-color: #00b386;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .button--secondary {
@@ -1738,472 +885,14 @@ button:disabled {
   background-color: #48484a;
 }
 
-.notes-container textarea {
-  visibility: hidden; /* 优化：在JS初始化前，隐藏原始的textarea，防止闪烁 */
-  width: 100%;
-  padding: 0.5rem;
-  margin-bottom: 0.2rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background-color: #fff;
-  color: #111;
-  overflow-y: auto;
-  font-size: 17px;
-  line-height: 1.5;
-}
-.notes-container textarea:focus {
-  border-color: #00b386;
-  outline: none;
-}
-.dark .notes-container textarea {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-  font-size: 17px;
-  line-height: 1.5;
-}
-.notes-container .bg-gray-100 {
-  background-color: #f3f4f6;
-}
-.dark .notes-container .bg-gray-100 {
-  background-color: #374151;
-}
-.notes-container .text-gray-500 {
-  color: #6b7280;
-}
-.dark .notes-container .text-gray-500 {
-  color: #9ca3af;
-}
-.notes-container .text-gray-700 {
-  color: #374151;
-}
-.dark .notes-container .text-gray-700 {
-  color: #d1d5db;
-}
-
-.status-bar {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin: 0;
-}
-
-.emoji-bar {
-  margin-top: 0.2rem;
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-form .emoji-bar .form-button {
-  flex: 1;
-  padding: 0.5rem;
-  font-size: 14px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  background: #d3d3d3;
-  color: #111;
-}
-.dark form .emoji-bar .form-button {
-  background-color: #404040;
-  color: #fff;
-  border-color: #555;
-}
-
-form .emoji-bar .form-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.notes-list {
-  margin-top: 1rem;
-  height: 500px;
-  overflow-y: auto;
-  position: relative;
-}
-
-.notes-list .flex-1 {
+.notes-container {
   text-align: left;
 }
 
-.notes-container button {
-  width: auto;
-  padding: 0.8rem;
-  background-color: inherit;
-  color: inherit;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 15px;
-}
-.char-counter {
-  font-size: 12px;
-  color: #999;
-}
-.dark .char-counter {
-  color: #aaa;
-}
-
-.notes-list .form-button {
-  padding: 0.5rem 1rem;
-  font-size: 14px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  background: #d3d3d3;
-  color: #111;
-}
-.dark .notes-list .form-button {
-  background-color: #404040;
-  color: #fff;
-  border-color: #555;
-}
-.notes-list .form-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-:deep(.prose > :first-child) {
-  margin-top: 0 !important;
-}
-
-/* --- New Styles for Tag Suggestions --- */
-.tag-suggestions {
-  position: absolute;
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 150px;
-}
-
-.dark .tag-suggestions {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-
-.tag-suggestions ul {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-}
-
-.tag-suggestions li {
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-.tag-suggestions li:hover,
-.tag-suggestions li.highlighted {
-  background-color: #f0f0f0;
-}
-
-.dark .tag-suggestions li:hover,
-.dark .tag-suggestions li.highlighted {
-  background-color: #404040;
-}
-
-.search-suggestions {
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
-}
-
-.editor-suggestions {
-  position: absolute; /* 改回 absolute，使其跟随页面滚动 */
-}
-</style>
-
-<style>
-body,
-html {
-  background-color: #f8f9fa;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-  background-size: 25px 25px;
-  transition: background-color 0.3s ease;
-}
-.dark body,
-.dark html {
-  background-color: #1a1a1a;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-  background-size: 25px 25px;
-}
-
-.toggle-row {
-  display: flex;
-  justify-content: space-between;
+/* 全局 message 样式保留 */
+.message {
   margin-top: 1rem;
-  font-size: 14px;
-  color: #666;
-}
-.toggle-left,
-.toggle-right {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
-.toggle-left a,
-.toggle-right a {
-  color: #00b386;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.dark .toggle-row {
-  color: #aaa;
-}
-.dark .toggle-left a,
-.dark .toggle-right a {
-  color: #2dd4bf;
-}
-
-:deep(.dialog-date-picker) {
-  margin-top: 12px;
-}
-
-/* 【新增】用于将文本截断为3行的工具类 */
-.line-clamp-3 {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-
-/* 新增：可点击的“行”的样式 */
-.toggle-button-row {
-  width: 100%;
-  cursor: pointer;
-  padding: 4px 0;
-  margin-top: 8px;
-}
-
-/* 修改：“按钮”现在只作为纯文本显示，不处理点击 */
-.toggle-button {
-  /* 移除所有交互和背景 */
-  pointer-events: none;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  width: auto;
-  display: block;
-  text-align: left;
-
-  /* 保留您原有的字体和颜色样式 */
-  color: #007bff !important;
-  font-size: 12px;
-  font-weight: normal;
-  font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
-}
-
-.dark .toggle-button {
-  color: #38bdf8 !important;
-}
-
-.toggle-button:hover {
-  text-decoration: underline;
-}
-
-/* 【新增】为笔记卡片顶部栏、日期和三点菜单添加样式 */
-.note-card-top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-  height: 24px;
-}
-
-.note-date {
-  font-size: 11px;
-  color: #888;
-  margin: 0;
-  padding: 0;
-}
-
-.dark .note-date {
-  color: #aaa;
-}
-
-.kebab-menu {
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.kebab-menu:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.dark .kebab-menu:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* 【新增】用于包裹日期和置顶标识的左侧容器 */
-.note-meta-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem; /* 在日期和“置顶”之间增加一点间距 */
-}
-
-/* 【新增】“置顶”标识的标签样式 */
-.pinned-indicator {
-  font-size: 10px;
+  text-align: center;
   font-weight: bold;
-  color: #c2410c; /* 琥珀色文字 */
-  background-color: #ffedd5; /* 淡琥珀色背景 */
-  padding: 2px 6px;
-  border-radius: 9999px; /* 圆角胶囊形状 */
-  line-height: 1;
-}
-
-.dark .pinned-indicator {
-  color: #fde68a; /* 暗黑模式下的亮琥珀色文字 */
-  background-color: #78350f; /* 暗黑模式下的深琥珀色背景 */
-}
-
-/* 【最终修正】强制重置并美化Prose内部的复选框样式 */
-
-:deep(.prose .task-list-item input[type="checkbox"]) {
-  appearance: auto;
-  cursor: pointer;
-}
-
-:deep(.prose .task-list-item input[type="checkbox"]:checked) {
-  accent-color: black;
-}
-
-:deep(.dark .prose .task-list-item input[type="checkbox"]:checked) {
-  accent-color: #4ade80;
-}
-
-/* 【专家新增】EasyMDE暗黑模式适配 */
-:deep(.dark .editor-toolbar) {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-:deep(.dark .CodeMirror) {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
-}
-:deep(.dark .editor-toolbar a) {
-  color: #e0e0e0 !important;
-}
-:deep(.dark .editor-toolbar a.active) {
-  background: #404040;
-}
-
-/* --- 编辑器边框样式 --- */
-.CodeMirror {
-  /* 高度现在完全由 JavaScript 控制 */
-  border-left: 1px solid #ccc;
-  border-right: 1px solid #ccc;
-  border-bottom: 1px solid #ccc;
-  border-top: none; /* 移除与上方工具栏重叠的顶边框 */
-  border-radius: 0 0 6px 6px; /* 只让左下角和右下角变圆 */
-
-  /* 保留字体和行高设置 */
-  font-size: 16px !important;
-  line-height: 1.6 !important;
-}
-
-/* --- EasyMDE 暗黑模式适配 --- */
-/* 工具栏的暗黑模式 */
-.dark .editor-toolbar {
-  background-color: #2c2c2e;
-  border-color: #48484a !important; /* 增加!important确保覆盖 */
-}
-
-/* 编辑器输入框的暗黑模式 */
-.dark .CodeMirror {
-  background-color: #2c2c2e;
-  border-color: #48484a; /* 覆盖所有边框颜色 */
-  color: #ffffff;
-}
-
-/* 工具栏按钮的暗黑模式 */
-.dark .editor-toolbar a {
-  color: #e0e0e0 !important;
-}
-
-/* 工具栏激活按钮的暗黑模式 */
-.dark .editor-toolbar a.active {
-  background: #404040;
-}
-
-/* --- 缩小工具栏高度与图标尺寸 (高优先级版本) --- */
-.auth-container .EasyMDEContainer .editor-toolbar {
-  padding: 1px 3px !important;
-  min-height: 0 !important;
-  border: 1px solid #ccc;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-}
-
-/* --- 统一设置所有按钮（无论是a标签还是button标签）的尺寸和内边距 --- */
-.auth-container .EasyMDEContainer .editor-toolbar a,
-.auth-container .EasyMDEContainer .editor-toolbar button {
-  /* 关键修正：分别设置左右内边距，确保规则生效 */
-  padding-left: 3px !important;   /* 您可以在这里统一调整左边距 */
-  padding-right: 0px !important;  /* 您可以在这里统一调整右边距 */
-  padding-top: 1px !important;
-  padding-bottom: 1px !important;
-
-  line-height: 1 !important;
-  height: auto !important;
-  min-height: 0 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-}
-
-/* --- 统一设置所有按钮内的图标字体大小 --- */
-/* 这里我们同时选择 a 标签和 button 标签内部的 i 标签，确保覆盖所有情况 */
-.auth-container .EasyMDEContainer .editor-toolbar a i,
-.auth-container .EasyMDEContainer .editor-toolbar button i {
-  font-size: 15px !important;     /* 您期望的图标大小 */
-  vertical-align: middle;       /* 确保图标垂直居中 */
-}
-
-/* --- 调整分隔符样式 --- */
-.auth-container .EasyMDEContainer .editor-toolbar i.separator {
-  /* 关键修正：确保分隔符左右外边距相等，实现对称 */
-  margin: 1px 4px !important;
-  border-width: 0 1px 0 0 !important;
-  height: 8px !important;
-}
-
-.dark .auth-container .EasyMDEContainer .editor-toolbar {
-  border-color: #48484a;
-}
-
-/* --- 自定义标签样式 --- */
-.custom-tag {
-  background-color: #eef2ff; /* 标签背景色 */
-  color: #4338ca;            /* 标签文字颜色 */
-  padding: 2px 8px;           /* 内边距 */
-  border-radius: 9999px;      /* 圆角，使其成为胶囊形状 */
-  font-size: 0.875em;         /* 字体大小稍小一些 */
-  font-weight: 500;           /* 字体稍粗 */
-  margin: 0 2px;
-}
-
-/* 暗黑模式下的标签样式 */
-.dark .custom-tag {
-  background-color: #312e81;
-  color: #c7d2fe;
 }
 </style>
