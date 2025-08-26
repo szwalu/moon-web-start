@@ -684,7 +684,12 @@ function toggleSearchBar() {
 
       <Transition name="slide-fade">
         <div v-if="showSearchBar" class="search-bar-container">
-          <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
+          <div class="search-input-wrapper">
+            <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
+            <button v-if="searchQuery" class="clear-search-btn" @click="searchQuery = ''">
+              &times;
+            </button>
+          </div>
         </div>
       </Transition>
 
@@ -967,5 +972,44 @@ function toggleSearchBar() {
   opacity: 0;
   transform: translateY(-10px);
   max-height: 0;
+}
+/* 新增：搜索框包裹容器的样式 */
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* 修改：为 search-input 增加右边距，防止文字和按钮重叠 */
+.search-input {
+  /* ... 保留原有样式 ... */
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  /* 为清除按钮留出空间 */
+  padding-right: 2.5rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+}
+
+/* 新增：清除按钮的样式 */
+.clear-search-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  color: #999;
+  padding: 0 0.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dark .clear-search-btn {
+  color: #777;
 }
 </style>
