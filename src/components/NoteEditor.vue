@@ -130,7 +130,7 @@ onMounted(async () => {
   if (!props.editingNote && !props.modelValue) {
     const weatherString = await fetchWeather()
     if (weatherString) {
-      initialContent = `${weatherString}\n\n`
+      initialContent = `${weatherString}\n`
       // 2. 将生成的内容同步回父组件
       emit('update:modelValue', initialContent)
     }
