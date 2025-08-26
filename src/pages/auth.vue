@@ -849,7 +849,7 @@ function toggleSearchBar() {
 }
 
 .dropdown-item {
-  padding: 0.5rem 1rem;
+  padding: 1rem 1rem;
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s ease;
