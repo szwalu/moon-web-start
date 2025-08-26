@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
-
-// 新增 watch, onMounted, nextTick
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+
+// --- 修改点：换回使用 @ 别名 ---
+import { useSettingStore } from '@/stores/setting.ts'
 
 // --- Props and Emits ---
 const props = defineProps({
@@ -23,12 +24,15 @@ const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'task
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
 const noteOverflowStatus = ref(false)
-const contentRef = ref<Element | null>(null) // 新增一个引用来访问DOM元素
+const contentRef = ref<Element | null>(null)
 const md = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
 }).use(taskLists, { enabled: true, label: true })
+
+const settingsStore = useSettingStore()
+const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
 // --- Markdown 渲染 ---
 function renderMarkdown(content: string) {
@@ -45,7 +49,6 @@ function checkIfNoteOverflows() {
     noteOverflowStatus.value = el.scrollHeight > el.clientHeight
 }
 
-// 关键改动：当组件挂载和笔记内容更新时，都重新检查是否需要“展开”按钮
 onMounted(() => {
   nextTick(() => {
     checkIfNoteOverflows()
@@ -123,6 +126,7 @@ function handleNoteContentClick(event: MouseEvent) {
     class="note-card"
     :class="{ 'is-expanded': isExpanded }"
     @click="handleNoteContentClick"
+    @dblclick="emit('edit', note)"
   >
     <div class="note-card-top-bar">
       <div class="note-meta-left">
@@ -149,6 +153,7 @@ function handleNoteContentClick(event: MouseEvent) {
       <div v-if="isExpanded">
         <div
           class="prose dark:prose-invert max-w-none"
+          :class="fontSizeClass"
           v-html="renderMarkdown(note.content)"
         />
         <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
@@ -161,6 +166,7 @@ function handleNoteContentClick(event: MouseEvent) {
         <div
           ref="contentRef"
           class="prose dark:prose-invert line-clamp-3 max-w-none"
+          :class="fontSizeClass"
           v-html="renderMarkdown(note.content)"
         />
         <div
@@ -278,6 +284,10 @@ function handleNoteContentClick(event: MouseEvent) {
 }
 
 :deep(.prose) {
+  /*
+    注意：这里的 font-size 会被下面的动态类覆盖，
+    所以它的值是多少不重要了，但保留 line-height 是好的。
+  */
   font-size: 17px !important;
   line-height: 1.6;
 }
@@ -334,5 +344,19 @@ function handleNoteContentClick(event: MouseEvent) {
 .dark .is-expanded .toggle-button-row {
   background-color: #374151; /* 对应 .dark .bg-gray-700 */
   border-top-color: #4b5563;
+}
+
+/* 5. 新增：用于动态修改笔记字号的 CSS 规则 */
+/* 使用 :deep() 来确保样式能应用到 v-html 渲染出的 .prose 元素上 */
+:deep(.prose.font-size-small) {
+  font-size: 14px !important;
+}
+
+:deep(.prose.font-size-medium) {
+  font-size: 17px !important; /* 这是原始的默认大小 */
+}
+
+:deep(.prose.font-size-large) {
+  font-size: 20px !important;
 }
 </style>

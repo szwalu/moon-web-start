@@ -1,8 +1,22 @@
+import { reactive, ref, watch } from 'vue'
+import { defineStore } from 'pinia'
+import { useRoute } from 'vue-router'
 import * as settingData from '@/utils/settings'
 import type { Settings } from '@/types'
 import { deepClone } from '@/utils'
 
 export type SettingKey = keyof Settings
+
+// =================================================================
+// ===== 新增区域 START =====
+// =================================================================
+
+// 1. 为笔记的字号定义一个清晰的类型，方便在整个项目中使用
+export type NoteFontSize = 'small' | 'medium' | 'large'
+
+// =================================================================
+// ===== 新增区域 END =====
+// =================================================================
 
 export function loadSettings(): Settings | undefined {
   const settings = localStorage.getItem('settings')
@@ -57,6 +71,31 @@ export const useSettingStore = defineStore('setting', () => {
     localStorage.setItem('settings', JSON.stringify(toRaw(settings)))
   }, { deep: true })
 
+  // =================================================================
+  // ===== 新增区域 START =====
+  // =================================================================
+
+  // 2. 添加独立的 ref 来管理笔记字号状态
+  // 从 localStorage 读取已保存的字号，如果没有则默认为 'medium'
+  const savedFontSize = localStorage.getItem('note_font_size') as NoteFontSize | null
+  const noteFontSize = ref<NoteFontSize>(savedFontSize || 'medium')
+
+  // 3. 添加 watch 来监听字号变化，并将其持久化到 localStorage
+  // 这确保了用户的偏好在刷新页面后依然保留
+  watch(noteFontSize, (newSize) => {
+    localStorage.setItem('note_font_size', newSize)
+  })
+
+  // 4. 提供一个 action (函数) 来修改字号
+  function setNoteFontSize(newSize: NoteFontSize) {
+    if (['small', 'medium', 'large'].includes(newSize))
+      noteFontSize.value = newSize
+  }
+
+  // =================================================================
+  // ===== 新增区域 END =====
+  // =================================================================
+
   function getSettingItem(key: keyof typeof settingData) {
   // 关键：在这里加上安全检查！
     const settingGroup = settingData[key]
@@ -81,6 +120,10 @@ export const useSettingStore = defineStore('setting', () => {
   function restoreSettings() {
     Object.assign(settings, defaultSetting)
     isSideNavOpen.value = !isMobile // 使用已定义的 isMobile
+    // --- 👇 修改区域 👇 ---
+    // 5. 在重置所有设置时，也将笔记字号恢复为默认值 'medium'
+    noteFontSize.value = 'medium'
+    // --- 👆 修改结束 👆 ---
   }
 
   // ----------------- 拖拽 -----------------
@@ -115,5 +158,15 @@ export const useSettingStore = defineStore('setting', () => {
     refreshSiteContainer,
     isSideNavOpen,
     toggleSideNav,
+
+    // =================================================================
+    // ===== 新增区域 START =====
+    // =================================================================
+    // 6. 将新的状态和方法暴露出去，以便其他组件可以使用
+    noteFontSize,
+    setNoteFontSize,
+    // =================================================================
+    // ===== 新增区域 END =====
+    // =================================================================
   }
 })

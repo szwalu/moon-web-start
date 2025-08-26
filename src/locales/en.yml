@@ -12,7 +12,7 @@ time_units:
   hours: 'h ' # 例如 "5h "
   minutes: 'm ' # 例如 "30m "
   seconds: s # 末尾通常不加空格
-Alreadyrunning: WOabc Already running：
+Alreadyrunning: 'WOabc Already running:'
 button:
   resetData: Reset Data
   importData: Import Data
@@ -28,6 +28,11 @@ button:
   addCategory: Add Category
 settings:
   title: Settings
+  font_title: Font Settings
+  font_size_label: Font Size
+  font_size_small: Small
+  font_size_medium: Medium
+  font_size_large: Large
   theme:
     title: Theme
     earlySpring: Early Spring
@@ -99,8 +104,8 @@ messages:
   readFailed: Failed to read
   warnValidateId: The ID should be a combination of 5 to 20 digits, letters, or underscores
   Request: Request Exception
-  noResultsPre: No results found for‘
-  noResultsPost: ’on this site
+  noResultsPre: 'No results found for '
+  noResultsPost: ' on this site'
 iconLinkPlaceholder: Icon Link (optional)
 siteDescPlaceholder: Site Description (optional)
 inputIdPlaceholder: Input ID
@@ -114,7 +119,7 @@ navbar:
 footer:
   disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
   contactLink: Contact Us
-  friendlyLinksTitle: Links：
+  friendlyLinksTitle: 'Links:'
   linkBqju: Benquju
   linkWoabcNav: WOabc nav
   linkAbcSite: TQabc site
@@ -213,21 +218,21 @@ auth:
     reset_success: Password reset email sent. Please check your inbox.
     reset_failed: Failed to send
     enter_email: Please enter your email address.
-    enter_registered_email: Please enter your registered email：
+    enter_registered_email: 'Please enter your registered email:'
     operation_failed: '❌ Operation failed: '
     passwords_do_not_match: ❌ The passwords entered do not match!
     reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
     no_backup_yet: No backup yet
     invalid_invite_code: Invalid invite code
 autoSave:
-  restored: Welcome, {email}, your data has been restored ✨
+  restored: 'Welcome, {email}, your data has been restored ✨'
   parse_failed: Failed to parse cloud data
   load_failed: Error loading data
 index:
   add_to_home: Add website shortcut to home screen
   click_below: Tap the button below
   choose_add_to_screen: Then choose “Add to Home Screen”
-  quote_prefix: Quote：
+  quote_prefix: 'Quote:'
   weather_loading: Loading...
   weather_failed: Failed to load weather
 notes:
@@ -265,7 +270,7 @@ notes:
   export_confirm_content: This will export the notes that match your criteria. This operation may take some time.
   confirm_export: Confirm & Export
   export_preparing: Preparing the export file, please wait...
-  export_all_success: Successfully exported {count} notes!
+  export_all_success: 'Successfully exported {count} notes!'
   export_all_error: Error exporting notes
   no_notes_to_export: You have no notes to export.
   no_notes_to_export_in_range: No notes were found in the selected date range.
@@ -279,5 +284,7 @@ notes:
   copy: Copy Content
   copy_success: Note content copied to clipboard!
   copy_error: Failed to copy
-  word_count: Word count： {count}
-  created_at: Created at： {time}
+  word_count: 'Word count: {count}'
+  created_at: 'Created at: {time}'
+  anniversary_found: '📅 On this day, you wrote {count} notes'
+  anniversary_total: '{count} notes in total (Click to return)'

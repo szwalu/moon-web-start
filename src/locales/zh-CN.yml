@@ -28,6 +28,11 @@ button:
   addCategory: 添加分类
 settings:
   title: 设置
+  font_title: 字号设置
+  font_size_label: 字号大小
+  font_size_small: 小
+  font_size_medium: 中
+  font_size_large: 大
   theme:
     title: 主题
     earlySpring: 初春
@@ -289,3 +294,5 @@ notes:
   copy_error: 复制失败
   word_count: 字数： {count}
   created_at: 创建于： {time}
+  anniversary_found: 📅 那年今日，您记录了 {count} 条笔记
+  anniversary_total: 共 {count} 条笔记 (点击返回)

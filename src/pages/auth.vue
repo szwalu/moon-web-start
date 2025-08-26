@@ -11,6 +11,11 @@ import { useAuthStore } from '@/stores/auth'
 import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
+
+import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
+
+// 1. 引入新组件
+import SettingsModal from '@/components/SettingsModal.vue'
 import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
@@ -22,6 +27,7 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const showEditorModal = ref(false)
+const showSettingsModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const dropdownContainerRef = ref(null)
@@ -52,14 +58,18 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
-// [新增] 1. 定义缺失的 isRestoringFromCache 变量
 const isRestoringFromCache = ref(false)
+
+// --- 那年今日功能状态 ---
+const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
+const anniversaryNotes = ref<any[] | null>(null)
+const isAnniversaryViewActive = ref(false)
 
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-let authListener: any = null // 将 authListener 提升到 setup 作用域
+let authListener: any = null
 
 // --- 核心认证逻辑 ---
 onMounted(() => {
@@ -90,9 +100,8 @@ onMounted(() => {
       }
     },
   )
-  authListener = result.data.subscription // 赋值给外部变量
+  authListener = result.data.subscription
 
-  // 在加载本地内容前，设置一个标志位
   isRestoringFromCache.value = true
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
@@ -104,28 +113,31 @@ onMounted(() => {
 
   isReady.value = true
 
-  // 使用 nextTick 确保初始加载的 watch 触发完毕后再清除标志
   nextTick(() => {
     isRestoringFromCache.value = false
   })
 })
 
 const debouncedSaveNote = debounce(() => {
-  // [修正] 这里的 isRestoringFromCache.value 现在可以正常工作了
   if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
 }, 12000)
 
-// [新增] 2. 添加顶层的 onUnmounted 钩子用于清理
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
-  debouncedSaveNote.cancel() // 清理计时器
+  debouncedSaveNote.cancel()
 })
 
 // --- 笔记相关方法 ---
+
+// 2. 创建计算属性，用于动态决定列表显示内容
+const displayedNotes = computed(() => {
+  return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
+})
+
 function closeDropdownOnClickOutside(event: MouseEvent) {
   if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
     showDropdown.value = false
@@ -169,12 +181,20 @@ async function fetchAllTags() {
 }
 
 const debouncedSearch = debounce(async () => {
+  // 搜索时自动退出“那年今日”视图
+  if (isAnniversaryViewActive.value) {
+    anniversaryBannerRef.value?.setView(false)
+    isAnniversaryViewActive.value = false
+    anniversaryNotes.value = null
+  }
+
   if (!searchQuery.value.trim()) {
     currentPage.value = 1
     cachedPages.value.clear()
     await fetchNotes()
     return
   }
+
   isLoadingNotes.value = true
   try {
     const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).ilike('content', `%${searchQuery.value.trim()}%`).order('updated_at', { ascending: false }).limit(100)
@@ -211,7 +231,6 @@ watch(content, async (val, oldVal) => {
     console.error('Auto-save: No valid session in authStore')
     return
   }
-  // [修正] 这里的 isRestoringFromCache.value 现在可以正常工作了
   if (val && val !== oldVal && !isRestoringFromCache.value)
     debouncedSaveNote()
 })
@@ -661,10 +680,21 @@ function toggleSearchBar() {
   showDropdown.value = false
 }
 
-// [新增] 添加这个取消搜索的函数
 function handleCancelSearch() {
-  searchQuery.value = '' // 1. 清空搜索词
-  showSearchBar.value = false // 2. 隐藏搜索框
+  searchQuery.value = ''
+  showSearchBar.value = false
+}
+
+// 3. 添加处理Banner事件的方法
+function handleAnniversaryToggle(data: any[] | null) {
+  if (data) {
+    anniversaryNotes.value = data
+    isAnniversaryViewActive.value = true
+  }
+  else {
+    anniversaryNotes.value = null
+    isAnniversaryViewActive.value = false
+  }
 }
 </script>
 
@@ -672,32 +702,38 @@ function handleCancelSearch() {
   <div class="auth-container">
     <template v-if="user">
       <div class="page-header">
+        <div ref="dropdownContainerRef" class="dropdown-menu-container">
+          <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z"
+              />
+            </svg>
+          </button>
+          <Transition name="fade">
+            <div v-if="showDropdown" class="dropdown-menu">
+              <div class="dropdown-item" @click="toggleSearchBar">
+                {{ $t('notes.search_notes') }}
+              </div>
+              <div class="dropdown-item" @click="showSettingsModal = true; showDropdown = false">
+                {{ $t('settings.font_title') }}
+              </div>
+              <div class="dropdown-item" @click="handleBatchExport">
+                {{ $t('notes.export_all') }}
+              </div>
+              <div class="dropdown-item" @click="handleLogout">
+                {{ $t('auth.logout') }}
+              </div>
+            </div>
+          </Transition>
+        </div>
         <h1 class="page-title">
           {{ $t('notes.notes') }}
         </h1>
-        <div class="header-actions">
-          <button class="close-page-btn header-action-btn" @click="router.push('/')">
-            ×
-          </button>
-          <div ref="dropdownContainerRef" class="dropdown-menu-container">
-            <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M12 10c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0-6c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2m0 12c-1.1 0-2 .9-2 2s.9 2 2 2s2-.9 2-2s-.9-2-2-2" /></svg>
-            </button>
-            <Transition name="fade">
-              <div v-if="showDropdown" class="dropdown-menu">
-                <div class="dropdown-item" @click="toggleSearchBar">
-                  {{ $t('notes.search_notes') }}
-                </div>
-                <div class="dropdown-item" @click="handleBatchExport">
-                  {{ $t('notes.export_all') }}
-                </div>
-                <div class="dropdown-item" @click="handleLogout">
-                  {{ $t('auth.logout') }}
-                </div>
-              </div>
-            </Transition>
-          </div>
-        </div>
+        <button class="header-action-btn close-page-btn" @click="router.push('/')">
+          ×
+        </button>
       </div>
 
       <Transition name="slide-fade">
@@ -714,12 +750,14 @@ function handleCancelSearch() {
         </div>
       </Transition>
 
+      <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
+
       <div v-if="showNotesList">
         <NoteList
-          :notes="notes"
+          :notes="displayedNotes"
           :is-loading="isLoadingNotes"
           :expanded-note-id="expandedNote"
-          :has-more="hasMoreNotes"
+          :has-more="!isAnniversaryViewActive && hasMoreNotes"
           @load-more="nextPage"
           @toggle-expand="toggleExpand"
           @edit="handleEdit"
@@ -752,6 +790,7 @@ function handleCancelSearch() {
           />
         </div>
       </div>
+      <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
     </template>
     <template v-else>
       <Authentication />
@@ -781,11 +820,11 @@ function handleCancelSearch() {
 
 .page-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
   position: relative;
-  height: 28px;
+  height: 44px;
 }
 
 .page-title {
@@ -793,7 +832,7 @@ function handleCancelSearch() {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
   margin: 0;
   color: #333;
@@ -843,7 +882,7 @@ function handleCancelSearch() {
 .dropdown-menu {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   background: white;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -870,28 +909,25 @@ function handleCancelSearch() {
   background-color: #3a3a3c;
 }
 
-/* [修改] 让搜索框容器使用 Flex 布局来并排显示输入框和取消按钮 */
 .search-bar-container {
   position: absolute;
-  top: 48px;
-  left: 6.5rem; /* 与父容器的左右内边距保持一致 */
+  top: 60px;
+  left: 6.5rem;
   right: 6.5rem;
   z-index: 5;
   margin-bottom: 0.75rem;
-  display: flex; /* 新增 */
-  align-items: center; /* 新增 */
-  gap: 0.5rem; /* 新增：在输入框和按钮之间增加间距 */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-/* [修改] 让输入框占据大部分空间 */
 .search-input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1; /* 新增：让它自动伸展，占据可用空间 */
+  flex: 1;
 }
 
-/* [新增] 为取消按钮添加样式 */
 .cancel-search-btn {
   background: none;
   border: none;
@@ -901,7 +937,7 @@ function handleCancelSearch() {
   padding: 0.5rem;
   border-radius: 6px;
   transition: background-color 0.2s ease;
-  white-space: nowrap; /* 防止文字换行 */
+  white-space: nowrap;
 }
 .dark .cancel-search-btn {
   color: #bbb;
@@ -1014,26 +1050,21 @@ function handleCancelSearch() {
   transform: translateY(-10px);
   max-height: 0;
 }
-/* 新增：搜索框包裹容器的样式 */
 .search-input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-/* 修改：为 search-input 增加右边距，防止文字和按钮重叠 */
 .search-input {
-  /* ... 保留原有样式 ... */
   width: 100%;
   padding: 0.5rem 0.75rem;
-  /* 为清除按钮留出空间 */
   padding-right: 2.5rem;
   border-radius: 6px;
   border: 1px solid #ddd;
-  font-size: 14px;
+  font-size: 16px;
 }
 
-/* 新增：清除按钮的样式 */
 .clear-search-btn {
   position: absolute;
   right: 0.5rem;
@@ -1053,7 +1084,6 @@ function handleCancelSearch() {
 .dark .clear-search-btn {
   color: #777;
 }
-/* 新增：隐藏 Webkit 浏览器（Chrome, Safari, Edge）的默认搜索清除按钮 */
 .search-input::-webkit-search-cancel-button {
   -webkit-appearance: none;
   display: none;

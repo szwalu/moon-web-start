@@ -7,9 +7,12 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AnniversaryBanner: typeof import('./components/AnniversaryBanner.vue')['default']
+    'AnniversaryBanner_副本': typeof import('./components/AnniversaryBanner_副本.vue')['default']
     AppContainer: typeof import('./components/AppContainer.vue')['default']
     AppProvider: typeof import('./components/AppProvider/index.vue')['default']
     Authentication: typeof import('./components/Authentication.vue')['default']
+    'Authentication_副本': typeof import('./components/Authentication_副本.vue')['default']
     Blank: typeof import('./components/Blank.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCollapse: typeof import('naive-ui')['NCollapse']
@@ -31,7 +34,9 @@ declare module 'vue' {
     NSelect: typeof import('naive-ui')['NSelect']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SettingsModal: typeof import('./components/SettingsModal.vue')['default']
     TheDoc: typeof import('./components/TheDoc.vue')['default']
     TheFooter: typeof import('./components/TheFooter/index.vue')['default']
+    WeatherTest: typeof import('./components/WeatherTest.vue')['default']
   }
 }

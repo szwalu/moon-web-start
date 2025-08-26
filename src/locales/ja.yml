@@ -28,6 +28,11 @@ button:
   addCategory: に追加
 settings:
   title: 設定
+  font_title: フォント設定
+  font_size_label: フォントサイズ
+  font_size_small: 小
+  font_size_medium: 中
+  font_size_large: 大
   theme:
     title: テーマ
     earlySpring: 早春
@@ -280,3 +285,5 @@ notes:
   copy_error: コピーに失敗しました
   word_count: 文字数： {count}
   created_at: 作成日時： {time}
+  anniversary_found: 📅 今日の日付で、過去に{count}件のメモを記録しました
+  anniversary_total: 合計{count}件のメモ（クリックして戻る）
