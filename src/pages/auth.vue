@@ -38,7 +38,6 @@ const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
 const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
-const lastSavedAt = ref<number | null>(null)
 const currentPage = ref(1)
 const notesPerPage = 20
 const totalNotes = ref(0)
@@ -48,7 +47,6 @@ const maxNoteLength = 3000
 const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
-const isRestoringFromCache = ref(false)
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
@@ -459,7 +457,6 @@ async function saveNote({ showMessage = false } = {}) {
       lastSavedId.value = savedNote.id
     }
     localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
-    lastSavedAt.value = now
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -852,8 +849,8 @@ function toggleSearchBar() {
 .search-bar-container {
   position: absolute;
   top: 48px; /* 页头高度 (28px) + 间距 (approx 20px) */
-  left: 1.5rem; /* 与父容器的左右内边距保持一致 */
-  right: 1.5rem;
+  left: 5rem; /* 与父容器的左右内边距保持一致 */
+  right: 5rem;
   z-index: 5; /* 确保它在笔记列表之上，但在菜单和fab按钮之下 */
   margin-bottom: 0.75rem;
   flex-shrink: 0;
@@ -1011,5 +1008,10 @@ function toggleSearchBar() {
 }
 .dark .clear-search-btn {
   color: #777;
+}
+/* 新增：隐藏 Webkit 浏览器（Chrome, Safari, Edge）的默认搜索清除按钮 */
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
 }
 </style>
