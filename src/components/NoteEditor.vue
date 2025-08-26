@@ -24,8 +24,25 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
+// --- 升级后的代码 ---
 const minEditorHeight = 130
-const maxEditorHeight = 780
+
+// 判断是否为小屏幕（通常指手机或窄浏览器窗口）
+const isSmallScreen = window.innerWidth < 768
+
+let maxEditorHeight
+
+if (isSmallScreen) {
+  // --- 移动端/小屏幕设置 ---
+  // 设置为屏幕可见高度的 65%，感觉不够可以调高这个值（比如 0.7）
+  maxEditorHeight = window.innerHeight * 0.65
+}
+else {
+  // --- 桌面端/大屏幕设置 ---
+  // 设置为屏幕可见高度的 75%，但最高不超过 800px
+  // 这样既能自适应窗口大小，又能避免在超大显示器上编辑器区域过高
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+}
 
 const contentModel = computed({
   get: () => props.modelValue,
