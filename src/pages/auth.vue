@@ -52,9 +52,14 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
+// [新增] 1. 定义缺失的 isRestoringFromCache 变量
+const isRestoringFromCache = ref(false)
+
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
+
+let authListener: any = null // 将 authListener 提升到 setup 作用域
 
 // --- 核心认证逻辑 ---
 onMounted(() => {
@@ -64,7 +69,7 @@ onMounted(() => {
     isNotesCached.value = true
   }
 
-  const { data: authListener } = supabase.auth.onAuthStateChange(
+  const result = supabase.auth.onAuthStateChange(
     (event, session) => {
       const currentUser = session?.user ?? null
       if (authStore.user?.id !== currentUser?.id)
@@ -85,12 +90,10 @@ onMounted(() => {
       }
     },
   )
+  authListener = result.data.subscription // 赋值给外部变量
 
-  onUnmounted(() => {
-    authListener.subscription.unsubscribe()
-    document.removeEventListener('click', closeDropdownOnClickOutside)
-  })
-
+  // 在加载本地内容前，设置一个标志位
+  isRestoringFromCache.value = true
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     content.value = savedContent
@@ -100,6 +103,26 @@ onMounted(() => {
     lastSavedId.value = savedNoteId
 
   isReady.value = true
+
+  // 使用 nextTick 确保初始加载的 watch 触发完毕后再清除标志
+  nextTick(() => {
+    isRestoringFromCache.value = false
+  })
+})
+
+const debouncedSaveNote = debounce(() => {
+  // [修正] 这里的 isRestoringFromCache.value 现在可以正常工作了
+  if (content.value && user.value?.id && !isRestoringFromCache.value)
+    saveNote({ showMessage: false })
+}, 12000)
+
+// [新增] 2. 添加顶层的 onUnmounted 钩子用于清理
+onUnmounted(() => {
+  if (authListener)
+    authListener.unsubscribe()
+
+  document.removeEventListener('click', closeDropdownOnClickOutside)
+  debouncedSaveNote.cancel() // 清理计时器
 })
 
 // --- 笔记相关方法 ---
@@ -173,15 +196,6 @@ watch(searchQuery, () => {
   debouncedSearch()
 })
 
-const debouncedSaveNote = debounce(() => {
-  if (content.value && user.value?.id && !isRestoringFromCache.value)
-    saveNote({ showMessage: false })
-}, 12000)
-
-onUnmounted(() => {
-  debouncedSaveNote.cancel()
-})
-
 watch(content, async (val, oldVal) => {
   if (!isReady.value)
     return
@@ -197,6 +211,7 @@ watch(content, async (val, oldVal) => {
     console.error('Auto-save: No valid session in authStore')
     return
   }
+  // [修正] 这里的 isRestoringFromCache.value 现在可以正常工作了
   if (val && val !== oldVal && !isRestoringFromCache.value)
     debouncedSaveNote()
 })
@@ -465,7 +480,7 @@ async function saveNote({ showMessage = false } = {}) {
       minute: '2-digit',
     }).replace(/\//g, '.')
     if (showMessage)
-      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.save_success', '保存成功'))
+      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved', '保存成功'))
 
     if (savedNote)
       await fetchAllTags()

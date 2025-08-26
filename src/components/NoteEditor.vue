@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// [修改] 1. 從 vue 引入 onUpdated
-import { computed, nextTick, onMounted, onUnmounted, onUpdated, ref, watch } from 'vue'
+// --- <script setup> 部分与之前完全一样，无需改动 ---
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
@@ -24,20 +24,25 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-
-// --- [新增] 滚动穿透处理逻辑所需的变量 ---
-let scrollableElement: HTMLElement | null = null
-let touchStartY = 0
-
-// --- 升级后的高度计算代码 (保持不变) ---
+// --- 升级后的代码 ---
 const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
 
-else
+// 判断是否为小屏幕（通常指手机或窄浏览器窗口）
+const isSmallScreen = window.innerWidth < 768
+
+let maxEditorHeight
+
+if (isSmallScreen) {
+  // --- 移动端/小屏幕设置 ---
+  // 设置为屏幕可见高度的 65%，感觉不够可以调高这个值（比如 0.7）
+  maxEditorHeight = window.innerHeight * 0.65
+}
+else {
+  // --- 桌面端/大屏幕设置 ---
+  // 设置为屏幕可见高度的 75%，但最高不超过 800px
+  // 这样既能自适应窗口大小，又能避免在超大显示器上编辑器区域过高
   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+}
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -46,56 +51,6 @@ const contentModel = computed({
 
 const charCount = computed(() => contentModel.value.length)
 
-// --- [新增] 滚动穿透处理逻辑的函数 ---
-function handleTouchStart(e: TouchEvent) {
-  if (e.touches.length === 1)
-    touchStartY = e.touches[0].clientY
-}
-
-function handleTouchMove(e: TouchEvent) {
-  if (e.touches.length !== 1 || !scrollableElement)
-    return
-
-  const currentY = e.touches[0].clientY
-  const isScrollingUp = currentY > touchStartY
-  const isScrollingDown = currentY < touchStartY
-
-  // 检查是否在顶部并向上滚动
-  if (scrollableElement.scrollTop === 0 && isScrollingUp) {
-    e.preventDefault()
-    return
-  }
-
-  // 检查是否在底部并向下滚动 (使用 Math.ceil 避免小数精度问题)
-  if (Math.ceil(scrollableElement.scrollTop + scrollableElement.clientHeight) >= scrollableElement.scrollHeight && isScrollingDown)
-    e.preventDefault()
-}
-
-function preventScrollChaining() {
-  if (easymde.value) {
-    // EasyMDE/CodeMirror 中真正滚动的元素是 Scroller
-    const scroller = easymde.value.codemirror.getScrollerElement()
-    if (scroller && scroller !== scrollableElement) {
-      // 如果已存在旧的监听器，先移除
-      if (scrollableElement)
-        cleanupScrollListeners()
-
-      scrollableElement = scroller
-      scrollableElement.addEventListener('touchstart', handleTouchStart, { passive: false })
-      scrollableElement.addEventListener('touchmove', handleTouchMove, { passive: false })
-    }
-  }
-}
-
-function cleanupScrollListeners() {
-  if (scrollableElement) {
-    scrollableElement.removeEventListener('touchstart', handleTouchStart)
-    scrollableElement.removeEventListener('touchmove', handleTouchMove)
-    scrollableElement = null
-  }
-}
-
-// --- 您已有的其他函数 (保持不变) ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -249,24 +204,12 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
     }
   }
 }
-
-// --- [修改] 修改生命周期函数以集成滚动处理 ---
 onMounted(() => {
   initializeEasyMDE(props.modelValue)
-  // 延迟执行，确保编辑器DOM已完全渲染
-  nextTick(preventScrollChaining)
 })
-
 onUnmounted(() => {
   destroyEasyMDE()
-  cleanupScrollListeners() // 组件卸载时移除监听
 })
-
-// [新增] 当组件更新时，也尝试绑定监听器，以防编辑器是动态加载的
-onUpdated(() => {
-  preventScrollChaining()
-})
-
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
