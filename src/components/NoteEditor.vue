@@ -413,6 +413,7 @@ textarea {
   border-radius: 0 0 6px 6px;
   font-size: 16px !important;
   line-height: 1.6 !important;
+  overscroll-behavior: contain;
 }
 
 /* 编辑器工具栏按钮和图标的通用样式 (PC端优化版) */
