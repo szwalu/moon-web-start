@@ -98,7 +98,7 @@ onUnmounted(() => {
 <style scoped>
 .notes-list {
   margin-top: 1rem;
-  height: 510px; /* PC端默认高度 */
+  height: 525px; /* PC端默认高度 */
   overflow-y: auto;
   position: relative;
 }
@@ -106,7 +106,7 @@ onUnmounted(() => {
 /* 关键改动：使用媒体查询来设置移动端的高度 */
 @media (max-width: 768px) {
   .notes-list {
-    height: 600px; /* 移动端高度 */
+    height: 615px; /* 移动端高度 */
   }
 }
 

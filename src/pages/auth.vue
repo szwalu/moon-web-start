@@ -845,7 +845,13 @@ function toggleSearchBar() {
 }
 
 .search-bar-container {
+  position: absolute;
+  top: 48px; /* 页头高度 (28px) + 间距 (approx 20px) */
+  left: 1.5rem; /* 与父容器的左右内边距保持一致 */
+  right: 1.5rem;
+  z-index: 5; /* 确保它在笔记列表之上，但在菜单和fab按钮之下 */
   margin-bottom: 0.75rem;
+  flex-shrink: 0;
 }
 
 .search-input {
@@ -863,7 +869,7 @@ function toggleSearchBar() {
 
 .fab {
   position: absolute;
-  bottom: 4.5rem;
+  bottom: 2.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: 48px;
