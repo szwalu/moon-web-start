@@ -660,6 +660,12 @@ function toggleSearchBar() {
   showSearchBar.value = !showSearchBar.value
   showDropdown.value = false
 }
+
+// [新增] 添加这个取消搜索的函数
+function handleCancelSearch() {
+  searchQuery.value = '' // 1. 清空搜索词
+  showSearchBar.value = false // 2. 隐藏搜索框
+}
 </script>
 
 <template>
@@ -702,6 +708,9 @@ function toggleSearchBar() {
               &times;
             </button>
           </div>
+          <button class="cancel-search-btn" @click="handleCancelSearch">
+            {{ $t('notes.cancel') }}
+          </button>
         </div>
       </Transition>
 
@@ -861,27 +870,47 @@ function toggleSearchBar() {
   background-color: #3a3a3c;
 }
 
+/* [修改] 让搜索框容器使用 Flex 布局来并排显示输入框和取消按钮 */
 .search-bar-container {
   position: absolute;
-  top: 48px; /* 页头高度 (28px) + 间距 (approx 20px) */
-  left: 5rem; /* 与父容器的左右内边距保持一致 */
-  right: 5rem;
-  z-index: 5; /* 确保它在笔记列表之上，但在菜单和fab按钮之下 */
+  top: 48px;
+  left: 6.5rem; /* 与父容器的左右内边距保持一致 */
+  right: 6.5rem;
+  z-index: 5;
   margin-bottom: 0.75rem;
-  flex-shrink: 0;
+  display: flex; /* 新增 */
+  align-items: center; /* 新增 */
+  gap: 0.5rem; /* 新增：在输入框和按钮之间增加间距 */
 }
 
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  font-size: 14px;
+/* [修改] 让输入框占据大部分空间 */
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1; /* 新增：让它自动伸展，占据可用空间 */
 }
-.dark .search-input {
-  background-color: #2c2c2e;
-  border-color: #444;
-  color: #f0f0f0;
+
+/* [新增] 为取消按钮添加样式 */
+.cancel-search-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap; /* 防止文字换行 */
+}
+.dark .cancel-search-btn {
+  color: #bbb;
+}
+.cancel-search-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+.dark .cancel-search-btn:hover {
+  background-color: rgba(255,255,255,0.1);
 }
 
 .fab {
