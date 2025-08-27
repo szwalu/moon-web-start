@@ -161,13 +161,13 @@ onMounted(() => {
     </div>
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
-    <div class="static-links-container flex flex-col gap-y-4 px-2 pb-4 pt-8">
+    <div class="static-links-container flex flex-col gap-y-15 px-2 pb-4 pt-8">
       <router-link
         to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
       >
-        <span class="flex-grow truncate text-center">云笔记</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 
@@ -186,7 +186,7 @@ onMounted(() => {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
       >
-        <span class="flex-grow truncate text-center">我的账户</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 

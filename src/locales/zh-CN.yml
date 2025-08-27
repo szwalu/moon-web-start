@@ -123,6 +123,7 @@ navbar:
   auth: 注册/登录
   logout: 登出
   account: 我的账户
+  cloud_Notes: 云笔记
 
 footer:
   disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
