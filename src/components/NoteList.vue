@@ -96,8 +96,6 @@ onUnmounted(() => {
 <style scoped>
 .notes-list {
   margin-top: 1rem;
-  overflow-y: auto;
-  position: relative;
 }
 
 .text-gray-500 {

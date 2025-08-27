@@ -1162,8 +1162,8 @@ function closeEditorModal() {
   /* --- 关键改动 --- */
   display: flex;
   flex-direction: column;
-  height: 100vh; /* 让容器占满整个屏幕的高度 */
-  overflow: hidden; /* 防止容器本身出现滚动条 */
+  height: 100dvh; /* 让容器占满整个屏幕的高度 */
+
 }
 .dark .auth-container {
   background: #1e1e1e;
