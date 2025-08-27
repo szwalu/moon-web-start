@@ -263,7 +263,7 @@ notes:
   delete_confirm_content: このノートを削除してもよろしいですか？
   confirm_delete: 削除を確認
   cancel: キャンセル
-  export_all: ノートをエクスポート
+  export_all: すべてエクスポート
   exporting: エクスポート中...
   export_confirm_title: 日付範囲を選択
   export_confirm_content: 条件に一致するノートをエクスポートします。この処理には時間がかかる場合があります。
@@ -288,3 +288,10 @@ notes:
   anniversary_found: 📅 今日の日付で、過去に{count}件のメモを記録しました
   anniversary_total: 合計{count}件のメモ（クリックして戻る）
   updated2_at: 編集： {time}
+  export_results: 検索結果をエクスポート
+  search_placeholder_tags: ノートや#タグを検索...
+dialog:
+  delete_note_title: ノートを削除
+  delete_note_content: このノートを削除してもよろしいですか？この操作は元に戻せません
+  confirm_button: 確認
+  cancel_button: キャンセル

@@ -16,6 +16,7 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 
 // 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
+import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
@@ -118,7 +119,6 @@ onMounted(() => {
   })
 })
 
-// 【关键修改点】
 const debouncedSaveNote = debounce(() => {
   if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
@@ -129,12 +129,10 @@ onUnmounted(() => {
     authListener.unsubscribe()
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
-  debouncedSaveNote.cancel() // 这里本身就有，是好的
+  debouncedSaveNote.cancel()
 })
 
 // --- 笔记相关方法 ---
-
-// 2. 创建计算属性，用于动态决定列表显示内容
 const displayedNotes = computed(() => {
   return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
 })
@@ -182,7 +180,6 @@ async function fetchAllTags() {
 }
 
 const debouncedSearch = debounce(async () => {
-  // 搜索时自动退出“那年今日”视图
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
@@ -230,9 +227,57 @@ watch(content, async (val, _oldVal) => {
   }
   if (!authStore.user)
     console.error('Auto-save: No valid session in authStore')
-
-  // 这里的自动保存触发已经移交给了 NoteEditor 组件
 })
+
+// [ADDED] 新函数：用于导出当前显示的笔记（即搜索结果）
+function handleExportResults() {
+  if (isExporting.value)
+    return
+  isExporting.value = true
+  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
+  try {
+    const notesToExport = displayedNotes.value
+    if (!notesToExport || notesToExport.length === 0) {
+      messageHook.warning('没有可导出的搜索结果。')
+      return
+    }
+    const textContent = notesToExport.map((note: any) => {
+      const separator = '----------------------------------------'
+      const date = new Date(note.created_at).toLocaleString('zh-CN')
+      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+    }).join('')
+
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+    a.download = `notes_search_results_${timestamp}.txt`
+    document.body.appendChild(a)
+    a.click()
+
+    setTimeout(() => {
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }, 100)
+    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
+  }
+  catch (error: any) {
+    messageHook.error(`导出失败: ${error.message}`)
+  }
+  finally {
+    isExporting.value = false
+  }
+}
+
+// [ADDED] 新的调度函数，根据情况决定执行哪个导出逻辑
+function handleExportTrigger() {
+  if (searchQuery.value.trim())
+    handleExportResults()
+
+  else
+    handleBatchExport() // 如果没有搜索词，依然执行导出全部的逻辑
+}
 
 async function handleBatchExport() {
   showDropdown.value = false
@@ -521,7 +566,6 @@ function resetEditorAndState() {
 }
 
 async function handleSubmit() {
-  // 【关键修改】手动保存时，立即取消挂起的自动保存
   debouncedSaveNote.cancel()
 
   const timeout = setTimeout(() => {
@@ -575,7 +619,6 @@ async function triggerDeleteConfirmation(id: string) {
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
-      // 【关键修改】删除笔记时，立即取消挂起的自动保存
       debouncedSaveNote.cancel()
       try {
         loading.value = true
@@ -673,7 +716,6 @@ async function handleCopy(noteContent: string) {
 }
 
 function handleAddNewNoteClick() {
-  // 【关键修改】新开笔记时，立即取消之前可能存在的挂起的自动保存
   debouncedSaveNote.cancel()
   if (editingNote.value)
     resetEditorAndState()
@@ -691,7 +733,6 @@ function handleCancelSearch() {
   showSearchBar.value = false
 }
 
-// 3. 添加处理Banner事件的方法
 function handleAnniversaryToggle(data: any[] | null) {
   if (data) {
     anniversaryNotes.value = data
@@ -703,7 +744,6 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
-// 【关键修改】新增一个统一的关闭编辑器函数
 function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
@@ -750,12 +790,13 @@ function closeEditorModal() {
 
       <Transition name="slide-fade">
         <div v-if="showSearchBar" class="search-bar-container">
-          <div class="search-input-wrapper">
-            <input v-model="searchQuery" type="search" :placeholder="$t('notes.search_placeholder')" class="search-input">
-            <button v-if="searchQuery" class="clear-search-btn" @click="searchQuery = ''">
-              &times;
-            </button>
-          </div>
+          <NoteActions
+            v-model="searchQuery"
+            :all-tags="allTags"
+            :is-exporting="isExporting"
+            :search-query="searchQuery"
+            @export="handleExportTrigger"
+          />
           <button class="cancel-search-btn" @click="handleCancelSearch">
             {{ $t('notes.cancel') }}
           </button>
@@ -932,6 +973,11 @@ function closeEditorModal() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.search-bar-container > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .search-input-wrapper {

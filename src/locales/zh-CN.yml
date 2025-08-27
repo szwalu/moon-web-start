@@ -273,7 +273,7 @@ notes:
   edit: 编辑
   delete: 删除
   auto_saved_at: 自动保存
-  search_placeholder: 🔍搜索
+  search_placeholder: 🔍搜索笔记或 # 标签
   search_notes: 搜索笔记
   next_page: 下一页
   previous_page: 上一页
@@ -286,8 +286,6 @@ notes:
   cancel: 取消
   fetch_error: 获取笔记失败
   saving: 保存中...
-  export_all: 导出笔记
-  exporting: 导出中...
   export_confirm_title: 选择日期范围
   export_confirm_content: 即将导出符合条件的笔记。此操作可能需要一些时间
   confirm_export: 确认导出
@@ -311,3 +309,12 @@ notes:
   anniversary_total: 共 {count} 条笔记 (点击返回)
   created_at: 创建于： {time}
   updated2_at: 编辑于： {time}
+  export_all: 导出全部
+  exporting: 导出中...
+  export_results: 导出结果
+  search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
+dialog:
+  delete_note_title: 删除笔记
+  delete_note_content: 您确定要删除这篇笔记吗？此操作无法撤销
+  confirm_button: 确认
+  cancel_button: 取消

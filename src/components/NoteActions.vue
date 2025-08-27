@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+// [ADDED] 1. 导入 useI18n
+import { useI18n } from 'vue-i18n'
+
 // --- Props and Emits ---
 const props = defineProps({
-  // 使用 modelValue 接收父组件通过 v-model 传来的 searchQuery
   modelValue: {
     type: String,
     required: true,
@@ -16,9 +18,16 @@ const props = defineProps({
     type: Array as () => string[],
     default: () => [],
   },
+  searchQuery: {
+    type: String,
+    default: '',
+  },
 })
 
-const emit = defineEmits(['update:modelValue', 'exportAll'])
+const emit = defineEmits(['update:modelValue', 'export'])
+
+// [ADDED] 2. 初始化 i18n 的 t 函数
+const { t } = useI18n()
 
 // --- State ---
 const searchInputRef = ref<HTMLInputElement | null>(null)
@@ -27,18 +36,23 @@ const searchTagSuggestions = ref<string[]>([])
 const highlightedSearchIndex = ref(-1)
 
 // --- v-model Logic ---
-// 创建一个计算属性来代理 props.modelValue
-// 这样在组件内部就可以用 v-model="searchModel"，同时保持与父组件的状态同步
 const searchModel = computed({
   get: () => props.modelValue,
   set: (value) => {
     emit('update:modelValue', value)
-    // 当输入框内容变化时，触发标签建议逻辑
     handleSearchQueryChange(value)
   },
 })
 
-// --- Tag Suggestion Logic (从 auth.vue 迁移过来) ---
+// [MODIFIED] 3. 将按钮文字的硬编码替换为 t() 函数
+const exportButtonText = computed(() => {
+  if (props.isExporting)
+    return t('notes.exporting')
+
+  return props.searchQuery ? t('notes.export_results') : t('notes.export_all')
+})
+
+// --- Tag Suggestion Logic (保持不变) ---
 function handleSearchQueryChange(query: string) {
   const lastHashIndex = query.lastIndexOf('#')
   if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
@@ -91,7 +105,7 @@ function clearSearch() {
         ref="searchInputRef"
         v-model="searchModel"
         type="text"
-        placeholder="搜索笔记..."
+        :placeholder="t('notes.search_placeholder_tags')"
         class="search-input"
         autocomplete="off"
         @keydown.down.prevent="moveSearchSelection(1)"
@@ -122,15 +136,15 @@ function clearSearch() {
     <button
       class="export-all-button"
       :disabled="isExporting"
-      @click="emit('exportAll')"
+      @click="emit('export')"
     >
-      {{ isExporting ? '导出中...' : '导出全部' }}
+      {{ exportButtonText }}
     </button>
   </div>
 </template>
 
 <style scoped>
-/* 从 auth.vue 中复制过来的相关样式 */
+/* 样式部分保持不变 */
 .search-export-bar {
   display: flex;
   gap: 0.5rem;

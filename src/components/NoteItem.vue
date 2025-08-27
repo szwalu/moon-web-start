@@ -4,7 +4,8 @@ import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 
-// --- 修改点：换回使用 @ 别名 ---
+// --- 新增：从 Naive UI 引入 useDialog ---
+import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting.ts'
 
 // --- Props and Emits ---
@@ -23,6 +24,8 @@ const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'task
 
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
+// --- 新增：初始化 dialog ---
+const dialog = useDialog()
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 const md = new MarkdownIt({
@@ -77,7 +80,7 @@ function getDropdownOptions(note: any) {
       minute: '2-digit',
     })
 
-  // 【新增】格式化编辑时间
+  // 格式化编辑时间
   const updatedDateObj = new Date(note.updated_at)
   const updatedTime = !note.updated_at || Number.isNaN(updatedDateObj.getTime())
     ? '未知'
@@ -97,9 +100,6 @@ function getDropdownOptions(note: any) {
     { key: 'divider-1', type: 'divider' },
     { label: t('notes.word_count', { count: charCount }), key: 'char_count', disabled: true },
     { label: t('notes.created_at', { time: creationTime }), key: 'creation_time', disabled: true },
-    // 【新增】在菜单末尾添加编辑时间项
-    // 假设您的 i18n 文件中有 'notes.updated_at'，如果没有，可以改为 { label: `编辑于: ${updatedTime}`, ... }
-    // ... 在 getDropdownOptions 函数的 return 数组中
     { label: t('notes.updated2_at', { time: updatedTime }), key: 'updated2_time', disabled: true },
   ]
 }
@@ -115,8 +115,17 @@ function handleDropdownSelect(key: string) {
     case 'pin':
       emit('pin', props.note)
       break
+    // --- 修改：删除操作 ---
     case 'delete':
-      emit('delete', props.note.id)
+      dialog.warning({
+        title: t('dialog.delete_note_title'),
+        content: t('dialog.delete_note_content'),
+        positiveText: t('dialog.confirm_button'),
+        negativeText: t('dialog.cancel_button'),
+        onPositiveClick: () => {
+          emit('delete', props.note.id)
+        },
+      })
       break
   }
 }
@@ -203,6 +212,7 @@ function handleNoteContentClick(event: MouseEvent) {
 </template>
 
 <style scoped>
+/* 样式部分无需修改 */
 /* 为了方便，我直接使用 Tailwind 的 @apply 指令来整合基础样式 */
 .note-card {
   @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
