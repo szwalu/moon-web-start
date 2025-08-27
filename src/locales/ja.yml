@@ -287,3 +287,4 @@ notes:
   created_at: 作成日時： {time}
   anniversary_found: 📅 今日の日付で、過去に{count}件のメモを記録しました
   anniversary_total: 合計{count}件のメモ（クリックして戻る）
+  updated2_at: 編集： {time}

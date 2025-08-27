@@ -288,3 +288,4 @@ notes:
   created_at: 'Created at: {time}'
   anniversary_found: '📅 On this day, you wrote {count} notes'
   anniversary_total: '{count} notes in total (Click to return)'
+  updated2_at: updated： {time}

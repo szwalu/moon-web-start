@@ -16,17 +16,16 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue', 'submit'])
+const emit = defineEmits(['update:modelValue', 'submit', 'trigger-auto-save'])
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 
-// =================================================================
-// ===== 核心修改区域 START =====
-// =================================================================
+// 使用这个状态作为“是否为初始化触发”的看门人
+const isReadyForAutoSave = ref(false)
 
-// 2. 天气相关的逻辑函数保持不变
+// 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -122,27 +121,22 @@ async function fetchWeather() {
   }
 }
 
-// ============ ✨ 这里是修正后的 onMounted 钩子 ✨ ============
+// onMounted 钩子
 onMounted(async () => {
   let initialContent = props.modelValue
 
-  // 1. 如果是新笔记，先准备好内容，再去初始化编辑器
   if (!props.editingNote && !props.modelValue) {
     const weatherString = await fetchWeather()
     if (weatherString) {
       initialContent = `${weatherString}\n`
-      // 2. 将生成的内容同步回父组件
       emit('update:modelValue', initialContent)
     }
   }
 
-  // 3. 使用最终准备好的内容来初始化编辑器
   initializeEasyMDE(initialContent)
 
-  // 4. 如果我们添加了天气，确保光标在内容的末尾并聚焦
-  const cachedWeather = await getCachedWeather()
-  if (!props.editingNote && cachedWeather && initialContent.startsWith(cachedWeather.formattedString)) {
-    await nextTick() // 等待编辑器完全渲染
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
     if (easymde.value) {
       const cm = easymde.value.codemirror
       const doc = cm.getDoc()
@@ -152,13 +146,7 @@ onMounted(async () => {
   }
 })
 
-// ============ ⛔️ 此前的 insertWeather 函数已被删除 ⛔️ ============
-
-// =================================================================
-// ===== 核心修改区域 END =====
-// =================================================================
-
-// --- 下方的所有其他函数 (initializeEasyMDE, selectEditorTag 等) 都保持原样，无需修改 ---
+// 下方的所有其他函数
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -171,11 +159,13 @@ if (isSmallScreen)
   maxEditorHeight = window.innerHeight * 0.65
 else
   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 const charCount = computed(() => contentModel.value.length)
+
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -187,13 +177,18 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 }
+
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
     easymde.value = null
   }
 }
+
 function initializeEasyMDE(initialValue = '') {
+  // 重置状态，确保每次初始化都是干净的
+  isReadyForAutoSave.value = false
+
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
@@ -248,12 +243,27 @@ function initializeEasyMDE(initialValue = '') {
     toolbar: customToolbar,
     status: false,
   })
+
   const cm = easymde.value.codemirror
+
   cm.on('change', (instance: any) => {
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
+
+    // 核心逻辑：忽略第一次由初始化触发的change事件
+    if (!isReadyForAutoSave.value) {
+      // 这是第一次事件，我们忽略它，并把开关打开
+      isReadyForAutoSave.value = true
+    }
+    else {
+      // 从第二次开始，所有的change事件都视为用户输入，触发自动保存
+      emit('triggerAutoSave')
+    }
+
     nextTick(() => updateEditorHeight())
+
+    // 处理标签建议的逻辑 (保持不变)
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
@@ -279,9 +289,11 @@ function initializeEasyMDE(initialValue = '') {
       showEditorTagSuggestions.value = false
     }
   })
+
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
 }
+
 function selectEditorTag(tag: string) {
   if (!easymde.value)
     return
@@ -299,10 +311,12 @@ function selectEditorTag(tag: string) {
   showEditorTagSuggestions.value = false
   cm.focus()
 }
+
 function moveEditorSelection(offset: number) {
   if (showEditorTagSuggestions.value)
     highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
 }
+
 function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
   if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
     if (event.key === 'ArrowDown') {
@@ -323,13 +337,16 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
     }
   }
 }
+
 onUnmounted(() => {
   destroyEasyMDE()
 })
+
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
 })
+
 watch(() => props.editingNote, (newNote, oldNote) => {
   if (newNote?.id !== oldNote?.id) {
     destroyEasyMDE()
@@ -345,6 +362,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
     })
   }
 }, { deep: true })
+
 function handleSubmit() {
   emit('submit')
 }

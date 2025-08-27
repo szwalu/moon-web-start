@@ -7,12 +7,15 @@ common:
   link: 链接(请输入带 https:// 的完整链接)
   name: 名称
   more: 更多
+
 time_units:
   days: 天
   hours: 时
   minutes: 分
   seconds: 秒
+
 Alreadyrunning: 我abc已运行：
+
 button:
   resetData: 重置数据
   importData: 导入数据
@@ -26,6 +29,7 @@ button:
   read: 读取
   stopSync: 停止同步
   addCategory: 添加分类
+
 settings:
   title: 设置
   font_title: 字号设置
@@ -86,6 +90,7 @@ settings:
   common:
     show: 显示
     hide: 隐藏
+
 messages:
   tip: 提示
   warnCustomize: 请先将网站偏好设置为“自定义”
@@ -106,9 +111,11 @@ messages:
   Request: 请求异常
   noResultsPre: 站内未找到关于 “
   noResultsPost: ” 的网站
+
 iconLinkPlaceholder: 图标链接（选填）
 siteDescPlaceholder: 网站描述（选填）
 inputIdPlaceholder: 输入ID
+
 navbar:
   apply: 申请
   links: 友链
@@ -116,6 +123,7 @@ navbar:
   auth: 注册/登录
   logout: 登出
   account: 我的账户
+
 footer:
   disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
   contactLink: 点击联系
@@ -123,6 +131,7 @@ footer:
   linkBqju: 本趣居
   linkWoabcNav: 我abc导航
   linkAbcSite: TQabc网址
+
 form:
   title: 意见建议
   breadcrumb: 网站收录链接申请 & 反馈
@@ -140,6 +149,7 @@ form:
   success: 提交成功，感谢反馈！
   selectError: 请在列表中选择一项
   error: 提交失败，请稍后再试
+
 about:
   title: 我abc导航站特性
   efficientNav: ⚡ 高效导航 - 极简样式，快速访问
@@ -165,6 +175,7 @@ about:
     📎导入导出：
     点击页眉上的设置按钮，在设置界面点击“导出数据”可将数据保存到电脑或手机上的文件夹中；点击“导入数据”可将保存的数据恢复。
   thanks: 特别感谢
+
 auth:
   login: 登录
   register: 注册
@@ -228,10 +239,12 @@ auth:
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
     no_backup_yet: 暂无备份
     invalid_invite_code: 无效的邀请码
+
 autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨
   parse_failed: 解析云端数据失败
   load_failed: 加载数据时出错
+
 index:
   add_to_home: 添加网址导航到桌面
   click_below: 点击下面的
@@ -240,6 +253,7 @@ index:
   weather_loading: 加载中...
   weather_failed: 天气加载失败
   refresh_weather: 刷新天气
+
 notes:
   notes: 云笔记
   save_note: 保存
@@ -293,6 +307,7 @@ notes:
   copy_success: 笔记内容已复制到剪贴板！
   copy_error: 复制失败
   word_count: 字数： {count}
-  created_at: 创建于： {time}
   anniversary_found: 📅 那年今日，您记录了 {count} 条笔记
   anniversary_total: 共 {count} 条笔记 (点击返回)
+  created_at: 创建于： {time}
+  updated2_at: 编辑于： {time}

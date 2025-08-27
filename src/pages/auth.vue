@@ -118,6 +118,7 @@ onMounted(() => {
   })
 })
 
+// 【关键修改点】
 const debouncedSaveNote = debounce(() => {
   if (content.value && user.value?.id && !isRestoringFromCache.value)
     saveNote({ showMessage: false })
@@ -128,7 +129,7 @@ onUnmounted(() => {
     authListener.unsubscribe()
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
-  debouncedSaveNote.cancel()
+  debouncedSaveNote.cancel() // 这里本身就有，是好的
 })
 
 // --- 笔记相关方法 ---
@@ -216,7 +217,7 @@ watch(searchQuery, () => {
   debouncedSearch()
 })
 
-watch(content, async (val, oldVal) => {
+watch(content, async (val, _oldVal) => {
   if (!isReady.value)
     return
   if (val)
@@ -227,12 +228,10 @@ watch(content, async (val, oldVal) => {
     messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return
   }
-  if (!authStore.user) {
+  if (!authStore.user)
     console.error('Auto-save: No valid session in authStore')
-    return
-  }
-  if (val && val !== oldVal && !isRestoringFromCache.value)
-    debouncedSaveNote()
+
+  // 这里的自动保存触发已经移交给了 NoteEditor 组件
 })
 
 async function handleBatchExport() {
@@ -522,6 +521,9 @@ function resetEditorAndState() {
 }
 
 async function handleSubmit() {
+  // 【关键修改】手动保存时，立即取消挂起的自动保存
+  debouncedSaveNote.cancel()
+
   const timeout = setTimeout(() => {
     messageHook.error(t('auth.session_expired_or_timeout'))
     loading.value = false
@@ -573,6 +575,8 @@ async function triggerDeleteConfirmation(id: string) {
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
+      // 【关键修改】删除笔记时，立即取消挂起的自动保存
+      debouncedSaveNote.cancel()
       try {
         loading.value = true
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
@@ -669,6 +673,8 @@ async function handleCopy(noteContent: string) {
 }
 
 function handleAddNewNoteClick() {
+  // 【关键修改】新开笔记时，立即取消之前可能存在的挂起的自动保存
+  debouncedSaveNote.cancel()
   if (editingNote.value)
     resetEditorAndState()
 
@@ -695,6 +701,12 @@ function handleAnniversaryToggle(data: any[] | null) {
     anniversaryNotes.value = null
     isAnniversaryViewActive.value = false
   }
+}
+
+// 【关键修改】新增一个统一的关闭编辑器函数
+function closeEditorModal() {
+  showEditorModal.value = false
+  debouncedSaveNote.cancel()
 }
 </script>
 
@@ -772,10 +784,10 @@ function handleAnniversaryToggle(data: any[] | null) {
         +
       </button>
 
-      <div v-if="showEditorModal" class="editor-overlay" @click.self="showEditorModal = false">
+      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
         <div class="editor-modal-content">
           <div class="modal-header">
-            <button class="close-button" @click="showEditorModal = false">
+            <button class="close-button" @click="closeEditorModal">
               &times;
             </button>
           </div>
@@ -787,6 +799,7 @@ function handleAnniversaryToggle(data: any[] | null) {
             :max-note-length="maxNoteLength"
             :last-saved-time="lastSavedTime"
             @submit="handleSubmit"
+            @trigger-auto-save="debouncedSaveNote"
           />
         </div>
       </div>

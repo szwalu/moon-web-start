@@ -64,16 +64,31 @@ watch(() => props.note.content, () => {
 // --- 下拉菜单逻辑 ---
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-  const dateObj = new Date(note.created_at)
-  const creationTime = !note.created_at || Number.isNaN(dateObj.getTime())
+
+  // 格式化创建时间
+  const creationDateObj = new Date(note.created_at)
+  const creationTime = !note.created_at || Number.isNaN(creationDateObj.getTime())
     ? '未知'
-    : dateObj.toLocaleString('zh-CN', {
+    : creationDateObj.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     })
+
+  // 【新增】格式化编辑时间
+  const updatedDateObj = new Date(note.updated_at)
+  const updatedTime = !note.updated_at || Number.isNaN(updatedDateObj.getTime())
+    ? '未知'
+    : updatedDateObj.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
   return [
     { label: t('notes.edit'), key: 'edit' },
     { label: t('notes.copy'), key: 'copy' },
@@ -82,6 +97,10 @@ function getDropdownOptions(note: any) {
     { key: 'divider-1', type: 'divider' },
     { label: t('notes.word_count', { count: charCount }), key: 'char_count', disabled: true },
     { label: t('notes.created_at', { time: creationTime }), key: 'creation_time', disabled: true },
+    // 【新增】在菜单末尾添加编辑时间项
+    // 假设您的 i18n 文件中有 'notes.updated_at'，如果没有，可以改为 { label: `编辑于: ${updatedTime}`, ... }
+    // ... 在 getDropdownOptions 函数的 return 数组中
+    { label: t('notes.updated2_at', { time: updatedTime }), key: 'updated2_time', disabled: true },
   ]
 }
 
@@ -131,7 +150,7 @@ function handleNoteContentClick(event: MouseEvent) {
     <div class="note-card-top-bar">
       <div class="note-meta-left">
         <p class="note-date">
-          {{ new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+          {{ new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
         </p>
         <span v-if="note.is_pinned" class="pinned-indicator">
           {{ $t('notes.pin') }}
