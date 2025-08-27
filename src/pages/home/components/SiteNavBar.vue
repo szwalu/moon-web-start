@@ -167,7 +167,7 @@ onMounted(() => {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
       >
-        <span class="flex-grow truncate text-center">{{ $t('navbar.Cloud_Notes') }}</span>
+        <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 

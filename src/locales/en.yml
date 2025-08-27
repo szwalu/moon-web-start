@@ -116,7 +116,7 @@ navbar:
   auth: Register/Login
   logout: Logout
   account: My Account
-  cloud_Notes: cloud Notes
+  cloud_Notes: Cloud Notes
 footer:
   disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
   contactLink: Contact Us
