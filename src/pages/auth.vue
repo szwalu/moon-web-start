@@ -32,7 +32,7 @@ const showSettingsModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const dropdownContainerRef = ref(null)
-
+const notesListWrapperRef = ref<HTMLElement | null>(null)
 const user = computed(() => authStore.user)
 const loading = ref(false)
 
@@ -566,6 +566,15 @@ function resetEditorAndState() {
   localStorage.removeItem(LOCAL_CONTENT_KEY)
 }
 
+function handleHeaderClick() {
+  if (notesListWrapperRef.value) {
+    notesListWrapperRef.value.scrollTo({
+      top: 0,
+      behavior: 'smooth', // 使用 'smooth' 可以实现平滑的滚动效果
+    })
+  }
+}
+
 async function handleSubmit() {
   debouncedSaveNote.cancel()
 
@@ -756,7 +765,7 @@ function closeEditorModal() {
 <template>
   <div class="auth-container">
     <template v-if="user">
-      <div class="page-header">
+      <div class="page-header" @click="handleHeaderClick">
         <div ref="dropdownContainerRef" class="dropdown-menu-container">
           <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
@@ -808,12 +817,13 @@ function closeEditorModal() {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="showNotesList" class="notes-list-wrapper">
+      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
         <NoteList
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
           :expanded-note-id="expandedNote"
           :has-more="!isAnniversaryViewActive && hasMoreNotes"
+          :scroll-container="notesListWrapperRef"
           @load-more="nextPage"
           @toggle-expand="toggleExpand"
           @edit="handleEdit"

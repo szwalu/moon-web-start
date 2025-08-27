@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue'
+// 1. 恢复之前的 import
+import { onUnmounted, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import NoteItem from '@/components/NoteItem.vue'
 
-// --- Props (无需改动) ---
+// 2. 修改 props 定义，增加 scrollContainer
 const props = defineProps({
   notes: {
     type: Array as () => any[],
@@ -22,9 +23,14 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  // --- 新增这个 prop ---
+  scrollContainer: {
+    type: Object as () => HTMLElement | null,
+    default: null,
+  },
 })
 
-// --- Emits (无需改动) ---
+// 3. 恢复 emits 定义
 const emit = defineEmits([
   'loadMore',
   'toggleExpand',
@@ -37,18 +43,18 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 
-// --- 无限滚动逻辑 (无需改动) ---
-const notesListRef = ref<HTMLElement | null>(null)
-
+// 4. 恢复无限滚动逻辑，并修改它
 const handleScroll = debounce(() => {
-  const el = notesListRef.value
+  // 使用 props.scrollContainer 代替 el
+  const el = props.scrollContainer
   if (!el || props.isLoading || !props.hasMore)
     return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
     emit('loadMore')
 }, 200)
 
-watch(notesListRef, (newEl, oldEl) => {
+// 监听 props.scrollContainer 的变化，而不是 notesListRef
+watch(() => props.scrollContainer, (newEl, oldEl) => {
   if (oldEl)
     oldEl.removeEventListener('scroll', handleScroll)
   if (newEl)
@@ -57,16 +63,14 @@ watch(notesListRef, (newEl, oldEl) => {
 
 onUnmounted(() => {
   handleScroll.cancel()
-  if (notesListRef.value)
-    notesListRef.value.removeEventListener('scroll', handleScroll)
+  // 组件卸载时，也从 prop 传来的元素上移除监听
+  if (props.scrollContainer)
+    props.scrollContainer.removeEventListener('scroll', handleScroll)
 })
-
-// --- 动态高度逻辑 (已全部删除) ---
-// JavaScript height calculation logic has been removed.
 </script>
 
 <template>
-  <div ref="notesListRef" class="notes-list">
+  <div class="notes-list">
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.loading') }}
     </div>
