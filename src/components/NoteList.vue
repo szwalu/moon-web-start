@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import NoteItem from '@/components/NoteItem.vue'
-
-// 组件卸载时，确保取消 debounce 并解绑事件
 
 // --- Props ---
 const props = defineProps({
@@ -20,7 +18,6 @@ const props = defineProps({
     type: String as () => string | null,
     default: null,
   },
-  // 新增一个 prop，用来判断是否还有更多笔记可加载
   hasMore: {
     type: Boolean,
     default: true,
@@ -28,7 +25,6 @@ const props = defineProps({
 })
 
 // --- Emits ---
-// 定义所有需要向父组件传递的事件
 const emit = defineEmits([
   'loadMore',
   'toggleExpand',
@@ -41,32 +37,69 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 
-// --- 无限滚动逻辑 (从 auth.vue 迁移过来) ---
+// --- 无限滚动逻辑 ---
 const notesListRef = ref<HTMLElement | null>(null)
 
 const handleScroll = debounce(() => {
   const el = notesListRef.value
-  // 如果正在加载或没有更多了，则不执行
   if (!el || props.isLoading || !props.hasMore)
     return
-  // 滚动到底部附近时，向父组件发出 'load-more' 事件
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
     emit('loadMore')
 }, 200)
 
-// 侦听 notesListRef 的变化，自动绑定和解绑滚动事件
-// 这使得滚动逻辑完全封装在本组件内
 watch(notesListRef, (newEl, oldEl) => {
   if (oldEl)
     oldEl.removeEventListener('scroll', handleScroll)
-
   if (newEl)
     newEl.addEventListener('scroll', handleScroll)
 })
+
 onUnmounted(() => {
   handleScroll.cancel()
   if (notesListRef.value)
     notesListRef.value.removeEventListener('scroll', handleScroll)
+})
+
+// --- 动态高度逻辑 (支持 header + banner + 最小高度保护) ---
+let resizeObserver: ResizeObserver | null = null
+const MIN_HEIGHT = 200 // 最小高度保护
+
+function updateHeight() {
+  const header = document.querySelector('.main-header') as HTMLElement
+  const banner = document.querySelector('.banner') as HTMLElement
+
+  const headerHeight = header ? header.offsetHeight : 0
+  const bannerHeight = banner ? banner.offsetHeight : 0
+  const totalUsed = headerHeight + bannerHeight
+
+  const availableHeight = window.innerHeight - totalUsed
+  const finalHeight = Math.max(MIN_HEIGHT, availableHeight)
+
+  if (notesListRef.value)
+    notesListRef.value.style.height = `${finalHeight}px`
+}
+
+onMounted(() => {
+  updateHeight()
+  window.addEventListener('resize', updateHeight)
+
+  const header = document.querySelector('.main-header') as HTMLElement
+  const banner = document.querySelector('.banner') as HTMLElement
+
+  resizeObserver = new ResizeObserver(updateHeight)
+  if (header)
+    resizeObserver.observe(header)
+  if (banner)
+    resizeObserver.observe(banner)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateHeight)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
@@ -92,7 +125,7 @@ onUnmounted(() => {
         @task-toggle="payload => emit('taskToggle', payload)"
       />
       <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
-        loding...
+        loading...
       </div>
     </div>
   </div>
@@ -101,16 +134,8 @@ onUnmounted(() => {
 <style scoped>
 .notes-list {
   margin-top: 1rem;
-  height: 475px; /* PC端默认高度 */
   overflow-y: auto;
   position: relative;
-}
-
-/* 关键改动：使用媒体查询来设置移动端的高度 */
-@media (max-width: 768px) {
-  .notes-list {
-    height: 565px; /* 移动端高度 */
-  }
 }
 
 .text-gray-500 {
