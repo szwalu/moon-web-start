@@ -660,6 +660,7 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
+/*
 async function handleLogout() {
   showDropdown.value = false
   loading.value = true
@@ -667,6 +668,7 @@ async function handleLogout() {
   window.location.href = '/'
   loading.value = false
 }
+*/
 
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
@@ -775,9 +777,11 @@ function closeEditorModal() {
               <div class="dropdown-item" @click="handleBatchExport">
                 {{ $t('notes.export_all') }}
               </div>
-              <div class="dropdown-item" @click="handleLogout">
-                {{ $t('auth.logout') }}
-              </div>
+            <!--
+            <div class="dropdown-item" @click="handleLogout">
+           {{ $t('auth.logout') }}
+         </div>
+           -->
             </div>
           </Transition>
         </div>
