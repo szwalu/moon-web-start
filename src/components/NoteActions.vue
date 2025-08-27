@@ -181,6 +181,13 @@ function clearSearch() {
   min-width: 0;
 }
 
+/* [ADDED] 为移动设备添加样式，防止输入时自动放大页面 */
+@media (max-width: 768px) {
+  .search-input {
+    font-size: 16px;
+  }
+}
+
 .dark .search-input {
   background-color: #2c2c2e;
   border-color: #48484a;
