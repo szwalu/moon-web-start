@@ -777,11 +777,9 @@ function closeEditorModal() {
               <div class="dropdown-item" @click="handleBatchExport">
                 {{ $t('notes.export_all') }}
               </div>
-            <!--
-            <div class="dropdown-item" @click="handleLogout">
-           {{ $t('auth.logout') }}
-         </div>
-           -->
+              <a class="dropdown-item" href="https://www.woabc.com/my-account" target="_blank">
+                {{ $t('auth.account_title') }}
+              </a>
             </div>
           </Transition>
         </div>
