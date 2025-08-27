@@ -388,4 +388,38 @@ function handleNoteContentClick(event: MouseEvent) {
 :deep(.prose.font-size-large) {
   font-size: 20px !important;
 }
+
+/* In NoteItem.vue's <style scoped> section */
+:deep(table) {
+  width: auto;
+  border-collapse: collapse;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  border: 1px solid #dfe2e5;
+  display: table !important; /* Force display property */
+}
+
+.dark :deep(table) {
+  border-color: #4b5563;
+}
+
+:deep(th),
+:deep(td) {
+  padding: 8px 15px;
+  border: 1px solid #dfe2e5;
+}
+
+.dark :deep(th),
+.dark :deep(td) {
+    border-color: #4b5563;
+}
+
+:deep(th) {
+  font-weight: 600;
+  background-color: #f6f8fa;
+}
+
+.dark :deep(th) {
+    background-color: #374151;
+}
 </style>

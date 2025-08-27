@@ -229,6 +229,7 @@ function initializeEasyMDE(initialValue = '') {
     },
     '|',
     'link',
+    'image',
     'table',
     '|',
     'preview',
@@ -251,19 +252,14 @@ function initializeEasyMDE(initialValue = '') {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    // 核心逻辑：忽略第一次由初始化触发的change事件
-    if (!isReadyForAutoSave.value) {
-      // 这是第一次事件，我们忽略它，并把开关打开
+    if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-    }
-    else {
-      // 从第二次开始，所有的change事件都视为用户输入，触发自动保存
+
+    else
       emit('triggerAutoSave')
-    }
 
     nextTick(() => updateEditorHeight())
 
-    // 处理标签建议的逻辑 (保持不变)
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
@@ -427,4 +423,14 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles are unchanged */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overscroll-behavior:contain}.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
+
+/* ===== MODIFICATION START: Expanded heading font styles ===== */
+.CodeMirror .cm-header { font-weight: bold; }
+.CodeMirror .cm-header-1 { font-size: 1.6em; }
+.CodeMirror .cm-header-2 { font-size: 1.4em; }
+.CodeMirror .cm-header-3 { font-size: 1.2em; }
+.CodeMirror .cm-header-4 { font-size: 1.1em; }
+.CodeMirror .cm-header-5 { font-size: 1.0em; }
+.CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
+/* ===== MODIFICATION END ===== */
 </style>
