@@ -215,7 +215,8 @@ watch(searchQuery, () => {
 })
 
 watch(content, async (val, _oldVal) => {
-  if (!isReady.value)
+  // 增加对 isRestoringFromCache.value 的判断
+  if (!isReady.value || isRestoringFromCache.value)
     return
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
@@ -805,7 +806,7 @@ function closeEditorModal() {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="showNotesList">
+      <div v-if="showNotesList" class="notes-list-wrapper">
         <NoteList
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
@@ -1147,4 +1148,43 @@ function closeEditorModal() {
   -webkit-appearance: none;
   display: none;
 }
+
+/* 1. 修改 auth-container，使其成为一个 flex 容器 */
+.auth-container {
+  max-width: 480px;
+  margin: 0 auto; /* 移除上下 margin，让容器可以占满全高 */
+  padding: 0 1.5rem 0.75rem 1.5rem; /* 调整 padding 以适应新布局 */
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+
+  /* --- 关键改动 --- */
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* 让容器占满整个屏幕的高度 */
+  overflow: hidden; /* 防止容器本身出现滚动条 */
+}
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* 2. 让 Header 不要被压缩 */
+.page-header {
+  /* ... 您已有的样式 ... */
+  flex-shrink: 0;
+  padding: 0.75rem 0; /* 把 auth-container 的上部 padding 移到这里 */
+}
+
+/* 3. 让 NoteList 的容器填满剩余空间 */
+.notes-list-wrapper {
+  flex: 1; /* flex: 1; 是 flex-grow: 1; flex-shrink: 1; flex-basis: 0%; 的缩写 */
+  min-height: 0; /* 防止内容过多时撑破容器，这是 flex 布局的关键技巧 */
+  overflow-y: auto; /* 让这个容器内部可以滚动 */
+  margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
+}
+
+/* ... 其他样式保持不变 ... */
 </style>

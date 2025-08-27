@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import NoteItem from '@/components/NoteItem.vue'
 
-// --- Props ---
+// --- Props (无需改动) ---
 const props = defineProps({
   notes: {
     type: Array as () => any[],
@@ -24,7 +24,7 @@ const props = defineProps({
   },
 })
 
-// --- Emits ---
+// --- Emits (无需改动) ---
 const emit = defineEmits([
   'loadMore',
   'toggleExpand',
@@ -37,7 +37,7 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 
-// --- 无限滚动逻辑 ---
+// --- 无限滚动逻辑 (无需改动) ---
 const notesListRef = ref<HTMLElement | null>(null)
 
 const handleScroll = debounce(() => {
@@ -61,46 +61,8 @@ onUnmounted(() => {
     notesListRef.value.removeEventListener('scroll', handleScroll)
 })
 
-// --- 动态高度逻辑 (支持 header + banner + 最小高度保护) ---
-let resizeObserver: ResizeObserver | null = null
-const MIN_HEIGHT = 200 // 最小高度保护
-
-function updateHeight() {
-  const header = document.querySelector('.main-header') as HTMLElement
-  const banner = document.querySelector('.banner') as HTMLElement
-
-  const headerHeight = header ? header.offsetHeight : 0
-  const bannerHeight = banner ? banner.offsetHeight : 0
-  const totalUsed = headerHeight + bannerHeight
-
-  const availableHeight = window.innerHeight - totalUsed
-  const finalHeight = Math.max(MIN_HEIGHT, availableHeight)
-
-  if (notesListRef.value)
-    notesListRef.value.style.height = `${finalHeight}px`
-}
-
-onMounted(() => {
-  updateHeight()
-  window.addEventListener('resize', updateHeight)
-
-  const header = document.querySelector('.main-header') as HTMLElement
-  const banner = document.querySelector('.banner') as HTMLElement
-
-  resizeObserver = new ResizeObserver(updateHeight)
-  if (header)
-    resizeObserver.observe(header)
-  if (banner)
-    resizeObserver.observe(banner)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', updateHeight)
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-})
+// --- 动态高度逻辑 (已全部删除) ---
+// JavaScript height calculation logic has been removed.
 </script>
 
 <template>
