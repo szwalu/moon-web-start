@@ -254,6 +254,7 @@ notes:
   delete: 削除
   auto_saved_at: 自動保存時刻
   search_placeholder: 検索🔍
+  search_notes: 検索ノート
   next_page: 次のページ
   previous_page: 前のページ
   auto_saved: 保存しました

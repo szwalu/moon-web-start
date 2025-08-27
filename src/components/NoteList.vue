@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
+import { useI18n } from 'vue-i18n'
 import NoteItem from '@/components/NoteItem.vue'
 
 // 组件卸载时，确保取消 debounce 并解绑事件
@@ -38,6 +39,8 @@ const emit = defineEmits([
   'taskToggle',
 ])
 
+const { t } = useI18n()
+
 // --- 无限滚动逻辑 (从 auth.vue 迁移过来) ---
 const notesListRef = ref<HTMLElement | null>(null)
 
@@ -70,10 +73,10 @@ onUnmounted(() => {
 <template>
   <div ref="notesListRef" class="notes-list">
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
-      加载中...
+      {{ t('notes.loading') }}
     </div>
     <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
-      暂无笔记
+      {{ t('notes.no_notes') }}
     </div>
     <div v-else class="space-y-6">
       <NoteItem

@@ -268,7 +268,7 @@ notes:
   delete_error: 删除失败
   update_note: 更新笔记
   loading: 载入中...
-  no_notes: 没有笔记
+  no_notes: 暂无笔记
   updated_at: 修改时间
   edit: 编辑
   delete: 删除

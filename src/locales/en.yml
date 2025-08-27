@@ -255,6 +255,7 @@ notes:
   delete: Delete
   auto_saved_at: Auto-saved at
   search_placeholder: Search 🔍
+  search_notes: search notes
   next_page: Next Page
   previous_page: Previous Page
   auto_saved: Saved successfully
