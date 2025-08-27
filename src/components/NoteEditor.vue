@@ -7,6 +7,9 @@ import 'easymde/dist/easymde.min.css'
 // 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
+// --- 新增：引入设置 Store ---
+import { useSettingStore } from '@/stores/setting'
+
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
@@ -21,6 +24,8 @@ const emit = defineEmits(['update:modelValue', 'submit', 'trigger-auto-save'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
+// --- 新增：初始化 Store ---
+const settingsStore = useSettingStore()
 
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
@@ -185,6 +190,18 @@ function destroyEasyMDE() {
   }
 }
 
+// --- 新增：更新编辑器字号的辅助函数 ---
+function applyEditorFontSize() {
+  if (!easymde.value)
+    return
+  const cmWrapper = easymde.value.codemirror.getWrapperElement()
+  // 移除旧的字号 class
+  cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+  // 添加新的字号 class
+  const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
+  cmWrapper.classList.add(fontSizeClass)
+}
+
 function initializeEasyMDE(initialValue = '') {
   // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
@@ -243,6 +260,11 @@ function initializeEasyMDE(initialValue = '') {
     placeholder: t('notes.content_placeholder'),
     toolbar: customToolbar,
     status: false,
+  })
+
+  // --- 新增：初始化时应用一次字号 ---
+  nextTick(() => {
+    applyEditorFontSize()
   })
 
   const cm = easymde.value.codemirror
@@ -359,6 +381,11 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
+// --- 新增：监听设置中的字号变化 ---
+watch(() => settingsStore.noteFontSize, () => {
+  applyEditorFontSize()
+})
+
 function handleSubmit() {
   emit('submit')
 }
@@ -421,10 +448,10 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 </style>
 
 <style>
-/* Global styles are unchanged */
+/* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overscroll-behavior:contain}.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
-/* ===== MODIFICATION START: Expanded heading font styles ===== */
+/* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
 .CodeMirror .cm-header-1 { font-size: 1.6em; }
 .CodeMirror .cm-header-2 { font-size: 1.4em; }
@@ -432,5 +459,15 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 .CodeMirror .cm-header-4 { font-size: 1.1em; }
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
-/* ===== MODIFICATION END ===== */
+
+/* --- 新增：根据设置动态修改编辑器字号的 CSS 规则 --- */
+.CodeMirror.font-size-small {
+  font-size: 14px !important;
+}
+.CodeMirror.font-size-medium {
+  font-size: 16px !important; /* 这是原始的默认大小 */
+}
+.CodeMirror.font-size-large {
+  font-size: 20px !important;
+}
 </style>
