@@ -48,7 +48,7 @@ function handleViewportResize() {
       const editorVisibleHeight = scroller.clientHeight
       const cursorY = cursorCoords.top
       const cursorHeight = cursorCoords.bottom - cursorCoords.top
-      const bottomMargin = 15 // 这里只需要一个很小的边距，因为外部padding已经提供了主要空间
+      const bottomMargin = 60 // 这里只需要一个很小的边距，因为外部padding已经提供了主要空间
 
       if (cursorY + cursorHeight > scroller.scrollTop + editorVisibleHeight - bottomMargin) {
         const newScrollTop = cursorY - editorVisibleHeight + bottomMargin + cursorHeight
