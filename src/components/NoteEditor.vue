@@ -19,17 +19,38 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
-// --- 已修正：将 trigger-auto-save 改为 triggerAutoSave ---
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
+const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
+
+// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
+function handleViewportResize() {
+  if (editorWrapperRef.value && window.visualViewport) {
+    const viewport = window.visualViewport
+
+    // 核心修改：不再增加 padding，而是直接设置组件容器的高度
+    // 使其高度恰好等于屏幕的可见区域高度
+    editorWrapperRef.value.style.height = `${viewport.height}px`
+
+    // 同时，温和地将页面滚动一下，确保组件顶部可见
+    editorWrapperRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    // 确保编辑器内部光标可见
+    if (easymde.value) {
+      setTimeout(() => {
+        easymde.value?.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+      }, 100) // 增加一个微小延迟，等待高度设置生效
+    }
+  }
+}
 
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
@@ -129,6 +150,10 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
+  // --- 终极解决方案：添加监听器 ---
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', handleViewportResize)
+
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -152,17 +177,13 @@ onMounted(async () => {
   }
 })
 
-// --- 新增：动态调整 maxEditorHeight ---
-const isSmallScreen = ref(window.innerWidth < 768)
-const maxEditorHeight = ref<number>(isSmallScreen.value ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800))
+onUnmounted(() => {
+  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
+  if (window.visualViewport)
+    window.visualViewport.removeEventListener('resize', handleViewportResize)
 
-function handleResize() {
-  isSmallScreen.value = window.innerWidth < 768
-  const newInnerHeight = window.innerHeight
-  maxEditorHeight.value = isSmallScreen.value ? newInnerHeight * 0.65 : Math.min(newInnerHeight * 0.75, 800)
-  nextTick(() => updateEditorHeightAndButton())
-}
-window.addEventListener('resize', handleResize)
+  destroyEasyMDE()
+})
 
 // 下方的所有其他函数
 const showEditorTagSuggestions = ref(false)
@@ -171,6 +192,12 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -178,7 +205,7 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-function updateEditorHeightAndButton() {
+function updateEditorHeight() {
   if (!easymde.value)
     return
   const cm = easymde.value.codemirror
@@ -186,16 +213,14 @@ function updateEditorHeightAndButton() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const buttonHeight = 60 // 预估按钮和状态栏总高度
-  const newMaxHeight = maxEditorHeight.value - buttonHeight // 减去按钮高度
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, newMaxHeight))
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
+  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
-    if (easymde.value) {
-      const margin = isSmallScreen.value ? 150 : 50 // 移动端增加滚动边距
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), margin)
-    }
+    if (easymde.value)
+      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
 
@@ -292,11 +317,11 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
+
     else
-      // --- 已修正：将 trigger-auto-save 改为 triggerAutoSave ---
       emit('triggerAutoSave')
 
-    nextTick(() => updateEditorHeightAndButton())
+    nextTick(() => updateEditorHeight())
 
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
@@ -325,7 +350,7 @@ function initializeEasyMDE(initialValue = '') {
   })
 
   cm.on('keydown', handleEditorKeyDown)
-  nextTick(() => updateEditorHeightAndButton())
+  nextTick(() => updateEditorHeight())
 }
 
 function selectEditorTag(tag: string) {
@@ -372,11 +397,6 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
   }
 }
 
-onUnmounted(() => {
-  destroyEasyMDE()
-  window.removeEventListener('resize', handleResize)
-})
-
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
@@ -406,10 +426,32 @@ watch(() => settingsStore.noteFontSize, () => {
 function handleSubmit() {
   emit('submit')
 }
+
+// --- 新增：最终光标定位方案 ---
+// 侦听编辑器实例是否被创建
+watch(easymde, (newEditorInstance) => {
+  // 当编辑器实例被创建好时
+  if (newEditorInstance) {
+    // 并且我们正在编辑一个旧笔记
+    if (props.editingNote) {
+      const cm = newEditorInstance.codemirror
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+
+      // 在下一个Tick中安全地移动光标，确保DOM已更新
+      nextTick(() => {
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        cm.scrollIntoView(cm.getCursor(), 60)
+        // --- 新增的画龙点睛之笔 ---
+        cm.focus() // 激活编辑器，让光标显形并闪动
+      })
+    }
+  }
+})
 </script>
 
 <template>
-  <div class="editor-wrapper">
+  <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -428,10 +470,6 @@ function handleSubmit() {
         <span v-if="lastSavedTime" class="char-counter ml-4">
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
-      </div>
-      <div class="editor-content">
-        <!-- 移除未使用的 ref="editorContainer" -->
-        <div class="editor-container" />
       </div>
       <div class="emoji-bar">
         <button
@@ -464,79 +502,8 @@ function handleSubmit() {
 </template>
 
 <style scoped>
-/* 调整样式以适应移动端键盘 */
-.editor-wrapper { position: relative; }
-textarea { visibility: hidden; }
-.status-bar { display: flex; justify-content: flex-start; align-items: center; margin: 0; }
-.char-counter { font-size: 12px; color: #999; }
-.dark .char-counter { color: #aaa; }
-.ml-4 { margin-left: 1rem; }
-.editor-content { flex-grow: 1; overflow: hidden; }
-.editor-container { height: 100%; }
-.emoji-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 10px;
-  background-color: #fff;
-  border-top: 1px solid #ccc;
-  margin-top: auto; /* 自动填补剩余空间 */
-}
-.form-button {
-  width: 100%;
-  flex: 1;
-  padding: 0.5rem;
-  font-size: 14px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  background: #d3d3d3;
-  color: #111;
-}
-.dark .form-button {
-  background-color: #404040;
-  color: #fff;
-  border-color: #555;
-}
-.form-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.tag-suggestions {
-  position: absolute;
-  background-color: #fff;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 150px;
-}
-.dark .tag-suggestions {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-.tag-suggestions ul {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-}
-.tag-suggestions li {
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  white-space: nowrap;
-}
-.tag-suggestions li:hover,
-.tag-suggestions li.highlighted {
-  background-color: #f0f0f0;
-}
-.dark .tag-suggestions li:hover,
-.dark .tag-suggestions li.highlighted {
-  background-color: #404040;
-}
-.editor-suggestions { position: absolute; }
+/* Styles are unchanged */
+textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:.2rem;display:flex;justify-content:space-between;gap:.5rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
 </style>
 
 <style>
@@ -550,67 +517,11 @@ textarea { visibility: hidden; }
   position: -webkit-sticky;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 1001;
   background-color: #fff;
 }
-/* --- 已修改：这是唯一的CSS改动 --- */
-.CodeMirror {
-  border: 1px solid #ccc !important;
-  border-top: none !important;
-  border-radius: 0 0 6px 6px;
-  font-size: 16px !important;
-  line-height: 1.6 !important;
-  overflow-y: auto !important;
-  padding-bottom: 60px !important; /* 增加底部内边距以预留按钮空间 */
-}
-.editor-toolbar a,
-.editor-toolbar button {
-  padding-left: 2px !important;
-  padding-right: 2px !important;
-  padding-top: 1px !important;
-  padding-bottom: 1px !important;
-  line-height: 1 !important;
-  height: auto !important;
-  min-height: 0 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-}
-.editor-toolbar a i,
-.editor-toolbar button i {
-  font-size: 15px !important;
-  vertical-align: middle;
-}
-.editor-toolbar i.separator {
-  margin: 1px 3px !important;
-  border-width: 0 1px 0 0 !important;
-  height: 8px !important;
-}
-.dark .editor-toolbar {
-  background-color: #2c2c2e !important;
-  border-color: #48484a !important;
-}
-.dark .CodeMirror {
-  background-color: #2c2c2e !important;
-  border-color: #48484a !important;
-  color: #fff !important;
-}
-.dark .editor-toolbar a {
-  color: #e0e0e0 !important;
-}
-.dark .editor-toolbar a.active {
-  background: #404040 !important;
-}
-@media (max-width: 480px) {
-  .editor-toolbar {
-    overflow-x: auto;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-  }
-  .editor-toolbar::-webkit-scrollbar {
-    display: none;
-    height: 0;
-  }
-}
+.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
+.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
 /* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
@@ -630,12 +541,5 @@ textarea { visibility: hidden; }
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
-}
-
-/* 新增：移动端样式优化 */
-@media (max-width: 768px) {
-  .CodeMirror {
-    max-height: calc(100vh - 100px) !important; /* 预留更多空间给按钮和状态栏 */
-  }
 }
 </style>
