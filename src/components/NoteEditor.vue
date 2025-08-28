@@ -30,6 +30,9 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
+// --- 新增：虚拟锚点元素的引用 ---
+const cursorAnchorRef = ref<HTMLSpanElement | null>(null)
+
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -171,42 +174,16 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：这是唯一的逻辑改动，采用手动计算方式确保滚动到位 ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
-
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
-
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
-
-  // 在DOM更新后，执行手动滚动逻辑
-  nextTick(() => {
-    if (!easymde.value)
-      return
-
-    const scroller = cm.getScrollerElement()
-    // 获取光标相对于编辑器内容区域的坐标
-    const cursorCoords = cm.cursorCoords(true, 'local')
-    // 编辑器可见区域的高度
-    const editorHeight = scroller.clientHeight
-    // 光标的Y坐标
-    const cursorY = cursorCoords.top
-    // 底部安全边距，留给输入法工具栏
-    const margin = 60
-
-    // 如果光标的位置超出了“可见区域高度 - 边距”，则需要滚动
-    if (cursorY > (scroller.scrollTop + editorHeight - margin)) {
-      // 计算新的scrollTop值，使光标距离底部有margin的距离
-      const newScrollTop = cursorY - editorHeight + margin
-      scroller.scrollTop = newScrollTop
-    }
-  })
 }
 
 function destroyEasyMDE() {
@@ -227,6 +204,32 @@ function applyEditorFontSize() {
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
+
+function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
+  let timeout: number | undefined
+  return function (this: any, ...args: Parameters<T>) {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func.apply(this, args), delay)
+  }
+}
+
+// --- 新增：用于滚动锚点的防抖函数 ---
+const debouncedScrollHandler = debounce(() => {
+  if (!easymde.value || !cursorAnchorRef.value)
+    return
+
+  const cm = easymde.value.codemirror
+  // 获取光标相对于整个页面的坐标
+  const coords = cm.cursorCoords(true, 'page')
+  const anchor = cursorAnchorRef.value
+
+  // 将锚点移动到光标位置
+  anchor.style.left = `${coords.left}px`
+  anchor.style.top = `${coords.top}px`
+
+  // 命令浏览器将锚点滚动到视野中央
+  anchor.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}, 100) // 100毫秒延时
 
 function initializeEasyMDE(initialValue = '') {
   // 重置状态，确保每次初始化都是干净的
@@ -307,6 +310,11 @@ function initializeEasyMDE(initialValue = '') {
       emit('triggerAutoSave')
 
     nextTick(() => updateEditorHeight())
+
+    // --- 已修改：在内容变化时，调用防抖的滚动处理器 ---
+    if (isSmallScreen) { // 只在移动端执行
+      debouncedScrollHandler()
+    }
 
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
@@ -419,6 +427,8 @@ function handleSubmit() {
 
 <template>
   <div>
+    <span ref="cursorAnchorRef" style="position: absolute; width: 0; height: 0;" />
+
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -476,7 +486,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
-/* --- 已修改：这是唯一的CSS改动，确保滚动条正常工作 --- */
+/* --- 保持CSS修改，确保滚动条正常工作 --- */
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
