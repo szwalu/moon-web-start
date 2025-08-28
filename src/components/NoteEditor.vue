@@ -34,18 +34,20 @@ const isReadyForAutoSave = ref(false)
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 步骤一：仍然使用 padding-bottom 把整个组件“顶”上来
-    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    const viewport = window.visualViewport
+    const keyboardHeight = window.innerHeight - viewport.height
 
-    // 步骤二：增加一个微小延迟，确保 padding 已生效，然后滚动整个页面到底部
-    setTimeout(() => {
-      window.scrollTo(0, document.body.scrollHeight)
-    }, 100) // 100毫秒的延迟足以应对各种机型
+    // 核心修改：不再使用 padding，而是使用 transform 将整个组件向上平移
+    editorWrapperRef.value.style.transform = `translateY(-${keyboardHeight}px)`
+    // 为了平滑过渡
+    editorWrapperRef.value.style.transition = 'transform 0.2s ease-out'
 
-    // (保留原有的内部滚动逻辑作为辅助)
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+    // 依然需要确保内部光标可见
+    if (easymde.value) {
+      setTimeout(() => {
+        easymde.value?.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+      }, 150) // 增加一个稍长的延迟，等待平移动画
+    }
   }
 }
 
