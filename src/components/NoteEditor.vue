@@ -24,36 +24,27 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
-const editorFooterRef = ref<HTMLDivElement | null>(null) // 新增：用于获取页脚高度
+const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 已修改：终极优化方案，动态计算并设置编辑器高度，消除白色区域 ---
+// --- 已修改：优化 visualViewport 方案，消除白色区域 ---
 function handleViewportResize() {
-  if (easymde.value && window.visualViewport) {
+  if (editorWrapperRef.value && window.visualViewport) {
     const viewport = window.visualViewport
-    const cm = easymde.value.codemirror
-    const toolbar = cm.getWrapperElement().querySelector('.editor-toolbar') as HTMLElement
-    const footer = editorFooterRef.value
+    // 直接设置整个组件包装器的高度等于可见区域的高度
+    editorWrapperRef.value.style.height = `${viewport.height}px`
+    // 并且将页面滚动到组件的起始位置，确保顶部可见
+    editorWrapperRef.value.scrollIntoView(true)
 
-    // 确保组件DOM元素都已准备好
-    if (toolbar && footer) {
-      // 键盘弹出时，动态计算编辑器高度
-      if (window.innerHeight > viewport.height) {
-        // 可用高度 = 视口高度 - 工具栏高度 - 页脚高度 - 额外边距
-        const availableHeight = viewport.height - toolbar.offsetHeight - footer.offsetHeight - 15
-        cm.setSize(null, availableHeight)
-      }
-      else {
-        // 键盘收起时，恢复内容自适应高度
-        updateEditorHeight(true) // 强制执行
-      }
-      // 确保光标可见
-      cm.scrollIntoView(cm.getCursor(), 60)
+    // 确保光标可见
+    if (easymde.value) {
+      setTimeout(() => {
+        easymde.value?.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+      }, 100) // 增加一个微小延迟，等待高度设置生效
     }
   }
 }
@@ -211,21 +202,17 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：当键盘未弹出时，此函数负责自适应高度 ---
-function updateEditorHeight(force = false) {
-  // 如果键盘已弹出，则由 handleViewportResize 全权负责高度，此函数不执行（除非被强制调用）
-  if (!force && window.visualViewport && window.innerHeight > window.visualViewport.height)
-    return
-
+// --- 已修改：恢复了“撑高”能力，并保留了滚动 ---
+function updateEditorHeight() {
   if (!easymde.value)
     return
-
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  // --- 恢复的核心代码 ---
   cm.setSize(null, newHeight)
 
   setTimeout(() => {
@@ -473,24 +460,22 @@ watch(easymde, (newEditorInstance) => {
         :maxlength="maxNoteLength"
         autocomplete="off"
       />
-      <div ref="editorFooterRef">
-        <div class="status-bar">
-          <span class="char-counter">
-            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-          </span>
-          <span v-if="lastSavedTime" class="char-counter ml-4">
-            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-          </span>
-        </div>
-        <div class="emoji-bar">
-          <button
-            type="submit"
-            class="form-button flex-2"
-            :disabled="isLoading || !contentModel"
-          >
-            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-          </button>
-        </div>
+      <div class="status-bar">
+        <span class="char-counter">
+          {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+        </span>
+        <span v-if="lastSavedTime" class="char-counter ml-4">
+          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+        </span>
+      </div>
+      <div class="emoji-bar">
+        <button
+          type="submit"
+          class="form-button flex-2"
+          :disabled="isLoading || !contentModel"
+        >
+          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+        </button>
       </div>
     </form>
     <div
