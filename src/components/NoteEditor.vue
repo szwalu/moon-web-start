@@ -30,6 +30,9 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
+// --- 新增：用于确保首次滚动稳定性的标志位 ---
+let isFirstScrollNeeded = true
+
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -126,39 +129,29 @@ async function fetchWeather() {
   }
 }
 
-// onMounted 钩子 --- 已重构以解决时序问题 ---
-onMounted(() => {
-  // 第1步：无论如何，立即初始化一个空的或带有现有内容的编辑器
-  initializeEasyMDE(props.modelValue)
+// onMounted 钩子
+onMounted(async () => {
+  let initialContent = props.modelValue
 
-  // 第2步：处理异步任务和光标定位
-  nextTick(async () => {
-    if (!easymde.value)
-      return
-
-    const cm = easymde.value.codemirror
-    const doc = cm.getDoc()
-
-    // 如果是新笔记，异步获取天气并填充
-    if (!props.editingNote && !props.modelValue) {
-      const weatherString = await fetchWeather()
-      if (weatherString) {
-        const newContent = `${weatherString}\n`
-        easymde.value.value(newContent) // 填充内容
-        emit('update:modelValue', newContent) // 更新父组件
-        // 填充后，移动光标到末尾
-        const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-      }
+  if (!props.editingNote && !props.modelValue) {
+    const weatherString = await fetchWeather()
+    if (weatherString) {
+      initialContent = `${weatherString}\n`
+      emit('update:modelValue', initialContent)
     }
-    // 如果是编辑旧笔记，直接移动光标到末尾
-    else if (props.editingNote) {
-      const lastLine = doc.lastLine()
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-    }
+  }
 
-    cm.focus() // 最后让编辑器获得焦点
-  })
+  initializeEasyMDE(initialContent)
+
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const doc = cm.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+      cm.focus()
+    }
+  }
 })
 
 // 下方的所有其他函数
@@ -192,11 +185,14 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 保持我们之前确认有效的滚动边距
+  // --- 已修改：为首次滚动和后续滚动使用不同的延时策略 ---
+  const scrollDelay = isFirstScrollNeeded ? 150 : 0
   setTimeout(() => {
-    if (easymde.value)
+    if (easymde.value) {
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
+      isFirstScrollNeeded = false // 首次滚动后，将标志位置为false
+    }
+  }, scrollDelay)
 }
 
 function destroyEasyMDE() {
@@ -221,6 +217,7 @@ function applyEditorFontSize() {
 function initializeEasyMDE(initialValue = '') {
   // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
+  isFirstScrollNeeded = true // 每次初始化时，重置首次滚动标志位
 
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
@@ -326,6 +323,19 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
+
+  // --- 新增：监听第一次focus事件，用于解决初始位置问题 ---
+  let hasScrolledOnFocus = false
+  const focusHandler = () => {
+    if (!hasScrolledOnFocus) {
+      // 找到父级的滚动容器或者window本身来滚动
+      // 这里我们尝试滚动整个窗口，通常更有效
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      hasScrolledOnFocus = true
+      cm.off('focus', focusHandler) // 执行一次后就移除监听
+    }
+  }
+  cm.on('focus', focusHandler)
 }
 
 function selectEditorTag(tag: string) {
