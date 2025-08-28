@@ -24,23 +24,40 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
+const editorFooterRef = ref<HTMLDivElement | null>(null)
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+const initialMaxEditorHeight = isSmallScreen ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800)
+const maxEditorHeight = ref(initialMaxEditorHeight) // 将 maxEditorHeight 设为响应式变量
+
+// --- 终极优化方案：动态更新“天花板” ---
 function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
-    const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件底部增加一个内边距，把内容顶上来
-    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+  if (easymde.value && window.visualViewport) {
+    const viewport = window.visualViewport
+    const cm = easymde.value.codemirror
+    const toolbar = cm.getWrapperElement().querySelector('.editor-toolbar') as HTMLElement
+    const footer = editorFooterRef.value
+
+    if (toolbar && footer) {
+      // 键盘弹出时，动态计算新的最大高度
+      if (window.innerHeight > viewport.height) {
+        const availableHeight = viewport.height - toolbar.offsetHeight - footer.offsetHeight - 15
+        maxEditorHeight.value = availableHeight
+      }
+      else {
+        // 键盘收起时，恢复初始的最大高度
+        maxEditorHeight.value = initialMaxEditorHeight
+      }
+      // 命令 updateEditorHeight 使用新的“天花板”来重新调整高度
+      updateEditorHeight(true)
+    }
   }
 }
 
@@ -183,13 +200,6 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -197,7 +207,8 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-function updateEditorHeight() {
+// --- 已修改：恢复了“撑高”能力，并保留了滚动 ---
+function updateEditorHeight(_force = false) {
   if (!easymde.value)
     return
   const cm = easymde.value.codemirror
@@ -205,13 +216,12 @@ function updateEditorHeight() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  // 使用响应式的 maxEditorHeight.value
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight.value))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
-      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
@@ -443,7 +453,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" style="background-color: transparent;">
+  <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -455,22 +465,24 @@ watch(easymde, (newEditorInstance) => {
         :maxlength="maxNoteLength"
         autocomplete="off"
       />
-      <div class="status-bar">
-        <span class="char-counter">
-          {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-        </span>
-        <span v-if="lastSavedTime" class="char-counter ml-4">
-          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-        </span>
-      </div>
-      <div class="emoji-bar">
-        <button
-          type="submit"
-          class="form-button flex-2"
-          :disabled="isLoading || !contentModel"
-        >
-          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-        </button>
+      <div ref="editorFooterRef">
+        <div class="status-bar">
+          <span class="char-counter">
+            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+          </span>
+          <span v-if="lastSavedTime" class="char-counter ml-4">
+            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+          </span>
+        </div>
+        <div class="emoji-bar">
+          <button
+            type="submit"
+            class="form-button flex-2"
+            :disabled="isLoading || !contentModel"
+          >
+            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+          </button>
+        </div>
       </div>
     </form>
     <div
