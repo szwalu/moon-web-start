@@ -31,6 +31,19 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
+// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
+function handleViewportResize() {
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    // 确保光标可见
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+  }
+}
+
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -129,6 +142,10 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
+  // --- 终极解决方案：添加监听器 ---
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', handleViewportResize)
+
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -152,6 +169,14 @@ onMounted(async () => {
   }
 })
 
+onUnmounted(() => {
+  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
+  if (window.visualViewport)
+    window.visualViewport.removeEventListener('resize', handleViewportResize)
+
+  destroyEasyMDE()
+})
+
 // 下方的所有其他函数
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
@@ -172,7 +197,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：这是解决“内部滚动”问题的核心 ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -184,12 +208,10 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 使用 setTimeout 确保在 DOM 更新后执行
+  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
-    if (easymde.value) {
-      // 恢复使用最简单直接的 scrollIntoView 命令，并提供足够的边距
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-    }
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 10)
   }, 0)
 }
 
@@ -320,20 +342,6 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
-
-  // --- 新增：这是解决“全局”位置问题的核心 ---
-  // 创建一个只执行一次的 focus 事件处理器
-  const focusHandler = () => {
-    // 延迟执行以等待键盘动画
-    setTimeout(() => {
-      // 将整个组件的包装器滚动到视野内，确保按钮等元素可见
-      editorWrapperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 300)
-    // 执行一次后立即移除监听，避免后续点击重复触发
-    cm.off('focus', focusHandler)
-  }
-  // 绑定这个一次性的 focus 监听器
-  cm.on('focus', focusHandler)
 }
 
 function selectEditorTag(tag: string) {
@@ -379,10 +387,6 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
     }
   }
 }
-
-onUnmounted(() => {
-  destroyEasyMDE()
-})
 
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
@@ -474,7 +478,6 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
-/* --- 已修改：这是唯一的CSS改动，确保滚动条正常工作 --- */
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
