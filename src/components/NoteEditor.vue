@@ -19,7 +19,16 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue', 'submit', 'trigger-auto-save'])
+const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
+
+// --- 新增：防抖函数 ---
+function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
+  let timeout: number | undefined
+  return function (this: any, ...args: Parameters<T>) {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func.apply(this, args), delay)
+  }
+}
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -181,6 +190,10 @@ function updateEditorHeight() {
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
+
+  nextTick(() => {
+    cm.refresh()
+  })
 }
 
 function destroyEasyMDE() {
@@ -190,20 +203,16 @@ function destroyEasyMDE() {
   }
 }
 
-// --- 新增：更新编辑器字号的辅助函数 ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  // 移除旧的字号 class
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  // 添加新的字号 class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
-  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
 
   const newEl = textareaRef.value
@@ -262,26 +271,44 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
 
   const cm = easymde.value.codemirror
 
-  cm.on('change', (instance: any) => {
-    const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent)
-      contentModel.value = editorContent
+  // --- 最终解决方案：创建一个包含“滚动到视图”命令的防抖处理器 ---
+  const debouncedUpdateHandler = debounce(() => {
+    if (!easymde.value)
+      return
 
+    // 触发自动保存
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
     else
       emit('triggerAutoSave')
 
-    nextTick(() => updateEditorHeight())
+    // 调用高度更新和视图刷新
+    updateEditorHeight()
 
+    // 关键步骤：在DOM更新后，强制将光标滚动到可见区域
+    nextTick(() => {
+      // cm.getCursor() 获取当前光标位置
+      // 第二个参数(50)表示在滚动后，光标距离编辑器垂直边缘至少有50px的边距，体验更好
+      cm.scrollIntoView(cm.getCursor(), 50)
+    })
+  }, 150)
+
+  cm.on('change', (instance: any) => {
+    const editorContent = easymde.value?.value() ?? ''
+    // 1. 立即更新 v-model
+    if (contentModel.value !== editorContent)
+      contentModel.value = editorContent
+
+    // 2. 将所有耗费性能和需要确保最终状态正确的操作放入防抖函数
+    debouncedUpdateHandler()
+
+    // 3. 标签建议等需要实时响应的功能，保留在原处
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
@@ -381,7 +408,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
-// --- 新增：监听设置中的字号变化 ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
@@ -449,7 +475,73 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 
 <style>
 /* Global styles */
-.editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overscroll-behavior:contain}.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
+.editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #fff;
+}
+/* --- CSS 保持不变，确保滚动行为正常 --- */
+.CodeMirror {
+  border: 1px solid #ccc !important;
+  border-top: none !important;
+  border-radius: 0 0 6px 6px;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+  overflow-y: auto !important;
+}
+.editor-toolbar a, .editor-toolbar button {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  line-height: 1 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+.editor-toolbar a i, .editor-toolbar button i {
+  font-size: 15px !important;
+  vertical-align: middle;
+}
+.editor-toolbar i.separator {
+  margin: 1px 3px !important;
+  border-width: 0 1px 0 0 !important;
+  height: 8px !important;
+}
+.dark .editor-toolbar {
+  background-color: #2c2c2e !important;
+  border-color: #48484a !important;
+}
+.dark .CodeMirror {
+  background-color: #2c2c2e !important;
+  border-color: #48484a !important;
+  color: #fff !important;
+}
+.dark .editor-toolbar a {
+  color: #e0e0e0 !important;
+}
+.dark .editor-toolbar a.active {
+  background: #404040 !important;
+}
+@media (max-width: 480px) {
+  .editor-toolbar {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .editor-toolbar::-webkit-scrollbar {
+    display: none;
+    height: 0;
+  }
+}
 
 /* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
