@@ -8,18 +8,6 @@ import 'easymde/dist/easymde.min.css'
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useSettingStore } from '@/stores/setting'
 
-// 用于防止watch循环更新的标志位
-
-// 3. 定义组件的Props和Emits
-const props = defineProps({
-  modelValue: { type: String, required: true },
-  editingNote: { type: Object as () => any | null, default: null },
-  isLoading: { type: Boolean, default: false },
-  allTags: { type: Array as () => string[], default: () => [] },
-  maxNoteLength: { type: Number, default: 3000 },
-  lastSavedTime: { type: String, default: '' },
-})
-const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 // 2. 定义响应式状态和标志位
 const { t } = useI18n()
 const settingsStore = useSettingStore()
@@ -30,7 +18,21 @@ const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
-let isInternalChange = false// 4. 定义工具函数（如防抖）
+let isInternalChange = false // 用于防止watch循环更新的标志位
+
+// 3. 定义组件的Props和Emits
+const props = defineProps({
+  modelValue: { type: String, required: true },
+  editingNote: { type: Object as () => any | null, default: null },
+  isLoading: { type: Boolean, default: false },
+  allTags: { type: Array as () => string[], default: () => [] },
+  maxNoteLength: { type: Number, default: 3000 },
+  lastSavedTime: { type: String, default: '' },
+})
+
+const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
+
+// 4. 定义工具函数（如防抖）
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
   let timeout: number | undefined
   return function (this: any, ...args: Parameters<T>) {
@@ -155,8 +157,19 @@ function updateEditorHeight() {
   })
 }
 
+// --- 最终修复：定义一个变量来跟踪输入法组字状态 ---
+let isComposing = false
+const onCompositionStart = () => { isComposing = true }
+const onCompositionEnd = () => { isComposing = false }
+
 function destroyEasyMDE() {
   if (easymde.value) {
+    // --- 最终修复：在销毁前，移除我们手动添加的事件监听器 ---
+    const cm = easymde.value.codemirror
+    const cmWrapper = cm.getWrapperElement()
+    cmWrapper.removeEventListener('compositionstart', onCompositionStart)
+    cmWrapper.removeEventListener('compositionend', onCompositionEnd)
+
     easymde.value.toTextArea()
     easymde.value = null
   }
@@ -177,6 +190,7 @@ function initializeEasyMDE(initialValue = '') {
   if (!newEl || easymde.value)
     return
 
+  // --- 已按规范要求格式化 ---
   const customToolbar = [
     {
       name: 'tag',
@@ -237,6 +251,10 @@ function initializeEasyMDE(initialValue = '') {
 
   const cm = easymde.value.codemirror
 
+  const cmWrapper = cm.getWrapperElement()
+  cmWrapper.addEventListener('compositionstart', onCompositionStart)
+  cmWrapper.addEventListener('compositionend', onCompositionEnd)
+
   const debouncedUpdateHandler = debounce(() => {
     if (!easymde.value)
       return
@@ -252,6 +270,10 @@ function initializeEasyMDE(initialValue = '') {
   }, 150)
 
   cm.on('change', (instance: any) => {
+    if (isComposing) {
+      return
+    }
+
     isInternalChange = true
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
