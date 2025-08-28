@@ -439,16 +439,6 @@ watch(easymde, (newEditorInstance) => {
 <template>
   <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
-      <textarea
-        ref="textareaRef"
-        v-model="contentModel"
-        :placeholder="$t('notes.content_placeholder')"
-        class="mb-2 w-full border rounded p-2"
-        required
-        :disabled="isLoading"
-        :maxlength="maxNoteLength"
-        autocomplete="off"
-      />
       <div class="status-bar">
         <span class="char-counter">
           {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
@@ -466,6 +456,16 @@ watch(easymde, (newEditorInstance) => {
           💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
         </button>
       </div>
+      <textarea
+        ref="textareaRef"
+        v-model="contentModel"
+        :placeholder="$t('notes.content_placeholder')"
+        class="mb-2 w-full border rounded p-2"
+        required
+        :disabled="isLoading"
+        :maxlength="maxNoteLength"
+        autocomplete="off"
+      />
     </form>
     <div
       v-if="showEditorTagSuggestions && editorTagSuggestions.length"
