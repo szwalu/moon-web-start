@@ -37,9 +37,9 @@ function handleViewportResize() {
     const viewport = window.visualViewport
     const keyboardHeight = window.innerHeight - viewport.height
 
-    // 核心修改：不再使用 padding，而是使用 transform 将整个组件向上平移
+    // 核心修改：不再使用 padding，而是使用 transform 将整个组件视觉上移
     editorWrapperRef.value.style.transform = `translateY(-${keyboardHeight}px)`
-    // 为了平滑过渡
+    // 增加一个平滑过渡效果，体验更好
     editorWrapperRef.value.style.transition = 'transform 0.2s ease-out'
 
     // 依然需要确保内部光标可见
