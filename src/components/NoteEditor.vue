@@ -32,7 +32,7 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极优化方案：动态计算并设置编辑器高度 ---
+// --- 终极优化方案：动态计算并设置编辑器高度，消除白色区域 ---
 function handleViewportResize() {
   if (easymde.value && window.visualViewport) {
     const viewport = window.visualViewport
@@ -40,20 +40,21 @@ function handleViewportResize() {
     const toolbar = cm.getWrapperElement().querySelector('.editor-toolbar') as HTMLElement
     const footer = editorFooterRef.value
 
-    if (toolbar && footer) {
+    // 当键盘弹起时，我们才进行动态计算
+    if (footer && toolbar && window.innerHeight > viewport.height) {
       // 可用高度 = 视口高度 - 工具栏高度 - 页脚高度 - 一些额外边距
-      const availableHeight = viewport.height - toolbar.offsetHeight - footer.offsetHeight - 20
+      const availableHeight = viewport.height - toolbar.offsetHeight - footer.offsetHeight - 15
 
-      // 直接设置 CodeMirror 的高度
+      // 直接设置 CodeMirror 编辑区域的高度
       cm.setSize(null, availableHeight)
-
-      // 确保光标可见
-      cm.scrollIntoView(cm.getCursor(), 10)
+    }
+    else {
+      // 键盘收起时，恢复自适应高度
+      updateEditorHeight(true)
     }
 
-    // 如果需要，也可以保留这个来处理外部滚动，但通常不再需要
-    if (editorWrapperRef.value)
-      editorWrapperRef.value.style.paddingBottom = '0px' // 确保旧的 padding 被移除
+    // 确保光标可见
+    cm.scrollIntoView(cm.getCursor(), 60)
   }
 }
 
@@ -210,15 +211,15 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：当键盘未弹出时，此函数负责自适应高度 ---
-function updateEditorHeight() {
-  // 如果键盘已弹出，则由 handleViewportResize 全权负责高度，此函数不执行
-  if (window.visualViewport && window.innerHeight !== window.visualViewport.height) {
-    handleViewportResize() // 确保在输入时也能持续调整
+// --- 已修改：此函数现在负责键盘未弹出时的自适应高度 ---
+function updateEditorHeight(force = false) {
+  // 如果键盘已弹出，则由 handleViewportResize 全权负责高度，此函数不执行（除非被强制调用）
+  if (!force && window.visualViewport && window.innerHeight > window.visualViewport.height)
     return
-  }
+
   if (!easymde.value)
     return
+
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
@@ -456,7 +457,7 @@ watch(easymde, (newEditorInstance) => {
 
 <template>
   <div ref="editorWrapperRef">
-    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+    <form ref="editorFooterRef" class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -467,7 +468,7 @@ watch(easymde, (newEditorInstance) => {
         :maxlength="maxNoteLength"
         autocomplete="off"
       />
-      <div ref="editorFooterRef">
+      <div>
         <div class="status-bar">
           <span class="char-counter">
             {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
