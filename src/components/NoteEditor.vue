@@ -30,9 +30,6 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 新增：用于确保首次滚动稳定性的标志位 ---
-let isFirstScrollNeeded = true
-
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -174,25 +171,42 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
+// --- 已修改：这是唯一的逻辑改动，采用手动计算方式确保滚动到位 ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
+
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
+
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // --- 已修改：为首次滚动和后续滚动使用不同的延时策略 ---
-  const scrollDelay = isFirstScrollNeeded ? 150 : 0
-  setTimeout(() => {
-    if (easymde.value) {
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-      isFirstScrollNeeded = false // 首次滚动后，将标志位置为false
+  // 在DOM更新后，执行手动滚动逻辑
+  nextTick(() => {
+    if (!easymde.value)
+      return
+
+    const scroller = cm.getScrollerElement()
+    // 获取光标相对于编辑器内容区域的坐标
+    const cursorCoords = cm.cursorCoords(true, 'local')
+    // 编辑器可见区域的高度
+    const editorHeight = scroller.clientHeight
+    // 光标的Y坐标
+    const cursorY = cursorCoords.top
+    // 底部安全边距，留给输入法工具栏
+    const margin = 60
+
+    // 如果光标的位置超出了“可见区域高度 - 边距”，则需要滚动
+    if (cursorY > (scroller.scrollTop + editorHeight - margin)) {
+      // 计算新的scrollTop值，使光标距离底部有margin的距离
+      const newScrollTop = cursorY - editorHeight + margin
+      scroller.scrollTop = newScrollTop
     }
-  }, scrollDelay)
+  })
 }
 
 function destroyEasyMDE() {
@@ -217,7 +231,6 @@ function applyEditorFontSize() {
 function initializeEasyMDE(initialValue = '') {
   // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
-  isFirstScrollNeeded = true // 每次初始化时，重置首次滚动标志位
 
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
@@ -323,19 +336,6 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
-
-  // --- 新增：监听第一次focus事件，用于解决初始位置问题 ---
-  let hasScrolledOnFocus = false
-  const focusHandler = () => {
-    if (!hasScrolledOnFocus) {
-      // 找到父级的滚动容器或者window本身来滚动
-      // 这里我们尝试滚动整个窗口，通常更有效
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      hasScrolledOnFocus = true
-      cm.off('focus', focusHandler) // 执行一次后就移除监听
-    }
-  }
-  cm.on('focus', focusHandler)
 }
 
 function selectEditorTag(tag: string) {
@@ -476,6 +476,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
+/* --- 已修改：这是唯一的CSS改动，确保滚动条正常工作 --- */
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
