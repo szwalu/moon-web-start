@@ -19,12 +19,12 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
-// --- 已修正：将 trigger-auto-save 改为 triggerAutoSave ---
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
+const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
@@ -172,6 +172,7 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
+// --- 已修改：这是解决“内部滚动”问题的核心 ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -182,6 +183,14 @@ function updateEditorHeight() {
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
+
+  // 使用 setTimeout 确保在 DOM 更新后执行
+  setTimeout(() => {
+    if (easymde.value) {
+      // 恢复使用最简单直接的 scrollIntoView 命令，并提供足够的边距
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+    }
+  }, 0)
 }
 
 function destroyEasyMDE() {
@@ -210,7 +219,6 @@ function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
-
   const customToolbar = [
     {
       name: 'tag',
@@ -255,7 +263,6 @@ function initializeEasyMDE(initialValue = '') {
     'side-by-side',
     'fullscreen',
   ]
-
   easymde.value = new EasyMDE({
     element: newEl,
     initialValue,
@@ -265,70 +272,68 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // 初始化时应用一次字号
+  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
 
   const cm = easymde.value.codemirror
 
-  // --- 内容变化时同步数据（完全不使用 instance）---
-  cm.on('change', () => {
+  cm.on('change', (instance: any) => {
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
+
     else
       emit('triggerAutoSave')
 
-    nextTick(() => {
-      updateEditorHeight()
+    nextTick(() => updateEditorHeight())
 
-      // 标签提示逻辑：基于 cm 自己取光标/行文本
-      const doc = cm.getDoc()
-      const cursor = doc.getCursor()
-      const lineText = doc.getLine(cursor.line) ?? ''
-      const textBefore = lineText.substring(0, cursor.ch)
-      const lastHashIndex = textBefore.lastIndexOf('#')
-
-      if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
-        showEditorTagSuggestions.value = false
-        return
-      }
-
-      const potentialTag = textBefore.substring(lastHashIndex)
-      if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
-        showEditorTagSuggestions.value = false
-        return
-      }
-
-      const term = potentialTag.substring(1)
-      editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
-
-      if (editorTagSuggestions.value.length > 0) {
-        const coords = cm.cursorCoords()
-        editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-        showEditorTagSuggestions.value = true
-        highlightedEditorIndex.value = 0
-      }
-      else {
-        showEditorTagSuggestions.value = false
-      }
-    })
-  })
-
-  // --- 光标移动时，强制把光标向上留出 100px 缓冲（不使用 instance）---
-  cm.on('cursorActivity', () => {
-    const doc = cm.getDoc()
-    const cursor = doc.getCursor()
-    cm.scrollIntoView({ line: cursor.line, ch: cursor.ch }, 100)
+    const cursor = instance.getDoc().getCursor()
+    const line = instance.getDoc().getLine(cursor.line)
+    const textBefore = line.substring(0, cursor.ch)
+    const lastHashIndex = textBefore.lastIndexOf('#')
+    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+    const potentialTag = textBefore.substring(lastHashIndex)
+    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+    const term = potentialTag.substring(1)
+    editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
+    if (editorTagSuggestions.value.length > 0) {
+      const coords = instance.cursorCoords()
+      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+      showEditorTagSuggestions.value = true
+      highlightedEditorIndex.value = 0
+    }
+    else {
+      showEditorTagSuggestions.value = false
+    }
   })
 
   cm.on('keydown', handleEditorKeyDown)
-
   nextTick(() => updateEditorHeight())
+
+  // --- 新增：这是解决“全局”位置问题的核心 ---
+  // 创建一个只执行一次的 focus 事件处理器
+  const focusHandler = () => {
+    // 延迟执行以等待键盘动画
+    setTimeout(() => {
+      // 将整个组件的包装器滚动到视野内，确保按钮等元素可见
+      editorWrapperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
+    // 执行一次后立即移除监听，避免后续点击重复触发
+    cm.off('focus', focusHandler)
+  }
+  // 绑定这个一次性的 focus 监听器
+  cm.on('focus', focusHandler)
 }
 
 function selectEditorTag(tag: string) {
@@ -393,7 +398,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
         const cm = easymde.value.codemirror
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine()).length)
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
         cm.focus()
       }
     })
@@ -411,7 +416,7 @@ function handleSubmit() {
 </script>
 
 <template>
-  <div>
+  <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -469,7 +474,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
-/* --- 已修改：这是唯一的CSS改动 --- */
+/* --- 已修改：这是唯一的CSS改动，确保滚动条正常工作 --- */
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -491,10 +496,5 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
-}
-
-/* 额外给 CodeMirror 底部预留空间，避免光标被挡 */
-.CodeMirror {
-  padding-bottom: 60px !important;
 }
 </style>
