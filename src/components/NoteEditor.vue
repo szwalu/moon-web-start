@@ -342,23 +342,6 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
-
-  // --- 已修改：采用最终的 mouseup 监听方案 ---
-  const scroller = cm.getScrollerElement()
-  const mouseUpHandler = () => {
-    // 使用微小延迟确保这是事件队列中的最后操作
-    setTimeout(() => {
-      // 只在编辑旧笔记时执行
-      if (props.editingNote && easymde.value) {
-        const doc = easymde.value.codemirror.getDoc()
-        const lastLine = doc.lastLine()
-        // 将光标移动到末尾
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-      }
-    }, 0)
-  }
-  // 绑定一个只执行一次的 mouseup 监听器
-  scroller.addEventListener('mouseup', mouseUpHandler, { once: true })
 }
 
 function selectEditorTag(tag: string) {
@@ -434,6 +417,27 @@ watch(() => settingsStore.noteFontSize, () => {
 function handleSubmit() {
   emit('submit')
 }
+
+// --- 新增：最终的光标定位方案 ---
+// 侦听编辑器实例是否被创建
+watch(easymde, (newEditorInstance) => {
+  // 确保是在编辑器刚刚被创建好的那个时刻
+  if (newEditorInstance) {
+    // 并且我们正在编辑一个旧笔记
+    if (props.editingNote) {
+      const cm = newEditorInstance.codemirror
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+
+      // 在下一个Tick中安全地移动光标，确保DOM已更新
+      nextTick(() => {
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        // 温和地尝试让光标可见，但不强制聚焦
+        cm.scrollIntoView(cm.getCursor(), 60)
+      })
+    }
+  }
+})
 </script>
 
 <template>
