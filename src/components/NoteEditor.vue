@@ -343,16 +343,19 @@ function initializeEasyMDE(initialValue = '') {
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
 
-  // --- 新增：兼顾稳定性和功能的最终方案 ---
-  // 定义一个只执行一次的 focus 事件处理器
+  // --- 已修改：在 focus 处理器中增加了一个微小延迟 ---
   const focusHandler = () => {
-    // 只在编辑旧笔记时执行
-    if (props.editingNote) {
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
-      // 在用户第一次点击时，安全地将光标移动到末尾
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-    }
+    // 使用 setTimeout 将光标设置推迟到下一个事件循环
+    setTimeout(() => {
+      // 只在编辑旧笔记时执行
+      if (props.editingNote && easymde.value) {
+        const doc = easymde.value.codemirror.getDoc()
+        const lastLine = doc.lastLine()
+        // 安全地将光标移动到末尾
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+      }
+    }, 0) // 0毫秒的延迟足以解决竞争问题
+
     // 关键：执行一次后立即移除此监听器
     cm.off('focus', focusHandler)
   }
