@@ -343,24 +343,22 @@ function initializeEasyMDE(initialValue = '') {
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
 
-  // --- 已修改：在 focus 处理器中增加了一个微小延迟 ---
-  const focusHandler = () => {
-    // 使用 setTimeout 将光标设置推迟到下一个事件循环
+  // --- 已修改：采用最终的 mouseup 监听方案 ---
+  const scroller = cm.getScrollerElement()
+  const mouseUpHandler = () => {
+    // 使用微小延迟确保这是事件队列中的最后操作
     setTimeout(() => {
       // 只在编辑旧笔记时执行
       if (props.editingNote && easymde.value) {
         const doc = easymde.value.codemirror.getDoc()
         const lastLine = doc.lastLine()
-        // 安全地将光标移动到末尾
+        // 将光标移动到末尾
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
       }
-    }, 0) // 0毫秒的延迟足以解决竞争问题
-
-    // 关键：执行一次后立即移除此监听器
-    cm.off('focus', focusHandler)
+    }, 0)
   }
-  // 绑定这个一次性的 focus 监听器
-  cm.on('focus', focusHandler)
+  // 绑定一个只执行一次的 mouseup 监听器
+  scroller.addEventListener('mouseup', mouseUpHandler, { once: true })
 }
 
 function selectEditorTag(tag: string) {
