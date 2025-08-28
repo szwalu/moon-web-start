@@ -19,6 +19,7 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
+// --- 已修正：将 trigger-auto-save 改为 triggerAutoSave ---
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
 const { t } = useI18n()
@@ -171,42 +172,16 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：这是唯一的逻辑改动，采用手动计算方式确保内部滚动到位 ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
-
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
-
-  // 1. 调整编辑器高度
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
-
-  // 2. 在DOM更新后，执行手动内部滚动逻辑
-  nextTick(() => {
-    if (!easymde.value)
-      return
-
-    const scroller = cm.getScrollerElement()
-    const cursorCoords = cm.cursorCoords(true, 'local')
-    const editorVisibleHeight = scroller.clientHeight
-    const cursorY = cursorCoords.top
-    const cursorHeight = cursorCoords.bottom - cursorCoords.top
-
-    // 我们需要预留的底部空间，比“保存”按钮栏的高度稍大一些
-    const bottomMargin = 60
-
-    // 判断光标是否被底部遮挡
-    if (cursorY + cursorHeight > scroller.scrollTop + editorVisibleHeight - bottomMargin) {
-      // 计算新的 scrollTop 值，让光标精确地出现在倒数 `bottomMargin` 的位置
-      const newScrollTop = cursorY - editorVisibleHeight + bottomMargin + cursorHeight
-      scroller.scrollTop = newScrollTop
-    }
-  })
 }
 
 function destroyEasyMDE() {
@@ -235,6 +210,7 @@ function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
+
   const customToolbar = [
     {
       name: 'tag',
@@ -279,6 +255,7 @@ function initializeEasyMDE(initialValue = '') {
     'side-by-side',
     'fullscreen',
   ]
+
   easymde.value = new EasyMDE({
     element: newEl,
     initialValue,
@@ -288,53 +265,69 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- 新增：初始化时应用一次字号 ---
+  // 初始化时应用一次字号
   nextTick(() => {
     applyEditorFontSize()
   })
 
   const cm = easymde.value.codemirror
 
-  cm.on('change', (instance: any) => {
+  // --- 内容变化时同步数据（完全不使用 instance）---
+  cm.on('change', () => {
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
     else
       emit('triggerAutoSave')
 
-    nextTick(() => updateEditorHeight())
+    nextTick(() => {
+      updateEditorHeight()
 
-    const cursor = instance.getDoc().getCursor()
-    const line = instance.getDoc().getLine(cursor.line)
-    const textBefore = line.substring(0, cursor.ch)
-    const lastHashIndex = textBefore.lastIndexOf('#')
-    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-    const potentialTag = textBefore.substring(lastHashIndex)
-    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-    const term = potentialTag.substring(1)
-    editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
-    if (editorTagSuggestions.value.length > 0) {
-      const coords = instance.cursorCoords()
-      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-      showEditorTagSuggestions.value = true
-      highlightedEditorIndex.value = 0
-    }
-    else {
-      showEditorTagSuggestions.value = false
-    }
+      // 标签提示逻辑：基于 cm 自己取光标/行文本
+      const doc = cm.getDoc()
+      const cursor = doc.getCursor()
+      const lineText = doc.getLine(cursor.line) ?? ''
+      const textBefore = lineText.substring(0, cursor.ch)
+      const lastHashIndex = textBefore.lastIndexOf('#')
+
+      if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
+        showEditorTagSuggestions.value = false
+        return
+      }
+
+      const potentialTag = textBefore.substring(lastHashIndex)
+      if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
+        showEditorTagSuggestions.value = false
+        return
+      }
+
+      const term = potentialTag.substring(1)
+      editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
+
+      if (editorTagSuggestions.value.length > 0) {
+        const coords = cm.cursorCoords()
+        editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+        showEditorTagSuggestions.value = true
+        highlightedEditorIndex.value = 0
+      }
+      else {
+        showEditorTagSuggestions.value = false
+      }
+    })
+  })
+
+  // --- 光标移动时，强制把光标向上留出 100px 缓冲（不使用 instance）---
+  cm.on('cursorActivity', () => {
+    const doc = cm.getDoc()
+    const cursor = doc.getCursor()
+    cm.scrollIntoView({ line: cursor.line, ch: cursor.ch }, 100)
   })
 
   cm.on('keydown', handleEditorKeyDown)
+
   nextTick(() => updateEditorHeight())
 }
 
@@ -400,7 +393,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
         const cm = easymde.value.codemirror
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        doc.setCursor(lastLine, doc.getLine(lastLine()).length)
         cm.focus()
       }
     })
@@ -476,7 +469,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 <style>
 /* Global styles */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
-/* --- 已修改：这是唯一的CSS改动，确保滚动条正常工作 --- */
+/* --- 已修改：这是唯一的CSS改动 --- */
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -498,5 +491,10 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
+}
+
+/* 额外给 CodeMirror 底部预留空间，避免光标被挡 */
+.CodeMirror {
+  padding-bottom: 60px !important;
 }
 </style>
