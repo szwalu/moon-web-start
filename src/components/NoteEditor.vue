@@ -142,6 +142,10 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
+  // --- 终极解决方案：添加监听器 ---
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', handleViewportResize)
+
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -154,21 +158,12 @@ onMounted(async () => {
 
   initializeEasyMDE(initialContent)
 
-  // 使用 nextTick 确保编辑器DOM已准备好
-  await nextTick()
-  if (easymde.value) {
-    const cm = easymde.value.codemirror
-    const doc = cm.getDoc()
-    const lastLine = doc.lastLine()
-
-    // 关键修改：
-    // 如果是编辑旧笔记，只设置光标位置，不主动触发 focus()
-    if (props.editingNote) {
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-    }
-    // 如果是带天气的新笔记，则可以聚焦，因为它内容少，不会有滚动问题
-    else if (!props.editingNote && initialContent.includes('°C')) {
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const doc = cm.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
       cm.focus()
     }
   }
@@ -347,6 +342,22 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
+
+  // --- 新增：兼顾稳定性和功能的最终方案 ---
+  // 定义一个只执行一次的 focus 事件处理器
+  const focusHandler = () => {
+    // 只在编辑旧笔记时执行
+    if (props.editingNote) {
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+      // 在用户第一次点击时，安全地将光标移动到末尾
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+    }
+    // 关键：执行一次后立即移除此监听器
+    cm.off('focus', focusHandler)
+  }
+  // 绑定这个一次性的 focus 监听器
+  cm.on('focus', focusHandler)
 }
 
 function selectEditorTag(tag: string) {
