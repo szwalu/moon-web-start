@@ -32,29 +32,16 @@ const settingsStore = useSettingStore()
 const isReadyForAutoSave = ref(false)
 
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
+// 1. 替换这个函数
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
     const viewport = window.visualViewport
-    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
     const keyboardHeight = window.innerHeight - viewport.height
-    // 1. 调整外部布局：为组件底部增加一个内边距，把“保存”按钮等UI顶上来
     editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
 
-    // 2. 调整内部滚动：确保光标在调整后的布局中可见
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const scroller = cm.getScrollerElement()
-      const cursorCoords = cm.cursorCoords(true, 'local')
-      const editorVisibleHeight = scroller.clientHeight
-      const cursorY = cursorCoords.top
-      const cursorHeight = cursorCoords.bottom - cursorCoords.top
-      const bottomMargin = 60 // 这里只需要一个很小的边距，因为外部padding已经提供了主要空间
-
-      if (cursorY + cursorHeight > scroller.scrollTop + editorVisibleHeight - bottomMargin) {
-        const newScrollTop = cursorY - editorVisibleHeight + bottomMargin + cursorHeight
-        scroller.scrollTop = newScrollTop
-      }
-    }
+    // 在键盘调整布局后，立即温和地尝试让光标可见
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }
 }
 
