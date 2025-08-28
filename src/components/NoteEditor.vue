@@ -34,13 +34,27 @@ const isReadyForAutoSave = ref(false)
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
+    const viewport = window.visualViewport
     // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
-    const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件底部增加一个内边距，把内容顶上来
+    const keyboardHeight = window.innerHeight - viewport.height
+    // 1. 调整外部布局：为组件底部增加一个内边距，把“保存”按钮等UI顶上来
     editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+
+    // 2. 调整内部滚动：确保光标在调整后的布局中可见
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const scroller = cm.getScrollerElement()
+      const cursorCoords = cm.cursorCoords(true, 'local')
+      const editorVisibleHeight = scroller.clientHeight
+      const cursorY = cursorCoords.top
+      const cursorHeight = cursorCoords.bottom - cursorCoords.top
+      const bottomMargin = 15 // 这里只需要一个很小的边距，因为外部padding已经提供了主要空间
+
+      if (cursorY + cursorHeight > scroller.scrollTop + editorVisibleHeight - bottomMargin) {
+        const newScrollTop = cursorY - editorVisibleHeight + bottomMargin + cursorHeight
+        scroller.scrollTop = newScrollTop
+      }
+    }
   }
 }
 
@@ -207,12 +221,6 @@ function updateEditorHeight() {
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
-
-  // 保持一个简单的内部滚动，配合外部布局调整
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 10)
-  }, 0)
 }
 
 function destroyEasyMDE() {
