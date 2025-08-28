@@ -4,11 +4,12 @@ import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// 1. 引入工具函数和Store
+// 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
+
+// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
-// 3. 定义组件的Props和Emits
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
@@ -17,29 +18,21 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
+
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
-// 2. 定义响应式状态和标志位
+
 const { t } = useI18n()
-const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
+// --- 新增：用于获取组件根元素的引用 ---
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
+// --- 新增：初始化 Store ---
+const settingsStore = useSettingStore()
+
+// 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
-const showEditorTagSuggestions = ref(false)
-const editorTagSuggestions = ref<string[]>([])
-const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-// 4. 计算属性
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
-})
-const charCount = computed(() => contentModel.value.length)
-
-// 5. 核心功能函数
-// 天气相关函数...
+// 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -135,7 +128,45 @@ async function fetchWeather() {
   }
 }
 
-// 编辑器相关函数...
+// onMounted 钩子
+onMounted(async () => {
+  let initialContent = props.modelValue
+
+  if (!props.editingNote && !props.modelValue) {
+    const weatherString = await fetchWeather()
+    if (weatherString) {
+      initialContent = `${weatherString}\n`
+      emit('update:modelValue', initialContent)
+    }
+  }
+
+  initializeEasyMDE(initialContent)
+
+  await nextTick()
+
+  if (easymde.value) {
+    const cm = easymde.value.codemirror
+    const doc = cm.getDoc()
+
+    cm.focus()
+
+    if (props.editingNote) {
+      const lastLine = doc.lastLine()
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+    }
+    else if (!props.editingNote && initialContent.includes('°C')) {
+      const lastLine = doc.lastLine()
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+    }
+  }
+})
+
+// 下方的所有其他函数
+const showEditorTagSuggestions = ref(false)
+const editorTagSuggestions = ref<string[]>([])
+const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
+const highlightedEditorIndex = ref(-1)
+const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 const minEditorHeight = 130
 const isSmallScreen = window.innerWidth < 768
 let maxEditorHeight
@@ -143,6 +174,12 @@ if (isSmallScreen)
   maxEditorHeight = window.innerHeight * 0.65
 else
   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => { emit('update:modelValue', value) },
+})
+const charCount = computed(() => contentModel.value.length)
 
 function updateEditorHeight() {
   if (!easymde.value)
@@ -155,6 +192,7 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
+  // --- 已修正：增大边距值以避开输入法工具栏 ---
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
@@ -168,16 +206,20 @@ function destroyEasyMDE() {
   }
 }
 
+// --- 新增：更新编辑器字号的辅助函数 ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
+  // 移除旧的字号 class
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+  // 添加新的字号 class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
+  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
 
   const newEl = textareaRef.value
@@ -236,6 +278,7 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
+  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -249,6 +292,7 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
+
     else
       emit('triggerAutoSave')
 
@@ -283,11 +327,11 @@ function initializeEasyMDE(initialValue = '') {
   cm.on('keydown', handleEditorKeyDown)
   nextTick(() => updateEditorHeight())
 
-  // --- 新增：编辑器获得焦点时，自动向上滚动页面 ---
+  // --- 新增：编辑器获得焦点时，自动将整个组件向上滚动页面 ---
   cm.on('focus', () => {
     setTimeout(() => {
       editorWrapperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 300) // 延迟以等待键盘完全弹出
+    }, 300) // 延迟300毫秒以等待键盘完全弹出
   })
 }
 
@@ -335,45 +379,6 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
   }
 }
 
-function handleSubmit() {
-  emit('submit')
-}
-
-// --- 已修改：添加了处理首次加载旧笔记时光标和滚动问题的逻辑 ---
-onMounted(async () => {
-  let initialContent = props.modelValue
-  if (!props.editingNote && !props.modelValue) {
-    const weatherString = await fetchWeather()
-    if (weatherString) {
-      initialContent = `${weatherString}\n`
-      emit('update:modelValue', initialContent)
-    }
-  }
-
-  initializeEasyMDE(initialContent)
-
-  await nextTick()
-
-  if (easymde.value) {
-    const cm = easymde.value.codemirror
-    const doc = cm.getDoc()
-
-    // 无论是新笔记还是旧笔记，都让编辑器获得焦点
-    cm.focus()
-
-    // 如果是编辑旧笔记，则将光标移动到末尾
-    if (props.editingNote) {
-      const lastLine = doc.lastLine()
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-    }
-    // 如果是带天气的新笔记，也移动到末尾
-    else if (!props.editingNote && initialContent.includes('°C')) {
-      const lastLine = doc.lastLine()
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-    }
-  }
-})
-
 onUnmounted(() => {
   destroyEasyMDE()
 })
@@ -383,7 +388,6 @@ watch(() => props.modelValue, (newValue) => {
     easymde.value.value(newValue)
 })
 
-// --- 已修改：确保切换笔记时，光标也能正确定位 ---
 watch(() => props.editingNote, (newNote, oldNote) => {
   if (newNote?.id !== oldNote?.id) {
     destroyEasyMDE()
@@ -393,7 +397,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
         const cm = easymde.value.codemirror
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
-        // 聚焦并移动光标
         cm.focus()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
       }
@@ -401,9 +404,14 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
+// --- 新增：监听设置中的字号变化 ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
+
+function handleSubmit() {
+  emit('submit')
+}
 </script>
 
 <template>
