@@ -4,12 +4,13 @@ import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// 1. 直接引入天气数据映射文件
+// 1. 引入工具函数和Store
 import { cityMap, weatherMap } from '@/utils/weatherMap'
-
-// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
+// 用于防止watch循环更新的标志位
+
+// 3. 定义组件的Props和Emits
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
@@ -18,10 +19,18 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
-
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
-
-// --- 新增：防抖函数 ---
+// 2. 定义响应式状态和标志位
+const { t } = useI18n()
+const settingsStore = useSettingStore()
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const easymde = ref<EasyMDE | null>(null)
+const isReadyForAutoSave = ref(false)
+const showEditorTagSuggestions = ref(false)
+const editorTagSuggestions = ref<string[]>([])
+const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
+const highlightedEditorIndex = ref(-1)
+let isInternalChange = false// 4. 定义工具函数（如防抖）
 function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
   let timeout: number | undefined
   return function (this: any, ...args: Parameters<T>) {
@@ -30,21 +39,19 @@ function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (
   }
 }
 
-const { t } = useI18n()
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const easymde = ref<EasyMDE | null>(null)
-// --- 新增：初始化 Store ---
-const settingsStore = useSettingStore()
+// 5. 计算属性
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => { emit('update:modelValue', value) },
+})
+const charCount = computed(() => contentModel.value.length)
 
-// 使用这个状态作为“是否为初始化触发”的看门人
-const isReadyForAutoSave = ref(false)
-
-// 天气相关的逻辑函数 (保持不变)
+// 6. 核心功能函数
+// 天气相关函数...
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
     return null
-
   const { data, timestamp } = JSON.parse(cached)
   const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
   return isExpired ? null : data
@@ -64,10 +71,7 @@ function getMappedCityName(enCity: string): string {
   const cityLower = enCity.trim().toLowerCase()
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
-    if (
-      cityLower === keyLower
-      || cityLower.startsWith(keyLower)
-    )
+    if (cityLower === keyLower || cityLower.startsWith(keyLower))
       return value
   }
   return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
@@ -81,7 +85,6 @@ async function fetchWeather() {
   const cached = getCachedWeather()
   if (cached)
     return cached.formattedString
-
   try {
     let locData
     try {
@@ -100,33 +103,26 @@ async function fetchWeather() {
       locData = await backupRes.json()
       if (locData.status === 'fail')
         throw new Error(`ip-api.com 服务错误: ${locData.message}`)
-
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
       locData.longitude = locData.lon
     }
-
     if (!locData?.latitude || !locData?.longitude)
       throw new Error('从两个服务获取地理位置均失败。')
-
     const lat = locData.latitude
     const lon = locData.longitude
     const city = getMappedCityName(locData.city)
-
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
       throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
     const data = await res.json()
     if (data.error)
       throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
-
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
     const { text, icon } = getWeatherText(code)
-
     const formattedString = `${city}/${temp}°C ${text} ${icon}`
     setCachedWeather({ formattedString })
-
     return formattedString
   }
   catch (e: any) {
@@ -135,37 +131,7 @@ async function fetchWeather() {
   }
 }
 
-// onMounted 钩子
-onMounted(async () => {
-  let initialContent = props.modelValue
-
-  if (!props.editingNote && !props.modelValue) {
-    const weatherString = await fetchWeather()
-    if (weatherString) {
-      initialContent = `${weatherString}\n`
-      emit('update:modelValue', initialContent)
-    }
-  }
-
-  initializeEasyMDE(initialContent)
-
-  if (!props.editingNote && initialContent.includes('°C')) {
-    await nextTick()
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      cm.focus()
-    }
-  }
-})
-
-// 下方的所有其他函数
-const showEditorTagSuggestions = ref(false)
-const editorTagSuggestions = ref<string[]>([])
-const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
+// 编辑器相关函数...
 const minEditorHeight = 130
 const isSmallScreen = window.innerWidth < 768
 let maxEditorHeight
@@ -173,12 +139,6 @@ if (isSmallScreen)
   maxEditorHeight = window.innerHeight * 0.65
 else
   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
-})
-const charCount = computed(() => contentModel.value.length)
 
 function updateEditorHeight() {
   if (!easymde.value)
@@ -190,7 +150,6 @@ function updateEditorHeight() {
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
-
   nextTick(() => {
     cm.refresh()
   })
@@ -214,10 +173,10 @@ function applyEditorFontSize() {
 
 function initializeEasyMDE(initialValue = '') {
   isReadyForAutoSave.value = false
-
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
+
   const customToolbar = [
     {
       name: 'tag',
@@ -262,6 +221,7 @@ function initializeEasyMDE(initialValue = '') {
     'side-by-side',
     'fullscreen',
   ]
+
   easymde.value = new EasyMDE({
     element: newEl,
     initialValue,
@@ -277,38 +237,28 @@ function initializeEasyMDE(initialValue = '') {
 
   const cm = easymde.value.codemirror
 
-  // --- 最终解决方案：创建一个包含“滚动到视图”命令的防抖处理器 ---
   const debouncedUpdateHandler = debounce(() => {
     if (!easymde.value)
       return
-
-    // 触发自动保存
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
     else
       emit('triggerAutoSave')
 
-    // 调用高度更新和视图刷新
     updateEditorHeight()
-
-    // 关键步骤：在DOM更新后，强制将光标滚动到可见区域
     nextTick(() => {
-      // cm.getCursor() 获取当前光标位置
-      // 第二个参数(50)表示在滚动后，光标距离编辑器垂直边缘至少有50px的边距，体验更好
       cm.scrollIntoView(cm.getCursor(), 50)
     })
   }, 150)
 
   cm.on('change', (instance: any) => {
+    isInternalChange = true
     const editorContent = easymde.value?.value() ?? ''
-    // 1. 立即更新 v-model
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    // 2. 将所有耗费性能和需要确保最终状态正确的操作放入防抖函数
     debouncedUpdateHandler()
 
-    // 3. 标签建议等需要实时响应的功能，保留在原处
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
@@ -383,11 +333,41 @@ function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
   }
 }
 
+function handleSubmit() {
+  emit('submit')
+}
+
+// 7. 生命周期钩子和Watchers
+onMounted(async () => {
+  let initialContent = props.modelValue
+  if (!props.editingNote && !props.modelValue) {
+    const weatherString = await fetchWeather()
+    if (weatherString) {
+      initialContent = `${weatherString}\n`
+      emit('update:modelValue', initialContent)
+    }
+  }
+  initializeEasyMDE(initialContent)
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const doc = cm.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+      cm.focus()
+    }
+  }
+})
+
 onUnmounted(() => {
   destroyEasyMDE()
 })
 
 watch(() => props.modelValue, (newValue) => {
+  if (isInternalChange) {
+    isInternalChange = false
+    return
+  }
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
 })
@@ -411,10 +391,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
-
-function handleSubmit() {
-  emit('submit')
-}
 </script>
 
 <template>
@@ -450,7 +426,6 @@ function handleSubmit() {
     </form>
     <div
       v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-      ref="editorSuggestionsRef"
       class="tag-suggestions editor-suggestions"
       :style="editorSuggestionsStyle"
     >
@@ -487,7 +462,6 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   z-index: 10;
   background-color: #fff;
 }
-/* --- CSS 保持不变，确保滚动行为正常 --- */
 .CodeMirror {
   border: 1px solid #ccc !important;
   border-top: none !important;
@@ -557,7 +531,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   font-size: 14px !important;
 }
 .CodeMirror.font-size-medium {
-  font-size: 16px !important; /* 这是原始的默认大小 */
+  font-size: 16px !important;
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
