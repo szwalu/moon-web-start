@@ -418,7 +418,7 @@ function handleSubmit() {
   emit('submit')
 }
 
-// --- 新增：最终的光标定位方案 ---
+// --- 新增：最终光标定位方案 ---
 // 侦听编辑器实例是否被创建
 watch(easymde, (newEditorInstance) => {
   // 当编辑器实例被创建好时
