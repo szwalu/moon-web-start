@@ -314,6 +314,9 @@ notes:
   exporting: 导出中...
   export_results: 导出结果
   search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
+  total_notes: 笔记总数
+  journaling_days_label: 您已坚持记录
+  journaling_days_value: '{count} 天'
 dialog:
   delete_note_title: 删除笔记
   delete_note_content: 您确定要删除这篇笔记吗？此操作无法撤销

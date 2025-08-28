@@ -45,6 +45,10 @@ const selectedFontSize = computed({
       role="dialog"
       aria-modal="true"
     >
+      <template #header-extra>
+        <button class="close-btn" @click="emit('close')">&times;</button>
+      </template>
+
       <NSpace vertical>
         <label>{{ t('settings.font_size_label', '字号大小') }}</label>
         <NRadioGroup v-model:value="selectedFontSize" name="font-size-group">
@@ -66,5 +70,24 @@ const selectedFontSize = computed({
 <style scoped>
 .n-card {
   border-radius: 8px;
+}
+
+.n-card {
+  border-radius: 8px;
+}
+
+/* --- 新增这段样式 --- */
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #888;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.close-btn:hover {
+  color: #333;
 }
 </style>

@@ -16,6 +16,7 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 
 // 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
+import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 
@@ -29,6 +30,7 @@ const authStore = useAuthStore()
 
 const showEditorModal = ref(false)
 const showSettingsModal = ref(false)
+const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const dropdownContainerRef = ref(null)
@@ -777,18 +779,18 @@ function closeEditorModal() {
           </button>
           <Transition name="fade">
             <div v-if="showDropdown" class="dropdown-menu">
-              <div class="dropdown-item" @click="toggleSearchBar">
+              <div class="dropdown-item" @click.stop="toggleSearchBar">
                 {{ $t('notes.search_notes') }}
               </div>
-              <div class="dropdown-item" @click="showSettingsModal = true; showDropdown = false">
+              <div class="dropdown-item" @click.stop="showSettingsModal = true; showDropdown = false">
                 {{ $t('settings.font_title') }}
               </div>
-              <div class="dropdown-item" @click="handleBatchExport">
+              <div class="dropdown-item" @click.stop="handleBatchExport">
                 {{ $t('notes.export_all') }}
               </div>
-              <a class="dropdown-item" href="https://www.woabc.com/my-account" target="_blank">
+              <div class="dropdown-item" @click.stop="showAccountModal = true; showDropdown = false">
                 {{ $t('auth.account_title') }}
-              </a>
+              </div>
             </div>
           </Transition>
         </div>
@@ -857,7 +859,16 @@ function closeEditorModal() {
           />
         </div>
       </div>
+
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
+
+      <AccountModal
+        :show="showAccountModal"
+        :email="user?.email"
+        :total-notes="totalNotes"
+        :user="user"
+        @close="showAccountModal = false"
+      />
     </template>
     <template v-else>
       <Authentication />
