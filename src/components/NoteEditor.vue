@@ -142,10 +142,6 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
-  if (window.visualViewport)
-    window.visualViewport.addEventListener('resize', handleViewportResize)
-
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -158,12 +154,21 @@ onMounted(async () => {
 
   initializeEasyMDE(initialContent)
 
-  if (!props.editingNote && initialContent.includes('°C')) {
-    await nextTick()
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+  // 使用 nextTick 确保编辑器DOM已准备好
+  await nextTick()
+  if (easymde.value) {
+    const cm = easymde.value.codemirror
+    const doc = cm.getDoc()
+    const lastLine = doc.lastLine()
+
+    // 关键修改：
+    // 如果是编辑旧笔记，只设置光标位置，不主动触发 focus()
+    if (props.editingNote) {
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+    }
+    // 如果是带天气的新笔记，则可以聚焦，因为它内容少，不会有滚动问题
+    else if (!props.editingNote && initialContent.includes('°C')) {
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
       cm.focus()
     }
   }
