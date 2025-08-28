@@ -34,21 +34,18 @@ const isReadyForAutoSave = ref(false)
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    const viewport = window.visualViewport
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 步骤一：仍然使用 padding-bottom 把整个组件“顶”上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
 
-    // 核心修改：不再增加 padding，而是直接设置组件容器的高度
-    // 使其高度恰好等于屏幕的可见区域高度
-    editorWrapperRef.value.style.height = `${viewport.height}px`
+    // 步骤二：增加一个微小延迟，确保 padding 已生效，然后滚动整个页面到底部
+    setTimeout(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+    }, 100) // 100毫秒的延迟足以应对各种机型
 
-    // 同时，温和地将页面滚动一下，确保组件顶部可见
-    editorWrapperRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
-    // 确保编辑器内部光标可见
-    if (easymde.value) {
-      setTimeout(() => {
-        easymde.value?.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-      }, 100) // 增加一个微小延迟，等待高度设置生效
-    }
+    // (保留原有的内部滚动逻辑作为辅助)
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
 }
 
