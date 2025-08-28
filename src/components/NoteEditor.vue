@@ -142,10 +142,6 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
-  if (window.visualViewport)
-    window.visualViewport.addEventListener('resize', handleViewportResize)
-
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -158,14 +154,16 @@ onMounted(async () => {
 
   initializeEasyMDE(initialContent)
 
-  if (!props.editingNote && initialContent.includes('°C')) {
-    await nextTick()
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      cm.focus()
-    }
+  // 使用 nextTick 确保编辑器DOM已准备好
+  await nextTick()
+  if (easymde.value) {
+    const cm = easymde.value.codemirror
+    const doc = cm.getDoc()
+
+    // 无论是新笔记还是旧笔记，都将光标移动到末尾
+    const lastLine = doc.lastLine()
+    doc.setCursor(lastLine, doc.getLine(lastLine).length)
+    cm.focus() // 聚焦编辑器
   }
 })
 
@@ -477,7 +475,18 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 
 <style>
 /* Global styles */
-.editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
+.editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
+  position: -webkit-sticky; /* 兼容旧版 Safari */
+  position: sticky; /* 这是实现浮动效果的核心 */
+  top: 0; /* 滚动时，工具栏会吸附在屏幕顶部 */
+  z-index: 1001; /* 提高层级，确保它能浮在其他内容之上 */
+  background-color: #fff;
+}
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
