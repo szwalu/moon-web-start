@@ -24,37 +24,23 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
-const editorFooterRef = ref<HTMLDivElement | null>(null) // 新增：用于获取页脚高度
+const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极优化方案：动态计算并设置编辑器高度，消除白色区域 ---
+// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
-  if (easymde.value && window.visualViewport) {
-    const viewport = window.visualViewport
-    const cm = easymde.value.codemirror
-    const toolbar = cm.getWrapperElement().querySelector('.editor-toolbar') as HTMLElement
-    const footer = editorFooterRef.value
-
-    // 当键盘弹起时，我们才进行动态计算
-    if (footer && toolbar && window.innerHeight > viewport.height) {
-      // 可用高度 = 视口高度 - 工具栏高度 - 页脚高度 - 一些额外边距
-      const availableHeight = viewport.height - toolbar.offsetHeight - footer.offsetHeight - 15
-
-      // 直接设置 CodeMirror 编辑区域的高度
-      cm.setSize(null, availableHeight)
-    }
-    else {
-      // 键盘收起时，恢复自适应高度
-      updateEditorHeight(true)
-    }
-
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
     // 确保光标可见
-    cm.scrollIntoView(cm.getCursor(), 60)
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
 }
 
@@ -211,15 +197,9 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 已修改：此函数现在负责键盘未弹出时的自适应高度 ---
-function updateEditorHeight(force = false) {
-  // 如果键盘已弹出，则由 handleViewportResize 全权负责高度，此函数不执行（除非被强制调用）
-  if (!force && window.visualViewport && window.innerHeight > window.visualViewport.height)
-    return
-
+function updateEditorHeight() {
   if (!easymde.value)
     return
-
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
@@ -227,6 +207,13 @@ function updateEditorHeight(force = false) {
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
+
+  // 保持一个简单的内部滚动，配合外部布局调整
+  setTimeout(() => {
+    if (easymde.value)
+      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+  }, 0)
 }
 
 function destroyEasyMDE() {
@@ -457,7 +444,7 @@ watch(easymde, (newEditorInstance) => {
 
 <template>
   <div ref="editorWrapperRef">
-    <form ref="editorFooterRef" class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -468,24 +455,22 @@ watch(easymde, (newEditorInstance) => {
         :maxlength="maxNoteLength"
         autocomplete="off"
       />
-      <div>
-        <div class="status-bar">
-          <span class="char-counter">
-            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-          </span>
-          <span v-if="lastSavedTime" class="char-counter ml-4">
-            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-          </span>
-        </div>
-        <div class="emoji-bar">
-          <button
-            type="submit"
-            class="form-button flex-2"
-            :disabled="isLoading || !contentModel"
-          >
-            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-          </button>
-        </div>
+      <div class="status-bar">
+        <span class="char-counter">
+          {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+        </span>
+        <span v-if="lastSavedTime" class="char-counter ml-4">
+          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+        </span>
+      </div>
+      <div class="emoji-bar">
+        <button
+          type="submit"
+          class="form-button flex-2"
+          :disabled="isLoading || !contentModel"
+        >
+          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+        </button>
       </div>
     </form>
     <div
