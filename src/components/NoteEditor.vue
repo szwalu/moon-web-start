@@ -34,20 +34,13 @@ const isReadyForAutoSave = ref(false)
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    const viewport = window.visualViewport
-    const keyboardHeight = window.innerHeight - viewport.height
-
-    // 核心修改：不再使用 padding，而是使用 transform 将整个组件视觉上移
-    editorWrapperRef.value.style.transform = `translateY(-${keyboardHeight}px)`
-    // 增加一个平滑过渡效果，体验更好
-    editorWrapperRef.value.style.transition = 'transform 0.2s ease-out'
-
-    // 依然需要确保内部光标可见
-    if (easymde.value) {
-      setTimeout(() => {
-        easymde.value?.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-      }, 150) // 增加一个稍长的延迟，等待平移动画
-    }
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    // 确保光标可见
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
 }
 
@@ -450,7 +443,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef">
+  <div ref="editorWrapperRef" style="background-color: transparent;">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
