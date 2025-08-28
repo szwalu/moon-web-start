@@ -421,7 +421,7 @@ function handleSubmit() {
 // --- 新增：最终的光标定位方案 ---
 // 侦听编辑器实例是否被创建
 watch(easymde, (newEditorInstance) => {
-  // 确保是在编辑器刚刚被创建好的那个时刻
+  // 当编辑器实例被创建好时
   if (newEditorInstance) {
     // 并且我们正在编辑一个旧笔记
     if (props.editingNote) {
@@ -432,8 +432,9 @@ watch(easymde, (newEditorInstance) => {
       // 在下一个Tick中安全地移动光标，确保DOM已更新
       nextTick(() => {
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        // 温和地尝试让光标可见，但不强制聚焦
         cm.scrollIntoView(cm.getCursor(), 60)
+        // --- 新增的画龙点睛之笔 ---
+        cm.focus() // 激活编辑器，让光标显形并闪动
       })
     }
   }
