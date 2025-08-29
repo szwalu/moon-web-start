@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 // --- Tiptap an related imports ---
@@ -24,9 +24,35 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 
+// --- Refs for layout calculation ---
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
+const minEditorHeight = 150
+const maxEditorHeight = ref(400) // Default value, will be calculated dynamically
+
+// --- The definitive viewport resize handler ---
+function handleViewportResize() {
+  if (!editorWrapperRef.value || !window.visualViewport)
+    return
+
+  nextTick(() => {
+    const isSmallScreen = window.innerWidth < 768
+    if (isSmallScreen) {
+      const viewport = window.visualViewport
+      const editorTopOffset = editorWrapperRef.value?.getBoundingClientRect().top ?? 0
+      const bottomChromeHeight = 85 // Space for save button, status bar, etc.
+
+      const newMaxHeight = viewport.height - editorTopOffset - bottomChromeHeight
+      maxEditorHeight.value = Math.max(minEditorHeight, newMaxHeight)
+    }
+    else {
+      // Desktop logic
+      maxEditorHeight.value = Math.min(window.innerHeight * 0.75, 800)
+    }
+  })
+}
+
 // --- Tiptap editor instance ---
 const editor = useEditor({
-  // Use v-html for modelValue, as Tiptap works with HTML content
   content: props.modelValue,
   extensions: [
     StarterKit,
@@ -37,16 +63,13 @@ const editor = useEditor({
       limit: props.maxNoteLength,
     }),
   ],
-  // This function is called every time the content changes
   onUpdate: ({ editor }) => {
-    // Emit the HTML to the parent to update v-model
     emit('update:modelValue', editor.getHTML())
     emit('triggerAutoSave')
   },
-  // Apply custom classes to the editor
   editorProps: {
     attributes: {
-      class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl m-2 focus:outline-none',
+      class: 'prose dark:prose-invert prose-sm sm:prose-base focus:outline-none',
     },
   },
 })
@@ -59,11 +82,6 @@ const charCount = computed(() => {
 // --- Font size reactivity ---
 const editorFontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-watch(() => settingsStore.noteFontSize, () => {
-  // Tiptap doesn't need a special function, we can just use a computed class
-  // The change will be reactive in the template
-})
-
 // --- Sync parent changes to the editor ---
 watch(() => props.modelValue, (value) => {
   if (editor.value && editor.value.getHTML() !== value)
@@ -72,55 +90,54 @@ watch(() => props.modelValue, (value) => {
 
 // --- Final cursor positioning ---
 watch(() => props.editingNote, (newNote, oldNote) => {
-  if (newNote?.id !== oldNote?.id) {
-    // When note changes, focus and move cursor to the end
+  if (newNote?.id !== oldNote?.id)
     editor.value?.commands.focus('end')
-  }
 })
 
-// --- Weather fetching logic (adapted for Tiptap) ---
+// --- Weather fetching logic (Please ensure you have your full function here) ---
 async function fetchWeather() {
-  // (The actual fetch logic is the same, so it's omitted for brevity)
-  // ... copy the full fetchWeather function from your old file here ...
-  // For demonstration, let's assume it returns a string:
-  return `${getMappedCityName('Fullerton')}/24°C 晴朗 ☀️`
+  // This is a placeholder, please use your full fetchWeather function
+  return `Fullerton/24°C Sunny ☀️`
 }
 
 onMounted(async () => {
+  // Add resize listener
+  window.addEventListener('resize', handleViewportResize)
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', handleViewportResize)
+
+  // Initial calculation
+  handleViewportResize()
+
   if (!props.editingNote && !props.modelValue) {
-    const weatherString = await fetchWeather() // Assuming fetchWeather is copied
+    const weatherString = await fetchWeather()
     if (weatherString && editor.value) {
-      // Set initial content with weather and place cursor after it
       const initialContent = `<p>${weatherString}</p><p></p>`
       editor.value.commands.setContent(initialContent)
       editor.value.commands.focus('end')
-      // Manually update the v-model as setContent doesn't trigger onUpdate
       emit('update:modelValue', initialContent)
     }
   }
-  // Focus the editor when it mounts for an existing note
   if (props.editingNote)
     editor.value?.commands.focus('end')
 })
 
-// Destroy the editor instance to prevent memory leaks
+// Clean up listeners to prevent memory leaks
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleViewportResize)
+  if (window.visualViewport)
+    window.visualViewport.removeEventListener('resize', handleViewportResize)
+
   editor.value?.destroy()
 })
 
 function handleSubmit() {
   emit('submit')
 }
-
-// (You can copy your full fetchWeather and other helper functions here from the old file)
-// For simplicity, a placeholder is used here.
-function getMappedCityName(city: string): string {
-  return city
-}
 </script>
 
 <template>
-  <div>
+  <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <div v-if="editor" class="editor-toolbar">
         <button type="button" :class="{ 'is-active': editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()">B</button>
@@ -131,7 +148,11 @@ function getMappedCityName(city: string): string {
         <button type="button" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
       </div>
 
-      <div class="editor-content-wrapper" :class="[editorFontSizeClass]">
+      <div
+        class="editor-content-wrapper"
+        :class="[editorFontSizeClass]"
+        :style="{ maxHeight: `${maxEditorHeight}px` }"
+      >
         <EditorContent :editor="editor" />
       </div>
 
@@ -158,12 +179,15 @@ function getMappedCityName(city: string): string {
 </template>
 
 <style>
-/* --- Basic Tiptap Editor Styling --- */
+/* --- Tiptap Editor Styling --- */
 .editor-content-wrapper {
   border: 1px solid #ccc;
   border-top: none;
   border-radius: 0 0 6px 6px;
   background-color: #fff;
+  /* This is the key for internal scrolling */
+  overflow-y: auto;
+  /* The max-height is now controlled by JavaScript via inline style */
 }
 
 .dark .editor-content-wrapper {
@@ -173,10 +197,12 @@ function getMappedCityName(city: string): string {
 
 .ProseMirror {
   min-height: 150px;
-  max-height: 60vh; /* 新增：设置一个最大高度，例如视窗高度的60% */
-  overflow-y: auto; /* 新增：当内容超出时，自动显示内部滚动条 */
   padding: 0.5rem;
   outline: none;
+}
+/* This makes the editor grow naturally inside the scrolling wrapper */
+.ProseMirror > * {
+  min-height: 1.2em; /* Ensures empty paragraphs are clickable */
 }
 
 /* --- Dynamic Font Size Styling --- */
