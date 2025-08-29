@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-// --- Tiptap an related imports ---
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 
-// (天气和 Store 相关的引入保持不变)
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -20,50 +17,21 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
-
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 
-// --- Refs for layout calculation ---
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
-const minEditorHeight = 150
-const maxEditorHeight = ref(400) // Default value, will be calculated dynamically
+// --- Refs for the new layout ---
+const editorFooterRef = ref<HTMLDivElement | null>(null)
+const footerBottomOffset = ref(0) // Used to lift the footer above the keyboard
 
-// --- The definitive viewport resize handler ---
+// --- New, simpler viewport handler for sticky footer ---
 function handleViewportResize() {
-  // This function now runs every time the keyboard appears or disappears.
-  if (!editorWrapperRef.value || !window.visualViewport)
+  if (!window.visualViewport)
     return
-
-  nextTick(() => {
-    const isSmallScreen = window.innerWidth < 768
-    if (isSmallScreen) {
-      const viewport = window.visualViewport
-      const editorTopOffset = editorWrapperRef.value?.getBoundingClientRect().top ?? 0
-      const bottomChromeHeight = 85 // Space for save button, status bar, etc.
-
-      const newMaxHeight = viewport.height - editorTopOffset - bottomChromeHeight
-      maxEditorHeight.value = Math.max(minEditorHeight, newMaxHeight)
-
-      // --- 🔴 THE FINAL FIX START ---
-      // After the keyboard is up and we've set our max-height,
-      // the browser's own scrolling might have put us in a weird state.
-      // We now explicitly command the browser to scroll the entire component
-      // into view to ensure the save button is visible.
-      // A small delay ensures the keyboard animation is fully complete.
-      setTimeout(() => {
-        editorWrapperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-      }, 300) // 300ms delay to wait for keyboard animation
-      // --- 🔴 THE FINAL FIX END ---
-    }
-    else {
-      // Desktop logic
-      maxEditorHeight.value = Math.min(window.innerHeight * 0.75, 800)
-    }
-  })
+  const keyboardHeight = window.innerHeight - window.visualViewport.height
+  footerBottomOffset.value = keyboardHeight
 }
 
-// --- Tiptap editor instance ---
 const editor = useEditor({
   content: props.modelValue,
   extensions: [
@@ -100,29 +68,25 @@ watch(() => props.modelValue, (value) => {
     editor.value.commands.setContent(value, false)
 })
 
-// --- Final cursor positioning ---
+// --- Final cursor positioning when switching notes ---
 watch(() => props.editingNote, (newNote, oldNote) => {
   if (newNote?.id !== oldNote?.id)
     editor.value?.commands.focus('end')
 })
 
-// --- Weather fetching logic (Please ensure you have your full function here) ---
-function fetchWeather() {
+// --- Weather fetching logic (Please ensure you have your full function) ---
+async function fetchWeather() {
   // This is a placeholder, please use your full fetchWeather function.
-  // Using the current location and time for a more dynamic placeholder.
   const now = new Date()
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return Promise.resolve(`Fullerton/${time} 25°C Clear ☀️`)
+  return Promise.resolve(`Fullerton/${time} 26°C Clear ☀️`)
 }
 
 onMounted(async () => {
-  // Add resize listener
-  window.addEventListener('resize', handleViewportResize)
-  if (window.visualViewport)
+  if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportResize)
-
-  // Initial calculation
-  handleViewportResize()
+    handleViewportResize() // Initial check
+  }
 
   if (!props.editingNote && !props.modelValue) {
     const weatherString = await fetchWeather()
@@ -137,9 +101,7 @@ onMounted(async () => {
     editor.value?.commands.focus('end')
 })
 
-// Clean up listeners to prevent memory leaks
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleViewportResize)
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
 
@@ -152,8 +114,8 @@ function handleSubmit() {
 </script>
 
 <template>
-  <div ref="editorWrapperRef">
-    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+  <div class="editor-layout-container">
+    <form class="editor-form" @submit.prevent="handleSubmit">
       <div v-if="editor" class="editor-toolbar">
         <button type="button" :class="{ 'is-active': editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()">B</button>
         <button type="button" :class="{ 'is-active': editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()">I</button>
@@ -162,15 +124,16 @@ function handleSubmit() {
         <button type="button" :class="{ 'is-active': editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()">●</button>
         <button type="button" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
       </div>
-
-      <div
-        class="editor-content-wrapper"
-        :class="[editorFontSizeClass]"
-        :style="{ maxHeight: `${maxEditorHeight}px` }"
-      >
+      <div class="editor-content-wrapper" :class="[editorFontSizeClass]">
         <EditorContent :editor="editor" />
       </div>
+    </form>
 
+    <div
+      ref="editorFooterRef"
+      class="editor-footer"
+      :style="{ bottom: `${footerBottomOffset}px` }"
+    >
       <div class="status-bar">
         <span class="char-counter">
           {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
@@ -179,45 +142,77 @@ function handleSubmit() {
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
       </div>
-
       <div class="emoji-bar">
         <button
-          type="submit"
+          type="button"
           class="form-button"
           :disabled="isLoading || charCount === 0"
+          @click="handleSubmit"
         >
           💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
         </button>
       </div>
-    </form>
+    </div>
   </div>
 </template>
 
 <style>
-/* --- Tiptap Editor Styling --- */
+/* --- New Layout Styles --- */
+.editor-layout-container {
+  display: flex;
+  flex-direction: column;
+  /* Make it take the full height of the viewport */
+  height: 100vh;
+  /* iOS Safari full height fix to account for bottom bar */
+  height: -webkit-fill-available;
+}
+
+.editor-form {
+  flex-grow: 1; /* Allow the form to take up all available space */
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for flex children scrolling */
+  /* Add padding at the bottom to ensure last line of text is not hidden by the footer */
+  padding-bottom: 90px;
+  -webkit-overflow-scrolling: touch; /* Momentum scrolling on iOS */
+  overflow-y: auto; /* The entire form scrolls */
+}
+
 .editor-content-wrapper {
+  flex-grow: 1; /* Make the editor content wrapper grow */
+  display: flex; /* Use flexbox to make ProseMirror fill it */
+  flex-direction: column;
   border: 1px solid #ccc;
   border-top: none;
   border-radius: 0 0 6px 6px;
-  background-color: #fff;
-  /* This is the key for internal scrolling */
-  overflow-y: auto;
-  /* The max-height is now controlled by JavaScript via inline style */
 }
 
 .dark .editor-content-wrapper {
   border-color: #48484a;
-  background-color: #2c2c2e;
 }
 
 .ProseMirror {
-  min-height: 150px;
+  flex-grow: 1; /* Make the editor itself take all space in its wrapper */
   padding: 0.5rem;
   outline: none;
 }
-/* This makes the editor grow naturally inside the scrolling wrapper */
-.ProseMirror > * {
-  min-height: 1.2em; /* Ensures empty paragraphs are clickable */
+
+/* --- Fixed Footer Styling --- */
+.editor-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background-color: #f8f8f8;
+  padding: 8px 12px;
+  border-top: 1px solid #ccc;
+  /* Smooth transition for when keyboard appears/disappears */
+  transition: bottom 0.25s ease-out;
+}
+
+.dark .editor-footer {
+  background-color: #2c2c2e;
+  border-top-color: #48484a;
 }
 
 /* --- Dynamic Font Size Styling --- */
@@ -235,6 +230,9 @@ function handleSubmit() {
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   background-color: #f8f8f8;
+  position: sticky; /* Make toolbar sticky to the top of the scrollable form */
+  top: 0;
+  z-index: 10;
 }
 .dark .editor-toolbar {
   background-color: #2c2c2e;
@@ -266,6 +264,6 @@ function handleSubmit() {
   color: #fff;
 }
 
-/* --- Re-using your old styles that are still relevant --- */
-.status-bar{display:flex;justify-content:flex-start;align-items:center;margin-top:4px}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:.2rem}.form-button{width:100%;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}
+/* --- Other styles --- */
+.status-bar{display:flex;justify-content:flex-start;align-items:center;}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:4px;}.form-button{width:100%;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}
 </style>
