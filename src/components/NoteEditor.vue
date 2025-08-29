@@ -25,7 +25,6 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const submitButtonRef = ref<HTMLButtonElement | null>(null)
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
@@ -325,22 +324,7 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
 
-  // <--- 【最终尝试方案】 ---
-  cm.on('focus', () => {
-    if (isSmallScreen.value) {
-      // 使用 nextTick 确保 DOM 更新完成
-      nextTick(() => {
-        // 延迟一小段时间以等待键盘动画
-        setTimeout(() => {
-          // 直接命令窗口滚动到文档底部
-          window.scrollTo({
-            top: document.body.scrollHeight,
-            behavior: 'smooth',
-          })
-        }, 100) // 这里的延迟可以短一些，因为 nextTick 已经保证了时机
-      })
-    }
-  })
+  // 【重要】我们已删除所有之前尝试的 focus 事件滚动逻辑
 
   nextTick(() => updateEditorHeight())
 }
@@ -426,7 +410,7 @@ function handleSubmit() {
 </script>
 
 <template>
-  <div>
+  <div class="note-editor-wrapper">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -446,17 +430,8 @@ function handleSubmit() {
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
       </div>
-      <div class="emoji-bar">
-        <button
-          ref="submitButtonRef"
-          type="submit"
-          class="form-button flex-2"
-          :disabled="isLoading || !contentModel"
-        >
-          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-        </button>
-      </div>
     </form>
+
     <div
       v-if="showEditorTagSuggestions && editorTagSuggestions.length"
       ref="editorSuggestionsRef"
@@ -474,22 +449,63 @@ function handleSubmit() {
         </li>
       </ul>
     </div>
+
+    <div class="emoji-bar">
+      <button
+        type="submit"
+        class="form-button flex-2"
+        :disabled="isLoading || !contentModel"
+        @click="handleSubmit"
+      >
+        💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* Styles are unchanged */
-textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:.2rem;display:flex;justify-content:space-between;gap:.5rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
+/* 【修改 3/3】添加新的样式并修改旧样式 */
+
+/* 新增：父容器样式，为其增加底部内边距，防止内容被固定按钮栏遮挡 */
+/* 60px 是一个安全距离，可以根据按钮栏的实际高度调整 */
+.note-editor-wrapper {
+  padding-bottom: 60px;
+}
+
+/* 修改：将 emoji-bar (现在是操作栏) 的样式改为固定定位 */
+.emoji-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+
+  /* 添加背景色、内边距和阴影，使其更像一个独立的操作栏 */
+  background-color: #f8f8f8;
+  padding: 8px 12px;
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1001; /* 比编辑器的 z-index 高 */
+}
+
+/* 暗黑模式下的操作栏样式 */
+.dark .emoji-bar {
+  background-color: #2c2c2e;
+  border-top: 1px solid #48484a;
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* 旧样式保持不变 */
+textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
 </style>
 
 <style>
-/* Global styles */
+/* Global styles 保持不变 */
 .editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
-/* --- 已修改：这是唯一的CSS改动 --- */
-.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important;padding-bottom:50px!important} /* 新增底部内边距 */
+.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important;padding-bottom:50px!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
-
-/* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
 .CodeMirror .cm-header-1 { font-size: 1.6em; }
 .CodeMirror .cm-header-2 { font-size: 1.4em; }
@@ -497,22 +513,18 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 .CodeMirror .cm-header-4 { font-size: 1.1em; }
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
-
-/* --- 新增：根据设置动态修改编辑器字号的 CSS 规则 --- */
 .CodeMirror.font-size-small {
   font-size: 14px !important;
 }
 .CodeMirror.font-size-medium {
-  font-size: 16px !important; /* 这是原始的默认大小 */
+  font-size: 16px !important;
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
 }
-
-/* 新增：移动端样式优化 */
 @media (max-width: 768px) {
   .CodeMirror {
-    max-height: 60vh !important; /* 使用视口高度单位，动态适应键盘 */
+    max-height: 60vh !important;
   }
 }
 </style>
