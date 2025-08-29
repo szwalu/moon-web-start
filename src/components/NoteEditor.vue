@@ -31,40 +31,18 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 🔴 MODIFICATION START: 响应式高度约束 ---
-const minEditorHeight = 130 // 最小高度保持不变
-const maxEditorHeight = ref(400) // 赋予一个默认的初始值，后续会动态计算
-// --- 🔴 MODIFICATION END ---
-
-// --- 🔴 MODIFICATION START: 全新的、更可靠的视口处理函数 ---
+// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
-  if (!editorWrapperRef.value || !window.visualViewport)
-    return
-
-  const isSmallScreen = window.innerWidth < 768
-  if (isSmallScreen) {
-    const viewport = window.visualViewport
-    // 获取编辑器顶部距离可视窗口顶部的距离
-    const editorTopOffset = editorWrapperRef.value.getBoundingClientRect().top
-    // 为编辑器下方的“保存”按钮、状态栏等UI元素预留的高度
-    // 您可以根据实际情况微调这个数值
-    const bottomChromeHeight = 85
-
-    // 计算编辑器可用的最大高度
-    const newMaxHeight = viewport.height - editorTopOffset - bottomChromeHeight
-    maxEditorHeight.value = Math.max(minEditorHeight, newMaxHeight)
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    // 确保光标可见
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
-  else {
-    // 桌面端的逻辑保持不变
-    maxEditorHeight.value = Math.min(window.innerHeight * 0.75, 800)
-  }
-
-  // 在更新了最大高度约束后，立即触发一次编辑器高度的实际更新
-  nextTick(() => {
-    updateEditorHeight()
-  })
 }
-// --- 🔴 MODIFICATION END ---
 
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
@@ -164,13 +142,9 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 🔴 MODIFICATION START: 更新监听器逻辑 ---
-  if (window.visualViewport) {
+  // --- 终极解决方案：添加监听器 ---
+  if (window.visualViewport)
     window.visualViewport.addEventListener('resize', handleViewportResize)
-    // 首次加载时，也计算一次正确的尺寸
-    handleViewportResize()
-  }
-  // --- 🔴 MODIFICATION END ---
 
   let initialContent = props.modelValue
 
@@ -209,16 +183,13 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-
-// --- 🔴 DELETION START: 移除旧的、静态的高度计算逻辑 ---
-// const minEditorHeight = 130
-// const isSmallScreen = window.innerWidth < 768
-// let maxEditorHeight
-// if (isSmallScreen)
-//   maxEditorHeight = window.innerHeight * 0.65
-// else
-//   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-// --- 🔴 DELETION END ---
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -226,7 +197,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 🔴 MODIFICATION START: 使用响应式的 maxEditorHeight.value ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -235,7 +205,7 @@ function updateEditorHeight() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight.value))
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
   // 保持一个简单的内部滚动，配合外部布局调整
@@ -245,7 +215,6 @@ function updateEditorHeight() {
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
-// --- 🔴 MODIFICATION END ---
 
 function destroyEasyMDE() {
   if (easymde.value) {
