@@ -3,7 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
+
+// 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
+
+// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -14,50 +18,48 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
+
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
+const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
+// --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
+
+// 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// 定义变量并初始化
-const maxEditorHeight = ref<number>(window.innerWidth < 768 ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800))
-const isSmallScreen = window.innerWidth < 768
-
-// 处理 visualViewport 变化的核心函数
+// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
-  if (window.visualViewport && easymde.value) {
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
     const keyboardHeight = window.innerHeight - window.visualViewport.height
-    if (keyboardHeight > 0) {
-      // 键盘弹出时，max高度 = 可见区域的60%
-      maxEditorHeight.value = window.visualViewport.height * 0.6
-    }
-    else {
-      // 键盘收起时，恢复原max高度
-      maxEditorHeight.value = isSmallScreen ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800)
-    }
-    // 立即重算并应用新高度
-    updateEditorHeight()
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
     // 确保光标可见
-    easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
 }
 
-// 天气相关的逻辑函数
+// 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
     return null
+
   const { data, timestamp } = JSON.parse(cached)
   const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
   return isExpired ? null : data
 }
 
 function setCachedWeather(data: object) {
-  const cache = { data, timestamp: Date.now() }
+  const cache = {
+    data,
+    timestamp: Date.now(),
+  }
   localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
 }
 
@@ -67,7 +69,10 @@ function getMappedCityName(enCity: string): string {
   const cityLower = enCity.trim().toLowerCase()
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
-    if (cityLower === keyLower || cityLower.startsWith(keyLower))
+    if (
+      cityLower === keyLower
+      || cityLower.startsWith(keyLower)
+    )
       return value
   }
   return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
@@ -100,13 +105,14 @@ async function fetchWeather() {
       locData = await backupRes.json()
       if (locData.status === 'fail')
         throw new Error(`ip-api.com 服务错误: ${locData.message}`)
+
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
       locData.longitude = locData.lon
     }
 
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('从两个服务获取地理位置均失败.')
+      throw new Error('从两个服务获取地理位置均失败。')
 
     const lat = locData.latitude
     const lon = locData.longitude
@@ -136,6 +142,7 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
+  // --- 终极解决方案：添加监听器 ---
   if (window.visualViewport)
     window.visualViewport.addEventListener('resize', handleViewportResize)
 
@@ -163,18 +170,26 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
 
   destroyEasyMDE()
 })
 
+// 下方的所有其他函数
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -190,12 +205,13 @@ function updateEditorHeight() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight.value))
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
+  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 10)
   }, 0)
 }
 
@@ -206,16 +222,20 @@ function destroyEasyMDE() {
   }
 }
 
+// --- 新增：更新编辑器字号的辅助函数 ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
+  // 移除旧的字号 class
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+  // 添加新的字号 class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
+  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
 
   const newEl = textareaRef.value
@@ -274,6 +294,7 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
+  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -287,7 +308,9 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-    else emit('triggerAutoSave')
+
+    else
+      emit('triggerAutoSave')
 
     nextTick(() => updateEditorHeight())
 
@@ -386,6 +409,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
+// --- 新增：监听设置中的字号变化 ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
@@ -393,19 +417,6 @@ watch(() => settingsStore.noteFontSize, () => {
 function handleSubmit() {
   emit('submit')
 }
-
-watch(easymde, (newEditorInstance) => {
-  if (newEditorInstance && props.editingNote) {
-    const cm = newEditorInstance.codemirror
-    const doc = cm.getDoc()
-    const lastLine = doc.lastLine()
-    nextTick(() => {
-      doc.setCursor(lastLine, doc.getLine(lastLine).length)
-      cm.scrollIntoView(cm.getCursor(), 60)
-      cm.focus()
-    })
-  }
-})
 </script>
 
 <template>
@@ -466,18 +477,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 
 <style>
 /* Global styles */
-.editor-toolbar {
-  padding: 1px 3px !important;
-  min-height: 0 !important;
-  border: 1px solid #ccc;
-  border-bottom: none !important;
-  border-radius: 6px 6px 0 0;
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: 1001;
-  background-color: #fff;
-}
+.editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -499,9 +499,5 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
-}
-
-.CodeMirror {
-  transition: height 0.3s ease; /* 平滑高度过渡，0.3s是温和时长 */
 }
 </style>
