@@ -31,18 +31,40 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
+// --- 🔴 MODIFICATION START: 响应式高度约束 ---
+const minEditorHeight = 130 // 最小高度保持不变
+const maxEditorHeight = ref(400) // 赋予一个默认的初始值，后续会动态计算
+// --- 🔴 MODIFICATION END ---
+
+// --- 🔴 MODIFICATION START: 全新的、更可靠的视口处理函数 ---
 function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
-    const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件底部增加一个内边距，把内容顶上来
-    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+  if (!editorWrapperRef.value || !window.visualViewport)
+    return
+
+  const isSmallScreen = window.innerWidth < 768
+  if (isSmallScreen) {
+    const viewport = window.visualViewport
+    // 获取编辑器顶部距离可视窗口顶部的距离
+    const editorTopOffset = editorWrapperRef.value.getBoundingClientRect().top
+    // 为编辑器下方的“保存”按钮、状态栏等UI元素预留的高度
+    // 您可以根据实际情况微调这个数值
+    const bottomChromeHeight = 85
+
+    // 计算编辑器可用的最大高度
+    const newMaxHeight = viewport.height - editorTopOffset - bottomChromeHeight
+    maxEditorHeight.value = Math.max(minEditorHeight, newMaxHeight)
   }
+  else {
+    // 桌面端的逻辑保持不变
+    maxEditorHeight.value = Math.min(window.innerHeight * 0.75, 800)
+  }
+
+  // 在更新了最大高度约束后，立即触发一次编辑器高度的实际更新
+  nextTick(() => {
+    updateEditorHeight()
+  })
 }
+// --- 🔴 MODIFICATION END ---
 
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
@@ -142,9 +164,13 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
-  if (window.visualViewport)
+  // --- 🔴 MODIFICATION START: 更新监听器逻辑 ---
+  if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportResize)
+    // 首次加载时，也计算一次正确的尺寸
+    handleViewportResize()
+  }
+  // --- 🔴 MODIFICATION END ---
 
   let initialContent = props.modelValue
 
@@ -183,13 +209,16 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
+// --- 🔴 DELETION START: 移除旧的、静态的高度计算逻辑 ---
+// const minEditorHeight = 130
+// const isSmallScreen = window.innerWidth < 768
+// let maxEditorHeight
+// if (isSmallScreen)
+//   maxEditorHeight = window.innerHeight * 0.65
+// else
+//   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+// --- 🔴 DELETION END ---
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -197,6 +226,7 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
+// --- 🔴 MODIFICATION START: 使用响应式的 maxEditorHeight.value ---
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -205,15 +235,17 @@ function updateEditorHeight() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight.value))
   cm.setSize(null, newHeight)
 
   // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 10)
+      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
+// --- 🔴 MODIFICATION END ---
 
 function destroyEasyMDE() {
   if (easymde.value) {
@@ -417,6 +449,28 @@ watch(() => settingsStore.noteFontSize, () => {
 function handleSubmit() {
   emit('submit')
 }
+
+// --- 新增：最终光标定位方案 ---
+// 侦听编辑器实例是否被创建
+watch(easymde, (newEditorInstance) => {
+  // 当编辑器实例被创建好时
+  if (newEditorInstance) {
+    // 并且我们正在编辑一个旧笔记
+    if (props.editingNote) {
+      const cm = newEditorInstance.codemirror
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+
+      // 在下一个Tick中安全地移动光标，确保DOM已更新
+      nextTick(() => {
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        cm.scrollIntoView(cm.getCursor(), 60)
+        // --- 新增的画龙点睛之笔 ---
+        cm.focus() // 激活编辑器，让光标显形并闪动
+      })
+    }
+  }
+})
 </script>
 
 <template>
@@ -477,7 +531,18 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 
 <style>
 /* Global styles */
-.editor-toolbar{padding:1px 3px!important;min-height:0!important;border:1px solid #ccc;border-bottom:none!important;border-radius:6px 6px 0 0;position:-webkit-sticky;position:sticky;top:0;z-index:10;background-color:#fff}
+.editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+  background-color: #fff;
+}
 .CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
