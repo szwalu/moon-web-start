@@ -38,9 +38,19 @@ function handleViewportResize() {
     const keyboardHeight = window.innerHeight - window.visualViewport.height
     // 为组件底部增加一个内边距，把内容顶上来
     editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+
+    // --- 新增的修复代码 ---
+    // 在DOM更新后（因为padding-bottom导致了布局变化），
+    // 立即调用 updateEditorHeight 来让编辑器重新计算自身高度以适应新布局。
+    nextTick(() => {
+      if (easymde.value)
+        updateEditorHeight()
+    })
+
+    // 原有的 scrollIntoView 可以移除，因为 updateEditorHeight 内部已经包含了
+    // 一个更完善的带边距的 scrollIntoView 调用。
+    // if (easymde.value)
+    //   easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
 }
 
