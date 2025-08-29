@@ -380,32 +380,34 @@ watch(() => props.modelValue, (newValue) => {
     easymde.value.value(newValue)
 })
 
+// --- 请用此代码块替换原有的 props.editingNote 监听器 ---
+
 watch(() => props.editingNote, (newNote, oldNote) => {
-  // Only proceed if a different note is being loaded
+  // 确保是切换了不同的笔记
   if (newNote?.id !== oldNote?.id) {
-    // Destroy the old EasyMDE instance to ensure a clean state
     destroyEasyMDE()
 
-    // Use nextTick to wait for the DOM to update after destruction
+    // 等待DOM更新
     nextTick(() => {
-      // Re-initialize the editor with the new note's content
       initializeEasyMDE(props.modelValue)
 
-      // After initialization, move the cursor
-      if (easymde.value) {
-        const cm = easymde.value.codemirror
-        const doc = cm.getDoc()
+      // 使用 setTimeout(..., 0) 来确保 EasyMDE 实例已完全初始化
+      // 这是解决时序问题的关键
+      setTimeout(() => {
+        if (easymde.value) {
+          const cm = easymde.value.codemirror
+          const doc = cm.getDoc()
 
-        // Find the last line number and its content
-        const lastLine = doc.lastLine()
-        const lastLineContent = doc.getLine(lastLine)
+          // 获取最后一行的行号
+          const lastLine = doc.lastLine()
 
-        // Set the cursor to the end of the last line
-        doc.setCursor(lastLine, lastLineContent.length)
+          // 将光标设置到最后一行的末尾
+          doc.setCursor(lastLine, doc.getLine(lastLine).length)
 
-        // Focus the editor to make it ready for typing
-        cm.focus()
-      }
+          // 让编辑器获得焦点，准备输入
+          cm.focus()
+        }
+      }, 0) // 设置为0，意为在下一个事件循环tick中执行
     })
   }
 }, { deep: true })
