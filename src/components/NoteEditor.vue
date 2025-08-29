@@ -172,9 +172,11 @@ function getMappedCityName(city: string): string {
 }
 
 .ProseMirror {
-  min-height: 150px; /* This sets the minimum height */
-  padding: 0.5rem;   /* Add some padding inside the editor */
-  outline: none;     /* Remove the default focus outline */
+  min-height: 150px;
+  max-height: 60vh; /* 新增：设置一个最大高度，例如视窗高度的60% */
+  overflow-y: auto; /* 新增：当内容超出时，自动显示内部滚动条 */
+  padding: 0.5rem;
+  outline: none;
 }
 
 /* --- Dynamic Font Size Styling --- */
