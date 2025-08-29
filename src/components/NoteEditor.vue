@@ -324,8 +324,6 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('keydown', handleEditorKeyDown)
 
-  // 【重要】我们已删除所有之前尝试的 focus 事件滚动逻辑
-
   nextTick(() => updateEditorHeight())
 }
 
@@ -411,7 +409,7 @@ function handleSubmit() {
 
 <template>
   <div class="note-editor-wrapper">
-    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+    <form class="mb-6" autocomplete="off">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -452,7 +450,7 @@ function handleSubmit() {
 
     <div class="emoji-bar">
       <button
-        type="submit"
+        type="button"
         class="form-button flex-2"
         :disabled="isLoading || !contentModel"
         @click="handleSubmit"
@@ -464,40 +462,37 @@ function handleSubmit() {
 </template>
 
 <style scoped>
-/* 【修改 3/3】添加新的样式并修改旧样式 */
-
-/* 新增：父容器样式，为其增加底部内边距，防止内容被固定按钮栏遮挡 */
-/* 60px 是一个安全距离，可以根据按钮栏的实际高度调整 */
+/* 【修正 3/3】为 sticky footer 布局提供更稳固的 CSS */
 .note-editor-wrapper {
-  padding-bottom: 60px;
+  /* 确保父容器有足够空间，防止内容被固定栏遮挡 */
+  padding-bottom: 70px;
 }
 
-/* 修改：将 emoji-bar (现在是操作栏) 的样式改为固定定位 */
 .emoji-bar {
+  /* 固定定位的核心样式 */
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
+  width: 100%; /* 使用 width: 100% 代替 right: 0，有时兼容性更好 */
 
+  /* 外观样式 */
   display: flex;
-  justify-content: space-between;
-  gap: .5rem;
-
-  /* 添加背景色、内边距和阴影，使其更像一个独立的操作栏 */
-  background-color: #f8f8f8;
-  padding: 8px 12px;
-  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
-  z-index: 1001; /* 比编辑器的 z-index 高 */
+  padding: 10px 15px; /* 稍微增大 padding */
+  background-color: #ffffff;
+  border-top: 1px solid #e0e0e0; /* 添加一个上边框更明确 */
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 1001;
+  box-sizing: border-box; /* 确保 padding 不会撑大宽度 */
 }
 
 /* 暗黑模式下的操作栏样式 */
 .dark .emoji-bar {
-  background-color: #2c2c2e;
-  border-top: 1px solid #48484a;
-  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.3);
+  background-color: #1c1c1e;
+  border-top: 1px solid #38383a;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.25);
 }
 
-/* 旧样式保持不变 */
+/* 旧样式 */
 textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
 </style>
 
