@@ -13,6 +13,11 @@
   },
   "dependencies": {
     "@iconify/vue": "^5.0.0",
+    "@milkdown/core": "^7.15.5",
+    "@milkdown/plugin-listener": "^7.15.5",
+    "@milkdown/preset-commonmark": "^7.15.5",
+    "@milkdown/theme-nord": "^7.15.5",
+    "@milkdown/vue": "^7.15.5",
     "@supabase/supabase-js": "^2.50.0",
     "@tiptap/extension-character-count": "^3.3.0",
     "@tiptap/extension-placeholder": "^3.3.0",
