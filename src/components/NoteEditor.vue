@@ -3,11 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
-
-// 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
-
-// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -18,43 +14,50 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
-
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
-// --- 新增：初始化 Store ---
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
 const settingsStore = useSettingStore()
-
-// 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
+// 定义变量并初始化
+const maxEditorHeight = ref<number>(window.innerWidth < 768 ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800))
+const isSmallScreen = window.innerWidth < 768
+
+// 处理 visualViewport 变化的核心函数
 function handleViewportResize() {
-  if (easymde.value && window.visualViewport) {
+  if (window.visualViewport && easymde.value) {
     const keyboardHeight = window.innerHeight - window.visualViewport.height
-    const cmWrapper = easymde.value.codemirror.getWrapperElement() // 获取CodeMirror根div
-    cmWrapper.style.paddingBottom = keyboardHeight > 0 ? `${keyboardHeight}px` : '0px'
+    if (keyboardHeight > 0) {
+      // 键盘弹出时，max高度 = 可见区域的60%
+      maxEditorHeight.value = window.visualViewport.height * 0.6
+    }
+    else {
+      // 键盘收起时，恢复原max高度
+      maxEditorHeight.value = isSmallScreen ? window.innerHeight * 0.65 : Math.min(window.innerHeight * 0.75, 800)
+    }
+    // 立即重算并应用新高度
+    updateEditorHeight()
+    // 确保光标可见
     easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }
 }
-// 天气相关的逻辑函数 (保持不变)
+
+// 天气相关的逻辑函数
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
     return null
-
   const { data, timestamp } = JSON.parse(cached)
   const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
   return isExpired ? null : data
 }
 
 function setCachedWeather(data: object) {
-  const cache = {
-    data,
-    timestamp: Date.now(),
-  }
+  const cache = { data, timestamp: Date.now() }
   localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
 }
 
@@ -64,10 +67,7 @@ function getMappedCityName(enCity: string): string {
   const cityLower = enCity.trim().toLowerCase()
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
-    if (
-      cityLower === keyLower
-      || cityLower.startsWith(keyLower)
-    )
+    if (cityLower === keyLower || cityLower.startsWith(keyLower))
       return value
   }
   return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
@@ -100,14 +100,13 @@ async function fetchWeather() {
       locData = await backupRes.json()
       if (locData.status === 'fail')
         throw new Error(`ip-api.com 服务错误: ${locData.message}`)
-
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
       locData.longitude = locData.lon
     }
 
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('从两个服务获取地理位置均失败。')
+      throw new Error('从两个服务获取地理位置均失败.')
 
     const lat = locData.latitude
     const lon = locData.longitude
@@ -137,7 +136,6 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
   if (window.visualViewport)
     window.visualViewport.addEventListener('resize', handleViewportResize)
 
@@ -165,26 +163,18 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
 
   destroyEasyMDE()
 })
 
-// 下方的所有其他函数
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -200,13 +190,11 @@ function updateEditorHeight() {
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight.value))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
-      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
@@ -218,20 +206,16 @@ function destroyEasyMDE() {
   }
 }
 
-// --- 新增：更新编辑器字号的辅助函数 ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  // 移除旧的字号 class
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  // 添加新的字号 class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
-  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
 
   const newEl = textareaRef.value
@@ -290,7 +274,6 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -304,9 +287,7 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
-    else
-      emit('triggerAutoSave')
+    else emit('triggerAutoSave')
 
     nextTick(() => updateEditorHeight())
 
@@ -405,7 +386,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
-// --- 新增：监听设置中的字号变化 ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
@@ -414,25 +394,16 @@ function handleSubmit() {
   emit('submit')
 }
 
-// --- 新增：最终光标定位方案 ---
-// 侦听编辑器实例是否被创建
 watch(easymde, (newEditorInstance) => {
-  // 当编辑器实例被创建好时
-  if (newEditorInstance) {
-    // 并且我们正在编辑一个旧笔记
-    if (props.editingNote) {
-      const cm = newEditorInstance.codemirror
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
-
-      // 在下一个Tick中安全地移动光标，确保DOM已更新
-      nextTick(() => {
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        cm.scrollIntoView(cm.getCursor(), 60)
-        // --- 新增的画龙点睛之笔 ---
-        cm.focus() // 激活编辑器，让光标显形并闪动
-      })
-    }
+  if (newEditorInstance && props.editingNote) {
+    const cm = newEditorInstance.codemirror
+    const doc = cm.getDoc()
+    const lastLine = doc.lastLine()
+    nextTick(() => {
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+      cm.scrollIntoView(cm.getCursor(), 60)
+      cm.focus()
+    })
   }
 })
 </script>
@@ -531,7 +502,6 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 
 .CodeMirror {
-  transition: padding-bottom 0.3s ease;
-  background: transparent !important; /* 或匹配主题 */
+  transition: height 0.3s ease; /* 平滑高度过渡，0.3s是温和时长 */
 }
 </style>
