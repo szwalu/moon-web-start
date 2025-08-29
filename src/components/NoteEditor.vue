@@ -31,6 +31,7 @@ const maxEditorHeight = ref(400) // Default value, will be calculated dynamicall
 
 // --- The definitive viewport resize handler ---
 function handleViewportResize() {
+  // This function now runs every time the keyboard appears or disappears.
   if (!editorWrapperRef.value || !window.visualViewport)
     return
 
@@ -43,6 +44,17 @@ function handleViewportResize() {
 
       const newMaxHeight = viewport.height - editorTopOffset - bottomChromeHeight
       maxEditorHeight.value = Math.max(minEditorHeight, newMaxHeight)
+
+      // --- 🔴 THE FINAL FIX START ---
+      // After the keyboard is up and we've set our max-height,
+      // the browser's own scrolling might have put us in a weird state.
+      // We now explicitly command the browser to scroll the entire component
+      // into view to ensure the save button is visible.
+      // A small delay ensures the keyboard animation is fully complete.
+      setTimeout(() => {
+        editorWrapperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 300) // 300ms delay to wait for keyboard animation
+      // --- 🔴 THE FINAL FIX END ---
     }
     else {
       // Desktop logic
@@ -95,9 +107,12 @@ watch(() => props.editingNote, (newNote, oldNote) => {
 })
 
 // --- Weather fetching logic (Please ensure you have your full function here) ---
-async function fetchWeather() {
-  // This is a placeholder, please use your full fetchWeather function
-  return `Fullerton/24°C Sunny ☀️`
+function fetchWeather() {
+  // This is a placeholder, please use your full fetchWeather function.
+  // Using the current location and time for a more dynamic placeholder.
+  const now = new Date()
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return Promise.resolve(`Fullerton/${time} 25°C Clear ☀️`)
 }
 
 onMounted(async () => {
