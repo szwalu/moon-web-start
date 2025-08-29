@@ -32,13 +32,11 @@ const settingsStore = useSettingStore()
 const isReadyForAutoSave = ref(false)
 
 function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
+  if (easymde.value && window.visualViewport) {
     const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 只在键盘高度>0时应用，避免小抖动
-    editorWrapperRef.value.style.paddingBottom = keyboardHeight > 0 ? `${keyboardHeight}px` : '0px'
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60) // 已有的60px margin
+    const cmWrapper = easymde.value.codemirror.getWrapperElement() // 获取CodeMirror根div
+    cmWrapper.style.paddingBottom = keyboardHeight > 0 ? `${keyboardHeight}px` : '0px'
+    easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }
 }
 // 天气相关的逻辑函数 (保持不变)
@@ -532,10 +530,8 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   font-size: 20px !important;
 }
 
-/* 使wrapper背景透明，避免padding区域显白 */
-div[ref="editorWrapperRef"] {
-  background: transparent !important;
-  transition: padding-bottom 0.3s ease; /* 平滑过渡 */
-  overflow: hidden; /* 剪裁多余内容 */
+.CodeMirror {
+  transition: padding-bottom 0.3s ease;
+  background: transparent !important; /* 或匹配主题 */
 }
 </style>
