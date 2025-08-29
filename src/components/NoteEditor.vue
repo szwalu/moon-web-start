@@ -25,6 +25,7 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
+const submitButtonRef = ref<HTMLButtonElement | null>(null) // <--- 【修改 1/3】新增一个 ref 用于引用提交按钮
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
@@ -323,6 +324,24 @@ function initializeEasyMDE(initialValue = '') {
   })
 
   cm.on('keydown', handleEditorKeyDown)
+
+  // <--- 【修改 2/3】新增：监听 focus 事件以处理移动端键盘遮挡问题
+  cm.on('focus', () => {
+    // 仅在小屏幕（移动端）设备上执行
+    if (isSmallScreen.value) {
+      // 使用 setTimeout 是为了等待键盘完全弹出、浏览器视图完成重绘
+      setTimeout(() => {
+        if (submitButtonRef.value) {
+          // 将按钮滚动到视图中
+          submitButtonRef.value.scrollIntoView({
+            behavior: 'smooth', // 平滑滚动
+            block: 'nearest', // 将元素滚动到离视口最近的位置
+          })
+        }
+      }, 300) // 300毫秒的延迟通常足够应对键盘弹出的动画
+    }
+  })
+
   nextTick(() => updateEditorHeight())
 }
 
@@ -429,6 +448,7 @@ function handleSubmit() {
       </div>
       <div class="emoji-bar">
         <button
+          ref="submitButtonRef"
           type="submit"
           class="form-button flex-2"
           :disabled="isLoading || !contentModel"
