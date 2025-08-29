@@ -31,29 +31,16 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
     const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件底部增加一个内边距，把内容顶上来
-    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
-
-    // --- 新增的修复代码 ---
-    // 在DOM更新后（因为padding-bottom导致了布局变化），
-    // 立即调用 updateEditorHeight 来让编辑器重新计算自身高度以适应新布局。
-    nextTick(() => {
-      if (easymde.value)
-        updateEditorHeight()
-    })
-
-    // 原有的 scrollIntoView 可以移除，因为 updateEditorHeight 内部已经包含了
-    // 一个更完善的带边距的 scrollIntoView 调用。
-    // if (easymde.value)
-    //   easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+    // 只在键盘高度>0时应用，避免小抖动
+    editorWrapperRef.value.style.paddingBottom = keyboardHeight > 0 ? `${keyboardHeight}px` : '0px'
+    // 确保光标可见
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60) // 已有的60px margin
   }
 }
-
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -543,5 +530,12 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
+}
+
+/* 使wrapper背景透明，避免padding区域显白 */
+div[ref="editorWrapperRef"] {
+  background: transparent !important;
+  transition: padding-bottom 0.3s ease; /* 平滑过渡 */
+  overflow: hidden; /* 剪裁多余内容 */
 }
 </style>
