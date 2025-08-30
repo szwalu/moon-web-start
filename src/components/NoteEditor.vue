@@ -208,7 +208,7 @@ function handleClose() {
       </div>
     </form>
 
-    <div ref="editorFooterRef" class="editor-footer" :style="{ bottom: `${footerBottomOffset}px` }">
+    <div ref="editorFooterRef" class="editor-footer" :style="{ transform: `translateY(-${footerBottomOffset}px)` }">
       <div class="status-bar">
         <span class="char-counter">
           {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
@@ -357,7 +357,7 @@ ul[data-type="taskList"] li > div {
   flex: 1 1 auto;
 }
 .editor-footer {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
@@ -365,7 +365,7 @@ ul[data-type="taskList"] li > div {
   background-color: #f8f8f8;
   padding: 8px 12px;
   border-top: 1px solid #ccc;
-  transition: bottom 0.25s ease-out;
+  transition: transform 0.25s ease-out;
   display: flex;
   align-items: center;
   gap: 16px;
