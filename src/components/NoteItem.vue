@@ -18,7 +18,7 @@ const dialog = useDialog()
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 let clickTimer: number | null = null
-const clickDelay = 250
+const clickDelay = 250 // 定义双击的毫秒间隔
 
 const md = new MarkdownIt({
   html: true,
@@ -72,6 +72,8 @@ function getDropdownOptions(note: any) {
     : updatedDateObj.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   return [
+    // 重新添加了“编辑”选项
+    { label: t('notes.edit'), key: 'edit' },
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
     { label: t('notes.delete'), key: 'delete' },
@@ -84,6 +86,10 @@ function getDropdownOptions(note: any) {
 
 function handleDropdownSelect(key: string) {
   switch (key) {
+    // 恢复编辑逻辑
+    case 'edit':
+      emit('edit', props.note)
+      break
     case 'copy':
       emit('copy', props.note.content)
       break
@@ -121,15 +127,16 @@ function handleSingleClickAction(event: MouseEvent) {
     emit('taskToggle', { noteId: props.note.id, itemIndex })
 }
 
+// 恢复双击计时逻辑，用于区分单击和双击
 function handleCardClick(event: MouseEvent) {
   if (clickTimer) {
     clearTimeout(clickTimer)
     clickTimer = null
-    emit('edit', props.note)
+    emit('edit', props.note) // 双击执行编辑
   }
   else {
     clickTimer = window.setTimeout(() => {
-      handleSingleClickAction(event)
+      handleSingleClickAction(event) // 单击执行任务列表勾选
       clickTimer = null
     }, clickDelay)
   }
@@ -154,10 +161,6 @@ function handleCardClick(event: MouseEvent) {
       </div>
 
       <div class="note-card-actions">
-        <button class="action-button" :title="$t('notes.edit')" @click.stop="emit('edit', note)">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M5 19h1.4l8.62-8.62l-1.4-1.4L5 17.6V19M19.3 8.92l-1.4-1.4l-1.48 1.48l1.4 1.4l1.48-1.48M3 21v-4.25l10.6-10.6q.275-.275.65-.413t.775-.137q.4 0 .788.138t.662.412l1.4 1.4q.275.275.413.65t.137.775q0 .4-.138.788t-.412.662L7.25 21H3Z" /></svg>
-        </button>
-
         <n-dropdown
           trigger="click"
           placement="bottom-end"
@@ -165,7 +168,7 @@ function handleCardClick(event: MouseEvent) {
           @select="handleDropdownSelect"
           @click.stop
         >
-          <div class="kebab-menu">
+          <div class="kebab-menu" @dblclick.stop>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
           </div>
         </n-dropdown>
@@ -207,7 +210,8 @@ function handleCardClick(event: MouseEvent) {
 </template>
 
 <style scoped>
-/* All your existing styles go here */
+/* 样式调整：因为移除了铅笔按钮，所以相关的 `.action-button` 样式就不再需要了，但为了兼容性保留着也不会影响功能。
+   `note-card-actions` 的样式可能需要微调，但通常情况下，只剩一个 `kebab-menu` 也会自动居中或靠边。 */
 .note-card {
   @apply mb-3 flex flex-col w-full rounded-lg bg-gray-100 shadow-md p-4;
 }
@@ -253,7 +257,7 @@ function handleCardClick(event: MouseEvent) {
   align-items: center;
   gap: 4px;
 }
-.action-button,
+.action-button, /* 铅笔按钮已移除，此样式可忽略 */
 .kebab-menu {
   cursor: pointer;
   padding: 4px;
@@ -268,7 +272,8 @@ function handleCardClick(event: MouseEvent) {
   background: none;
   border: none;
 }
-.dark .action-button {
+.dark .action-button,
+.dark .kebab-menu {
   color: #bbb;
 }
 .action-button:hover,
