@@ -33,8 +33,12 @@ const isReadyForAutoSave = ref(false)
 
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
-  if (editorWrapperRef.value) {
-    // 当视窗变化时，仅确保编辑器光标可见（不再通过 padding-bottom 去垫高）
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 为组件底部增加一个内边距，把内容顶上来
+    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    // 确保光标可见
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
   }
@@ -439,7 +443,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor">
+  <div ref="editorWrapperRef">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -529,23 +533,5 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
-}
-
-/* === 新增：编辑器容器在手机键盘弹出时不再产生白色垫块 === */
-.note-editor {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
-  padding-bottom: env(safe-area-inset-bottom); /* 保留系统安全区（如 iPhone 底部刘海/手势区）*/
-}
-
-/* 使用动态视口单位 dvh 的设备（现代浏览器/新 iOS）优先 */
-@supports (height: 1dvh) {
-  /* 86dvh 是示例，可根据实际页面头部高度调整（保持编辑器在键盘弹出时不被盖住） */
-  .note-editor { max-height: 86dvh; }
-}
-
-/* 不支持 dvh 的浏览器退回到普通 vh */
-@supports not (height: 1dvh) {
-  .note-editor { max-height: 86vh; }
 }
 </style>
