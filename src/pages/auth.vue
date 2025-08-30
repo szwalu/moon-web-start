@@ -856,6 +856,7 @@ function closeEditorModal() {
             :last-saved-time="lastSavedTime"
             @submit="handleSubmit"
             @trigger-auto-save="debouncedSaveNote"
+            @close="closeEditorModal"
           />
         </div>
       </div>

@@ -21,6 +21,8 @@
     "@supabase/supabase-js": "^2.50.0",
     "@tiptap/extension-character-count": "^3.3.0",
     "@tiptap/extension-placeholder": "^3.3.0",
+    "@tiptap/extension-task-item": "^3.3.0",
+    "@tiptap/extension-task-list": "^3.3.0",
     "@tiptap/starter-kit": "^3.3.0",
     "@tiptap/vue-3": "^3.3.0",
     "@vercel/kv": "^3.0.0",
