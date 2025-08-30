@@ -60,7 +60,7 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
-
+const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const isRestoringFromCache = ref(false)
 
 // --- 那年今日功能状态 ---
@@ -762,6 +762,18 @@ function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
 }
+
+watch(showEditorModal, (isShowing) => {
+  if (isShowing) {
+    // 使用一个短暂的延时来确保动画和DOM渲染都已完成
+    setTimeout(() => {
+      if (noteEditorRef.value) {
+        // 调用子组件的 focus 方法 (我们需要在 NoteEditor 中暴露它)
+        noteEditorRef.value.focus()
+      }
+    }, 150) // 150毫秒通常足以应对大多数手机的动画
+  }
+})
 </script>
 
 <template>
@@ -841,14 +853,9 @@ function closeEditorModal() {
       </button>
 
       <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
-        <div class="editor-modal-content">
-          <div class="modal-header">
-            <button class="close-button" @click="closeEditorModal">
-              &times;
-            </button>
-          </div>
+        <div class="editor-container-flomo">
           <NoteEditor
-            v-model="content"
+            ref="noteEditorRef" v-model="content"
             :editing-note="editingNote"
             :is-loading="loading"
             :all-tags="allTags"
@@ -1068,49 +1075,39 @@ function closeEditorModal() {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
   display: flex;
   justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  padding: 1rem;
+  align-items: flex-end; /* 核心：让内容从底部对齐 */
 }
-
-.editor-modal-content {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+/* 包裹 NoteEditor 的容器，负责动画和定位 */
+.editor-container-flomo {
   width: 100%;
-  max-width: 480px;
-  display: flex;
-  flex-direction: column;
+  max-width: 480px; /* 在桌面端保持一个最大宽度 */
+  background-color: white;
+  border-radius: 12px 12px 0 0; /* 仅顶部有圆角 */
+  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
+
+  /* 平滑向上滑动动画 */
+  transform: translateY(100%);
+  animation: slide-up 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
 }
 
-.dark .editor-modal-content {
-  background: #2a2a2a;
+.dark .editor-container-flomo {
+  background-color: #1e1e1e; /* 深色模式背景 */
 }
 
-.modal-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.close-button {
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-  color: #888;
-  padding: 0;
-  line-height: 1;
-}
-.dark .close-button {
-  color: #bbb;
+/* 定义向上滑动动画 */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .fade-enter-active,
