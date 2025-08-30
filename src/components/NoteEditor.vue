@@ -105,6 +105,15 @@ onBeforeUnmount(() => {
 function handleSubmit() {
   emit('submit')
 }
+
+function focus() {
+  editor.value?.commands.focus('end')
+}
+
+// 通过 defineExpose 将 focus 方法暴露给父组件
+defineExpose({
+  focus,
+})
 </script>
 
 <template>
