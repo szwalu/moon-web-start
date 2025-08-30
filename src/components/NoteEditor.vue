@@ -459,14 +459,15 @@ watch(easymde, (newEditorInstance) => {
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
       </div>
-      <!-- ⚠️ emoji-bar 这里如果不是表情栏，就可以直接删掉 -->
     </form>
 
-    <!-- ✅ 保存按钮从 form 中抽出来，单独放到底部 -->
-    <div class="form-button">
+    <!-- ✅ 保存按钮，固定在编辑器底部 -->
+    <div class="save-bar">
       <button
-        type="submit"
+        type="button"
+        class="save-btn"
         :disabled="isLoading || !contentModel"
+        @click="handleSubmit"
       >
         💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
       </button>
@@ -571,5 +572,42 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   background: #f7f7f7; /* 背景色，避免按钮下透出文字 */
   border-top: 1px solid #ccc; /* 分隔线，可选 */
   z-index: 10; /* 确保显示在内容之上 */
+}
+</style>
+
+<style>
+/* === 保存按钮固定到底部的全局样式 === */
+.note-editor {
+  position: relative;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* 为按钮预留空间 */
+  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+}
+
+.note-editor .save-bar {
+  position: absolute;
+  bottom: env(safe-area-inset-bottom);
+  left: 0;
+  right: 0;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-top: 1px solid #ccc;
+  z-index: 20;
+}
+
+.note-editor .save-bar .save-btn {
+  width: 90%;
+  max-width: 480px;
+  height: 2.5rem;
+  background-color: #007aff;
+  color: white;
+  font-size: 1rem;
+  border: none;
+  border-radius: 0.5rem;
 }
 </style>
