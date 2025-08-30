@@ -764,14 +764,34 @@ function closeEditorModal() {
 }
 
 watch(showEditorModal, (isShowing) => {
+  const body = document.body
   if (isShowing) {
+    // 模态框打开时，禁止背景滚动
+    body.style.overflow = 'hidden'
+
+    // 编辑器的滑出动画是 0.3s (300ms)，
+    // 设置一个稍长的延时以确保元素准备就绪。
     setTimeout(() => {
       if (noteEditorRef.value)
         noteEditorRef.value.focus()
-      else
-        console.warn('NoteEditor ref is not ready')
-    }, 300) // 增加延迟到 300ms
+    }, 350)
   }
+  else {
+    // 模态框关闭时，恢复背景滚动
+    body.style.overflow = ''
+  }
+})
+
+onUnmounted(() => {
+  if (authListener)
+    authListener.unsubscribe()
+
+  document.removeEventListener('click', closeDropdownOnClickOutside)
+  debouncedSaveNote.cancel()
+
+  // **新增此行**: 确保在组件被卸载时（例如页面跳转），
+  // body 的滚动能被恢复，避免页面卡死。
+  document.body.style.overflow = ''
 })
 </script>
 

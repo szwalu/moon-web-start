@@ -56,7 +56,7 @@ const editor = useEditor({
   },
   editorProps: {
     attributes: {
-      class: 'prose dark:prose-invert prose-sm sm:prose-base focus:outline-none',
+      class: 'prose dark:prose-invert focus:outline-none',
     },
   },
 })
