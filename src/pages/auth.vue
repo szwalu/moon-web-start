@@ -72,8 +72,6 @@ const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
-const noteEditorRef = ref(null)
-
 let authListener: any = null
 
 // --- 核心认证逻辑 ---
@@ -764,16 +762,6 @@ function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
 }
-
-watch(showEditorModal, (isShowing) => {
-  if (isShowing) {
-    // 使用一个短暂的延时来确保动画和DOM渲染都已完成
-    setTimeout(() => {
-      if (noteEditorRef.value)
-        noteEditorRef.value.focus()
-    }, 150) // 150毫秒通常足以应对大多数手机的动画
-  }
-})
 </script>
 
 <template>
@@ -860,7 +848,6 @@ watch(showEditorModal, (isShowing) => {
             </button>
           </div>
           <NoteEditor
-            ref="noteEditorRef"
             v-model="content"
             :editing-note="editingNote"
             :is-loading="loading"
@@ -1083,38 +1070,27 @@ watch(showEditorModal, (isShowing) => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.4); /* 半透明黑色背景 */
-  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
-  align-items: flex-end; /* 让内容从底部对齐 */
-  transition: opacity 0.3s ease;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
 }
 
 .editor-modal-content {
-  width: 100%;
-  max-width: 480px; /* 保持最大宽度限制 */
   background: white;
-  /* 圆角只保留顶部 */
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
-  /* 平滑弹出动画 */
-  transform: translateY(100%);
-  animation: slide-up 0.3s ease forwards;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
 }
 
 .dark .editor-modal-content {
-  background: #1e1e1e;
-}
-
-/* 定义向上滑动动画 */
-@keyframes slide-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+  background: #2a2a2a;
 }
 
 .modal-header {

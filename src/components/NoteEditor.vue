@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
@@ -20,6 +20,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
+// 从事件定义中移除了 'close'
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
@@ -29,7 +30,6 @@ const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 
 const editor = useEditor({
   content: props.modelValue,
-  // 移除了 autofocus 属性
   extensions: [
     StarterKit,
     Placeholder.configure({
@@ -68,6 +68,11 @@ watch(() => props.modelValue, (value) => {
     editor.value.commands.setContent(value, false)
 })
 
+watch(() => props.editingNote, (newNote, oldNote) => {
+  if (newNote?.id !== oldNote?.id)
+    editor.value?.commands.focus('end')
+})
+
 function insertTag(tag: string) {
   editor.value?.chain().focus().insertContent(`${tag} `).run()
   showTagDropdown.value = false
@@ -89,6 +94,10 @@ watch(showTagDropdown, (isOpen) => {
   }
 })
 
+onMounted(() => {
+  editor.value?.commands.focus('end')
+})
+
 onBeforeUnmount(() => {
   editor.value?.destroy()
   document.removeEventListener('click', closeDropdownOnClickOutside)
@@ -98,16 +107,7 @@ function handleSubmit() {
   emit('submit')
 }
 
-function focus() {
-  nextTick(() => {
-    editor.value?.commands.focus('end')
-  })
-}
-
-// --- 关键改动：通过 defineExpose 将 focus 方法暴露给父组件 ---
-defineExpose({
-  focus,
-})
+// 删除了未被使用的 handleClose 函数
 </script>
 
 <template>
@@ -140,7 +140,7 @@ defineExpose({
       </div>
       <div class="toolbar-right">
         <button type="button" class="submit-button" :disabled="isLoading || charCount === 0" @click="handleSubmit">
-          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M3 20v-6l8-2l-8-2V4l19 8z" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M16.05 19.45l-1.05-1.05L16.2 17.2l-1.2-1.2l-1.05 1.05l-1.2-1.2l-1.05 1.05l-1.2-1.2l-1.05 1.05l-.75-.75l1.05-1.05l1.2 1.2l1.05-1.05l1.2 1.2l1.05-1.05l1.2 1.2l1.05-1.05l.75.75M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21zm2-4h10v-2H7z" /></svg>
         </button>
       </div>
     </div>
@@ -148,7 +148,7 @@ defineExpose({
 </template>
 
 <style>
-/* 样式部分无需修改 */
+/* 新的 Flomo 风格样式 */
 .editor-wrapper-flomo {
   display: flex;
   flex-direction: column;
@@ -158,7 +158,7 @@ defineExpose({
 .editor-scroll-container {
   overflow-y: auto;
   min-height: 100px;
-  max-height: 55dvh;
+  max-height: 55vh;
   padding: 1rem;
   padding-bottom: 2rem;
 }
@@ -211,18 +211,14 @@ defineExpose({
 }
 
 .editor-toolbar-flomo .submit-button {
-  font-size: 22px;
-  color: #18a058;
+  font-size: 24px;
 }
-.dark .editor-toolbar-flomo .submit-button {
-  color: #63e2b7;
-}
-
 .editor-toolbar-flomo button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
+/* 标签下拉菜单样式 */
 .tag-dropdown-container {
   position: relative;
 }
@@ -257,6 +253,7 @@ defineExpose({
   background-color: #3a3a3c;
 }
 
+/* 之前 Tiptap task list 等全局样式可以保留 */
 ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
