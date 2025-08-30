@@ -8,6 +8,10 @@ import CharacterCount from '@tiptap/extension-character-count'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 
+import Focus from '@tiptap/extension-focus'
+
+// 1. 引入 Focus 扩展
+
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -26,10 +30,17 @@ const settingsStore = useSettingStore()
 const showTagDropdown = ref(false)
 const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 const footerBottomOffset = ref(0)
-const editorScrollContainerRef = ref<HTMLElement | null>(null)
 const editorFooterRef = ref<HTMLElement | null>(null)
 
-// --- 关键改动: 将 editor 的定义和初始化移动到所有依赖它的函数之前 ---
+// 2. 新增一个 ref 来存储底部操作栏的固定高度
+const baseFooterHeight = ref(70) // 默认值
+
+// 3. 创建一个计算属性来动态计算滚动区域的 padding-bottom
+const scrollContainerPaddingBottom = computed(() => {
+  // 总 padding = 键盘高度 + 底部操作栏的高度
+  return footerBottomOffset.value + baseFooterHeight.value
+})
+
 const editor = useEditor({
   content: props.modelValue,
   extensions: [
@@ -44,11 +55,17 @@ const editor = useEditor({
     TaskItem.configure({
       nested: true,
     }),
+    Focus.configure({ // 4. 添加 Focus 扩展
+      className: 'has-focus',
+    }),
   ],
-  onUpdate: () => {
-    emit('update:modelValue', editor.value!.getHTML())
+  onUpdate: ({ editor: currentEditor }) => {
+    emit('update:modelValue', currentEditor.getHTML())
     emit('triggerAutoSave')
-    smartScrollIntoView()
+  },
+  // 5. 当编辑器获得焦点时，确保内容可见
+  onFocus() {
+    handleViewportResize()
   },
   editorProps: {
     attributes: {
@@ -57,44 +74,12 @@ const editor = useEditor({
   },
 })
 
-// 现在再定义依赖 editor 的函数，就不会报错了
-function smartScrollIntoView() {
-  nextTick(() => {
-    if (!editor.value || !editorScrollContainerRef.value || !window.visualViewport)
-      return
-
-    const editorView = editor.value.view
-    const scrollContainer = editorScrollContainerRef.value
-    const { from } = editorView.state.selection
-    const coords = editorView.coordsAtPos(from)
-    const containerRect = scrollContainer.getBoundingClientRect()
-    const footerHeight = editorFooterRef.value ? editorFooterRef.value.offsetHeight : 70
-    const visibleTop = containerRect.top
-    const visibleBottom = window.visualViewport.height - footerHeight
-
-    if (coords.top < visibleTop || coords.bottom > visibleBottom) {
-      const head = editorView.state.selection.head
-      const $head = editorView.state.doc.resolve(head)
-      const nodeRect = editorView.nodeDOM($head.before())?.getBoundingClientRect()
-
-      if (nodeRect) {
-        const scrollTop = scrollContainer.scrollTop + nodeRect.top - visibleBottom + nodeRect.height + 20
-        scrollContainer.scrollTo({
-          top: scrollTop,
-          behavior: 'smooth',
-        })
-      }
-    }
-  })
-}
-
 function handleViewportResize() {
   if (!window.visualViewport)
     return
 
   const keyboardHeight = window.innerHeight - window.visualViewport.height
   footerBottomOffset.value = keyboardHeight
-  smartScrollIntoView()
 }
 
 const charCount = computed(() => {
@@ -141,6 +126,10 @@ watch(showTagDropdown, (isOpen) => {
 })
 
 onMounted(async () => {
+  // 6. 在 Mounted 钩子中获取底部操作栏的实际高度
+  if (editorFooterRef.value)
+    baseFooterHeight.value = editorFooterRef.value.offsetHeight
+
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportResize)
     handleViewportResize()
@@ -155,8 +144,13 @@ onMounted(async () => {
       emit('update:modelValue', initialContent)
     }
   }
-  if (props.editingNote)
+  if (props.editingNote) {
     editor.value?.commands.focus('end')
+  }
+  else {
+    // 自动聚焦新笔记
+    editor.value?.commands.focus('end')
+  }
 })
 
 onBeforeUnmount(() => {
@@ -181,11 +175,7 @@ function handleClose() {
     <form class="editor-form" @submit.prevent="handleSubmit">
       <div v-if="editor" class="editor-toolbar">
         <div ref="tagDropdownContainerRef" class="tag-dropdown-container">
-          <button
-            type="button"
-            :title="t('notes.insert_tag')"
-            @click="showTagDropdown = !showTagDropdown"
-          >
+          <button type="button" :title="t('notes.insert_tag')" @click="showTagDropdown = !showTagDropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M5.5 7A1.5 1.5 0 1 0 4 5.5A1.5 1.5 0 0 0 5.5 7m15.41 9.41l-9.05-9.05a1 1 0 0 0-.7-.29H4a2 2 0 0 0-2 2v7.16a1 1 0 0 0 .29.7l9.05 9.05a1 1 0 0 0 1.41 0l7.16-7.16a1 1 0 0 0 0-1.41" /></svg>
           </button>
           <div v-if="showTagDropdown" class="tag-dropdown-menu">
@@ -197,18 +187,10 @@ function handleClose() {
             </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          :title="t('notes.task_list')"
-          :class="{ 'is-active': editor.isActive('taskList') }"
-          @click="editor.chain().focus().toggleTaskList().run()"
-        >
+        <button type="button" :title="t('notes.task_list')" :class="{ 'is-active': editor.isActive('taskList') }" @click="editor.chain().focus().toggleTaskList().run()">
           <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 12l2 2l4-4m-5 8h-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5m-8 6h5m-5 2h5" /></svg>
         </button>
-
         <div class="divider" />
-
         <button type="button" :class="{ 'is-active': editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()">B</button>
         <button type="button" :class="{ 'is-active': editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()">I</button>
         <button type="button" :class="{ 'is-active': editor.isActive('strike') }" @click="editor.chain().focus().toggleStrike().run()">S</button>
@@ -216,7 +198,12 @@ function handleClose() {
         <button type="button" :class="{ 'is-active': editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()">●</button>
         <button type="button" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
       </div>
-      <div ref="editorScrollContainerRef" class="editor-scroll-container" :class="[editorFontSizeClass]">
+
+      <div
+        class="editor-scroll-container"
+        :class="[editorFontSizeClass]"
+        :style="{ paddingBottom: `${scrollContainerPaddingBottom}px` }"
+      >
         <EditorContent :editor="editor" />
       </div>
     </form>
@@ -231,19 +218,10 @@ function handleClose() {
         </span>
       </div>
       <div class="action-bar">
-        <button
-          type="button"
-          class="form-button form-button-cancel"
-          @click="handleClose"
-        >
+        <button type="button" class="form-button form-button-cancel" @click="handleClose">
           取消
         </button>
-        <button
-          type="button"
-          class="form-button"
-          :disabled="isLoading || charCount === 0"
-          @click="handleSubmit"
-        >
+        <button type="button" class="form-button" :disabled="isLoading || charCount === 0" @click="handleSubmit">
           💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
         </button>
       </div>
@@ -252,8 +230,20 @@ function handleClose() {
 </template>
 
 <style>
-/* 样式部分无需修改 */
+/* 8. 从 .editor-scroll-container 中移除写死的 padding-bottom */
+.editor-scroll-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  /* padding-bottom: 70px;  <-- 移除此行 */
+  transition: padding-bottom 0.2s ease-out; /* 让 padding 变化更平滑 */
+}
 
+/* 其他所有样式保持不变 */
 .editor-toolbar .divider {
   width: 1px;
   height: 16px;
@@ -345,16 +335,6 @@ function handleClose() {
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   background-color: #f8f8f8;
-}
-.editor-scroll-container {
-  flex-grow: 1;
-  overflow-y: auto;
-  min-height: 0;
-  -webkit-overflow-scrolling: touch;
-  border: 1px solid #ccc;
-  border-top: none;
-  border-radius: 0 0 6px 6px;
-  padding-bottom: 70px;
 }
 .ProseMirror {
   padding: 0.5rem;
