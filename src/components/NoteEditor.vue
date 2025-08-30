@@ -459,16 +459,19 @@ watch(easymde, (newEditorInstance) => {
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
       </div>
-      <div class="emoji-bar">
-        <button
-          type="submit"
-          class="form-button flex-2"
-          :disabled="isLoading || !contentModel"
-        >
-          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-        </button>
-      </div>
+      <!-- ⚠️ emoji-bar 这里如果不是表情栏，就可以直接删掉 -->
     </form>
+
+    <!-- ✅ 保存按钮从 form 中抽出来，单独放到底部 -->
+    <div class="form-button">
+      <button
+        type="submit"
+        :disabled="isLoading || !contentModel"
+      >
+        💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+      </button>
+    </div>
+
     <div
       v-if="showEditorTagSuggestions && editorTagSuggestions.length"
       ref="editorSuggestionsRef"
@@ -547,5 +550,26 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 /* 不支持 dvh 的浏览器退回到普通 vh */
 @supports not (height: 1dvh) {
   .note-editor { max-height: 86vh; }
+}
+
+/* === 固定保存按钮，避免被键盘遮挡 === */
+.note-editor {
+  position: relative; /* 让保存按钮能绝对定位 */
+  padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+  /* 留出按钮高度 + iOS 安全区，避免光标落在按钮下 */
+}
+
+.note-editor .form-button {
+  position: absolute;
+  bottom: env(safe-area-inset-bottom);
+  left: 0;
+  right: 0;
+  height: 3rem; /* 按钮区高度，可按需要调整 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f7f7; /* 背景色，避免按钮下透出文字 */
+  border-top: 1px solid #ccc; /* 分隔线，可选 */
+  z-index: 10; /* 确保显示在内容之上 */
 }
 </style>
