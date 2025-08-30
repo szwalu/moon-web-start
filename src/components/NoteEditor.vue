@@ -98,9 +98,10 @@ function handleSubmit() {
   emit('submit')
 }
 
-// --- 关键改动：定义一个可供外部调用的 focus 方法 ---
 function focus() {
-  editor.value?.commands.focus('end')
+  nextTick(() => {
+    editor.value?.commands.focus('end')
+  })
 }
 
 // --- 关键改动：通过 defineExpose 将 focus 方法暴露给父组件 ---
@@ -157,7 +158,7 @@ defineExpose({
 .editor-scroll-container {
   overflow-y: auto;
   min-height: 100px;
-  max-height: 55vh;
+  max-height: 55dvh;
   padding: 1rem;
   padding-bottom: 2rem;
 }

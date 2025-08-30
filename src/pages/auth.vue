@@ -767,13 +767,11 @@ function closeEditorModal() {
 
 watch(showEditorModal, (isShowing) => {
   if (isShowing) {
-    // 使用 nextTick 确保 DOM 元素已经渲染
-    nextTick(() => {
-      if (noteEditorRef.value) {
-        // 调用子组件暴露的 focus 方法
+    // 使用一个短暂的延时来确保动画和DOM渲染都已完成
+    setTimeout(() => {
+      if (noteEditorRef.value)
         noteEditorRef.value.focus()
-      }
-    })
+    }, 150) // 150毫秒通常足以应对大多数手机的动画
   }
 })
 </script>
