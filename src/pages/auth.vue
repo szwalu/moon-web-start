@@ -765,13 +765,12 @@ function closeEditorModal() {
 
 watch(showEditorModal, (isShowing) => {
   if (isShowing) {
-    // 使用一个短暂的延时来确保动画和DOM渲染都已完成
     setTimeout(() => {
-      if (noteEditorRef.value) {
-        // 调用子组件的 focus 方法 (我们需要在 NoteEditor 中暴露它)
+      if (noteEditorRef.value)
         noteEditorRef.value.focus()
-      }
-    }, 150) // 150毫秒通常足以应对大多数手机的动画
+      else
+        console.warn('NoteEditor ref is not ready')
+    }, 300) // 增加延迟到 300ms
   }
 })
 </script>

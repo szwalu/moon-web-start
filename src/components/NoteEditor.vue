@@ -49,6 +49,11 @@ const editor = useEditor({
     emit('update:modelValue', currentEditor.getHTML())
     emit('triggerAutoSave')
   },
+  onCreate: ({ editor }) => {
+    nextTick(() => {
+      editor.commands.focus('end')
+    })
+  },
   editorProps: {
     attributes: {
       class: 'prose dark:prose-invert prose-sm sm:prose-base focus:outline-none',
@@ -68,8 +73,11 @@ watch(() => props.modelValue, (value) => {
 })
 
 watch(() => props.editingNote, (newNote, oldNote) => {
-  if (newNote?.id !== oldNote?.id)
-    editor.value?.commands.focus('end')
+  if (newNote?.id !== oldNote?.id) {
+    nextTick(() => {
+      editor.value?.commands.focus('end')
+    })
+  }
 })
 
 function insertTag(tag: string) {
@@ -94,7 +102,24 @@ watch(showTagDropdown, (isOpen) => {
 })
 
 onMounted(() => {
-  editor.value?.commands.focus('end')
+  nextTick(() => {
+    editor.value?.commands.focus('end')
+    // Handle virtual keyboard popup and ensure editor visibility
+    const handleResize = () => {
+      window.scrollTo(0, 0)
+      const editorContainer = document.querySelector('.editor-container-flomo')
+      if (editorContainer) {
+        editorContainer.scrollIntoView({
+          behavior: 'auto',
+          block: 'start',
+        })
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', handleResize)
+    })
+  })
 })
 
 onBeforeUnmount(() => {
@@ -107,7 +132,9 @@ function handleSubmit() {
 }
 
 function focus() {
-  editor.value?.commands.focus('end')
+  nextTick(() => {
+    editor.value?.commands.focus('end')
+  })
 }
 
 // 通过 defineExpose 将 focus 方法暴露给父组件
@@ -159,6 +186,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .editor-scroll-container {
@@ -167,12 +196,16 @@ defineExpose({
   max-height: 55vh;
   padding: 1rem;
   padding-bottom: 2rem;
+  box-sizing: border-box;
 }
 
 .editor-scroll-container .ProseMirror {
   line-height: 1.6 !important;
   outline: none;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
+
 .editor-scroll-container .ProseMirror p {
   margin-top: 0.5em !important;
   margin-bottom: 0.5em !important;
@@ -184,7 +217,10 @@ defineExpose({
   align-items: center;
   padding: 8px 16px;
   border-top: 1px solid #f0f0f0;
+  width: 100%;
+  box-sizing: border-box;
 }
+
 .dark .editor-toolbar-flomo {
   border-top-color: #333;
 }
@@ -192,7 +228,8 @@ defineExpose({
 .toolbar-left, .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .editor-toolbar-flomo button {
@@ -206,21 +243,24 @@ defineExpose({
   align-items: center;
   justify-content: center;
 }
+
 .dark .editor-toolbar-flomo button {
   color: #aaa;
 }
+
 .editor-toolbar-flomo button.is-active {
   color: #18a058;
 }
+
 .dark .editor-toolbar-flomo button.is-active {
   color: #63e2b7;
 }
 
-/* 调整保存按钮的样式，使其更醒目 */
 .editor-toolbar-flomo .submit-button {
   font-size: 22px;
-  color: #18a058; /* 给予主题色 */
+  color: #18a058;
 }
+
 .dark .editor-toolbar-flomo .submit-button {
   color: #63e2b7;
 }
@@ -230,10 +270,10 @@ defineExpose({
   cursor: not-allowed;
 }
 
-/* 标签下拉菜单样式 */
 .tag-dropdown-container {
   position: relative;
 }
+
 .tag-dropdown-menu {
   position: absolute;
   bottom: 100%;
@@ -248,36 +288,42 @@ defineExpose({
   overflow-y: auto;
   margin-bottom: 8px;
 }
+
 .dark .tag-dropdown-menu {
   background-color: #2c2c2e;
   border-color: #444;
 }
+
 .tag-dropdown-menu .dropdown-item {
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s ease;
 }
+
 .tag-dropdown-menu .dropdown-item:hover {
   background-color: #f0f0f0;
 }
+
 .dark .tag-dropdown-menu .dropdown-item:hover {
   background-color: #3a3a3c;
 }
 
-/* 之前 Tiptap task list 等全局样式可以保留 */
 ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
 }
+
 ul[data-type="taskList"] li {
   display: flex;
   align-items: center;
 }
+
 ul[data-type="taskList"] li > label {
   flex: 0 0 auto;
   margin-right: 0.5rem;
 }
+
 ul[data-type="taskList"] li > div {
   flex: 1 1 auto;
 }
