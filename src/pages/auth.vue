@@ -1071,27 +1071,38 @@ function closeEditorModal() {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.4); /* 半透明黑色背景 */
+  z-index: 1000;
   display: flex;
   justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  padding: 1rem;
+  align-items: flex-end; /* 让内容从底部对齐 */
+  transition: opacity 0.3s ease;
 }
 
 .editor-modal-content {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   width: 100%;
-  max-width: 480px;
-  display: flex;
-  flex-direction: column;
+  max-width: 480px; /* 保持最大宽度限制 */
+  background: white;
+  /* 圆角只保留顶部 */
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
+  /* 平滑弹出动画 */
+  transform: translateY(100%);
+  animation: slide-up 0.3s ease forwards;
 }
 
 .dark .editor-modal-content {
-  background: #2a2a2a;
+  background: #1e1e1e;
+}
+
+/* 定义向上滑动动画 */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .modal-header {
