@@ -29,6 +29,9 @@ const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 
 const editor = useEditor({
   content: props.modelValue,
+  // --- 关键改动 1: 添加 autofocus 属性 ---
+  // 这是最直接的方式，告诉编辑器一创建就自动聚焦到末尾
+  autofocus: 'end',
   extensions: [
     StarterKit,
     Placeholder.configure({
@@ -93,8 +96,13 @@ watch(showTagDropdown, (isOpen) => {
   }
 })
 
+// --- 关键改动 2: onMounted 作为备用方案 ---
+// 即使 autofocus 因某些原因失效，这个备用方案也能确保聚焦
 onMounted(() => {
-  editor.value?.commands.focus('end')
+  nextTick(() => {
+    if (editor.value && !editor.value.isFocused)
+      editor.value.commands.focus('end')
+  })
 })
 
 onBeforeUnmount(() => {
@@ -145,7 +153,7 @@ function handleSubmit() {
 </template>
 
 <style>
-/* 新的 Flomo 风格样式 */
+/* 样式部分无需修改 */
 .editor-wrapper-flomo {
   display: flex;
   flex-direction: column;
@@ -207,10 +215,9 @@ function handleSubmit() {
   color: #63e2b7;
 }
 
-/* 调整保存按钮的样式，使其更醒目 */
 .editor-toolbar-flomo .submit-button {
   font-size: 22px;
-  color: #18a058; /* 给予主题色 */
+  color: #18a058;
 }
 .dark .editor-toolbar-flomo .submit-button {
   color: #63e2b7;
@@ -221,7 +228,6 @@ function handleSubmit() {
   cursor: not-allowed;
 }
 
-/* 标签下拉菜单样式 */
 .tag-dropdown-container {
   position: relative;
 }
@@ -256,7 +262,6 @@ function handleSubmit() {
   background-color: #3a3a3c;
 }
 
-/* 之前 Tiptap task list 等全局样式可以保留 */
 ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
