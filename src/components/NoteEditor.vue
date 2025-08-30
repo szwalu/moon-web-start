@@ -4,10 +4,10 @@ import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// 1. Directly import weather data mapping files
+// 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-// --- Import Settings Store ---
+// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -25,31 +25,15 @@ const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const editorWrapperRef = ref<HTMLDivElement | null>(null)
-// --- NEW: A ref for the actions bar to dynamically get its height ---
-const actionsBarRef = ref<HTMLDivElement | null>(null)
 const settingsStore = useSettingStore()
 
 const isReadyForAutoSave = ref(false)
 
-// --- NEW: Unified function to ensure the cursor is visible above the sticky actions bar ---
-function ensureCursorVisible() {
-  if (easymde.value?.codemirror) {
-    const cm = easymde.value.codemirror
-    // Use the actual height of the sticky actions bar + a 10px buffer
-    const bottomMargin = (actionsBarRef.value?.offsetHeight || 50) + 10
-    cm.scrollIntoView(cm.getCursor(), bottomMargin)
-  }
-}
-
-// --- MODIFIED: The core function for handling visualViewport changes ---
 function handleViewportResize() {
-  if (editorWrapperRef.value) {
-    // When the viewport changes (e.g., keyboard appears), ensure the cursor is visible
-    ensureCursorVisible()
-  }
+  if (editorWrapperRef.value && easymde.value)
+    easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
 }
 
-// Weather-related logic functions (unchanged)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -97,19 +81,19 @@ async function fetchWeather() {
     try {
       const locRes = await fetch('https://ipapi.co/json/')
       if (!locRes.ok)
-        throw new Error(`ipapi.co service responded with status: ${locRes.status}`)
+        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
       locData = await locRes.json()
       if (locData.error)
-        throw new Error(`ipapi.co service error: ${locData.reason}`)
+        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
     }
     catch (ipapiError: any) {
-      console.warn('ipapi.co failed, trying backup service ip-api.com...', ipapiError.message)
+      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
       const backupRes = await fetch('https://ip-api.com/json/')
       if (!backupRes.ok)
-        throw new Error(`ip-api.com service responded with status: ${backupRes.status}`)
+        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
       locData = await backupRes.json()
       if (locData.status === 'fail')
-        throw new Error(`ip-api.com service error: ${locData.message}`)
+        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
 
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
@@ -117,7 +101,7 @@ async function fetchWeather() {
     }
 
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('Failed to get location from both services.')
+      throw new Error('从两个服务获取地理位置均失败。')
 
     const lat = locData.latitude
     const lon = locData.longitude
@@ -125,10 +109,10 @@ async function fetchWeather() {
 
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
-      throw new Error(`open-meteo weather service responded with status: ${res.status}`)
+      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
     const data = await res.json()
     if (data.error)
-      throw new Error(`open-meteo weather service error: ${data.reason}`)
+      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
 
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
@@ -140,14 +124,12 @@ async function fetchWeather() {
     return formattedString
   }
   catch (e: any) {
-    console.error('A critical error occurred while fetching weather data:', e)
+    console.error('获取天气信息过程中发生严重错误:', e)
     return null
   }
 }
 
-// onMounted hook
 onMounted(async () => {
-  // --- Add listener for viewport changes ---
   if (window.visualViewport)
     window.visualViewport.addEventListener('resize', handleViewportResize)
 
@@ -175,14 +157,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // --- Remove listener to prevent memory leaks ---
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
 
   destroyEasyMDE()
 })
 
-// All other functions below
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -213,9 +193,14 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // --- MODIFIED: Use the new robust function to keep the cursor visible ---
+  // --- 修改：增加底部 padding 以确保内容不被 emoji-bar 遮挡 ---
+  const emojiBar = editorWrapperRef.value?.querySelector('.emoji-bar')
+  const emojiBarHeight = emojiBar ? emojiBar.getBoundingClientRect().height : 40 // 默认 40px 作为回退
+  cm.getWrapperElement().style.paddingBottom = `${emojiBarHeight + 10}px`
+
   setTimeout(() => {
-    ensureCursorVisible()
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), emojiBarHeight + 10)
   }, 0)
 }
 
@@ -226,14 +211,11 @@ function destroyEasyMDE() {
   }
 }
 
-// --- Helper function to apply editor font size ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  // Remove old font size classes
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  // Add new font size class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
@@ -260,7 +242,7 @@ function initializeEasyMDE(initialValue = '') {
         }
       },
       className: 'fa fa-tag',
-      title: 'Insert Tag',
+      title: '插入标签 (Insert Tag)',
     },
     '|',
     'bold',
@@ -297,7 +279,6 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- Apply font size on initialization ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -311,7 +292,6 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
     else
       emit('triggerAutoSave')
 
@@ -412,42 +392,36 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
-// --- Watch for changes in font size setting ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
+})
+
+watch(easymde, (newEditorInstance) => {
+  if (newEditorInstance && props.editingNote) {
+    const cm = newEditorInstance.codemirror
+    const doc = cm.getDoc()
+    const lastLine = doc.lastLine()
+    nextTick(() => {
+      doc.setCursor(lastLine, doc.getLine(lastLine).length)
+      cm.scrollIntoView(cm.getCursor(), 60)
+      cm.focus()
+    })
+  }
 })
 
 function handleSubmit() {
   emit('submit')
 }
-
-// --- MODIFIED: Final cursor positioning solution ---
-watch(easymde, (newEditorInstance) => {
-  if (newEditorInstance) {
-    if (props.editingNote) {
-      const cm = newEditorInstance.codemirror
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
-
-      nextTick(() => {
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        // --- Use the new robust function here as well ---
-        ensureCursorVisible()
-        cm.focus()
-      })
-    }
-  }
-})
 </script>
 
 <template>
   <div ref="editorWrapperRef" class="note-editor">
-    <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
         :placeholder="$t('notes.content_placeholder')"
-        class="w-full"
+        class="mb-2 w-full border rounded p-2"
         required
         :disabled="isLoading"
         :maxlength="maxNoteLength"
@@ -461,19 +435,16 @@ watch(easymde, (newEditorInstance) => {
           💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
         </span>
       </div>
+      <div class="emoji-bar">
+        <button
+          type="submit"
+          class="form-button flex-2"
+          :disabled="isLoading || !contentModel"
+        >
+          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+        </button>
+      </div>
     </form>
-
-    <div ref="actionsBarRef" class="actions-bar">
-      <button
-        type="button"
-        class="form-button"
-        :disabled="isLoading || !contentModel"
-        @click="handleSubmit"
-      >
-        💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-      </button>
-    </div>
-
     <div
       v-if="showEditorTagSuggestions && editorTagSuggestions.length"
       ref="editorSuggestionsRef"
@@ -495,93 +466,211 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* Scoped styles are largely unchanged, but we add the new actions-bar style */
-textarea{visibility:hidden}
-.status-bar{display:flex;justify-content:flex-start;align-items:center;padding: 0 0.5rem 0.5rem;}
-.char-counter{font-size:12px;color:#999}
-.dark .char-counter{color:#aaa}
-.ml-4{margin-left:1rem}
-.actions-bar{padding: .5rem; display:flex; gap:.5rem; border-top: 1px solid #ccc; background-color: #fff; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));}
-.dark .actions-bar{background-color: #2c2c2e; border-top-color: #48484a;}
-.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
-.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
-.form-button:disabled{opacity:.6;cursor:not-allowed}
-.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
-.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
-.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
-.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
-.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
-.editor-suggestions{position:absolute}
+textarea {
+  visibility: hidden;
+}
+.status-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+}
+.char-counter {
+  font-size: 12px;
+  color: #999;
+}
+.dark .char-counter {
+  color: #aaa;
+}
+.ml-4 {
+  margin-left: 1rem;
+}
+.emoji-bar {
+  margin-top: 0.2rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  position: sticky;
+  bottom: env(safe-area-inset-bottom);
+  z-index: 1001;
+  background: inherit;
+}
+.form-button {
+  width: 100%;
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  background: #d3d3d3;
+  color: #111;
+}
+.dark .form-button {
+  background-color: #404040;
+  color: #fff;
+  border-color: #555;
+}
+.form-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.tag-suggestions {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px #00000026;
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+.dark .tag-suggestions {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+.tag-suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.tag-suggestions li {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tag-suggestions li:hover,
+.tag-suggestions li.highlighted {
+  background-color: #f0f0f0;
+}
+.dark .tag-suggestions li:hover,
+.dark .tag-suggestions li.highlighted {
+  background-color: #404040;
+}
+.editor-suggestions {
+  position: absolute;
+}
 </style>
 
 <style>
-/* --- NEW & MODIFIED GLOBAL STYLES --- */
-
-/* 1. Make the main component a flex container that controls the layout */
-.note-editor {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; /* This container does not scroll; its children do */
-}
-
-/* Use dynamic viewport units (dvh) for better mobile keyboard handling */
-@supports (height: 1dvh) {
-  .note-editor { max-height: 86dvh; }
-}
-
-@supports not (height: 1dvh) {
-  .note-editor { max-height: 86vh; }
-}
-
-/* 2. The form becomes the primary, scrollable content area */
-.editor-form {
-  flex: 1 1 auto; /* Allow the form to grow and fill available space */
-  overflow-y: auto; /* Enable vertical scrolling ONLY within the form */
-  -webkit-overflow-scrolling: touch;
-  position: relative; /* Needed for positioning the tag suggestions */
-}
-
-/* 3. Tell the CodeMirror editor to grow with its content and NOT have its own scrollbar */
-.CodeMirror {
-  border: 1px solid #ccc !important;
-  border-top: none !important; /* Keep seamless look with toolbar */
-  border-radius: 0 0 6px 6px;
-  font-size: 16px !important;
-  line-height: 1.6 !important;
-  /* CRITICAL: Let the editor grow and disable its internal scrollbar */
-  height: auto !important;
-  overflow-y: hidden !important;
-}
-
-/* (Original styles below are kept, with minor adjustments) */
 .editor-toolbar {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-bottom: 1px solid #ccc !important; /* Add bottom border to separate from content */
+  border-bottom: none !important;
   border-radius: 6px 6px 0 0;
-  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 1001;
   background-color: #fff;
 }
-.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
+.CodeMirror {
+  border: 1px solid #ccc !important;
+  border-top: none !important;
+  border-radius: 0 0 6px 6px;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+  overflow-y: auto !important;
+}
+.editor-toolbar a,
+.editor-toolbar button {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  line-height: 1 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+.editor-toolbar a i,
+.editor-toolbar button i {
+  font-size: 15px !important;
+  vertical-align: middle;
+}
+.editor-toolbar i.separator {
+  margin: 1px 3px !important;
+  border-width: 0 1px 0 0 !important;
+  height: 8px !important;
+}
+.dark .editor-toolbar {
+  background-color: #2c2c2e !important;
+  border-color: #48484a !important;
+}
+.dark .CodeMirror {
+  background-color: #2c2c2e !important;
+  border-color: #48484a !important;
+  color: #fff !important;
+}
+.dark .editor-toolbar a {
+  color: #e0e0e0 !important;
+}
+.dark .editor-toolbar a.active {
+  background: #404040 !important;
+}
+@media (max-width: 480px) {
+  .editor-toolbar {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .editor-toolbar::-webkit-scrollbar {
+    display: none;
+    height: 0;
+  }
+}
 
-/* Heading font size fix in editor */
-.CodeMirror .cm-header { font-weight: bold; }
-.CodeMirror .cm-header-1 { font-size: 1.6em; }
-.CodeMirror .cm-header-2 { font-size: 1.4em; }
-.CodeMirror .cm-header-3 { font-size: 1.2em; }
-.CodeMirror .cm-header-4 { font-size: 1.1em; }
-.CodeMirror .cm-header-5 { font-size: 1.0em; }
-.CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
+.CodeMirror .cm-header {
+  font-weight: bold;
+}
+.CodeMirror .cm-header-1 {
+  font-size: 1.6em;
+}
+.CodeMirror .cm-header-2 {
+  font-size: 1.4em;
+}
+.CodeMirror .cm-header-3 {
+  font-size: 1.2em;
+}
+.CodeMirror .cm-header-4 {
+  font-size: 1.1em;
+}
+.CodeMirror .cm-header-5 {
+  font-size: 1.0em;
+}
+.CodeMirror .cm-header-6 {
+  font-size: 1.0em;
+  color: #777;
+}
 
-/* Dynamic editor font size CSS rules */
-.CodeMirror.font-size-small { font-size: 14px !important; }
-.CodeMirror.font-size-medium { font-size: 16px !important; }
-.CodeMirror.font-size-large { font-size: 20px !important; }
+.CodeMirror.font-size-small {
+  font-size: 14px !important;
+}
+.CodeMirror.font-size-medium {
+  font-size: 16px !important;
+}
+.CodeMirror.font-size-large {
+  font-size: 20px !important;
+}
 
-/* The old note-editor padding is removed as it's now handled by the .actions-bar */
+.note-editor {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (height: 1dvh) {
+  .note-editor {
+    max-height: 86dvh;
+  }
+}
+
+@supports not (height: 1dvh) {
+  .note-editor {
+    max-height: 86vh;
+  }
+}
 </style>
