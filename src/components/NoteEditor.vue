@@ -26,8 +26,10 @@ const settingsStore = useSettingStore()
 const showTagDropdown = ref(false)
 const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 const footerBottomOffset = ref(0)
+const editorScrollContainerRef = ref<HTMLElement | null>(null)
+const editorFooterRef = ref<HTMLElement | null>(null)
 
-// --- 关键改动: 将 editor 的定义提前 ---
+// --- 关键改动: 将 editor 的定义和初始化移动到所有依赖它的函数之前 ---
 const editor = useEditor({
   content: props.modelValue,
   extensions: [
@@ -43,10 +45,10 @@ const editor = useEditor({
       nested: true,
     }),
   ],
-  onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML())
+  onUpdate: () => {
+    emit('update:modelValue', editor.value!.getHTML())
     emit('triggerAutoSave')
-    scrollCursorIntoView() // 调用现在已经定义好的函数
+    smartScrollIntoView()
   },
   editorProps: {
     attributes: {
@@ -56,18 +58,43 @@ const editor = useEditor({
 })
 
 // 现在再定义依赖 editor 的函数，就不会报错了
-function scrollCursorIntoView() {
+function smartScrollIntoView() {
   nextTick(() => {
-    editor.value?.commands.scrollIntoView()
+    if (!editor.value || !editorScrollContainerRef.value || !window.visualViewport)
+      return
+
+    const editorView = editor.value.view
+    const scrollContainer = editorScrollContainerRef.value
+    const { from } = editorView.state.selection
+    const coords = editorView.coordsAtPos(from)
+    const containerRect = scrollContainer.getBoundingClientRect()
+    const footerHeight = editorFooterRef.value ? editorFooterRef.value.offsetHeight : 70
+    const visibleTop = containerRect.top
+    const visibleBottom = window.visualViewport.height - footerHeight
+
+    if (coords.top < visibleTop || coords.bottom > visibleBottom) {
+      const head = editorView.state.selection.head
+      const $head = editorView.state.doc.resolve(head)
+      const nodeRect = editorView.nodeDOM($head.before())?.getBoundingClientRect()
+
+      if (nodeRect) {
+        const scrollTop = scrollContainer.scrollTop + nodeRect.top - visibleBottom + nodeRect.height + 20
+        scrollContainer.scrollTo({
+          top: scrollTop,
+          behavior: 'smooth',
+        })
+      }
+    }
   })
 }
 
 function handleViewportResize() {
   if (!window.visualViewport)
     return
+
   const keyboardHeight = window.innerHeight - window.visualViewport.height
   footerBottomOffset.value = keyboardHeight
-  scrollCursorIntoView()
+  smartScrollIntoView()
 }
 
 const charCount = computed(() => {
@@ -189,12 +216,12 @@ function handleClose() {
         <button type="button" :class="{ 'is-active': editor.isActive('bulletList') }" @click="editor.chain().focus().toggleBulletList().run()">●</button>
         <button type="button" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
       </div>
-      <div class="editor-scroll-container" :class="[editorFontSizeClass]">
+      <div ref="editorScrollContainerRef" class="editor-scroll-container" :class="[editorFontSizeClass]">
         <EditorContent :editor="editor" />
       </div>
     </form>
 
-    <div class="editor-footer" :style="{ bottom: `${footerBottomOffset}px` }">
+    <div ref="editorFooterRef" class="editor-footer" :style="{ bottom: `${footerBottomOffset}px` }">
       <div class="status-bar">
         <span class="char-counter">
           {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
@@ -225,7 +252,7 @@ function handleClose() {
 </template>
 
 <style>
-/* 样式部分无需修改，保持原样即可 */
+/* 样式部分无需修改 */
 
 .editor-toolbar .divider {
   width: 1px;
