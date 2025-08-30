@@ -35,6 +35,12 @@ importers:
       '@tiptap/extension-placeholder':
         specifier: ^3.3.0
         version: 3.3.0(@tiptap/extensions@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0))
+      '@tiptap/extension-task-item':
+        specifier: ^3.3.0
+        version: 3.3.0(@tiptap/extension-list@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0))
+      '@tiptap/extension-task-list':
+        specifier: ^3.3.0
+        version: 3.3.0(@tiptap/extension-list@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0))
       '@tiptap/starter-kit':
         specifier: ^3.3.0
         version: 3.3.0
@@ -1263,6 +1269,16 @@ packages:
     resolution: {integrity: sha512-qTSywaQYtlVo3B2NaLSKgmh5/O5m4XspSME8mekinGH6cTv3d+H3p1SUhQoc1Ue+65CI01+GsLU4v/Gi4B2xNw==}
     peerDependencies:
       '@tiptap/core': ^3.3.0
+
+  '@tiptap/extension-task-item@3.3.0':
+    resolution: {integrity: sha512-M8iCGL4moowXnV7AsFxsY5Sj84GhljTEBo/47lKaT3Qq+GQr8loXJ8sLDUyfq4SihOfNwqLWpucA6sKTW1YXTw==}
+    peerDependencies:
+      '@tiptap/extension-list': ^3.3.0
+
+  '@tiptap/extension-task-list@3.3.0':
+    resolution: {integrity: sha512-VxSnbiZgeUR61gV5UHcH6r7OOk3r/J01Fw4yQ5WtStFCGGyiDKUewg4n6yBqjcfKcMjGvvdPsei0eKddJxaYqw==}
+    peerDependencies:
+      '@tiptap/extension-list': ^3.3.0
 
   '@tiptap/extension-text@3.3.0':
     resolution: {integrity: sha512-yhNpKfRlZsZFtjBQyiWyjg9WPUTzjgxR/ZID1UEY3SGo9aPUuvAvEnn2v2tSopHyf+qBMyN5IfSjrauauGkWMA==}
@@ -5967,6 +5983,14 @@ snapshots:
   '@tiptap/extension-strike@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))':
     dependencies:
       '@tiptap/core': 3.3.0(@tiptap/pm@3.3.0)
+
+  '@tiptap/extension-task-item@3.3.0(@tiptap/extension-list@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0))':
+    dependencies:
+      '@tiptap/extension-list': 3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0)
+
+  '@tiptap/extension-task-list@3.3.0(@tiptap/extension-list@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0))':
+    dependencies:
+      '@tiptap/extension-list': 3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))(@tiptap/pm@3.3.0)
 
   '@tiptap/extension-text@3.3.0(@tiptap/core@3.3.0(@tiptap/pm@3.3.0))':
     dependencies:
