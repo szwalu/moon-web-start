@@ -27,13 +27,7 @@ const showTagDropdown = ref(false)
 const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 const footerBottomOffset = ref(0)
 
-function handleViewportResize() {
-  if (!window.visualViewport)
-    return
-  const keyboardHeight = window.innerHeight - window.visualViewport.height
-  footerBottomOffset.value = keyboardHeight
-}
-
+// --- 关键改动: 将 editor 的定义提前 ---
 const editor = useEditor({
   content: props.modelValue,
   extensions: [
@@ -52,6 +46,7 @@ const editor = useEditor({
   onUpdate: ({ editor }) => {
     emit('update:modelValue', editor.getHTML())
     emit('triggerAutoSave')
+    scrollCursorIntoView() // 调用现在已经定义好的函数
   },
   editorProps: {
     attributes: {
@@ -59,6 +54,21 @@ const editor = useEditor({
     },
   },
 })
+
+// 现在再定义依赖 editor 的函数，就不会报错了
+function scrollCursorIntoView() {
+  nextTick(() => {
+    editor.value?.commands.scrollIntoView()
+  })
+}
+
+function handleViewportResize() {
+  if (!window.visualViewport)
+    return
+  const keyboardHeight = window.innerHeight - window.visualViewport.height
+  footerBottomOffset.value = keyboardHeight
+  scrollCursorIntoView()
+}
 
 const charCount = computed(() => {
   return editor.value?.storage.characterCount.characters() ?? 0
@@ -215,9 +225,8 @@ function handleClose() {
 </template>
 
 <style>
-/* ... (之前的样式保持不变) ... */
+/* 样式部分无需修改，保持原样即可 */
 
-/* --- 新增/修改的样式 --- */
 .editor-toolbar .divider {
   width: 1px;
   height: 16px;
@@ -231,16 +240,13 @@ function handleClose() {
   width: 1.25em;
   height: 1.25em;
 }
-
 .tag-dropdown-container {
   position: relative;
 }
-
 .tag-dropdown-menu {
   position: absolute;
-  /* 改动1: 修改下拉菜单位置，使其在按钮下方显示 */
   top: 100%;
-  left: 0; /* 改为左对齐 */
+  left: 0;
   background-color: #fff;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -249,13 +255,12 @@ function handleClose() {
   width: 150px;
   max-height: 200px;
   overflow-y: auto;
-  margin-top: 8px; /* 与按钮之间的距离 */
+  margin-top: 8px;
 }
 .dark .tag-dropdown-menu {
   background-color: #2c2c2e;
   border-color: #444;
 }
-
 .tag-dropdown-menu .dropdown-item {
   padding: 8px 12px;
   cursor: pointer;
@@ -276,18 +281,13 @@ function handleClose() {
 .dark .tag-dropdown-menu .dropdown-item-disabled {
   color: #aaa;
 }
-
-/* 改动3: 新增样式以恢复正常的行距 (最终版本) */
 .editor-scroll-container .ProseMirror {
-  line-height: 1.5 !important; /* 设置一个更紧凑的行高 */
+  line-height: 1.5 !important;
 }
 .editor-scroll-container .ProseMirror p {
-  /* 将段落的上下外边距大幅减小，并强制生效 */
   margin-top: 0.2em !important;
   margin-bottom: 0.2em !important;
 }
-
-/* --- 整体布局 --- */
 .editor-wrapper {
   position: fixed;
   top: 0;
@@ -302,15 +302,12 @@ function handleClose() {
   flex-direction: column;
 }
 .dark .editor-wrapper { background-color: #1c1c1e; }
-
 .editor-form {
   height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
-
-/* --- 工具栏样式 --- */
 .editor-toolbar {
   flex-shrink: 0;
   display: flex;
@@ -322,8 +319,6 @@ function handleClose() {
   border-radius: 6px 6px 0 0;
   background-color: #f8f8f8;
 }
-
-/* --- 滚动区域 --- */
 .editor-scroll-container {
   flex-grow: 1;
   overflow-y: auto;
@@ -332,14 +327,13 @@ function handleClose() {
   border: 1px solid #ccc;
   border-top: none;
   border-radius: 0 0 6px 6px;
-  padding-bottom: 70px; /* 根据页脚高度调整，防止最后一行被遮挡 */
+  padding-bottom: 70px;
 }
 .ProseMirror {
   padding: 0.5rem;
   min-height: 100%;
   outline: none;
 }
-/* Tiptap Task List Styles */
 ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
@@ -355,8 +349,6 @@ ul[data-type="taskList"] li > label {
 ul[data-type="taskList"] li > div {
   flex: 1 1 auto;
 }
-
-/* --- 固定页脚 --- */
 .editor-footer {
   position: fixed;
   bottom: 0;
@@ -372,7 +364,6 @@ ul[data-type="taskList"] li > div {
   gap: 16px;
   flex-wrap: nowrap;
 }
-
 .status-bar {
   display: flex;
   flex-direction: column;
@@ -382,7 +373,6 @@ ul[data-type="taskList"] li > div {
   flex-shrink: 1;
   min-width: 0;
 }
-
 .status-bar .char-counter {
   line-height: 1.3;
   width: 100%;
@@ -390,19 +380,16 @@ ul[data-type="taskList"] li > div {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .action-bar {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
 }
-
 .dark .editor-footer {
   background-color: #2c2c2e;
   border-top-color: #48484a;
 }
-
 .action-bar .form-button {
   padding: .5rem 1rem;
 }
@@ -416,8 +403,6 @@ ul[data-type="taskList"] li > div {
   border-color: #58585a;
   color: #fff;
 }
-
-/* --- 其他辅助样式 --- */
 .dark .editor-toolbar { background-color: #2c2c2e; border-color: #48484a; }
 .editor-toolbar button { font-weight: bold; padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; background: none; display:flex; align-items:center; justify-content:center; }
 .dark .editor-toolbar button { color: #e0e0e0; }
