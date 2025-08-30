@@ -20,7 +20,6 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-// 从事件定义中移除了 'close'
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
@@ -106,8 +105,6 @@ onBeforeUnmount(() => {
 function handleSubmit() {
   emit('submit')
 }
-
-// 删除了未被使用的 handleClose 函数
 </script>
 
 <template>
@@ -140,7 +137,7 @@ function handleSubmit() {
       </div>
       <div class="toolbar-right">
         <button type="button" class="submit-button" :disabled="isLoading || charCount === 0" @click="handleSubmit">
-          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M16.05 19.45l-1.05-1.05L16.2 17.2l-1.2-1.2l-1.05 1.05l-1.2-1.2l-1.05 1.05l-1.2-1.2l-1.05 1.05l-.75-.75l1.05-1.05l1.2 1.2l1.05-1.05l1.2 1.2l1.05-1.05l1.2 1.2l1.05-1.05l.75.75M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h14q.825 0 1.413.588T21 5v14q0 .825-.587 1.413T19 21zm2-4h10v-2H7z" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M3 20v-6l8-2l-8-2V4l19 8z" /></svg>
         </button>
       </div>
     </div>
@@ -210,9 +207,15 @@ function handleSubmit() {
   color: #63e2b7;
 }
 
+/* 调整保存按钮的样式，使其更醒目 */
 .editor-toolbar-flomo .submit-button {
-  font-size: 24px;
+  font-size: 22px;
+  color: #18a058; /* 给予主题色 */
 }
+.dark .editor-toolbar-flomo .submit-button {
+  color: #63e2b7;
+}
+
 .editor-toolbar-flomo button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
