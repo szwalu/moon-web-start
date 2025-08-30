@@ -450,6 +450,7 @@ watch(easymde, (newEditorInstance) => {
         :disabled="isLoading"
         :maxlength="maxNoteLength"
         autocomplete="off"
+        rows="6"
       />
       <div class="status-bar">
         <span class="char-counter">
@@ -462,6 +463,7 @@ watch(easymde, (newEditorInstance) => {
     </form>
 
     <!-- ✅ 保存按钮，固定在编辑器底部 -->
+    <!-- 新的固定保存按钮（form 外部） -->
     <div class="save-bar">
       <button
         type="button"
@@ -576,38 +578,55 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 </style>
 
 <style>
-/* === 保存按钮固定到底部的全局样式 === */
+/* ---------- 全局（非-scoped）样式：固定保存按钮并确保不被覆盖 ---------- */
 .note-editor {
-  position: relative;
-  overflow: auto;
+  position: relative !important;                 /* 参考定位容器 */
+  overflow: auto !important;
   -webkit-overflow-scrolling: touch;
-
-  /* 为按钮预留空间 */
-  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  /* 给保存按钮留出足够空间，防止光标落在按钮下方 */
+  padding-bottom: calc(3.6rem + env(safe-area-inset-bottom)) !important;
+  max-height: 86dvh; /* 如果需要可以调整 86 -> 80 等 */
 }
 
-.note-editor .save-bar {
-  position: absolute;
+/* 保存按钮区域，固定在编辑器容器底部 */
+.note-editor > .save-bar {
+  position: absolute !important;
   bottom: env(safe-area-inset-bottom);
   left: 0;
   right: 0;
-  height: 3.5rem;
+  height: 3.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  border-top: 1px solid #ccc;
-  z-index: 20;
+  background: #ffffff;
+  border-top: 1px solid rgba(0,0,0,0.08);
+  z-index: 9999;
+  box-sizing: border-box;
 }
 
-.note-editor .save-bar .save-btn {
-  width: 90%;
-  max-width: 480px;
-  height: 2.5rem;
+/* 按钮外观（可按需微调） */
+.note-editor > .save-bar .save-btn {
+  width: 92%;
+  max-width: 520px;
+  height: 2.6rem;
   background-color: #007aff;
-  color: white;
+  color: #fff;
   font-size: 1rem;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
 }
+
+/* 兼容旧浏览器不支持 dvh */
+@supports not (height: 1dvh) {
+  .note-editor { max-height: 86vh; }
+}
+
+/* 如果你保留 emoji-bar，但想把原来的表单内按钮隐藏（避免重复），可启用下面一行： */
+.note-editor .emoji-bar > button,
+.note-editor .form-button { display: none !important; }
 </style>
