@@ -4,10 +4,10 @@ import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// 1. 直接引入天气数据映射文件
+// 1. Directly import weather data mapping files
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-// --- 新增：引入设置 Store ---
+// --- Import Settings Store ---
 import { useSettingStore } from '@/stores/setting'
 
 const props = defineProps({
@@ -24,23 +24,32 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
-// --- 新增：初始化 Store ---
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
+// --- NEW: A ref for the actions bar to dynamically get its height ---
+const actionsBarRef = ref<HTMLDivElement | null>(null)
 const settingsStore = useSettingStore()
 
-// 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
-function handleViewportResize() {
-  if (editorWrapperRef.value) {
-    // 当视窗变化时，仅确保编辑器光标可见（不再通过 padding-bottom 去垫高）
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+// --- NEW: Unified function to ensure the cursor is visible above the sticky actions bar ---
+function ensureCursorVisible() {
+  if (easymde.value?.codemirror) {
+    const cm = easymde.value.codemirror
+    // Use the actual height of the sticky actions bar + a 10px buffer
+    const bottomMargin = (actionsBarRef.value?.offsetHeight || 50) + 10
+    cm.scrollIntoView(cm.getCursor(), bottomMargin)
   }
 }
 
-// 天气相关的逻辑函数 (保持不变)
+// --- MODIFIED: The core function for handling visualViewport changes ---
+function handleViewportResize() {
+  if (editorWrapperRef.value) {
+    // When the viewport changes (e.g., keyboard appears), ensure the cursor is visible
+    ensureCursorVisible()
+  }
+}
+
+// Weather-related logic functions (unchanged)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -88,19 +97,19 @@ async function fetchWeather() {
     try {
       const locRes = await fetch('https://ipapi.co/json/')
       if (!locRes.ok)
-        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
+        throw new Error(`ipapi.co service responded with status: ${locRes.status}`)
       locData = await locRes.json()
       if (locData.error)
-        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
+        throw new Error(`ipapi.co service error: ${locData.reason}`)
     }
     catch (ipapiError: any) {
-      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
+      console.warn('ipapi.co failed, trying backup service ip-api.com...', ipapiError.message)
       const backupRes = await fetch('https://ip-api.com/json/')
       if (!backupRes.ok)
-        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
+        throw new Error(`ip-api.com service responded with status: ${backupRes.status}`)
       locData = await backupRes.json()
       if (locData.status === 'fail')
-        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
+        throw new Error(`ip-api.com service error: ${locData.message}`)
 
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
@@ -108,7 +117,7 @@ async function fetchWeather() {
     }
 
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('从两个服务获取地理位置均失败。')
+      throw new Error('Failed to get location from both services.')
 
     const lat = locData.latitude
     const lon = locData.longitude
@@ -116,10 +125,10 @@ async function fetchWeather() {
 
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
-      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
+      throw new Error(`open-meteo weather service responded with status: ${res.status}`)
     const data = await res.json()
     if (data.error)
-      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
+      throw new Error(`open-meteo weather service error: ${data.reason}`)
 
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
@@ -131,14 +140,14 @@ async function fetchWeather() {
     return formattedString
   }
   catch (e: any) {
-    console.error('获取天气信息过程中发生严重错误:', e)
+    console.error('A critical error occurred while fetching weather data:', e)
     return null
   }
 }
 
-// onMounted 钩子
+// onMounted hook
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
+  // --- Add listener for viewport changes ---
   if (window.visualViewport)
     window.visualViewport.addEventListener('resize', handleViewportResize)
 
@@ -166,14 +175,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
+  // --- Remove listener to prevent memory leaks ---
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
 
   destroyEasyMDE()
 })
 
-// 下方的所有其他函数
+// All other functions below
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -204,11 +213,9 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
+  // --- MODIFIED: Use the new robust function to keep the cursor visible ---
   setTimeout(() => {
-    if (easymde.value)
-      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+    ensureCursorVisible()
   }, 0)
 }
 
@@ -219,20 +226,19 @@ function destroyEasyMDE() {
   }
 }
 
-// --- 新增：更新编辑器字号的辅助函数 ---
+// --- Helper function to apply editor font size ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  // 移除旧的字号 class
+  // Remove old font size classes
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  // 添加新的字号 class
+  // Add new font size class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
-  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
 
   const newEl = textareaRef.value
@@ -254,7 +260,7 @@ function initializeEasyMDE(initialValue = '') {
         }
       },
       className: 'fa fa-tag',
-      title: '插入标签 (Insert Tag)',
+      title: 'Insert Tag',
     },
     '|',
     'bold',
@@ -291,7 +297,7 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- 新增：初始化时应用一次字号 ---
+  // --- Apply font size on initialization ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -406,7 +412,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
-// --- 新增：监听设置中的字号变化 ---
+// --- Watch for changes in font size setting ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
@@ -415,23 +421,19 @@ function handleSubmit() {
   emit('submit')
 }
 
-// --- 新增：最终光标定位方案 ---
-// 侦听编辑器实例是否被创建
+// --- MODIFIED: Final cursor positioning solution ---
 watch(easymde, (newEditorInstance) => {
-  // 当编辑器实例被创建好时
   if (newEditorInstance) {
-    // 并且我们正在编辑一个旧笔记
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
       const doc = cm.getDoc()
       const lastLine = doc.lastLine()
 
-      // 在下一个Tick中安全地移动光标，确保DOM已更新
       nextTick(() => {
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        cm.scrollIntoView(cm.getCursor(), 60)
-        // --- 新增的画龙点睛之笔 ---
-        cm.focus() // 激活编辑器，让光标显形并闪动
+        // --- Use the new robust function here as well ---
+        ensureCursorVisible()
+        cm.focus()
       })
     }
   }
@@ -440,17 +442,16 @@ watch(easymde, (newEditorInstance) => {
 
 <template>
   <div ref="editorWrapperRef" class="note-editor">
-    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+    <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
         :placeholder="$t('notes.content_placeholder')"
-        class="mb-2 w-full border rounded p-2"
+        class="w-full"
         required
         :disabled="isLoading"
         :maxlength="maxNoteLength"
         autocomplete="off"
-        rows="6"
       />
       <div class="status-bar">
         <span class="char-counter">
@@ -462,12 +463,10 @@ watch(easymde, (newEditorInstance) => {
       </div>
     </form>
 
-    <!-- ✅ 保存按钮，固定在编辑器底部 -->
-    <!-- 新的固定保存按钮（form 外部） -->
-    <div class="save-bar">
+    <div ref="actionsBarRef" class="actions-bar">
       <button
         type="button"
-        class="save-btn"
+        class="form-button"
         :disabled="isLoading || !contentModel"
         @click="handleSubmit"
       >
@@ -496,17 +495,71 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* Styles are unchanged */
-textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:.2rem;display:flex;justify-content:space-between;gap:.5rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
+/* Scoped styles are largely unchanged, but we add the new actions-bar style */
+textarea{visibility:hidden}
+.status-bar{display:flex;justify-content:flex-start;align-items:center;padding: 0 0.5rem 0.5rem;}
+.char-counter{font-size:12px;color:#999}
+.dark .char-counter{color:#aaa}
+.ml-4{margin-left:1rem}
+.actions-bar{padding: .5rem; display:flex; gap:.5rem; border-top: 1px solid #ccc; background-color: #fff; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));}
+.dark .actions-bar{background-color: #2c2c2e; border-top-color: #48484a;}
+.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
+.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
+.form-button:disabled{opacity:.6;cursor:not-allowed}
+.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
+.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
+.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
+.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
+.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
+.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
+.editor-suggestions{position:absolute}
 </style>
 
 <style>
-/* Global styles */
+/* --- NEW & MODIFIED GLOBAL STYLES --- */
+
+/* 1. Make the main component a flex container that controls the layout */
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* This container does not scroll; its children do */
+}
+
+/* Use dynamic viewport units (dvh) for better mobile keyboard handling */
+@supports (height: 1dvh) {
+  .note-editor { max-height: 86dvh; }
+}
+
+@supports not (height: 1dvh) {
+  .note-editor { max-height: 86vh; }
+}
+
+/* 2. The form becomes the primary, scrollable content area */
+.editor-form {
+  flex: 1 1 auto; /* Allow the form to grow and fill available space */
+  overflow-y: auto; /* Enable vertical scrolling ONLY within the form */
+  -webkit-overflow-scrolling: touch;
+  position: relative; /* Needed for positioning the tag suggestions */
+}
+
+/* 3. Tell the CodeMirror editor to grow with its content and NOT have its own scrollbar */
+.CodeMirror {
+  border: 1px solid #ccc !important;
+  border-top: none !important; /* Keep seamless look with toolbar */
+  border-radius: 0 0 6px 6px;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+  /* CRITICAL: Let the editor grow and disable its internal scrollbar */
+  height: auto !important;
+  overflow-y: hidden !important;
+}
+
+/* (Original styles below are kept, with minor adjustments) */
 .editor-toolbar {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-bottom: none !important;
+  border-bottom: 1px solid #ccc !important; /* Add bottom border to separate from content */
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
   position: sticky;
@@ -514,7 +567,6 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   z-index: 1001;
   background-color: #fff;
 }
-.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
 /* Heading font size fix in editor */
@@ -526,107 +578,10 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
 
-/* --- 新增：根据设置动态修改编辑器字号的 CSS 规则 --- */
-.CodeMirror.font-size-small {
-  font-size: 14px !important;
-}
-.CodeMirror.font-size-medium {
-  font-size: 16px !important; /* 这是原始的默认大小 */
-}
-.CodeMirror.font-size-large {
-  font-size: 20px !important;
-}
+/* Dynamic editor font size CSS rules */
+.CodeMirror.font-size-small { font-size: 14px !important; }
+.CodeMirror.font-size-medium { font-size: 16px !important; }
+.CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* === 新增：编辑器容器在手机键盘弹出时不再产生白色垫块 === */
-.note-editor {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
-  padding-bottom: env(safe-area-inset-bottom); /* 保留系统安全区（如 iPhone 底部刘海/手势区）*/
-}
-
-/* 使用动态视口单位 dvh 的设备（现代浏览器/新 iOS）优先 */
-@supports (height: 1dvh) {
-  /* 86dvh 是示例，可根据实际页面头部高度调整（保持编辑器在键盘弹出时不被盖住） */
-  .note-editor { max-height: 86dvh; }
-}
-
-/* 不支持 dvh 的浏览器退回到普通 vh */
-@supports not (height: 1dvh) {
-  .note-editor { max-height: 86vh; }
-}
-
-/* === 固定保存按钮，避免被键盘遮挡 === */
-.note-editor {
-  position: relative; /* 让保存按钮能绝对定位 */
-  padding-bottom: calc(3rem + env(safe-area-inset-bottom));
-  /* 留出按钮高度 + iOS 安全区，避免光标落在按钮下 */
-}
-
-.note-editor .form-button {
-  position: absolute;
-  bottom: env(safe-area-inset-bottom);
-  left: 0;
-  right: 0;
-  height: 3rem; /* 按钮区高度，可按需要调整 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f7f7f7; /* 背景色，避免按钮下透出文字 */
-  border-top: 1px solid #ccc; /* 分隔线，可选 */
-  z-index: 10; /* 确保显示在内容之上 */
-}
-</style>
-
-<style>
-/* ---------- 全局（非-scoped）样式：固定保存按钮并确保不被覆盖 ---------- */
-.note-editor {
-  position: relative !important;                 /* 参考定位容器 */
-  overflow: auto !important;
-  -webkit-overflow-scrolling: touch;
-  /* 给保存按钮留出足够空间，防止光标落在按钮下方 */
-  padding-bottom: calc(3.6rem + env(safe-area-inset-bottom)) !important;
-  max-height: 86dvh; /* 如果需要可以调整 86 -> 80 等 */
-}
-
-/* 保存按钮区域，固定在编辑器容器底部 */
-.note-editor > .save-bar {
-  position: absolute !important;
-  bottom: env(safe-area-inset-bottom);
-  left: 0;
-  right: 0;
-  height: 3.6rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  z-index: 9999;
-  box-sizing: border-box;
-}
-
-/* 按钮外观（可按需微调） */
-.note-editor > .save-bar .save-btn {
-  width: 92%;
-  max-width: 520px;
-  height: 2.6rem;
-  background-color: #007aff;
-  color: #fff;
-  font-size: 1rem;
-  border: none;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: rgba(0,0,0,0);
-}
-
-/* 兼容旧浏览器不支持 dvh */
-@supports not (height: 1dvh) {
-  .note-editor { max-height: 86vh; }
-}
-
-/* 如果你保留 emoji-bar，但想把原来的表单内按钮隐藏（避免重复），可启用下面一行： */
-.note-editor .emoji-bar > button,
-.note-editor .form-button { display: none !important; }
+/* The old note-editor padding is removed as it's now handled by the .actions-bar */
 </style>
