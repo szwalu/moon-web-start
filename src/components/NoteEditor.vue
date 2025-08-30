@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
@@ -29,9 +29,7 @@ const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
 
 const editor = useEditor({
   content: props.modelValue,
-  // --- 关键改动 1: 添加 autofocus 属性 ---
-  // 这是最直接的方式，告诉编辑器一创建就自动聚焦到末尾
-  autofocus: 'end',
+  // 移除了 autofocus 属性
   extensions: [
     StarterKit,
     Placeholder.configure({
@@ -70,11 +68,6 @@ watch(() => props.modelValue, (value) => {
     editor.value.commands.setContent(value, false)
 })
 
-watch(() => props.editingNote, (newNote, oldNote) => {
-  if (newNote?.id !== oldNote?.id)
-    editor.value?.commands.focus('end')
-})
-
 function insertTag(tag: string) {
   editor.value?.chain().focus().insertContent(`${tag} `).run()
   showTagDropdown.value = false
@@ -96,15 +89,6 @@ watch(showTagDropdown, (isOpen) => {
   }
 })
 
-// --- 关键改动 2: onMounted 作为备用方案 ---
-// 即使 autofocus 因某些原因失效，这个备用方案也能确保聚焦
-onMounted(() => {
-  nextTick(() => {
-    if (editor.value && !editor.value.isFocused)
-      editor.value.commands.focus('end')
-  })
-})
-
 onBeforeUnmount(() => {
   editor.value?.destroy()
   document.removeEventListener('click', closeDropdownOnClickOutside)
@@ -113,6 +97,16 @@ onBeforeUnmount(() => {
 function handleSubmit() {
   emit('submit')
 }
+
+// --- 关键改动：定义一个可供外部调用的 focus 方法 ---
+function focus() {
+  editor.value?.commands.focus('end')
+}
+
+// --- 关键改动：通过 defineExpose 将 focus 方法暴露给父组件 ---
+defineExpose({
+  focus,
+})
 </script>
 
 <template>

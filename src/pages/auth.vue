@@ -72,6 +72,8 @@ const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
+const noteEditorRef = ref(null)
+
 let authListener: any = null
 
 // --- 核心认证逻辑 ---
@@ -762,6 +764,18 @@ function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
 }
+
+watch(showEditorModal, (isShowing) => {
+  if (isShowing) {
+    // 使用 nextTick 确保 DOM 元素已经渲染
+    nextTick(() => {
+      if (noteEditorRef.value) {
+        // 调用子组件暴露的 focus 方法
+        noteEditorRef.value.focus()
+      }
+    })
+  }
+})
 </script>
 
 <template>
@@ -848,6 +862,7 @@ function closeEditorModal() {
             </button>
           </div>
           <NoteEditor
+            ref="noteEditorRef"
             v-model="content"
             :editing-note="editingNote"
             :is-loading="loading"
@@ -856,7 +871,6 @@ function closeEditorModal() {
             :last-saved-time="lastSavedTime"
             @submit="handleSubmit"
             @trigger-auto-save="debouncedSaveNote"
-            @close="closeEditorModal"
           />
         </div>
       </div>
