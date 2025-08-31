@@ -34,13 +34,14 @@ const isReadyForAutoSave = ref(false)
 // --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
-    const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件增加一个外边距，把它从键盘上方推开
-    editorWrapperRef.value.style.marginBottom = `${keyboardHeight}px`
-    // 确保光标可见
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+    // 我们不再手动计算高度或添加任何边距。
+    // 只在视口变化时，命令编辑器将光标位置滚动到可见区域即可。
+    if (easymde.value) {
+      // 使用一个小的延时可以确保在浏览器完成布局调整后再执行滚动
+      setTimeout(() => {
+        easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
+      }, 100)
+    }
   }
 }
 
