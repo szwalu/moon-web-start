@@ -177,8 +177,6 @@ function updateEditorHeight() {
   const sizer = cm.display.sizer
   if (!sizer)
     return
-  // Note: We no longer need to manually cap the height here as max-height is handled by CSS Flexbox.
-  // This function now just lets the editor grow naturally.
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, contentHeight)
   cm.setSize(null, newHeight)
