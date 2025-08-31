@@ -24,7 +24,7 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null) // 新增：用于获取组件根元素的引用
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
 // --- 新增：初始化 Store ---
 const settingsStore = useSettingStore()
 
@@ -190,7 +190,6 @@ function updateEditorHeight() {
   // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
-      // --- 已修改：将边距从10改为60，以避开底部的“保存”按钮栏 ---
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
@@ -202,22 +201,17 @@ function destroyEasyMDE() {
   }
 }
 
-// --- 新增：更新编辑器字号的辅助函数 ---
 function applyEditorFontSize() {
   if (!easymde.value)
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  // 移除旧的字号 class
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  // 添加新的字号 class
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
 }
 
 function initializeEasyMDE(initialValue = '') {
-  // 重置状态，确保每次初始化都是干净的
   isReadyForAutoSave.value = false
-
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
@@ -274,7 +268,6 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  // --- 新增：初始化时应用一次字号 ---
   nextTick(() => {
     applyEditorFontSize()
   })
@@ -288,7 +281,6 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
     else
       emit('triggerAutoSave')
 
@@ -389,7 +381,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
   }
 }, { deep: true })
 
-// --- 新增：监听设置中的字号变化 ---
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
@@ -398,23 +389,16 @@ function handleSubmit() {
   emit('submit')
 }
 
-// --- 新增：最终光标定位方案 ---
-// 侦听编辑器实例是否被创建
 watch(easymde, (newEditorInstance) => {
-  // 当编辑器实例被创建好时
   if (newEditorInstance) {
-    // 并且我们正在编辑一个旧笔记
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
       const doc = cm.getDoc()
       const lastLine = doc.lastLine()
-
-      // 在下一个Tick中安全地移动光标，确保DOM已更新
       nextTick(() => {
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
         cm.scrollIntoView(cm.getCursor(), 60)
-        // --- 新增的画龙点睛之笔 ---
-        cm.focus() // 激活编辑器，让光标显形并闪动
+        cm.focus()
       })
     }
   }
@@ -475,15 +459,17 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* -- 请用下面的代码完全替换你现有的 <style scoped> -- */
+/* --- 全新的 Flexbox / Fixed 布局 --- */
 .note-editor-wrapper {
-  /* 1. 关键：让容器粘在底部 */
-  position: sticky;
+  /* 1. 关键：让容器固定在底部 */
+  position: fixed;
   bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
 
   /* 2. 自身样式 */
-  width: 100%;
-  background-color: #fff; /* 或者你的应用背景色 */
+  background-color: #fff;
   border-top: 1px solid #e0e0e0;
 
   /* 3. 防止在手机上过高，遮住所有内容 */
@@ -500,44 +486,34 @@ watch(easymde, (newEditorInstance) => {
 }
 
 .note-editor-form {
-  /* 让表单也成为一个Flexbox容器 */
   display: flex;
   flex-direction: column;
-  height: 100%; /* 占满父容器高度 */
+  height: 100%;
+  overflow: hidden; /* 防止子元素溢出 */
 }
 
-/* 固定的底部区域 */
+/* --- 恢复并整合的原有样式 --- */
 .editor-footer {
   flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
 }
 
-/* 状态栏和按钮栏的微调 */
-.status-bar {
-  margin: 0;
-  padding: 0;
-}
-.emoji-bar {
-  margin-top: 0.5rem;
-}
+.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
+.char-counter{font-size:12px;color:#999}
+.dark .char-counter{color:#aaa}
+.ml-4{margin-left:1rem}
+.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
+.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
+.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
+.form-button:disabled{opacity:.6;cursor:not-allowed}
 
-/* 标签建议的样式 (原样保留) */
-.tag-suggestions {
-  position: absolute;
-  background-color: #fff;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px #00000026;
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 150px;
-}
-.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
-.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
-.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; white-space: nowrap; }
-.tag-suggestions li:hover, .tag-suggestions li.highlighted { background-color: #f0f0f0; }
-.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted { background-color: #404040; }
+.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
+.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
+.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
+.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
+.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
+.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
+.editor-suggestions{position:absolute}
 </style>
 
 <style>
@@ -581,18 +557,12 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
 
-/* --- 新增：根据设置动态修改编辑器字号的 CSS 规则 --- */
-.CodeMirror.font-size-small {
-  font-size: 14px !important;
-}
-.CodeMirror.font-size-medium {
-  font-size: 16px !important; /* 这是原始的默认大小 */
-}
-.CodeMirror.font-size-large {
-  font-size: 20px !important;
-}
+/* --- 根据设置动态修改编辑器字号的 CSS 规则 --- */
+.CodeMirror.font-size-small { font-size: 14px !important; }
+.CodeMirror.font-size-medium { font-size: 16px !important; }
+.CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- 新增：为编辑旧笔记模式增加顶部内边距 --- */
+/* --- 为编辑旧笔记模式增加顶部内边距 --- */
 .editing-mode .CodeMirror {
   padding-top: 45px !important;
 }
