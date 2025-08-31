@@ -268,11 +268,18 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
+  const cm = easymde.value.codemirror
+
+  // --- 新增：强制关闭可能意外弹出的搜索框 ---
+  if (cm) {
+    // 这个命令会关闭搜索框并清除状态
+    cm.execCommand('clearSearch')
+  }
+  // ------------------------------------
+
   nextTick(() => {
     applyEditorFontSize()
   })
-
-  const cm = easymde.value.codemirror
 
   cm.on('change', (instance: any) => {
     const editorContent = easymde.value?.value() ?? ''
