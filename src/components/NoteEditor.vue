@@ -445,7 +445,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef">
+  <div ref="editorWrapperRef" :class="{ 'editing-mode': editingNote }">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -521,7 +521,6 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   font-size:16px!important;
   line-height:1.6!important;
   overflow-y:auto!important;
-  padding-top: 45px !important; /* <-- 添加这一行  */
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -543,5 +542,10 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 }
 .CodeMirror.font-size-large {
   font-size: 20px !important;
+}
+
+/* 新增这条规则，专门为编辑模式下的编辑器增加顶部内边距 */
+.editing-mode .CodeMirror {
+  padding-top: 45px !important;
 }
 </style>
