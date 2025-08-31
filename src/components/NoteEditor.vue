@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
+import { debounce } from 'lodash-es'
 
 // 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
@@ -10,6 +11,7 @@ import { cityMap, weatherMap } from '@/utils/weatherMap'
 // --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
+// --- Props & Emits 定义 ---
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
@@ -21,17 +23,37 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
+// --- 核心状态定义 (Refs, Computed, etc.) ---
 const { t } = useI18n()
+const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const editorWrapperRef = ref<HTMLDivElement | null>(null)
-// --- 新增：初始化 Store ---
-const settingsStore = useSettingStore()
-
-// 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// 天气相关的逻辑函数 (保持不变)
+const showEditorTagSuggestions = ref(false)
+const editorTagSuggestions = ref<string[]>([])
+const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
+const highlightedEditorIndex = ref(-1)
+const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
+
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => { emit('update:modelValue', value) },
+})
+const charCount = computed(() => contentModel.value.length)
+
+// --- 函数定义 ---
+
+// 天气相关逻辑函数
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -127,55 +149,7 @@ async function fetchWeather() {
   }
 }
 
-// onMounted 钩子
-onMounted(async () => {
-  let initialContent = props.modelValue
-
-  if (!props.editingNote && !props.modelValue) {
-    const weatherString = await fetchWeather()
-    if (weatherString) {
-      initialContent = `${weatherString}\n`
-      emit('update:modelValue', initialContent)
-    }
-  }
-
-  initializeEasyMDE(initialContent)
-
-  if (!props.editingNote && initialContent.includes('°C')) {
-    await nextTick()
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      cm.focus()
-    }
-  }
-})
-
-onUnmounted(() => {
-  destroyEasyMDE()
-})
-
-// 下方的所有其他函数
-const showEditorTagSuggestions = ref(false)
-const editorTagSuggestions = ref<string[]>([])
-const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
-})
-const charCount = computed(() => contentModel.value.length)
-
+// 编辑器相关逻辑函数
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -194,6 +168,8 @@ function updateEditorHeight() {
   }, 0)
 }
 
+const debouncedUpdateEditorHeight = debounce(updateEditorHeight, 150)
+
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -208,6 +184,50 @@ function applyEditorFontSize() {
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
   const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
   cmWrapper.classList.add(fontSizeClass)
+}
+
+function selectEditorTag(tag: string) {
+  if (!easymde.value)
+    return
+  const cm = easymde.value.codemirror
+  const doc = cm.getDoc()
+  const cursor = doc.getCursor()
+  const line = doc.getLine(cursor.line)
+  const textBeforeCursor = line.substring(0, cursor.ch)
+  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
+  if (lastHashIndex !== -1) {
+    const start = { line: cursor.line, ch: lastHashIndex }
+    const end = cursor
+    doc.replaceRange(`${tag} `, start, end)
+  }
+  showEditorTagSuggestions.value = false
+  cm.focus()
+}
+
+function moveEditorSelection(offset: number) {
+  if (showEditorTagSuggestions.value)
+    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
+}
+
+function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
+  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveEditorSelection(1)
+    }
+    else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveEditorSelection(-1)
+    }
+    else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
+    }
+    else if (event.key === 'Escape') {
+      event.preventDefault()
+      showEditorTagSuggestions.value = false
+    }
+  }
 }
 
 function initializeEasyMDE(initialValue = '') {
@@ -316,49 +336,41 @@ function initializeEasyMDE(initialValue = '') {
   nextTick(() => updateEditorHeight())
 }
 
-function selectEditorTag(tag: string) {
-  if (!easymde.value)
-    return
-  const cm = easymde.value.codemirror
-  const doc = cm.getDoc()
-  const cursor = doc.getCursor()
-  const line = doc.getLine(cursor.line)
-  const textBeforeCursor = line.substring(0, cursor.ch)
-  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-  if (lastHashIndex !== -1) {
-    const start = { line: cursor.line, ch: lastHashIndex }
-    const end = cursor
-    doc.replaceRange(`${tag} `, start, end)
-  }
-  showEditorTagSuggestions.value = false
-  cm.focus()
+function handleSubmit() {
+  emit('submit')
 }
 
-function moveEditorSelection(offset: number) {
-  if (showEditorTagSuggestions.value)
-    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
-}
+// --- 生命周期钩子 & 监听器 ---
+onMounted(async () => {
+  let initialContent = props.modelValue
 
-function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
-  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveEditorSelection(1)
-    }
-    else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveEditorSelection(-1)
-    }
-    else if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault()
-      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
-    }
-    else if (event.key === 'Escape') {
-      event.preventDefault()
-      showEditorTagSuggestions.value = false
+  if (!props.editingNote && !props.modelValue) {
+    const weatherString = await fetchWeather()
+    if (weatherString) {
+      initialContent = `${weatherString}\n`
+      emit('update:modelValue', initialContent)
     }
   }
-}
+
+  initializeEasyMDE(initialContent)
+
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const doc = cm.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+      cm.focus()
+    }
+  }
+
+  window.addEventListener('resize', debouncedUpdateEditorHeight)
+})
+
+onUnmounted(() => {
+  destroyEasyMDE()
+  window.removeEventListener('resize', debouncedUpdateEditorHeight)
+})
 
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value())
@@ -384,10 +396,6 @@ watch(() => props.editingNote, (newNote, oldNote) => {
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
-
-function handleSubmit() {
-  emit('submit')
-}
 
 watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
