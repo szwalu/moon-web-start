@@ -163,6 +163,12 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -177,11 +183,11 @@ function updateEditorHeight() {
   const sizer = cm.display.sizer
   if (!sizer)
     return
-  // 采用Flexbox布局后，最大高度由CSS控制，JS只需负责自然生长
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, contentHeight)
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
+  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
@@ -262,11 +268,11 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  const cm = easymde.value.codemirror
-
   nextTick(() => {
     applyEditorFontSize()
   })
+
+  const cm = easymde.value.codemirror
 
   cm.on('change', (instance: any) => {
     const editorContent = easymde.value?.value() ?? ''
@@ -453,31 +459,43 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* --- 最终修正版：让组件在父容器中自然布局 --- */
+/* --- 全新的 Flexbox / Fixed 布局 --- */
 .note-editor-wrapper {
-  /* 1. 关键：让容器撑满父级的高度，并开启Flexbox */
+  /* 1. 关键：让容器固定在底部 */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
+
+  /* 2. 自身样式 */
+  background-color: #fff;
+  border-top: 1px solid #e0e0e0;
+
+  /* 3. 防止在手机上过高，遮住所有内容 */
+  max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
-  background-color: transparent; /* 背景交由父级模态框处理 */
+}
+
+.dark .note-editor-wrapper {
+  background-color: #2c2c2e;
+  border-top: 1px solid #48484a;
 }
 
 .note-editor-form {
   display: flex;
   flex-direction: column;
-  flex-grow: 1; /* 占据所有可用空间 */
-  min-height: 0; /* 在Flexbox中防止内容溢出的重要技巧 */
+  height: 100%;
+  overflow: hidden; /* 防止子元素溢出 */
 }
 
 /* --- 恢复并整合的原有样式 --- */
 .editor-footer {
   flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
-  background-color: #fff; /* 给底部一个背景色，确保不透明 */
-}
-.dark .editor-footer {
-  background-color: #2c2c2e;
 }
 
 .status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
@@ -496,11 +514,6 @@ watch(easymde, (newEditorInstance) => {
 .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
 .dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
 .editor-suggestions{position:absolute}
-
-/* 关键：确保原始的textarea在任何情况下都不可见且不占空间 */
-textarea {
-  display: none !important;
-}
 </style>
 
 <style>
