@@ -522,6 +522,7 @@ watch(easymde, (newEditorInstance) => {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
+  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
   border-bottom: none !important;
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
