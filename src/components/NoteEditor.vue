@@ -52,15 +52,16 @@ const charCount = computed(() => contentModel.value.length)
 
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
+    // 获取设备屏幕的“布局高度”（基本不变）
     const layoutViewportHeight = window.innerHeight
+    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
     const visualViewportHeight = window.visualViewport.height
 
-    // 计算出键盘和其工具栏的总高度
+    // 两者之差，就是键盘 + 输入法工具栏的总高度
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
 
-    // 关键：不再修改 bottom，而是通过 transform 将抽屉向上平移
-    // translateY(-XXXpx) 表示向上移动 XXX 像素
-    editorWrapperRef.value.style.transform = `translateY(-${keyboardHeight}px)`
+    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
+    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
   }
 }
 
@@ -503,20 +504,23 @@ watch(easymde, (newEditorInstance) => {
 <style scoped>
 /* --- 全新的 Flexbox / Fixed 布局 --- */
 .note-editor-wrapper {
+  /* 1. 关键：让容器固定在底部 */
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 1002;
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
+
+  /* 2. 自身样式 */
   background-color: #fff;
-  border-top: 1px solid #e0e0e-0;
+  border-top: 1px solid #e0e0e0;
+
+  /* 3. 防止在手机上过高，遮住所有内容 */
   max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
-
-  /* 关键修改：让动画作用于 transform 属性 */
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.4, 1);
-  will-change: transform;
 }
 
 .dark .note-editor-wrapper {
