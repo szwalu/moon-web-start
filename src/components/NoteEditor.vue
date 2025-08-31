@@ -39,14 +39,6 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -164,20 +156,30 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!easymde.value)
+  // 检查顶层 ref 是否存在
+  if (!editorContainerRef.value)
     return
-  const cm = easymde.value.codemirror
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-  const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-  cm.setSize(null, newHeight)
 
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
+  // 使用 querySelector 从组件根 DOM 中精确查找元素
+  const wrapper = editorContainerRef.value.querySelector('.note-editor-wrapper')
+  if (!wrapper || !easymde.value)
+    return
+
+  const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
+  const footer = wrapper.querySelector('.editor-footer') as HTMLElement
+  const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
+
+  if (!toolbar || !footer || !codeMirrorEl)
+    return
+
+  // 手动精确计算：容器总高度 - 头部工具栏高度 - 底部按钮区高度
+  const wrapperHeight = wrapper.clientHeight
+  const toolbarHeight = toolbar.offsetHeight
+  const footerHeight = footer.offsetHeight
+  const availableHeight = wrapperHeight - toolbarHeight - footerHeight
+
+  // 将计算出的精确高度，强制应用给 CodeMirror 文本区
+  codeMirrorEl.style.height = `${availableHeight}px`
 }
 
 function destroyEasyMDE() {
@@ -374,13 +376,21 @@ onMounted(async () => {
     }
   }
 
+  // 移动端键盘监听
   window.visualViewport.addEventListener('resize', handleViewportResize)
   handleViewportResize()
+
+  // <<< 新增：PC端浏览器窗口变化监听 >>>
+  window.addEventListener('resize', updateEditorHeight)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
+  // 移动端键盘监听移除
   window.visualViewport.removeEventListener('resize', handleViewportResize)
+
+  // <<< 新增：PC端浏览器窗口变化监听移除 >>>
+  window.removeEventListener('resize', updateEditorHeight)
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -481,26 +491,25 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* <<< 关键改动：新增外层容器样式，只负责定位 >>> */
+/* 外层容器：纯粹的定位层，不再使用 flex */
 .editor-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
   z-index: 1002;
-  display: flex;
-  justify-content: center;
-  /* <<< 新增：将子项对齐到容器底部，以避免垂直拉伸冲突 >>> */
-  align-items: flex-end;
+  /* 空白区域不拦截鼠标事件 */
   pointer-events: none;
 }
 
-/* <<< 关键改动：修改内层容器样式，只负责外观和布局 >>> */
+/* 内层容器：负责所有外观、布局和居中 */
 .note-editor-wrapper {
-  /* 移除所有定位属性 */
+  /* 使用 margin: 0 auto 在父容器中水平居中 */
+  margin: 0 auto;
+
   width: 100%;
-  max-width: 480px; /* 统一PC和移动端宽度 */
-  max-height: 75vh;
+  max-width: 480px;
+  max-height: 75vh; /* 移动端依然使用 max-height */
 
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
@@ -508,7 +517,16 @@ watch(easymde, (newEditorInstance) => {
   display: flex;
   flex-direction: column;
 
+  /* 恢复鼠标事件 */
   pointer-events: auto;
+}
+
+/* 终极方案：在PC端，使用固定的 height 替换 max-height，彻底解决布局计算BUG */
+@media screen and (min-width: 501px) {
+  .note-editor-wrapper {
+    height: 75vh;
+    margin-bottom: 0; /* 确保在有固定高度时，依然贴紧底部 */
+  }
 }
 
 .dark .note-editor-wrapper {
@@ -519,24 +537,22 @@ watch(easymde, (newEditorInstance) => {
 .note-editor-form {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden; /* 防止子元素溢出 */
+  overflow: hidden;
 }
 
 .editor-footer {
-  flex-shrink: 0; /* 防止被压缩 */
-  padding: 0.5rem 0.75rem;
+  flex-shrink: 0;
 }
 
-.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
+/* 其他样式保持不变 */
+.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0; padding: 0.5rem 0.75rem;}
 .char-counter{font-size:12px;color:#999}
 .dark .char-counter{color:#aaa}
 .ml-4{margin-left:1rem}
-.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
+.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem; padding: 0 0.75rem 0.5rem 0.75rem;}
 .form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
 .dark .form-button{background-color:#404040;color:#fff;border-color:#555}
 .form-button:disabled{opacity:.6;cursor:not-allowed}
-
 .tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
 .dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
 .tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
@@ -568,8 +584,7 @@ watch(easymde, (newEditorInstance) => {
   font-size: 16px!important;
   line-height: 1.6!important;
 
-  /* 关键：让编辑器区域占据所有剩余空间 */
-  flex-grow: 1;
+  /* <<< 关键改动：此处的 flex-grow: 1 已被移除 >>> */
 
   /* 关键：设置一个初始的最小高度 */
   min-height: 130px;
@@ -581,7 +596,7 @@ watch(easymde, (newEditorInstance) => {
 
 /* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
-.CodeMirror .cm-header-1 { font-size: 1.6em; }
+.Code-Mirror .cm-header-1 { font-size: 1.6em; }
 .CodeMirror .cm-header-2 { font-size: 1.4em; }
 .CodeMirror .cm-header-3 { font-size: 1.2em; }
 .CodeMirror .cm-header-4 { font-size: 1.1em; }
