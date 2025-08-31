@@ -1,27 +1,35 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+
+// --- 新增：从 Naive UI 引入 useDialog ---
 import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting.ts'
 
+// --- Props and Emits ---
 const props = defineProps({
-  note: { type: Object, required: true },
-  isExpanded: { type: Boolean, default: false },
+  note: {
+    type: Object,
+    required: true,
+  },
+  isExpanded: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle'])
 
+// --- 初始化 & 状态 ---
 const { t } = useI18n()
+// --- 新增：初始化 dialog ---
 const dialog = useDialog()
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
-let clickTimer: number | null = null
-const clickDelay = 250 // 定义双击的毫秒间隔
-
 const md = new MarkdownIt({
-  html: true,
+  html: false,
   linkify: true,
   breaks: true,
 }).use(taskLists, { enabled: true, label: true })
@@ -29,14 +37,15 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
+// --- Markdown 渲染 ---
 function renderMarkdown(content: string) {
   if (!content)
     return ''
-
   const html = md.render(content)
   return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
 }
 
+// --- DOM 相关 ---
 function checkIfNoteOverflows() {
   const el = contentRef.value
   if (el)
@@ -49,30 +58,41 @@ onMounted(() => {
   })
 })
 
-onUnmounted(() => {
-  if (clickTimer)
-    clearTimeout(clickTimer)
-})
-
 watch(() => props.note.content, () => {
   nextTick(() => {
     checkIfNoteOverflows()
   })
 })
 
+// --- 下拉菜单逻辑 ---
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
+
+  // 格式化创建时间
   const creationDateObj = new Date(note.created_at)
   const creationTime = !note.created_at || Number.isNaN(creationDateObj.getTime())
     ? '未知'
-    : creationDateObj.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : creationDateObj.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+  // 格式化编辑时间
   const updatedDateObj = new Date(note.updated_at)
   const updatedTime = !note.updated_at || Number.isNaN(updatedDateObj.getTime())
     ? '未知'
-    : updatedDateObj.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : updatedDateObj.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
 
   return [
-    // 重新添加了“编辑”选项
     { label: t('notes.edit'), key: 'edit' },
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
@@ -86,7 +106,6 @@ function getDropdownOptions(note: any) {
 
 function handleDropdownSelect(key: string) {
   switch (key) {
-    // 恢复编辑逻辑
     case 'edit':
       emit('edit', props.note)
       break
@@ -96,6 +115,7 @@ function handleDropdownSelect(key: string) {
     case 'pin':
       emit('pin', props.note)
       break
+    // --- 修改：删除操作 ---
     case 'delete':
       dialog.warning({
         title: t('dialog.delete_note_title'),
@@ -110,36 +130,21 @@ function handleDropdownSelect(key: string) {
   }
 }
 
-function handleSingleClickAction(event: MouseEvent) {
+// --- 任务列表点击处理 ---
+function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
 
-  const noteCard = target.closest('.note-card')
-  if (!noteCard)
-    return
+  event.stopPropagation()
 
+  const noteCard = (event.currentTarget as HTMLElement)
   const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
   const itemIndex = allListItems.indexOf(listItem)
 
   if (itemIndex !== -1)
     emit('taskToggle', { noteId: props.note.id, itemIndex })
-}
-
-// 恢复双击计时逻辑，用于区分单击和双击
-function handleCardClick(event: MouseEvent) {
-  if (clickTimer) {
-    clearTimeout(clickTimer)
-    clickTimer = null
-    emit('edit', props.note) // 双击执行编辑
-  }
-  else {
-    clickTimer = window.setTimeout(() => {
-      handleSingleClickAction(event) // 单击执行任务列表勾选
-      clickTimer = null
-    }, clickDelay)
-  }
 }
 </script>
 
@@ -148,7 +153,8 @@ function handleCardClick(event: MouseEvent) {
     :data-note-id="note.id"
     class="note-card"
     :class="{ 'is-expanded': isExpanded }"
-    @click="handleCardClick"
+    @click="handleNoteContentClick"
+    @dblclick="emit('edit', note)"
   >
     <div class="note-card-top-bar">
       <div class="note-meta-left">
@@ -159,23 +165,19 @@ function handleCardClick(event: MouseEvent) {
           {{ $t('notes.pin') }}
         </span>
       </div>
-
-      <div class="note-card-actions">
-        <n-dropdown
-          trigger="click"
-          placement="bottom-end"
-          :options="getDropdownOptions(note)"
-          @select="handleDropdownSelect"
-          @click.stop
-        >
-          <div class="kebab-menu" @dblclick.stop>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
-          </div>
-        </n-dropdown>
-      </div>
+      <n-dropdown
+        trigger="click"
+        placement="bottom-end"
+        :options="getDropdownOptions(note)"
+        @select="handleDropdownSelect"
+      >
+        <div class="kebab-menu">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+        </div>
+      </n-dropdown>
     </div>
 
-    <div class="flex-1 min-w-0" @click.self.stop="handleContentClick">
+    <div class="flex-1 min-w-0">
       <div v-if="isExpanded">
         <div
           class="prose dark:prose-invert max-w-none"
@@ -210,14 +212,16 @@ function handleCardClick(event: MouseEvent) {
 </template>
 
 <style scoped>
-/* 样式调整：因为移除了铅笔按钮，所以相关的 `.action-button` 样式就不再需要了，但为了兼容性保留着也不会影响功能。
-   `note-card-actions` 的样式可能需要微调，但通常情况下，只剩一个 `kebab-menu` 也会自动居中或靠边。 */
+/* 样式部分无需修改 */
+/* 为了方便，我直接使用 Tailwind 的 @apply 指令来整合基础样式 */
 .note-card {
-  @apply mb-3 flex flex-col w-full rounded-lg bg-gray-100 shadow-md p-4;
+  @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
 }
+
 .dark .note-card {
   @apply bg-gray-700;
 }
+
 .note-card-top-bar {
   display: flex;
   justify-content: space-between;
@@ -225,20 +229,24 @@ function handleCardClick(event: MouseEvent) {
   margin-bottom: 4px;
   height: 24px;
 }
+
 .note-date {
   font-size: 11px;
   color: #888;
   margin: 0;
   padding: 0;
 }
+
 .dark .note-date {
   color: #aaa;
 }
+
 .note-meta-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
+
 .pinned-indicator {
   font-size: 10px;
   font-weight: bold;
@@ -248,16 +256,12 @@ function handleCardClick(event: MouseEvent) {
   border-radius: 9999px;
   line-height: 1;
 }
+
 .dark .pinned-indicator {
   color: #fde68a;
   background-color: #78350f;
 }
-.note-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.action-button, /* 铅笔按钮已移除，此样式可忽略 */
+
 .kebab-menu {
   cursor: pointer;
   padding: 4px;
@@ -268,32 +272,23 @@ function handleCardClick(event: MouseEvent) {
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s;
-  color: #555;
-  background: none;
-  border: none;
 }
-.dark .action-button,
-.dark .kebab-menu {
-  color: #bbb;
-}
-.action-button:hover,
+
 .kebab-menu:hover {
   background-color: rgba(0, 0, 0, 0.1);
 }
-.dark .action-button:hover,
+
 .dark .kebab-menu:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
-.action-button svg {
-  width: 18px;
-  height: 18px;
-}
+
 .toggle-button-row {
   width: 100%;
   cursor: pointer;
   padding: 4px 0;
   margin-top: 4px;
 }
+
 .toggle-button {
   pointer-events: none;
   background: none;
@@ -308,12 +303,24 @@ function handleCardClick(event: MouseEvent) {
   font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
+
 .dark .toggle-button {
   color: #38bdf8 !important;
 }
+
 .toggle-button:hover {
   text-decoration: underline;
 }
+
+:deep(.prose) {
+  /*
+    注意：这里的 font-size 会被下面的动态类覆盖，
+    所以它的值是多少不重要了，但保留 line-height 是好的。
+  */
+  font-size: 17px !important;
+  line-height: 1.6;
+}
+
 .line-clamp-3 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -321,6 +328,7 @@ function handleCardClick(event: MouseEvent) {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
+
 :deep(.custom-tag) {
   background-color: #eef2ff;
   color: #4338ca;
@@ -330,72 +338,88 @@ function handleCardClick(event: MouseEvent) {
   font-weight: 500;
   margin: 0 2px;
 }
+
 .dark :deep(.custom-tag) {
   background-color: #312e81;
   color: #c7d2fe;
 }
+
 :deep(.prose > :first-child) {
   margin-top: 0 !important;
 }
+
 :deep(.prose > :last-child) {
   margin-bottom: 0 !important;
 }
+
+/* 关键改动3：为展开状态下的“收起”按钮行添加粘性定位 */
 .is-expanded .toggle-button-row {
   position: -webkit-sticky;
   position: sticky;
-  bottom: 0rem;
+  bottom: 0rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
   z-index: 5;
-  background-color: #f3f4f6;
-  margin-left: -1rem;
+
+  /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
+  background-color: #f3f4f6; /* 对应 .bg-gray-100 */
+
+  /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
+  /* 使用负边距让背景铺满整个卡片宽度（抵消父元素的padding） */
+  margin-left: -1rem;  /* 1rem = 16px, 对应 p-4 */
   margin-right: -1rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid #e5e7eb;
 }
+
 .dark .is-expanded .toggle-button-row {
-  background-color: #374151;
+  background-color: #374151; /* 对应 .dark .bg-gray-700 */
   border-top-color: #4b5563;
 }
+
+/* 5. 新增：用于动态修改笔记字号的 CSS 规则 */
+/* 使用 :deep() 来确保样式能应用到 v-html 渲染出的 .prose 元素上 */
 :deep(.prose.font-size-small) {
   font-size: 14px !important;
 }
+
 :deep(.prose.font-size-medium) {
-  font-size: 17px !important;
+  font-size: 17px !important; /* 这是原始的默认大小 */
 }
+
 :deep(.prose.font-size-large) {
   font-size: 20px !important;
 }
+
+/* In NoteItem.vue's <style scoped> section */
 :deep(table) {
   width: auto;
   border-collapse: collapse;
   margin-top: 1em;
   margin-bottom: 1em;
   border: 1px solid #dfe2e5;
-  display: table !important;
+  display: table !important; /* Force display property */
 }
+
 .dark :deep(table) {
   border-color: #4b5563;
 }
+
 :deep(th),
 :deep(td) {
   padding: 8px 15px;
   border: 1px solid #dfe2e5;
 }
+
 .dark :deep(th),
 .dark :deep(td) {
     border-color: #4b5563;
 }
+
 :deep(th) {
   font-weight: 600;
   background-color: #f6f8fa;
 }
+
 .dark :deep(th) {
     background-color: #374151;
-}
-:deep(.prose) {
-  line-height: 1.5 !important;
-}
-:deep(.prose p) {
-  margin-top: 0.2em !important;
-  margin-bottom: 0.2em !important;
 }
 </style>
