@@ -184,7 +184,10 @@ function handleClose() {
       <div
         class="editor-scroll-container"
         :class="[editorFontSizeClass]"
-        :style="{ paddingBottom: `${scrollContainerPaddingBottom}px` }"
+        :style="{
+          paddingBottom: `${scrollContainerPaddingBottom}px`,
+          maxHeight: `calc(100vh - ${baseFooterHeight + footerBottomOffset}px)`,
+        }"
       >
         <EditorContent :editor="editor" />
       </div>
@@ -217,9 +220,9 @@ function handleClose() {
 
 <style>
 .editor-scroll-container {
-  flex-grow: 1;
-  overflow-y: auto;
-  min-height: 0;
+   overflow-y: auto;
+   max-height: calc(100vh - 70px); /* 70px 是 footer 高度，可用 baseFooterHeight 动态算 */
+   min-height: 120px; /* 给编辑器一个最小高度，避免太小 */
   -webkit-overflow-scrolling: touch;
   border: 1px solid #ccc;
   border-top: none;
