@@ -27,9 +27,9 @@ const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-// <<< 关键改动：这个 ref 现在指向新的外层容器 >>>
+// <<< 这个 ref 现在指向新的外层容器 >>>
 const editorContainerRef = ref<HTMLDivElement | null>(null)
-// <<< 关键改动：新增一个 ref 指向内部的 form，用于添加安全区 >>>
+// <<< 这个 ref 指向内部的 form，用于添加安全区 >>>
 const formRef = ref<HTMLFormElement | null>(null)
 const isReadyForAutoSave = ref(false)
 
@@ -48,7 +48,7 @@ const charCount = computed(() => contentModel.value.length)
 // --- 函数定义 ---
 
 function handleViewportResize() {
-  // <<< 关键改动：不再改变抽屉的位置，而是改变内部 form 的 padding-bottom 来避开键盘 >>>
+  // <<< 不再改变抽屉的位置，而是改变内部 form 的 padding-bottom 来避开键盘 >>>
   if (formRef.value && window.visualViewport) {
     const layoutViewportHeight = window.innerHeight
     const visualViewportHeight = window.visualViewport.height
@@ -156,29 +156,22 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  // 检查顶层 ref 是否存在
-  if (!editorContainerRef.value)
+  if (!editorContainerRef.value || !easymde.value)
     return
 
-  // 使用 querySelector 从组件根 DOM 中精确查找元素
   const wrapper = editorContainerRef.value.querySelector('.note-editor-wrapper')
-  if (!wrapper || !easymde.value)
+  const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement
+  const footer = wrapper?.querySelector('.editor-footer') as HTMLElement
+  const codeMirrorEl = wrapper?.querySelector('.CodeMirror') as HTMLElement
+
+  if (!wrapper || !toolbar || !footer || !codeMirrorEl)
     return
 
-  const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
-  const footer = wrapper.querySelector('.editor-footer') as HTMLElement
-  const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
-
-  if (!toolbar || !footer || !codeMirrorEl)
-    return
-
-  // 手动精确计算：容器总高度 - 头部工具栏高度 - 底部按钮区高度
   const wrapperHeight = wrapper.clientHeight
   const toolbarHeight = toolbar.offsetHeight
   const footerHeight = footer.offsetHeight
   const availableHeight = wrapperHeight - toolbarHeight - footerHeight
 
-  // 将计算出的精确高度，强制应用给 CodeMirror 文本区
   codeMirrorEl.style.height = `${availableHeight}px`
 }
 
@@ -376,20 +369,14 @@ onMounted(async () => {
     }
   }
 
-  // 移动端键盘监听
   window.visualViewport.addEventListener('resize', handleViewportResize)
   handleViewportResize()
-
-  // <<< 新增：PC端浏览器窗口变化监听 >>>
   window.addEventListener('resize', updateEditorHeight)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  // 移动端键盘监听移除
   window.visualViewport.removeEventListener('resize', handleViewportResize)
-
-  // <<< 新增：PC端浏览器窗口变化监听移除 >>>
   window.removeEventListener('resize', updateEditorHeight)
 })
 
@@ -491,41 +478,39 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* 外层容器：纯粹的定位层，不再使用 flex */
+/* 外层容器：纯粹的定位层 */
 .editor-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
   z-index: 1002;
-  /* 空白区域不拦截鼠标事件 */
+  display: flex;
+  justify-content: center;
   pointer-events: none;
 }
 
 /* 内层容器：负责所有外观、布局和居中 */
 .note-editor-wrapper {
-  /* 使用 margin: 0 auto 在父容器中水平居中 */
   margin: 0 auto;
-
   width: 100%;
   max-width: 480px;
-  max-height: 75vh; /* 移动端依然使用 max-height */
-
+  max-height: 75vh;
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
-
   display: flex;
   flex-direction: column;
-
-  /* 恢复鼠标事件 */
   pointer-events: auto;
+  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.08);
 }
 
 /* 终极方案：在PC端，使用固定的 height 替换 max-height，彻底解决布局计算BUG */
 @media screen and (min-width: 501px) {
   .note-editor-wrapper {
     height: 75vh;
-    margin-bottom: 0; /* 确保在有固定高度时，依然贴紧底部 */
+    margin-bottom: 2rem;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
   }
 }
 
@@ -534,10 +519,17 @@ watch(easymde, (newEditorInstance) => {
   border-top: 1px solid #48484a;
 }
 
+@media screen and (min-width: 501px) {
+  .dark .note-editor-wrapper {
+    border: 1px solid #48484a;
+  }
+}
+
 .note-editor-form {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: 100%;
 }
 
 .editor-footer {
@@ -545,21 +537,87 @@ watch(easymde, (newEditorInstance) => {
 }
 
 /* 其他样式保持不变 */
-.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0; padding: 0.5rem 0.75rem;}
-.char-counter{font-size:12px;color:#999}
-.dark .char-counter{color:#aaa}
-.ml-4{margin-left:1rem}
-.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem; padding: 0 0.75rem 0.5rem 0.75rem;}
-.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
-.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
-.form-button:disabled{opacity:.6;cursor:not-allowed}
-.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
-.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
-.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
-.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
-.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#404040}
-.editor-suggestions{position:absolute}
+.status-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+}
+.char-counter {
+  font-size: 12px;
+  color: #999;
+}
+.dark .char-counter {
+  color: #aaa;
+}
+.ml-4 {
+  margin-left: 1rem;
+}
+.emoji-bar {
+  margin-top: .5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: 0 0.75rem 0.5rem 0.75rem;
+}
+.form-button {
+  width: 100%;
+  flex: 1;
+  padding: .5rem;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  background: #d3d3d3;
+  color: #111;
+}
+.dark .form-button {
+  background-color: #404040;
+  color: #fff;
+  border-color: #555;
+}
+.form-button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.tag-suggestions {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px #00000026;
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+.dark .tag-suggestions {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+.tag-suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.tag-suggestions li {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tag-suggestions li:hover,
+.tag-suggestions li.highlighted {
+  background-color: #f0f0f0;
+}
+.dark .tag-suggestions li:hover,
+.dark .tag-suggestions li.highlighted {
+  background-color: #404040;
+}
+.editor-suggestions {
+  position: absolute;
+}
 </style>
 
 <style>
@@ -584,8 +642,6 @@ watch(easymde, (newEditorInstance) => {
   font-size: 16px!important;
   line-height: 1.6!important;
 
-  /* <<< 关键改动：此处的 flex-grow: 1 已被移除 >>> */
-
   /* 关键：设置一个初始的最小高度 */
   min-height: 130px;
 
@@ -596,7 +652,7 @@ watch(easymde, (newEditorInstance) => {
 
 /* Heading font size fix in editor */
 .CodeMirror .cm-header { font-weight: bold; }
-.Code-Mirror .cm-header-1 { font-size: 1.6em; }
+.CodeMirror .cm-header-1 { font-size: 1.6em; }
 .CodeMirror .cm-header-2 { font-size: 1.4em; }
 .CodeMirror .cm-header-3 { font-size: 1.2em; }
 .CodeMirror .cm-header-4 { font-size: 1.1em; }
