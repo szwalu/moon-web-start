@@ -407,6 +407,14 @@ watch(easymde, (newEditorInstance) => {
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
         cm.scrollIntoView(cm.getCursor(), 60)
         cm.focus()
+
+        // <<< --- 新增代码开始 --- >>>
+        // 在编辑模式下，为了确保长内容完全渲染后高度正确，
+        // 我们在短暂延迟后再次强制更新编辑器高度。
+        setTimeout(() => {
+          updateEditorHeight()
+        }, 100) // 100毫秒的延迟足以应对大多数渲染情况
+        // <<< --- 新增代码结束 --- >>>
       })
     }
   }
