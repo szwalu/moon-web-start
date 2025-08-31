@@ -27,10 +27,7 @@ const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-// <<< 关键：这个 ref 指向新的外层容器 >>>
-const editorContainerRef = ref<HTMLDivElement | null>(null)
-// <<< 关键：这个 ref 指向内部的 form，用于添加安全区 >>>
-const formRef = ref<HTMLFormElement | null>(null)
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
 const isReadyForAutoSave = ref(false)
 
 const showEditorTagSuggestions = ref(false)
@@ -45,20 +42,46 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 函数定义 ---
+// <<< 关键改动1：新增PC端布局计算函数 >>>
+function updatePCLayout() {
+  // 这个函数只在PC端（宽度 >= 768px）执行
+  if (window.innerWidth < 768 || !editorWrapperRef.value || !easymde.value) {
+    // 在移动端，确保CodeMirror高度是自动的，以便flex-grow生效
+    const codeMirrorEl = editorWrapperRef.value?.querySelector('.CodeMirror') as HTMLElement
+    if (codeMirrorEl)
+      codeMirrorEl.style.height = ''
+    return
+  }
 
+  const wrapper = editorWrapperRef.value
+  const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
+  const footer = wrapper.querySelector('.editor-footer') as HTMLElement
+  const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
+
+  if (!toolbar || !footer || !codeMirrorEl)
+    return
+
+  // 手动精确计算：容器总高度 - 头部工具栏高度 - 底部按钮区高度
+  const wrapperHeight = wrapper.clientHeight
+  const toolbarHeight = toolbar.offsetHeight
+  const footerHeight = footer.offsetHeight
+  const availableHeight = wrapperHeight - toolbarHeight - footerHeight
+
+  // 将计算出的精确高度，强制应用给 CodeMirror 文本区
+  codeMirrorEl.style.height = `${availableHeight}px`
+}
+
+// <<< 移动端键盘适应函数 (保持不变) >>>
 function handleViewportResize() {
-  // <<< 不再改变抽屉的位置，而是改变内部 form 的 padding-bottom 来避开键盘 >>>
-  if (formRef.value && window.visualViewport) {
+  if (editorWrapperRef.value && window.visualViewport) {
     const layoutViewportHeight = window.innerHeight
     const visualViewportHeight = window.visualViewport.height
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
-
-    formRef.value.style.paddingBottom = `${keyboardHeight}px`
+    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
   }
 }
 
-// 天气相关逻辑函数
+// --- 其他函数 (保持不变) ---
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -154,27 +177,32 @@ async function fetchWeather() {
   }
 }
 
-// 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!editorContainerRef.value || !easymde.value)
+  if (!easymde.value)
     return
 
-  const wrapper = editorContainerRef.value.querySelector('.note-editor-wrapper')
-  const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement
-  const footer = wrapper?.querySelector('.editor-footer') as HTMLElement
-  const codeMirrorEl = wrapper?.querySelector('.CodeMirror') as HTMLElement
-
-  if (!wrapper || !toolbar || !footer || !codeMirrorEl)
+  // 在PC端，我们使用新的布局函数
+  if (window.innerWidth >= 768) {
+    updatePCLayout()
     return
+  }
 
-  const wrapperHeight = wrapper.clientHeight
-  const toolbarHeight = toolbar.offsetHeight
-  const footerHeight = footer.offsetHeight
-  const availableHeight = wrapperHeight - toolbarHeight - footerHeight
+  // 移动端保持原有的动态高度逻辑
+  const cm = easymde.value.codemirror
+  const sizer = cm.display.sizer
+  if (!sizer)
+    return
+  const minEditorHeight = 130
+  const maxEditorHeight = window.innerHeight * 0.65
+  const contentHeight = sizer.scrollHeight + 5
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  cm.setSize(null, newHeight)
 
-  codeMirrorEl.style.height = `${availableHeight}px`
+  setTimeout(() => {
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+  }, 0)
 }
-
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -369,15 +397,21 @@ onMounted(async () => {
     }
   }
 
+  // 移动端键盘监听
   window.visualViewport.addEventListener('resize', handleViewportResize)
   handleViewportResize()
-  window.addEventListener('resize', updateEditorHeight)
+
+  // <<< 关键改动2：新增PC端布局监听 >>>
+  window.addEventListener('resize', updatePCLayout)
+  // 立即执行一次以设置初始PC布局
+  setTimeout(() => updatePCLayout(), 100)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport.removeEventListener('resize', handleViewportResize)
-  window.removeEventListener('resize', updateEditorHeight)
+  // <<< 关键改动3：移除PC端布局监听 >>>
+  window.removeEventListener('resize', updatePCLayout)
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -408,14 +442,14 @@ watch(() => settingsStore.noteFontSize, () => {
 watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
     if (props.editingNote) {
-      const cm = newEditorInstance.codemirror
       setTimeout(() => {
+        const cm = newEditorInstance.codemirror
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
         cm.focus()
         cm.scrollIntoView(cm.getCursor(), 60)
-        updateEditorHeight()
+        updateEditorHeight() // 这个会间接调用 updatePCLayout
       }, 150)
     }
   }
@@ -423,101 +457,71 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorContainerRef" class="editor-container">
-    <div class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
-      <form ref="formRef" class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
-        <textarea
-          ref="textareaRef"
-          v-model="contentModel"
-          :placeholder="$t('notes.content_placeholder')"
-          class="mb-2 w-full border rounded p-2"
-          required
-          :disabled="isLoading"
-          :maxlength="maxNoteLength"
-          autocomplete="off"
-        />
-        <div class="editor-footer">
-          <div class="status-bar">
-            <span class="char-counter">
-              {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-            </span>
-            <span v-if="lastSavedTime" class="char-counter ml-4">
-              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-            </span>
-          </div>
-          <div class="emoji-bar">
-            <button
-              type="submit"
-              class="form-button flex-2"
-              :disabled="isLoading || !contentModel"
-            >
-              💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
-            </button>
-          </div>
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+      <textarea
+        ref="textareaRef"
+        v-model="contentModel"
+        :placeholder="$t('notes.content_placeholder')"
+        class="mb-2 w-full border rounded p-2"
+        required
+        :disabled="isLoading"
+        :maxlength="maxNoteLength"
+        autocomplete="off"
+      />
+      <div class="editor-footer">
+        <div class="status-bar">
+          <span class="char-counter">
+            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+          </span>
+          <span v-if="lastSavedTime" class="char-counter ml-4">
+            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+          </span>
         </div>
-      </form>
-      <div
-        v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-        ref="editorSuggestionsRef"
-        class="tag-suggestions editor-suggestions"
-        :style="editorSuggestionsStyle"
-      >
-        <ul>
-          <li
-            v-for="(tag, index) in editorTagSuggestions"
-            :key="tag"
-            :class="{ highlighted: index === highlightedEditorIndex }"
-            @mousedown.prevent="selectEditorTag(tag)"
+        <div class="emoji-bar">
+          <button
+            type="submit"
+            class="form-button flex-2"
+            :disabled="isLoading || !contentModel"
           >
-            {{ tag }}
-          </li>
-        </ul>
+            💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
+          </button>
+        </div>
       </div>
+    </form>
+    <div
+      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
+      ref="editorSuggestionsRef"
+      class="tag-suggestions editor-suggestions"
+      :style="editorSuggestionsStyle"
+    >
+      <ul>
+        <li
+          v-for="(tag, index) in editorTagSuggestions"
+          :key="tag"
+          :class="{ highlighted: index === highlightedEditorIndex }"
+          @mousedown.prevent="selectEditorTag(tag)"
+        >
+          {{ tag }}
+        </li>
+      </ul>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 外层容器：纯粹的定位层，不再使用flex */
-.editor-container {
+/* 基础样式 (移动端优先) */
+.note-editor-wrapper {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
   z-index: 1002;
-  /* 空白区域不拦截鼠标事件 */
-  pointer-events: none;
-}
-
-/* 内层容器：负责所有外观、布局和居中 */
-.note-editor-wrapper {
-  /* 使用 margin: 0 auto 在父容器中水平居中 */
-  margin: 0 auto;
-
-  width: 100%;
-  max-width: 480px;
-  max-height: 75vh; /* 移动端依然使用 max-height */
-
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
-
-  /* 关键：让 wrapper 自己成为 flex 容器，以便 form 的 height: 100% 生效 */
+  max-height: 75vh;
   display: flex;
   flex-direction: column;
-
-  /* 恢复鼠标事件 */
-  pointer-events: auto;
-  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.08);
-}
-
-/* 终极方案：在PC端，使用固定的 height 替换 max-height，彻底解决布局计算BUG */
-@media screen and (min-width: 501px) {
-  .note-editor-wrapper {
-    height: 75vh;
-    margin-bottom: 2rem;
-    border-radius: 12px;
-    border: 1px solid #e0e0e0;
-  }
 }
 
 .dark .note-editor-wrapper {
@@ -525,104 +529,48 @@ watch(easymde, (newEditorInstance) => {
   border-top: 1px solid #48484a;
 }
 
-@media screen and (min-width: 501px) {
-  .dark .note-editor-wrapper {
-    border: 1px solid #48484a;
-  }
-}
-
 .note-editor-form {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  overflow: hidden; /* 防止子元素溢出 */
 }
 
 .editor-footer {
-  flex-shrink: 0;
-}
-
-/* 其他样式保持不变 */
-.status-bar {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin: 0;
+  flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
 }
-.char-counter {
-  font-size: 12px;
-  color: #999;
-}
-.dark .char-counter {
-  color: #aaa;
-}
-.ml-4 {
-  margin-left: 1rem;
-}
-.emoji-bar {
-  margin-top: .5rem;
-  display: flex;
-  justify-content: space-between;
-  gap: .5rem;
-  padding: 0 0.75rem 0.5rem 0.75rem;
-}
-.form-button {
-  width: 100%;
-  flex: 1;
-  padding: .5rem;
-  font-size: 14px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-  background: #d3d3d3;
-  color: #111;
-}
-.dark .form-button {
-  background-color: #404040;
-  color: #fff;
-  border-color: #555;
-}
-.form-button:disabled {
-  opacity: .6;
-  cursor: not-allowed;
-}
-.tag-suggestions {
-  position: absolute;
-  background-color: #fff;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px #00000026;
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 150px;
-}
-.dark .tag-suggestions {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-.tag-suggestions ul {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-}
-.tag-suggestions li {
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  white-space: nowrap;
-}
-.tag-suggestions li:hover,
-.tag-suggestions li.highlighted {
-  background-color: #f0f0f0;
-}
-.dark .tag-suggestions li:hover,
-.dark .tag-suggestions li.highlighted {
-  background-color: #404040;
-}
-.editor-suggestions {
-  position: absolute;
+
+.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
+.char-counter{font-size:12px;color:#999}
+.dark .char-counter{color:#aaa}
+.ml-4{margin-left:1rem}
+.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
+.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
+.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
+.form-button:disabled{opacity:.6;cursor:not-allowed}
+
+.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
+.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
+.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
+.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
+.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
+.dark .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#404040}
+.editor-suggestions{position:absolute}
+
+/* <<< 关键改动4：新增PC端样式覆盖 >>> */
+@media screen and (min-width: 768px) {
+  .note-editor-wrapper {
+    width: 480px;
+    left: 50%;
+    transform: translateX(-50%);
+    /* 在PC端使用固定height，为JS计算提供基准 */
+    height: 80vh;
+    max-height: 850px;
+    bottom: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  }
 }
 </style>
 
@@ -647,13 +595,8 @@ watch(easymde, (newEditorInstance) => {
   border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
   font-size: 16px!important;
   line-height: 1.6!important;
-
-  /* <<< 关键：移除 flex-grow >>> */
-
-  /* 关键：设置一个初始的最小高度 */
+  flex-grow: 1; /* 在移动端生效 */
   min-height: 130px;
-
-  /* 保留，当内容超出max-height时，内部可以滚动 */
   overflow-y: auto!important;
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
