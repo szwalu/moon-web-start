@@ -36,8 +36,8 @@ function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
     // 键盘的高度 = 整个窗口的高度 - 可见区域的高度
     const keyboardHeight = window.innerHeight - window.visualViewport.height
-    // 为组件底部增加一个内边距，把内容顶上来
-    editorWrapperRef.value.style.paddingBottom = `${keyboardHeight}px`
+    // 为组件增加一个外边距，把它从键盘上方推开
+    editorWrapperRef.value.style.marginBottom = `${keyboardHeight}px`
     // 确保光标可见
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
@@ -445,7 +445,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+  <div ref="editorWrapperRef" :class="{ 'editing-mode': editingNote }">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -547,9 +547,5 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 /* 新增这条规则，专门为编辑模式下的编辑器增加顶部内边距 */
 .editing-mode .CodeMirror {
   padding-top: 45px !important;
-}
-
-.note-editor-wrapper {
-  background-color: transparent;
 }
 </style>
