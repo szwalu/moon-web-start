@@ -836,7 +836,7 @@ function closeEditorModal() {
         />
       </div>
 
-      <button class="fab" @click="handleAddNewNoteClick">
+      <button v-if="!showEditorModal" class="fab" @click="handleAddNewNoteClick">
         +
       </button>
 
