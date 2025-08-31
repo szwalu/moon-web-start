@@ -51,27 +51,23 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 函数定义 ---
+// in NoteEditor.vue <script setup>
+
 function handleViewportResize() {
-  // 确保我们的编辑器容器存在，并且 visualViewport API 可用
   if (editorWrapperRef.value && window.visualViewport) {
-    // 从 visualViewport 获取可见区域的完整几何信息
-    const { offsetTop, height, offsetLeft, width } = window.visualViewport
+    // 获取设备屏幕的“布局高度”（基本不变）
+    const layoutViewportHeight = window.innerHeight
+    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
+    const visualViewportHeight = window.visualViewport.height
 
-    const style = editorWrapperRef.value.style
+    // 两者之差，就是键盘 + 输入法工具栏的总高度
+    const keyboardHeight = layoutViewportHeight - visualViewportHeight
 
-    // --- 应用新的几何信息 ---
-    // 1. 设置抽屉的顶部位置
-    style.top = `${offsetTop}px`
-    // 2. 设置抽屉的精确高度
-    style.height = `${height}px`
-    // 3. 设置抽屉的左边位置和宽度，确保横向也完美匹配
-    style.left = `${offsetLeft}px`
-    style.width = `${width}px`
+    // 将抽屉的 bottom 值设置为键盘的高度，把它“顶”上去
+    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
 
-    // --- 重置可能冲突的旧样式 ---
-    // 4. 取消 CSS中的 bottom 和 max-height，让 JS 完全控制
-    style.bottom = 'auto'
-    style.maxHeight = 'none'
+    // 同时，将抽屉的最大高度设置为可视区域的高度，防止它超出屏幕
+    editorWrapperRef.value.style.maxHeight = `${visualViewportHeight}px`
   }
 }
 
