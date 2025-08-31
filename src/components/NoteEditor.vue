@@ -27,9 +27,9 @@ const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-// <<< 这个 ref 现在指向新的外层容器 >>>
+// <<< 关键：这个 ref 指向新的外层容器 >>>
 const editorContainerRef = ref<HTMLDivElement | null>(null)
-// <<< 这个 ref 指向内部的 form，用于添加安全区 >>>
+// <<< 关键：这个 ref 指向内部的 form，用于添加安全区 >>>
 const formRef = ref<HTMLFormElement | null>(null)
 const isReadyForAutoSave = ref(false)
 
@@ -451,7 +451,7 @@ watch(easymde, (newEditorInstance) => {
               class="form-button flex-2"
               :disabled="isLoading || !contentModel"
             >
-              💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+              💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
             </button>
           </div>
         </div>
@@ -478,28 +478,34 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* 外层容器：纯粹的定位层 */
+/* 外层容器：纯粹的定位层，不再使用flex */
 .editor-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
   z-index: 1002;
-  display: flex;
-  justify-content: center;
+  /* 空白区域不拦截鼠标事件 */
   pointer-events: none;
 }
 
 /* 内层容器：负责所有外观、布局和居中 */
 .note-editor-wrapper {
+  /* 使用 margin: 0 auto 在父容器中水平居中 */
   margin: 0 auto;
+
   width: 100%;
   max-width: 480px;
-  max-height: 75vh;
+  max-height: 75vh; /* 移动端依然使用 max-height */
+
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
+
+  /* 关键：让 wrapper 自己成为 flex 容器，以便 form 的 height: 100% 生效 */
   display: flex;
   flex-direction: column;
+
+  /* 恢复鼠标事件 */
   pointer-events: auto;
   box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.08);
 }
@@ -528,8 +534,8 @@ watch(easymde, (newEditorInstance) => {
 .note-editor-form {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   height: 100%;
+  overflow: hidden;
 }
 
 .editor-footer {
@@ -641,6 +647,8 @@ watch(easymde, (newEditorInstance) => {
   border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
   font-size: 16px!important;
   line-height: 1.6!important;
+
+  /* <<< 关键：移除 flex-grow >>> */
 
   /* 关键：设置一个初始的最小高度 */
   min-height: 130px;
