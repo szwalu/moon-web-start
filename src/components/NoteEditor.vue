@@ -490,6 +490,8 @@ watch(easymde, (newEditorInstance) => {
   z-index: 1002;
   display: flex;
   justify-content: center;
+  /* <<< 新增：将子项对齐到容器底部，以避免垂直拉伸冲突 >>> */
+  align-items: flex-end;
   pointer-events: none;
 }
 
