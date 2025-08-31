@@ -177,6 +177,7 @@ function updateEditorHeight() {
   const sizer = cm.display.sizer
   if (!sizer)
     return
+  // 采用Flexbox布局后，最大高度由CSS控制，JS只需负责自然生长
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, contentHeight)
   cm.setSize(null, newHeight)
