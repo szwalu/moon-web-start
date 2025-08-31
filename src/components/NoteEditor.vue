@@ -31,20 +31,6 @@ const settingsStore = useSettingStore()
 // 使用这个状态作为“是否为初始化触发”的看门人
 const isReadyForAutoSave = ref(false)
 
-// --- 终极解决方案：处理 visualViewport 变化的核心函数 ---
-function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 我们不再手动计算高度或添加任何边距。
-    // 只在视口变化时，命令编辑器将光标位置滚动到可见区域即可。
-    if (easymde.value) {
-      // 使用一个小的延时可以确保在浏览器完成布局调整后再执行滚动
-      setTimeout(() => {
-        easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor())
-      }, 100)
-    }
-  }
-}
-
 // 天气相关的逻辑函数 (保持不变)
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -143,10 +129,6 @@ async function fetchWeather() {
 
 // onMounted 钩子
 onMounted(async () => {
-  // --- 终极解决方案：添加监听器 ---
-  if (window.visualViewport)
-    window.visualViewport.addEventListener('resize', handleViewportResize)
-
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -171,10 +153,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // --- 终极解决方案：移除监听器，防止内存泄漏 ---
-  if (window.visualViewport)
-    window.visualViewport.removeEventListener('resize', handleViewportResize)
-
   destroyEasyMDE()
 })
 
@@ -419,6 +397,7 @@ watch(() => settingsStore.noteFontSize, () => {
 function handleSubmit() {
   emit('submit')
 }
+
 // --- 新增：最终光标定位方案 ---
 // 侦听编辑器实例是否被创建
 watch(easymde, (newEditorInstance) => {
@@ -432,11 +411,8 @@ watch(easymde, (newEditorInstance) => {
 
       // 在下一个Tick中安全地移动光标，确保DOM已更新
       nextTick(() => {
-        // --- 下面这两行是我们要恢复的代码 ---
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
         cm.scrollIntoView(cm.getCursor(), 60)
-        // ------------------------------------
-
         // --- 新增的画龙点睛之笔 ---
         cm.focus() // 激活编辑器，让光标显形并闪动
       })
@@ -446,8 +422,8 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" :class="{ 'editing-mode': editingNote }">
-    <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -458,22 +434,24 @@ watch(easymde, (newEditorInstance) => {
         :maxlength="maxNoteLength"
         autocomplete="off"
       />
-      <div class="status-bar">
-        <span class="char-counter">
-          {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-        </span>
-        <span v-if="lastSavedTime" class="char-counter ml-4">
-          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-        </span>
-      </div>
-      <div class="emoji-bar">
-        <button
-          type="submit"
-          class="form-button flex-2"
-          :disabled="isLoading || !contentModel"
-        >
-          💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-        </button>
+      <div class="editor-footer">
+        <div class="status-bar">
+          <span class="char-counter">
+            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+          </span>
+          <span v-if="lastSavedTime" class="char-counter ml-4">
+            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+          </span>
+        </div>
+        <div class="emoji-bar">
+          <button
+            type="submit"
+            class="form-button flex-2"
+            :disabled="isLoading || !contentModel"
+          >
+            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+          </button>
+        </div>
       </div>
     </form>
     <div
@@ -497,8 +475,69 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* Styles are unchanged */
-textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}.char-counter{font-size:12px;color:#999}.dark .char-counter{color:#aaa}.ml-4{margin-left:1rem}.emoji-bar{margin-top:.2rem;display:flex;justify-content:space-between;gap:.5rem}.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}.dark .form-button{background-color:#404040;color:#fff;border-color:#555}.form-button:disabled{opacity:.6;cursor:not-allowed}.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}.editor-suggestions{position:absolute}
+/* -- 请用下面的代码完全替换你现有的 <style scoped> -- */
+.note-editor-wrapper {
+  /* 1. 关键：让容器粘在底部 */
+  position: sticky;
+  bottom: 0;
+
+  /* 2. 自身样式 */
+  width: 100%;
+  background-color: #fff; /* 或者你的应用背景色 */
+  border-top: 1px solid #e0e0e0;
+
+  /* 3. 防止在手机上过高，遮住所有内容 */
+  max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
+  display: flex;
+  flex-direction: column;
+}
+
+.dark .note-editor-wrapper {
+  background-color: #2c2c2e;
+  border-top: 1px solid #48484a;
+}
+
+.note-editor-form {
+  /* 让表单也成为一个Flexbox容器 */
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* 占满父容器高度 */
+}
+
+/* 固定的底部区域 */
+.editor-footer {
+  flex-shrink: 0; /* 防止被压缩 */
+  padding: 0.5rem 0.75rem;
+}
+
+/* 状态栏和按钮栏的微调 */
+.status-bar {
+  margin: 0;
+  padding: 0;
+}
+.emoji-bar {
+  margin-top: 0.5rem;
+}
+
+/* 标签建议的样式 (原样保留) */
+.tag-suggestions {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px #00000026;
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
+.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.tag-suggestions li:hover, .tag-suggestions li.highlighted { background-color: #f0f0f0; }
+.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted { background-color: #404040; }
 </style>
 
 <style>
@@ -516,12 +555,20 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   background-color: #fff;
 }
 .CodeMirror {
-  border:1px solid #ccc!important;
-  border-top:none!important;
-  border-radius:0 0 6px 6px;
-  font-size:16px!important;
-  line-height:1.6!important;
-  overflow-y:auto!important;
+  border: 1px solid #ccc!important;
+  border-top: none!important;
+  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
+  font-size: 16px!important;
+  line-height: 1.6!important;
+
+  /* 关键：让编辑器区域占据所有剩余空间 */
+  flex-grow: 1;
+
+  /* 关键：设置一个初始的最小高度 */
+  min-height: 130px;
+
+  /* 保留，当内容超出max-height时，内部可以滚动 */
+  overflow-y: auto!important;
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -545,7 +592,7 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   font-size: 20px !important;
 }
 
-/* 新增这条规则，专门为编辑模式下的编辑器增加顶部内边距 */
+/* --- 新增：为编辑旧笔记模式增加顶部内边距 --- */
 .editing-mode .CodeMirror {
   padding-top: 45px !important;
 }
