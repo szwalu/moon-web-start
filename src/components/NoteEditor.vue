@@ -52,11 +52,26 @@ const charCount = computed(() => contentModel.value.length)
 
 // --- 函数定义 ---
 function handleViewportResize() {
-  if (editorWrapperRef.value) {
-    // window.visualViewport.height 能精确获取到排除键盘和状态栏后的可见高度
-    const visibleHeight = window.visualViewport.height
-    // 将这个高度应用为我们编辑器抽屉的最大高度
-    editorWrapperRef.value.style.maxHeight = `${visibleHeight}px`
+  // 确保我们的编辑器容器存在，并且 visualViewport API 可用
+  if (editorWrapperRef.value && window.visualViewport) {
+    // 从 visualViewport 获取可见区域的完整几何信息
+    const { offsetTop, height, offsetLeft, width } = window.visualViewport
+
+    const style = editorWrapperRef.value.style
+
+    // --- 应用新的几何信息 ---
+    // 1. 设置抽屉的顶部位置
+    style.top = `${offsetTop}px`
+    // 2. 设置抽屉的精确高度
+    style.height = `${height}px`
+    // 3. 设置抽屉的左边位置和宽度，确保横向也完美匹配
+    style.left = `${offsetLeft}px`
+    style.width = `${width}px`
+
+    // --- 重置可能冲突的旧样式 ---
+    // 4. 取消 CSS中的 bottom 和 max-height，让 JS 完全控制
+    style.bottom = 'auto'
+    style.maxHeight = 'none'
   }
 }
 
