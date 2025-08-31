@@ -401,21 +401,23 @@ watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
-      nextTick(() => {
+
+      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
+      setTimeout(() => {
+        // 1. 获取文档并移动光标到最后
+        const doc = cm.getDoc()
+        const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        cm.scrollIntoView(cm.getCursor(), 60)
+
+        // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // <<< --- 新增代码开始 --- >>>
-        // 在编辑模式下，为了确保长内容完全渲染后高度正确，
-        // 我们在短暂延迟后再次强制更新编辑器高度。
-        setTimeout(() => {
-          updateEditorHeight()
-        }, 100) // 100毫秒的延迟足以应对大多数渲染情况
-        // <<< --- 新增代码结束 --- >>>
-      })
+        // 3. 将光标滚动到可视区域内，这是修正布局的关键
+        cm.scrollIntoView(cm.getCursor(), 60)
+
+        // 4. 作为最后的保险，再调用一次高度更新
+        updateEditorHeight()
+      }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
 })
