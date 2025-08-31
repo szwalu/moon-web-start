@@ -42,46 +42,22 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// <<< 关键改动1：新增PC端布局计算函数 >>>
-function updatePCLayout() {
-  // 这个函数只在PC端（宽度 >= 768px）执行
-  if (window.innerWidth < 768 || !editorWrapperRef.value || !easymde.value) {
-    // 在移动端，确保CodeMirror高度是自动的，以便flex-grow生效
-    const codeMirrorEl = editorWrapperRef.value?.querySelector('.CodeMirror') as HTMLElement
-    if (codeMirrorEl)
-      codeMirrorEl.style.height = ''
-    return
-  }
-
-  const wrapper = editorWrapperRef.value
-  const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
-  const footer = wrapper.querySelector('.editor-footer') as HTMLElement
-  const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
-
-  if (!toolbar || !footer || !codeMirrorEl)
-    return
-
-  // 手动精确计算：容器总高度 - 头部工具栏高度 - 底部按钮区高度
-  const wrapperHeight = wrapper.clientHeight
-  const toolbarHeight = toolbar.offsetHeight
-  const footerHeight = footer.offsetHeight
-  const availableHeight = wrapperHeight - toolbarHeight - footerHeight
-
-  // 将计算出的精确高度，强制应用给 CodeMirror 文本区
-  codeMirrorEl.style.height = `${availableHeight}px`
-}
-
-// <<< 移动端键盘适应函数 (保持不变) >>>
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
+    // 获取设备屏幕的“布局高度”（基本不变）
     const layoutViewportHeight = window.innerHeight
+    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
     const visualViewportHeight = window.visualViewport.height
+
+    // 两者之差，就是键盘 + 输入法工具栏的总高度
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
+
+    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
     editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
   }
 }
 
-// --- 其他函数 (保持不变) ---
+// 天气相关逻辑函数
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -177,21 +153,36 @@ async function fetchWeather() {
   }
 }
 
+// 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!easymde.value)
+  if (!editorWrapperRef.value || !easymde.value)
     return
 
-  // 在PC端，我们使用新的布局函数
+  // --- PC端逻辑 ---
   if (window.innerWidth >= 768) {
-    updatePCLayout()
-    return
+    const wrapper = editorWrapperRef.value
+    const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
+    const footer = wrapper.querySelector('.editor-footer') as HTMLElement
+    const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
+
+    if (!toolbar || !footer || !codeMirrorEl)
+      return
+
+    const wrapperHeight = wrapper.clientHeight
+    const toolbarHeight = toolbar.offsetHeight
+    const footerHeight = footer.offsetHeight
+    const availableHeight = wrapperHeight - toolbarHeight - footerHeight
+
+    codeMirrorEl.style.height = `${availableHeight}px`
+    return // 执行完PC逻辑后必须退出
   }
 
-  // 移动端保持原有的动态高度逻辑
+  // --- 移动端逻辑 (您稳定版中的原始逻辑) ---
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
+
   const minEditorHeight = 130
   const maxEditorHeight = window.innerHeight * 0.65
   const contentHeight = sizer.scrollHeight + 5
@@ -203,6 +194,7 @@ function updateEditorHeight() {
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
+
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -374,6 +366,7 @@ function handleSubmit() {
 }
 
 // --- 生命周期钩子 & 监听器 ---
+// onMounted 钩子
 onMounted(async () => {
   let initialContent = props.modelValue
 
@@ -397,21 +390,23 @@ onMounted(async () => {
     }
   }
 
-  // 移动端键盘监听
+  // 移动端键盘监听 (保持不变)
   window.visualViewport.addEventListener('resize', handleViewportResize)
   handleViewportResize()
 
-  // <<< 关键改动2：新增PC端布局监听 >>>
-  window.addEventListener('resize', updatePCLayout)
-  // 立即执行一次以设置初始PC布局
-  setTimeout(() => updatePCLayout(), 100)
+  // <<< 新增：PC端浏览器窗口变化监听 >>>
+  window.addEventListener('resize', updateEditorHeight)
+  // 立即执行一次以确保初始PC布局正确
+  setTimeout(() => updateEditorHeight(), 100)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
+  // 移动端键盘监听移除 (保持不变)
   window.visualViewport.removeEventListener('resize', handleViewportResize)
-  // <<< 关键改动3：移除PC端布局监听 >>>
-  window.removeEventListener('resize', updatePCLayout)
+
+  // <<< 新增：移除PC端监听器 >>>
+  window.removeEventListener('resize', updateEditorHeight)
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -442,15 +437,24 @@ watch(() => settingsStore.noteFontSize, () => {
 watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
     if (props.editingNote) {
+      const cm = newEditorInstance.codemirror
+
+      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
       setTimeout(() => {
-        const cm = newEditorInstance.codemirror
+        // 1. 获取文档并移动光标到最后
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
+
+        // 2. 强制编辑器获得焦点
         cm.focus()
+
+        // 3. 将光标滚动到可视区域内，这是修正布局的关键
         cm.scrollIntoView(cm.getCursor(), 60)
-        updateEditorHeight() // 这个会间接调用 updatePCLayout
-      }, 150)
+
+        // 4. 作为最后的保险，再调用一次高度更新
+        updateEditorHeight()
+      }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
 })
@@ -484,7 +488,7 @@ watch(easymde, (newEditorInstance) => {
             class="form-button flex-2"
             :disabled="isLoading || !contentModel"
           >
-            💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
+            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
           </button>
         </div>
       </div>
@@ -510,16 +514,23 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* 基础样式 (移动端优先) */
+/* --- 全新的 Flexbox / Fixed 布局 --- */
 .note-editor-wrapper {
+  /* 1. 关键：让容器固定在底部 */
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 1002;
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
+
+  /* 2. 自身样式 */
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
+
+  /* 3. 防止在手机上过高，遮住所有内容 */
   max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
 }
@@ -536,6 +547,7 @@ watch(easymde, (newEditorInstance) => {
   overflow: hidden; /* 防止子元素溢出 */
 }
 
+/* --- 恢复并整合的原有样式 --- */
 .editor-footer {
   flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
@@ -555,23 +567,8 @@ watch(easymde, (newEditorInstance) => {
 .tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
 .tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
 .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#404040}
+.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
 .editor-suggestions{position:absolute}
-
-/* <<< 关键改动4：新增PC端样式覆盖 >>> */
-@media screen and (min-width: 768px) {
-  .note-editor-wrapper {
-    width: 480px;
-    left: 50%;
-    transform: translateX(-50%);
-    /* 在PC端使用固定height，为JS计算提供基准 */
-    height: 80vh;
-    max-height: 850px;
-    bottom: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  }
-}
 </style>
 
 <style>
@@ -580,7 +577,7 @@ watch(easymde, (newEditorInstance) => {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-top: none !important;
+  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
   border-bottom: none !important;
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
@@ -595,8 +592,14 @@ watch(easymde, (newEditorInstance) => {
   border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
   font-size: 16px!important;
   line-height: 1.6!important;
-  flex-grow: 1; /* 在移动端生效 */
+
+  /* 关键：让编辑器区域占据所有剩余空间 */
+  flex-grow: 1;
+
+  /* 关键：设置一个初始的最小高度 */
   min-height: 130px;
+
+  /* 保留，当内容超出max-height时，内部可以滚动 */
   overflow-y: auto!important;
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
@@ -614,4 +617,23 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
+
+/* --- 新增：专门用于PC端（大屏幕）的样式 --- */
+@media screen and (min-width: 768px) {
+  .note-editor-wrapper {
+    /* 1. 设置固定宽度并水平居中 */
+    width: 480px;
+    left: 50%;
+    transform: translateX(-50%);
+
+    /* 2. 关键：设置一个固定的高度，为JS精确计算提供基准 */
+    height: 80vh;
+    max-height: 850px;
+
+    /* 3. 优化PC端视觉效果 */
+    bottom: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  }
+}
 </style>
