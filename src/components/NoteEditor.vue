@@ -445,7 +445,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" :class="{ 'editing-mode': editingNote }">
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
     <form class="mb-6" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -547,5 +547,9 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
 /* 新增这条规则，专门为编辑模式下的编辑器增加顶部内边距 */
 .editing-mode .CodeMirror {
   padding-top: 45px !important;
+}
+
+.note-editor-wrapper {
+  background-color: transparent;
 }
 </style>
