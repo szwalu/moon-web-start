@@ -27,7 +27,10 @@ const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
+// <<< 关键改动：这个 ref 现在指向新的外层容器 >>>
+const editorContainerRef = ref<HTMLDivElement | null>(null)
+// <<< 关键改动：新增一个 ref 指向内部的 form，用于添加安全区 >>>
+const formRef = ref<HTMLFormElement | null>(null)
 const isReadyForAutoSave = ref(false)
 
 const showEditorTagSuggestions = ref(false)
@@ -50,18 +53,16 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 获取设备屏幕的“布局高度”（基本不变）
-    const layoutViewportHeight = window.innerHeight
-    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
-    const visualViewportHeight = window.visualViewport.height
+// --- 函数定义 ---
 
-    // 两者之差，就是键盘 + 输入法工具栏的总高度
+function handleViewportResize() {
+  // <<< 关键改动：不再改变抽屉的位置，而是改变内部 form 的 padding-bottom 来避开键盘 >>>
+  if (formRef.value && window.visualViewport) {
+    const layoutViewportHeight = window.innerHeight
+    const visualViewportHeight = window.visualViewport.height
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
 
-    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
-    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
+    formRef.value.style.paddingBottom = `${keyboardHeight}px`
   }
 }
 
@@ -173,7 +174,6 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
@@ -351,7 +351,6 @@ function handleSubmit() {
 }
 
 // --- 生命周期钩子 & 监听器 ---
-// onMounted 钩子
 onMounted(async () => {
   let initialContent = props.modelValue
 
@@ -375,26 +374,13 @@ onMounted(async () => {
     }
   }
 
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.addEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
   window.visualViewport.addEventListener('resize', handleViewportResize)
-  // 立即执行一次，以确保初始状态正确
   handleViewportResize()
-  // <<< --- 修改部分结束 --- >>>
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 移除新的 visualViewport 监听
   window.visualViewport.removeEventListener('resize', handleViewportResize)
-  // <<< --- 修改部分结束 --- >>>
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -426,101 +412,101 @@ watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
-
-      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
       setTimeout(() => {
-        // 1. 获取文档并移动光标到最后
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
-
-        // 2. 强制编辑器获得焦点
         cm.focus()
-
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
         cm.scrollIntoView(cm.getCursor(), 60)
-
-        // 4. 作为最后的保险，再调用一次高度更新
         updateEditorHeight()
-      }, 150) // 使用150毫秒延时，确保时机足够晚
+      }, 150)
     }
   }
 })
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
-    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
-      <textarea
-        ref="textareaRef"
-        v-model="contentModel"
-        :placeholder="$t('notes.content_placeholder')"
-        class="mb-2 w-full border rounded p-2"
-        required
-        :disabled="isLoading"
-        :maxlength="maxNoteLength"
-        autocomplete="off"
-      />
-      <div class="editor-footer">
-        <div class="status-bar">
-          <span class="char-counter">
-            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-          </span>
-          <span v-if="lastSavedTime" class="char-counter ml-4">
-            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-          </span>
+  <div ref="editorContainerRef" class="editor-container">
+    <div class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+      <form ref="formRef" class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+        <textarea
+          ref="textareaRef"
+          v-model="contentModel"
+          :placeholder="$t('notes.content_placeholder')"
+          class="mb-2 w-full border rounded p-2"
+          required
+          :disabled="isLoading"
+          :maxlength="maxNoteLength"
+          autocomplete="off"
+        />
+        <div class="editor-footer">
+          <div class="status-bar">
+            <span class="char-counter">
+              {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+            </span>
+            <span v-if="lastSavedTime" class="char-counter ml-4">
+              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+            </span>
+          </div>
+          <div class="emoji-bar">
+            <button
+              type="submit"
+              class="form-button flex-2"
+              :disabled="isLoading || !contentModel"
+            >
+              💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+            </button>
+          </div>
         </div>
-        <div class="emoji-bar">
-          <button
-            type="submit"
-            class="form-button flex-2"
-            :disabled="isLoading || !contentModel"
+      </form>
+      <div
+        v-if="showEditorTagSuggestions && editorTagSuggestions.length"
+        ref="editorSuggestionsRef"
+        class="tag-suggestions editor-suggestions"
+        :style="editorSuggestionsStyle"
+      >
+        <ul>
+          <li
+            v-for="(tag, index) in editorTagSuggestions"
+            :key="tag"
+            :class="{ highlighted: index === highlightedEditorIndex }"
+            @mousedown.prevent="selectEditorTag(tag)"
           >
-            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-          </button>
-        </div>
+            {{ tag }}
+          </li>
+        </ul>
       </div>
-    </form>
-    <div
-      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-      ref="editorSuggestionsRef"
-      class="tag-suggestions editor-suggestions"
-      :style="editorSuggestionsStyle"
-    >
-      <ul>
-        <li
-          v-for="(tag, index) in editorTagSuggestions"
-          :key="tag"
-          :class="{ highlighted: index === highlightedEditorIndex }"
-          @mousedown.prevent="selectEditorTag(tag)"
-        >
-          {{ tag }}
-        </li>
-      </ul>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* --- 全新的 Flexbox / Fixed 布局 --- */
-.note-editor-wrapper {
-  /* 1. 关键：让容器固定在底部 */
+/* <<< 关键改动：新增外层容器样式，只负责定位 >>> */
+.editor-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 1002; /* 比编辑器的 toolbar 更高 */
+  z-index: 1002;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
 
-  /* 2. 自身样式 */
+/* <<< 关键改动：修改内层容器样式，只负责外观和布局 >>> */
+.note-editor-wrapper {
+  /* 移除所有定位属性 */
+  width: 100%;
+  max-width: 480px; /* 统一PC和移动端宽度 */
+  max-height: 75vh;
+
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
 
-  /* 3. 防止在手机上过高，遮住所有内容 */
-  max-height: 75vh;
-
-  /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
+
+  pointer-events: auto;
 }
 
 .dark .note-editor-wrapper {
@@ -535,7 +521,6 @@ watch(easymde, (newEditorInstance) => {
   overflow: hidden; /* 防止子元素溢出 */
 }
 
-/* --- 恢复并整合的原有样式 --- */
 .editor-footer {
   flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
@@ -555,7 +540,7 @@ watch(easymde, (newEditorInstance) => {
 .tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
 .tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
 .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
+.dark .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#404040}
 .editor-suggestions{position:absolute}
 </style>
 
@@ -565,7 +550,7 @@ watch(easymde, (newEditorInstance) => {
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
+  border-top: none !important;
   border-bottom: none !important;
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
