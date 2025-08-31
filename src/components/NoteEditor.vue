@@ -606,13 +606,12 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- 新增：用于适配PC端宽度的媒体查询 --- */
 @media screen and (min-width: 501px) {
   .note-editor-wrapper {
     width: 480px;
     left: 50%;
-    /* 使用 margin-left 负值来精确居中，避免与 transform 动画冲突 */
-    margin-left: -240px; /* 宽度480px的一半 */
+    /* 使用 transform 将元素向左平移自身宽度的一半，实现精确居中 */
+    transform: translateX(-50%);
   }
 }
 </style>
