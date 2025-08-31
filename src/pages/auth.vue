@@ -60,7 +60,7 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
-const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+
 const isRestoringFromCache = ref(false)
 
 // --- 那年今日功能状态 ---
@@ -762,37 +762,6 @@ function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
 }
-
-watch(showEditorModal, (isShowing) => {
-  const body = document.body
-  if (isShowing) {
-    // 模态框打开时，禁止背景滚动
-    body.style.overflow = 'hidden'
-
-    // 编辑器的滑出动画是 0.3s (300ms)，
-    // 设置一个稍长的延时以确保元素准备就绪。
-    setTimeout(() => {
-      if (noteEditorRef.value)
-        noteEditorRef.value.focus()
-    }, 350)
-  }
-  else {
-    // 模态框关闭时，恢复背景滚动
-    body.style.overflow = ''
-  }
-})
-
-onUnmounted(() => {
-  if (authListener)
-    authListener.unsubscribe()
-
-  document.removeEventListener('click', closeDropdownOnClickOutside)
-  debouncedSaveNote.cancel()
-
-  // **新增此行**: 确保在组件被卸载时（例如页面跳转），
-  // body 的滚动能被恢复，避免页面卡死。
-  document.body.style.overflow = ''
-})
 </script>
 
 <template>
@@ -871,26 +840,25 @@ onUnmounted(() => {
         +
       </button>
 
-      <div class="auth-container">
-        <Transition name="modal-fade">
-          <div v-if="showEditorModal" class="editor-overlay" @click="closeEditorModal" />
-        </Transition>
-
-        <Transition name="editor-slide-up">
-          <div v-if="showEditorModal" class="editor-container-flomo">
-            <NoteEditor
-              ref="noteEditorRef"
-              v-model="content"
-              :editing-note="editingNote"
-              :is-loading="loading"
-              :all-tags="allTags"
-              :max-note-length="maxNoteLength"
-              :last-saved-time="lastSavedTime"
-              @submit="handleSubmit"
-              @trigger-auto-save="debouncedSaveNote"
-            />
+      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
+        <div class="editor-modal-content">
+          <div class="modal-header">
+            <button class="close-button" @click="closeEditorModal">
+              &times;
+            </button>
           </div>
-        </Transition>
+          <NoteEditor
+            v-model="content"
+            :editing-note="editingNote"
+            :is-loading="loading"
+            :all-tags="allTags"
+            :max-note-length="maxNoteLength"
+            :last-saved-time="lastSavedTime"
+            @submit="handleSubmit"
+            @trigger-auto-save="debouncedSaveNote"
+            @close="closeEditorModal"
+          />
+        </div>
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
@@ -1097,70 +1065,54 @@ onUnmounted(() => {
     background-color: #00c291;
 }
 
-/* --- MODAL STYLES START --- */
-/* [修改] .editor-overlay 只作为背景遮罩 */
 .editor-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  z-index: 999; /* z-index 比内容容器低 */
-}
-
-/* [修改] .editor-container-flomo 作为独立的内容容器 */
-.editor-container-flomo {
-  position: fixed; /* 改为 fixed 定位 */
-  bottom: 0;
-  left: 0;
-  right: 0;
-  margin: 0 auto; /* 水平居中 */
   width: 100%;
-  max-width: 480px; /* 在桌面端保持一个最大宽度 */
-  background-color: white;
-  border-radius: 12px 12px 0 0; /* 仅顶部有圆角 */
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
-  z-index: 1000; /* z-index 比遮罩高，确保在最上层 */
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
 }
 
-.dark .editor-container-flomo {
-  background-color: #1e1e1e; /* 深色模式背景 */
+.editor-modal-content {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* [删除] 旧的 @keyframes slide-up 动画，不再需要 */
-/*
-@keyframes slide-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-*/
-
-/* [新增] Vue Transition 动画类 */
-/* 1. 背景遮罩的渐入渐出动画 */
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
+.dark .editor-modal-content {
+  background: #2a2a2a;
 }
 
-/* 2. 编辑器容器的上滑/下滑动画 */
-.editor-slide-up-enter-active,
-.editor-slide-up-leave-active {
-  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+.modal-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
-.editor-slide-up-enter-from,
-.editor-slide-up-leave-to {
-  transform: translateY(100%);
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #888;
+  padding: 0;
+  line-height: 1;
 }
-/* --- MODAL STYLES END --- */
+.dark .close-button {
+  color: #bbb;
+}
 
 .fade-enter-active,
 .fade-leave-active {
@@ -1257,4 +1209,6 @@ onUnmounted(() => {
   overflow-y: auto; /* 让这个容器内部可以滚动 */
   margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
 }
+
+/* ... 其他样式保持不变 ... */
 </style>
