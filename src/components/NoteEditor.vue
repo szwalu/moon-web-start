@@ -449,94 +449,78 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="editor-container">
-    <div class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
-      <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
-        <textarea
-          ref="textareaRef"
-          v-model="contentModel"
-          :placeholder="$t('notes.content_placeholder')"
-          class="mb-2 w-full border rounded p-2"
-          required
-          :disabled="isLoading"
-          :maxlength="maxNoteLength"
-          autocomplete="off"
-        />
-        <div class="editor-footer">
-          <div class="status-bar">
-            <span class="char-counter">
-              {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-            </span>
-            <span v-if="lastSavedTime" class="char-counter ml-4">
-              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-            </span>
-          </div>
-          <div class="emoji-bar">
-            <button
-              type="submit"
-              class="form-button flex-2"
-              :disabled="isLoading || !contentModel"
-            >
-              💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-            </button>
-          </div>
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+      <textarea
+        ref="textareaRef"
+        v-model="contentModel"
+        :placeholder="$t('notes.content_placeholder')"
+        class="mb-2 w-full border rounded p-2"
+        required
+        :disabled="isLoading"
+        :maxlength="maxNoteLength"
+        autocomplete="off"
+      />
+      <div class="editor-footer">
+        <div class="status-bar">
+          <span class="char-counter">
+            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+          </span>
+          <span v-if="lastSavedTime" class="char-counter ml-4">
+            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+          </span>
         </div>
-      </form>
-      <div
-        v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-        ref="editorSuggestionsRef"
-        class="tag-suggestions editor-suggestions"
-        :style="editorSuggestionsStyle"
-      >
-        <ul>
-          <li
-            v-for="(tag, index) in editorTagSuggestions"
-            :key="tag"
-            :class="{ highlighted: index === highlightedEditorIndex }"
-            @mousedown.prevent="selectEditorTag(tag)"
+        <div class="emoji-bar">
+          <button
+            type="submit"
+            class="form-button flex-2"
+            :disabled="isLoading || !contentModel"
           >
-            {{ tag }}
-          </li>
-        </ul>
+            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+          </button>
+        </div>
       </div>
+    </form>
+    <div
+      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
+      ref="editorSuggestionsRef"
+      class="tag-suggestions editor-suggestions"
+      :style="editorSuggestionsStyle"
+    >
+      <ul>
+        <li
+          v-for="(tag, index) in editorTagSuggestions"
+          :key="tag"
+          :class="{ highlighted: index === highlightedEditorIndex }"
+          @mousedown.prevent="selectEditorTag(tag)"
+        >
+          {{ tag }}
+        </li>
+      </ul>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 新增：外层容器，只负责定位和动画 */
-.editor-container {
+/* --- 全新的 Flexbox / Fixed 布局 --- */
+.note-editor-wrapper {
+  /* 1. 关键：让容器固定在底部 */
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  z-index: 1002;
-  display: flex; /* 使用flex布局来让内部的note-editor-wrapper可以居中 */
-  justify-content: center; /* 水平居中 */
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
 
-  /* 动画效果现在作用于外层容器 */
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.4, 1);
-  will-change: transform;
-
-  /* 让外层容器的空白区域不拦截鼠标事件 */
-  pointer-events: none;
-}
-
-/* 修改：内层容器，只负责外观和内部滚动布局 */
-.note-editor-wrapper {
-  /* 移除所有定位属性 (position, bottom, left, z-index, etc.) */
-  width: 100%;
-  max-width: 480px; /* PC端最大宽度，手机端自动100% */
-  max-height: 75vh;
-
+  /* 2. 自身样式 */
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
 
+  /* 3. 防止在手机上过高，遮住所有内容 */
+  max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
-
-  /* 恢复内层容器的鼠标事件 */
-  pointer-events: auto;
 }
 
 .dark .note-editor-wrapper {
@@ -548,15 +532,15 @@ watch(easymde, (newEditorInstance) => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  overflow: hidden; /* 防止子元素溢出 */
 }
 
+/* --- 恢复并整合的原有样式 --- */
 .editor-footer {
-  flex-shrink: 0;
+  flex-shrink: 0; /* 防止被压缩 */
   padding: 0.5rem 0.75rem;
 }
 
-/* 其他样式保持不变 */
 .status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
 .char-counter{font-size:12px;color:#999}
 .dark .char-counter{color:#aaa}
@@ -565,6 +549,7 @@ watch(easymde, (newEditorInstance) => {
 .form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
 .dark .form-button{background-color:#404040;color:#fff;border-color:#555}
 .form-button:disabled{opacity:.6;cursor:not-allowed}
+
 .tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
 .dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
 .tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
@@ -572,4 +557,52 @@ watch(easymde, (newEditorInstance) => {
 .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
 .dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
 .editor-suggestions{position:absolute}
+</style>
+
+<style>
+/* Global styles */
+.editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+  background-color: #fff;
+}
+.CodeMirror {
+  border: 1px solid #ccc!important;
+  border-top: none!important;
+  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
+  font-size: 16px!important;
+  line-height: 1.6!important;
+
+  /* 关键：让编辑器区域占据所有剩余空间 */
+  flex-grow: 1;
+
+  /* 关键：设置一个初始的最小高度 */
+  min-height: 130px;
+
+  /* 保留，当内容超出max-height时，内部可以滚动 */
+  overflow-y: auto!important;
+}
+.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
+
+/* Heading font size fix in editor */
+.CodeMirror .cm-header { font-weight: bold; }
+.CodeMirror .cm-header-1 { font-size: 1.6em; }
+.CodeMirror .cm-header-2 { font-size: 1.4em; }
+.CodeMirror .cm-header-3 { font-size: 1.2em; }
+.CodeMirror .cm-header-4 { font-size: 1.1em; }
+.CodeMirror .cm-header-5 { font-size: 1.0em; }
+.CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
+
+/* --- 根据设置动态修改编辑器字号的 CSS 规则 --- */
+.CodeMirror.font-size-small { font-size: 14px !important; }
+.CodeMirror.font-size-medium { font-size: 16px !important; }
+.CodeMirror.font-size-large { font-size: 20px !important; }
 </style>
