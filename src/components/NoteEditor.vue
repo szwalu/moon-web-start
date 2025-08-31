@@ -521,6 +521,7 @@ watch(easymde, (newEditorInstance) => {
   /* 4. 关键：开启Flexbox布局 */
   display: flex;
   flex-direction: column;
+  transition: bottom 0.25s cubic-bezier(0.2, 0.8, 0.4, 1);
 }
 
 .dark .note-editor-wrapper {
