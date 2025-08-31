@@ -427,13 +427,9 @@ watch(easymde, (newEditorInstance) => {
     // 并且我们正在编辑一个旧笔记
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
-      const doc = cm.getDoc()
-      const lastLine = doc.lastLine()
 
       // 在下一个Tick中安全地移动光标，确保DOM已更新
       nextTick(() => {
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        cm.scrollIntoView(cm.getCursor(), 60)
         // --- 新增的画龙点睛之笔 ---
         cm.focus() // 激活编辑器，让光标显形并闪动
       })
@@ -512,7 +508,15 @@ textarea{visibility:hidden}.status-bar{display:flex;justify-content:flex-start;a
   z-index: 1001;
   background-color: #fff;
 }
-.CodeMirror{border:1px solid #ccc!important;border-top:none!important;border-radius:0 0 6px 6px;font-size:16px!important;line-height:1.6!important;overflow-y:auto!important}
+.CodeMirror {
+  border:1px solid #ccc!important;
+  border-top:none!important;
+  border-radius:0 0 6px 6px;
+  font-size:16px!important;
+  line-height:1.6!important;
+  overflow-y:auto!important;
+  padding-top: 10px !important; /* <-- 添加这一行  */
+}
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
 /* Heading font size fix in editor */
