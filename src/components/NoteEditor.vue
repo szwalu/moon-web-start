@@ -516,6 +516,7 @@ watch(easymde, (newEditorInstance) => {
 
   /* 关键修改：让动画作用于 transform 属性 */
   transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.4, 1);
+  will-change: transform;
 }
 
 .dark .note-editor-wrapper {
