@@ -561,9 +561,4 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
-
-/* --- 为编辑旧笔记模式增加顶部内边距 --- */
-.editing-mode .CodeMirror {
-  padding-top: 45px !important;
-}
 </style>
