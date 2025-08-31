@@ -842,11 +842,9 @@ function closeEditorModal() {
 
       <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
         <div class="editor-modal-content">
-          <div class="modal-header">
-            <button class="close-button" @click="closeEditorModal">
-              &times;
-            </button>
-          </div>
+          <button class="close-button" @click="closeEditorModal">
+            &times;
+          </button>
           <NoteEditor
             v-model="content"
             :editing-note="editingNote"
@@ -1079,6 +1077,7 @@ function closeEditorModal() {
 }
 
 .editor-modal-content {
+  position: relative; /* 新增：为关闭按钮提供定位锚点 */
   background: white;
   padding: 1.5rem;
   border-radius: 12px;
@@ -1089,18 +1088,13 @@ function closeEditorModal() {
   flex-direction: column;
 }
 
-.dark .editor-modal-content {
-  background: #2a2a2a;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
+/* .modal-header 规则已被完全删除 */
 
 .close-button {
+  position: absolute;   /* 修改：使用绝对定位 */
+  top: 1rem;            /* 修改：定位到顶部 */
+  right: 1.25rem;       /* 修改：定位到右侧 */
+  z-index: 10;          /* 新增：确保按钮在最上层 */
   background: none;
   border: none;
   font-size: 28px;
@@ -1108,9 +1102,6 @@ function closeEditorModal() {
   color: #888;
   padding: 0;
   line-height: 1;
-}
-.dark .close-button {
-  color: #bbb;
 }
 
 .fade-enter-active,
