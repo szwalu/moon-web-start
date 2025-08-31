@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
-import { debounce } from 'lodash-es'
 
 // 1. 直接引入天气数据映射文件
 import { cityMap, weatherMap } from '@/utils/weatherMap'
@@ -52,6 +51,14 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 函数定义 ---
+function handleViewportResize() {
+  if (editorWrapperRef.value) {
+    // window.visualViewport.height 能精确获取到排除键盘和状态栏后的可见高度
+    const visibleHeight = window.visualViewport.height
+    // 将这个高度应用为我们编辑器抽屉的最大高度
+    editorWrapperRef.value.style.maxHeight = `${visibleHeight}px`
+  }
+}
 
 // 天气相关逻辑函数
 function getCachedWeather() {
@@ -167,8 +174,6 @@ function updateEditorHeight() {
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
 }
-
-const debouncedUpdateEditorHeight = debounce(updateEditorHeight, 150)
 
 function destroyEasyMDE() {
   if (easymde.value) {
@@ -341,6 +346,7 @@ function handleSubmit() {
 }
 
 // --- 生命周期钩子 & 监听器 ---
+// onMounted 钩子
 onMounted(async () => {
   let initialContent = props.modelValue
 
@@ -364,12 +370,26 @@ onMounted(async () => {
     }
   }
 
-  window.addEventListener('resize', debouncedUpdateEditorHeight)
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.addEventListener('resize', debouncedUpdateEditorHeight)
+
+  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
+  window.visualViewport.addEventListener('resize', handleViewportResize)
+  // 立即执行一次，以确保初始状态正确
+  handleViewportResize()
+  // <<< --- 修改部分结束 --- >>>
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  window.removeEventListener('resize', debouncedUpdateEditorHeight)
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
+
+  // 移除新的 visualViewport 监听
+  window.visualViewport.removeEventListener('resize', handleViewportResize)
+  // <<< --- 修改部分结束 --- >>>
 })
 
 watch(() => props.modelValue, (newValue) => {
