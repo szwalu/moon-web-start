@@ -23,13 +23,21 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'clo
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 
+// UI refs
 const showTagDropdown = ref(false)
 const tagDropdownContainerRef = ref<HTMLDivElement | null>(null)
-const footerBottomOffset = ref(0)
 const editorFooterRef = ref<HTMLElement | null>(null)
+const editorScrollContainerRef = ref<HTMLElement | null>(null)
+const editorToolbarRef = ref<HTMLElement | null>(null)
 
-// 固定底部操作栏的高度（默认值，Mounted 时会更新）
+// 底部偏移 (键盘高度)
+const footerBottomOffset = ref(0)
+// 实际 footer 高度（mounted 时会取）
 const baseFooterHeight = ref(70)
+// toolbar 高度
+const toolbarHeight = ref(0)
+// 动态计算编辑区最大高度（像素）
+const maxEditorHeight = ref<number | null>(null)
 
 const scrollContainerPaddingBottom = computed(() => {
   return footerBottomOffset.value + baseFooterHeight.value
@@ -52,9 +60,11 @@ const editor = useEditor({
   onUpdate: ({ editor: currentEditor }) => {
     emit('update:modelValue', currentEditor.getHTML())
     emit('triggerAutoSave')
+    nextTick(() => ensureCaretVisible())
   },
   onFocus() {
     handleViewportResize()
+    nextTick(() => ensureCaretVisible())
   },
   editorProps: {
     attributes: {
@@ -64,10 +74,69 @@ const editor = useEditor({
 })
 
 function handleViewportResize() {
-  if (!window.visualViewport)
+  if (!window.visualViewport) {
+    footerBottomOffset.value = 0
     return
-  const keyboardHeight = window.innerHeight - window.visualViewport.height
+  }
+  const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height)
   footerBottomOffset.value = keyboardHeight
+  updateSizes()
+}
+
+// 根据 toolbar/footer/viewport 动态计算编辑区最大高度
+function updateSizes() {
+  if (editorFooterRef.value)
+    baseFooterHeight.value = editorFooterRef.value.offsetHeight || baseFooterHeight.value
+  if (editorToolbarRef.value)
+    toolbarHeight.value = editorToolbarRef.value.offsetHeight || toolbarHeight.value
+
+  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight
+  const buffer = 20
+  const candidate = Math.max(120, viewportHeight - toolbarHeight.value - baseFooterHeight.value - buffer)
+  maxEditorHeight.value = candidate
+}
+
+// 确保光标/选区在编辑容器可视区内（上方留 12px 缓冲）
+function ensureCaretVisible() {
+  if (!editor.value || !editorScrollContainerRef.value)
+    return
+  try {
+    const sel = editor.value.state.selection
+    const pos = Math.max(0, sel.from)
+    const coords = (editor.value.view as any).coordsAtPos(pos)
+    if (!coords)
+      throw new Error('no coords')
+
+    const containerRect = editorScrollContainerRef.value.getBoundingClientRect()
+    const padding = 12
+    const containerBottomLimit = containerRect.bottom - baseFooterHeight.value - 4
+
+    if (coords.bottom > containerBottomLimit - padding) {
+      const delta = coords.bottom - (containerBottomLimit - padding)
+      editorScrollContainerRef.value.scrollTop += Math.ceil(delta)
+    }
+    else if (coords.top < containerRect.top + padding) {
+      const delta = (containerRect.top + padding) - coords.top
+      editorScrollContainerRef.value.scrollTop -= Math.ceil(delta)
+    }
+  }
+  catch (err) {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      if (!rect)
+        return
+      const containerRect = editorScrollContainerRef.value.getBoundingClientRect()
+      const padding = 12
+      const containerBottomLimit = containerRect.bottom - baseFooterHeight.value - 4
+
+      if (rect.bottom > containerBottomLimit - padding)
+        editorScrollContainerRef.value.scrollTop += Math.ceil(rect.bottom - (containerBottomLimit - padding))
+      else if (rect.top < containerRect.top + padding)
+        editorScrollContainerRef.value.scrollTop -= Math.ceil((containerRect.top + padding) - rect.top)
+    }
+  }
 }
 
 const charCount = computed(() => editor.value?.storage.characterCount.characters() ?? 0)
@@ -110,14 +179,54 @@ watch(showTagDropdown, (isOpen) => {
   }
 })
 
+let editorDomListenersAdded = false
+function addEditorDomListeners() {
+  nextTick(() => {
+    const dom = editor.value?.view?.dom as HTMLElement | undefined
+    if (!dom || editorDomListenersAdded)
+      return
+    dom.addEventListener('keyup', ensureCaretVisible)
+    dom.addEventListener('input', ensureCaretVisible)
+    dom.addEventListener('click', ensureCaretVisible)
+    dom.addEventListener('touchend', () => setTimeout(ensureCaretVisible, 60))
+    editorDomListenersAdded = true
+  })
+}
+
+function removeEditorDomListeners() {
+  const dom = editor.value?.view?.dom as HTMLElement | undefined
+  if (!dom || !editorDomListenersAdded)
+    return
+  dom.removeEventListener('keyup', ensureCaretVisible)
+  dom.removeEventListener('input', ensureCaretVisible)
+  dom.removeEventListener('click', ensureCaretVisible)
+  editorDomListenersAdded = false
+}
+
 onMounted(async () => {
   if (editorFooterRef.value)
-    baseFooterHeight.value = editorFooterRef.value.offsetHeight
+    baseFooterHeight.value = editorFooterRef.value.offsetHeight || baseFooterHeight.value
+  if (editorToolbarRef.value)
+    toolbarHeight.value = editorToolbarRef.value.offsetHeight || toolbarHeight.value
+
+  updateSizes()
 
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportResize)
-    handleViewportResize()
+    window.visualViewport.addEventListener('resize', () => {
+      handleViewportResize()
+      updateSizes()
+      nextTick(() => ensureCaretVisible())
+    })
   }
+  else {
+    window.addEventListener('resize', () => {
+      handleViewportResize()
+      updateSizes()
+      nextTick(() => ensureCaretVisible())
+    })
+  }
+
+  addEditorDomListeners()
 
   if (!props.editingNote && !props.modelValue) {
     const weatherString = await fetchWeather()
@@ -126,19 +235,22 @@ onMounted(async () => {
       editor.value.commands.setContent(initialContent)
       editor.value.commands.focus('end')
       emit('update:modelValue', initialContent)
+      nextTick(() => ensureCaretVisible())
     }
   }
-
-  if (props.editingNote)
+  else {
     editor.value?.commands.focus('end')
-  else
-    editor.value?.commands.focus('end')
+    nextTick(() => ensureCaretVisible())
+  }
 })
 
 onBeforeUnmount(() => {
   if (window.visualViewport)
     window.visualViewport.removeEventListener('resize', handleViewportResize)
+  else
+    window.removeEventListener('resize', handleViewportResize)
 
+  removeEditorDomListeners()
   editor.value?.destroy()
   document.removeEventListener('click', closeDropdownOnClickOutside)
 })
@@ -155,7 +267,8 @@ function handleClose() {
 <template>
   <div class="editor-wrapper">
     <form class="editor-form" @submit.prevent="handleSubmit">
-      <div v-if="editor" class="editor-toolbar">
+      <!-- toolbar: 增加 ref 用于计算 toolbarHeight -->
+      <div v-if="editor" ref="editorToolbarRef" class="editor-toolbar">
         <div ref="tagDropdownContainerRef" class="tag-dropdown-container">
           <button type="button" :title="t('notes.insert_tag')" @click="showTagDropdown = !showTagDropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M5.5 7A1.5 1.5 0 1 0 4 5.5A1.5 1.5 0 0 0 5.5 7m15.41 9.41l-9.05-9.05a1 1 0 0 0-.7-.29H4a2 2 0 0 0-2 2v7.16a1 1 0 0 0 .29.7l9.05 9.05a1 1 0 0 0 1.41 0l7.16-7.16a1 1 0 0 0 0-1.41" /></svg>
@@ -169,9 +282,11 @@ function handleClose() {
             </div>
           </div>
         </div>
+
         <button type="button" :title="t('notes.task_list')" :class="{ 'is-active': editor.isActive('taskList') }" @click="editor.chain().focus().toggleTaskList().run()">
           <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 12l2 2l4-4m-5 8h-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5m-8 6h5m-5 2h5" /></svg>
         </button>
+
         <div class="divider" />
         <button type="button" :class="{ 'is-active': editor.isActive('bold') }" @click="editor.chain().focus().toggleBold().run()">B</button>
         <button type="button" :class="{ 'is-active': editor.isActive('italic') }" @click="editor.chain().focus().toggleItalic().run()">I</button>
@@ -181,18 +296,21 @@ function handleClose() {
         <button type="button" :class="{ 'is-active': editor.isActive('orderedList') }" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
       </div>
 
+      <!-- 编辑容器：加 ref、动态 maxHeight、以及 paddingBottom -->
       <div
+        ref="editorScrollContainerRef"
         class="editor-scroll-container"
         :class="[editorFontSizeClass]"
         :style="{
           paddingBottom: `${scrollContainerPaddingBottom}px`,
-          maxHeight: `calc(100vh - ${baseFooterHeight + footerBottomOffset}px)`,
+          maxHeight: maxEditorHeight ? `${maxEditorHeight}px` : '',
         }"
       >
         <EditorContent :editor="editor" />
       </div>
     </form>
 
+    <!-- footer 使用 transform 上移 -->
     <div
       ref="editorFooterRef"
       class="editor-footer"
@@ -219,18 +337,36 @@ function handleClose() {
 </template>
 
 <style>
+/* 编辑区不再强制填满：使用 max-height + 内部滚动 */
 .editor-scroll-container {
-   overflow-y: auto;
-   max-height: calc(100vh - 70px); /* 70px 是 footer 高度，可用 baseFooterHeight 动态算 */
-   min-height: 120px; /* 给编辑器一个最小高度，避免太小 */
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid #ccc;
   border-top: none;
   border-radius: 0 0 6px 6px;
   transition: padding-bottom 0.2s ease-out;
+  min-height: 120px; /* 最小高度 */
 }
 
-/* 其他所有样式保持不变 */
+/* 编辑器内容区域让高度由内容决定，避免一开始撑满 */
+.editor-scroll-container .ProseMirror {
+  padding: 0.5rem;
+  min-height: 120px;
+  outline: none;
+}
+
+/* toolbar / tag dropdown / divider / buttons */
+.editor-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background-color: #f8f8f8;
+}
 .editor-toolbar .divider {
   width: 1px;
   height: 16px;
@@ -285,13 +421,8 @@ function handleClose() {
 .dark .tag-dropdown-menu .dropdown-item-disabled {
   color: #aaa;
 }
-.editor-scroll-container .ProseMirror {
-  line-height: 1.5 !important;
-}
-.editor-scroll-container .ProseMirror p {
-  margin-top: 0.2em !important;
-  margin-bottom: 0.2em !important;
-}
+
+/* wrapper */
 .editor-wrapper {
   position: fixed;
   top: 0;
@@ -307,43 +438,7 @@ function handleClose() {
 }
 .dark .editor-wrapper { background-color: #1c1c1e; }
 
-.editor-form {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.editor-toolbar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border: 1px solid #ccc;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  background-color: #f8f8f8;
-}
-.ProseMirror {
-  padding: 0.5rem;
-  min-height: 100%;
-  outline: none;
-}
-ul[data-type="taskList"] {
-  list-style: none;
-  padding: 0;
-}
-ul[data-type="taskList"] li {
-  display: flex;
-  align-items: center;
-}
-ul[data-type="taskList"] li > label {
-  flex: 0 0 auto;
-  margin-right: 0.5rem;
-}
-ul[data-type="taskList"] li > div {
-  flex: 1 1 auto;
-}
+/* footer 使用 absolute + transform 上移 */
 .editor-footer {
   position: absolute;
   bottom: 0;
@@ -359,6 +454,7 @@ ul[data-type="taskList"] li > div {
   gap: 16px;
   flex-wrap: nowrap;
 }
+
 .status-bar {
   display: flex;
   flex-direction: column;
