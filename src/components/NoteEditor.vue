@@ -50,9 +50,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 函数定义 ---
-// in NoteEditor.vue <script setup>
-
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
     // 获取设备屏幕的“布局高度”（基本不变）
@@ -63,11 +60,8 @@ function handleViewportResize() {
     // 两者之差，就是键盘 + 输入法工具栏的总高度
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
 
-    // 将抽屉的 bottom 值设置为键盘的高度，把它“顶”上去
+    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
     editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
-
-    // 同时，将抽屉的最大高度设置为可视区域的高度，防止它超出屏幕
-    editorWrapperRef.value.style.maxHeight = `${visualViewportHeight}px`
   }
 }
 
