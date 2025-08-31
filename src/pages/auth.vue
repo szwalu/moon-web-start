@@ -1077,31 +1077,42 @@ function closeEditorModal() {
 }
 
 .editor-modal-content {
-  position: relative; /* 新增：为关闭按钮提供定位锚点 */
+  position: relative;
   background: white;
-  padding: 1.5rem;
+  /* 关键修改：移除了顶部的内边距 (padding-top)，但保留了左右和底部的 */
+  padding: 0 1.5rem 1.5rem;
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   width: 100%;
   max-width: 480px;
   display: flex;
   flex-direction: column;
+  /* 新增：防止内部组件的边角溢出圆角容器 */
+  overflow: hidden;
 }
 
-/* .modal-header 规则已被完全删除 */
+.dark .editor-modal-content {
+  background: #2a2a2a;
+}
 
 .close-button {
-  position: absolute;   /* 修改：使用绝对定位 */
-  top: 1rem;            /* 修改：定位到顶部 */
-  right: 1.25rem;       /* 修改：定位到右侧 */
-  z-index: 10;          /* 新增：确保按钮在最上层 */
+  position: absolute;
+  /* 关键修改：重新定位按钮，让它悬浮在编辑器工具栏的右上方 */
+  top: 6px;
+  right: 8px;
+  /* 关键修改：提高层级，确保按钮在最上层 */
+  z-index: 1003;
   background: none;
   border: none;
   font-size: 28px;
   cursor: pointer;
-  color: #888;
+  color: #aaa; /* 调整了颜色以便在工具栏背景上更清晰 */
   padding: 0;
   line-height: 1;
+}
+
+.dark .close-button {
+  color: #aaa;
 }
 
 .fade-enter-active,
