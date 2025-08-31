@@ -608,10 +608,9 @@ watch(easymde, (newEditorInstance) => {
 
 @media screen and (min-width: 501px) {
   .note-editor-wrapper {
-    width: 480px;
-    left: 50%;
-    /* 使用 transform 将元素向左平移自身宽度的一半，实现精确居中 */
-    transform: translateX(-50%);
+    width: 480px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
   }
 }
 </style>
