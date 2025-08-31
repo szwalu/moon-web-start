@@ -871,19 +871,26 @@ onUnmounted(() => {
         +
       </button>
 
-      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
-        <div class="editor-container-flomo">
-          <NoteEditor
-            ref="noteEditorRef" v-model="content"
-            :editing-note="editingNote"
-            :is-loading="loading"
-            :all-tags="allTags"
-            :max-note-length="maxNoteLength"
-            :last-saved-time="lastSavedTime"
-            @submit="handleSubmit"
-            @trigger-auto-save="debouncedSaveNote"
-          />
-        </div>
+      <div class="auth-container">
+        <Transition name="modal-fade">
+          <div v-if="showEditorModal" class="editor-overlay" @click="closeEditorModal" />
+        </Transition>
+
+        <Transition name="editor-slide-up">
+          <div v-if="showEditorModal" class="editor-container-flomo">
+            <NoteEditor
+              ref="noteEditorRef"
+              v-model="content"
+              :editing-note="editingNote"
+              :is-loading="loading"
+              :all-tags="allTags"
+              :max-note-length="maxNoteLength"
+              :last-saved-time="lastSavedTime"
+              @submit="handleSubmit"
+              @trigger-auto-save="debouncedSaveNote"
+            />
+          </div>
+        </Transition>
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
@@ -1090,6 +1097,8 @@ onUnmounted(() => {
     background-color: #00c291;
 }
 
+/* --- MODAL STYLES START --- */
+/* [修改] .editor-overlay 只作为背景遮罩 */
 .editor-overlay {
   position: fixed;
   top: 0;
@@ -1097,29 +1106,30 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end; /* 核心：让内容从底部对齐 */
+  z-index: 999; /* z-index 比内容容器低 */
 }
-/* 包裹 NoteEditor 的容器，负责动画和定位 */
+
+/* [修改] .editor-container-flomo 作为独立的内容容器 */
 .editor-container-flomo {
+  position: fixed; /* 改为 fixed 定位 */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto; /* 水平居中 */
   width: 100%;
   max-width: 480px; /* 在桌面端保持一个最大宽度 */
   background-color: white;
   border-radius: 12px 12px 0 0; /* 仅顶部有圆角 */
   box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
-
-  /* 平滑向上滑动动画 */
-  transform: translateY(100%);
-  animation: slide-up 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+  z-index: 1000; /* z-index 比遮罩高，确保在最上层 */
 }
 
 .dark .editor-container-flomo {
   background-color: #1e1e1e; /* 深色模式背景 */
 }
 
-/* 定义向上滑动动画 */
+/* [删除] 旧的 @keyframes slide-up 动画，不再需要 */
+/*
 @keyframes slide-up {
   from {
     transform: translateY(100%);
@@ -1128,6 +1138,29 @@ onUnmounted(() => {
     transform: translateY(0);
   }
 }
+*/
+
+/* [新增] Vue Transition 动画类 */
+/* 1. 背景遮罩的渐入渐出动画 */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+/* 2. 编辑器容器的上滑/下滑动画 */
+.editor-slide-up-enter-active,
+.editor-slide-up-leave-active {
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.editor-slide-up-enter-from,
+.editor-slide-up-leave-to {
+  transform: translateY(100%);
+}
+/* --- MODAL STYLES END --- */
 
 .fade-enter-active,
 .fade-leave-active {
@@ -1224,6 +1257,4 @@ onUnmounted(() => {
   overflow-y: auto; /* 让这个容器内部可以滚动 */
   margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
 }
-
-/* ... 其他样式保持不变 ... */
 </style>
