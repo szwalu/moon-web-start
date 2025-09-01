@@ -37,12 +37,6 @@ const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
 const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -163,23 +157,40 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!easymde.value)
+  // 增加对 editorWrapperRef 的检查
+  if (!easymde.value || !editorWrapperRef.value)
     return
+
   const cm = easymde.value.codemirror
+
+  // [新增逻辑] 开始动态计算编辑器可用的实际最大高度
+  // 1. 获取整个组件包装器的高度
+  const wrapperHeight = editorWrapperRef.value.clientHeight
+  // 2. 获取内部的工具栏和页脚元素
+  const toolbar = editorWrapperRef.value.querySelector('.editor-toolbar')
+  const footer = editorWrapperRef.value.querySelector('.editor-footer')
+  // 3. 获取它们的高度
+  const toolbarHeight = toolbar ? toolbar.offsetHeight : 0
+  const footerHeight = footer ? footer.offsetHeight : 0
+
+  // 4. 计算出编辑器区域纯粹可用的最大高度
+  const actualMaxHeight = wrapperHeight - toolbarHeight - footerHeight - 5 // 减5像素作为缓冲
+
   const sizer = cm.display.sizer
   if (!sizer)
     return
   const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+
+  // [修改] 使用我们实时计算出的 actualMaxHeight，而不是旧的、固定的 maxEditorHeight
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, actualMaxHeight))
+
   cm.setSize(null, newHeight)
 
-  // [修改] 再次确认此处的强制滚动逻辑已被注释掉
-  /*
+  // [保留] 保留这个逻辑，它对于防止光标消失在屏幕底部至关重要
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
-  */
 }
 
 function destroyEasyMDE() {
@@ -439,8 +450,8 @@ watch(easymde, (newEditorInstance) => {
         // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // 3. [修改] 移除强制的60px边距，让浏览器自然处理滚动
-        cm.scrollIntoView(cm.getCursor())
+        // 3. 将光标滚动到可视区域内，这是修正布局的关键
+        cm.scrollIntoView(cm.getCursor(), 60)
 
         // 4. 作为最后的保险，再调用一次高度更新
         updateEditorHeight()
