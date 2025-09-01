@@ -42,29 +42,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 新增代码：开始 ---
-// 这个 ref 将用于动态存储和应用编辑器容器的高度
-const editorHeight = ref<string>('auto')
-
-function handleViewportResize() {
-  // 确保 visualViewport API 存在且我们的 DOM 元素也已准备好
-  if (window.visualViewport && editorWrapperRef.value) {
-    // 获取视窗的实时高度（键盘弹出时会变小）
-    const viewportHeight = window.visualViewport.height
-    // 获取编辑器容器顶部相对于视窗顶部的距离
-    const wrapperTop = editorWrapperRef.value.getBoundingClientRect().top
-
-    // 计算编辑器可用的最大高度
-    // 这个值是：视窗总高度 - 编辑器顶部的偏移量
-    const availableHeight = viewportHeight - wrapperTop
-
-    // 应用计算出的高度，并预留一点点安全边距（比如5px）
-    if (availableHeight > 0)
-      editorHeight.value = `${availableHeight - 5}px`
-  }
-}
-// --- 新增代码：结束 ---
-
 // Weather related logic functions
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
@@ -352,22 +329,10 @@ onMounted(async () => {
       cm.focus()
     }
   }
-
-  // --- 新增代码：开始 ---
-  // 在组件挂载后，添加对视窗大小变化的监听
-  window.visualViewport?.addEventListener('resize', handleViewportResize)
-  // 立即执行一次，以设置初始的正确高度
-  handleViewportResize()
-  // --- 新增代码：结束 ---
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-
-  // --- 新增代码：开始 ---
-  // 在组件销毁时，务必移除监听，防止内存泄漏
-  window.visualViewport?.removeEventListener('resize', handleViewportResize)
-  // --- 新增代码：结束 ---
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -384,7 +349,7 @@ watch(() => props.editingNote, (newNote, oldNote) => {
         const cm = easymde.value.codemirror
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        doc.setCursor(lastLine, doc.getLine(lastLine()).length)
         cm.focus()
       }
     })
@@ -419,12 +384,7 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div
-    ref="editorWrapperRef"
-    class="note-editor-wrapper"
-    :class="{ 'editing-mode': editingNote }"
-    :style="{ height: editorHeight }"
-  >
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
     <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -451,7 +411,7 @@ watch(easymde, (newEditorInstance) => {
             class="form-button flex-2"
             :disabled="isLoading || !contentModel"
           >
-            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+            💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
           </button>
         </div>
       </div>
@@ -477,45 +437,55 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* --- 一个由 JS 动态控制高度的 Flexbox 布局 --- */
 .note-editor-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   width: 100%;
+  max-width: 480px; /* Match auth.vue's max-width */
+  margin: 0 auto;
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
+  z-index: 1002;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+
+  /* --- 关键布局改动 开始 --- */
+  /* 使用 flexbox 来构建组件内部结构 */
   display: flex;
   flex-direction: column;
-  z-index: 1002;
-  /*
-    移除了 max-height，因为高度现在完全由 JS 的 :style 绑定来动态控制，
-    这可以防止 CSS 和 JS 之间的样式冲突。
-  */
+  /* 设定一个尊重视窗高度的最大值，对移动端尤其重要 */
+  max-height: 75dvh;
+  /* --- 关键布局改动 结束 --- */
 }
 
 .dark .note-editor-wrapper {
   background-color: #2c2c2e;
   border-top: 1px solid #48484a;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
 }
 
 .note-editor-form {
-  /* 1. Make the form a flex container for its children (the editor and the footer) */
+  padding: 0.75rem 1rem 0; /* 调整内边距 */
+  /* --- 关键布局改动 开始 --- */
+  /* 使表单成为一个 flex 容器 */
   display: flex;
   flex-direction: column;
-
-  /* 2. Make the form fill its parent wrapper */
+  /* 允许表单填满包装元素的可用空间 */
   flex: 1;
-
-  /* 3. A key property for nested flexbox scrolling.
-     Prevents the form from overflowing its parent when the editor grows. */
+  /* 这是嵌套 flex 滚动的关键属性 */
   min-height: 0;
-  overflow: hidden; /* Prevent children from overflowing */
+  overflow: hidden;
+  /* --- 关键布局改动 结束 --- */
 }
 
 .editor-footer {
-  /* This element should NOT grow or shrink. It has a fixed height. */
+  /* 此元素不应收缩 */
   flex-shrink: 0;
-  padding: 0.5rem 0.75rem;
-  z-index: 10; /* Ensure footer is above the editor text */
-  background-color: #fff; /* Give it a background to hide text scrolling behind it */
+  padding: 0.5rem 1rem 0.75rem;
+  background-color: #fff;
 }
 .dark .editor-footer {
   background-color: #2c2c2e;
@@ -537,57 +507,114 @@ watch(easymde, (newEditorInstance) => {
 .tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
 .dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
 .editor-suggestions{position:absolute}
+
+/* 桌面端布局调整 */
+@media (min-width: 768px) {
+  .note-editor-wrapper {
+    max-height: 80vh;
+  }
+}
 </style>
 
 <style>
-/* Global styles for EasyMDE */
+/* EasyMDE 的全局样式 */
 
-/* The EasyMDE container that replaces the textarea */
+/* 替代 textarea 的 EasyMDE 容器 */
 .note-editor-form > .EasyMDEContainer {
-    /* 1. Allow the editor container to grow and fill available space */
+    /* --- 关键布局改动 开始 --- */
+    /* 允许编辑器容器填充可用空间 */
     flex: 1;
-    /* 2. A crucial property for nested flexbox scrolling */
     min-height: 0;
-    /* 3. Make it a flex container to manage the toolbar and CodeMirror area */
+    /* 管理内部布局 */
     display: flex;
     flex-direction: column;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    /* --- 关键布局改动 结束 --- */
 }
 
 .editor-toolbar {
-  /* The toolbar should have a fixed height */
+  /* 工具栏高度固定 */
   flex-shrink: 0;
+  border-bottom: 1px solid #ccc !important;
+  border-radius: 6px 6px 0 0 !important;
   padding: 1px 3px !important;
-  min-height: 0 !important;
-  border: 1px solid #ccc;
-  border-top: none !important;
-  border-bottom: none !important;
-  border-radius: 6px 6px 0 0;
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: 1001;
-  background-color: #fff;
 }
+
 .CodeMirror {
-  border: 1px solid #ccc!important;
-  border-top: none!important;
-  border-radius: 0!important; /* Remove border-radius as it's now the middle part */
-  font-size: 16px!important;
-  line-height: 1.6!important;
-
-  /* --- KEY CHANGES --- */
-  /* 1. CRUCIAL: Let flexbox handle the height instead of JS. */
+  /* --- 关键布局改动 开始 --- */
+  /* 移除边框，因为边框现在在父容器上 */
+  border: none !important;
+  border-radius: 0 !important;
+  /* 核心：让 flexbox 控制高度，而不是 JS */
   height: 100% !important;
-
-  /* 2. It will now correctly fill the space given by its flex parent. */
   flex-grow: 1;
+  /* 其内部滚动条将在这个容器内完美工作 */
+  overflow-y: auto !important;
+  /* --- 关键布局改动 结束 --- */
 
-  /* 3. The internal scroller will work perfectly within this container. */
-  overflow-y: auto!important;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
 }
-.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
-/* Heading font size fix in editor */
+.editor-toolbar a, .editor-toolbar button {
+    padding-left: 2px !important;
+    padding-right: 2px !importan;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    line-height: 1 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+.editor-toolbar a i, .editor-toolbar button i {
+    font-size: 15px !important;
+    vertical-align: middle;
+}
+
+.editor-toolbar i.separator {
+    margin: 1px 3px !important;
+    border-width: 0 1px 0 0 !important;
+    height: 8px !important;
+}
+
+.dark .EasyMDEContainer {
+    border-color: #48484a !important;
+}
+
+.dark .editor-toolbar {
+    background-color: #2c2c2e !important;
+    border-color: #48484a !important;
+}
+
+.dark .CodeMirror {
+    background-color: #2c2c2e !important;
+    color: #fff !important;
+}
+
+.dark .editor-toolbar a {
+    color: #e0e0e0 !important;
+}
+
+.dark .editor-toolbar a.active {
+    background: #404040 !important;
+}
+
+@media (max-width:480px) {
+    .editor-toolbar {
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }
+    .editor-toolbar::-webkit-scrollbar {
+        display: none;
+        height: 0;
+    }
+}
+
+/* 编辑器内的标题字体大小修正 */
 .CodeMirror .cm-header { font-weight: bold; }
 .CodeMirror .cm-header-1 { font-size: 1.6em; }
 .CodeMirror .cm-header-2 { font-size: 1.4em; }
@@ -596,21 +623,13 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
 
-/* --- CSS rules for dynamically changing editor font size based on settings --- */
+/* --- 根据设置动态改变编辑器字体大小的 CSS 规则 --- */
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- [MODIFIED] PC Layout Correction --- */
+/* 这个媒体查询似乎来自旧版本，如果移动端优先的方案足够稳固，则不再需要。暂时保留。 */
 @media (min-width: 768px) {
-  .note-editor-wrapper {
-    /* Give it a more stable height on desktop */
-    height: 75vh;
-    max-height: 650px;
-  }
-
-  /* The mobile flex rules now work perfectly on desktop too, so we no longer need
-     to override .CodeMirror height here. These rules below are still good. */
   .note-editor-form {
     flex: 1;
     min-height: 0;
