@@ -50,32 +50,17 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// ---------- 最终版：把底部安全区交给 textarea 的 CSS，禁止任何 JS 推滚 ----------
+// 只负责把抽屉上移键盘高度；不再修改 textarea 的 padding/scroll-padding/scrollTop
 function handleViewportResize() {
   if (!editorWrapperRef.value)
     return
 
-  // 计算键盘高度，并把抽屉整体上移（这一步仅影响 wrapper，不影响 textarea 的滚动逻辑）
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
+
+  // 抽屉整体上移，给键盘让位
   editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
-
-  // 计算内部 footer（保存按钮/状态栏）高度
-  const wrapperEl = editorWrapperRef.value as HTMLElement
-  const footerEl = wrapperEl.querySelector('.editor-footer') as HTMLElement | null
-  const footerH = footerEl ? footerEl.offsetHeight : 0
-
-  // textarea 是真正的输入与滚动容器
-  const ta = textareaRef.value as HTMLTextAreaElement | null
-  if (ta) {
-    ta.style.boxSizing = 'border-box'
-    // 1) padding-bottom：只垫“按钮高度”，让内容别被内部按钮盖住
-    ta.style.paddingBottom = `${footerH + 8}px`
-    // 2) scroll-padding-bottom：按钮高度 + 键盘高度（浏览器滚动光标时会尊重它）
-    ta.style.setProperty('scroll-padding-bottom', `${footerH + keyboardHeight + 8}px`)
-    // 不要设置任何 scrollTop！保持用户向上滚动能到达第 1 行
-  }
 }
 
 // 天气相关逻辑函数
@@ -174,23 +159,9 @@ async function fetchWeather() {
   }
 }
 
-// ---------- 最终版：对 textarea 不做任何主动滚动，只更新 CSS 安全区 ----------
+// 交给布局解决遮挡问题，这里不再推滚
 function ensureCursorVisibleBottomOnly() {
-  const ta = textareaRef.value as HTMLTextAreaElement | null
-  if (!ta)
-    return
-
-  // 只需确保 scroll-padding-bottom 随键盘变化而更新（与 handleViewportResize 保持一致）
-  const layoutViewportHeight = window.innerHeight
-  const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
-  const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
-
-  const wrapperEl = editorWrapperRef.value as HTMLElement | null
-  const footerEl = wrapperEl?.querySelector('.editor-footer') as HTMLElement | null
-  const footerH = footerEl ? footerEl.offsetHeight : 0
-
-  // 这里仅设置样式，不触碰 scrollTop
-  ta.style.setProperty('scroll-padding-bottom', `${footerH + keyboardHeight + 8}px`)
+  // no-op
 }
 
 // 编辑器相关逻辑函数
@@ -535,42 +506,44 @@ watch(easymde, (newEditorInstance) => {
 
 <style scoped>
 /* --- 全新的 Flexbox / Fixed 布局 --- */
+/* 抽屉本身：固定在视口，允许我们用 JS 设置 bottom=键盘高 */
 .note-editor-wrapper {
-  /* 1. 关键：让容器固定在底部 */
   position: fixed;
-  bottom: 0;
+  top: 0;
   left: 0;
-  width: 100%;
-  z-index: 1002; /* 比编辑器的 toolbar 更高 */
-
-  /* 2. 自身样式 */
-  background-color: #fff;
-  border-top: 1px solid #e0e0e0;
-
-  /* 3. 防止在手机上过高，遮住所有内容 */
-  max-height: 75vh;
-
-  /* 4. 关键：开启Flexbox布局 */
+  right: 0;
+  /* 底部高度由 handleViewportResize() 动态设置 */
+  bottom: 0;
   display: flex;
   flex-direction: column;
+  /* 避免父级滚动干扰 */
+  overflow: hidden;
 }
 
-.dark .note-editor-wrapper {
-  background-color: #2c2c2e;
-  border-top: 1px solid #48484a;
-}
-
+/* 表单是纵向 flex：textarea 占满，footer 自然在下面，不覆盖 textarea */
 .note-editor-form {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden; /* 防止子元素溢出 */
+  min-height: 0;           /* 关键：允许子项收缩 */
+  overflow: hidden;        /* 让内部滚动交给 textarea */
 }
 
-/* --- 恢复并整合的原有样式 --- */
+/* 你的 textarea（类名可能是 tailwind 组合类，这里用元素选择器补一层保障） */
+.note-editor-form textarea {
+  flex: 1;
+  min-height: 0;           /* 关键：允许自身在容器内可滚 */
+  overflow: auto;          /* 自己成为滚动容器 */
+  /* 不要再有人为 padding-bottom，这会影响能滚到顶部 */
+}
+
+/* 底部按钮/状态条：占位显示，不覆盖 textarea */
 .editor-footer {
-  flex-shrink: 0; /* 防止被压缩 */
-  padding: 0.5rem 0.75rem;
+  flex: none;              /* 不伸缩，按内容高度占位 */
+  /* 不要 position: fixed/absolute/sticky；保持普通文流即可 */
+  /* 可选的视觉样式 */
+  background: var(--footer-bg, #fff);
+  border-top: 1px solid rgba(0,0,0,0.08);
 }
 
 .status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
