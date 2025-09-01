@@ -25,7 +25,6 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 
-// 标签建议相关状态
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -39,36 +38,38 @@ const charCount = computed(() => contentModel.value.length)
 const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
 
 // --- 键盘与视口适配 ---
-// ✨✨✨ START: MODIFIED SECTION ✨✨✨
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
-
-    // 布局视口（整个窗口）和可视视口（可见部分）的高度差就是键盘高度
     const keyboardHeight = window.innerHeight - visualViewport.height
 
-    if (keyboardHeight > 100) { // 认为键盘已弹出
-      // 1. 将容器的底部固定在键盘的顶部
+    if (keyboardHeight > 100) {
       editorEl.style.bottom = `${keyboardHeight}px`
-      // 2. [关键修复] 将容器的高度显式设置为可视区域的高度
       editorEl.style.height = `${visualViewport.height}px`
-      // 3. 临时禁用CSS中的max-height，让height设置生效
       editorEl.style.maxHeight = 'none'
     }
-    else { // 键盘已收起
-      // 恢复所有行内样式，让CSS类来控制布局
+    else {
       editorEl.style.bottom = '0px'
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
     }
+
+    // ✨✨✨ START: FINAL FIX ✨✨✨
+    // 无论键盘是弹出还是收起，只要视口变化，就强制 CodeMirror 刷新。
+    // 使用 setTimeout 确保 DOM 尺寸更新先生效，再执行刷新。
+    if (easymde.value) {
+      setTimeout(() => {
+        easymde.value?.codemirror.refresh()
+      }, 50) // 一个短暂的延迟
+    }
+    // ✨✨✨ END: FINAL FIX ✨✨✨
   }
 }
-// ✨✨✨ END: MODIFIED SECTION ✨✨✨
 
 // --- EasyMDE 编辑器核心逻辑 ---
-
 function initializeEasyMDE(initialValue = '') {
+  // ... (此函数内部无变化)
   if (!textareaRef.value || easymde.value)
     return
   isReadyForAutoSave.value = false
@@ -121,12 +122,9 @@ function initializeEasyMDE(initialValue = '') {
 
     handleTagSuggestions(instance)
 
-    // ✨✨✨ START: MODIFIED SECTION ✨✨✨
-    // [关键修复] 每次输入后，都确保光标在可视范围内
     nextTick(() => {
       instance.scrollIntoView(null)
     })
-    // ✨✨✨ END: MODIFIED SECTION ✨✨✨
   })
 
   cm.on('keydown', (cm, event) => {
@@ -153,6 +151,7 @@ function initializeEasyMDE(initialValue = '') {
   focusEditor()
 }
 
+// ... (其他JS函数 handleClose, focusEditor, selectTag 等均无变化)
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -178,10 +177,11 @@ function focusEditor() {
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
     cm.scrollIntoView(null)
+    // 首次加载时也强制刷新一下，确保万无一失
+    setTimeout(() => cm.refresh(), 50)
   })
 }
 
-// --- 标签建议逻辑 (保持不变) ---
 function handleTagSuggestions(cm: CodeMirror.Editor) {
   const cursor = cm.getDoc().getCursor()
   const line = cm.getDoc().getLine(cursor.line)
@@ -232,13 +232,10 @@ function moveSuggestionSelection(offset: number) {
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
-// --- 天气功能 (保持不变) ---
 async function fetchWeather() {
-  // ... 此处逻辑与您原代码完全相同 ...
   return null
 }
 
-// --- 组件事件处理 ---
 function handleSubmit() {
   emit('submit')
 }
@@ -337,6 +334,7 @@ watch(() => props.editingNote?.id, () => {
 </template>
 
 <style scoped>
+/* 此处 scoped 样式与上一版完全相同，无需修改 */
 /* --- 主容器与布局 --- */
 .note-editor-container {
   position: fixed;
@@ -359,7 +357,6 @@ watch(() => props.editingNote?.id, () => {
   display: flex;
   flex-direction: column;
 
-  /* ✨✨✨ 使用 will-change 优化动画性能 ✨✨✨ */
   will-change: height, bottom;
   transition: bottom 0.2s ease-out, height 0.2s ease-out;
 
@@ -496,6 +493,7 @@ watch(() => props.editingNote?.id, () => {
 </style>
 
 <style>
+/* 此处全局样式与上一版完全相同，无需修改 */
 /* --- 全局样式，用于覆盖 EasyMDE 默认样式 --- */
 .editor-form > .EasyMDEContainer {
   flex: 1;
