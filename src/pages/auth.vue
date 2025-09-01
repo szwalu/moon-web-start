@@ -779,9 +779,6 @@ function closeEditorModal() {
           </button>
           <Transition name="fade">
             <div v-if="showDropdown" class="dropdown-menu">
-              <div class="dropdown-item" @click.stop="toggleSearchBar">
-                {{ $t('notes.search_notes') }}
-              </div>
               <div class="dropdown-item" @click.stop="showSettingsModal = true; showDropdown = false">
                 {{ $t('settings.font_title') }}
               </div>
@@ -797,9 +794,17 @@ function closeEditorModal() {
         <h1 class="page-title">
           {{ $t('notes.notes') }}
         </h1>
-        <button class="header-action-btn close-page-btn" @click="router.push('/')">
-          ×
-        </button>
+
+        <div class="header-actions">
+          <button class="header-action-btn" @click.stop="toggleSearchBar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
+              <path fill="currentColor" d="m19.6 21l-6.3-6.3q-.75.6-1.725.95T9.5 16q-2.725 0-4.612-1.888T3 9.5q0-2.725 1.888-4.612T9.5 3q2.725 0 4.612 1.888T16 9.5q0 1.1-.35 2.075T14.7 13.3l6.3 6.3zM9.5 14q1.875 0 3.188-1.313T14 9.5q0-1.875-1.313-3.188T9.5 5Q7.625 5 6.312 6.313T5 9.5q0 1.875 1.313 3.188T9.5 14" />
+            </svg>
+          </button>
+          <button class="header-action-btn close-page-btn" @click="router.push('/')">
+            ×
+          </button>
+        </div>
       </div>
 
       <Transition name="slide-fade">
@@ -1164,5 +1169,10 @@ function closeEditorModal() {
   margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
 }
 
-/* ... 其他样式保持不变 ... */
+/* [新增] 为右上角的按钮组添加 flex 布局 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* 让图标之间有一点间距 */
+}
 </style>
