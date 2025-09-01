@@ -1,430 +1,610 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import EasyMDE from 'easymde'
+import 'easymde/dist/easymde.min.css'
 
-/**
- * Flomo 风格底部抽屉式 NoteEditor
- * 关键点：
- * - 抽屉 .ne-sheet 使用 fixed 定位，bottom 动态上移 keyboardHeight + safe-area
- * - 表单区域 flex，当中 textarea 为唯一滚动容器（flex:1; min-height:0; overflow:auto）
- * - 不对 textarea 进行 scrollTop 人为干预，避免「只能滚到第4行」问题
- * - 自动保存采用防抖，父组件监听 @save(content) 执行持久化（保留你的持久化实现）
- */
+// 1. 直接引入天气数据映射文件
+import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-const props = defineProps<{
-  modelValue: boolean // 控制抽屉显示
-  content: string // v-model:content
-  isLoading?: boolean // 正在保存
-  maxNoteLength?: number // 最大长度
-  autoSaveDelayMs?: number // 自动保存延迟（防抖）
-  placeholder?: string // 占位文本
-  editingNote?: boolean // 是否编辑已有笔记（影响按钮文案）
-  title?: string // 抽屉标题
-}>()
+// --- 新增：引入设置 Store ---
+import { useSettingStore } from '@/stores/setting'
 
-const emit = defineEmits<{
-  (e: 'update:content', v: string): void
-  (e: 'save', v: string): void
-  (e: 'close'): void
-}>()
-
-// 默认值
-const isLoading = computed(() => props.isLoading ?? false)
-const maxNoteLength = computed(() => props.maxNoteLength ?? 3000)
-const autoDelay = computed(() => props.autoSaveDelayMs ?? 1200)
-const placeholder = computed(() => props.placeholder ?? '写点什么...')
-const editingNote = computed(() => props.editingNote ?? false)
-const titleText = computed(() => props.title ?? (editingNote.value ? '编辑笔记' : '新建笔记'))
-
-// 本地内容副本（避免父组件延迟更新导致的输入抖动）
-const localContent = ref(props.content ?? '')
-watch(() => props.content, (v) => {
-  if (v !== localContent.value)
-    localContent.value = v ?? ''
+// --- Props & Emits 定义 ---
+const props = defineProps({
+  modelValue: { type: String, required: true },
+  editingNote: { type: Object as () => any | null, default: null },
+  isLoading: { type: Boolean, default: false },
+  allTags: { type: Array as () => string[], default: () => [] },
+  maxNoteLength: { type: Number, default: 3000 },
+  lastSavedTime: { type: String, default: '' },
 })
 
-// v-model 同步
-watch(localContent, v => emit('update:content', v))
+const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
-// 统计 & 保存时间
-const charCount = computed(() => (localContent.value?.length ?? 0))
-const lastSavedTime = ref('')
-
-// 视口/键盘处理
-const sheetRef = ref<HTMLElement | null>(null)
+// --- 核心状态定义 (Refs, Computed, etc.) ---
+const { t } = useI18n()
+const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const bottomInset = ref(0) // bottom 偏移（键盘高度 + 安全区）
+const easymde = ref<EasyMDE | null>(null)
+const editorWrapperRef = ref<HTMLDivElement | null>(null)
+const isReadyForAutoSave = ref(false)
 
-function safeBottom(): number {
-  // 使用 CSS env(safe-area-inset-bottom) 的计算结果，JS 兜底 0
-  const el = document.createElement('div')
-  el.style.paddingBottom = 'env(safe-area-inset-bottom)'
-  document.body.appendChild(el)
-  const px = getComputedStyle(el).paddingBottom
-  document.body.removeChild(el)
-  const n = Number.parseFloat(px || '0')
-  if (Number.isFinite(n))
-    return n
-  return 0
+const showEditorTagSuggestions = ref(false)
+const editorTagSuggestions = ref<string[]>([])
+const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
+const highlightedEditorIndex = ref(-1)
+const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
+
+// --- MODIFICATION: Removed unused height variables ---
+// const minEditorHeight = 130
+// const isSmallScreen = window.innerWidth < 768
+// let maxEditorHeight
+// if (isSmallScreen)
+//   maxEditorHeight = window.innerHeight * 0.65
+// else
+//   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => { emit('update:modelValue', value) },
+})
+const charCount = computed(() => contentModel.value.length)
+
+function handleViewportResize() {
+  if (editorWrapperRef.value && window.visualViewport) {
+    const layoutViewportHeight = window.innerHeight
+    const visualViewportHeight = window.visualViewport.height
+    const keyboardHeight = layoutViewportHeight - visualViewportHeight
+    // JS唯一的职责：当键盘弹出时，把整个编辑器组件推上来
+    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
+  }
 }
 
-function updateBottomByKeyboard(): void {
-  const layoutH = window.innerHeight
-  const vvH = window.visualViewport ? window.visualViewport.height : layoutH
-  const keyboard = Math.max(0, layoutH - vvH)
-  bottomInset.value = keyboard + safeBottom()
+// 天气相关逻辑函数
+function getCachedWeather() {
+  const cached = localStorage.getItem('weatherData_notes_app')
+  if (!cached)
+    return null
+
+  const { data, timestamp } = JSON.parse(cached)
+  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
+  return isExpired ? null : data
 }
 
-function onViewportResize(): void {
-  updateBottomByKeyboard()
-  // 不改变 textarea 的 scrollTop，保持用户滚动边界完整
+function setCachedWeather(data: object) {
+  const cache = {
+    data,
+    timestamp: Date.now(),
+  }
+  localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
 }
 
-// 打开抽屉时聚焦 textarea（下一帧，避免布局抖动）
-watch(() => props.modelValue, async (v) => {
-  if (!v)
+function getMappedCityName(enCity: string): string {
+  if (!enCity)
+    return '未知地点'
+  const cityLower = enCity.trim().toLowerCase()
+  for (const [key, value] of Object.entries(cityMap)) {
+    const keyLower = key.toLowerCase()
+    if (
+      cityLower === keyLower
+      || cityLower.startsWith(keyLower)
+    )
+      return value
+  }
+  return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
+}
+
+function getWeatherText(code: number): { text: string; icon: string } {
+  return weatherMap[code] || { text: '未知天气', icon: '❓' }
+}
+
+async function fetchWeather() {
+  const cached = getCachedWeather()
+  if (cached)
+    return cached.formattedString
+
+  try {
+    let locData
+    try {
+      const locRes = await fetch('https://ipapi.co/json/')
+      if (!locRes.ok)
+        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
+      locData = await locRes.json()
+      if (locData.error)
+        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
+    }
+    catch (ipapiError: any) {
+      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
+      const backupRes = await fetch('https://ip-api.com/json/')
+      if (!backupRes.ok)
+        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
+      locData = await backupRes.json()
+      if (locData.status === 'fail')
+        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
+
+      locData.city = locData.city || locData.regionName
+      locData.latitude = locData.lat
+      locData.longitude = locData.lon
+    }
+
+    if (!locData?.latitude || !locData?.longitude)
+      throw new Error('从两个服务获取地理位置均失败。')
+
+    const lat = locData.latitude
+    const lon = locData.longitude
+    const city = getMappedCityName(locData.city)
+
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
+    if (!res.ok)
+      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
+    const data = await res.json()
+    if (data.error)
+      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
+
+    const temp = data.current.temperature_2m
+    const code = data.current.weathercode
+    const { text, icon } = getWeatherText(code)
+
+    const formattedString = `${city}/${temp}°C ${text} ${icon}`
+    setCachedWeather({ formattedString })
+
+    return formattedString
+  }
+  catch (e: any) {
+    console.error('获取天气信息过程中发生严重错误:', e)
+    return null
+  }
+}
+
+// --- MODIFICATION: Removed updateEditorHeight function entirely ---
+
+function destroyEasyMDE() {
+  if (easymde.value) {
+    easymde.value.toTextArea()
+    easymde.value = null
+  }
+}
+
+function applyEditorFontSize() {
+  if (!easymde.value)
     return
-  await nextTick()
-  updateBottomByKeyboard()
-  const ta = textareaRef.value
-  if (ta)
-    ta.focus()
+  const cmWrapper = easymde.value.codemirror.getWrapperElement()
+  cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+  const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
+  cmWrapper.classList.add(fontSizeClass)
+}
+
+function selectEditorTag(tag: string) {
+  if (!easymde.value)
+    return
+  const cm = easymde.value.codemirror
+  const doc = cm.getDoc()
+  const cursor = doc.getCursor()
+  const line = doc.getLine(cursor.line)
+  const textBeforeCursor = line.substring(0, cursor.ch)
+  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
+  if (lastHashIndex !== -1) {
+    const start = { line: cursor.line, ch: lastHashIndex }
+    const end = cursor
+    doc.replaceRange(`${tag} `, start, end)
+  }
+  showEditorTagSuggestions.value = false
+  cm.focus()
+}
+
+function moveEditorSelection(offset: number) {
+  if (showEditorTagSuggestions.value)
+    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
+}
+
+function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
+  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveEditorSelection(1)
+    }
+    else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveEditorSelection(-1)
+    }
+    else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
+    }
+    else if (event.key === 'Escape') {
+      event.preventDefault()
+      showEditorTagSuggestions.value = false
+    }
+  }
+}
+
+function initializeEasyMDE(initialValue = '') {
+  isReadyForAutoSave.value = false
+  const newEl = textareaRef.value
+  if (!newEl || easymde.value)
+    return
+  const customToolbar = [
+    {
+      name: 'tag',
+      action: (editor: any) => {
+        const cm = editor.codemirror
+        cm.getDoc().replaceSelection('#')
+        cm.focus()
+        editorTagSuggestions.value = props.allTags
+        if (editorTagSuggestions.value.length > 0) {
+          const coords = cm.cursorCoords()
+          editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+          showEditorTagSuggestions.value = true
+          highlightedEditorIndex.value = 0
+        }
+      },
+      className: 'fa fa-tag',
+      title: '插入标签 (Insert Tag)',
+    },
+    '|',
+    'bold',
+    'italic',
+    'heading',
+    '|',
+    'quote',
+    'unordered-list',
+    'ordered-list',
+    {
+      name: 'taskList',
+      action: (editor: any) => {
+        editor.codemirror.getDoc().replaceRange('- [ ] ', editor.codemirror.getDoc().getCursor())
+        editor.codemirror.focus()
+      },
+      className: 'fa fa-check-square-o',
+      title: 'Task List',
+    },
+    '|',
+    'link',
+    'image',
+    'table',
+    '|',
+    'preview',
+    'side-by-side',
+    'fullscreen',
+  ]
+  easymde.value = new EasyMDE({
+    element: newEl,
+    initialValue,
+    spellChecker: false,
+    placeholder: t('notes.content_placeholder'),
+    toolbar: customToolbar,
+    status: false,
+  })
+
+  nextTick(() => {
+    applyEditorFontSize()
+  })
+
+  const cm = easymde.value.codemirror
+
+  cm.on('change', (instance: any) => {
+    const editorContent = easymde.value?.value() ?? ''
+    if (contentModel.value !== editorContent)
+      contentModel.value = editorContent
+
+    if (!isReadyForAutoSave.value)
+      isReadyForAutoSave.value = true
+    else
+      emit('triggerAutoSave')
+
+    // --- MODIFICATION: Removed call to updateEditorHeight ---
+    // nextTick(() => updateEditorHeight())
+
+    const cursor = instance.getDoc().getCursor()
+    const line = instance.getDoc().getLine(cursor.line)
+    const textBefore = line.substring(0, cursor.ch)
+    const lastHashIndex = textBefore.lastIndexOf('#')
+    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+    const potentialTag = textBefore.substring(lastHashIndex)
+    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
+      showEditorTagSuggestions.value = false
+      return
+    }
+    const term = potentialTag.substring(1)
+    editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
+    if (editorTagSuggestions.value.length > 0) {
+      const coords = instance.cursorCoords()
+      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+      showEditorTagSuggestions.value = true
+      highlightedEditorIndex.value = 0
+    }
+    else {
+      showEditorTagSuggestions.value = false
+    }
+  })
+
+  cm.on('keydown', handleEditorKeyDown)
+  // --- MODIFICATION: Removed call to updateEditorHeight ---
+  // nextTick(() => updateEditorHeight())
+}
+
+function handleSubmit() {
+  emit('submit')
+}
+
+// --- 生命周期钩子 & 监听器 ---
+// onMounted 钩子
+onMounted(async () => {
+  let initialContent = props.modelValue
+
+  if (!props.editingNote && !props.modelValue) {
+    const weatherString = await fetchWeather()
+    if (weatherString) {
+      initialContent = `${weatherString}\n`
+      emit('update:modelValue', initialContent)
+    }
+  }
+
+  initializeEasyMDE(initialContent)
+
+  if (!props.editingNote && initialContent.includes('°C')) {
+    await nextTick()
+    if (easymde.value) {
+      const cm = easymde.value.codemirror
+      const doc = cm.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+      cm.focus()
+    }
+  }
+
+  window.visualViewport.addEventListener('resize', handleViewportResize)
+  handleViewportResize()
 })
 
-// 自动保存（防抖）
-let timer: number | null = null
-function onInput(): void {
-  if (timer !== null) {
-    window.clearTimeout(timer)
-    timer = null
-  }
-  timer = window.setTimeout(() => {
-    autoSave()
-  }, autoDelay.value)
-}
-
-function autoSave(): void {
-  if (!trimmed(localContent.value))
-    return
-  emit('save', localContent.value)
-  lastSavedTime.value = formatNow()
-}
-
-function handleSubmit(): void {
-  if (!trimmed(localContent.value))
-    return
-  // 先清掉自动保存计时，避免重复
-  if (timer !== null) {
-    window.clearTimeout(timer)
-    timer = null
-  }
-  emit('save', localContent.value)
-  lastSavedTime.value = formatNow()
-}
-
-function handleClose(): void {
-  emit('close')
-}
-
-function trimmed(s: string): string {
-  return (s || '').trim()
-}
-
-function formatNow(): string {
-  const d = new Date()
-  const hh = d.getHours().toString().padStart(2, '0')
-  const mm = d.getMinutes().toString().padStart(2, '0')
-  const ss = d.getSeconds().toString().padStart(2, '0')
-  return `${hh}:${mm}:${ss}`
-}
-
-// i18n：若全局存在 $t 就使用，否则给默认中文
-function t(key: string): string {
-  const inst = getCurrentInstance()
-  const proxy = (inst && (inst.proxy as any)) || null
-  const maybeT = proxy && typeof proxy.$t === 'function' ? proxy.$t : null
-  if (maybeT)
-    return String(maybeT(key))
-
-  const dict: Record<string, string> = {
-    'notes.saving': '保存中…',
-    'notes.save_note': '保存',
-    'notes.update_note': '更新',
-    'notes.auto_saved_at': '自动保存',
-  }
-  return dict[key] ?? key
-}
-
-onMounted(() => {
-  updateBottomByKeyboard()
-  if (window.visualViewport)
-    window.visualViewport.addEventListener('resize', onViewportResize)
-  else
-    window.addEventListener('resize', onViewportResize)
+onUnmounted(() => {
+  destroyEasyMDE()
+  window.visualViewport.removeEventListener('resize', handleViewportResize)
 })
 
-onBeforeUnmount(() => {
-  if (window.visualViewport)
-    window.visualViewport.removeEventListener('resize', onViewportResize)
-  else
-    window.removeEventListener('resize', onViewportResize)
-
-  if (timer !== null) {
-    window.clearTimeout(timer)
-    timer = null
-  }
+watch(() => props.modelValue, (newValue) => {
+  if (easymde.value && newValue !== easymde.value.value())
+    easymde.value.value(newValue)
 })
 
-// 供样式绑定
-const sheetStyle = computed(() => ({
-  bottom: `${bottomInset.value}px`,
-}))
+watch(() => props.editingNote, (newNote, oldNote) => {
+  if (newNote?.id !== oldNote?.id) {
+    destroyEasyMDE()
+    nextTick(() => {
+      initializeEasyMDE(props.modelValue)
+      if (easymde.value) {
+        const cm = easymde.value.codemirror
+        const doc = cm.getDoc()
+        const lastLine = doc.lastLine()
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        cm.focus()
+      }
+    })
+  }
+}, { deep: true })
+
+watch(() => settingsStore.noteFontSize, () => {
+  applyEditorFontSize()
+})
+
+watch(easymde, (newEditorInstance) => {
+  if (newEditorInstance) {
+    if (props.editingNote) {
+      const cm = newEditorInstance.codemirror
+
+      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
+      setTimeout(() => {
+        const doc = cm.getDoc()
+        const lastLine = doc.lastLine()
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+        cm.focus()
+
+        // --- MODIFICATION: Removed scrollIntoView and height update calls ---
+        // cm.scrollIntoView(cm.getCursor(), 60)
+        // updateEditorHeight()
+      }, 150) // 使用150毫秒延时，确保时机足够晚
+    }
+  }
+})
 </script>
 
 <template>
-  <!-- 遮罩层 -->
-  <transition name="fade">
-    <div
-      v-if="modelValue"
-      class="ne-overlay"
-      @click.self="handleClose"
-    />
-  </transition>
-
-  <!-- 底部抽屉 -->
-  <transition name="sheet">
-    <div
-      v-if="modelValue"
-      ref="sheetRef"
-      class="ne-sheet"
-      :style="sheetStyle"
-      role="dialog"
-      aria-modal="true"
-    >
-      <!-- 顶部拖拽条/标题区 -->
-      <div class="ne-header">
-        <div class="ne-grabber" />
-        <div class="ne-title">{{ titleText }}</div>
-        <button class="ne-close" type="button" @click="handleClose">✕</button>
-      </div>
-
-      <!-- 工具栏（可插槽自定义） -->
-      <div class="ne-toolbar">
-        <slot name="toolbar">
-          <div class="ne-toolbar-placeholder">
-            <span>#</span>
-            <span>🖼️</span>
-            <span>B</span>
-            <span>⋯</span>
-          </div>
-        </slot>
-      </div>
-
-      <!-- 编辑区 -->
-      <form class="ne-form" autocomplete="off" @submit.prevent="handleSubmit">
-        <textarea
-          ref="textareaRef"
-          v-model="localContent"
-          class="ne-textarea"
-          :placeholder="placeholder"
-          :maxlength="maxNoteLength"
-          :disabled="isLoading"
-          @input="onInput"
-          @keydown.meta.enter.stop.prevent="handleSubmit"
-          @keydown.ctrl.enter.stop.prevent="handleSubmit"
-        />
-
-        <!-- 底部信息 + 按钮（不覆盖 textarea，自身占位） -->
-        <div class="ne-footer">
-          <div class="ne-status">
-            <span class="ne-counter">
-              {{ charCount }} / {{ maxNoteLength }}
-            </span>
-            <span v-if="lastSavedTime" class="ne-saved">
-              💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-            </span>
-          </div>
-          <div class="ne-actions">
-            <button
-              class="ne-btn"
-              type="submit"
-              :disabled="isLoading || !trimmed(localContent)"
-            >
-              {{ isLoading ? t('notes.saving') : (editingNote ? t('notes.update_note') : t('notes.save_note')) }}
-            </button>
-          </div>
+  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+      <textarea
+        ref="textareaRef"
+        v-model="contentModel"
+        :placeholder="$t('notes.content_placeholder')"
+        class="mb-2 w-full border rounded p-2"
+        required
+        :disabled="isLoading"
+        :maxlength="maxNoteLength"
+        autocomplete="off"
+      />
+      <div class="editor-footer">
+        <div class="status-bar">
+          <span class="char-counter">
+            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
+          </span>
+          <span v-if="lastSavedTime" class="char-counter ml-4">
+            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+          </span>
         </div>
-      </form>
+        <div class="emoji-bar">
+          <button
+            type="submit"
+            class="form-button flex-2"
+            :disabled="isLoading || !contentModel"
+          >
+            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
+          </button>
+        </div>
+      </div>
+    </form>
+    <div
+      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
+      ref="editorSuggestionsRef"
+      class="tag-suggestions editor-suggestions"
+      :style="editorSuggestionsStyle"
+    >
+      <ul>
+        <li
+          v-for="(tag, index) in editorTagSuggestions"
+          :key="tag"
+          :class="{ highlighted: index === highlightedEditorIndex }"
+          @mousedown.prevent="selectEditorTag(tag)"
+        >
+          {{ tag }}
+        </li>
+      </ul>
     </div>
-  </transition>
+  </div>
 </template>
 
 <style scoped>
-/* ========== 动画 ========== */
-.fade-enter-active, .fade-leave-active { transition: opacity .18s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.sheet-enter-active, .sheet-leave-active {
-  transition: transform .24s ease, opacity .24s ease;
-}
-.sheet-enter-from, .sheet-leave-to {
-  transform: translateY(16px);
-  opacity: 0.98;
-}
-
-/* ========== 遮罩 ========== */
-.ne-overlay {
+/* --- 全新的 Flexbox / Fixed 布局 --- */
+.note-editor-wrapper {
+  /* 1. 关键：让容器固定在底部 */
   position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.32);
-  z-index: 998;
-}
-
-/* ========== 抽屉主体 ========== */
-.ne-sheet {
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* bottom 由 JS 按键盘高度动态调整 */
   bottom: 0;
-
-  z-index: 999;
-  margin: 0 auto;
-  max-width: 720px;
-
-  display: flex;
-  flex-direction: column;
-
-  border-top-left-radius: 14px;
-  border-top-right-radius: 14px;
-  background: #fff;
-  box-shadow: 0 -8px 20px rgba(0,0,0,.12);
-
-  min-height: min(88vh, 640px);
-  max-height: 88vh;
-  height: auto;
-
-  overflow: hidden;
-}
-
-/* header */
-.ne-header {
-  position: relative;
-  padding: 10px 44px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ne-grabber {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(0,0,0,.15);
-}
-.ne-title {
-  font-size: 14px;
-  color: #666;
-}
-.ne-close {
-  position: absolute;
-  right: 8px;
-  top: 6px;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 18px;
-  line-height: 32px;
-  cursor: pointer;
-}
-
-/* 工具栏（默认占位，可插槽覆盖） */
-.ne-toolbar {
-  padding: 6px 12px 0;
-  border-top: 1px solid rgba(0,0,0,.06);
-}
-.ne-toolbar-placeholder {
-  display: flex;
-  gap: 12px;
-  color: #666;
-  user-select: none;
-}
-
-/* 表单主体：textarea 自身滚动 */
-.ne-form {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* 文本域：唯一滚动容器 */
-.ne-textarea {
-  flex: 1;
-  min-height: 0;
+  left: 0;
   width: 100%;
-  border: none;
-  resize: none;
-  outline: none;
-  font-size: 17px;
-  line-height: 1.5;
-  padding: 12px 14px 12px;
-  overflow: auto;
-  background: #fff;
-  color: #111;
+  z-index: 1002; /* 比编辑器的 toolbar 更高 */
 
-  -webkit-overflow-scrolling: touch;
-}
+  /* 2. 自身样式 */
+  background-color: #fff;
+  border-top: 1px solid #e0e0e0;
 
-/* 底部栏：不覆盖 textarea，自身占位 */
-.ne-footer {
-  flex: none;
-  border-top: 1px solid rgba(0,0,0,.06);
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-  background: #fff;
-}
-.ne-status {
+  /* 3. 防止在手机上过高，遮住所有内容 */
+  max-height: 75vh;
+
+  /* 4. 关键：开启Flexbox布局 */
   display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: #666;
-  padding: 4px 2px;
-}
-.ne-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 4px;
-}
-.ne-btn {
-  appearance: none;
-  border: 0;
-  background: #22c55e;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.ne-btn:disabled {
-  opacity: .6;
-  cursor: not-allowed;
+  flex-direction: column;
 }
 
-/* 小屏优化 */
-@media (max-width: 420px) {
-  .ne-sheet {
-    min-height: 70vh;
-    max-height: 88vh;
+.dark .note-editor-wrapper {
+  background-color: #2c2c2e;
+  border-top: 1px solid #48484a;
+}
+
+.note-editor-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden; /* 防止子元素溢出 */
+}
+
+/* --- 恢复并整合的原有样式 --- */
+.editor-footer {
+  flex-shrink: 0; /* 防止被压缩 */
+  padding: 0.5rem 0.75rem;
+}
+
+.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
+.char-counter{font-size:12px;color:#999}
+.dark .char-counter{color:#aaa}
+.ml-4{margin-left:1rem}
+.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
+.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
+.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
+.form-button:disabled{opacity:.6;cursor:not-allowed}
+
+.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
+.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
+.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
+.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
+.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
+.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
+.editor-suggestions{position:absolute}
+</style>
+
+<style>
+/* Global styles */
+.editor-toolbar {
+  padding: 1px 3px !important;
+  min-height: 0 !important;
+  border: 1px solid #ccc;
+  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+  background-color: #fff;
+}
+.CodeMirror {
+  border: 1px solid #ccc!important;
+  border-top: none!important;
+  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
+  font-size: 16px!important;
+  line-height: 1.6!important;
+
+  /* 关键：让编辑器区域占据所有剩余空间 */
+  flex-grow: 1;
+
+  /* 关键：设置一个初始的最小高度 */
+  min-height: 130px;
+
+  /* 保留，当内容超出max-height时，内部可以滚动 */
+  overflow-y: auto!important;
+}
+.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
+
+/* Heading font size fix in editor */
+.CodeMirror .cm-header { font-weight: bold; }
+.CodeMirror .cm-header-1 { font-size: 1.6em; }
+.CodeMirror .cm-header-2 { font-size: 1.4em; }
+.CodeMirror .cm-header-3 { font-size: 1.2em; }
+.CodeMirror .cm-header-4 { font-size: 1.1em; }
+.CodeMirror .cm-header-5 { font-size: 1.0em; }
+.CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
+
+/* --- 根据设置动态修改编辑器字号的 CSS 规则 --- */
+.CodeMirror.font-size-small { font-size: 14px !important; }
+.CodeMirror.font-size-medium { font-size: 16px !important; }
+.CodeMirror.font-size-large { font-size: 20px !important; }
+
+/* --- MODIFICATION: Moved Flexbox rules to be global --- */
+/* The EasyMDE container that replaces the textarea */
+.note-editor-form > .EasyMDEContainer {
+  flex: 1; /* Allow the editor container to grow and fill available space */
+  min-height: 0; /* A crucial property for nested flexbox scrolling */
+  display: flex;
+  flex-direction: column;
+}
+.CodeMirror {
+  /* Override the inline height from JS and let flexbox handle it */
+  height: auto !important;
+}
+
+/* --- [FIX] PC Layout Correction --- */
+@media (min-width: 768px) {
+  .note-editor-wrapper {
+    /* On PC, give the wrapper a more stable height instead of just max-height */
+    height: 75vh;
+    max-height: 650px; /* A reasonable max height for large screens */
   }
-  .ne-textarea {
-    font-size: 16px;
+  .note-editor-form {
+    /* Allow the form to properly flex within its wrapper */
+    flex: 1;
+    min-height: 0;
   }
+  /* The rules for .EasyMDEContainer and .CodeMirror have been moved to global scope */
+}
+
+/*
+ * 核心修复：为CodeMirror内部滚动容器设置安全边距
+ * 这会告知浏览器，滚动到顶部时，在内容之上留出工具栏的高度；
+ * 滚动到底部时，在内容之下留出操作栏的高度。
+ * 所有的滚动行为（用户手动、浏览器自动）都会遵守这个规则。
+*/
+.cm-scroller {
+  scroll-padding-top: 40px;   /* 为顶部工具栏预估一个高度 */
+  scroll-padding-bottom: 60px; /* 为底部操作栏预估一个高度 */
 }
 </style>
