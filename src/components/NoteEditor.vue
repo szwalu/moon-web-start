@@ -36,6 +36,14 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -153,31 +161,55 @@ async function fetchWeather() {
   }
 }
 
-// --- MODIFICATION START: Replaced updateEditorHeight with ensureCursorVisible ---
-/**
- * A specialized function to ensure the cursor is not obscured by the bottom UI when needed.
- * It no longer concerns itself with or modifies the editor's height.
- */
-function ensureCursorVisible() {
+// ---------------- 新增：确保光标只在被底部遮挡时才向上滚动（替代 scrollIntoView 60 的强制行为） ----------------
+function ensureCursorVisibleBottomOnly(cm: any) {
+  // 兼容不同 CodeMirror 版本的滚动容器获取方式
+  const scroller = (cm as any).getScrollerElement
+    ? (cm as any).getScrollerElement()
+    : (cm.display && (cm.display.scroller || cm.display.sizer))
+        ? (cm.display.scroller || cm.display.sizer)
+        : null
+  if (!scroller)
+    return
+
+  const cur = cm.getCursor()
+  const coords = cm.cursorCoords(cur, 'local') // 相对 scroller 的坐标
+
+  const wrapper = editorWrapperRef.value as HTMLElement | null
+  const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement | null
+  const footer = wrapper?.querySelector('.editor-footer') as HTMLElement | null
+
+  const topSafe = (toolbar?.offsetHeight ?? 0) // 顶部工具栏高度（安全区）
+  const bottomSafe = (footer?.offsetHeight ?? 0) + 8 // 底部按钮/状态栏安全区，多留 8px
+
+  const visibleTop = scroller.scrollTop + topSafe
+  const visibleBottom = scroller.scrollTop + scroller.clientHeight - bottomSafe
+
+  // 如果光标被底部挡住，才向上滚；如果被顶部挡住，才向下滚一点
+  if (coords.bottom > visibleBottom)
+    scroller.scrollTop += (coords.bottom - visibleBottom)
+  else if (coords.top < visibleTop)
+    scroller.scrollTop += (coords.top - visibleTop)
+}
+
+// 编辑器相关逻辑函数
+function updateEditorHeight() {
   if (!easymde.value)
     return
   const cm = easymde.value.codemirror
+  const sizer = cm.display && cm.display.sizer
+  if (!sizer)
+    return
 
-  setTimeout(() => {
-    if (!easymde.value)
-      return // Re-check inside timeout
+  const contentHeight = sizer.scrollHeight + 5
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  cm.setSize(null, newHeight)
 
-    const scrollInfo = cm.getScrollInfo()
-    const cursorCoords = cm.cursorCoords(true, 'local')
-    const editorFooterHeight = 60 // Estimated height of the bottom action bar
-    const visibleBottom = scrollInfo.top + scrollInfo.clientHeight
-
-    // Key condition: Intervene only when the cursor is near the bottom of the visible area
-    if (cursorCoords.bottom > visibleBottom - editorFooterHeight)
-      cm.scrollIntoView(null, editorFooterHeight)
-  }, 0)
+  // 只在下一 tick 调整光标可视性（避免强制上方大空隙）
+  nextTick(() => {
+    ensureCursorVisibleBottomOnly(cm)
+  })
 }
-// --- MODIFICATION END ---
 
 function destroyEasyMDE() {
   if (easymde.value) {
@@ -313,8 +345,7 @@ function initializeEasyMDE(initialValue = '') {
     else
       emit('triggerAutoSave')
 
-    // --- MODIFICATION: Call the new function ---
-    nextTick(() => ensureCursorVisible())
+    nextTick(() => updateEditorHeight())
 
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
@@ -343,8 +374,7 @@ function initializeEasyMDE(initialValue = '') {
   })
 
   cm.on('keydown', handleEditorKeyDown)
-  // --- MODIFICATION: Removed the initial height update call as CSS now handles it ---
-  // nextTick(() => updateEditorHeight())
+  nextTick(() => updateEditorHeight())
 }
 
 function handleSubmit() {
@@ -438,13 +468,12 @@ watch(easymde, (newEditorInstance) => {
         // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
-        cm.scrollIntoView(cm.getCursor(), 60)
+        // 3. 使用更温和的可视调整（避免把顶部几行强制往下挤）
+        ensureCursorVisibleBottomOnly(cm)
 
-        // 4. 作为最后的保险，再调用一次我们新的函数
-        // --- MODIFICATION: Call the new function ---
-        ensureCursorVisible()
-      }, 150) // 使用150毫秒延时，确保时机足够晚
+        // 4. 作为最后的保险，再调用一次高度更新
+        updateEditorHeight()
+      }, 150)
     }
   }
 })
@@ -579,7 +608,7 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror {
   border: 1px solid #ccc!important;
   border-top: none!important;
-  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
+  border-radius: 0!important;
   font-size: 16px!important;
   line-height: 1.6!important;
 
@@ -589,8 +618,27 @@ watch(easymde, (newEditorInstance) => {
   /* 关键：设置一个初始的最小高度 */
   min-height: 130px;
 
-  /* 保留，当内容超出max-height时，内部可以滚动 */
-  overflow-y: auto!important;
+  /* 不要让外壳自己滚动（避免 sticky/top 参照错位） */
+  overflow: hidden !important;
+}
+
+/* 内部真正滚动的层（iOS 平滑滚动） */
+.CodeMirror-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 保证在 flex 容器里子项不会把父容器撑爆，仍然可滚动 */
+.note-editor-form > .EasyMDEContainer,
+.note-editor-form > .EasyMDEContainer .CodeMirror {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 给 sizer 一点上下内边距，避免工具栏/底部状态条正好覆盖 */
+.CodeMirror-sizer {
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
@@ -608,20 +656,6 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- MODIFICATION START: Moved key Flexbox rules to be global --- */
-/* The EasyMDE container that replaces the textarea */
-.note-editor-form > .EasyMDEContainer {
-  flex: 1; /* Allow the editor container to grow and fill available space */
-  min-height: 0; /* A crucial property for nested flexbox scrolling */
-  display: flex;
-  flex-direction: column;
-}
-.CodeMirror {
-  /* Override the inline height from JS and let flexbox handle it */
-  height: auto !important;
-}
-/* --- MODIFICATION END --- */
-
 /* --- [FIX] PC Layout Correction --- */
 @media (min-width: 768px) {
   .note-editor-wrapper {
@@ -634,6 +668,16 @@ watch(easymde, (newEditorInstance) => {
     flex: 1;
     min-height: 0;
   }
-  /* The rules for .EasyMDEContainer and .CodeMirror have been moved to global scope */
+  /* The EasyMDE container that replaces the textarea */
+  .note-editor-form > .EasyMDEContainer {
+    flex: 1; /* Allow the editor container to grow and fill available space */
+    min-height: 0; /* A crucial property for nested flexbox scrolling */
+    display: flex;
+    flex-direction: column;
+  }
+  .CodeMirror {
+    /* Override the inline height from JS and let flexbox handle it */
+    height: auto !important;
+  }
 }
 </style>
