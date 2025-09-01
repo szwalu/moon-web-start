@@ -4,13 +4,13 @@ import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
 
-// 1. 直接引入天气数据映射文件
+// 1. Directly import weather data mapping files
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-// --- 新增：引入设置 Store ---
+// --- Import Settings Store ---
 import { useSettingStore } from '@/stores/setting'
 
-// --- Props & Emits 定义 ---
+// --- Props & Emits Definition ---
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
@@ -22,7 +22,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
-// --- 核心状态定义 (Refs, Computed, etc.) ---
+// --- Core State Definition (Refs, Computed, etc.) ---
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -36,36 +36,19 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 const charCount = computed(() => contentModel.value.length)
 
-function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 获取设备屏幕的“布局高度”（基本不变）
-    const layoutViewportHeight = window.innerHeight
-    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
-    const visualViewportHeight = window.visualViewport.height
+/*
+ * REMOVED: handleViewportResize
+ * This JS-based viewport handling is complex and conflicts with a pure CSS approach.
+ * The parent overlay in auth.vue and the new CSS will now handle this implicitly.
+ */
 
-    // 两者之差，就是键盘 + 输入法工具栏的总高度
-    const keyboardHeight = layoutViewportHeight - visualViewportHeight
-
-    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
-    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
-  }
-}
-
-// 天气相关逻辑函数
+// Weather related logic functions
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -113,19 +96,19 @@ async function fetchWeather() {
     try {
       const locRes = await fetch('https://ipapi.co/json/')
       if (!locRes.ok)
-        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
+        throw new Error(`ipapi.co service responded with status: ${locRes.status}`)
       locData = await locRes.json()
       if (locData.error)
-        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
+        throw new Error(`ipapi.co service error: ${locData.reason}`)
     }
     catch (ipapiError: any) {
-      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
+      console.warn('ipapi.co failed, trying backup service ip-api.com...', ipapiError.message)
       const backupRes = await fetch('https://ip-api.com/json/')
       if (!backupRes.ok)
-        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
+        throw new Error(`ip-api.com service responded with status: ${backupRes.status}`)
       locData = await backupRes.json()
       if (locData.status === 'fail')
-        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
+        throw new Error(`ip-api.com service error: ${locData.message}`)
 
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
@@ -133,7 +116,7 @@ async function fetchWeather() {
     }
 
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('从两个服务获取地理位置均失败。')
+      throw new Error('Failed to get location from both services.')
 
     const lat = locData.latitude
     const lon = locData.longitude
@@ -141,10 +124,10 @@ async function fetchWeather() {
 
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
-      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
+      throw new Error(`open-meteo weather service responded with status: ${res.status}`)
     const data = await res.json()
     if (data.error)
-      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
+      throw new Error(`open-meteo weather service error: ${data.reason}`)
 
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
@@ -156,29 +139,17 @@ async function fetchWeather() {
     return formattedString
   }
   catch (e: any) {
-    console.error('获取天气信息过程中发生严重错误:', e)
+    console.error('A critical error occurred while fetching weather information:', e)
     return null
   }
 }
 
-// 编辑器相关逻辑函数
-function updateEditorHeight() {
-  if (!easymde.value)
-    return
-  const cm = easymde.value.codemirror
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-  const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-  cm.setSize(null, newHeight)
-
-  // 保持一个简单的内部滚动，配合外部布局调整
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
-}
+// Editor related logic functions
+/*
+ * REMOVED: updateEditorHeight
+ * This was the primary source of the problem. We will let Flexbox handle the
+ * editor's height automatically and robustly.
+ */
 
 function destroyEasyMDE() {
   if (easymde.value) {
@@ -261,7 +232,7 @@ function initializeEasyMDE(initialValue = '') {
         }
       },
       className: 'fa fa-tag',
-      title: '插入标签 (Insert Tag)',
+      title: 'Insert Tag',
     },
     '|',
     'bold',
@@ -314,7 +285,10 @@ function initializeEasyMDE(initialValue = '') {
     else
       emit('triggerAutoSave')
 
-    nextTick(() => updateEditorHeight())
+    /*
+     * REMOVED: Call to updateEditorHeight().
+     * Flexbox will now handle height changes automatically on content change.
+     */
 
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
@@ -343,15 +317,13 @@ function initializeEasyMDE(initialValue = '') {
   })
 
   cm.on('keydown', handleEditorKeyDown)
-  nextTick(() => updateEditorHeight())
 }
 
 function handleSubmit() {
   emit('submit')
 }
 
-// --- 生命周期钩子 & 监听器 ---
-// onMounted 钩子
+// --- Lifecycle Hooks & Watchers ---
 onMounted(async () => {
   let initialContent = props.modelValue
 
@@ -375,26 +347,17 @@ onMounted(async () => {
     }
   }
 
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.addEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
-  window.visualViewport.addEventListener('resize', handleViewportResize)
-  // 立即执行一次，以确保初始状态正确
-  handleViewportResize()
-  // <<< --- 修改部分结束 --- >>>
+  /*
+   * REMOVED: All resize and visualViewport listeners.
+   * They are no longer needed with the CSS-based approach.
+   */
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 移除新的 visualViewport 监听
-  window.visualViewport.removeEventListener('resize', handleViewportResize)
-  // <<< --- 修改部分结束 --- >>>
+  /*
+   * REMOVED: The visualViewport event listener.
+   */
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -427,22 +390,24 @@ watch(easymde, (newEditorInstance) => {
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
 
-      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
+      // Using a short delay to ensure the editor has fully rendered the initial long content
       setTimeout(() => {
-        // 1. 获取文档并移动光标到最后
+        // 1. Get the doc and move the cursor to the end
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
 
-        // 2. 强制编辑器获得焦点
+        // 2. Force focus on the editor
         cm.focus()
 
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
+        // 3. Scroll the cursor into view, this is key for layout correction
         cm.scrollIntoView(cm.getCursor(), 60)
 
-        // 4. 作为最后的保险，再调用一次高度更新
-        updateEditorHeight()
-      }, 150) // 使用150毫秒延时，确保时机足够晚
+        /*
+         * REMOVED: Call to updateEditorHeight().
+         * This is no longer necessary as Flexbox handles the height.
+         */
+      }, 150)
     }
   }
 })
@@ -502,25 +467,24 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* --- 全新的 Flexbox / Fixed 布局 --- */
+/* --- A NEW, SIMPLIFIED FLEXBOX LAYOUT --- */
 .note-editor-wrapper {
-  /* 1. 关键：让容器固定在底部 */
-  position: fixed;
-  bottom: 0;
-  left: 0;
+  /* 1. Let the parent overlay handle positioning. This component just defines its size. */
   width: 100%;
-  z-index: 1002; /* 比编辑器的 toolbar 更高 */
 
-  /* 2. 自身样式 */
+  /* 2. Set a flexible height.
+     On mobile, it can grow up to 85% of the dynamic viewport height.
+     'dvh' unit is crucial as it adapts to the visible area when the keyboard appears. */
+  max-height: 85dvh;
+
+  /* 3. Basic styling */
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
 
-  /* 3. 防止在手机上过高，遮住所有内容 */
-  max-height: 75vh;
-
-  /* 4. 关键：开启Flexbox布局 */
+  /* 4. CRUCIAL: This is the main flex container for the editor. */
   display: flex;
   flex-direction: column;
+  z-index: 1002;
 }
 
 .dark .note-editor-wrapper {
@@ -529,16 +493,28 @@ watch(easymde, (newEditorInstance) => {
 }
 
 .note-editor-form {
+  /* 1. Make the form a flex container for its children (the editor and the footer) */
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden; /* 防止子元素溢出 */
+
+  /* 2. Make the form fill its parent wrapper */
+  flex: 1;
+
+  /* 3. A key property for nested flexbox scrolling.
+     Prevents the form from overflowing its parent when the editor grows. */
+  min-height: 0;
+  overflow: hidden; /* Prevent children from overflowing */
 }
 
-/* --- 恢复并整合的原有样式 --- */
 .editor-footer {
-  flex-shrink: 0; /* 防止被压缩 */
+  /* This element should NOT grow or shrink. It has a fixed height. */
+  flex-shrink: 0;
   padding: 0.5rem 0.75rem;
+  z-index: 10; /* Ensure footer is above the editor text */
+  background-color: #fff; /* Give it a background to hide text scrolling behind it */
+}
+.dark .editor-footer {
+  background-color: #2c2c2e;
 }
 
 .status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
@@ -560,12 +536,26 @@ watch(easymde, (newEditorInstance) => {
 </style>
 
 <style>
-/* Global styles */
+/* Global styles for EasyMDE */
+
+/* The EasyMDE container that replaces the textarea */
+.note-editor-form > .EasyMDEContainer {
+    /* 1. Allow the editor container to grow and fill available space */
+    flex: 1;
+    /* 2. A crucial property for nested flexbox scrolling */
+    min-height: 0;
+    /* 3. Make it a flex container to manage the toolbar and CodeMirror area */
+    display: flex;
+    flex-direction: column;
+}
+
 .editor-toolbar {
+  /* The toolbar should have a fixed height */
+  flex-shrink: 0;
   padding: 1px 3px !important;
   min-height: 0 !important;
   border: 1px solid #ccc;
-  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
+  border-top: none !important;
   border-bottom: none !important;
   border-radius: 6px 6px 0 0;
   position: -webkit-sticky;
@@ -577,17 +567,18 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror {
   border: 1px solid #ccc!important;
   border-top: none!important;
-  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
+  border-radius: 0!important; /* Remove border-radius as it's now the middle part */
   font-size: 16px!important;
   line-height: 1.6!important;
 
-  /* 关键：让编辑器区域占据所有剩余空间 */
+  /* --- KEY CHANGES --- */
+  /* 1. CRUCIAL: Let flexbox handle the height instead of JS. */
+  height: 100% !important;
+
+  /* 2. It will now correctly fill the space given by its flex parent. */
   flex-grow: 1;
 
-  /* 关键：设置一个初始的最小高度 */
-  min-height: 130px;
-
-  /* 保留，当内容超出max-height时，内部可以滚动 */
+  /* 3. The internal scroller will work perfectly within this container. */
   overflow-y: auto!important;
 }
 .editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
@@ -601,33 +592,24 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror .cm-header-5 { font-size: 1.0em; }
 .CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
 
-/* --- 根据设置动态修改编辑器字号的 CSS 规则 --- */
+/* --- CSS rules for dynamically changing editor font size based on settings --- */
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- [FIX] PC Layout Correction --- */
+/* --- [MODIFIED] PC Layout Correction --- */
 @media (min-width: 768px) {
   .note-editor-wrapper {
-    /* On PC, give the wrapper a more stable height instead of just max-height */
+    /* Give it a more stable height on desktop */
     height: 75vh;
-    max-height: 650px; /* A reasonable max height for large screens */
+    max-height: 650px;
   }
+
+  /* The mobile flex rules now work perfectly on desktop too, so we no longer need
+     to override .CodeMirror height here. These rules below are still good. */
   .note-editor-form {
-    /* Allow the form to properly flex within its wrapper */
     flex: 1;
     min-height: 0;
-  }
-  /* The EasyMDE container that replaces the textarea */
-  .note-editor-form > .EasyMDEContainer {
-    flex: 1; /* Allow the editor container to grow and fill available space */
-    min-height: 0; /* A crucial property for nested flexbox scrolling */
-    display: flex;
-    flex-direction: column;
-  }
-  .CodeMirror {
-    /* Override the inline height from JS and let flexbox handle it */
-    height: auto !important;
   }
 }
 </style>

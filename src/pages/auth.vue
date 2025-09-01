@@ -1069,8 +1069,16 @@ function closeEditorModal() {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
-  /* z-index 必须比 NoteEditor 的 1002 低 */
+  /* z-index must be lower than NoteEditor's 1002 */
   z-index: 1000;
+
+  /* --- KEY CHANGES START --- */
+  /* Convert the overlay into a flex container */
+  display: flex;
+  flex-direction: column;
+  /* Push the child (NoteEditor) to the bottom */
+  justify-content: flex-end;
+  /* --- KEY CHANGES END --- */
 }
 
 .fade-enter-active,
