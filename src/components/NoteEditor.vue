@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import { useSettingStore } from '@/stores/setting'
+import { cityMap, weatherMap } from '@/utils/weatherMap'
 import 'easymde/dist/easymde.min.css'
 
 // --- Props & Emits 定义 ---
@@ -24,6 +25,7 @@ const editorContainerRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
+const lastViewportHeight = ref(0)
 
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
@@ -55,11 +57,111 @@ function handleViewportResize() {
       editorEl.style.maxHeight = ''
     }
 
-    if (easymde.value) {
-      setTimeout(() => {
-        easymde.value?.codemirror.refresh()
-      }, 50)
+    const currentHeight = visualViewport.height
+    if (Math.abs(currentHeight - lastViewportHeight.value) > 50) {
+      if (easymde.value) {
+        setTimeout(() => {
+          easymde.value?.codemirror.refresh()
+        }, 100)
+      }
+      lastViewportHeight.value = currentHeight
     }
+  }
+}
+
+// --- 天气相关逻辑 (完整版) ---
+function getCachedWeather() {
+  const cached = localStorage.getItem('weatherData_notes_app')
+  if (!cached)
+    return null
+
+  const { data, timestamp } = JSON.parse(cached)
+  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
+  return isExpired ? null : data
+}
+
+function setCachedWeather(data: object) {
+  const cache = {
+    data,
+    timestamp: Date.now(),
+  }
+  localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
+}
+
+function getMappedCityName(enCity: string): string {
+  if (!enCity)
+    return '未知地点'
+  const cityLower = enCity.trim().toLowerCase()
+  for (const [key, value] of Object.entries(cityMap)) {
+    const keyLower = key.toLowerCase()
+    if (
+      cityLower === keyLower
+      || cityLower.startsWith(keyLower)
+    )
+      return value
+  }
+  return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
+}
+
+function getWeatherText(code: number): { text: string; icon: string } {
+  return weatherMap[code] || { text: '未知天气', icon: '❓' }
+}
+
+async function fetchWeather() {
+  const cached = getCachedWeather()
+  if (cached)
+    return cached.formattedString
+
+  try {
+    let locData
+    try {
+      const locRes = await fetch('https://ipapi.co/json/')
+      if (!locRes.ok)
+        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
+      locData = await locRes.json()
+      if (locData.error)
+        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
+    }
+    catch (ipapiError: any) {
+      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
+      const backupRes = await fetch('https://ip-api.com/json/')
+      if (!backupRes.ok)
+        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
+      locData = await backupRes.json()
+      if (locData.status === 'fail')
+        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
+
+      locData.city = locData.city || locData.regionName
+      locData.latitude = locData.lat
+      locData.longitude = locData.lon
+    }
+
+    if (!locData?.latitude || !locData?.longitude)
+      throw new Error('从两个服务获取地理位置均失败。')
+
+    const lat = locData.latitude
+    const lon = locData.longitude
+    const city = getMappedCityName(locData.city)
+
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
+    if (!res.ok)
+      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
+    const data = await res.json()
+    if (data.error)
+      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
+
+    const temp = data.current.temperature_2m
+    const code = data.current.weathercode
+    const { text, icon } = getWeatherText(code)
+
+    const formattedString = `${city}/${temp}°C ${text} ${icon}`
+    setCachedWeather({ formattedString })
+
+    return formattedString
+  }
+  catch (e: any) {
+    console.error('获取天气信息过程中发生严重错误:', e)
+    return null
   }
 }
 
@@ -116,10 +218,6 @@ function initializeEasyMDE(initialValue = '') {
       emit('triggerAutoSave')
 
     handleTagSuggestions(instance)
-
-    nextTick(() => {
-      instance.scrollIntoView(null)
-    })
   })
 
   cm.on('keydown', (cm, event) => {
@@ -146,7 +244,6 @@ function initializeEasyMDE(initialValue = '') {
   focusEditor()
 }
 
-// ... (其他JS函数)
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -186,7 +283,6 @@ function handleTagSuggestions(cm: CodeMirror.Editor) {
     showTagSuggestions.value = false
     return
   }
-
   const term = textBefore.substring(lastHashIndex + 1)
   tagSuggestions.value = props.allTags.filter(tag =>
     tag.toLowerCase().startsWith(`#${term.toLowerCase()}`),
@@ -226,10 +322,6 @@ function moveSuggestionSelection(offset: number) {
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
-async function fetchWeather() {
-  return null
-}
-
 function handleSubmit() {
   emit('submit')
 }
@@ -240,6 +332,8 @@ function handleClose() {
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
+  lastViewportHeight.value = window.visualViewport?.height ?? window.innerHeight
+
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
     const weatherString = await fetchWeather()
@@ -248,25 +342,14 @@ onMounted(async () => {
       emit('update:modelValue', initialContent)
     }
   }
-
   initializeEasyMDE(initialContent)
-
   window.visualViewport?.addEventListener('resize', handleViewportResize)
-  handleViewportResize()
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
-
-// ✨✨✨ START: FINAL FIX ✨✨✨
-// 这个 watch 是导致光标跳动的根源，我们将其移除。
-// watch(() => props.modelValue, (newValue) => {
-//   if (easymde.value && newValue !== easymde.value.value())
-//     easymde.value.value(newValue)
-// })
-// ✨✨✨ END: FINAL FIX ✨✨✨
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
 
@@ -288,7 +371,6 @@ watch(() => props.editingNote?.id, () => {
         &times;
       </button>
     </div>
-
     <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea ref="textareaRef" style="display: none;" />
       <div
@@ -308,15 +390,10 @@ watch(() => props.editingNote?.id, () => {
         </ul>
       </div>
     </form>
-
     <div class="editor-footer">
       <div class="status-bar">
-        <span class="char-counter">
-          {{ charCount }}/{{ maxNoteLength }}
-        </span>
-        <span v-if="lastSavedTime" class="save-status">
-          💾 {{ lastSavedTime }}
-        </span>
+        <span class="char-counter">{{ charCount }}/{{ maxNoteLength }}</span>
+        <span v-if="lastSavedTime" class="save-status">💾 {{ lastSavedTime }}</span>
       </div>
       <button
         type="button"
@@ -331,31 +408,25 @@ watch(() => props.editingNote?.id, () => {
 </template>
 
 <style scoped>
-/* Scoped样式无变化 */
 .note-editor-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
   z-index: 1002;
-
   background-color: #ffffff;
   border-top: 1px solid #e5e7eb;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-
   max-height: 90vh;
   margin: 0 auto;
   max-width: 640px;
   left: 50%;
   transform: translateX(-50%);
   border-radius: 12px 12px 0 0;
-
   display: flex;
   flex-direction: column;
-
   will-change: height, bottom;
   transition: bottom 0.2s ease-out, height 0.2s ease-out;
-
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -380,18 +451,22 @@ watch(() => props.editingNote?.id, () => {
   padding: 12px 16px;
   border-bottom: 1px solid #e5e7eb;
 }
+
 .dark .editor-header {
   border-bottom-color: #3a3a3c;
 }
+
 .editor-title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
   color: #111827;
 }
+
 .dark .editor-title {
   color: #f3f4f6;
 }
+
 .close-btn {
   background: none;
   border: none;
@@ -401,6 +476,7 @@ watch(() => props.editingNote?.id, () => {
   cursor: pointer;
   padding: 0;
 }
+
 .dark .close-btn {
   color: #9ca3af;
 }
@@ -414,9 +490,11 @@ watch(() => props.editingNote?.id, () => {
   border-top: 1px solid #e5e7eb;
   gap: 16px;
 }
+
 .dark .editor-footer {
   border-top-color: #3a3a3c;
 }
+
 .status-bar {
   display: flex;
   align-items: center;
@@ -424,9 +502,11 @@ watch(() => props.editingNote?.id, () => {
   font-size: 12px;
   color: #6b7280;
 }
+
 .dark .status-bar {
   color: #9ca3af;
 }
+
 .submit-btn {
   background-color: #00b386;
   color: white;
@@ -438,14 +518,17 @@ watch(() => props.editingNote?.id, () => {
   cursor: pointer;
   transition: background-color 0.2s;
 }
+
 .submit-btn:hover {
   background-color: #009a74;
 }
+
 .submit-btn:disabled {
   background-color: #a5a5a5;
   cursor: not-allowed;
   opacity: 0.7;
 }
+
 .dark .submit-btn:disabled {
   background-color: #4b5563;
 }
@@ -455,30 +538,35 @@ watch(() => props.editingNote?.id, () => {
   background-color: #fff;
   border: 1px solid #ccc;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1010;
   max-height: 150px;
   overflow-y: auto;
   min-width: 120px;
 }
+
 .dark .tag-suggestions {
   background-color: #2c2c2e;
   border-color: #48484a;
 }
+
 .tag-suggestions ul {
   list-style: none;
   margin: 0;
   padding: 4px 0;
 }
+
 .tag-suggestions li {
   padding: 6px 12px;
   cursor: pointer;
   font-size: 14px;
 }
+
 .tag-suggestions li:hover,
 .tag-suggestions li.highlighted {
   background-color: #f0f0f0;
 }
+
 .dark .tag-suggestions li:hover,
 .dark .tag-suggestions li.highlighted {
   background-color: #404040;
@@ -486,7 +574,7 @@ watch(() => props.editingNote?.id, () => {
 </style>
 
 <style>
-/* 全局样式无变化 */
+/* --- 全局样式，用于覆盖 EasyMDE 默认样式 --- */
 .editor-form > .EasyMDEContainer {
   flex: 1;
   min-height: 0;
@@ -504,13 +592,16 @@ watch(() => props.editingNote?.id, () => {
   flex-shrink: 0;
   overflow-x: auto;
 }
+
 .dark .editor-toolbar {
   background-color: #1e1e1e !important;
   border-bottom-color: #3a3a3c !important;
 }
+
 .dark .editor-toolbar a {
   color: #d1d5db !important;
 }
+
 .dark .editor-toolbar a.active {
   background-color: #374151 !important;
 }
@@ -518,22 +609,31 @@ watch(() => props.editingNote?.id, () => {
 .CodeMirror {
   flex: 1 !important;
   height: auto !important;
-
   border: none !important;
   border-radius: 0 !important;
   padding: 12px;
   font-size: 16px !important;
   line-height: 1.6 !important;
 }
+
 .dark .CodeMirror {
   background-color: #1e1e1e !important;
   color: #f3f4f6 !important;
 }
+
 .dark .CodeMirror-cursor {
   border-left-color: #f3f4f6 !important;
 }
 
-.CodeMirror.font-size-small { font-size: 14px !important; }
-.CodeMirror.font-size-medium { font-size: 16px !important; }
-.CodeMirror.font-size-large { font-size: 20px !important; }
+.CodeMirror.font-size-small {
+  font-size: 14px !important;
+}
+
+.CodeMirror.font-size-medium {
+  font-size: 16px !important;
+}
+
+.CodeMirror.font-size-large {
+  font-size: 20px !important;
+}
 </style>
