@@ -162,7 +162,6 @@ async function fetchWeather() {
 }
 
 // 编辑器相关逻辑函数
-// 编辑器相关逻辑函数
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -174,7 +173,7 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // [修改] 注释掉或删除下面这几行代码，以解决移动端无法滚动到顶部的问题
+  // [修改] 再次确认此处的强制滚动逻辑已被注释掉
   /*
   setTimeout(() => {
     if (easymde.value)
@@ -440,8 +439,8 @@ watch(easymde, (newEditorInstance) => {
         // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
-        cm.scrollIntoView(cm.getCursor(), 60)
+        // 3. [修改] 移除强制的60px边距，让浏览器自然处理滚动
+        cm.scrollIntoView(cm.getCursor())
 
         // 4. 作为最后的保险，再调用一次高度更新
         updateEditorHeight()
