@@ -208,8 +208,7 @@ async function fetchWeather() {
   }
 }
 
-// ---------------- 新增：确保光标只在被底部遮挡时才向上滚动 ----------------
-// ---------- 替换后的 ensureCursorVisibleBottomOnly ----------
+// ---------- 再次修订后的 ensureCursorVisibleBottomOnly ----------
 function ensureCursorVisibleBottomOnly(cm: CodeMirror.Editor) {
   const scroller = cm.getScrollerElement()
   const cur = cm.getCursor()
@@ -217,30 +216,26 @@ function ensureCursorVisibleBottomOnly(cm: CodeMirror.Editor) {
 
   const wrapper = editorWrapperRef.value as HTMLElement | null
   const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement | null
-  const footer = wrapper?.querySelector('.editor-footer') as HTMLElement | null
 
-  // 顶部安全区（工具栏高度）
+  // 顶部安全区：避免工具栏盖住
   const topSafe = (toolbar?.offsetHeight ?? 0)
 
-  // 底部安全区（保存按钮/底部工具栏 + 键盘）
+  // 注意：footer 已经在 handleViewportResize 里加过 padding-bottom 了
+  // 这里不再二次加 footerH，只考虑键盘高度
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
-  const footerH = (footer?.offsetHeight ?? 0)
 
-  const bottomSafe = keyboardHeight + footerH + 8
+  // 只用 keyboardHeight + 一点余量
+  const bottomSafe = keyboardHeight + 8
 
   const visibleTop = scroller.scrollTop + topSafe
   const visibleBottom = scroller.scrollTop + scroller.clientHeight - bottomSafe
 
-  if (coords.bottom > visibleBottom) {
-    // 光标在底部被遮 → 向上滚多出一段安全区
+  if (coords.bottom > visibleBottom)
     scroller.scrollTop += coords.bottom - visibleBottom
-  }
-  else if (coords.top < visibleTop) {
-    // 光标在顶部被遮 → 向下滚
+  else if (coords.top < visibleTop)
     scroller.scrollTop += coords.top - visibleTop
-  }
 }
 
 // 编辑器相关逻辑函数
