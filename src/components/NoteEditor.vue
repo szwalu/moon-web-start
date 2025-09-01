@@ -50,18 +50,65 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
+// ---------- 替换为新的 handleViewportResize，实现说明见注释 ----------
 function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 获取设备屏幕的“布局高度”（基本不变）
-    const layoutViewportHeight = window.innerHeight
-    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
-    const visualViewportHeight = window.visualViewport.height
+  // 如果没有 wrapper 或尚未初始化编辑器，就先退
+  if (!editorWrapperRef.value)
+    return
 
-    // 两者之差，就是键盘 + 输入法工具栏的总高度
-    const keyboardHeight = layoutViewportHeight - visualViewportHeight
+  // 1) 计算键盘高度并调整 wrapper.bottom（兼容没有 visualViewport 的情况）
+  const layoutViewportHeight = window.innerHeight
+  const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
+  const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
 
-    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
-    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
+  // 将抽屉上移键盘高度（和你以前的逻辑一致）
+  editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
+
+  // 2) 如果编辑器实例存在，修正 CodeMirror 内部滚动容器的 padding / 大小
+  if (!easymde.value)
+    return
+
+  try {
+    const cm: any = easymde.value.codemirror
+    // 获取真正的滚动容器（兼容不同 CodeMirror 版本）
+    let scroller: HTMLElement | null = null
+    if (typeof cm.getScrollerElement === 'function')
+      scroller = cm.getScrollerElement()
+    else if (cm.display && (cm.display.scroller || cm.display.sizer))
+      scroller = cm.display.scroller || cm.display.sizer
+
+    // 获取 toolbar / footer 的真实高度（如果存在）
+    const wrapperEl = editorWrapperRef.value as HTMLElement
+    const toolbarEl = wrapperEl.querySelector('.editor-toolbar') as HTMLElement | null
+    const footerEl = wrapperEl.querySelector('.editor-footer') as HTMLElement | null
+    const toolbarH = toolbarEl ? toolbarEl.offsetHeight : 0
+    const footerH = footerEl ? footerEl.offsetHeight : 0
+
+    // 如果找到了内部滚动层，设置 paddingTop/paddingBottom 与 scroll-padding，确保：
+    //  - 顶部工具栏不会覆盖编辑内容（把可见内容往下垫开同等高度）
+    //  - scrollIntoView / 浏览器滚动 API 会尊重该安全区
+    if (scroller) {
+      scroller.style.boxSizing = 'border-box'
+      scroller.style.paddingTop = `${toolbarH}px`
+      scroller.style.paddingBottom = `${footerH}px`
+      scroller.style.setProperty('scroll-padding-top', `${toolbarH}px`)
+      scroller.style.setProperty('scroll-padding-bottom', `${footerH}px`)
+      // 小防御：如果 scrollTop 小于 0 或者在 padding 里，确保不会被“卡住”
+      if (scroller.scrollTop < 0)
+        scroller.scrollTop = 0
+    }
+
+    // 3) 重新计算编辑器可用高度并应用（避免父容器限制导致的“顶部看不见”）
+    //    我们使用 visualViewportHeight（键盘弹起时为缩小后的高度）减去 toolbar/footer
+    const available = Math.max(minEditorHeight, Math.min(maxEditorHeight, Math.floor(visualViewportHeight - toolbarH - footerH - 8), // 额外留少量余量
+    ))
+    // 设置编辑器高度（像你原来那样用 setSize），让内部滚动真实可用
+    if (cm && typeof cm.setSize === 'function')
+      cm.setSize(null, available)
+  }
+  catch (e) {
+    // 容错：不阻塞主流程
+    // console.warn('handleViewportResize error', e)
   }
 }
 
@@ -161,26 +208,27 @@ async function fetchWeather() {
   }
 }
 
-// ---------------- 新增：确保光标只在被底部遮挡时才向上滚动（替代 scrollIntoView 60 的强制行为） ----------------
+// ---------------- 新增：确保光标只在被底部遮挡时才向上滚动 ----------------
 function ensureCursorVisibleBottomOnly(cm: any) {
-  // 兼容不同 CodeMirror 版本的滚动容器获取方式
-  const scroller = (cm as any).getScrollerElement
-    ? (cm as any).getScrollerElement()
-    : (cm.display && (cm.display.scroller || cm.display.sizer))
-        ? (cm.display.scroller || cm.display.sizer)
-        : null
+  // 兼容获取 scroller 的方法
+  let scroller: HTMLElement | null = null
+  if (typeof cm.getScrollerElement === 'function')
+    scroller = cm.getScrollerElement()
+  else if (cm.display && (cm.display.scroller || cm.display.sizer))
+    scroller = (cm.display.scroller || cm.display.sizer)
+
   if (!scroller)
     return
 
   const cur = cm.getCursor()
   const coords = cm.cursorCoords(cur, 'local') // 相对 scroller 的坐标
 
-  const wrapper = editorWrapperRef.value as HTMLElement | null
+  const wrapper = editorWrapperRef?.value as HTMLElement | null
   const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement | null
   const footer = wrapper?.querySelector('.editor-footer') as HTMLElement | null
 
-  const topSafe = (toolbar?.offsetHeight ?? 0) // 顶部工具栏高度（安全区）
-  const bottomSafe = (footer?.offsetHeight ?? 0) + 8 // 底部按钮/状态栏安全区，多留 8px
+  const topSafe = (toolbar?.offsetHeight ?? 0)
+  const bottomSafe = (footer?.offsetHeight ?? 0) + 8 // 底部额外安全像素，可微调
 
   const visibleTop = scroller.scrollTop + topSafe
   const visibleBottom = scroller.scrollTop + scroller.clientHeight - bottomSafe
@@ -193,6 +241,8 @@ function ensureCursorVisibleBottomOnly(cm: any) {
 }
 
 // 编辑器相关逻辑函数
+// ------- 注意：请先在文件中插入 ensureCursorVisibleBottomOnly（见第2步） -------
+
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -210,7 +260,6 @@ function updateEditorHeight() {
     ensureCursorVisibleBottomOnly(cm)
   })
 }
-
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -458,7 +507,6 @@ watch(easymde, (newEditorInstance) => {
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
 
-      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
       setTimeout(() => {
         // 1. 获取文档并移动光标到最后
         const doc = cm.getDoc()
