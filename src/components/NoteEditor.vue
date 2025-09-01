@@ -18,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const wrapperRef = ref<HTMLElement | null>(null)
+const editorRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const actionsRef = ref<HTMLElement | null>(null)
 const showTagPanel = ref(false)
@@ -27,6 +28,7 @@ const isTagging = ref(false)
 const tagQuery = ref('')
 
 let actionsRO: ResizeObserver | null = null
+let editorRO: ResizeObserver | null = null
 
 const valueLen = computed(() => props.modelValue?.length ?? 0)
 const remain = computed(() => Math.max(0, props.maxNoteLength - valueLen.value))
@@ -35,49 +37,42 @@ function resizeTextarea() {
   const el = textareaRef.value
   if (!el)
     return
+  // 让 textarea 自身不滚动，只按内容增高，由外层 .ne-editor 滚动
   el.style.height = 'auto'
-  const max = Math.min(window.innerHeight * 0.60, 420)
-  el.style.maxHeight = `${max}px`
-  el.style.height = `${Math.min(el.scrollHeight, max)}px`
+  el.style.maxHeight = 'none'
+  el.style.overflow = 'hidden'
+  el.style.height = `${el.scrollHeight}px`
 }
 
-function updateBottomPadding() {
-  const el = textareaRef.value
-  if (!el)
-    return
+function updateLayoutByActionsHeight() {
   const actionsH = actionsRef.value?.offsetHeight ?? 64
-  const pad = actionsH + 16
-  el.style.paddingBottom = `${pad}px`
+  const pad = actionsH + 12
   document.documentElement.style.setProperty('--actions-h', `${pad}px`)
+  const editor = editorRef.value
+  if (editor)
+    editor.style.maxHeight = `calc(min(560px, var(--vvh, 100dvh)) - ${pad} - 32px)`
 }
 
-function scrollCaretToBottomIfNeeded() {
+function keepCaretVisible() {
+  // 由外层 .ne-editor 负责滚动，确保最后一行不会被操作区遮挡
+  const editor = editorRef.value
   const el = textareaRef.value
-  if (!el)
+  if (!editor || !el)
     return
   const atEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length
-  if (atEnd) {
-    el.scrollTop = el.scrollHeight
-  }
-  else {
-    const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 20
-    const visibleBottom = el.scrollTop + el.clientHeight
-    const nearBottom = el.scrollHeight - lh * 2
-    if (visibleBottom < nearBottom)
-      el.scrollTop = Math.min(nearBottom, el.scrollTop + lh)
-  }
+  if (atEnd)
+    editor.scrollTop = editor.scrollHeight
 }
 
 function updateModel(v: string) {
   if (v.length > props.maxNoteLength)
     v = v.slice(0, props.maxNoteLength)
-
   emit('update:modelValue', v)
   emit('triggerAutoSave')
   nextTick(() => {
     resizeTextarea()
-    updateBottomPadding()
-    scrollCaretToBottomIfNeeded()
+    updateLayoutByActionsHeight()
+    keepCaretVisible()
   })
 }
 
@@ -99,7 +94,7 @@ function onKeydown(e: KeyboardEvent) {
     emit('close')
     return
   }
-  requestAnimationFrame(scrollCaretToBottomIfNeeded)
+  requestAnimationFrame(keepCaretVisible)
 }
 
 function detectTagging(val: string) {
@@ -170,14 +165,14 @@ function onPaste(e: ClipboardEvent) {
 
 watch(() => props.modelValue, () => nextTick(() => {
   resizeTextarea()
-  updateBottomPadding()
-  scrollCaretToBottomIfNeeded()
+  updateLayoutByActionsHeight()
+  keepCaretVisible()
 }))
 
 onMounted(() => {
   nextTick(() => {
     resizeTextarea()
-    updateBottomPadding()
+    updateLayoutByActionsHeight()
     textareaRef.value?.focus()
   })
 
@@ -187,7 +182,7 @@ onMounted(() => {
     const kb = Math.max(0, window.innerHeight - h)
     document.documentElement.style.setProperty('--vvh', `${h}px`)
     document.documentElement.style.setProperty('--kb', `${kb}px`)
-    updateBottomPadding()
+    updateLayoutByActionsHeight()
   }
   applyViewportFix()
   const vv = (window as any).visualViewport
@@ -200,15 +195,21 @@ onMounted(() => {
   }
 
   if ('ResizeObserver' in window) {
-    actionsRO = new ResizeObserver(() => updateBottomPadding())
+    actionsRO = new ResizeObserver(() => updateLayoutByActionsHeight())
     if (actionsRef.value)
       actionsRO.observe(actionsRef.value)
+
+    editorRO = new ResizeObserver(() => updateLayoutByActionsHeight())
+    if (editorRef.value)
+      editorRO.observe(editorRef.value)
   }
 })
 
 onUnmounted(() => {
   if (actionsRO)
     actionsRO.disconnect()
+  if (editorRO)
+    editorRO.disconnect()
 })
 </script>
 
@@ -226,7 +227,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="ne-editor">
+      <div ref="editorRef" class="ne-editor">
         <textarea
           ref="textareaRef"
           class="ne-textarea"
@@ -303,7 +304,7 @@ onUnmounted(() => {
 .ne-close:hover { background: rgba(0,0,0,.06); }
 :global(.dark) .ne-close:hover { background: rgba(255,255,255,.10); }
 
-.ne-editor { position: relative; padding-bottom: calc(var(--actions-h, 80px) + 8px); }
+.ne-editor { position: relative; overflow: auto; }
 
 .ne-textarea {
   width: 100%;
@@ -315,9 +316,8 @@ onUnmounted(() => {
   color: inherit;
   background: transparent;
   outline: none;
-  resize: none;
-  overflow-y: auto;
-  max-height: 60vh;
+  resize: none;        /* 尺寸由 JS 控制高度 */
+  overflow: hidden;    /* 自身不滚动，由父容器滚动 */
 }
 
 /* Tag 面板 */
