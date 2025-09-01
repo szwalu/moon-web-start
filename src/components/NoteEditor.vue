@@ -1,238 +1,305 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useSettingStore } from '@/stores/setting'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
-  modelValue: { type: String, required: true },
-  editingNote: { type: Object as () => any | null, default: null },
+  modelValue: { type: String, default: '' },
+  editingNote: { type: Object, default: null },
   isLoading: { type: Boolean, default: false },
+  allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: string): void
+  (e: 'submit'): void
+  (e: 'triggerAutoSave'): void
+}>()
 
-const { t } = useI18n()
-const settingsStore = useSettingStore()
+const wrapperRef = ref<HTMLElement | null>(null)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const showTagPanel = ref(false)
+const filteredTags = ref<string[]>([])
+const caretPos = ref(0)
+const isTagging = ref(false)
+const tagQuery = ref('')
 
-const scrollRef = ref<HTMLElement | null>(null) // 文本滚动容器
-const taRef = ref<HTMLTextAreaElement | null>(null)
-const footerRef = ref<HTMLElement | null>(null)
+const valueLen = computed(() => props.modelValue?.length ?? 0)
+const remain = computed(() => Math.max(0, props.maxNoteLength - valueLen.value))
 
-const local = ref(props.modelValue)
-
-watch(() => props.modelValue, (v) => {
-  if (v !== local.value)
-    local.value = v
-})
-
-async function onInput(e: Event) {
-  const v = (e.target as HTMLTextAreaElement).value
-  if (v.length > props.maxNoteLength)
+function resizeTextarea() {
+  const el = textareaRef.value
+  if (!el)
     return
-  local.value = v
+  el.style.height = 'auto'
+  const max = Math.min(window.innerHeight * 0.60, 420)
+  el.style.maxHeight = `${max}px`
+  el.style.height = `${Math.min(el.scrollHeight, max)}px`
+}
+
+function updateModel(v: string) {
+  if (v.length > props.maxNoteLength)
+    v = v.slice(0, props.maxNoteLength)
+
   emit('update:modelValue', v)
   emit('triggerAutoSave')
-
-  await nextTick()
-  // 让当前输入行尽量靠近底部可见
-  ensureBottomPadding()
-  taRef.value?.scrollIntoView({ block: 'nearest' })
+  nextTick(resizeTextarea)
 }
 
-function submit() {
-  emit('submit')
+function onInput(e: Event) {
+  const target = e.target as HTMLTextAreaElement
+  const val = target.value
+  caretPos.value = target.selectionStart || 0
+  updateModel(val)
+  detectTagging(val)
 }
 
-/** iOS 刘海安全区底部像素 */
-function getSafeAreaBottom(): number {
-  const tmp = document.createElement('div')
-  tmp.style.cssText = 'position:fixed;bottom:0;height:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)'
-  document.body.appendChild(tmp)
-  const safe = Number.parseFloat(getComputedStyle(tmp).paddingBottom || '0') || 0
-  document.body.removeChild(tmp)
-  return safe
-}
-
-/** 核心：根据键盘高度抬升 footer，并给滚动容器补底部内边距 */
-function applyKeyboardAvoidance() {
-  if (!footerRef.value || !scrollRef.value)
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault()
+    emit('submit')
     return
-
-  const vv = (window as any).visualViewport
-  let keyboard = 0
-  if (vv && typeof vv.height === 'number')
-    keyboard = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
-
-  const safe = getSafeAreaBottom()
-  const footerH = footerRef.value.getBoundingClientRect().height
-
-  // 让 footer 真正“悬浮”在键盘上方（以视口为参照）
-  footerRef.value.style.bottom = `${keyboard}px`
-
-  // 让内容最后一行别被挡住
-  const pad = Math.ceil(footerH + keyboard + safe)
-  ;(scrollRef.value as HTMLElement).style.paddingBottom = `${pad}px`
+  }
+  if (e.key === 'Escape') {
+    showTagPanel.value = false
+    isTagging.value = false
+    tagQuery.value = ''
+  }
 }
 
-/** 兜底：部分安卓机不触发 visualViewport */
-function legacyResizeWorkaround() {
-  applyKeyboardAvoidance()
+function detectTagging(val: string) {
+  const pos = caretPos.value
+  const left = val.slice(0, pos)
+  const m = left.match(/(^|\s)#([\p{Letter}\p{Number}_\-]{0,30})$/u)
+  if (m) {
+    isTagging.value = true
+    tagQuery.value = m[2] || ''
+    filterTags()
+  }
+  else {
+    isTagging.value = false
+    showTagPanel.value = false
+    tagQuery.value = ''
+  }
 }
 
-function ensureBottomPadding() {
-  applyKeyboardAvoidance()
+function filterTags() {
+  const q = tagQuery.value.toLowerCase()
+  const full = (props.allTags || []).map(t => t.startsWith('#') ? t.slice(1) : t)
+  const list = q ? full.filter(t => t.toLowerCase().includes(q)) : full
+  filteredTags.value = list.slice(0, 8)
+  showTagPanel.value = filteredTags.value.length > 0
 }
+
+function insertTag(raw: string) {
+  const tag = raw.startsWith('#') ? raw : `#${raw}`
+  const el = textareaRef.value
+  if (!el)
+    return
+  const val = props.modelValue
+  const pos = el.selectionStart || 0
+  const left = val.slice(0, pos)
+  const right = val.slice(pos)
+  const replacedLeft = left.replace(/(^|\s)#([\p{Letter}\p{Number}_\-]{0,30})$/u, `$1${tag} `)
+  const nextVal = replacedLeft + right
+  updateModel(nextVal)
+  nextTick(() => {
+    const newPos = replacedLeft.length
+    el.focus()
+    el.setSelectionRange(newPos, newPos)
+  })
+  isTagging.value = false
+  showTagPanel.value = false
+  tagQuery.value = ''
+}
+
+function onPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text/plain')
+  if (!text)
+    return
+  e.preventDefault()
+  const el = textareaRef.value
+  if (!el)
+    return
+  const start = el.selectionStart || 0
+  const end = el.selectionEnd || 0
+  const before = props.modelValue.slice(0, start)
+  const after = props.modelValue.slice(end)
+  updateModel(before + text + after)
+  nextTick(() => {
+    const pos = before.length + text.length
+    el.focus()
+    el.setSelectionRange(pos, pos)
+  })
+}
+
+watch(() => props.modelValue, () => nextTick(resizeTextarea))
 
 onMounted(() => {
-  // 初次进入：把光标放到末尾，打开键盘，随后计算一次
-  requestAnimationFrame(() => {
-    if (taRef.value) {
-      taRef.value.focus()
-      const len = taRef.value.value.length
-      taRef.value.selectionStart = taRef.value.selectionEnd = len
-    }
-    ensureBottomPadding()
+  nextTick(() => {
+    resizeTextarea()
+    textareaRef.value?.focus()
   })
-
-  const vv = (window as any).visualViewport
-  if (vv && vv.addEventListener) {
-    vv.addEventListener('resize', applyKeyboardAvoidance)
-    vv.addEventListener('scroll', applyKeyboardAvoidance)
-  }
-  window.addEventListener('resize', legacyResizeWorkaround)
-})
-
-onUnmounted(() => {
-  const vv = (window as any).visualViewport
-  if (vv && vv.removeEventListener) {
-    vv.removeEventListener('resize', applyKeyboardAvoidance)
-    vv.removeEventListener('scroll', applyKeyboardAvoidance)
-  }
-  window.removeEventListener('resize', legacyResizeWorkaround)
 })
 </script>
 
 <template>
-  <!-- 全屏编辑器：固定视口，不再被父层内容挤压 -->
-  <section class="editor-screen">
-    <div ref="scrollRef" class="editor-scroll">
-      <textarea
-        ref="taRef"
-        v-model="local"
-        :placeholder="t('notes.content_placeholder')"
-        :style="{ fontSize: `${settingsStore.noteFontSize}px` }"
-        class="editor-textarea"
-        :disabled="isLoading"
-        autocapitalize="sentences"
-        autocomplete="off"
-        autocorrect="on"
-        spellcheck="false"
-        inputmode="text"
-        enterkeyhint="done"
-        @input="onInput"
-      />
-    </div>
-
-    <!-- 底部操作条：固定在视口（position:fixed），用 JS 动态抬升 -->
-    <footer ref="footerRef" class="editor-footer">
-      <div class="status">
-        <span class="count">
-          {{ t('notes.char_count') }}: {{ local.length }}/{{ maxNoteLength }}
-        </span>
-        <span v-if="lastSavedTime" class="saved">
-          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-        </span>
+  <div ref="wrapperRef" class="ne-modal" role="dialog" aria-modal="true">
+    <div class="ne-card">
+      <div class="ne-topbar">
+        <div class="ne-left">
+          <span v-if="editingNote" class="ne-chip">编辑中</span>
+        </div>
+        <div class="ne-right">
+          <span v-if="lastSavedTime" class="ne-meta">上次保存：{{ lastSavedTime }}</span>
+          <span class="ne-count" :class="{ danger: remain < 50 }">{{ remain }}</span>
+        </div>
       </div>
-      <button
-        class="save-btn"
-        :disabled="isLoading || !local"
-        @click="submit"
-      >
-        {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
-      </button>
-    </footer>
-  </section>
+
+      <div class="ne-editor">
+        <textarea
+          ref="textareaRef"
+          class="ne-textarea"
+          :value="modelValue"
+          :placeholder="editingNote ? '继续编辑…（回车发送，Shift+回车换行）' : '快速记录想法…（回车发送，Shift+回车换行）'"
+          :disabled="isLoading"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          @keydown="onKeydown"
+          @input="onInput"
+          @paste="onPaste"
+        />
+
+        <div v-if="showTagPanel && isTagging" class="ne-tag-panel">
+          <button
+            v-for="tag in filteredTags"
+            :key="tag"
+            class="ne-tag-item"
+            type="button"
+            @click="insertTag(tag)"
+          >
+            #{{ tag }}
+          </button>
+        </div>
+      </div>
+
+      <div class="ne-actions">
+        <button class="ne-submit" :disabled="isLoading || !modelValue" @click="$emit('submit')">
+          {{ isLoading ? '保存中…' : (editingNote ? '更新笔记' : '保存笔记') }}
+        </button>
+        <div class="ne-hint">按 Enter 发送 · Shift+Enter 换行</div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* 整个编辑器占满视口，高度用 100dvh 防止 iOS 地址栏抖动 */
-.editor-screen{
+.ne-modal {
   position: fixed;
   inset: 0;
-  height: 100dvh;
-  background: #fff;
-  z-index: 1002; /* 高于 overlay(1000) */
-  display: flex;
-  flex-direction: column;
-  max-width: 480px;
-  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  z-index: 1002;
+  padding: 16px;
 }
 
-/* 只让这个容器滚动，textarea 不负责滚动 */
-.editor-scroll{
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px;
-  padding-top: 8px;
-  /* padding-bottom 由 JS 动态设置，避免最后一行被挡 */
-}
-
-/* 文本域本身不扩高，不设置 min-height，避免初次聚焦把 footer 顶出视口 */
-.editor-textarea{
-  display: block;
+.ne-card {
   width: 100%;
-  border: none;
+  max-width: 560px;
+  background: var(--ne-bg, #fff);
+  color: var(--ne-fg, #222);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+}
+:global(.dark) .ne-card {
+  --ne-bg: #1f1f1f;
+  --ne-fg: #e6e6e6;
+}
+
+.ne-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: inherit;
+}
+.ne-left { display: flex; gap: 6px; align-items: center; }
+.ne-right { display: flex; gap: 10px; align-items: center; }
+.ne-chip {
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.06);
+}
+:global(.dark) .ne-chip { background: rgba(255,255,255,.12); }
+
+.ne-meta { opacity: .7; font-size: 12px; }
+.ne-count { font-variant-numeric: tabular-nums; font-size: 12px; opacity: .9; }
+.ne-count.danger { color: #d14; }
+
+.ne-editor { position: relative; }
+
+.ne-textarea {
+  width: 100%;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.6;
+  color: inherit;
+  background: transparent;
   outline: none;
   resize: none;
-  background: transparent;
-  line-height: 1.6;
-  font-family: inherit;
-  /* 不设置固定高度；由外层滚动容器承载滚动 */
+  overflow: auto;
 }
+.ne-textarea:focus { border-color: rgba(0,0,0,.22); box-shadow: 0 0 0 3px rgba(0,0,0,.06) inset; }
+:global(.dark) .ne-textarea { border-color: rgba(255,255,255,.18); }
+:global(.dark) .ne-textarea:focus { border-color: rgba(255,255,255,.28); box-shadow: 0 0 0 3px rgba(255,255,255,.06) inset; }
 
-/* 视口固定 footer（不是容器里的 absolute） */
-.editor-footer{
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 0; /* 将由 JS 动态加上键盘高度 */
-  width: 100%;
-  max-width: 480px;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-  background: #fff;
-  border-top: 1px solid #eaeaea;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 -6px 24px rgba(0,0,0,.06);
-}
-
-.status{
+.ne-tag-panel {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  color: #666;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+}
+.ne-tag-item {
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(0,0,0,.03);
+  padding: 2px 8px;
+  border-radius: 999px;
   font-size: 12px;
+  cursor: pointer;
 }
-.status .count{ white-space: nowrap; }
-.status .saved{ white-space: nowrap; }
+.ne-tag-item:hover { background: rgba(0,0,0,.06); }
+:global(.dark) .ne-tag-item { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.06); }
+:global(.dark) .ne-tag-item:hover { background: rgba(255,255,255,.10); }
 
-.save-btn{
-  margin-left: auto;
-  padding: 8px 16px;
+.ne-actions {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding-top: 10px;
+}
+.ne-submit {
+  min-width: 160px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
   border: none;
-  border-radius: 8px;
-  background: #007aff;
+  cursor: pointer;
+  font: inherit;
+  background: #00b386;
   color: #fff;
-  font-size: 14px;
 }
-.save-btn:disabled{ opacity: .6; }
+.ne-submit:disabled { opacity: .6; cursor: not-allowed; }
+.ne-submit:hover:enabled { filter: brightness(0.95); }
+:global(.dark) .ne-submit { background: #00b386; }
 
-@media (min-width: 768px){
-  .editor-screen{ height: 100vh; }
-}
+.ne-hint { opacity: .6; font-size: 12px; }
 </style>
