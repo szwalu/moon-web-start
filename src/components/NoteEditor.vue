@@ -140,6 +140,24 @@ onMounted(() => {
     resizeTextarea()
     textareaRef.value?.focus()
   })
+
+  // --- Mobile keyboard / VisualViewport 适配 ---
+  const applyViewportFix = () => {
+    const vv = (window as any).visualViewport
+    const h = vv?.height || window.innerHeight
+    const kb = Math.max(0, window.innerHeight - h)
+    document.documentElement.style.setProperty('--vvh', `${h}px`)
+    document.documentElement.style.setProperty('--kb', `${kb}px`)
+  }
+  applyViewportFix()
+  const vv = (window as any).visualViewport
+  if (vv) {
+    vv.addEventListener('resize', applyViewportFix)
+    vv.addEventListener('scroll', applyViewportFix)
+  }
+  else {
+    window.addEventListener('resize', applyViewportFix)
+  }
 })
 </script>
 
@@ -202,6 +220,8 @@ onMounted(() => {
   place-items: center;
   z-index: 1002;
   padding: 16px;
+  /* 关键：在键盘弹出时给底部让位 */
+  padding-bottom: calc(16px + var(--kb, 0px));
 }
 
 .ne-card {
@@ -212,6 +232,9 @@ onMounted(() => {
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0,0,0,.12);
   padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  /* 关键：卡片本身可滚动，避免被键盘顶住 */
+  max-height: calc(min(560px, var(--vvh, 100dvh)) - 32px);
+  overflow: auto;
 }
 :global(.dark) .ne-card {
   --ne-bg: #1f1f1f;
@@ -241,6 +264,8 @@ onMounted(() => {
 .ne-count.danger { color: #d14; }
 
 .ne-editor { position: relative; }
+/* 给输入区预留底部空间，避免被 sticky 区遮挡 */
+.ne-editor { padding-bottom: 56px; }
 
 .ne-textarea {
   width: 100%;
@@ -285,6 +310,11 @@ onMounted(() => {
   justify-items: center;
   gap: 6px;
   padding-top: 10px;
+  /* 关键：在卡片内吸底，随内容滚动不被遮挡 */
+  position: sticky;
+  bottom: 0;
+  background: var(--ne-bg, #fff);
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
 }
 .ne-submit {
   min-width: 160px;
