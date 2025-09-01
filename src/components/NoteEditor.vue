@@ -36,6 +36,14 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -155,40 +163,17 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!editorWrapperRef.value || !easymde.value)
+  if (!easymde.value)
     return
-
-  // --- PC端逻辑 ---
-  if (window.innerWidth >= 768) {
-    const wrapper = editorWrapperRef.value
-    const toolbar = wrapper.querySelector('.editor-toolbar') as HTMLElement
-    const footer = wrapper.querySelector('.editor-footer') as HTMLElement
-    const codeMirrorEl = wrapper.querySelector('.CodeMirror') as HTMLElement
-
-    if (!toolbar || !footer || !codeMirrorEl)
-      return
-
-    const wrapperHeight = wrapper.clientHeight
-    const toolbarHeight = toolbar.offsetHeight
-    const footerHeight = footer.offsetHeight
-    const availableHeight = wrapperHeight - toolbarHeight - footerHeight
-
-    codeMirrorEl.style.height = `${availableHeight}px`
-    return // 执行完PC逻辑后必须退出
-  }
-
-  // --- 移动端逻辑 (您稳定版中的原始逻辑) ---
   const cm = easymde.value.codemirror
   const sizer = cm.display.sizer
   if (!sizer)
     return
-
-  const minEditorHeight = 130
-  const maxEditorHeight = window.innerHeight * 0.65
   const contentHeight = sizer.scrollHeight + 5
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
+  // 保持一个简单的内部滚动，配合外部布局调整
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
@@ -390,23 +375,26 @@ onMounted(async () => {
     }
   }
 
-  // 移动端键盘监听 (保持不变)
-  window.visualViewport.addEventListener('resize', handleViewportResize)
-  handleViewportResize()
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.addEventListener('resize', debouncedUpdateEditorHeight)
 
-  // <<< 新增：PC端浏览器窗口变化监听 >>>
-  window.addEventListener('resize', updateEditorHeight)
-  // 立即执行一次以确保初始PC布局正确
-  setTimeout(() => updateEditorHeight(), 100)
+  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
+  window.visualViewport.addEventListener('resize', handleViewportResize)
+  // 立即执行一次，以确保初始状态正确
+  handleViewportResize()
+  // <<< --- 修改部分结束 --- >>>
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  // 移动端键盘监听移除 (保持不变)
-  window.visualViewport.removeEventListener('resize', handleViewportResize)
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
 
-  // <<< 新增：移除PC端监听器 >>>
-  window.removeEventListener('resize', updateEditorHeight)
+  // 移除新的 visualViewport 监听
+  window.visualViewport.removeEventListener('resize', handleViewportResize)
+  // <<< --- 修改部分结束 --- >>>
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -618,22 +606,28 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- 新增：专门用于PC端（大屏幕）的样式 --- */
-@media screen and (min-width: 768px) {
+/* --- [FIX] PC Layout Correction --- */
+@media (min-width: 768px) {
   .note-editor-wrapper {
-    /* 1. 设置固定宽度并水平居中 */
-    width: 480px;
-    left: 50%;
-    transform: translateX(-50%);
-
-    /* 2. 关键：设置一个固定的高度，为JS精确计算提供基准 */
-    height: 80vh;
-    max-height: 850px;
-
-    /* 3. 优化PC端视觉效果 */
-    bottom: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    /* On PC, give the wrapper a more stable height instead of just max-height */
+    height: 75vh;
+    max-height: 650px; /* A reasonable max height for large screens */
+  }
+  .note-editor-form {
+    /* Allow the form to properly flex within its wrapper */
+    flex: 1;
+    min-height: 0;
+  }
+  /* The EasyMDE container that replaces the textarea */
+  .note-editor-form > .EasyMDEContainer {
+    flex: 1; /* Allow the editor container to grow and fill available space */
+    min-height: 0; /* A crucial property for nested flexbox scrolling */
+    display: flex;
+    flex-direction: column;
+  }
+  .CodeMirror {
+    /* Override the inline height from JS and let flexbox handle it */
+    height: auto !important;
   }
 }
 </style>
