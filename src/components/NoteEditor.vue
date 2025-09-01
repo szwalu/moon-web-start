@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 
@@ -16,9 +16,10 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const footerRef = ref<HTMLElement | null>(null)
+
 const localValue = ref(props.modelValue)
 
-// 父组件更新时同步
 watch(() => props.modelValue, (val) => {
   if (val !== localValue.value)
     localValue.value = val
@@ -32,14 +33,37 @@ async function handleInput(e: Event) {
   emit('update:modelValue', val)
   emit('triggerAutoSave')
 
-  // 保证光标始终可见
   await nextTick()
-  textareaRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  textareaRef.value?.scrollIntoView({ block: 'nearest' })
 }
 
 function handleSubmit() {
   emit('submit')
 }
+
+function adjustFooterForKeyboard() {
+  if (!footerRef.value || !window.visualViewport)
+    return
+  const layoutHeight = window.innerHeight
+  const viewportHeight = window.visualViewport.height
+  const keyboardHeight = layoutHeight - viewportHeight
+  footerRef.value.style.bottom = `${keyboardHeight}px`
+}
+
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', adjustFooterForKeyboard)
+    window.visualViewport.addEventListener('scroll', adjustFooterForKeyboard)
+    adjustFooterForKeyboard()
+  }
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', adjustFooterForKeyboard)
+    window.visualViewport.removeEventListener('scroll', adjustFooterForKeyboard)
+  }
+})
 </script>
 
 <template>
@@ -53,7 +77,7 @@ function handleSubmit() {
       :disabled="isLoading"
       @input="handleInput"
     />
-    <div class="editor-footer">
+    <div ref="footerRef" class="editor-footer">
       <div class="status">
         <span class="char-counter">
           {{ t('notes.char_count') }}: {{ localValue.length }}/{{ maxNoteLength }}
@@ -79,7 +103,7 @@ function handleSubmit() {
   top: 0;
   left: 0;
   width: 100%;
-  height: 100dvh; /* 核心：视口高度，键盘弹出时会缩短 */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -91,7 +115,7 @@ function handleSubmit() {
   width: 100%;
   border: none;
   padding: 12px;
-  padding-bottom: 60px; /* 给保存按钮预留空间，避免最后几行被盖住 */
+  padding-bottom: 60px;
   font-family: inherit;
   line-height: 1.6;
   resize: none;
@@ -101,15 +125,16 @@ function handleSubmit() {
 
 .editor-footer {
   position: absolute;
-  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0; /* 将被 JS 动态调整 */
   padding: 8px 12px;
   background: #fff;
   border-top: 1px solid #ddd;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  transition: bottom 0.15s ease;
 }
 
 .char-counter {
