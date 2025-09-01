@@ -50,36 +50,32 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// ---------- 替换为新的 handleViewportResize，实现说明见注释 ----------
-// ---------- 替换后的 handleViewportResize：把底部安全区加到 <textarea> 本身 ----------
+// ---------- 最终版：把底部安全区交给 textarea 的 CSS，禁止任何 JS 推滚 ----------
 function handleViewportResize() {
   if (!editorWrapperRef.value)
     return
 
-  // A) 计算键盘高度，并把抽屉整体上移（和原来一致）
+  // 计算键盘高度，并把抽屉整体上移（这一步仅影响 wrapper，不影响 textarea 的滚动逻辑）
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
   editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
 
-  // B) 计算内部 footer 高度，把安全区直接垫到 <textarea> 的 padding-bottom 上
+  // 计算内部 footer（保存按钮/状态栏）高度
   const wrapperEl = editorWrapperRef.value as HTMLElement
   const footerEl = wrapperEl.querySelector('.editor-footer') as HTMLElement | null
   const footerH = footerEl ? footerEl.offsetHeight : 0
 
-  // 关键：textarea 才是你真正输入和“光标所在”的滚动容器
+  // textarea 是真正的输入与滚动容器
   const ta = textareaRef.value as HTMLTextAreaElement | null
   if (ta) {
-    // 注意：只把 footer 高度加到 padding-bottom（按钮在内部，键盘已由 wrapper.bottom 处理）
     ta.style.boxSizing = 'border-box'
+    // 1) padding-bottom：只垫“按钮高度”，让内容别被内部按钮盖住
     ta.style.paddingBottom = `${footerH + 8}px`
-
-    // 让基于 scrollIntoView 的滚动也尊重底部安全区（部分浏览器生效）
-    ta.style.setProperty('scroll-padding-bottom', `${footerH + 8}px`)
+    // 2) scroll-padding-bottom：按钮高度 + 键盘高度（浏览器滚动光标时会尊重它）
+    ta.style.setProperty('scroll-padding-bottom', `${footerH + keyboardHeight + 8}px`)
+    // 不要设置任何 scrollTop！保持用户向上滚动能到达第 1 行
   }
-
-  // C) 若你有自适应高度逻辑，这里可以触发一次（没有就忽略）
-  // updateEditorHeight?.();
 }
 
 // 天气相关逻辑函数
@@ -178,31 +174,23 @@ async function fetchWeather() {
   }
 }
 
-// ---------- 再次修订后的 ensureCursorVisibleBottomOnly ----------
-// ---------- 替换后的 ensureCursorVisibleBottomOnly：只考虑“键盘”安全区，按钮已由 textarea padding 处理 ----------
+// ---------- 最终版：对 textarea 不做任何主动滚动，只更新 CSS 安全区 ----------
 function ensureCursorVisibleBottomOnly() {
-  // 对于原生 <textarea>：由浏览器负责内部滚动，我们只需要在“键盘弹起”时补一点安全区即可
   const ta = textareaRef.value as HTMLTextAreaElement | null
   if (!ta)
     return
 
-  // 顶部：如果你有顶部工具栏，并非覆盖在 textarea 上，一般无需额外处理；
-  // 这里保持最简，避免重复计算导致前几行不可达的副作用。
-
-  // 底部：只考虑“键盘高度”，因为按钮高度已经通过 textarea 的 padding-bottom 解决了
+  // 只需确保 scroll-padding-bottom 随键盘变化而更新（与 handleViewportResize 保持一致）
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
 
-  // 通过 scroll-padding-bottom（上面 handleViewportResize 已对按钮做了），这里临时再加一点 margin 余量即可
-  // 注意：某些移动端浏览器不完全遵循 scroll-padding 对光标滚动的处理——所以这里触发一次平滑滚动
-  // 让 textarea 的可见底部“再抬高” keyboardHeight 像素
-  const extra = Math.min(keyboardHeight, 120) // 做个上限，避免极端设备过大位移
-  if (extra > 0) {
-    // 轻推一下当前滚动条，确保光标不被最底部遮住
-    // （textarea 无法像 CodeMirror 一样获取光标坐标，这里采用保守“向上小滚一段”的方式）
-    ta.scrollTop = Math.max(0, ta.scrollTop + extra)
-  }
+  const wrapperEl = editorWrapperRef.value as HTMLElement | null
+  const footerEl = wrapperEl?.querySelector('.editor-footer') as HTMLElement | null
+  const footerH = footerEl ? footerEl.offsetHeight : 0
+
+  // 这里仅设置样式，不触碰 scrollTop
+  ta.style.setProperty('scroll-padding-bottom', `${footerH + keyboardHeight + 8}px`)
 }
 
 // 编辑器相关逻辑函数
