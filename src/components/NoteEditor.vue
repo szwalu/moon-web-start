@@ -209,35 +209,38 @@ async function fetchWeather() {
 }
 
 // ---------------- 新增：确保光标只在被底部遮挡时才向上滚动 ----------------
-function ensureCursorVisibleBottomOnly(cm: any) {
-  // 兼容获取 scroller 的方法
-  let scroller: HTMLElement | null = null
-  if (typeof cm.getScrollerElement === 'function')
-    scroller = cm.getScrollerElement()
-  else if (cm.display && (cm.display.scroller || cm.display.sizer))
-    scroller = (cm.display.scroller || cm.display.sizer)
-
-  if (!scroller)
-    return
-
+// ---------- 替换后的 ensureCursorVisibleBottomOnly ----------
+function ensureCursorVisibleBottomOnly(cm: CodeMirror.Editor) {
+  const scroller = cm.getScrollerElement()
   const cur = cm.getCursor()
-  const coords = cm.cursorCoords(cur, 'local') // 相对 scroller 的坐标
+  const coords = cm.cursorCoords(cur, 'local')
 
-  const wrapper = editorWrapperRef?.value as HTMLElement | null
+  const wrapper = editorWrapperRef.value as HTMLElement | null
   const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement | null
   const footer = wrapper?.querySelector('.editor-footer') as HTMLElement | null
 
+  // 顶部安全区（工具栏高度）
   const topSafe = (toolbar?.offsetHeight ?? 0)
-  const bottomSafe = (footer?.offsetHeight ?? 0) + 8 // 底部额外安全像素，可微调
+
+  // 底部安全区（保存按钮/底部工具栏 + 键盘）
+  const layoutViewportHeight = window.innerHeight
+  const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
+  const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
+  const footerH = (footer?.offsetHeight ?? 0)
+
+  const bottomSafe = keyboardHeight + footerH + 8
 
   const visibleTop = scroller.scrollTop + topSafe
   const visibleBottom = scroller.scrollTop + scroller.clientHeight - bottomSafe
 
-  // 如果光标被底部挡住，才向上滚；如果被顶部挡住，才向下滚一点
-  if (coords.bottom > visibleBottom)
-    scroller.scrollTop += (coords.bottom - visibleBottom)
-  else if (coords.top < visibleTop)
-    scroller.scrollTop += (coords.top - visibleTop)
+  if (coords.bottom > visibleBottom) {
+    // 光标在底部被遮 → 向上滚多出一段安全区
+    scroller.scrollTop += coords.bottom - visibleBottom
+  }
+  else if (coords.top < visibleTop) {
+    // 光标在顶部被遮 → 向下滚
+    scroller.scrollTop += coords.top - visibleTop
+  }
 }
 
 // 编辑器相关逻辑函数
