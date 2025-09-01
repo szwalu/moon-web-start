@@ -36,6 +36,14 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -154,9 +162,47 @@ async function fetchWeather() {
 }
 
 // 编辑器相关逻辑函数
-// [修改] 禁用JS动态高度，改由CSS全面接管
 function updateEditorHeight() {
-  // 此函数内容被有意清空
+  if (!easymde.value)
+    return
+  const cm = easymde.value.codemirror
+  const sizer = cm.display.sizer
+  if (!sizer)
+    return
+  const contentHeight = sizer.scrollHeight + 5
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  cm.setSize(null, newHeight)
+
+  // --- 这是修改的核心 ---
+  // 实现一个更智能的滚动逻辑，仅在需要时防止光标被底部UI遮挡
+  setTimeout(() => {
+    if (!easymde.value)
+      return
+
+    // 获取 CodeMirror 的滚动和光标位置信息
+    const scrollInfo = cm.getScrollInfo()
+    // 'local' 模式获取相对于滚动区域的坐标
+    const cursorCoords = cm.cursorCoords(true, 'local')
+    // 定义底部工具栏的大约高度作为我们的安全边距
+    const editorFooterHeight = 60
+
+    // **关键判断**：
+    // 检查光标的底部是否已经进入了可视区域的“底部危险区”
+    // 可视区域的底部 = 滚动条的顶部位置 + 可视区域的高度
+    const visibleBottom = scrollInfo.top + scrollInfo.clientHeight
+
+    if (cursorCoords.bottom > visibleBottom - editorFooterHeight) {
+      // 如果光标在底部危险区，我们才使用带边距的 scrollIntoView
+      // 来确保它不会被下方的按钮遮住。
+      // 注意：第一个参数传 null 会默认使用当前光标位置。
+      cm.scrollIntoView(null, editorFooterHeight)
+    }
+
+    // **重要**：
+    // 如果光标不在底部危险区（例如，在顶部或中间），我们什么都不做。
+    // 这样就将滚动控制权还给了用户，允许他们自由地将笔记的任何部分（包括前三行）滚动到视图的最顶端。
+    // CodeMirror 的默认行为已经能很好地处理光标移出视窗时的自动滚动。
+  }, 0)
 }
 
 function destroyEasyMDE() {
@@ -420,6 +466,7 @@ watch(easymde, (newEditorInstance) => {
         cm.scrollIntoView(cm.getCursor(), 60)
 
         // 4. 作为最后的保险，再调用一次高度更新
+        updateEditorHeight()
       }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
@@ -510,7 +557,7 @@ watch(easymde, (newEditorInstance) => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* [删除] 移除 overflow: hidden; 它会干扰Flexbox的内部滚动 */
+  overflow: hidden; /* 防止子元素溢出 */
 }
 
 /* --- 恢复并整合的原有样式 --- */
@@ -585,21 +632,27 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
 /* --- [FIX] PC Layout Correction --- */
-/* --- [修改] 全局应用健壮的Flexbox布局 --- */
-.note-editor-form {
-  /* 确保表单在父容器中可以自由伸缩 */
-  flex: 1;
-  min-height: 0;
-}
-.note-editor-form > .EasyMDEContainer {
-  /* 让编辑器容器占据所有剩余空间 */
-  flex: 1;
-  min-height: 0; /* 关键的Flexbox修复，确保内部滚动正常 */
-  display: flex;
-  flex-direction: column;
-}
-.CodeMirror {
-  /* 覆盖所有JS设置的高度，让Flexbox完全控制 */
-  height: auto !important;
+@media (min-width: 768px) {
+  .note-editor-wrapper {
+    /* On PC, give the wrapper a more stable height instead of just max-height */
+    height: 75vh;
+    max-height: 650px; /* A reasonable max height for large screens */
+  }
+  .note-editor-form {
+    /* Allow the form to properly flex within its wrapper */
+    flex: 1;
+    min-height: 0;
+  }
+  /* The EasyMDE container that replaces the textarea */
+  .note-editor-form > .EasyMDEContainer {
+    flex: 1; /* Allow the editor container to grow and fill available space */
+    min-height: 0; /* A crucial property for nested flexbox scrolling */
+    display: flex;
+    flex-direction: column;
+  }
+  .CodeMirror {
+    /* Override the inline height from JS and let flexbox handle it */
+    height: auto !important;
+  }
 }
 </style>
