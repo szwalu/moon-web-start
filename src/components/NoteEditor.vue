@@ -16,8 +16,7 @@ const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 
-const wrapperRef = ref<HTMLElement | null>(null) // 整个抽屉
-const scrollRef = ref<HTMLElement | null>(null) // 文本滚动区（包着 textarea）
+const scrollRef = ref<HTMLElement | null>(null) // 文本滚动容器
 const taRef = ref<HTMLTextAreaElement | null>(null)
 const footerRef = ref<HTMLElement | null>(null)
 
@@ -28,7 +27,6 @@ watch(() => props.modelValue, (v) => {
     local.value = v
 })
 
-/** 输入时：同步 + 触发父级自动保存 + 保证光标可见 */
 async function onInput(e: Event) {
   const v = (e.target as HTMLTextAreaElement).value
   if (v.length > props.maxNoteLength)
@@ -37,52 +35,18 @@ async function onInput(e: Event) {
   emit('update:modelValue', v)
   emit('triggerAutoSave')
 
-  // 让输入行别被底部占位区挡住
   await nextTick()
-  // 浏览器本身会尽力让光标可见；我们再确保滚动容器底部预留足够内边距
+  // 让当前输入行尽量靠近底部可见
   ensureBottomPadding()
+  taRef.value?.scrollIntoView({ block: 'nearest' })
 }
 
-/** 点击保存 */
 function submit() {
   emit('submit')
 }
 
-/** 计算键盘高度并抬升底部操作栏，同时给内容区补足底部内边距 */
-function applyKeyboardAvoidance() {
-  if (!footerRef.value || !scrollRef.value || !wrapperRef.value)
-    return
-
-  const vv = (window as any).visualViewport
-  let keyboard = 0
-  if (vv && typeof vv.height === 'number') {
-    // 键盘高度 ~= 布局视口高度 - 可视视口高度
-    keyboard = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
-  }
-
-  // 记录 footer 高度（初次/窗口变化时测量）
-  const footerH = footerRef.value.getBoundingClientRect().height
-
-  // 把操作栏抬到键盘上方（向上移动 keyboard px）
-  footerRef.value.style.transform = `translateY(${-keyboard}px)`
-
-  // 给内容区预留底部空间（避免最后几行被 footer + 键盘 + 安全区挡住）
-  const safe = getSafeAreaBottom()
-  const pad = Math.ceil(footerH + keyboard + safe)
-  ;(scrollRef.value as HTMLElement).style.paddingBottom = `${pad}px`
-
-  // 让抽屉高度使用 100dvh，兼容旧设备时 fallback
-  ;(wrapperRef.value as HTMLElement).style.height = 'min(85dvh, 85vh)'
-}
-
-/** 在没有 visualViewport 的设备上，也尽量更新一次 */
-function legacyResizeWorkaround() {
-  applyKeyboardAvoidance()
-}
-
-/** iOS 刘海安全区底部 */
+/** iOS 刘海安全区底部像素 */
 function getSafeAreaBottom(): number {
-  // 会返回 0~常见 34px（iPhoneX+）
   const tmp = document.createElement('div')
   tmp.style.cssText = 'position:fixed;bottom:0;height:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)'
   document.body.appendChild(tmp)
@@ -91,31 +55,53 @@ function getSafeAreaBottom(): number {
   return safe
 }
 
-/** 根据 footer 实际高度、键盘高度，补充内容区底部内边距 */
+/** 核心：根据键盘高度抬升 footer，并给滚动容器补底部内边距 */
+function applyKeyboardAvoidance() {
+  if (!footerRef.value || !scrollRef.value)
+    return
+
+  const vv = (window as any).visualViewport
+  let keyboard = 0
+  if (vv && typeof vv.height === 'number')
+    keyboard = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
+
+  const safe = getSafeAreaBottom()
+  const footerH = footerRef.value.getBoundingClientRect().height
+
+  // 让 footer 真正“悬浮”在键盘上方（以视口为参照）
+  footerRef.value.style.bottom = `${keyboard}px`
+
+  // 让内容最后一行别被挡住
+  const pad = Math.ceil(footerH + keyboard + safe)
+  ;(scrollRef.value as HTMLElement).style.paddingBottom = `${pad}px`
+}
+
+/** 兜底：部分安卓机不触发 visualViewport */
+function legacyResizeWorkaround() {
+  applyKeyboardAvoidance()
+}
+
 function ensureBottomPadding() {
   applyKeyboardAvoidance()
 }
 
 onMounted(() => {
-  // 初始测量一次
-  applyKeyboardAvoidance()
+  // 初次进入：把光标放到末尾，打开键盘，随后计算一次
+  requestAnimationFrame(() => {
+    if (taRef.value) {
+      taRef.value.focus()
+      const len = taRef.value.value.length
+      taRef.value.selectionStart = taRef.value.selectionEnd = len
+    }
+    ensureBottomPadding()
+  })
 
   const vv = (window as any).visualViewport
   if (vv && vv.addEventListener) {
     vv.addEventListener('resize', applyKeyboardAvoidance)
     vv.addEventListener('scroll', applyKeyboardAvoidance)
   }
-  // 兜底：窗口 resize 也调用一次（某些安卓机型仅触发这里）
   window.addEventListener('resize', legacyResizeWorkaround)
-
-  // 初次进入编辑时，滚到内容最后一行（常见移动端行为）
-  requestAnimationFrame(() => {
-    if (taRef.value) {
-      taRef.value.focus()
-      taRef.value.selectionStart = taRef.value.selectionEnd = taRef.value.value.length
-    }
-    ensureBottomPadding()
-  })
 })
 
 onUnmounted(() => {
@@ -129,17 +115,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 抽屉：放在 overlay 之上但不占满整屏，上方仍有灰幕可点击关闭 -->
-  <section ref="wrapperRef" class="sheet">
-    <div class="sheet__grab" />
-
-    <div ref="scrollRef" class="sheet__scroll">
+  <!-- 全屏编辑器：固定视口，不再被父层内容挤压 -->
+  <section class="editor-screen">
+    <div ref="scrollRef" class="editor-scroll">
       <textarea
         ref="taRef"
         v-model="local"
         :placeholder="t('notes.content_placeholder')"
         :style="{ fontSize: `${settingsStore.noteFontSize}px` }"
-        class="sheet__textarea"
+        class="editor-textarea"
         :disabled="isLoading"
         autocapitalize="sentences"
         autocomplete="off"
@@ -151,8 +135,9 @@ onUnmounted(() => {
       />
     </div>
 
-    <footer ref="footerRef" class="sheet__footer">
-      <div class="sheet__status">
+    <!-- 底部操作条：固定在视口（position:fixed），用 JS 动态抬升 -->
+    <footer ref="footerRef" class="editor-footer">
+      <div class="status">
         <span class="count">
           {{ t('notes.char_count') }}: {{ local.length }}/{{ maxNoteLength }}
         </span>
@@ -161,7 +146,7 @@ onUnmounted(() => {
         </span>
       </div>
       <button
-        class="sheet__save"
+        class="save-btn"
         :disabled="isLoading || !local"
         @click="submit"
       >
@@ -172,73 +157,60 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 抽屉整体（底部 85dvh），顶部留出灰幕可点 overlay 关闭 */
-.sheet{
+/* 整个编辑器占满视口，高度用 100dvh 防止 iOS 地址栏抖动 */
+.editor-screen{
   position: fixed;
-  left: 0; right: 0; bottom: 0;
-  margin: 0 auto;
-  max-width: 480px;
-  height: min(85dvh, 85vh);
+  inset: 0;
+  height: 100dvh;
   background: #fff;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -6px 24px rgba(0,0,0,.12);
+  z-index: 1002; /* 高于 overlay(1000) */
   display: flex;
   flex-direction: column;
-  z-index: 1002; /* 高于 overlay(1000) */
+  max-width: 480px;
+  margin: 0 auto;
 }
 
-.sheet__grab{
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sheet__grab::after{
-  content: "";
-  width: 42px; height: 4px;
-  border-radius: 999px;
-  background: #ddd;
-}
-
-.sheet__scroll{
+/* 只让这个容器滚动，textarea 不负责滚动 */
+.editor-scroll{
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 12px;
+  padding-top: 8px;
+  /* padding-bottom 由 JS 动态设置，避免最后一行被挡 */
 }
 
-/* 让文本区填满滚动区 */
-.sheet__textarea{
+/* 文本域本身不扩高，不设置 min-height，避免初次聚焦把 footer 顶出视口 */
+.editor-textarea{
   display: block;
   width: 100%;
-  min-height: 60vh; /* 初始给个合适高度；实际滚动在 .sheet__scroll 上 */
   border: none;
   outline: none;
   resize: none;
-  padding: 8px 0;
-  font-family: inherit;
-  line-height: 1.6;
   background: transparent;
-  /* 关键：底部内边距由 JS 动态补足，避免被 footer/键盘/安全区遮挡 */
-  padding-bottom: 0;
-  /* iOS 点击态更自然 */
-  -webkit-tap-highlight-color: transparent;
+  line-height: 1.6;
+  font-family: inherit;
+  /* 不设置固定高度；由外层滚动容器承载滚动 */
 }
 
-/* 底部操作栏：独立层，真实“悬浮” */
-.sheet__footer{
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
+/* 视口固定 footer（不是容器里的 absolute） */
+.editor-footer{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0; /* 将由 JS 动态加上键盘高度 */
+  width: 100%;
+  max-width: 480px;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   background: #fff;
   border-top: 1px solid #eaeaea;
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: transform .15s ease; /* 抬升时更平滑 */
+  box-shadow: 0 -6px 24px rgba(0,0,0,.06);
 }
 
-.sheet__status{
+.status{
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -246,10 +218,10 @@ onUnmounted(() => {
   color: #666;
   font-size: 12px;
 }
-.sheet__status .count{white-space: nowrap;}
-.sheet__status .saved{white-space: nowrap;}
+.status .count{ white-space: nowrap; }
+.status .saved{ white-space: nowrap; }
 
-.sheet__save{
+.save-btn{
   margin-left: auto;
   padding: 8px 16px;
   border: none;
@@ -258,13 +230,9 @@ onUnmounted(() => {
   color: #fff;
   font-size: 14px;
 }
-.sheet__save:disabled{ opacity: .6; }
+.save-btn:disabled{ opacity: .6; }
 
 @media (min-width: 768px){
-  .sheet{
-    height: 70vh;
-    max-height: 640px;
-  }
-  .sheet__textarea{ min-height: 0; }
+  .editor-screen{ height: 100vh; }
 }
 </style>
