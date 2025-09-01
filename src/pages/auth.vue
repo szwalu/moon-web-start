@@ -1062,15 +1062,22 @@ function closeEditorModal() {
     background-color: #00c291;
 }
 
-.editor-overlay {
+editor-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
-  /* z-index 必须比 NoteEditor 的 1002 低 */
   z-index: 1000;
+
+  /* --- 新增/修改的样式 开始 --- */
+  /* 1. 将蒙层变为 Flexbox 容器 */
+  display: flex;
+  flex-direction: column;
+  /* 2. 将其唯一的子元素（NoteEditor）推到底部 */
+  justify-content: flex-end;
+  /* --- 新增/修改的样式 结束 --- */
 }
 
 .fade-enter-active,
