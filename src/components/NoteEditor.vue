@@ -162,6 +162,7 @@ async function fetchWeather() {
 }
 
 // 编辑器相关逻辑函数
+// 编辑器相关逻辑函数
 function updateEditorHeight() {
   if (!easymde.value)
     return
@@ -173,11 +174,13 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
+  // [修改] 注释掉或删除下面这几行代码，以解决移动端无法滚动到顶部的问题
+  /*
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
   }, 0)
+  */
 }
 
 function destroyEasyMDE() {
