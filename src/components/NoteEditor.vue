@@ -51,65 +51,35 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // ---------- 替换为新的 handleViewportResize，实现说明见注释 ----------
+// ---------- 替换后的 handleViewportResize：把底部安全区加到 <textarea> 本身 ----------
 function handleViewportResize() {
-  // 如果没有 wrapper 或尚未初始化编辑器，就先退
   if (!editorWrapperRef.value)
     return
 
-  // 1) 计算键盘高度并调整 wrapper.bottom（兼容没有 visualViewport 的情况）
+  // A) 计算键盘高度，并把抽屉整体上移（和原来一致）
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
-
-  // 将抽屉上移键盘高度（和你以前的逻辑一致）
   editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
 
-  // 2) 如果编辑器实例存在，修正 CodeMirror 内部滚动容器的 padding / 大小
-  if (!easymde.value)
-    return
+  // B) 计算内部 footer 高度，把安全区直接垫到 <textarea> 的 padding-bottom 上
+  const wrapperEl = editorWrapperRef.value as HTMLElement
+  const footerEl = wrapperEl.querySelector('.editor-footer') as HTMLElement | null
+  const footerH = footerEl ? footerEl.offsetHeight : 0
 
-  try {
-    const cm: any = easymde.value.codemirror
-    // 获取真正的滚动容器（兼容不同 CodeMirror 版本）
-    let scroller: HTMLElement | null = null
-    if (typeof cm.getScrollerElement === 'function')
-      scroller = cm.getScrollerElement()
-    else if (cm.display && (cm.display.scroller || cm.display.sizer))
-      scroller = cm.display.scroller || cm.display.sizer
+  // 关键：textarea 才是你真正输入和“光标所在”的滚动容器
+  const ta = textareaRef.value as HTMLTextAreaElement | null
+  if (ta) {
+    // 注意：只把 footer 高度加到 padding-bottom（按钮在内部，键盘已由 wrapper.bottom 处理）
+    ta.style.boxSizing = 'border-box'
+    ta.style.paddingBottom = `${footerH + 8}px`
 
-    // 获取 toolbar / footer 的真实高度（如果存在）
-    const wrapperEl = editorWrapperRef.value as HTMLElement
-    const toolbarEl = wrapperEl.querySelector('.editor-toolbar') as HTMLElement | null
-    const footerEl = wrapperEl.querySelector('.editor-footer') as HTMLElement | null
-    const toolbarH = toolbarEl ? toolbarEl.offsetHeight : 0
-    const footerH = footerEl ? footerEl.offsetHeight : 0
-
-    // 如果找到了内部滚动层，设置 paddingTop/paddingBottom 与 scroll-padding，确保：
-    //  - 顶部工具栏不会覆盖编辑内容（把可见内容往下垫开同等高度）
-    //  - scrollIntoView / 浏览器滚动 API 会尊重该安全区
-    if (scroller) {
-      scroller.style.boxSizing = 'border-box'
-      scroller.style.paddingTop = `${toolbarH}px`
-      scroller.style.paddingBottom = `${footerH}px`
-      scroller.style.setProperty('scroll-padding-top', `${toolbarH}px`)
-      scroller.style.setProperty('scroll-padding-bottom', `${footerH}px`)
-      // 小防御：如果 scrollTop 小于 0 或者在 padding 里，确保不会被“卡住”
-      if (scroller.scrollTop < 0)
-        scroller.scrollTop = 0
-    }
-
-    // 3) 重新计算编辑器可用高度并应用（避免父容器限制导致的“顶部看不见”）
-    //    我们使用 visualViewportHeight（键盘弹起时为缩小后的高度）减去 toolbar/footer
-    const available = Math.max(minEditorHeight, Math.min(maxEditorHeight, Math.floor(visualViewportHeight - toolbarH - footerH - 8), // 额外留少量余量
-    ))
-    // 设置编辑器高度（像你原来那样用 setSize），让内部滚动真实可用
-    if (cm && typeof cm.setSize === 'function')
-      cm.setSize(null, available)
+    // 让基于 scrollIntoView 的滚动也尊重底部安全区（部分浏览器生效）
+    ta.style.setProperty('scroll-padding-bottom', `${footerH + 8}px`)
   }
-  catch (e) {
-    // 容错：不阻塞主流程
-    // console.warn('handleViewportResize error', e)
-  }
+
+  // C) 若你有自适应高度逻辑，这里可以触发一次（没有就忽略）
+  // updateEditorHeight?.();
 }
 
 // 天气相关逻辑函数
@@ -209,33 +179,30 @@ async function fetchWeather() {
 }
 
 // ---------- 再次修订后的 ensureCursorVisibleBottomOnly ----------
-function ensureCursorVisibleBottomOnly(cm: CodeMirror.Editor) {
-  const scroller = cm.getScrollerElement()
-  const cur = cm.getCursor()
-  const coords = cm.cursorCoords(cur, 'local')
+// ---------- 替换后的 ensureCursorVisibleBottomOnly：只考虑“键盘”安全区，按钮已由 textarea padding 处理 ----------
+function ensureCursorVisibleBottomOnly() {
+  // 对于原生 <textarea>：由浏览器负责内部滚动，我们只需要在“键盘弹起”时补一点安全区即可
+  const ta = textareaRef.value as HTMLTextAreaElement | null
+  if (!ta)
+    return
 
-  const wrapper = editorWrapperRef.value as HTMLElement | null
-  const toolbar = wrapper?.querySelector('.editor-toolbar') as HTMLElement | null
+  // 顶部：如果你有顶部工具栏，并非覆盖在 textarea 上，一般无需额外处理；
+  // 这里保持最简，避免重复计算导致前几行不可达的副作用。
 
-  // 顶部安全区：避免工具栏盖住
-  const topSafe = (toolbar?.offsetHeight ?? 0)
-
-  // 注意：footer 已经在 handleViewportResize 里加过 padding-bottom 了
-  // 这里不再二次加 footerH，只考虑键盘高度
+  // 底部：只考虑“键盘高度”，因为按钮高度已经通过 textarea 的 padding-bottom 解决了
   const layoutViewportHeight = window.innerHeight
   const visualViewportHeight = window.visualViewport ? window.visualViewport.height : layoutViewportHeight
   const keyboardHeight = Math.max(0, layoutViewportHeight - visualViewportHeight)
 
-  // 只用 keyboardHeight + 一点余量
-  const bottomSafe = keyboardHeight + 8
-
-  const visibleTop = scroller.scrollTop + topSafe
-  const visibleBottom = scroller.scrollTop + scroller.clientHeight - bottomSafe
-
-  if (coords.bottom > visibleBottom)
-    scroller.scrollTop += coords.bottom - visibleBottom
-  else if (coords.top < visibleTop)
-    scroller.scrollTop += coords.top - visibleTop
+  // 通过 scroll-padding-bottom（上面 handleViewportResize 已对按钮做了），这里临时再加一点 margin 余量即可
+  // 注意：某些移动端浏览器不完全遵循 scroll-padding 对光标滚动的处理——所以这里触发一次平滑滚动
+  // 让 textarea 的可见底部“再抬高” keyboardHeight 像素
+  const extra = Math.min(keyboardHeight, 120) // 做个上限，避免极端设备过大位移
+  if (extra > 0) {
+    // 轻推一下当前滚动条，确保光标不被最底部遮住
+    // （textarea 无法像 CodeMirror 一样获取光标坐标，这里采用保守“向上小滚一段”的方式）
+    ta.scrollTop = Math.max(0, ta.scrollTop + extra)
+  }
 }
 
 // 编辑器相关逻辑函数
