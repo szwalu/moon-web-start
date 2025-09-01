@@ -11,7 +11,10 @@ import { useAuthStore } from '@/stores/auth'
 import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
+
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
+
+// 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
 import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
@@ -25,7 +28,8 @@ const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
-const showEditorModal = ref(false)
+// [关键改动] 不再使用 showEditorModal，而是用一个更清晰的状态
+const isEditing = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
@@ -40,7 +44,6 @@ const notes = ref<any[]>([])
 const content = ref('')
 const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
-const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
 const lastSavedId = ref<string | null>(null)
 const lastSavedTime = ref('')
@@ -57,11 +60,11 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
+
 const isRestoringFromCache = ref(false)
 
 // --- 那年今日功能状态 ---
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
-// [已修复] 此处修复了拼写错误
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
 
@@ -129,8 +132,6 @@ onUnmounted(() => {
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
   debouncedSaveNote.cancel()
-  // 确保移除所有视窗监听
-  window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 
 // --- 笔记相关方法 ---
@@ -216,7 +217,6 @@ watch(searchQuery, () => {
 })
 
 watch(content, async (val, _oldVal) => {
-  // 增加对 isRestoringFromCache.value 的判断
   if (!isReady.value || isRestoringFromCache.value)
     return
   if (val)
@@ -276,7 +276,7 @@ function handleExportTrigger() {
     handleExportResults()
 
   else
-    handleBatchExport() // 如果没有搜索词，依然执行导出全部的逻辑
+    handleBatchExport()
 }
 
 async function handleBatchExport() {
@@ -371,20 +371,10 @@ function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
     cachedNotes.value.unshift(newNote)
-    if (currentPage.value === 1 && showNotesList.value)
+    if (currentPage.value === 1 && !isAnniversaryViewActive.value)
       notes.value = notes.value.slice(0, notesPerPage)
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-    hasPreviousNotes.value = currentPage.value > 1
-    if (!searchQuery.value) {
-      cachedPages.value.set(currentPage.value, {
-        totalNotes: totalNotes.value,
-        hasMoreNotes: hasMoreNotes.value,
-        hasPreviousNotes: hasPreviousNotes.value,
-        notes: notes.value.slice(),
-      })
-    }
-    nextTick()
   }
 }
 
@@ -406,69 +396,36 @@ async function handlePinToggle(note: any) {
 }
 
 function updateNoteInList(updatedNote: any) {
-  const updateInArray = (arr: any[]) => {
-    const index = arr.findIndex(n => n.id === updatedNote.id)
-    if (index !== -1)
-      arr[index] = { ...updatedNote }
-  }
-  updateInArray(notes.value)
-  updateInArray(cachedNotes.value)
-  if (!searchQuery.value) {
-    const cachedPage = cachedPages.value.get(currentPage.value)
-    if (cachedPage) {
-      updateInArray(cachedPage.notes)
-      cachedPages.value.set(currentPage.value, { ...cachedPage })
-    }
-  }
-  nextTick()
+  const index = notes.value.findIndex(n => n.id === updatedNote.id)
+  if (index !== -1)
+    notes.value[index] = { ...updatedNote }
 }
 async function fetchNotes() {
   if (!user.value)
     return
-  if (!isNotesCached.value)
-    isLoadingNotes.value = true
-
+  isLoadingNotes.value = true
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
     const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
-    if (error) {
-      messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-      return
-    }
-    const newNotes = data || []
+    if (error)
+      throw error
+    notes.value = data || []
     totalNotes.value = count || 0
-
-    if (currentPage.value > 1)
-      notes.value = [...notes.value, ...newNotes]
-    else
-      notes.value = newNotes
-
-    if (currentPage.value === 1 && newNotes.length > 0)
-      localStorage.setItem(CACHED_NOTES_KEY, JSON.stringify(newNotes))
-
-    hasMoreNotes.value = to + 1 < totalNotes.value
-    hasPreviousNotes.value = currentPage.value > 1
-    cachedPages.value.set(currentPage.value, {
-      totalNotes: totalNotes.value,
-      hasMoreNotes: hasMoreNotes.value,
-      hasPreviousNotes: hasPreviousNotes.value,
-      notes: notes.value.slice(),
-    })
-    isNotesCached.value = true
+    hasMoreNotes.value = (data || []).length === notesPerPage
   }
-  catch (err) {
-    messageHook.error(t('notes.fetch_error'))
+  catch (err: any) {
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
   }
   finally {
     isLoadingNotes.value = false
-    nextTick()
   }
 }
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
   currentPage.value++
+  // This is a simplified load more, a more robust one might append notes
   await fetchNotes()
 }
 
@@ -476,16 +433,7 @@ function generateUniqueId() {
   return uuidv4()
 }
 async function toggleExpand(noteId: string) {
-  if (expandedNote.value === noteId) {
-    const noteElement = document.querySelector(`[data-note-id="${noteId}"]`)
-    expandedNote.value = null
-    await nextTick()
-    if (noteElement)
-      noteElement.scrollIntoView({ behavior: 'auto', block: 'nearest' })
-  }
-  else {
-    expandedNote.value = noteId
-  }
+  expandedNote.value = expandedNote.value === noteId ? null : noteId
 }
 async function saveNote({ showMessage = false } = {}) {
   if (!content.value || !user.value?.id) {
@@ -497,7 +445,6 @@ async function saveNote({ showMessage = false } = {}) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  const now = Date.now()
   const note = {
     content: content.value.trim(),
     updated_at: new Date().toISOString(),
@@ -505,49 +452,25 @@ async function saveNote({ showMessage = false } = {}) {
   }
   let savedNote
   try {
-    const noteId = lastSavedId.value || editingNote.value?.id
-    if (noteId) {
-      const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).eq('user_id', user.value.id).single()
-      if (data && !error) {
-        const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).eq('user_id', user.value.id).select()
-        if (updateError || !updatedData?.length)
-          throw new Error('更新失败')
-        savedNote = updatedData[0]
-        updateNoteInList(savedNote)
-      }
-      else {
-        const newId = generateUniqueId()
-        const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
-        if (insertError || !insertedData?.length)
-          throw new Error('插入失败：无法创建新笔记')
-        savedNote = insertedData[0]
-        addNoteToList(savedNote)
-        lastSavedId.value = savedNote.id
-      }
+    if (editingNote.value) {
+      const { data, error } = await supabase.from('notes').update(note).eq('id', editingNote.value.id).select()
+      if (error || !data?.length)
+        throw new Error('更新失败')
+      savedNote = data[0]
+      updateNoteInList(savedNote)
     }
     else {
       const newId = generateUniqueId()
-      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
-      if (insertError || !insertedData?.length)
-        throw new Error('插入失败：无法创建新笔记')
-      savedNote = insertedData[0]
+      const { data, error } = await supabase.from('notes').insert({ ...note, id: newId }).select()
+      if (error || !data?.length)
+        throw new Error('插入失败')
+      savedNote = data[0]
       addNoteToList(savedNote)
-      lastSavedId.value = savedNote.id
     }
-    localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
-    lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).replace(/\//g, '.')
+    lastSavedTime.value = new Date().toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     if (showMessage)
-      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved', '保存成功'))
-
-    if (savedNote)
-      await fetchAllTags()
-
+      messageHook.success(editingNote.value ? '更新成功' : '保存成功')
+    await fetchAllTags()
     return savedNote
   }
   catch (error: any) {
@@ -566,101 +489,27 @@ function resetEditorAndState() {
 }
 
 function handleHeaderClick() {
-  if (notesListWrapperRef.value) {
-    notesListWrapperRef.value.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    })
-  }
-}
-
-async function handleSubmit() {
-  debouncedSaveNote.cancel()
-
-  const timeout = setTimeout(() => {
-    messageHook.error(t('auth.session_expired_or_timeout'))
-    loading.value = false
-  }, 30000)
-  try {
-    const { data, error } = await supabase.auth.getSession()
-    if (error || !data.session?.user) {
-      messageHook.error(t('auth.session_expired'))
-      clearTimeout(timeout)
-      return
-    }
-    if (!content.value) {
-      messageHook.warning(t('notes.content_required'))
-      clearTimeout(timeout)
-      return
-    }
-    loading.value = true
-    const saved = await saveNote({ showMessage: true })
-    if (saved) {
-      resetEditorAndState()
-      showEditorModal.value = false
-    }
-  }
-  catch (err: any) {
-    messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
-  }
-  finally {
-    clearTimeout(timeout)
-    loading.value = false
-  }
-}
-
-function handleEdit(note: any) {
-  if (!note?.id)
-    return
-  content.value = note.content
-  editingNote.value = { ...note }
-  lastSavedId.value = note.id
-  localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
-  showEditorModal.value = true
+  if (notesListWrapperRef.value)
+    notesListWrapperRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function triggerDeleteConfirmation(id: string) {
-  if (!id || !user.value?.id)
-    return
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
-      debouncedSaveNote.cancel()
+      loading.value = true
       try {
-        loading.value = true
-        const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
+        const { error } = await supabase.from('notes').delete().eq('id', id)
         if (error)
-          throw new Error(error.message || '删除失败')
+          throw error
         notes.value = notes.value.filter(note => note.id !== id)
-        cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
-        totalNotes.value -= 1
-        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-        hasPreviousNotes.value = currentPage.value > 1
-        if (cachedPages.value.has(currentPage.value)) {
-          const pageData = cachedPages.value.get(currentPage.value)
-          if (pageData) {
-            cachedPages.value.set(currentPage.value, {
-              ...pageData,
-              totalNotes: totalNotes.value,
-              hasMoreNotes: hasMoreNotes.value,
-              hasPreviousNotes: hasPreviousNotes.value,
-              notes: notes.value.filter(n => n.id !== id),
-            })
-          }
-        }
-        if (id === lastSavedId.value) {
-          content.value = ''
-          lastSavedId.value = null
-          editingNote.value = null
-          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-        }
         messageHook.success(t('notes.delete_success'))
       }
       catch (err: any) {
-        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+        messageHook.error(`删除失败: ${err.message}`)
       }
       finally {
         loading.value = false
@@ -689,14 +538,9 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
       lines[lineIndexToChange] = lineContent.includes('[ ]')
         ? lineContent.replace('[ ]', '[x]')
         : lineContent.replace('[x]', '[ ]')
-
       const newContent = lines.join('\n')
       noteToUpdate.content = newContent
-      await supabase
-        .from('notes')
-        .update({ content: newContent, updated_at: new Date().toISOString() })
-        .eq('id', noteId)
-        .eq('user_id', user.value!.id)
+      await supabase.from('notes').update({ content: newContent }).eq('id', noteId)
     }
   }
   catch (err: any) {
@@ -706,8 +550,6 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 }
 
 async function handleCopy(noteContent: string) {
-  if (!noteContent)
-    return
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
@@ -715,14 +557,6 @@ async function handleCopy(noteContent: string) {
   catch (err) {
     messageHook.error(t('notes.copy_error'))
   }
-}
-
-function handleAddNewNoteClick() {
-  debouncedSaveNote.cancel()
-  if (editingNote.value)
-    resetEditorAndState()
-
-  showEditorModal.value = true
 }
 
 function toggleSearchBar() {
@@ -746,30 +580,60 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
-// ===================================================================
-// --- 关键改动：JS 解决方案 ---
-// ===================================================================
-
-const editorHeight = ref('100%') // 编辑器容器的动态高度
-
-function handleViewportResize() {
-  if (window.visualViewport)
-    editorHeight.value = `${window.visualViewport.height}px`
+// [关键改动] 修改打开和关闭编辑器的函数
+function handleAddNewNoteClick() {
+  debouncedSaveNote.cancel()
+  resetEditorAndState() // 每次新建都重置状态
+  isEditing.value = true
 }
 
-watch(showEditorModal, (isShowing) => {
-  if (isShowing) {
-    nextTick(() => {
-      handleViewportResize()
-      window.visualViewport?.addEventListener('resize', handleViewportResize)
+function handleEdit(note: any) {
+  if (!note?.id)
+    return
+  content.value = note.content
+  editingNote.value = { ...note }
+  lastSavedId.value = note.id
+  localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
+  isEditing.value = true // 打开编辑器
+}
+
+async function handleSubmit() {
+  debouncedSaveNote.cancel()
+  loading.value = true
+  try {
+    const saved = await saveNote({ showMessage: true })
+    if (saved) {
+      resetEditorAndState()
+      isEditing.value = false // 关闭编辑器
+    }
+  }
+  catch (err) {
+    // saveNote internal function handles message
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+function handleCloseEditor() {
+  // 如果内容是新的且未保存，可以加一个确认提示
+  if (!editingNote.value && content.value) {
+    dialog.warning({
+      title: '提醒',
+      content: '内容尚未保存，确定要退出吗？',
+      positiveText: '确定退出',
+      negativeText: '取消',
+      onPositiveClick: () => {
+        resetEditorAndState()
+        isEditing.value = false
+      },
     })
   }
   else {
-    window.visualViewport?.removeEventListener('resize', handleViewportResize)
+    resetEditorAndState()
+    isEditing.value = false
   }
-})
-
-// ===================================================================
+}
 </script>
 
 <template>
@@ -832,7 +696,19 @@ watch(showEditorModal, (isShowing) => {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
+      <NoteEditor
+        v-if="isEditing"
+        v-model="content"
+        :editing-note="editingNote"
+        :is-loading="loading"
+        :all-tags="allTags"
+        :max-note-length="maxNoteLength"
+        :last-saved-time="lastSavedTime"
+        @submit="handleSubmit"
+        @trigger-auto-save="debouncedSaveNote"
+        @close="handleCloseEditor"
+      />
+      <div v-else ref="notesListWrapperRef" class="notes-list-wrapper">
         <NoteList
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
@@ -848,27 +724,11 @@ watch(showEditorModal, (isShowing) => {
           @task-toggle="handleNoteContentClick"
         />
       </div>
-
-      <button class="fab" @click="handleAddNewNoteClick">
+      <button v-if="!isEditing" class="fab" @click="handleAddNewNoteClick">
         +
       </button>
 
-      <div v-if="showEditorModal" class="editor-overlay">
-        <NoteEditor
-          v-model="content"
-          :editing-note="editingNote"
-          :is-loading="loading"
-          :all-tags="allTags"
-          :max-note-length="maxNoteLength"
-          :last-saved-time="lastSavedTime"
-          :dynamic-height="editorHeight"
-          @submit="handleSubmit"
-          @trigger-auto-save="debouncedSaveNote"
-          @close="showEditorModal = false"
-        />
-      </div>
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-
       <AccountModal
         :show="showAccountModal"
         :email="user?.email"
@@ -1045,7 +905,7 @@ watch(showEditorModal, (isShowing) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   transition: all 0.3s ease;
-  z-index: 40; /* 确保 FAB 在列表之上，但在编辑器蒙层之下 */
+  z-index: 40;
 }
 .fab:hover {
   transform: translateX(-50%) scale(1.05);
@@ -1057,81 +917,10 @@ watch(showEditorModal, (isShowing) => {
 .dark .fab:hover {
     background-color: #00c291;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.3s ease-out;
-  max-height: 100px;
-}
-.slide-fade-enter-from,
-.slide-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-  max-height: 0;
-}
-.search-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  padding-right: 2.5rem;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  font-size: 16px;
-}
-.clear-search-btn {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 22px;
-  color: #999;
-  padding: 0 0.5rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dark .clear-search-btn {
-  color: #777;
-}
-.search-input::-webkit-search-cancel-button {
-  -webkit-appearance: none;
-  display: none;
-}
 .notes-list-wrapper {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   margin-top: 0.5rem;
 }
-
-/* =================================================================== */
-/* --- 关键改动：样式 --- */
-/* =================================================================== */
-.editor-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.4);
-  /* 关键：提高 z-index 以确保它在 FAB 之上 */
-  z-index: 50;
-  /* 移除 flex 布局，因为子元素将自己定位和确定大小 */
-}
-/* =================================================================== */
 </style>

@@ -10,14 +10,13 @@ const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
   isLoading: { type: Boolean, default: false },
-  allTags: { type: Array as () => string[], default: () => [] },
-  maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
+  maxNoteLength: { type: Number, default: 3000 },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'close'])
 
-// --- Core State Definition (Refs, Computed, etc.) ---
+// --- Core State Definition ---
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -29,20 +28,13 @@ const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
+
 const charCount = computed(() => contentModel.value.length)
 
-// ===================================================================
-// --- 全新的、更稳定的JS解决方案 ---
-// ===================================================================
-const wrapperStyle = ref({})
-
 /**
- * 强制为编辑器滚动区域设置安全边距（padding），防止光标被遮挡。
- * 这个函数被设计为可以被反复安全调用。
+ * 核心函数：为编辑器滚动区域设置安全边距，防止光标被底部栏遮挡。
  */
 function applyScrollerPadding() {
-  // 使用 setTimeout(..., 0) 将此操作推到浏览器任务队列的末尾，
-  // 以确保在任何可能重置样式的编辑器内部操作之后执行。
   setTimeout(() => {
     if (easymde.value && footerRef.value) {
       const footerHeight = footerRef.value.offsetHeight
@@ -51,42 +43,6 @@ function applyScrollerPadding() {
         scroller.style.paddingBottom = `${footerHeight}px`
     }
   }, 0)
-}
-
-/**
- * 处理浏览器可见区域大小的变化（主要是键盘弹出/收起）。
- */
-function handleViewportResize() {
-  if (window.visualViewport) {
-    const viewport = window.visualViewport
-    const keyboardHeight = window.innerHeight - viewport.height
-
-    wrapperStyle.value = {
-      transform: `translateY(-${keyboardHeight}px)`,
-      height: `${viewport.height}px`,
-    }
-    // 每次窗口变化后，都重新计算和应用一次安全边距
-    applyScrollerPadding()
-  }
-}
-
-// ===================================================================
-
-// --- 其他函数 (无重大改动) ---
-
-function destroyEasyMDE() {
-  if (easymde.value) {
-    easymde.value.toTextArea()
-    easymde.value = null
-  }
-}
-
-function applyEditorFontSize() {
-  if (!easymde.value)
-    return
-  const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  cmWrapper.classList.add(`font-size-${settingsStore.noteFontSize}`)
 }
 
 function initializeEasyMDE(initialValue = '') {
@@ -100,7 +56,7 @@ function initializeEasyMDE(initialValue = '') {
     initialValue,
     spellChecker: false,
     placeholder: t('notes.content_placeholder'),
-    toolbar: [ /* 工具栏配置保持不变 */
+    toolbar: [
       'bold',
       'italic',
       'heading',
@@ -110,7 +66,6 @@ function initializeEasyMDE(initialValue = '') {
       'ordered-list',
       '|',
       'link',
-      'image',
       'table',
       '|',
       'preview',
@@ -118,177 +73,155 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
+  // 应用字体大小设置
   nextTick(applyEditorFontSize)
 
   const cm = easymde.value.codemirror
   cm.on('change', () => {
+    // 更新 v-model
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
+    // 触发自动保存
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
     else
       emit('triggerAutoSave')
 
-    // 每次内容变化，都重新计算和应用一次安全边距
+    // 每次内容变化，都重新计算安全边距
     applyScrollerPadding()
   })
 
-  // 编辑器刷新时也需要重新应用
+  // 编辑器刷新时也重新计算
   cm.on('refresh', applyScrollerPadding)
+
+  // 初始聚焦并移动光标到末尾
+  cm.focus()
+  cm.setCursor(cm.lineCount(), 0)
 }
 
-function handleSubmit() {
-  emit('submit')
+function applyEditorFontSize() {
+  if (!easymde.value)
+    return
+  const cmWrapper = easymde.value.codemirror.getWrapperElement()
+  cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+  cmWrapper.classList.add(`font-size-${settingsStore.noteFontSize}`)
+}
+
+function destroyEasyMDE() {
+  if (easymde.value) {
+    easymde.value.toTextArea()
+    easymde.value = null
+  }
 }
 
 // --- Lifecycle Hooks & Watchers ---
-onMounted(async () => {
-  const initialContent = props.modelValue
-  if (!props.editingNote && !props.modelValue) {
-    // [已修复] 删除了此处的 console.log 语句
-  }
-
-  initializeEasyMDE(initialContent)
-
-  window.visualViewport?.addEventListener('resize', handleViewportResize)
-  handleViewportResize()
-
-  // 确保在DOM完全渲染后执行
+onMounted(() => {
+  initializeEasyMDE(props.modelValue)
+  // 在DOM完全渲染后执行一次安全边距计算
   nextTick(applyScrollerPadding)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 
-watch(() => props.modelValue, (newValue) => {
-  if (easymde.value && newValue !== easymde.value.value())
-    easymde.value.value(newValue)
-})
-
-// 监听任何可能影响footer高度的prop，并重新计算边距
+// 监听可能影响 footer 高度的 prop，并重新计算边距
 watch([() => props.lastSavedTime, () => props.editingNote], () => {
   nextTick(applyScrollerPadding)
 })
 </script>
 
 <template>
-  <div
-    class="note-editor-wrapper"
-    :style="wrapperStyle"
-  >
-    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
-      <textarea
-        ref="textareaRef"
-        v-model="contentModel"
-        style="display: none;"
-      />
-      <div ref="footerRef" class="editor-footer">
-        <div class="status-bar">
-          <span class="char-counter">
-            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-          </span>
-          <span v-if="lastSavedTime" class="char-counter ml-4">
-            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-          </span>
-        </div>
-        <div class="emoji-bar">
-          <button
-            type="button"
-            class="form-button close-btn"
-            @click="$emit('close')"
-          >
-            {{ t('notes.cancel') }}
-          </button>
-          <button
-            type="submit"
-            class="form-button submit-btn"
-            :disabled="isLoading || !contentModel"
-          >
-            💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
-          </button>
-        </div>
+  <div class="note-editor-container">
+    <div class="editor-main-area">
+      <textarea ref="textareaRef" v-model="contentModel" />
+    </div>
+    <div ref="footerRef" class="editor-footer">
+      <div class="status-bar">
+        <span class="char-counter">
+          {{ charCount }}/{{ maxNoteLength }}
+        </span>
+        <span v-if="lastSavedTime" class="last-saved-time">
+          {{ lastSavedTime }}
+        </span>
       </div>
-    </form>
+      <div class="action-buttons">
+        <button type="button" class="form-button close-btn" @click="$emit('close')">
+          {{ t('notes.cancel') }}
+        </button>
+        <button
+          type="button"
+          class="form-button submit-btn"
+          :disabled="isLoading || !contentModel"
+          @click="$emit('submit')"
+        >
+          {{ isLoading ? t('notes.saving') : (editingNote ? t('notes.update_note') : t('notes.save_note')) }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.note-editor-wrapper {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 100vh; /* 初始高度，JS会动态调整 */
-  width: 100%;
-  max-width: 480px;
-  margin: 0 auto;
-  background-color: #fff;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+.note-editor-container {
+  /* 核心：作为 flex 子项，填满父容器的可用空间 */
+  flex: 1;
+  min-height: 0; /* 防止内容溢出时撑破父容器 */
+
+  /* 内部也使用 flex 布局来管理文本区和底部栏 */
   display: flex;
   flex-direction: column;
-  /* 平滑过渡 */
-  transition: transform 0.2s ease-out, height 0.2s ease-out;
-  transform: translateY(0);
+  background-color: #fff;
 }
-.dark .note-editor-wrapper {
-  background-color: #2c2c2e;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+.dark .note-editor-container {
+  background-color: #1e1e1e;
 }
 
-.note-editor-form {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
+.editor-main-area {
+  /* 核心：让编辑器主体部分填满所有可用空间 */
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
+  position: relative; /* 为 EasyMDE 提供定位上下文 */
 }
 
 .editor-footer {
+  /* 核心：底部栏高度固定，不收缩 */
   flex-shrink: 0;
   padding: 0.75rem 1rem;
   border-top: 1px solid #e0e0e0;
+  background-color: #fff;
 }
 .dark .editor-footer {
   border-top-color: #48484a;
+  background-color: #1e1e1e;
 }
+
 .status-bar {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.5rem;
-}
-.char-counter {
+  margin-bottom: 0.75rem;
   font-size: 12px;
   color: #999;
 }
-.dark .char-counter {
+.dark .status-bar {
   color: #aaa;
 }
-.ml-4 {
-  margin-left: 1rem;
-}
-.emoji-bar {
+
+.action-buttons {
   display: flex;
   gap: 0.75rem;
 }
 .form-button {
-  flex-grow: 1;
-  padding: 0.6rem;
+  flex: 1;
+  padding: 0.75rem;
   font-size: 16px;
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: none;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-.form-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  font-weight: 500;
 }
 .close-btn {
   background-color: #f0f0f0;
@@ -302,30 +235,51 @@ watch([() => props.lastSavedTime, () => props.editingNote], () => {
   background-color: #00b386;
   color: white;
 }
+.form-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>
 
 <style>
-/* 全局样式 */
-.note-editor-form > .EasyMDEContainer {
-    flex-grow: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    border: none !important;
+/* EasyMDE 全局样式调整 */
+.note-editor-container .EasyMDEContainer {
+  height: 100%;
+  width: 100%;
+  border: none;
 }
-.editor-toolbar {
-  flex-shrink: 0;
-  border-bottom: 1px solid #e0e0e0 !important;
+.note-editor-container .editor-toolbar {
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
 }
-.dark .editor-toolbar {
-  border-bottom-color: #48484a !important;
+.dark .note-editor-container .editor-toolbar {
+  background: #1e1e1e;
+  border-bottom-color: #48484a;
 }
-.CodeMirror {
-  height: 100% !important;
-  flex-grow: 1;
-  min-height: 0;
-  overflow-y: auto !important;
+.dark .note-editor-container .editor-toolbar a {
+  color: #e0e0e0;
+}
+.dark .note-editor-container .editor-toolbar a.active {
+  background: #404040;
+}
+
+.note-editor-container .CodeMirror {
+  height: 100%;
+  background: #fff;
+  color: #333;
   font-size: 16px !important;
   line-height: 1.6 !important;
 }
+.dark .note-editor-container .CodeMirror {
+  background: #1e1e1e;
+  color: #e0e0e0;
+}
+.note-editor-container .CodeMirror-scroll {
+  /* 我们的 JS 解决方案会在这里动态添加 padding-bottom */
+}
+
+/* 字体大小设置 */
+.CodeMirror.font-size-small { font-size: 14px !important; }
+.CodeMirror.font-size-medium { font-size: 16px !important; }
+.CodeMirror.font-size-large { font-size: 20px !important; }
 </style>
