@@ -36,8 +36,6 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-const minEditorHeight = 130
-
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -156,41 +154,9 @@ async function fetchWeather() {
 }
 
 // 编辑器相关逻辑函数
+// [修改] 禁用JS动态高度，改由CSS全面接管
 function updateEditorHeight() {
-  // 增加对 editorWrapperRef 的检查
-  if (!easymde.value || !editorWrapperRef.value)
-    return
-
-  const cm = easymde.value.codemirror
-
-  // [新增逻辑] 开始动态计算编辑器可用的实际最大高度
-  // 1. 获取整个组件包装器的高度
-  const wrapperHeight = editorWrapperRef.value.clientHeight
-  // 2. 获取内部的工具栏和页脚元素
-  const toolbar = editorWrapperRef.value.querySelector('.editor-toolbar')
-  const footer = editorWrapperRef.value.querySelector('.editor-footer')
-  // 3. 获取它们的高度
-  const toolbarHeight = toolbar ? toolbar.offsetHeight : 0
-  const footerHeight = footer ? footer.offsetHeight : 0
-
-  // 4. 计算出编辑器区域纯粹可用的最大高度
-  const actualMaxHeight = wrapperHeight - toolbarHeight - footerHeight - 5 // 减5像素作为缓冲
-
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-  const contentHeight = sizer.scrollHeight + 5
-
-  // [修改] 使用我们实时计算出的 actualMaxHeight，而不是旧的、固定的 maxEditorHeight
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, actualMaxHeight))
-
-  cm.setSize(null, newHeight)
-
-  // [保留] 保留这个逻辑，它对于防止光标消失在屏幕底部至关重要
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
+  // 此函数内容被有意清空
 }
 
 function destroyEasyMDE() {
@@ -454,7 +420,6 @@ watch(easymde, (newEditorInstance) => {
         cm.scrollIntoView(cm.getCursor(), 60)
 
         // 4. 作为最后的保险，再调用一次高度更新
-        updateEditorHeight()
       }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
@@ -545,7 +510,7 @@ watch(easymde, (newEditorInstance) => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden; /* 防止子元素溢出 */
+  /* [删除] 移除 overflow: hidden; 它会干扰Flexbox的内部滚动 */
 }
 
 /* --- 恢复并整合的原有样式 --- */
@@ -620,27 +585,21 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
 /* --- [FIX] PC Layout Correction --- */
-@media (min-width: 768px) {
-  .note-editor-wrapper {
-    /* On PC, give the wrapper a more stable height instead of just max-height */
-    height: 75vh;
-    max-height: 650px; /* A reasonable max height for large screens */
-  }
-  .note-editor-form {
-    /* Allow the form to properly flex within its wrapper */
-    flex: 1;
-    min-height: 0;
-  }
-  /* The EasyMDE container that replaces the textarea */
-  .note-editor-form > .EasyMDEContainer {
-    flex: 1; /* Allow the editor container to grow and fill available space */
-    min-height: 0; /* A crucial property for nested flexbox scrolling */
-    display: flex;
-    flex-direction: column;
-  }
-  .CodeMirror {
-    /* Override the inline height from JS and let flexbox handle it */
-    height: auto !important;
-  }
+/* --- [修改] 全局应用健壮的Flexbox布局 --- */
+.note-editor-form {
+  /* 确保表单在父容器中可以自由伸缩 */
+  flex: 1;
+  min-height: 0;
+}
+.note-editor-form > .EasyMDEContainer {
+  /* 让编辑器容器占据所有剩余空间 */
+  flex: 1;
+  min-height: 0; /* 关键的Flexbox修复，确保内部滚动正常 */
+  display: flex;
+  flex-direction: column;
+}
+.CodeMirror {
+  /* 覆盖所有JS设置的高度，让Flexbox完全控制 */
+  height: auto !important;
 }
 </style>
