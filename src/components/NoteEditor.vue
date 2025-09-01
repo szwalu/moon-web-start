@@ -29,24 +29,21 @@ const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 
+// --- 新增代码: 为底部栏创建一个 ref ---
+const footerRef = ref<HTMLElement | null>(null)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 const charCount = computed(() => contentModel.value.length)
 
-// ===================================================================
-// --- 关键改动：最终的JS键盘适配方案 ---
-// ===================================================================
 const wrapperStyle = ref({})
 
 function handleViewportResize() {
   if (window.visualViewport) {
     const viewport = window.visualViewport
-    // 计算键盘遮挡的高度
     const keyboardHeight = window.innerHeight - viewport.height
-
-    // 同时设置 transform (位置) 和 height (高度)
     wrapperStyle.value = {
       transform: `translateY(-${keyboardHeight}px)`,
       height: `${viewport.height}px`,
@@ -54,9 +51,22 @@ function handleViewportResize() {
   }
 }
 
-// ===================================================================
+// --- 新增代码: 动态应用 padding 的函数 ---
+function applyScrollerPadding() {
+  // 确保编辑器实例和底部栏DOM元素都已存在
+  if (easymde.value && footerRef.value) {
+    // 获取底部栏的实际高度
+    const footerHeight = footerRef.value.offsetHeight
+    // 获取编辑器的内部滚动元素
+    const scroller = easymde.value.codemirror.getScrollerElement()
+    if (scroller) {
+      // 将底部栏的高度作为padding应用给滚动元素
+      scroller.style.paddingBottom = `${footerHeight}px`
+    }
+  }
+}
 
-// Weather related logic functions (no changes here)
+// Weather related logic functions
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -190,12 +200,10 @@ function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
-
   const customToolbar = [
     {
       name: 'tag',
       action: (_editor: any) => {
-        // [已修复] 将单行多条语句格式化为多行
         const cm = easymde.value!.codemirror
         cm.getDoc().replaceSelection('#')
         cm.focus()
@@ -221,7 +229,6 @@ function initializeEasyMDE(initialValue = '') {
     {
       name: 'taskList',
       action: (_editor: any) => {
-        // [已修复] 将单行多条语句格式化为多行
         easymde.value!.codemirror.getDoc().replaceRange('- [ ] ', easymde.value!.codemirror.getDoc().getCursor())
         easymde.value!.codemirror.focus()
       },
@@ -237,7 +244,6 @@ function initializeEasyMDE(initialValue = '') {
     'side-by-side',
     'fullscreen',
   ]
-
   easymde.value = new EasyMDE({
     element: newEl,
     initialValue,
@@ -307,14 +313,16 @@ onMounted(async () => {
       cm.focus()
     }
   }
-  // --- 关键改动: 添加监听 ---
+
   window.visualViewport?.addEventListener('resize', handleViewportResize)
-  handleViewportResize() // 初始设置一次
+  handleViewportResize()
+
+  // --- 新增代码 ---
+  nextTick(applyScrollerPadding)
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  // --- 关键改动: 移除监听 ---
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 watch(() => props.modelValue, (newValue) => {
@@ -351,6 +359,11 @@ watch(easymde, (newEditorInstance) => {
     }, 150)
   }
 })
+
+// --- 新增代码: 监听可能改变footer高度的props ---
+watch(() => props.lastSavedTime, () => {
+  nextTick(applyScrollerPadding)
+})
 </script>
 
 <template>
@@ -364,7 +377,7 @@ watch(easymde, (newEditorInstance) => {
         v-model="contentModel"
         style="display: none;"
       />
-      <div class="editor-footer">
+      <div ref="footerRef" class="editor-footer">
         <div class="status-bar">
           <span class="char-counter">
             {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
@@ -401,31 +414,21 @@ watch(easymde, (newEditorInstance) => {
 
 <style scoped>
 .note-editor-wrapper {
-  /* 1. 使用 fixed 定位，使其相对于浏览器视窗定位 */
   position: fixed;
-  /* 2. 初始位置在屏幕底部之外，准备动画进入 */
   bottom: 0;
   left: 0;
   right: 0;
-
-  /* 3. 高度初始为视窗高度，JS将动态调整它 */
   height: 100vh;
-
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-
   background-color: #fff;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
-
   display: flex;
   flex-direction: column;
-
-  /* 关键：为高度和位置变化添加平滑过渡 */
   transition: transform 0.25s ease-out, height 0.25s ease-out;
-  /* 默认位置不动 */
   transform: translateY(0);
 }
 
@@ -520,6 +523,5 @@ watch(easymde, (newEditorInstance) => {
   overflow-y: auto !important;
   font-size: 16px !important;
   line-height: 1.6 !important;
-  scroll-padding-bottom: 90px;
 }
 </style>
