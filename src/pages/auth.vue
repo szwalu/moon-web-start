@@ -1069,10 +1069,8 @@ function closeEditorModal() {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
+  /* z-index 必须比 NoteEditor 的 1002 低 */
   z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
 }
 
 .fade-enter-active,
