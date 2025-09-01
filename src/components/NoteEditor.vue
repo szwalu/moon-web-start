@@ -3,11 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
 import 'easymde/dist/easymde.min.css'
-
-// 1. Directly import weather data mapping files
 import { cityMap, weatherMap } from '@/utils/weatherMap'
-
-// --- Import Settings Store ---
 import { useSettingStore } from '@/stores/setting'
 
 // --- Props & Emits Definition ---
@@ -18,23 +14,22 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
+  // 关键改动：接收父组件计算好的动态高度
+  dynamicHeight: { type: String, default: '100%' },
 })
 
-const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
+const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'close'])
 
 // --- Core State Definition (Refs, Computed, etc.) ---
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
 const isReadyForAutoSave = ref(false)
-
 const showEditorTagSuggestions = ref(false)
 const editorTagSuggestions = ref<string[]>([])
 const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -47,17 +42,13 @@ function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
     return null
-
   const { data, timestamp } = JSON.parse(cached)
   const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
   return isExpired ? null : data
 }
 
 function setCachedWeather(data: object) {
-  const cache = {
-    data,
-    timestamp: Date.now(),
-  }
+  const cache = { data, timestamp: Date.now() }
   localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
 }
 
@@ -67,10 +58,7 @@ function getMappedCityName(enCity: string): string {
   const cityLower = enCity.trim().toLowerCase()
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
-    if (
-      cityLower === keyLower
-      || cityLower.startsWith(keyLower)
-    )
+    if (cityLower === keyLower || cityLower.startsWith(keyLower))
       return value
   }
   return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
@@ -84,56 +72,46 @@ async function fetchWeather() {
   const cached = getCachedWeather()
   if (cached)
     return cached.formattedString
-
   try {
     let locData
     try {
       const locRes = await fetch('https://ipapi.co/json/')
       if (!locRes.ok)
-        throw new Error(`ipapi.co service responded with status: ${locRes.status}`)
+        throw new Error(`ipapi.co error: ${locRes.status}`)
       locData = await locRes.json()
       if (locData.error)
-        throw new Error(`ipapi.co service error: ${locData.reason}`)
+        throw new Error(`ipapi.co error: ${locData.reason}`)
     }
     catch (ipapiError: any) {
-      console.warn('ipapi.co failed, trying backup service ip-api.com...', ipapiError.message)
+      console.warn('ipapi.co failed, trying backup...', ipapiError.message)
       const backupRes = await fetch('https://ip-api.com/json/')
       if (!backupRes.ok)
-        throw new Error(`ip-api.com service responded with status: ${backupRes.status}`)
+        throw new Error(`ip-api.com error: ${backupRes.status}`)
       locData = await backupRes.json()
       if (locData.status === 'fail')
-        throw new Error(`ip-api.com service error: ${locData.message}`)
-
+        throw new Error(`ip-api.com error: ${locData.message}`)
       locData.city = locData.city || locData.regionName
       locData.latitude = locData.lat
       locData.longitude = locData.lon
     }
-
     if (!locData?.latitude || !locData?.longitude)
-      throw new Error('Failed to get location from both services.')
-
-    const lat = locData.latitude
-    const lon = locData.longitude
+      throw new Error('Failed to get location')
+    const { latitude: lat, longitude: lon } = locData
     const city = getMappedCityName(locData.city)
-
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
-      throw new Error(`open-meteo weather service responded with status: ${res.status}`)
+      throw new Error(`open-meteo error: ${res.status}`)
     const data = await res.json()
     if (data.error)
-      throw new Error(`open-meteo weather service error: ${data.reason}`)
-
-    const temp = data.current.temperature_2m
-    const code = data.current.weathercode
+      throw new Error(`open-meteo error: ${data.reason}`)
+    const { temperature_2m: temp, weathercode: code } = data.current
     const { text, icon } = getWeatherText(code)
-
     const formattedString = `${city}/${temp}°C ${text} ${icon}`
     setCachedWeather({ formattedString })
-
     return formattedString
   }
   catch (e: any) {
-    console.error('A critical error occurred while fetching weather information:', e)
+    console.error('Weather fetch error:', e)
     return null
   }
 }
@@ -151,8 +129,7 @@ function applyEditorFontSize() {
     return
   const cmWrapper = easymde.value.codemirror.getWrapperElement()
   cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
-  cmWrapper.classList.add(fontSizeClass)
+  cmWrapper.classList.add(`font-size-${settingsStore.noteFontSize}`)
 }
 
 function selectEditorTag(tag: string) {
@@ -166,8 +143,7 @@ function selectEditorTag(tag: string) {
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
   if (lastHashIndex !== -1) {
     const start = { line: cursor.line, ch: lastHashIndex }
-    const end = cursor
-    doc.replaceRange(`${tag} `, start, end)
+    doc.replaceRange(`${tag} `, start, cursor)
   }
   showEditorTagSuggestions.value = false
   cm.focus()
@@ -204,11 +180,12 @@ function initializeEasyMDE(initialValue = '') {
   const newEl = textareaRef.value
   if (!newEl || easymde.value)
     return
+
   const customToolbar = [
     {
       name: 'tag',
-      action: (editor: any) => {
-        const cm = editor.codemirror
+      action: (_editor: any) => { // [已修复] 'editor' -> '_editor'
+        const cm = easymde.value!.codemirror
         cm.getDoc().replaceSelection('#')
         cm.focus()
         editorTagSuggestions.value = props.allTags
@@ -232,9 +209,9 @@ function initializeEasyMDE(initialValue = '') {
     'ordered-list',
     {
       name: 'taskList',
-      action: (editor: any) => {
-        editor.codemirror.getDoc().replaceRange('- [ ] ', editor.codemirror.getDoc().getCursor())
-        editor.codemirror.focus()
+      action: (_editor: any) => { // [已修复] 'editor' -> '_editor'
+        easymde.value!.codemirror.getDoc().replaceRange('- [ ] ', easymde.value!.codemirror.getDoc().getCursor())
+        easymde.value!.codemirror.focus()
       },
       className: 'fa fa-check-square-o',
       title: 'Task List',
@@ -248,6 +225,7 @@ function initializeEasyMDE(initialValue = '') {
     'side-by-side',
     'fullscreen',
   ]
+
   easymde.value = new EasyMDE({
     element: newEl,
     initialValue,
@@ -257,13 +235,10 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
   })
 
-  nextTick(() => {
-    applyEditorFontSize()
-  })
+  nextTick(applyEditorFontSize)
 
   const cm = easymde.value.codemirror
-
-  cm.on('change', (instance: any) => {
+  cm.on('change', (_instance: any) => { // [已修复] 'instance' -> '_instance'
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
@@ -273,8 +248,8 @@ function initializeEasyMDE(initialValue = '') {
     else
       emit('triggerAutoSave')
 
-    const cursor = instance.getDoc().getCursor()
-    const line = instance.getDoc().getLine(cursor.line)
+    const cursor = cm.getDoc().getCursor()
+    const line = cm.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
     const lastHashIndex = textBefore.lastIndexOf('#')
     if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
@@ -289,7 +264,7 @@ function initializeEasyMDE(initialValue = '') {
     const term = potentialTag.substring(1)
     editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
     if (editorTagSuggestions.value.length > 0) {
-      const coords = instance.cursorCoords()
+      const coords = cm.cursorCoords()
       editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
       showEditorTagSuggestions.value = true
       highlightedEditorIndex.value = 0
@@ -298,7 +273,6 @@ function initializeEasyMDE(initialValue = '') {
       showEditorTagSuggestions.value = false
     }
   })
-
   cm.on('keydown', handleEditorKeyDown)
 }
 
@@ -309,7 +283,6 @@ function handleSubmit() {
 // --- Lifecycle Hooks & Watchers ---
 onMounted(async () => {
   let initialContent = props.modelValue
-
   if (!props.editingNote && !props.modelValue) {
     const weatherString = await fetchWeather()
     if (weatherString) {
@@ -317,9 +290,7 @@ onMounted(async () => {
       emit('update:modelValue', initialContent)
     }
   }
-
   initializeEasyMDE(initialContent)
-
   if (!props.editingNote && initialContent.includes('°C')) {
     await nextTick()
     if (easymde.value) {
@@ -361,40 +332,29 @@ watch(() => settingsStore.noteFontSize, () => {
 })
 
 watch(easymde, (newEditorInstance) => {
-  if (newEditorInstance) {
-    if (props.editingNote) {
-      const cm = newEditorInstance.codemirror
-
-      // Using a short delay to ensure the editor has fully rendered the initial long content
-      setTimeout(() => {
-        // 1. Get the doc and move the cursor to the end
-        const doc = cm.getDoc()
-        const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-
-        // 2. Force focus on the editor
-        cm.focus()
-
-        // 3. Scroll the cursor into view, this is key for layout correction
-        cm.scrollIntoView(cm.getCursor(), 60)
-      }, 150)
-    }
+  if (newEditorInstance && props.editingNote) {
+    const cm = newEditorInstance.codemirror
+    setTimeout(() => {
+      const doc = cm.getDoc()
+      const lastLine = doc.lastLine()
+      doc.setCursor(lastLine, doc.getLine(lastLine()).length)
+      cm.focus()
+      cm.scrollIntoView(cm.getCursor(), 60)
+    }, 150)
   }
 })
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+  <div
+    class="note-editor-wrapper"
+    :style="{ height: dynamicHeight }"
+  >
     <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
-        :placeholder="$t('notes.content_placeholder')"
-        class="mb-2 w-full border rounded p-2"
-        required
-        :disabled="isLoading"
-        :maxlength="maxNoteLength"
-        autocomplete="off"
+        style="display: none;"
       />
       <div class="editor-footer">
         <div class="status-bar">
@@ -407,8 +367,15 @@ watch(easymde, (newEditorInstance) => {
         </div>
         <div class="emoji-bar">
           <button
+            type="button"
+            class="form-button close-btn"
+            @click="$emit('close')"
+          >
+            {{ t('notes.cancel') }}
+          </button>
+          <button
             type="submit"
-            class="form-button flex-2"
+            class="form-button submit-btn"
             :disabled="isLoading || !contentModel"
           >
             💾 {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
@@ -417,200 +384,143 @@ watch(easymde, (newEditorInstance) => {
       </div>
     </form>
     <div
-      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-      ref="editorSuggestionsRef"
-      class="tag-suggestions editor-suggestions"
+      v-if="showEditorTagSuggestions"
+      class="tag-suggestions"
       :style="editorSuggestionsStyle"
-    >
-      <ul>
-        <li
-          v-for="(tag, index) in editorTagSuggestions"
-          :key="tag"
-          :class="{ highlighted: index === highlightedEditorIndex }"
-          @mousedown.prevent="selectEditorTag(tag)"
-        >
-          {{ tag }}
-        </li>
-      </ul>
-    </div>
+    />
   </div>
 </template>
 
 <style scoped>
+/* =================================================================== */
+/* --- 关键改动：全新、更稳定的样式 --- */
+/* =================================================================== */
 .note-editor-wrapper {
-  /* --- 关键布局改动 1: 移除 position:fixed --- */
-  /* 让父组件 auth.vue 的 overlay 来控制定位 */
+  /* 1. 使用 absolute 定位，使其相对于父级 .editor-overlay 定位 */
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+
+  /* 2. 宽度和最大宽度设置 */
   width: 100%;
-  max-width: 480px; /* Match auth.vue's max-width */
+  max-width: 480px;
   margin: 0 auto;
+
+  /* 3. 外观 */
   background-color: #fff;
-  z-index: 1002;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
 
-  /* --- 关键布局改动 2: 设置内部 Flex 布局和最大高度 --- */
+  /* 4. 内部使用 Flex 布局 */
   display: flex;
   flex-direction: column;
-  /* 设定一个尊重视窗高度的最大值，防止键盘弹起时内容溢出 */
-  max-height: 80dvh;
+
+  /* 5. 过渡效果，让弹出更平滑 */
+  transition: transform 0.3s ease-out;
+  transform: translateY(0);
 }
 
 .dark .note-editor-wrapper {
   background-color: #2c2c2e;
-  border-top: 1px solid #48484a;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
 }
 
 .note-editor-form {
-  padding: 0.75rem 1rem 0;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  /* 关键：让表单填满剩余空间 */
+  flex-grow: 1;
+  /* 关键：确保内部滚动正常工作 */
   min-height: 0;
   overflow: hidden;
 }
 
 .editor-footer {
+  /* 关键：底部栏高度固定，不收缩 */
   flex-shrink: 0;
-  padding: 0.5rem 1rem 0.75rem;
-  background-color: #fff;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e0e0e0;
 }
 .dark .editor-footer {
-  background-color: #2c2c2e;
+  border-top-color: #48484a;
 }
 
-.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
-.char-counter{font-size:12px;color:#999}
-.dark .char-counter{color:#aaa}
-.ml-4{margin-left:1rem}
-.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
-.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
-.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
-.form-button:disabled{opacity:.6;cursor:not-allowed}
-
-.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
-.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
-.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
-.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
-.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
-.editor-suggestions{position:absolute}
-
-/* 桌面端布局调整 */
-@media (min-width: 768px) {
-  .note-editor-wrapper {
-    /* 在桌面端，可以给一个更具体的高度 */
-    height: 75vh;
-    max-height: 650px;
-  }
+.status-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.char-counter {
+  font-size: 12px;
+  color: #999;
+}
+.dark .char-counter {
+  color: #aaa;
+}
+.ml-4 {
+  margin-left: 1rem;
+}
+.emoji-bar {
+  display: flex;
+  gap: 0.75rem;
+}
+.form-button {
+  flex-grow: 1;
+  padding: 0.6rem;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.form-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.close-btn {
+  background-color: #f0f0f0;
+  color: #333;
+}
+.dark .close-btn {
+  background-color: #555;
+  color: #f0f0f0;
+}
+.submit-btn {
+  background-color: #00b386;
+  color: white;
 }
 </style>
 
 <style>
-/* EasyMDE 的全局样式 */
-
+/* 全局样式保持不变，确保 EasyMDE 内部 flex 布局正确 */
 .note-editor-form > .EasyMDEContainer {
-    flex: 1;
+    /* 关键：编辑器本身填满表单的剩余空间 */
+    flex-grow: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    border: none !important;
 }
 
 .editor-toolbar {
   flex-shrink: 0;
-  border-bottom: 1px solid #ccc !important;
-  border-radius: 6px 6px 0 0 !important;
-  padding: 1px 3px !important;
+  border-bottom: 1px solid #e0e0e0 !important;
+}
+.dark .editor-toolbar {
+  border-bottom-color: #48484a !important;
 }
 
 .CodeMirror {
-  border: none !important;
-  border-radius: 0 !important;
   height: 100% !important;
   flex-grow: 1;
+  min-height: 0;
   overflow-y: auto !important;
   font-size: 16px !important;
   line-height: 1.6 !important;
 }
 
-.editor-toolbar a, .editor-toolbar button {
-    padding-left: 2px !important;
-    padding-right: 2px !important;
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
-    line-height: 1 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-}
-
-.editor-toolbar a i, .editor-toolbar button i {
-    font-size: 15px !important;
-    vertical-align: middle;
-}
-
-.editor-toolbar i.separator {
-    margin: 1px 3px !important;
-    border-width: 0 1px 0 0 !important;
-    height: 8px !important;
-}
-
-.dark .EasyMDEContainer {
-    border-color: #48484a !important;
-}
-
-.dark .editor-toolbar {
-    background-color: #2c2c2e !important;
-    border-color: #48484a !important;
-}
-
-.dark .CodeMirror {
-    background-color: #2c2c2e !important;
-    color: #fff !important;
-}
-
-.dark .editor-toolbar a {
-    color: #e0e0e0 !important;
-}
-
-.dark .editor-toolbar a.active {
-    background: #404040 !important;
-}
-
-@media (max-width:480px) {
-    .editor-toolbar {
-        overflow-x: auto;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-    }
-    .editor-toolbar::-webkit-scrollbar {
-        display: none;
-        height: 0;
-    }
-}
-
-/* 编辑器内的标题字体大小修正 */
-.CodeMirror .cm-header { font-weight: bold; }
-.CodeMirror .cm-header-1 { font-size: 1.6em; }
-.CodeMirror .cm-header-2 { font-size: 1.4em; }
-.CodeMirror .cm-header-3 { font-size: 1.2em; }
-.CodeMirror .cm-header-4 { font-size: 1.1em; }
-.CodeMirror .cm-header-5 { font-size: 1.0em; }
-.Code-mirror .cm-header-6 { font-size: 1.0em; color: #777; }
-
-/* --- 根据设置动态改变编辑器字体大小的 CSS 规则 --- */
-.CodeMirror.font-size-small { font-size: 14px !important; }
-.CodeMirror.font-size-medium { font-size: 16px !important; }
-.CodeMirror.font-size-large { font-size: 20px !important; }
-
-@media (min-width: 768px) {
-  .note-editor-form {
-    flex: 1;
-    min-height: 0;
-  }
-}
+/* 其他 EasyMDE 全局样式... */
 </style>

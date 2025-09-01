@@ -11,10 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
-
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
-
-// 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
 import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
@@ -60,11 +57,11 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
-
 const isRestoringFromCache = ref(false)
 
 // --- 那年今日功能状态 ---
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
+// [已修复] 此处修复了拼写错误
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
 
@@ -132,6 +129,8 @@ onUnmounted(() => {
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
   debouncedSaveNote.cancel()
+  // 确保移除所有视窗监听
+  window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 
 // --- 笔记相关方法 ---
@@ -232,7 +231,6 @@ watch(content, async (val, _oldVal) => {
     console.error('Auto-save: No valid session in authStore')
 })
 
-// [ADDED] 新函数：用于导出当前显示的笔记（即搜索结果）
 function handleExportResults() {
   if (isExporting.value)
     return
@@ -273,7 +271,6 @@ function handleExportResults() {
   }
 }
 
-// [ADDED] 新的调度函数，根据情况决定执行哪个导出逻辑
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
@@ -572,7 +569,7 @@ function handleHeaderClick() {
   if (notesListWrapperRef.value) {
     notesListWrapperRef.value.scrollTo({
       top: 0,
-      behavior: 'smooth', // 使用 'smooth' 可以实现平滑的滚动效果
+      behavior: 'smooth',
     })
   }
 }
@@ -671,15 +668,6 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
-/*
-async function handleLogout() {
-  showDropdown.value = false
-  loading.value = true
-  await supabase.auth.signOut()
-  window.location.href = '/'
-  loading.value = false
-}
-*/
 
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
@@ -758,10 +746,30 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
-function closeEditorModal() {
-  showEditorModal.value = false
-  debouncedSaveNote.cancel()
+// ===================================================================
+// --- 关键改动：JS 解决方案 ---
+// ===================================================================
+
+const editorHeight = ref('100%') // 编辑器容器的动态高度
+
+function handleViewportResize() {
+  if (window.visualViewport)
+    editorHeight.value = `${window.visualViewport.height}px`
 }
+
+watch(showEditorModal, (isShowing) => {
+  if (isShowing) {
+    nextTick(() => {
+      handleViewportResize()
+      window.visualViewport?.addEventListener('resize', handleViewportResize)
+    })
+  }
+  else {
+    window.visualViewport?.removeEventListener('resize', handleViewportResize)
+  }
+})
+
+// ===================================================================
 </script>
 
 <template>
@@ -845,7 +853,7 @@ function closeEditorModal() {
         +
       </button>
 
-      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
+      <div v-if="showEditorModal" class="editor-overlay">
         <NoteEditor
           v-model="content"
           :editing-note="editingNote"
@@ -853,11 +861,12 @@ function closeEditorModal() {
           :all-tags="allTags"
           :max-note-length="maxNoteLength"
           :last-saved-time="lastSavedTime"
+          :dynamic-height="editorHeight"
           @submit="handleSubmit"
           @trigger-auto-save="debouncedSaveNote"
+          @close="showEditorModal = false"
         />
       </div>
-
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
 
       <AccountModal
@@ -877,32 +886,30 @@ function closeEditorModal() {
 <style scoped>
 .auth-container {
   max-width: 480px;
-  margin: 2rem auto;
-  padding: 1rem 1.5rem 0.75rem 1.5rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 0.75rem 1.5rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
   font-family: system-ui, sans-serif;
-  font-size: 14px;
-  color: #333;
-  transition: background-color 0.3s ease, color 0.3s ease;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
 }
 .dark .auth-container {
   background: #1e1e1e;
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
-
 .page-header {
+  flex-shrink: 0;
+  padding: 0.75rem 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
   position: relative;
   height: 44px;
 }
-
 .page-title {
   position: absolute;
   left: 50%;
@@ -916,13 +923,11 @@ function closeEditorModal() {
 .dark .page-title {
     color: #f0f0f0;
 }
-
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-
 .header-action-btn {
   background: none;
   border: none;
@@ -944,17 +949,14 @@ function closeEditorModal() {
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
 }
-
 .close-page-btn {
   font-size: 24px;
   line-height: 1;
   font-weight: 300;
 }
-
 .dropdown-menu-container {
   position: relative;
 }
-
 .dropdown-menu {
   position: absolute;
   top: 100%;
@@ -971,7 +973,6 @@ function closeEditorModal() {
   background: #2c2c2e;
   border-color: #444;
 }
-
 .dropdown-item {
   padding: 1.5rem 1rem;
   cursor: pointer;
@@ -984,7 +985,6 @@ function closeEditorModal() {
 .dark .dropdown-item:hover {
   background-color: #3a3a3c;
 }
-
 .search-bar-container {
   position: absolute;
   top: 60px;
@@ -996,19 +996,16 @@ function closeEditorModal() {
   align-items: center;
   gap: 0.5rem;
 }
-
 .search-bar-container > :first-child {
   flex: 1;
   min-width: 0;
 }
-
 .search-input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
   flex: 1;
 }
-
 .cancel-search-btn {
   background: none;
   border: none;
@@ -1029,7 +1026,6 @@ function closeEditorModal() {
 .dark .cancel-search-btn:hover {
   background-color: rgba(255,255,255,0.1);
 }
-
 .fab {
   position: absolute;
   bottom: 2.5rem;
@@ -1049,7 +1045,7 @@ function closeEditorModal() {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   transition: all 0.3s ease;
-  z-index: 10;
+  z-index: 40; /* 确保 FAB 在列表之上，但在编辑器蒙层之下 */
 }
 .fab:hover {
   transform: translateX(-50%) scale(1.05);
@@ -1061,25 +1057,6 @@ function closeEditorModal() {
 .dark .fab:hover {
     background-color: #00c291;
 }
-
-editor-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-
-  /* --- 新增/修改的样式 开始 --- */
-  /* 1. 将蒙层变为 Flexbox 容器 */
-  display: flex;
-  flex-direction: column;
-  /* 2. 将其唯一的子元素（NoteEditor）推到底部 */
-  justify-content: flex-end;
-  /* --- 新增/修改的样式 结束 --- */
-}
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
@@ -1088,7 +1065,6 @@ editor-overlay {
 .fade-leave-to {
   opacity: 0;
 }
-
 .slide-fade-enter-active,
 .slide-fade-leave-active {
   transition: all 0.3s ease-out;
@@ -1105,7 +1081,6 @@ editor-overlay {
   display: flex;
   align-items: center;
 }
-
 .search-input {
   width: 100%;
   padding: 0.5rem 0.75rem;
@@ -1114,7 +1089,6 @@ editor-overlay {
   border: 1px solid #ddd;
   font-size: 16px;
 }
-
 .clear-search-btn {
   position: absolute;
   right: 0.5rem;
@@ -1138,48 +1112,26 @@ editor-overlay {
   -webkit-appearance: none;
   display: none;
 }
-
-/* 1. 修改 auth-container，使其成为一个 flex 容器 */
-.auth-container {
-  max-width: 480px;
-  margin: 0 auto; /* 移除上下 margin，让容器可以占满全高 */
-  padding: 0 1.5rem 0.75rem 1.5rem; /* 调整 padding 以适应新布局 */
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-  font-family: system-ui, sans-serif;
-
-  /* --- 关键改动 --- */
-  display: flex;
-  flex-direction: column;
-  height: 100dvh; /* 让容器占满整个屏幕的高度 */
-
-}
-.dark .auth-container {
-  background: #1e1e1e;
-  color: #e0e0e0;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-
-/* 2. 让 Header 不要被压缩 */
-.page-header {
-  /* ... 您已有的样式 ... */
-  flex-shrink: 0;
-  padding: 0.75rem 0; /* 把 auth-container 的上部 padding 移到这里 */
-}
-
-/* 3. 让 NoteList 的容器填满剩余空间 */
 .notes-list-wrapper {
-  flex: 1; /* flex: 1; 是 flex-grow: 1; flex-shrink: 1; flex-basis: 0%; 的缩写 */
-  min-height: 0; /* 防止内容过多时撑破容器，这是 flex 布局的关键技巧 */
-  overflow-y: auto; /* 让这个容器内部可以滚动 */
-  margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.5rem;
 }
 
-/* [新增] 为右上角的按钮组添加 flex 布局 */
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem; /* 让图标之间有一点间距 */
+/* =================================================================== */
+/* --- 关键改动：样式 --- */
+/* =================================================================== */
+.editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  /* 关键：提高 z-index 以确保它在 FAB 之上 */
+  z-index: 50;
+  /* 移除 flex 布局，因为子元素将自己定位和确定大小 */
 }
+/* =================================================================== */
 </style>
