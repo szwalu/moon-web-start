@@ -36,14 +36,13 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-// --- MODIFICATION: Removed unused height variables ---
-// const minEditorHeight = 130
-// const isSmallScreen = window.innerWidth < 768
-// let maxEditorHeight
-// if (isSmallScreen)
-//   maxEditorHeight = window.innerHeight * 0.65
-// else
-//   maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
+const minEditorHeight = 130
+const isSmallScreen = window.innerWidth < 768
+let maxEditorHeight
+if (isSmallScreen)
+  maxEditorHeight = window.innerHeight * 0.65
+else
+  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -53,10 +52,15 @@ const charCount = computed(() => contentModel.value.length)
 
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
+    // 获取设备屏幕的“布局高度”（基本不变）
     const layoutViewportHeight = window.innerHeight
+    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
     const visualViewportHeight = window.visualViewport.height
+
+    // 两者之差，就是键盘 + 输入法工具栏的总高度
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
-    // JS唯一的职责：当键盘弹出时，把整个编辑器组件推上来
+
+    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
     editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
   }
 }
@@ -157,7 +161,24 @@ async function fetchWeather() {
   }
 }
 
-// --- MODIFICATION: Removed updateEditorHeight function entirely ---
+// 编辑器相关逻辑函数
+function updateEditorHeight() {
+  if (!easymde.value)
+    return
+  const cm = easymde.value.codemirror
+  const sizer = cm.display.sizer
+  if (!sizer)
+    return
+  const contentHeight = sizer.scrollHeight + 5
+  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+  cm.setSize(null, newHeight)
+
+  // 保持一个简单的内部滚动，配合外部布局调整
+  setTimeout(() => {
+    if (easymde.value)
+      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+  }, 0)
+}
 
 function destroyEasyMDE() {
   if (easymde.value) {
@@ -293,8 +314,7 @@ function initializeEasyMDE(initialValue = '') {
     else
       emit('triggerAutoSave')
 
-    // --- MODIFICATION: Removed call to updateEditorHeight ---
-    // nextTick(() => updateEditorHeight())
+    nextTick(() => updateEditorHeight())
 
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
@@ -323,8 +343,7 @@ function initializeEasyMDE(initialValue = '') {
   })
 
   cm.on('keydown', handleEditorKeyDown)
-  // --- MODIFICATION: Removed call to updateEditorHeight ---
-  // nextTick(() => updateEditorHeight())
+  nextTick(() => updateEditorHeight())
 }
 
 function handleSubmit() {
@@ -356,13 +375,26 @@ onMounted(async () => {
     }
   }
 
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.addEventListener('resize', debouncedUpdateEditorHeight)
+
+  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
   window.visualViewport.addEventListener('resize', handleViewportResize)
+  // 立即执行一次，以确保初始状态正确
   handleViewportResize()
+  // <<< --- 修改部分结束 --- >>>
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
+  // <<< --- 修改部分开始 --- >>>
+  // 移除旧的 resize 监听
+  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
+
+  // 移除新的 visualViewport 监听
   window.visualViewport.removeEventListener('resize', handleViewportResize)
+  // <<< --- 修改部分结束 --- >>>
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -397,14 +429,19 @@ watch(easymde, (newEditorInstance) => {
 
       // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
       setTimeout(() => {
+        // 1. 获取文档并移动光标到最后
         const doc = cm.getDoc()
         const lastLine = doc.lastLine()
         doc.setCursor(lastLine, doc.getLine(lastLine).length)
+
+        // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // --- MODIFICATION: Removed scrollIntoView and height update calls ---
-        // cm.scrollIntoView(cm.getCursor(), 60)
-        // updateEditorHeight()
+        // 3. 将光标滚动到可视区域内，这是修正布局的关键
+        cm.scrollIntoView(cm.getCursor(), 60)
+
+        // 4. 作为最后的保险，再调用一次高度更新
+        updateEditorHeight()
       }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
@@ -569,19 +606,6 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
-/* --- MODIFICATION: Moved Flexbox rules to be global --- */
-/* The EasyMDE container that replaces the textarea */
-.note-editor-form > .EasyMDEContainer {
-  flex: 1; /* Allow the editor container to grow and fill available space */
-  min-height: 0; /* A crucial property for nested flexbox scrolling */
-  display: flex;
-  flex-direction: column;
-}
-.CodeMirror {
-  /* Override the inline height from JS and let flexbox handle it */
-  height: auto !important;
-}
-
 /* --- [FIX] PC Layout Correction --- */
 @media (min-width: 768px) {
   .note-editor-wrapper {
@@ -594,17 +618,16 @@ watch(easymde, (newEditorInstance) => {
     flex: 1;
     min-height: 0;
   }
-  /* The rules for .EasyMDEContainer and .CodeMirror have been moved to global scope */
-}
-
-/*
- * 核心修复：为CodeMirror内部滚动容器设置安全边距
- * 这会告知浏览器，滚动到顶部时，在内容之上留出工具栏的高度；
- * 滚动到底部时，在内容之下留出操作栏的高度。
- * 所有的滚动行为（用户手动、浏览器自动）都会遵守这个规则。
-*/
-.cm-scroller {
-  scroll-padding-top: 40px;   /* 为顶部工具栏预估一个高度 */
-  scroll-padding-bottom: 60px; /* 为底部操作栏预估一个高度 */
+  /* The EasyMDE container that replaces the textarea */
+  .note-editor-form > .EasyMDEContainer {
+    flex: 1; /* Allow the editor container to grow and fill available space */
+    min-height: 0; /* A crucial property for nested flexbox scrolling */
+    display: flex;
+    flex-direction: column;
+  }
+  .CodeMirror {
+    /* Override the inline height from JS and let flexbox handle it */
+    height: auto !important;
+  }
 }
 </style>
