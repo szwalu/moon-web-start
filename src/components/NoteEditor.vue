@@ -520,9 +520,6 @@ watch(easymde, (newEditorInstance) => {
   overflow-y: auto !important;
   font-size: 16px !important;
   line-height: 1.6 !important;
-}
-
-.CodeMirror-scroll {
-  padding-bottom: 80px !important;
+  scroll-padding-bottom: 90px;
 }
 </style>
