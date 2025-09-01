@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>键盘行为测试</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            /* 确保页面足够长可以滚动 */
+            height: 200vh; 
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            line-height: 1.6;
+        }
+
+        /* 这是模拟的编辑器底部栏 */
+        .fixed-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            padding: 15px;
+            background-color: #d9534f; /* 醒目的红色 */
+            color: white;
+            box-sizing: border-box;
+            z-index: 100;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+        }
+
+        .fixed-footer input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>键盘行为测试页面</h1>
+    <p>这是一个用于测试的页面。请一直向下滚动，然后点击页面底部的输入框。</p>
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+    <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+    <p>请继续向下滚动...</p>
+    <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+    <p>现在，请点击下面的输入框，观察红色栏的行为。</p>
+
+
+    <div class="fixed-footer">
+        <input type="text" placeholder="点击这里来弹出键盘...">
+    </div>
+
+</body>
+</html>
