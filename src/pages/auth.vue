@@ -1069,16 +1069,20 @@ function closeEditorModal() {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
-  /* z-index must be lower than NoteEditor's 1002 */
   z-index: 1000;
-
-  /* --- KEY CHANGES START --- */
-  /* Convert the overlay into a flex container */
   display: flex;
   flex-direction: column;
-  /* Push the child (NoteEditor) to the bottom */
   justify-content: flex-end;
-  /* --- KEY CHANGES END --- */
+
+  /* --- INICIO DE LA MODIFICACIÓN CLAVE --- */
+  /*
+    Crea un espacio en la parte inferior del overlay que es exactamente
+    la altura del teclado. `env()` es una función de CSS que lee
+    variables de entorno del navegador.
+    `keyboard-inset-height` solo tiene un valor cuando el teclado está visible.
+  */
+  padding-bottom: env(keyboard-inset-height, 0px);
+  /* --- FIN DE LA MODIFICACIÓN CLAVE --- */
 }
 
 .fade-enter-active,

@@ -325,6 +325,14 @@ function handleSubmit() {
 
 // --- Lifecycle Hooks & Watchers ---
 onMounted(async () => {
+  // --- 新增代码：开始 ---
+  // 激活对虚拟键盘遮挡的手动控制。
+  // 这允许我们使用 CSS 变量 `keyboard-inset-height` 来获取键盘的实际高度。
+  if (navigator.virtualKeyboard)
+    navigator.virtualKeyboard.overlaysContent = true
+
+  // --- 新增代码：结束 ---
+
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -346,18 +354,17 @@ onMounted(async () => {
       cm.focus()
     }
   }
-
-  /*
-   * REMOVED: All resize and visualViewport listeners.
-   * They are no longer needed with the CSS-based approach.
-   */
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
-  /*
-   * REMOVED: The visualViewport event listener.
-   */
+
+  // --- 新增代码：开始 ---
+  // 在组件销毁时，恢复浏览器的默认行为，这是一个良好的编程习惯。
+  if (navigator.virtualKeyboard)
+    navigator.virtualKeyboard.overlaysContent = false
+
+  // --- 新增代码：结束 ---
 })
 
 watch(() => props.modelValue, (newValue) => {
