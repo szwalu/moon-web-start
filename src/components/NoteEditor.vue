@@ -27,6 +27,10 @@ const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 const lastViewportHeight = ref(0)
 
+// “输入保护”机制所需的状态
+const isTyping = ref(false)
+const typingTimer = ref<number | null>(null)
+
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -41,6 +45,10 @@ const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t(
 
 // --- 键盘与视口适配 ---
 function handleViewportResize() {
+  // 如果正在输入，则完全跳过布局调整，保证光标稳定
+  if (isTyping.value)
+    return
+
   if (editorContainerRef.value && window.visualViewport) {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
@@ -58,12 +66,14 @@ function handleViewportResize() {
     }
 
     const currentHeight = visualViewport.height
+    // 只有当视口高度发生显著变化时（> 50px），才执行刷新
     if (Math.abs(currentHeight - lastViewportHeight.value) > 50) {
       if (easymde.value) {
         setTimeout(() => {
           easymde.value?.codemirror.refresh()
         }, 100)
       }
+      // 更新记录的高度
       lastViewportHeight.value = currentHeight
     }
   }
@@ -169,6 +179,7 @@ async function fetchWeather() {
 function initializeEasyMDE(initialValue = '') {
   if (!textareaRef.value || easymde.value)
     return
+
   isReadyForAutoSave.value = false
 
   const mobileToolbar = [
@@ -214,13 +225,28 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
+
     else
       emit('triggerAutoSave')
 
     handleTagSuggestions(instance)
   })
 
-  cm.on('keydown', (cm, event) => {
+  // 监听键盘事件以激活“输入保护”
+  cm.on('keydown', (cmInstance, event) => {
+    // 清除之前的计时器
+    if (typingTimer.value)
+      clearTimeout(typingTimer.value)
+
+    // 标记为正在输入
+    isTyping.value = true
+
+    // 设置一个新的计时器，400ms后标记为输入结束
+    typingTimer.value = window.setTimeout(() => {
+      isTyping.value = false
+    }, 400)
+
+    // 原有的标签建议的键盘处理逻辑
     if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -302,6 +328,7 @@ function handleTagSuggestions(cm: CodeMirror.Editor) {
 function selectTag(tag: string) {
   if (!easymde.value)
     return
+
   const cm = easymde.value.codemirror
   const doc = cm.getDoc()
   const cursor = doc.getCursor()
@@ -349,6 +376,9 @@ onMounted(async () => {
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
+  // 组件卸载时，清除可能存在的计时器，防止内存泄漏
+  if (typingTimer.value)
+    clearTimeout(typingTimer.value)
 })
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
