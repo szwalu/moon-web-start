@@ -42,11 +42,28 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-/*
- * REMOVED: handleViewportResize
- * This JS-based viewport handling is complex and conflicts with a pure CSS approach.
- * The parent overlay in auth.vue and the new CSS will now handle this implicitly.
- */
+// --- 新增代码：开始 ---
+// 这个 ref 将用于动态存储和应用编辑器容器的高度
+const editorHeight = ref<string>('auto')
+
+function handleViewportResize() {
+  // 确保 visualViewport API 存在且我们的 DOM 元素也已准备好
+  if (window.visualViewport && editorWrapperRef.value) {
+    // 获取视窗的实时高度（键盘弹出时会变小）
+    const viewportHeight = window.visualViewport.height
+    // 获取编辑器容器顶部相对于视窗顶部的距离
+    const wrapperTop = editorWrapperRef.value.getBoundingClientRect().top
+
+    // 计算编辑器可用的最大高度
+    // 这个值是：视窗总高度 - 编辑器顶部的偏移量
+    const availableHeight = viewportHeight - wrapperTop
+
+    // 应用计算出的高度，并预留一点点安全边距（比如5px）
+    if (availableHeight > 0)
+      editorHeight.value = `${availableHeight - 5}px`
+  }
+}
+// --- 新增代码：结束 ---
 
 // Weather related logic functions
 function getCachedWeather() {
@@ -145,12 +162,6 @@ async function fetchWeather() {
 }
 
 // Editor related logic functions
-/*
- * REMOVED: updateEditorHeight
- * This was the primary source of the problem. We will let Flexbox handle the
- * editor's height automatically and robustly.
- */
-
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -285,11 +296,6 @@ function initializeEasyMDE(initialValue = '') {
     else
       emit('triggerAutoSave')
 
-    /*
-     * REMOVED: Call to updateEditorHeight().
-     * Flexbox will now handle height changes automatically on content change.
-     */
-
     const cursor = instance.getDoc().getCursor()
     const line = instance.getDoc().getLine(cursor.line)
     const textBefore = line.substring(0, cursor.ch)
@@ -325,14 +331,6 @@ function handleSubmit() {
 
 // --- Lifecycle Hooks & Watchers ---
 onMounted(async () => {
-  // --- 新增代码：开始 ---
-  // 激活对虚拟键盘遮挡的手动控制。
-  // 这允许我们使用 CSS 变量 `keyboard-inset-height` 来获取键盘的实际高度。
-  if (navigator.virtualKeyboard)
-    navigator.virtualKeyboard.overlaysContent = true
-
-  // --- 新增代码：结束 ---
-
   let initialContent = props.modelValue
 
   if (!props.editingNote && !props.modelValue) {
@@ -354,16 +352,21 @@ onMounted(async () => {
       cm.focus()
     }
   }
+
+  // --- 新增代码：开始 ---
+  // 在组件挂载后，添加对视窗大小变化的监听
+  window.visualViewport?.addEventListener('resize', handleViewportResize)
+  // 立即执行一次，以设置初始的正确高度
+  handleViewportResize()
+  // --- 新增代码：结束 ---
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
 
   // --- 新增代码：开始 ---
-  // 在组件销毁时，恢复浏览器的默认行为，这是一个良好的编程习惯。
-  if (navigator.virtualKeyboard)
-    navigator.virtualKeyboard.overlaysContent = false
-
+  // 在组件销毁时，务必移除监听，防止内存泄漏
+  window.visualViewport?.removeEventListener('resize', handleViewportResize)
   // --- 新增代码：结束 ---
 })
 
@@ -409,11 +412,6 @@ watch(easymde, (newEditorInstance) => {
 
         // 3. Scroll the cursor into view, this is key for layout correction
         cm.scrollIntoView(cm.getCursor(), 60)
-
-        /*
-         * REMOVED: Call to updateEditorHeight().
-         * This is no longer necessary as Flexbox handles the height.
-         */
       }, 150)
     }
   }
@@ -421,7 +419,12 @@ watch(easymde, (newEditorInstance) => {
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
+  <div
+    ref="editorWrapperRef"
+    class="note-editor-wrapper"
+    :class="{ 'editing-mode': editingNote }"
+    :style="{ height: editorHeight }"
+  >
     <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
@@ -474,24 +477,18 @@ watch(easymde, (newEditorInstance) => {
 </template>
 
 <style scoped>
-/* --- A NEW, SIMPLIFIED FLEXBOX LAYOUT --- */
+/* --- 一个由 JS 动态控制高度的 Flexbox 布局 --- */
 .note-editor-wrapper {
-  /* 1. Let the parent overlay handle positioning. This component just defines its size. */
   width: 100%;
-
-  /* 2. Set a flexible height.
-     On mobile, it can grow up to 85% of the dynamic viewport height.
-     'dvh' unit is crucial as it adapts to the visible area when the keyboard appears. */
-  max-height: 85dvh;
-
-  /* 3. Basic styling */
   background-color: #fff;
   border-top: 1px solid #e0e0e0;
-
-  /* 4. CRUCIAL: This is the main flex container for the editor. */
   display: flex;
   flex-direction: column;
   z-index: 1002;
+  /*
+    移除了 max-height，因为高度现在完全由 JS 的 :style 绑定来动态控制，
+    这可以防止 CSS 和 JS 之间的样式冲突。
+  */
 }
 
 .dark .note-editor-wrapper {

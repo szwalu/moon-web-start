@@ -1073,16 +1073,6 @@ function closeEditorModal() {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-
-  /* --- INICIO DE LA MODIFICACIÓN CLAVE --- */
-  /*
-    Crea un espacio en la parte inferior del overlay que es exactamente
-    la altura del teclado. `env()` es una función de CSS que lee
-    variables de entorno del navegador.
-    `keyboard-inset-height` solo tiene un valor cuando el teclado está visible.
-  */
-  padding-bottom: env(keyboard-inset-height, 0px);
-  /* --- FIN DE LA MODIFICACIÓN CLAVE --- */
 }
 
 .fade-enter-active,
