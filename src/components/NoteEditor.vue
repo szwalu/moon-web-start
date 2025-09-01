@@ -55,21 +55,16 @@ function handleViewportResize() {
       editorEl.style.maxHeight = ''
     }
 
-    // ✨✨✨ START: FINAL FIX ✨✨✨
-    // 无论键盘是弹出还是收起，只要视口变化，就强制 CodeMirror 刷新。
-    // 使用 setTimeout 确保 DOM 尺寸更新先生效，再执行刷新。
     if (easymde.value) {
       setTimeout(() => {
         easymde.value?.codemirror.refresh()
-      }, 50) // 一个短暂的延迟
+      }, 50)
     }
-    // ✨✨✨ END: FINAL FIX ✨✨✨
   }
 }
 
 // --- EasyMDE 编辑器核心逻辑 ---
 function initializeEasyMDE(initialValue = '') {
-  // ... (此函数内部无变化)
   if (!textareaRef.value || easymde.value)
     return
   isReadyForAutoSave.value = false
@@ -151,7 +146,7 @@ function initializeEasyMDE(initialValue = '') {
   focusEditor()
 }
 
-// ... (其他JS函数 handleClose, focusEditor, selectTag 等均无变化)
+// ... (其他JS函数)
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -177,7 +172,6 @@ function focusEditor() {
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
     cm.scrollIntoView(null)
-    // 首次加载时也强制刷新一下，确保万无一失
     setTimeout(() => cm.refresh(), 50)
   })
 }
@@ -266,10 +260,13 @@ onUnmounted(() => {
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 
-watch(() => props.modelValue, (newValue) => {
-  if (easymde.value && newValue !== easymde.value.value())
-    easymde.value.value(newValue)
-})
+// ✨✨✨ START: FINAL FIX ✨✨✨
+// 这个 watch 是导致光标跳动的根源，我们将其移除。
+// watch(() => props.modelValue, (newValue) => {
+//   if (easymde.value && newValue !== easymde.value.value())
+//     easymde.value.value(newValue)
+// })
+// ✨✨✨ END: FINAL FIX ✨✨✨
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
 
@@ -334,8 +331,7 @@ watch(() => props.editingNote?.id, () => {
 </template>
 
 <style scoped>
-/* 此处 scoped 样式与上一版完全相同，无需修改 */
-/* --- 主容器与布局 --- */
+/* Scoped样式无变化 */
 .note-editor-container {
   position: fixed;
   bottom: 0;
@@ -376,7 +372,6 @@ watch(() => props.editingNote?.id, () => {
   position: relative;
 }
 
-/* --- 顶部操作栏 --- */
 .editor-header {
   flex-shrink: 0;
   display: flex;
@@ -410,7 +405,6 @@ watch(() => props.editingNote?.id, () => {
   color: #9ca3af;
 }
 
-/* --- 底部状态与动作栏 --- */
 .editor-footer {
   flex-shrink: 0;
   display: flex;
@@ -456,7 +450,6 @@ watch(() => props.editingNote?.id, () => {
   background-color: #4b5563;
 }
 
-/* --- 标签建议样式 --- */
 .tag-suggestions {
   position: absolute;
   background-color: #fff;
@@ -493,8 +486,7 @@ watch(() => props.editingNote?.id, () => {
 </style>
 
 <style>
-/* 此处全局样式与上一版完全相同，无需修改 */
-/* --- 全局样式，用于覆盖 EasyMDE 默认样式 --- */
+/* 全局样式无变化 */
 .editor-form > .EasyMDEContainer {
   flex: 1;
   min-height: 0;
