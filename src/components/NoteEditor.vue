@@ -1,633 +1,130 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import EasyMDE from 'easymde'
-import 'easymde/dist/easymde.min.css'
-
-// 1. 直接引入天气数据映射文件
-import { cityMap, weatherMap } from '@/utils/weatherMap'
-
-// --- 新增：引入设置 Store ---
 import { useSettingStore } from '@/stores/setting'
 
-// --- Props & Emits 定义 ---
 const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as () => any | null, default: null },
   isLoading: { type: Boolean, default: false },
-  allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 3000 },
   lastSavedTime: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave'])
 
-// --- 核心状态定义 (Refs, Computed, etc.) ---
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const easymde = ref<EasyMDE | null>(null)
-const editorWrapperRef = ref<HTMLDivElement | null>(null)
-const isReadyForAutoSave = ref(false)
+const localValue = ref(props.modelValue)
 
-const showEditorTagSuggestions = ref(false)
-const editorTagSuggestions = ref<string[]>([])
-const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedEditorIndex = ref(-1)
-const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
-
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
+// 父传值变化时同步
+watch(() => props.modelValue, (val) => {
+  if (val !== localValue.value)
+    localValue.value = val
 })
-const charCount = computed(() => contentModel.value.length)
 
-function handleViewportResize() {
-  if (editorWrapperRef.value && window.visualViewport) {
-    // 获取设备屏幕的“布局高度”（基本不变）
-    const layoutViewportHeight = window.innerHeight
-    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
-    const visualViewportHeight = window.visualViewport.height
-
-    // 两者之差，就是键盘 + 输入法工具栏的总高度
-    const keyboardHeight = layoutViewportHeight - visualViewportHeight
-
-    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
-    editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
-  }
-}
-
-// 天气相关逻辑函数
-function getCachedWeather() {
-  const cached = localStorage.getItem('weatherData_notes_app')
-  if (!cached)
-    return null
-
-  const { data, timestamp } = JSON.parse(cached)
-  const isExpired = Date.now() - timestamp > 6 * 60 * 60 * 1000
-  return isExpired ? null : data
-}
-
-function setCachedWeather(data: object) {
-  const cache = {
-    data,
-    timestamp: Date.now(),
-  }
-  localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
-}
-
-function getMappedCityName(enCity: string): string {
-  if (!enCity)
-    return '未知地点'
-  const cityLower = enCity.trim().toLowerCase()
-  for (const [key, value] of Object.entries(cityMap)) {
-    const keyLower = key.toLowerCase()
-    if (
-      cityLower === keyLower
-      || cityLower.startsWith(keyLower)
-    )
-      return value
-  }
-  return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
-}
-
-function getWeatherText(code: number): { text: string; icon: string } {
-  return weatherMap[code] || { text: '未知天气', icon: '❓' }
-}
-
-async function fetchWeather() {
-  const cached = getCachedWeather()
-  if (cached)
-    return cached.formattedString
-
-  try {
-    let locData
-    try {
-      const locRes = await fetch('https://ipapi.co/json/')
-      if (!locRes.ok)
-        throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
-      locData = await locRes.json()
-      if (locData.error)
-        throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
-    }
-    catch (ipapiError: any) {
-      console.warn('ipapi.co 失败，尝试备用服务 ip-api.com...', ipapiError.message)
-      const backupRes = await fetch('https://ip-api.com/json/')
-      if (!backupRes.ok)
-        throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
-      locData = await backupRes.json()
-      if (locData.status === 'fail')
-        throw new Error(`ip-api.com 服务错误: ${locData.message}`)
-
-      locData.city = locData.city || locData.regionName
-      locData.latitude = locData.lat
-      locData.longitude = locData.lon
-    }
-
-    if (!locData?.latitude || !locData?.longitude)
-      throw new Error('从两个服务获取地理位置均失败。')
-
-    const lat = locData.latitude
-    const lon = locData.longitude
-    const city = getMappedCityName(locData.city)
-
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
-    if (!res.ok)
-      throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
-    const data = await res.json()
-    if (data.error)
-      throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
-
-    const temp = data.current.temperature_2m
-    const code = data.current.weathercode
-    const { text, icon } = getWeatherText(code)
-
-    const formattedString = `${city}/${temp}°C ${text} ${icon}`
-    setCachedWeather({ formattedString })
-
-    return formattedString
-  }
-  catch (e: any) {
-    console.error('获取天气信息过程中发生严重错误:', e)
-    return null
-  }
-}
-
-// 编辑器相关逻辑函数
-function updateEditorHeight() {
-  if (!easymde.value)
+// 输入时更新父组件 + 保持光标可见
+async function handleInput(e: Event) {
+  const val = (e.target as HTMLTextAreaElement).value
+  if (val.length > props.maxNoteLength)
     return
-  const cm = easymde.value.codemirror
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-  const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-  cm.setSize(null, newHeight)
+  localValue.value = val
+  emit('update:modelValue', val)
+  emit('triggerAutoSave')
 
-  // 保持一个简单的内部滚动，配合外部布局调整
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
-}
-
-function destroyEasyMDE() {
-  if (easymde.value) {
-    easymde.value.toTextArea()
-    easymde.value = null
-  }
-}
-
-function applyEditorFontSize() {
-  if (!easymde.value)
-    return
-  const cmWrapper = easymde.value.codemirror.getWrapperElement()
-  cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
-  const fontSizeClass = `font-size-${settingsStore.noteFontSize}`
-  cmWrapper.classList.add(fontSizeClass)
-}
-
-function selectEditorTag(tag: string) {
-  if (!easymde.value)
-    return
-  const cm = easymde.value.codemirror
-  const doc = cm.getDoc()
-  const cursor = doc.getCursor()
-  const line = doc.getLine(cursor.line)
-  const textBeforeCursor = line.substring(0, cursor.ch)
-  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-  if (lastHashIndex !== -1) {
-    const start = { line: cursor.line, ch: lastHashIndex }
-    const end = cursor
-    doc.replaceRange(`${tag} `, start, end)
-  }
-  showEditorTagSuggestions.value = false
-  cm.focus()
-}
-
-function moveEditorSelection(offset: number) {
-  if (showEditorTagSuggestions.value)
-    highlightedEditorIndex.value = (highlightedEditorIndex.value + offset + editorTagSuggestions.value.length) % editorTagSuggestions.value.length
-}
-
-function handleEditorKeyDown(cm: any, event: KeyboardEvent) {
-  if (showEditorTagSuggestions.value && editorTagSuggestions.value.length > 0) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveEditorSelection(1)
-    }
-    else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveEditorSelection(-1)
-    }
-    else if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault()
-      selectEditorTag(editorTagSuggestions.value[highlightedEditorIndex.value])
-    }
-    else if (event.key === 'Escape') {
-      event.preventDefault()
-      showEditorTagSuggestions.value = false
-    }
-  }
-}
-
-function initializeEasyMDE(initialValue = '') {
-  isReadyForAutoSave.value = false
-  const newEl = textareaRef.value
-  if (!newEl || easymde.value)
-    return
-  const customToolbar = [
-    {
-      name: 'tag',
-      action: (editor: any) => {
-        const cm = editor.codemirror
-        cm.getDoc().replaceSelection('#')
-        cm.focus()
-        editorTagSuggestions.value = props.allTags
-        if (editorTagSuggestions.value.length > 0) {
-          const coords = cm.cursorCoords()
-          editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-          showEditorTagSuggestions.value = true
-          highlightedEditorIndex.value = 0
-        }
-      },
-      className: 'fa fa-tag',
-      title: '插入标签 (Insert Tag)',
-    },
-    '|',
-    'bold',
-    'italic',
-    'heading',
-    '|',
-    'quote',
-    'unordered-list',
-    'ordered-list',
-    {
-      name: 'taskList',
-      action: (editor: any) => {
-        editor.codemirror.getDoc().replaceRange('- [ ] ', editor.codemirror.getDoc().getCursor())
-        editor.codemirror.focus()
-      },
-      className: 'fa fa-check-square-o',
-      title: 'Task List',
-    },
-    '|',
-    'link',
-    'image',
-    'table',
-    '|',
-    'preview',
-    'side-by-side',
-    'fullscreen',
-  ]
-  easymde.value = new EasyMDE({
-    element: newEl,
-    initialValue,
-    spellChecker: false,
-    placeholder: t('notes.content_placeholder'),
-    toolbar: customToolbar,
-    status: false,
-  })
-
-  nextTick(() => {
-    applyEditorFontSize()
-  })
-
-  const cm = easymde.value.codemirror
-
-  cm.on('change', (instance: any) => {
-    const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent)
-      contentModel.value = editorContent
-
-    if (!isReadyForAutoSave.value)
-      isReadyForAutoSave.value = true
-    else
-      emit('triggerAutoSave')
-
-    nextTick(() => updateEditorHeight())
-
-    const cursor = instance.getDoc().getCursor()
-    const line = instance.getDoc().getLine(cursor.line)
-    const textBefore = line.substring(0, cursor.ch)
-    const lastHashIndex = textBefore.lastIndexOf('#')
-    if (lastHashIndex === -1 || (textBefore[lastHashIndex - 1] && /\w/.test(textBefore[lastHashIndex - 1]))) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-    const potentialTag = textBefore.substring(lastHashIndex)
-    if (potentialTag[1] === ' ' || potentialTag.includes('#', 1) || /\s/.test(potentialTag)) {
-      showEditorTagSuggestions.value = false
-      return
-    }
-    const term = potentialTag.substring(1)
-    editorTagSuggestions.value = props.allTags.filter(tag => tag.toLowerCase().includes(term.toLowerCase()))
-    if (editorTagSuggestions.value.length > 0) {
-      const coords = instance.cursorCoords()
-      editorSuggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
-      showEditorTagSuggestions.value = true
-      highlightedEditorIndex.value = 0
-    }
-    else {
-      showEditorTagSuggestions.value = false
-    }
-  })
-
-  cm.on('keydown', handleEditorKeyDown)
-  nextTick(() => updateEditorHeight())
+  await nextTick()
+  textareaRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 
 function handleSubmit() {
   emit('submit')
 }
-
-// --- 生命周期钩子 & 监听器 ---
-// onMounted 钩子
-onMounted(async () => {
-  let initialContent = props.modelValue
-
-  if (!props.editingNote && !props.modelValue) {
-    const weatherString = await fetchWeather()
-    if (weatherString) {
-      initialContent = `${weatherString}\n`
-      emit('update:modelValue', initialContent)
-    }
-  }
-
-  initializeEasyMDE(initialContent)
-
-  if (!props.editingNote && initialContent.includes('°C')) {
-    await nextTick()
-    if (easymde.value) {
-      const cm = easymde.value.codemirror
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      cm.focus()
-    }
-  }
-
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.addEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 使用新的 visualViewport resize 监听，它对键盘处理更精确
-  window.visualViewport.addEventListener('resize', handleViewportResize)
-  // 立即执行一次，以确保初始状态正确
-  handleViewportResize()
-  // <<< --- 修改部分结束 --- >>>
-})
-
-onUnmounted(() => {
-  destroyEasyMDE()
-  // <<< --- 修改部分开始 --- >>>
-  // 移除旧的 resize 监听
-  // window.removeEventListener('resize', debouncedUpdateEditorHeight)
-
-  // 移除新的 visualViewport 监听
-  window.visualViewport.removeEventListener('resize', handleViewportResize)
-  // <<< --- 修改部分结束 --- >>>
-})
-
-watch(() => props.modelValue, (newValue) => {
-  if (easymde.value && newValue !== easymde.value.value())
-    easymde.value.value(newValue)
-})
-
-watch(() => props.editingNote, (newNote, oldNote) => {
-  if (newNote?.id !== oldNote?.id) {
-    destroyEasyMDE()
-    nextTick(() => {
-      initializeEasyMDE(props.modelValue)
-      if (easymde.value) {
-        const cm = easymde.value.codemirror
-        const doc = cm.getDoc()
-        const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-        cm.focus()
-      }
-    })
-  }
-}, { deep: true })
-
-watch(() => settingsStore.noteFontSize, () => {
-  applyEditorFontSize()
-})
-
-watch(easymde, (newEditorInstance) => {
-  if (newEditorInstance) {
-    if (props.editingNote) {
-      const cm = newEditorInstance.codemirror
-
-      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
-      setTimeout(() => {
-        // 1. 获取文档并移动光标到最后
-        const doc = cm.getDoc()
-        const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-
-        // 2. 强制编辑器获得焦点
-        cm.focus()
-
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
-        cm.scrollIntoView(cm.getCursor(), 60)
-
-        // 4. 作为最后的保险，再调用一次高度更新
-        updateEditorHeight()
-      }, 150) // 使用150毫秒延时，确保时机足够晚
-    }
-  }
-})
 </script>
 
 <template>
-  <div ref="editorWrapperRef" class="note-editor-wrapper" :class="{ 'editing-mode': editingNote }">
-    <form class="note-editor-form" autocomplete="off" @submit.prevent="handleSubmit">
+  <div class="note-editor-mobile">
+    <form class="editor-form" @submit.prevent="handleSubmit">
       <textarea
         ref="textareaRef"
-        v-model="contentModel"
-        :placeholder="$t('notes.content_placeholder')"
-        class="mb-2 w-full border rounded p-2"
-        required
+        v-model="localValue"
+        :style="{ fontSize: `${settingsStore.noteFontSize}px` }"
+        :placeholder="t('notes.content_placeholder')"
+        class="editor-textarea"
         :disabled="isLoading"
-        :maxlength="maxNoteLength"
-        autocomplete="off"
+        @input="handleInput"
       />
       <div class="editor-footer">
-        <div class="status-bar">
-          <span class="char-counter">
-            {{ t('notes.char_count') }}: {{ charCount }}/{{ maxNoteLength }}
-          </span>
-          <span v-if="lastSavedTime" class="char-counter ml-4">
-            💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
-          </span>
-        </div>
-        <div class="emoji-bar">
-          <button
-            type="submit"
-            class="form-button flex-2"
-            :disabled="isLoading || !contentModel"
-          >
-            💾 {{ isLoading ? $t('notes.saving') : editingNote ? $t('notes.update_note') : $t('notes.save_note') }}
-          </button>
-        </div>
+        <span class="char-counter">
+          {{ t('notes.char_count') }}: {{ localValue.length }}/{{ maxNoteLength }}
+        </span>
+        <span v-if="lastSavedTime" class="ml-2">
+          💾 {{ t('notes.auto_saved_at') }}: {{ lastSavedTime }}
+        </span>
+        <button
+          type="submit"
+          class="save-btn"
+          :disabled="isLoading || !localValue"
+        >
+          {{ isLoading ? t('notes.saving') : editingNote ? t('notes.update_note') : t('notes.save_note') }}
+        </button>
       </div>
     </form>
-    <div
-      v-if="showEditorTagSuggestions && editorTagSuggestions.length"
-      ref="editorSuggestionsRef"
-      class="tag-suggestions editor-suggestions"
-      :style="editorSuggestionsStyle"
-    >
-      <ul>
-        <li
-          v-for="(tag, index) in editorTagSuggestions"
-          :key="tag"
-          :class="{ highlighted: index === highlightedEditorIndex }"
-          @mousedown.prevent="selectEditorTag(tag)"
-        >
-          {{ tag }}
-        </li>
-      </ul>
-    </div>
   </div>
 </template>
 
 <style scoped>
-/* --- 全新的 Flexbox / Fixed 布局 --- */
-.note-editor-wrapper {
-  /* 1. 关键：让容器固定在底部 */
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  z-index: 1002; /* 比编辑器的 toolbar 更高 */
-
-  /* 2. 自身样式 */
-  background-color: #fff;
-  border-top: 1px solid #e0e0e0;
-
-  /* 3. 防止在手机上过高，遮住所有内容 */
-  max-height: 75vh;
-
-  /* 4. 关键：开启Flexbox布局 */
-  display: flex;
-  flex-direction: column;
-}
-
-.dark .note-editor-wrapper {
-  background-color: #2c2c2e;
-  border-top: 1px solid #48484a;
-}
-
-.note-editor-form {
+.note-editor-mobile {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden; /* 防止子元素溢出 */
 }
 
-/* --- 恢复并整合的原有样式 --- */
+.editor-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: none;
+  padding: 12px;
+  font-family: inherit;
+  line-height: 1.6;
+  overflow-y: auto;
+}
+
 .editor-footer {
-  flex-shrink: 0; /* 防止被压缩 */
-  padding: 0.5rem 0.75rem;
-}
-
-.status-bar{display:flex;justify-content:flex-start;align-items:center;margin:0}
-.char-counter{font-size:12px;color:#999}
-.dark .char-counter{color:#aaa}
-.ml-4{margin-left:1rem}
-.emoji-bar{margin-top:.5rem;display:flex;justify-content:space-between;gap:.5rem}
-.form-button{width:100%;flex:1;padding:.5rem;font-size:14px;border-radius:6px;border:1px solid #ccc;cursor:pointer;background:#d3d3d3;color:#111}
-.dark .form-button{background-color:#404040;color:#fff;border-color:#555}
-.form-button:disabled{opacity:.6;cursor:not-allowed}
-
-.tag-suggestions{position:absolute;background-color:#fff;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 12px #00000026;z-index:1000;max-height:200px;overflow-y:auto;min-width:150px}
-.dark .tag-suggestions{background-color:#2c2c2e;border-color:#48484a}
-.tag-suggestions ul{list-style:none;margin:0;padding:4px 0}
-.tag-suggestions li{padding:6px 12px;cursor:pointer;font-size:14px;white-space:nowrap}
-.tag-suggestions li:hover,.tag-suggestions li.highlighted{background-color:#f0f0f0}
-.dark .tag-suggestions li:hover,.dark .tag-suggestions li.highlighted{background-color:#404040}
-.editor-suggestions{position:absolute}
-</style>
-
-<style>
-/* Global styles */
-.editor-toolbar {
-  padding: 1px 3px !important;
-  min-height: 0 !important;
-  border: 1px solid #ccc;
-  border-top: none !important; /* <<< 新增这一行以移除顶部边框 */
-  border-bottom: none !important;
-  border-radius: 6px 6px 0 0;
-  position: -webkit-sticky;
   position: sticky;
-  top: 0;
-  z-index: 1001;
-  background-color: #fff;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
-.CodeMirror {
-  border: 1px solid #ccc!important;
-  border-top: none!important;
-  border-radius: 0!important; /* 去掉圆角，因为它现在是中间部分 */
-  font-size: 16px!important;
-  line-height: 1.6!important;
 
-  /* 关键：让编辑器区域占据所有剩余空间 */
-  flex-grow: 1;
-
-  /* 关键：设置一个初始的最小高度 */
-  min-height: 130px;
-
-  /* 保留，当内容超出max-height时，内部可以滚动 */
-  overflow-y: auto!important;
+.char-counter {
+  font-size: 12px;
+  color: #666;
 }
-.editor-toolbar a,.editor-toolbar button{padding-left:2px!important;padding-right:2px!important;padding-top:1px!important;padding-bottom:1px!important;line-height:1!important;height:auto!important;min-height:0!important;display:inline-flex!important;align-items:center!important}.editor-toolbar a i,.editor-toolbar button i{font-size:15px!important;vertical-align:middle}.editor-toolbar i.separator{margin:1px 3px!important;border-width:0 1px 0 0!important;height:8px!important}.dark .editor-toolbar{background-color:#2c2c2e!important;border-color:#48484a!important}.dark .CodeMirror{background-color:#2c2c2e!important;border-color:#48484a!important;color:#fff!important}.dark .editor-toolbar a{color:#e0e0e0!important}.dark .editor-toolbar a.active{background:#404040!important}@media (max-width:480px){.editor-toolbar{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}.editor-toolbar::-webkit-scrollbar{display:none;height:0}}
 
-/* Heading font size fix in editor */
-.CodeMirror .cm-header { font-weight: bold; }
-.CodeMirror .cm-header-1 { font-size: 1.6em; }
-.CodeMirror .cm-header-2 { font-size: 1.4em; }
-.CodeMirror .cm-header-3 { font-size: 1.2em; }
-.CodeMirror .cm-header-4 { font-size: 1.1em; }
-.CodeMirror .cm-header-5 { font-size: 1.0em; }
-.CodeMirror .cm-header-6 { font-size: 1.0em; color: #777; }
-
-/* --- 根据设置动态修改编辑器字号的 CSS 规则 --- */
-.CodeMirror.font-size-small { font-size: 14px !important; }
-.CodeMirror.font-size-medium { font-size: 16px !important; }
-.CodeMirror.font-size-large { font-size: 20px !important; }
-
-/* --- [FIX] PC Layout Correction --- */
-@media (min-width: 768px) {
-  .note-editor-wrapper {
-    /* On PC, give the wrapper a more stable height instead of just max-height */
-    height: 75vh;
-    max-height: 650px; /* A reasonable max height for large screens */
-  }
-  .note-editor-form {
-    /* Allow the form to properly flex within its wrapper */
-    flex: 1;
-    min-height: 0;
-  }
-  /* The EasyMDE container that replaces the textarea */
-  .note-editor-form > .EasyMDEContainer {
-    flex: 1; /* Allow the editor container to grow and fill available space */
-    min-height: 0; /* A crucial property for nested flexbox scrolling */
-    display: flex;
-    flex-direction: column;
-  }
-  .CodeMirror {
-    /* Override the inline height from JS and let flexbox handle it */
-    height: auto !important;
-  }
+.save-btn {
+  margin-left: auto;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #007aff;
+  color: #fff;
+  font-size: 14px;
+}
+.save-btn:disabled {
+  opacity: 0.6;
 }
 </style>
