@@ -30,6 +30,9 @@ const tagQuery = ref('')
 let actionsRO: ResizeObserver | null = null
 let editorRO: ResizeObserver | null = null
 
+// 用于 spacer 高度
+const actionsPad = ref(80)
+
 const valueLen = computed(() => props.modelValue?.length ?? 0)
 const remain = computed(() => Math.max(0, props.maxNoteLength - valueLen.value))
 
@@ -37,7 +40,6 @@ function resizeTextarea() {
   const el = textareaRef.value
   if (!el)
     return
-  // 让 textarea 自身不滚动，只按内容增高，由外层 .ne-editor 滚动
   el.style.height = 'auto'
   el.style.maxHeight = 'none'
   el.style.overflow = 'hidden'
@@ -46,7 +48,8 @@ function resizeTextarea() {
 
 function updateLayoutByActionsHeight() {
   const actionsH = actionsRef.value?.offsetHeight ?? 64
-  const pad = actionsH + 12
+  const pad = actionsH + 16
+  actionsPad.value = pad
   document.documentElement.style.setProperty('--actions-h', `${pad}px`)
   const editor = editorRef.value
   if (editor)
@@ -54,14 +57,18 @@ function updateLayoutByActionsHeight() {
 }
 
 function keepCaretVisible() {
-  // 由外层 .ne-editor 负责滚动，确保最后一行不会被操作区遮挡
   const editor = editorRef.value
   const el = textareaRef.value
   if (!editor || !el)
     return
   const atEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length
-  if (atEnd)
+  if (atEnd) {
     editor.scrollTop = editor.scrollHeight
+  }
+  else {
+    const lh = Number.parseFloat(getComputedStyle(el).lineHeight) || 20
+    editor.scrollTop = Math.min(editor.scrollTop + lh, editor.scrollHeight)
+  }
 }
 
 function updateModel(v: string) {
@@ -253,6 +260,9 @@ onUnmounted(() => {
             #{{ tag }}
           </button>
         </div>
+
+        <!-- spacer: 给滚动内容在底部留白，避免被 sticky 操作区遮挡 -->
+        <div class="ne-spacer" :style="{ height: `${actionsPad}px` }" />
       </div>
 
       <div ref="actionsRef" class="ne-actions">
@@ -304,7 +314,7 @@ onUnmounted(() => {
 .ne-close:hover { background: rgba(0,0,0,.06); }
 :global(.dark) .ne-close:hover { background: rgba(255,255,255,.10); }
 
-.ne-editor { position: relative; overflow: auto; }
+.ne-editor { position: relative; overflow: auto; padding-bottom: var(--actions-h, 96px); }
 
 .ne-textarea {
   width: 100%;
@@ -316,9 +326,11 @@ onUnmounted(() => {
   color: inherit;
   background: transparent;
   outline: none;
-  resize: none;        /* 尺寸由 JS 控制高度 */
-  overflow: hidden;    /* 自身不滚动，由父容器滚动 */
+  resize: none;
+  overflow: hidden;
 }
+
+.ne-spacer { width: 100%; flex: 0 0 auto; }
 
 /* Tag 面板 */
 .ne-tag-panel { position: absolute; left: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 16px); }
@@ -328,7 +340,7 @@ onUnmounted(() => {
 :global(.dark) .ne-tag-item:hover { background: rgba(255,255,255,.10); }
 
 /* Action 区域：sticky 吸底 */
-.ne-actions { display: grid; grid-auto-flow: column; justify-content: center; align-items: center; gap: 10px; padding-top: 10px; position: sticky; bottom: 0; background: var(--ne-bg, #fff); padding-bottom: max(10px, env(safe-area-inset-bottom)); box-shadow: 0 -6px 12px rgba(0,0,0,.04); }
+.ne-actions { display: grid; grid-auto-flow: column; justify-content: center; align-items: center; gap: 10px; padding-top: 10px; position: sticky; bottom: 0; z-index: 2; background: var(--ne-bg, #fff); padding-bottom: max(10px, env(safe-area-inset-bottom)); box-shadow: 0 -6px 12px rgba(0,0,0,.04); }
 
 .ne-cancel { min-width: 96px; height: 40px; border-radius: 999px; border: 1px solid rgba(0,0,0,.15); background: transparent; color: inherit; cursor: pointer; }
 :global(.dark) .ne-cancel { border-color: rgba(255,255,255,.25); }
