@@ -177,7 +177,7 @@ function focusEditor() {
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
     cm.scrollIntoView(null)
     // 首次加载时也强制刷新一下，确保万无一失
-    setTimeout(() => cm.refresh(), 50)
+    // setTimeout(() => cm.refresh(), 50)
   })
 }
 
