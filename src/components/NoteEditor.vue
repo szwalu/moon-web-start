@@ -31,6 +31,9 @@ const suggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedSuggestionIndex = ref(-1)
 const showAllTagsPanel = ref(false)
 
+// --- 新增：用于在组件挂载时存储初始窗口高度 ---
+const initialInnerHeight = ref(0)
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -38,18 +41,29 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 键盘与视口适配 ---
+// --- 修改：更新视口调整逻辑以兼容 Chrome 和 Safari ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
-    const keyboardHeight = window.innerHeight - visualViewport.height
 
-    if (keyboardHeight > 100) {
+    // Safari 的键盘高度计算方式 (键盘覆盖内容，innerHeight 不变)
+    const keyboardHeight = window.innerHeight - visualViewport.height
+    // Chrome 的键盘检测方式 (键盘挤压内容，innerHeight 变小)
+    const heightReduced = initialInnerHeight.value > 0 && window.innerHeight < initialInnerHeight.value * 0.9
+
+    // 当键盘弹出时 (满足 Safari 或 Chrome 的任一条件)
+    if (keyboardHeight > 100 || heightReduced) {
+      // 对 Safari, keyboardHeight > 0, bottom 会被设置, 将容器推上去
+      // 对 Chrome, keyboardHeight ≈ 0, bottom 为 0, 浏览器已处理好定位
       editorEl.style.bottom = `${keyboardHeight}px`
+      // 关键修复：统一将容器高度设置为可见视口的高度，解决 Chrome 依赖 vh 单位导致的问题
       editorEl.style.height = `${visualViewport.height}px`
+      // 覆盖 CSS 中的 max-height，允许容器完全利用可视空间
       editorEl.style.maxHeight = 'none'
     }
     else {
+      // 键盘收起，恢复由 CSS 控制样式
       editorEl.style.bottom = '0px'
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
@@ -260,6 +274,9 @@ function handleClose() {
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
+  // --- 新增：在挂载时记录初始视口高度，作为后续判断基准 ---
+  initialInnerHeight.value = window.innerHeight
+
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
     const weatherString = await fetchWeather()
@@ -586,6 +603,11 @@ watch(() => props.editingNote?.id, () => {
 }
 .dark .CodeMirror-cursor {
   border-left-color: #f3f4f6 !important;
+}
+
+.editor-toolbar a i,
+.editor-toolbar button i {
+    font-size: 15px !important; /* 您可以在这里调整为您想要的任何大小 */
 }
 
 .CodeMirror.font-size-small { font-size: 14px !important; }
