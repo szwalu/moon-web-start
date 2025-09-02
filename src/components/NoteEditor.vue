@@ -121,10 +121,7 @@ function initializeEasyMDE(initialValue = '') {
       emit('triggerAutoSave')
 
     handleTagSuggestions(instance)
-
-    nextTick(() => {
-      instance.scrollIntoView(null)
-    })
+    // 注意：此处的 nextTick 和 scrollIntoView 已被移除
   })
 
   cm.on('keydown', (cm, event) => {
@@ -264,11 +261,6 @@ onMounted(async () => {
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
-})
-
-watch(() => props.modelValue, (newValue) => {
-  if (easymde.value && newValue !== easymde.value.value())
-    easymde.value.value(newValue)
 })
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
