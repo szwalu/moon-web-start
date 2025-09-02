@@ -36,14 +36,6 @@ const editorSuggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedEditorIndex = ref(-1)
 const editorSuggestionsRef = ref<HTMLDivElement | null>(null)
 
-const minEditorHeight = 130
-const isSmallScreen = window.innerWidth < 768
-let maxEditorHeight
-if (isSmallScreen)
-  maxEditorHeight = window.innerHeight * 0.65
-else
-  maxEditorHeight = Math.min(window.innerHeight * 0.75, 800)
-
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -52,22 +44,13 @@ const charCount = computed(() => contentModel.value.length)
 
 function handleViewportResize() {
   if (editorWrapperRef.value && window.visualViewport) {
-    // 获取设备屏幕的“布局高度”（基本不变）
     const layoutViewportHeight = window.innerHeight
-    // 获取“可视区域”的实时高度（会随着键盘弹出而变小）
     const visualViewportHeight = window.visualViewport.height
-
-    // 两者之差，就是键盘 + 输入法工具栏的总高度
     const keyboardHeight = layoutViewportHeight - visualViewportHeight
-
-    // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
     editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
 
-    // --- 新增的关键联动 ---
-    // 在容器位置调整后，强制编辑器重新计算其内部高度以适应新空间
-    // 使用 nextTick 确保在 DOM 更新之后执行
     nextTick(() => {
-      updateEditorHeight()
+      updateEditorHeight() // 这里会调用上面那个安全的refresh版本
     })
   }
 }
@@ -170,46 +153,12 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  if (!easymde.value || !editorWrapperRef.value)
-    return
-
-  const cm = easymde.value.codemirror
-
-  // 在移动端，高度计算的核心应该是父容器的可用空间，而不是内容本身的高度
-  if (isSmallScreen) {
-    // 获取 CodeMirror 的直接父元素（通常是 .EasyMDEContainer）
-    const container = cm.getWrapperElement().parentElement
-    if (!container)
-      return
-
-    // 获取父容器的当前可见高度
-    const availableHeight = container.clientHeight
-
-    // 我们设置编辑器的高度就是这个可见高度。
-    // 这能确保它完美填充空间，并且内部滚动条能正常工作。
-    // 我们不再需要复杂的 min/max 计算，因为容器本身的高度已经受CSS约束。
-    if (availableHeight > 0)
-      cm.setSize(null, availableHeight)
-
-    // 在移动端，我们避免使用 scrollIntoView，因为它在布局剧烈变化时行为不稳定
-    // 仅在必要时刷新编辑器即可
-    cm.refresh()
-  }
-  else {
-    // --- 在PC端，保留原有的基于内容的自适应高度逻辑 ---
-    const sizer = cm.display.sizer
-    if (!sizer)
-      return
-    const contentHeight = sizer.scrollHeight + 5
-    const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-    cm.setSize(null, newHeight)
-
-    // PC端的滚动是可靠的，可以保留
-    setTimeout(() => {
-      if (easymde.value)
-        easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-    }, 0)
-  }
+  // 既然CSS已经完全接管了高度和布局，
+  // 我们不再需要用JS来计算和设置高度 (setSize)。
+  // JS的唯一职责，是在布局变化后（如键盘弹出），
+  // 调用 refresh() 来通知CodeMirror重新检查其尺寸并正确渲染。
+  if (easymde.value)
+    easymde.value.codemirror.refresh()
 }
 
 function destroyEasyMDE() {
@@ -639,6 +588,17 @@ watch(easymde, (newEditorInstance) => {
 .CodeMirror.font-size-large { font-size: 20px !important; }
 
 /* --- [FIX] PC Layout Correction --- */
+ /* The EasyMDE container that replaces the textarea */
+  .note-editor-form > .EasyMDEContainer {
+    flex: 1; /* Allow the editor container to grow and fill available space */
+    min-height: 0; /* A crucial property for nested flexbox scrolling */
+    display: flex;
+    flex-direction: column;
+  }
+  .CodeMirror {
+    /* Override the inline height from JS and let flexbox handle it */
+    height: auto !important;
+  }
 @media (min-width: 768px) {
   .note-editor-wrapper {
     /* On PC, give the wrapper a more stable height instead of just max-height */
@@ -650,16 +610,6 @@ watch(easymde, (newEditorInstance) => {
     flex: 1;
     min-height: 0;
   }
-  /* The EasyMDE container that replaces the textarea */
-  .note-editor-form > .EasyMDEContainer {
-    flex: 1; /* Allow the editor container to grow and fill available space */
-    min-height: 0; /* A crucial property for nested flexbox scrolling */
-    display: flex;
-    flex-direction: column;
-  }
-  .CodeMirror {
-    /* Override the inline height from JS and let flexbox handle it */
-    height: auto !important;
-  }
+
 }
 </style>
