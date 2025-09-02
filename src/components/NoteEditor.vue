@@ -113,8 +113,10 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('change', (instance) => {
     const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent)
-      isUpdatingInternally.value = true
+
+    // 【改动一】移除 if 判断，无条件设置标志位并更新 modelValue
+    // 这能确保在任何情况下，来自编辑器的更新都会被正确标记
+    isUpdatingInternally.value = true
     contentModel.value = editorContent
 
     if (!isReadyForAutoSave.value)
@@ -124,9 +126,10 @@ function initializeEasyMDE(initialValue = '') {
 
     handleTagSuggestions(instance)
 
-    nextTick(() => {
-      instance.scrollIntoView(null)
-    })
+    // 【改动二】暂时注释掉 scrollIntoView 调用，以排除其干扰
+    // nextTick(() => {
+    //   instance.scrollIntoView(null)
+    // })
   })
 
   cm.on('keydown', (cm, event) => {
