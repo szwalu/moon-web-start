@@ -61,6 +61,10 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
+// [新增] 多选笔记相关状态
+const isSelectionModeActive = ref(false)
+const selectedNoteIds = ref<string[]>([])
+
 const isRestoringFromCache = ref(false)
 
 // --- 那年今日功能状态 ---
@@ -671,15 +675,6 @@ async function triggerDeleteConfirmation(id: string) {
     },
   })
 }
-/*
-async function handleLogout() {
-  showDropdown.value = false
-  loading.value = true
-  await supabase.auth.signOut()
-  window.location.href = '/'
-  loading.value = false
-}
-*/
 
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
@@ -762,6 +757,100 @@ function closeEditorModal() {
   showEditorModal.value = false
   debouncedSaveNote.cancel()
 }
+
+// --- [新增] 多选笔记相关方法 ---
+
+/**
+ * 切换笔记选择模式
+ */
+function toggleSelectionMode() {
+  isSelectionModeActive.value = !isSelectionModeActive.value
+  // 退出选择模式时，清空已选中的笔记
+  if (!isSelectionModeActive.value)
+    selectedNoteIds.value = []
+
+  showDropdown.value = false // 点击后关闭菜单
+}
+
+/**
+ * 处理单个笔记的选中/取消选中
+ * @param {string} noteId - 被点击的笔记ID
+ */
+function handleToggleSelect(noteId: string) {
+  if (!isSelectionModeActive.value)
+    return
+  const index = selectedNoteIds.value.indexOf(noteId)
+  if (index > -1) {
+    // 如果已选中，则从数组中移除
+    selectedNoteIds.value.splice(index, 1)
+  }
+  else {
+    // 如果未选中，则添加到数组
+    selectedNoteIds.value.push(noteId)
+  }
+}
+
+/**
+ * 复制所有已选中的笔记内容
+ */
+async function handleCopySelected() {
+  if (selectedNoteIds.value.length === 0)
+    return
+  // 找到所有选中的笔记对象
+  const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
+  // 将它们的内容用分隔符连接成一个字符串
+  const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
+  try {
+    await navigator.clipboard.writeText(textContent)
+    messageHook.success(`成功复制 ${notesToCopy.length} 条笔记`)
+  }
+  catch (err) {
+    messageHook.error('复制失败')
+  }
+  finally {
+    // 操作完成后退出选择模式
+    isSelectionModeActive.value = false
+    selectedNoteIds.value = []
+  }
+}
+
+/**
+ * 删除所有已选中的笔记
+ */
+function handleDeleteSelected() {
+  if (selectedNoteIds.value.length === 0)
+    return
+  dialog.warning({
+    title: '确认删除',
+    content: `您确定要删除这 ${selectedNoteIds.value.length} 条笔记吗？此操作无法撤销。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        loading.value = true
+        const idsToDelete = [...selectedNoteIds.value]
+        const { error } = await supabase.from('notes').delete().in('id', idsToDelete)
+        if (error)
+          throw new Error(error.message)
+
+        // 从本地列表视图中移除已删除的笔记
+        notes.value = notes.value.filter(note => !idsToDelete.includes(note.id))
+        cachedPages.value.clear() // 清空缓存以确保数据一致性
+
+        messageHook.success(`成功删除 ${idsToDelete.length} 条笔记`)
+      }
+      catch (err: any) {
+        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+      }
+      finally {
+        // 操作完成后退出选择模式
+        loading.value = false
+        isSelectionModeActive.value = false
+        selectedNoteIds.value = []
+      }
+    },
+  })
+}
 </script>
 
 <template>
@@ -779,6 +868,9 @@ function closeEditorModal() {
           </button>
           <Transition name="fade">
             <div v-if="showDropdown" class="dropdown-menu">
+              <div class="dropdown-item" @click.stop="toggleSelectionMode">
+                {{ isSelectionModeActive ? '取消选择' : '选择笔记' }}
+              </div>
               <div class="dropdown-item" @click.stop="showSettingsModal = true; showDropdown = false">
                 {{ $t('settings.font_title') }}
               </div>
@@ -831,6 +923,8 @@ function closeEditorModal() {
           :expanded-note-id="expandedNote"
           :has-more="!isAnniversaryViewActive && hasMoreNotes"
           :scroll-container="notesListWrapperRef"
+          :is-selection-mode-active="isSelectionModeActive"
+          :selected-note-ids="selectedNoteIds"
           @load-more="nextPage"
           @toggle-expand="toggleExpand"
           @edit="handleEdit"
@@ -838,10 +932,11 @@ function closeEditorModal() {
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"
           @task-toggle="handleNoteContentClick"
+          @toggle-select="handleToggleSelect"
         />
       </div>
 
-      <button class="fab" @click="handleAddNewNoteClick">
+      <button v-if="!isSelectionModeActive" class="fab" @click="handleAddNewNoteClick">
         +
       </button>
 
@@ -868,6 +963,22 @@ function closeEditorModal() {
         :user="user"
         @close="showAccountModal = false"
       />
+
+      <Transition name="slide-up-fade">
+        <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
+          <div class="selection-info">
+            已选择 {{ selectedNoteIds.length }} 项
+          </div>
+          <div class="selection-buttons">
+            <button class="action-btn copy-btn" @click="handleCopySelected">
+              复制
+            </button>
+            <button class="action-btn delete-btn" @click="handleDeleteSelected">
+              删除
+            </button>
+          </div>
+        </div>
+      </Transition>
     </template>
     <template v-else>
       <Authentication />
@@ -974,10 +1085,11 @@ function closeEditorModal() {
 }
 
 .dropdown-item {
-  padding: 1.5rem 1rem;
+  padding: 0.75rem 1rem; /* 调整了padding以容纳更多选项 */
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s ease;
+  white-space: nowrap; /* 防止文字换行 */
 }
 .dropdown-item:hover {
   background-color: #f0f0f0;
@@ -1175,5 +1287,61 @@ function closeEditorModal() {
   display: flex;
   align-items: center;
   gap: 0.5rem; /* 让图标之间有一点间距 */
+}
+
+/* --- [新增] 多选弹窗相关样式 --- */
+.selection-actions-popup {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 3rem);
+  max-width: 432px;
+  background-color: #333;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  z-index: 15; /* 高于 FAB 按钮 */
+}
+.dark .selection-actions-popup {
+  background-color: #444;
+}
+
+.selection-info {
+  font-size: 14px;
+}
+
+.selection-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.25rem;
+}
+
+.action-btn.delete-btn {
+  color: #ff5252;
+}
+
+/* 弹窗的过渡动画 */
+.slide-up-fade-enter-active,
+.slide-up-fade-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.slide-up-fade-enter-from,
+.slide-up-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
 }
 </style>
