@@ -93,8 +93,6 @@ function initializeEasyMDE(initialValue = '') {
     'link',
     'image',
     'quote',
-    '|',
-    'fullscreen',
   ]
 
   easymde.value = new EasyMDE({
@@ -105,6 +103,7 @@ function initializeEasyMDE(initialValue = '') {
     toolbar: mobileToolbar,
     status: false,
     minHeight: '100px',
+    lineWrapping: true, // --- 新增此行，从根本上开启自动换行 ---
   })
 
   const cm = easymde.value.codemirror
@@ -384,7 +383,7 @@ watch(() => props.editingNote?.id, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 16px;
+  padding: 1px 14px; /* --- 进一步减小垂直内边距 --- */
   border-top: 1px solid #e5e7eb;
   gap: 16px;
 }
@@ -405,8 +404,8 @@ watch(() => props.editingNote?.id, () => {
   background-color: #00b386;
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
+  border-radius: 6px; /* --- 可选：减小圆角使其更紧凑 --- */
+  padding: 2px 10px; /* --- 进一步减小内边距 --- */
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -503,6 +502,7 @@ watch(() => props.editingNote?.id, () => {
   display: flex;
   flex-direction: column;
   border: none !important;
+  min-width: 0; /* --- 新增此行，防止容器被内容撑开 --- */
 }
 
 .editor-toolbar {
@@ -529,14 +529,14 @@ watch(() => props.editingNote?.id, () => {
 .CodeMirror {
   flex: 1 !important;
   height: auto !important;
-
   border: none !important;
   border-radius: 0 !important;
   padding: 12px;
   font-size: 16px !important;
   line-height: 1.6 !important;
   white-space: pre-wrap !important;
-  word-break: break-word !important;
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
 }
 .dark .CodeMirror {
   background-color: #1e1e1e !important;
