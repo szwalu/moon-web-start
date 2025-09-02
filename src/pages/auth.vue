@@ -22,7 +22,7 @@ import 'easymde/dist/easymde.min.css'
 // --- 初始化 & 状态定义 ---
 useDark()
 const { t } = useI18n()
-// const router = useRouter()
+const router = useRouter()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
@@ -890,7 +890,7 @@ function handleDeleteSelected() {
           <button class="header-action-btn" @click.stop="toggleSearchBar">
             🔍
           </button>
-          <button class="header-action-btn close-page-btn" @click="window.location.href = '/'">
+          <button class="header-action-btn close-page-btn" @click.stop="router.push('/')">
             ×
           </button>
         </div>
