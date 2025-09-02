@@ -24,7 +24,6 @@ const editorContainerRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
-const isUpdatingInternally = ref(false)
 
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
@@ -56,15 +55,14 @@ function handleViewportResize() {
       editorEl.style.maxHeight = ''
     }
 
-    // ✨✨✨ START: FINAL FIX ✨✨✨
-    // 无论键盘是弹出还是收起，只要视口变化，就强制 CodeMirror 刷新。
-    // 使用 setTimeout 确保 DOM 尺寸更新先生效，再执行刷新。
+    // 暂时禁用 refresh 调用，以确认它是否是问题的根源
+    /*
     if (easymde.value) {
       setTimeout(() => {
         easymde.value?.codemirror.refresh()
       }, 50) // 一个短暂的延迟
     }
-    // ✨✨✨ END: FINAL FIX ✨✨✨
+    */
   }
 }
 
@@ -113,11 +111,8 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('change', (instance) => {
     const editorContent = easymde.value?.value() ?? ''
-
-    // 【改动一】移除 if 判断，无条件设置标志位并更新 modelValue
-    // 这能确保在任何情况下，来自编辑器的更新都会被正确标记
-    isUpdatingInternally.value = true
-    contentModel.value = editorContent
+    if (contentModel.value !== editorContent)
+      contentModel.value = editorContent
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
@@ -126,10 +121,9 @@ function initializeEasyMDE(initialValue = '') {
 
     handleTagSuggestions(instance)
 
-    // 【改动二】暂时注释掉 scrollIntoView 调用，以排除其干扰
-    // nextTick(() => {
-    //   instance.scrollIntoView(null)
-    // })
+    nextTick(() => {
+      instance.scrollIntoView(null)
+    })
   })
 
   cm.on('keydown', (cm, event) => {
@@ -272,13 +266,6 @@ onUnmounted(() => {
 })
 
 watch(() => props.modelValue, (newValue) => {
-  // 如果标志位为 true，说明是内部更新，则直接返回并重置标志位
-  if (isUpdatingInternally.value) {
-    isUpdatingInternally.value = false
-    return
-  }
-
-  // 只有当标志位为 false 时，才认为是外部更新，执行以下逻辑
   if (easymde.value && newValue !== easymde.value.value())
     easymde.value.value(newValue)
 })
