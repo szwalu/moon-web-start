@@ -93,6 +93,17 @@ function initializeEasyMDE(initialValue = '') {
     'link',
     'image',
     'quote',
+    {
+      name: 'spacer',
+      className: 'toolbar-spacer', // 给“弹簧”一个自定义类名
+      action: () => {}, // 它不需要任何功能
+    },
+    {
+      name: 'close',
+      action: handleClose, // 调用我们刚添加的函数
+      className: 'fa fa-times custom-close-button', // 使用 'x' 图标并添加自定义类名
+      title: 'Close Editor', // 鼠标悬停提示
+    },
   ]
 
   easymde.value = new EasyMDE({
@@ -244,6 +255,10 @@ async function fetchWeather() {
 
 function handleSubmit() {
   emit('submit')
+}
+
+function handleClose() {
+  emit('close')
 }
 
 // --- 生命周期钩子 ---
@@ -514,6 +529,8 @@ watch(() => props.editingNote?.id, () => {
   flex-shrink: 0;
   overflow-x: auto;
   min-height: auto !important;
+  display: flex !important; /* 关键：将工具栏设置为 flex 容器 */
+  align-items: center;      /* 确保所有图标垂直居中 */
 }
 .dark .editor-toolbar {
   background-color: #1e1e1e !important;
@@ -524,6 +541,24 @@ watch(() => props.editingNote?.id, () => {
 }
 .dark .editor-toolbar a.active {
   background-color: #374151 !important;
+}
+
+/* --- 新增：“弹簧”元素的样式 --- */
+.editor-toolbar .toolbar-spacer {
+  flex-grow: 1; /* 关键：让这个元素占据所有剩余的可用空间 */
+  background: none !important;
+  border: none !important;
+  cursor: default !important;
+}
+/* 确保“弹簧”在鼠标悬停时没有任何效果 */
+.editor-toolbar .toolbar-spacer:hover {
+  background: none !important;
+}
+
+/* --- 修正：关闭按钮的样式 --- */
+/* (我们不再需要 margin-left: auto 了) */
+.editor-toolbar a.custom-close-button {
+  font-size: 1.2em;
 }
 
 .CodeMirror {
