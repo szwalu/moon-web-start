@@ -115,13 +115,20 @@ function initializeEasyMDE(initialValue = '') {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    if (!isReadyForAutoSave.value)
-      isReadyForAutoSave.value = true
-    else
+    // 检查是否是首次触发
+    if (!isReadyForAutoSave.value) {
+      // 使用 nextTick 将响应式状态的变更推迟到下一个更新周期
+      // 从而避免与 EasyMDE 的内部事件冲突
+      nextTick(() => {
+        isReadyForAutoSave.value = true
+      })
+    }
+    else {
       emit('triggerAutoSave')
+    }
 
     handleTagSuggestions(instance)
-    // 注意：此处的 nextTick 和 scrollIntoView 已被移除
+    // 注意：之前版本中多余的 scrollIntoView 也在此一并移除，以获得更稳定的体验
   })
 
   cm.on('keydown', (cm, event) => {
