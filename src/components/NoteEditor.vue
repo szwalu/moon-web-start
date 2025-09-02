@@ -529,8 +529,10 @@ watch(() => props.editingNote?.id, () => {
   flex-shrink: 0;
   overflow-x: auto;
   min-height: auto !important;
-  display: flex !important; /* 关键：将工具栏设置为 flex 容器 */
-  align-items: center;      /* 确保所有图标垂直居中 */
+  display: flex !important;
+  align-items: center;
+  /* 关键默认值：强制所有图标都从左边开始排列，这主要用于移动端 */
+  justify-content: flex-start !important;
 }
 .dark .editor-toolbar {
   background-color: #1e1e1e !important;
@@ -545,25 +547,26 @@ watch(() => props.editingNote?.id, () => {
 
 /* --- “弹簧”元素的样式 --- */
 .editor-toolbar .toolbar-spacer {
-  /* 在移动端（默认状态），“弹簧”不伸展，不占空间 */
+  /* 默认不伸展，让它在移动端不产生效果 */
   flex-grow: 0;
   background: none !important;
   border: none !important;
   cursor: default !important;
-  transition: flex-grow 0.3s ease; /* 可选：增加一个平滑过渡效果 */
+  transition: flex-grow 0.3s ease;
 }
 .editor-toolbar .toolbar-spacer:hover {
   background: none !important;
 }
 
-/* --- 仅在PC端（屏幕宽度大于等于768px）激活“弹簧” --- */
+/* --- 3. 仅在PC端（屏幕宽度 > 768px）应用特殊布局 --- */
 @media (min-width: 768px) {
   .editor-toolbar .toolbar-spacer {
-    flex-grow: 1; /* 在PC端，让“弹簧”伸展，占据所有剩余空间 */
+    /* 在PC端，让“弹簧”伸展，推开按钮 */
+    flex-grow: 1;
   }
 }
 
-/* --- 关闭按钮的样式（保持不变） --- */
+/* --- 4. 关闭按钮的样式 (保持不变) --- */
 .editor-toolbar a.custom-close-button {
   font-size: 1.2em;
 }
