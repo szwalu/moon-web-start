@@ -38,6 +38,7 @@ const charCount = computed(() => contentModel.value.length)
 const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
 
 // --- 键盘与视口适配 (✨ 已更新为更稳健的逻辑) ---
+// --- 键盘与视口适配 (✨ 已更新为更稳健的逻辑) ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
     const editorEl = editorContainerRef.value
@@ -258,11 +259,17 @@ onMounted(async () => {
 
   window.visualViewport?.addEventListener('resize', handleViewportResize)
   handleViewportResize()
+
+  // ✨ 新增：禁止背景滚动
+  document.body.classList.add('body-no-scroll')
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
+
+  // ✨ 新增：恢复背景滚动
+  document.body.classList.remove('body-no-scroll')
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -543,4 +550,12 @@ watch(() => props.editingNote?.id, () => {
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
+
+/* 添加到全局样式文件或不带 scoped 的 <style> 块中 */
+.body-no-scroll {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
 </style>
