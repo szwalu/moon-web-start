@@ -29,54 +29,50 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedSuggestionIndex = ref(-1)
+const showAllTagsPanel = ref(false)
 
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 const charCount = computed(() => contentModel.value.length)
-const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
 
-// --- 键盘与视口适配 (✨ 已更新为更稳健的逻辑) ---
-// --- 键盘与视口适配 (✨ 已更新为更稳健的逻辑) ---
+// --- 键盘与视口适配 ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
+    const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
-    const viewport = window.visualViewport
+    const keyboardHeight = window.innerHeight - visualViewport.height
 
-    // 检查键盘是否可能弹出 (视口高度明显小于窗口高度)
-    const isKeyboardOpen = window.innerHeight - viewport.height > 100
-
-    if (isKeyboardOpen) {
-      // 当键盘弹出时，让编辑器容器精确填充“可见视口”区域
-      // 通过设置 top 和 bottom，让浏览器自动计算高度，这种方式更稳定
-      editorEl.style.top = `${viewport.offsetTop}px`
-
-      const keyboardInset = window.innerHeight - (viewport.offsetTop + viewport.height)
-      editorEl.style.bottom = `${keyboardInset}px`
-
-      // 覆盖 CSS 中的 height 和 max-height，以确保填充
-      editorEl.style.height = 'auto'
+    if (keyboardHeight > 100) {
+      editorEl.style.bottom = `${keyboardHeight}px`
+      editorEl.style.height = `${visualViewport.height}px`
       editorEl.style.maxHeight = 'none'
     }
     else {
-      // 当键盘关闭时，恢复到原始的 CSS 样式
-      editorEl.style.top = 'auto' // 移除 top 约束
-      editorEl.style.bottom = '0px' // 恢复底部对齐
-      editorEl.style.height = '' // 移除内联 height
-      editorEl.style.maxHeight = '' // 移除内联 max-height，让 CSS 规则生效
+      editorEl.style.bottom = '0px'
+      editorEl.style.height = ''
+      editorEl.style.maxHeight = ''
     }
   }
 }
 
 // --- EasyMDE 编辑器核心逻辑 ---
 function initializeEasyMDE(initialValue = '') {
-  // ... (此函数内部无变化)
   if (!textareaRef.value || easymde.value)
     return
   isReadyForAutoSave.value = false
 
-  const mobileToolbar = [
+  const mobileToolbar: (EasyMDE.ToolbarIcon | string)[] = [
+    {
+      name: 'tags',
+      action: () => {
+        showAllTagsPanel.value = !showAllTagsPanel.value
+      },
+      className: 'fa fa-tags',
+      title: 'Tags',
+    },
+    '|',
     'bold',
     'italic',
     'heading',
@@ -95,7 +91,10 @@ function initializeEasyMDE(initialValue = '') {
     },
     '|',
     'link',
+    'image',
     'quote',
+    '|',
+    'fullscreen',
   ]
 
   easymde.value = new EasyMDE({
@@ -153,7 +152,6 @@ function initializeEasyMDE(initialValue = '') {
   focusEditor()
 }
 
-// ... (其他JS函数 handleClose, focusEditor, selectTag 等均无变化)
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -227,6 +225,15 @@ function selectTag(tag: string) {
   cm.focus()
 }
 
+function insertTag(tag: string) {
+  if (!easymde.value)
+    return
+  const cm = easymde.value.codemirror
+  cm.getDoc().replaceSelection(`${tag} `)
+  showAllTagsPanel.value = false
+  cm.focus()
+}
+
 function moveSuggestionSelection(offset: number) {
   const count = tagSuggestions.value.length
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
@@ -238,10 +245,6 @@ async function fetchWeather() {
 
 function handleSubmit() {
   emit('submit')
-}
-
-function handleClose() {
-  emit('close')
 }
 
 // --- 生命周期钩子 ---
@@ -259,17 +262,11 @@ onMounted(async () => {
 
   window.visualViewport?.addEventListener('resize', handleViewportResize)
   handleViewportResize()
-
-  // ✨ 新增：禁止背景滚动
-  document.body.classList.add('body-no-scroll')
 })
 
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
-
-  // ✨ 新增：恢复背景滚动
-  document.body.classList.remove('body-no-scroll')
 })
 
 watch(() => props.modelValue, (newValue) => {
@@ -289,17 +286,17 @@ watch(() => props.editingNote?.id, () => {
 
 <template>
   <div ref="editorContainerRef" class="note-editor-container">
-    <div class="editor-header">
-      <h2 class="editor-title">
-        {{ editorTitle }}
-      </h2>
-      <button class="close-btn" type="button" aria-label="Close editor" @click="handleClose">
-        &times;
-      </button>
-    </div>
-
     <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea ref="textareaRef" style="display: none;" />
+
+      <div v-if="showAllTagsPanel" class="all-tags-panel">
+        <ul>
+          <li v-for="tag in allTags" :key="tag" @mousedown.prevent="insertTag(tag)">
+            {{ tag }}
+          </li>
+        </ul>
+      </div>
+
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
         class="tag-suggestions"
@@ -340,7 +337,6 @@ watch(() => props.editingNote?.id, () => {
 </template>
 
 <style scoped>
-/* 此处 scoped 样式与上一版完全相同，无需修改 */
 /* --- 主容器与布局 --- */
 .note-editor-container {
   position: fixed;
@@ -382,47 +378,13 @@ watch(() => props.editingNote?.id, () => {
   position: relative;
 }
 
-/* --- 顶部操作栏 --- */
-.editor-header {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
-.dark .editor-header {
-  border-bottom-color: #3a3a3c;
-}
-.editor-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-}
-.dark .editor-title {
-  color: #f3f4f6;
-}
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  line-height: 1;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0;
-}
-.dark .close-btn {
-  color: #9ca3af;
-}
-
 /* --- 底部状态与动作栏 --- */
 .editor-footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: 4px 16px;
   border-top: 1px solid #e5e7eb;
   gap: 16px;
 }
@@ -444,8 +406,8 @@ watch(() => props.editingNote?.id, () => {
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 15px;
+  padding: 8px 16px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -496,10 +458,44 @@ watch(() => props.editingNote?.id, () => {
 .dark .tag-suggestions li.highlighted {
   background-color: #404040;
 }
+
+/* --- 所有标签面板的样式 --- */
+.all-tags-panel {
+  position: absolute;
+  top: 38px; /* 根据工具栏高度微调 */
+  left: 5px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1010;
+  max-height: 150px;
+  overflow-y: auto;
+  min-width: 120px;
+}
+.dark .all-tags-panel {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+.all-tags-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.all-tags-panel li {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.all-tags-panel li:hover {
+  background-color: #f0f0f0;
+}
+.dark .all-tags-panel li:hover {
+  background-color: #404040;
+}
 </style>
 
 <style>
-/* 此处全局样式与上一版完全相同，无需修改 */
 /* --- 全局样式，用于覆盖 EasyMDE 默认样式 --- */
 .editor-form > .EasyMDEContainer {
   flex: 1;
@@ -507,7 +503,6 @@ watch(() => props.editingNote?.id, () => {
   display: flex;
   flex-direction: column;
   border: none !important;
-  overflow-y: auto; /* <-- 新增这行“防溢出大坝” */
 }
 
 .editor-toolbar {
@@ -515,9 +510,10 @@ watch(() => props.editingNote?.id, () => {
   border-bottom: 1px solid #e5e7eb !important;
   border-radius: 0 !important;
   background-color: #ffffff;
-  padding: 4px 8px !important;
+  padding: 2px 8px !important;
   flex-shrink: 0;
   overflow-x: auto;
+  min-height: auto !important;
 }
 .dark .editor-toolbar {
   background-color: #1e1e1e !important;
@@ -532,12 +528,15 @@ watch(() => props.editingNote?.id, () => {
 
 .CodeMirror {
   flex: 1 !important;
+  height: auto !important;
 
   border: none !important;
   border-radius: 0 !important;
   padding: 12px;
   font-size: 16px !important;
   line-height: 1.6 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 .dark .CodeMirror {
   background-color: #1e1e1e !important;
@@ -550,12 +549,4 @@ watch(() => props.editingNote?.id, () => {
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
-
-/* 添加到全局样式文件或不带 scoped 的 <style> 块中 */
-.body-no-scroll {
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
-  height: 100%;
-}
 </style>
