@@ -543,20 +543,27 @@ watch(() => props.editingNote?.id, () => {
   background-color: #374151 !important;
 }
 
-/* --- 新增：“弹簧”元素的样式 --- */
+/* --- “弹簧”元素的样式 --- */
 .editor-toolbar .toolbar-spacer {
-  flex-grow: 1; /* 关键：让这个元素占据所有剩余的可用空间 */
+  /* 在移动端（默认状态），“弹簧”不伸展，不占空间 */
+  flex-grow: 0;
   background: none !important;
   border: none !important;
   cursor: default !important;
+  transition: flex-grow 0.3s ease; /* 可选：增加一个平滑过渡效果 */
 }
-/* 确保“弹簧”在鼠标悬停时没有任何效果 */
 .editor-toolbar .toolbar-spacer:hover {
   background: none !important;
 }
 
-/* --- 修正：关闭按钮的样式 --- */
-/* (我们不再需要 margin-left: auto 了) */
+/* --- 仅在PC端（屏幕宽度大于等于768px）激活“弹簧” --- */
+@media (min-width: 768px) {
+  .editor-toolbar .toolbar-spacer {
+    flex-grow: 1; /* 在PC端，让“弹簧”伸展，占据所有剩余空间 */
+  }
+}
+
+/* --- 关闭按钮的样式（保持不变） --- */
 .editor-toolbar a.custom-close-button {
   font-size: 1.2em;
 }
