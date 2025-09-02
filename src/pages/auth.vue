@@ -796,19 +796,18 @@ function handleToggleSelect(noteId: string) {
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
-  // 找到所有选中的笔记对象
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
-  // 将它们的内容用分隔符连接成一个字符串
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
     await navigator.clipboard.writeText(textContent)
-    messageHook.success(`成功复制 ${notesToCopy.length} 条笔记`)
+    // [国际化]
+    messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
   }
   catch (err) {
-    messageHook.error('复制失败')
+    // [国际化]
+    messageHook.error(t('notes.copy_error'))
   }
   finally {
-    // 操作完成后退出选择模式
     isSelectionModeActive.value = false
     selectedNoteIds.value = []
   }
@@ -821,10 +820,11 @@ function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
   dialog.warning({
-    title: '确认删除',
-    content: `您确定要删除这 ${selectedNoteIds.value.length} 条笔记吗？此操作无法撤销。`,
-    positiveText: '确认删除',
-    negativeText: '取消',
+    // [国际化]
+    title: t('dialog.delete_multiple_title'),
+    content: t('dialog.delete_multiple_content', { count: selectedNoteIds.value.length }),
+    positiveText: t('dialog.confirm_button'),
+    negativeText: t('dialog.cancel_button'),
     onPositiveClick: async () => {
       try {
         loading.value = true
@@ -833,17 +833,17 @@ function handleDeleteSelected() {
         if (error)
           throw new Error(error.message)
 
-        // 从本地列表视图中移除已删除的笔记
         notes.value = notes.value.filter(note => !idsToDelete.includes(note.id))
-        cachedPages.value.clear() // 清空缓存以确保数据一致性
+        cachedPages.value.clear()
 
-        messageHook.success(`成功删除 ${idsToDelete.length} 条笔记`)
+        // [国际化]
+        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
       }
       catch (err: any) {
-        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+        // [国际化]
+        messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
       }
       finally {
-        // 操作完成后退出选择模式
         loading.value = false
         isSelectionModeActive.value = false
         selectedNoteIds.value = []
@@ -869,7 +869,7 @@ function handleDeleteSelected() {
           <Transition name="fade">
             <div v-if="showDropdown" class="dropdown-menu">
               <div class="dropdown-item" @click.stop="toggleSelectionMode">
-                {{ isSelectionModeActive ? '取消选择' : '选择笔记' }}
+                {{ isSelectionModeActive ? $t('notes.cancel_selection') : $t('notes.select_notes') }}
               </div>
               <div class="dropdown-item" @click.stop="showSettingsModal = true; showDropdown = false">
                 {{ $t('settings.font_title') }}
@@ -967,14 +967,14 @@ function handleDeleteSelected() {
       <Transition name="slide-up-fade">
         <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
           <div class="selection-info">
-            已选择 {{ selectedNoteIds.length }} 项
+            {{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}
           </div>
           <div class="selection-buttons">
             <button class="action-btn copy-btn" @click="handleCopySelected">
-              复制
+              {{ $t('notes.copy') }}
             </button>
             <button class="action-btn delete-btn" @click="handleDeleteSelected">
-              删除
+              {{ $t('notes.delete') }}
             </button>
           </div>
         </div>
@@ -1077,7 +1077,8 @@ function handleDeleteSelected() {
   border: 1px solid #eee;
   padding: 0.5rem 0;
   z-index: 100;
-  width: 120px;
+  width: auto; /* 宽度自适应 */
+  min-width: 120px;
 }
 .dark .dropdown-menu {
   background: #2c2c2e;
@@ -1085,11 +1086,11 @@ function handleDeleteSelected() {
 }
 
 .dropdown-item {
-  padding: 0.75rem 1rem; /* 调整了padding以容纳更多选项 */
+  padding: 0.75rem 1rem;
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s ease;
-  white-space: nowrap; /* 防止文字换行 */
+  white-space: nowrap;
 }
 .dropdown-item:hover {
   background-color: #f0f0f0;
@@ -1182,7 +1183,6 @@ function handleDeleteSelected() {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.4);
-  /* z-index 必须比 NoteEditor 的 1002 低 */
   z-index: 1000;
 }
 
@@ -1245,21 +1245,17 @@ function handleDeleteSelected() {
   display: none;
 }
 
-/* 1. 修改 auth-container，使其成为一个 flex 容器 */
 .auth-container {
   max-width: 480px;
-  margin: 0 auto; /* 移除上下 margin，让容器可以占满全高 */
-  padding: 0 1.5rem 0.75rem 1.5rem; /* 调整 padding 以适应新布局 */
+  margin: 0 auto;
+  padding: 0 1.5rem 0.75rem 1.5rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
   font-family: system-ui, sans-serif;
-
-  /* --- 关键改动 --- */
   display: flex;
   flex-direction: column;
-  height: 100dvh; /* 让容器占满整个屏幕的高度 */
-
+  height: 100dvh;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -1267,29 +1263,24 @@ function handleDeleteSelected() {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* 2. 让 Header 不要被压缩 */
 .page-header {
-  /* ... 您已有的样式 ... */
   flex-shrink: 0;
-  padding: 0.75rem 0; /* 把 auth-container 的上部 padding 移到这里 */
+  padding: 0.75rem 0;
 }
 
-/* 3. 让 NoteList 的容器填满剩余空间 */
 .notes-list-wrapper {
-  flex: 1; /* flex: 1; 是 flex-grow: 1; flex-shrink: 1; flex-basis: 0%; 的缩写 */
-  min-height: 0; /* 防止内容过多时撑破容器，这是 flex 布局的关键技巧 */
-  overflow-y: auto; /* 让这个容器内部可以滚动 */
-  margin-top: 0.5rem; /* 和 Header 之间留出一些间距 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.5rem;
 }
 
-/* [新增] 为右上角的按钮组添加 flex 布局 */
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem; /* 让图标之间有一点间距 */
+  gap: 0.5rem;
 }
 
-/* --- [新增] 多选弹窗相关样式 --- */
 .selection-actions-popup {
   position: absolute;
   bottom: 2.5rem;
@@ -1305,7 +1296,7 @@ function handleDeleteSelected() {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  z-index: 15; /* 高于 FAB 按钮 */
+  z-index: 15;
 }
 .dark .selection-actions-popup {
   background-color: #444;
@@ -1317,7 +1308,7 @@ function handleDeleteSelected() {
 
 .selection-buttons {
   display: flex;
-  gap: 1rem;
+  gap: 2rem; /* 根据您的要求修改为 2rem */
 }
 
 .action-btn {
@@ -1334,7 +1325,6 @@ function handleDeleteSelected() {
   color: #ff5252;
 }
 
-/* 弹窗的过渡动画 */
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
