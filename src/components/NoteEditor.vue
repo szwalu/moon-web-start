@@ -115,20 +115,16 @@ function initializeEasyMDE(initialValue = '') {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    // 检查是否是首次触发
-    if (!isReadyForAutoSave.value) {
-      // 使用 nextTick 将响应式状态的变更推迟到下一个更新周期
-      // 从而避免与 EasyMDE 的内部事件冲突
-      nextTick(() => {
-        isReadyForAutoSave.value = true
-      })
-    }
-    else {
+    if (!isReadyForAutoSave.value)
+      isReadyForAutoSave.value = true
+    else
       emit('triggerAutoSave')
-    }
 
     handleTagSuggestions(instance)
-    // 注意：之前版本中多余的 scrollIntoView 也在此一并移除，以获得更稳定的体验
+
+    nextTick(() => {
+      instance.scrollIntoView(null)
+    })
   })
 
   cm.on('keydown', (cm, event) => {
@@ -268,6 +264,25 @@ onMounted(async () => {
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
+})
+
+watch(() => props.modelValue, (newValue) => {
+  if (easymde.value) {
+    // 先获取编辑器当前的值
+    const editorValue = easymde.value.value()
+
+    // 只有当外部传入的值与编辑器内部的值真正不同时才进行操作
+    if (newValue !== editorValue) {
+      // 1. 获取 CodeMirror 实例
+      const cm = easymde.value.codemirror
+      // 2.【关键】保存当前的光标位置
+      const cursor = cm.getDoc().getCursor()
+      // 3. 设置编辑器的值
+      easymde.value.value(newValue)
+      // 4.【关键】恢复光标位置
+      cm.getDoc().setCursor(cursor)
+    }
+  }
 })
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
