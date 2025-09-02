@@ -54,15 +54,6 @@ function handleViewportResize() {
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
     }
-
-    // 暂时禁用 refresh 调用，以确认它是否是问题的根源
-    /*
-    if (easymde.value) {
-      setTimeout(() => {
-        easymde.value?.codemirror.refresh()
-      }, 50) // 一个短暂的延迟
-    }
-    */
   }
 }
 
@@ -176,8 +167,6 @@ function focusEditor() {
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
     cm.scrollIntoView(null)
-    // 首次加载时也强制刷新一下，确保万无一失
-    // setTimeout(() => cm.refresh(), 50)
   })
 }
 
