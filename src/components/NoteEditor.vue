@@ -2,9 +2,10 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EasyMDE from 'easymde'
-import { useSettingStore } from '@/stores/setting'
-import { cityMap, weatherMap } from '@/utils/weatherMap'
 import 'easymde/dist/easymde.min.css'
+
+import { cityMap, weatherMap } from '@/utils/weatherMap'
+import { useSettingStore } from '@/stores/setting'
 
 // --- Props & Emits 定义 ---
 const props = defineProps({
@@ -16,7 +17,7 @@ const props = defineProps({
   lastSavedTime: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'close'])
+const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'close', 'maxLengthExceeded'])
 
 // --- 核心状态定义 ---
 const { t } = useI18n()
@@ -26,8 +27,6 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 const lastViewportHeight = ref(0)
-
-// “输入保护”机制所需的状态
 const isTyping = ref(false)
 const typingTimer = ref<number | null>(null)
 
@@ -38,14 +37,26 @@ const highlightedSuggestionIndex = ref(-1)
 
 const contentModel = computed({
   get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
 })
 const charCount = computed(() => contentModel.value.length)
 const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
 
+const LOCAL_CONTENT_KEY = 'note_content'
+watch(contentModel, (newValue) => {
+  if (isReadyForAutoSave.value) {
+    if (newValue)
+      localStorage.setItem(LOCAL_CONTENT_KEY, newValue)
+
+    else
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+  }
+})
+
 // --- 键盘与视口适配 ---
 function handleViewportResize() {
-  // 如果正在输入，则完全跳过布局调整，保证光标稳定
   if (isTyping.value)
     return
 
@@ -53,7 +64,6 @@ function handleViewportResize() {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
     const keyboardHeight = window.innerHeight - visualViewport.height
-
     if (keyboardHeight > 100) {
       editorEl.style.bottom = `${keyboardHeight}px`
       editorEl.style.height = `${visualViewport.height}px`
@@ -64,22 +74,19 @@ function handleViewportResize() {
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
     }
-
     const currentHeight = visualViewport.height
-    // 只有当视口高度发生显著变化时（> 50px），才执行刷新
     if (Math.abs(currentHeight - lastViewportHeight.value) > 50) {
       if (easymde.value) {
         setTimeout(() => {
           easymde.value?.codemirror.refresh()
         }, 100)
       }
-      // 更新记录的高度
       lastViewportHeight.value = currentHeight
     }
   }
 }
 
-// --- 天气相关逻辑 (完整版) ---
+// --- 天气相关逻辑 ---
 function getCachedWeather() {
   const cached = localStorage.getItem('weatherData_notes_app')
   if (!cached)
@@ -91,23 +98,18 @@ function getCachedWeather() {
 }
 
 function setCachedWeather(data: object) {
-  const cache = {
-    data,
-    timestamp: Date.now(),
-  }
+  const cache = { data, timestamp: Date.now() }
   localStorage.setItem('weatherData_notes_app', JSON.stringify(cache))
 }
 
 function getMappedCityName(enCity: string): string {
   if (!enCity)
     return '未知地点'
+
   const cityLower = enCity.trim().toLowerCase()
   for (const [key, value] of Object.entries(cityMap)) {
     const keyLower = key.toLowerCase()
-    if (
-      cityLower === keyLower
-      || cityLower.startsWith(keyLower)
-    )
+    if (cityLower === keyLower || cityLower.startsWith(keyLower))
       return value
   }
   return cityLower.charAt(0).toUpperCase() + cityLower.slice(1)
@@ -128,6 +130,7 @@ async function fetchWeather() {
       const locRes = await fetch('https://ipapi.co/json/')
       if (!locRes.ok)
         throw new Error(`ipapi.co 服务响应失败, 状态码: ${locRes.status}`)
+
       locData = await locRes.json()
       if (locData.error)
         throw new Error(`ipapi.co 服务错误: ${locData.reason}`)
@@ -137,6 +140,7 @@ async function fetchWeather() {
       const backupRes = await fetch('https://ip-api.com/json/')
       if (!backupRes.ok)
         throw new Error(`ip-api.com 服务响应失败, 状态码: ${backupRes.status}`)
+
       locData = await backupRes.json()
       if (locData.status === 'fail')
         throw new Error(`ip-api.com 服务错误: ${locData.message}`)
@@ -145,17 +149,16 @@ async function fetchWeather() {
       locData.latitude = locData.lat
       locData.longitude = locData.lon
     }
-
     if (!locData?.latitude || !locData?.longitude)
       throw new Error('从两个服务获取地理位置均失败。')
 
     const lat = locData.latitude
     const lon = locData.longitude
     const city = getMappedCityName(locData.city)
-
     const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`)
     if (!res.ok)
       throw new Error(`open-meteo 天气服务响应失败, 状态码: ${res.status}`)
+
     const data = await res.json()
     if (data.error)
       throw new Error(`open-meteo 天气服务错误: ${data.reason}`)
@@ -163,10 +166,8 @@ async function fetchWeather() {
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
     const { text, icon } = getWeatherText(code)
-
     const formattedString = `${city}/${temp}°C ${text} ${icon}`
     setCachedWeather({ formattedString })
-
     return formattedString
   }
   catch (e: any) {
@@ -181,7 +182,6 @@ function initializeEasyMDE(initialValue = '') {
     return
 
   isReadyForAutoSave.value = false
-
   const mobileToolbar = [
     'bold',
     'italic',
@@ -203,7 +203,6 @@ function initializeEasyMDE(initialValue = '') {
     'link',
     'quote',
   ]
-
   easymde.value = new EasyMDE({
     element: textareaRef.value,
     initialValue,
@@ -213,9 +212,7 @@ function initializeEasyMDE(initialValue = '') {
     status: false,
     minHeight: '100px',
   })
-
   const cm = easymde.value.codemirror
-
   applyEditorFontSize()
 
   cm.on('change', (instance) => {
@@ -232,21 +229,32 @@ function initializeEasyMDE(initialValue = '') {
     handleTagSuggestions(instance)
   })
 
-  // 监听键盘事件以激活“输入保护”
+  cm.on('beforeChange', (instance, changeObj) => {
+    if (changeObj.origin === 'setValue')
+      return
+
+    const doc = instance.getDoc()
+    const currentLength = doc.getValue().length
+    const changeLength
+      = changeObj.text.join('\n').length
+      - (changeObj.to.line === changeObj.from.line
+        ? changeObj.to.ch - changeObj.from.ch
+        : doc.getRange(changeObj.from, changeObj.to).length)
+    if (currentLength + changeLength > props.maxNoteLength) {
+      emit('maxLengthExceeded')
+      changeObj.cancel()
+    }
+  })
+
   cm.on('keydown', (cmInstance, event) => {
-    // 清除之前的计时器
     if (typingTimer.value)
       clearTimeout(typingTimer.value)
 
-    // 标记为正在输入
     isTyping.value = true
-
-    // 设置一个新的计时器，400ms后标记为输入结束
     typingTimer.value = window.setTimeout(() => {
       isTyping.value = false
     }, 400)
 
-    // 原有的标签建议的键盘处理逻辑
     if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -304,7 +312,6 @@ function handleTagSuggestions(cm: CodeMirror.Editor) {
   const line = cm.getDoc().getLine(cursor.line)
   const textBefore = line.substring(0, cursor.ch)
   const lastHashIndex = textBefore.lastIndexOf('#')
-
   if (lastHashIndex === -1 || /\s/.test(textBefore.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
     return
@@ -313,10 +320,12 @@ function handleTagSuggestions(cm: CodeMirror.Editor) {
   tagSuggestions.value = props.allTags.filter(tag =>
     tag.toLowerCase().startsWith(`#${term.toLowerCase()}`),
   )
-
   if (tagSuggestions.value.length > 0) {
     const coords = cm.cursorCoords()
-    suggestionsStyle.value = { top: `${coords.bottom + 5}px`, left: `${coords.left}px` }
+    suggestionsStyle.value = {
+      top: `${coords.bottom + 5}px`,
+      left: `${coords.left}px`,
+    }
     showTagSuggestions.value = true
     highlightedSuggestionIndex.value = 0
   }
@@ -335,7 +344,6 @@ function selectTag(tag: string) {
   const line = doc.getLine(cursor.line)
   const textBeforeCursor = line.substring(0, cursor.ch)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-
   if (lastHashIndex !== -1) {
     const start = { line: cursor.line, ch: lastHashIndex }
     doc.replaceRange(`${tag} `, start, cursor)
@@ -346,7 +354,8 @@ function selectTag(tag: string) {
 
 function moveSuggestionSelection(offset: number) {
   const count = tagSuggestions.value.length
-  highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
+  highlightedSuggestionIndex.value
+    = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
 function handleSubmit() {
@@ -360,7 +369,6 @@ function handleClose() {
 // --- 生命周期钩子 ---
 onMounted(async () => {
   lastViewportHeight.value = window.visualViewport?.height ?? window.innerHeight
-
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
     const weatherString = await fetchWeather()
@@ -376,19 +384,26 @@ onMounted(async () => {
 onUnmounted(() => {
   destroyEasyMDE()
   window.visualViewport?.removeEventListener('resize', handleViewportResize)
-  // 组件卸载时，清除可能存在的计时器，防止内存泄漏
   if (typingTimer.value)
     clearTimeout(typingTimer.value)
 })
 
-watch(() => settingsStore.noteFontSize, applyEditorFontSize)
+watch(
+  () => settingsStore.noteFontSize,
+  () => {
+    applyEditorFontSize()
+  },
+)
 
-watch(() => props.editingNote?.id, () => {
-  destroyEasyMDE()
-  nextTick(() => {
-    initializeEasyMDE(props.modelValue)
-  })
-})
+watch(
+  () => props.editingNote?.id,
+  () => {
+    destroyEasyMDE()
+    nextTick(() => {
+      initializeEasyMDE(props.modelValue)
+    })
+  },
+)
 </script>
 
 <template>
@@ -403,11 +418,7 @@ watch(() => props.editingNote?.id, () => {
     </div>
     <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
       <textarea ref="textareaRef" style="display: none;" />
-      <div
-        v-if="showTagSuggestions && tagSuggestions.length"
-        class="tag-suggestions"
-        :style="suggestionsStyle"
-      >
+      <div v-if="showTagSuggestions && tagSuggestions.length" class="tag-suggestions" :style="suggestionsStyle">
         <ul>
           <li
             v-for="(tag, index) in tagSuggestions"
@@ -604,7 +615,7 @@ watch(() => props.editingNote?.id, () => {
 </style>
 
 <style>
-/* --- 全局样式，用于覆盖 EasyMDE 默认样式 --- */
+/* --- Global styles for EasyMDE --- */
 .editor-form > .EasyMDEContainer {
   flex: 1;
   min-height: 0;
