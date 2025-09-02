@@ -216,6 +216,22 @@ watch(searchQuery, () => {
   debouncedSearch()
 })
 
+watch(content, async (val, _oldVal) => {
+  // 增加对 isRestoringFromCache.value 的判断
+  if (!isReady.value || isRestoringFromCache.value)
+    return
+  if (val)
+    localStorage.setItem(LOCAL_CONTENT_KEY, val)
+  else localStorage.removeItem(LOCAL_CONTENT_KEY)
+  if (val.length > maxNoteLength) {
+    content.value = val.slice(0, maxNoteLength)
+    messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return
+  }
+  if (!authStore.user)
+    console.error('Auto-save: No valid session in authStore')
+})
+
 // [ADDED] 新函数：用于导出当前显示的笔记（即搜索结果）
 function handleExportResults() {
   if (isExporting.value)
@@ -839,8 +855,7 @@ function closeEditorModal() {
           :last-saved-time="lastSavedTime"
           @submit="handleSubmit"
           @trigger-auto-save="debouncedSaveNote"
-          @close="closeEditorModal" @click.stop
-          @max-length-exceeded="() => messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))"
+          @close="closeEditorModal"
         />
       </div>
 
