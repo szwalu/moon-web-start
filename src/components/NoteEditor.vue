@@ -37,22 +37,33 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
 
-// --- 键盘与视口适配 ---
+// --- 键盘与视口适配 (✨ 已更新为更稳健的逻辑) ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
-    const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
-    const keyboardHeight = window.innerHeight - visualViewport.height
+    const viewport = window.visualViewport
 
-    if (keyboardHeight > 100) {
-      editorEl.style.bottom = `${keyboardHeight}px`
-      editorEl.style.height = `${visualViewport.height}px`
+    // 检查键盘是否可能弹出 (视口高度明显小于窗口高度)
+    const isKeyboardOpen = window.innerHeight - viewport.height > 100
+
+    if (isKeyboardOpen) {
+      // 当键盘弹出时，让编辑器容器精确填充“可见视口”区域
+      // 通过设置 top 和 bottom，让浏览器自动计算高度，这种方式更稳定
+      editorEl.style.top = `${viewport.offsetTop}px`
+
+      const keyboardInset = window.innerHeight - (viewport.offsetTop + viewport.height)
+      editorEl.style.bottom = `${keyboardInset}px`
+
+      // 覆盖 CSS 中的 height 和 max-height，以确保填充
+      editorEl.style.height = 'auto'
       editorEl.style.maxHeight = 'none'
     }
     else {
-      editorEl.style.bottom = '0px'
-      editorEl.style.height = ''
-      editorEl.style.maxHeight = ''
+      // 当键盘关闭时，恢复到原始的 CSS 样式
+      editorEl.style.top = 'auto' // 移除 top 约束
+      editorEl.style.bottom = '0px' // 恢复底部对齐
+      editorEl.style.height = '' // 移除内联 height
+      editorEl.style.maxHeight = '' // 移除内联 max-height，让 CSS 规则生效
     }
   }
 }
