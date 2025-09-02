@@ -24,6 +24,7 @@ const editorContainerRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
+const isUpdatingInternally = ref(false)
 
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
@@ -36,11 +37,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 const editorTitle = computed(() => props.editingNote ? t('notes.edit_note') : t('notes.new_note'))
-
-// 同步方向与输入法合成期标志
-const isPushingFromEditor = ref(false) // 由编辑器触发的“往外”写
-const isApplyingFromOutside = ref(false) // 正在把 props 值“往里”写
-const isComposing = ref(false) // 输入法合成期（中文/日文等）
 
 // --- 键盘与视口适配 ---
 function handleViewportResize() {
@@ -116,21 +112,10 @@ function initializeEasyMDE(initialValue = '') {
   applyEditorFontSize()
 
   cm.on('change', (instance) => {
-  // 1) 外部 setValue 导致的 change：忽略
-    if (isApplyingFromOutside.value)
-      return
-    // 2) 合成期：不外发，不自动保存，只维护建议面板
-    if (isComposing.value) {
-      handleTagSuggestions(instance)
-      return
-    }
-
     const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent) {
-      isPushingFromEditor.value = true
-      contentModel.value = editorContent
-      isPushingFromEditor.value = false
-    }
+    if (contentModel.value !== editorContent)
+      isUpdatingInternally.value = true
+    contentModel.value = editorContent
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
@@ -139,7 +124,6 @@ function initializeEasyMDE(initialValue = '') {
 
     handleTagSuggestions(instance)
 
-    // 可留可去；若仍感觉“抖动”，可注释掉
     nextTick(() => {
       instance.scrollIntoView(null)
     })
@@ -166,24 +150,6 @@ function initializeEasyMDE(initialValue = '') {
     }
   })
 
-  const inputEl = cm.getInputField()
-
-  inputEl.addEventListener('compositionstart', () => {
-    isComposing.value = true
-  })
-
-  inputEl.addEventListener('compositionend', () => {
-    isComposing.value = false
-    // 合成结束，再做一次最终同步与自动保存
-    const finalContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== finalContent) {
-      isPushingFromEditor.value = true
-      contentModel.value = finalContent
-      isPushingFromEditor.value = false
-      emit('triggerAutoSave')
-    }
-  })
-
   focusEditor()
 }
 
@@ -206,15 +172,14 @@ function applyEditorFontSize() {
 function focusEditor() {
   if (!easymde.value)
     return
+
   nextTick(() => {
     const cm = easymde.value!.codemirror
     cm.focus()
-    // 仅在“新建笔记”时把光标放到末尾；编辑旧笔记尊重原位置
-    if (!props.editingNote) {
-      const doc = cm.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      cm.scrollIntoView(null)
-    }
+    const doc = cm.getDoc()
+    doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+    cm.scrollIntoView(null)
+    // 首次加载时也强制刷新一下，确保万无一失
     setTimeout(() => cm.refresh(), 50)
   })
 }
@@ -304,40 +269,15 @@ onUnmounted(() => {
 })
 
 watch(() => props.modelValue, (newValue) => {
-  // 来自编辑器本人的更新：不反写，避免回路
-  if (isPushingFromEditor.value)
+  // 如果标志位为 true，说明是内部更新，则直接返回并重置标志位
+  if (isUpdatingInternally.value) {
+    isUpdatingInternally.value = false
     return
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const current = easymde.value.value()
-  if (newValue === current)
-    return
-
-  // 外部写入开始：保存光标与视口，setValue 后恢复
-  isApplyingFromOutside.value = true
-  const doc = cm.getDoc()
-  const cursor = doc.getCursor()
-  const scrollInfo = cm.getScrollInfo()
-
-  // 用 setValue 或 easymde.value(newValue) 均可
-  easymde.value.value(newValue)
-
-  // 恢复光标与滚动位置（避免跳到行首/顶层）
-  try {
-    // 如果外部值比原内容短很多，确保行列有效
-    const lastLine = doc.lastLine()
-    const safeCursor = {
-      line: Math.min(cursor.line, lastLine),
-      ch: Math.min(cursor.ch, doc.getLine(Math.min(cursor.line, lastLine)).length),
-    }
-    doc.setCursor(safeCursor)
-    cm.scrollTo(scrollInfo.left, scrollInfo.top)
   }
-  finally {
-    isApplyingFromOutside.value = false
-  }
+
+  // 只有当标志位为 false 时，才认为是外部更新，执行以下逻辑
+  if (easymde.value && newValue !== easymde.value.value())
+    easymde.value.value(newValue)
 })
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
