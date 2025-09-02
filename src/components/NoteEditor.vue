@@ -489,6 +489,7 @@ watch(() => props.editingNote?.id, () => {
   display: flex;
   flex-direction: column;
   border: none !important;
+  overflow-y: auto; /* <-- 新增这行“防溢出大坝” */
 }
 
 .editor-toolbar {
