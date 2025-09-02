@@ -317,8 +317,14 @@ notes:
   total_notes: 笔记总数
   journaling_days_label: 您已坚持记录
   journaling_days_value: '{count} 天'
+  select_notes: 选择笔记
+  cancel_selection: 取消选择
+  items_selected: '已选 {count} 条笔记'
+  copy_success_multiple: '已成功复制 {count} 条笔记'
+  delete_success_multiple: '已成功删除 {count} 条笔记'
 dialog:
   delete_note_title: 删除笔记
+  delete_note_content2: '您确定要删除 {count} 条笔记吗？此操作无法撤销'
   delete_note_content: 您确定要删除这篇笔记吗？此操作无法撤销
   confirm_button: 确认
   cancel_button: 取消

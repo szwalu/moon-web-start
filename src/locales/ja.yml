@@ -295,8 +295,14 @@ notes:
   total_notes: ノート総数
   journaling_days_label: 継続日数
   journaling_days_value: '{count} 日'
+  select_notes: ノートを選択
+  cancel_selection: 選択をキャンセル
+  items_selected: '{count} 件のノートを選択しました'
+  copy_success_multiple: '{count} 件のノートをコピーしました'
+  delete_success_multiple: '{count} 件のノートを削除しました'
 dialog:
   delete_note_title: ノートを削除
   delete_note_content: このノートを削除してもよろしいですか？この操作は元に戻せません
+  delete_note_content2: '{count} 件のノートを削除してもよろしいですか？この操作は元に戻せません'
   confirm_button: 確認
   cancel_button: キャンセル

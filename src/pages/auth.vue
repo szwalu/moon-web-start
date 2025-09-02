@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useDark } from '@vueuse/core'
 import { NDatePicker, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
@@ -23,7 +22,7 @@ import 'easymde/dist/easymde.min.css'
 // --- 初始化 & 状态定义 ---
 useDark()
 const { t } = useI18n()
-const router = useRouter()
+// const router = useRouter()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
@@ -821,8 +820,8 @@ function handleDeleteSelected() {
     return
   dialog.warning({
     // [国际化]
-    title: t('dialog.delete_multiple_title'),
-    content: t('dialog.delete_multiple_content', { count: selectedNoteIds.value.length }),
+    title: t('dialog.delete_note_title'),
+    content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
     positiveText: t('dialog.confirm_button'),
     negativeText: t('dialog.cancel_button'),
     onPositiveClick: async () => {
@@ -889,11 +888,9 @@ function handleDeleteSelected() {
 
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
-              <path fill="currentColor" d="m19.6 21l-6.3-6.3q-.75.6-1.725.95T9.5 16q-2.725 0-4.612-1.888T3 9.5q0-2.725 1.888-4.612T9.5 3q2.725 0 4.612 1.888T16 9.5q0 1.1-.35 2.075T14.7 13.3l6.3 6.3zM9.5 14q1.875 0 3.188-1.313T14 9.5q0-1.875-1.313-3.188T9.5 5Q7.625 5 6.312 6.313T5 9.5q0 1.875 1.313 3.188T9.5 14" />
-            </svg>
+            🔍
           </button>
-          <button class="header-action-btn close-page-btn" @click="router.push('/')">
+          <button class="header-action-btn close-page-btn" @click="window.location.href = '/'">
             ×
           </button>
         </div>
@@ -1308,7 +1305,7 @@ function handleDeleteSelected() {
 
 .selection-buttons {
   display: flex;
-  gap: 2rem; /* 根据您的要求修改为 2rem */
+  gap: 3rem; /* 根据您的要求修改为 2rem */
 }
 
 .action-btn {

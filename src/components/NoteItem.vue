@@ -231,7 +231,7 @@ function handleNoteContentClick(event: MouseEvent) {
 }
 
 .note-date {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   margin: 0;
   padding: 0;
@@ -248,7 +248,7 @@ function handleNoteContentClick(event: MouseEvent) {
 }
 
 .pinned-indicator {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: bold;
   color: #c2410c;
   background-color: #ffedd5;
