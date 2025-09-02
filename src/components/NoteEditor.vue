@@ -62,6 +62,13 @@ function handleViewportResize() {
 
     // 关键：我们只改变抽屉的 bottom 值，不再触碰 height 或 max-height
     editorWrapperRef.value.style.bottom = `${keyboardHeight}px`
+
+    // --- 新增的关键联动 ---
+    // 在容器位置调整后，强制编辑器重新计算其内部高度以适应新空间
+    // 使用 nextTick 确保在 DOM 更新之后执行
+    nextTick(() => {
+      updateEditorHeight()
+    })
   }
 }
 
@@ -163,32 +170,46 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
-  // 在小屏幕（移动端）设备上，我们完全依赖 CSS Flexbox 进行高度管理
-  // 不再使用 JavaScript 设置固定高度，以避免与虚拟键盘和 viewport 冲突。
-  if (isSmallScreen) {
-    if (easymde.value) {
-      // 我们可以保留一个轻量级的 refresh，它会重新计算布局但不会强制设置高度
-      easymde.value.codemirror.refresh()
-    }
-    return // 提前返回，不执行下面的 setSize 和 scrollIntoView
-  }
-
-  // --- 以下是原始的PC端逻辑，保持不变 ---
-  if (!easymde.value)
+  if (!easymde.value || !editorWrapperRef.value)
     return
+
   const cm = easymde.value.codemirror
-  const sizer = cm.display.sizer
-  if (!sizer)
-    return
-  const contentHeight = sizer.scrollHeight + 5
-  const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
-  cm.setSize(null, newHeight)
 
-  // 在PC端，这个滚动是无害的
-  setTimeout(() => {
-    if (easymde.value)
-      easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
-  }, 0)
+  // 在移动端，高度计算的核心应该是父容器的可用空间，而不是内容本身的高度
+  if (isSmallScreen) {
+    // 获取 CodeMirror 的直接父元素（通常是 .EasyMDEContainer）
+    const container = cm.getWrapperElement().parentElement
+    if (!container)
+      return
+
+    // 获取父容器的当前可见高度
+    const availableHeight = container.clientHeight
+
+    // 我们设置编辑器的高度就是这个可见高度。
+    // 这能确保它完美填充空间，并且内部滚动条能正常工作。
+    // 我们不再需要复杂的 min/max 计算，因为容器本身的高度已经受CSS约束。
+    if (availableHeight > 0)
+      cm.setSize(null, availableHeight)
+
+    // 在移动端，我们避免使用 scrollIntoView，因为它在布局剧烈变化时行为不稳定
+    // 仅在必要时刷新编辑器即可
+    cm.refresh()
+  }
+  else {
+    // --- 在PC端，保留原有的基于内容的自适应高度逻辑 ---
+    const sizer = cm.display.sizer
+    if (!sizer)
+      return
+    const contentHeight = sizer.scrollHeight + 5
+    const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
+    cm.setSize(null, newHeight)
+
+    // PC端的滚动是可靠的，可以保留
+    setTimeout(() => {
+      if (easymde.value)
+        easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
+    }, 0)
+  }
 }
 
 function destroyEasyMDE() {
