@@ -163,6 +163,17 @@ async function fetchWeather() {
 
 // 编辑器相关逻辑函数
 function updateEditorHeight() {
+  // 在小屏幕（移动端）设备上，我们完全依赖 CSS Flexbox 进行高度管理
+  // 不再使用 JavaScript 设置固定高度，以避免与虚拟键盘和 viewport 冲突。
+  if (isSmallScreen) {
+    if (easymde.value) {
+      // 我们可以保留一个轻量级的 refresh，它会重新计算布局但不会强制设置高度
+      easymde.value.codemirror.refresh()
+    }
+    return // 提前返回，不执行下面的 setSize 和 scrollIntoView
+  }
+
+  // --- 以下是原始的PC端逻辑，保持不变 ---
   if (!easymde.value)
     return
   const cm = easymde.value.codemirror
@@ -173,7 +184,7 @@ function updateEditorHeight() {
   const newHeight = Math.max(minEditorHeight, Math.min(contentHeight, maxEditorHeight))
   cm.setSize(null, newHeight)
 
-  // 保持一个简单的内部滚动，配合外部布局调整
+  // 在PC端，这个滚动是无害的
   setTimeout(() => {
     if (easymde.value)
       easymde.value.codemirror.scrollIntoView(easymde.value.codemirror.getCursor(), 60)
@@ -422,29 +433,30 @@ watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
 
-// ...
 watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
-    // 当编辑的是一个已存在的笔记时
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
-      // 关键改动：我们不再需要延迟和强制滚动。
-      // nextTick 确保在DOM更新后执行，比setTimeout更可靠。
-      nextTick(() => {
-        // 1. 只需让编辑器获得焦点
+
+      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
+      setTimeout(() => {
+        // 1. 获取文档并移动光标到最后
+        const doc = cm.getDoc()
+        const lastLine = doc.lastLine()
+        doc.setCursor(lastLine, doc.getLine(lastLine).length)
+
+        // 2. 强制编辑器获得焦点
         cm.focus()
 
-        // 2. 将光标设置在文档开头 (0, 0)，这对于编辑旧笔记是更合理的用户体验
-        const doc = cm.getDoc()
-        doc.setCursor(0, 0)
+        // 3. 将光标滚动到可视区域内，这是修正布局的关键
+        cm.scrollIntoView(cm.getCursor(), 60)
 
-        // 3. 确保高度是正确的
+        // 4. 作为最后的保险，再调用一次高度更新
         updateEditorHeight()
-      })
+      }, 150) // 使用150毫秒延时，确保时机足够晚
     }
   }
 })
-// ...
 </script>
 
 <template>
