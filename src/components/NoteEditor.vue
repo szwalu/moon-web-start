@@ -422,30 +422,29 @@ watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
 })
 
+// ...
 watch(easymde, (newEditorInstance) => {
   if (newEditorInstance) {
+    // 当编辑的是一个已存在的笔记时
     if (props.editingNote) {
       const cm = newEditorInstance.codemirror
-
-      // 使用一个短暂的延时来确保编辑器已完全渲染好长篇的初始内容
-      setTimeout(() => {
-        // 1. 获取文档并移动光标到最后
-        const doc = cm.getDoc()
-        const lastLine = doc.lastLine()
-        doc.setCursor(lastLine, doc.getLine(lastLine).length)
-
-        // 2. 强制编辑器获得焦点
+      // 关键改动：我们不再需要延迟和强制滚动。
+      // nextTick 确保在DOM更新后执行，比setTimeout更可靠。
+      nextTick(() => {
+        // 1. 只需让编辑器获得焦点
         cm.focus()
 
-        // 3. 将光标滚动到可视区域内，这是修正布局的关键
-        cm.scrollIntoView(cm.getCursor(), 60)
+        // 2. 将光标设置在文档开头 (0, 0)，这对于编辑旧笔记是更合理的用户体验
+        const doc = cm.getDoc()
+        doc.setCursor(0, 0)
 
-        // 4. 作为最后的保险，再调用一次高度更新
+        // 3. 确保高度是正确的
         updateEditorHeight()
-      }, 150) // 使用150毫秒延时，确保时机足够晚
+      })
     }
   }
 })
+// ...
 </script>
 
 <template>
