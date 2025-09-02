@@ -310,7 +310,7 @@ notes:
   anniversary_total: 共 {count} 条笔记 (点击返回)
   created_at: 创建于： {time}
   updated2_at: 编辑于： {time}
-  export_all: 导出全部
+  export_all: 导出笔记
   exporting: 导出中...
   export_results: 导出结果
   search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
