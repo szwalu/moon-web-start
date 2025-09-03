@@ -1033,7 +1033,7 @@ function handleDeleteSelected() {
 }
 
 .header-action-btn {
-  font-size: 18px;
+  font-size: 16px;
   background: none;
   border: none;
   padding: 4px;
