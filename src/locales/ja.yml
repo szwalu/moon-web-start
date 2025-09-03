@@ -210,6 +210,8 @@ auth:
   invite_code_placeholder: 5桁の招待コードを入力してください
   password_placeholder: 6桁の数字または文字を入力してください
   login_password_placeholder: 6桁の数字または文字のパスワードを入力してください
+  update_failed: 更新に失敗しました
+  insert_failed_create_note: 挿入に失敗しました：新しいノートを作成できません
   messages:
     check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
     check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。

@@ -211,6 +211,8 @@ auth:
   invite_code_placeholder: Please enter the 5-digit invite code
   password_placeholder: Please enter 6 digits or letters
   login_password_placeholder: Please enter a 6-digit numeric or alphabetic password
+  update_failed: Update failed
+  insert_failed_create_note: Unable to create new note
   messages:
     check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
     check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'

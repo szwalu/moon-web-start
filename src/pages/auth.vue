@@ -517,7 +517,7 @@ async function saveNote({ showMessage = false } = {}) {
       if (data && !error) {
         const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).eq('user_id', user.value.id).select()
         if (updateError || !updatedData?.length)
-          throw new Error('更新失败')
+          throw new Error(t('auth.update_failed'))
         savedNote = updatedData[0]
         updateNoteInList(savedNote)
       }
@@ -525,7 +525,7 @@ async function saveNote({ showMessage = false } = {}) {
         const newId = generateUniqueId()
         const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
         if (insertError || !insertedData?.length)
-          throw new Error('插入失败：无法创建新笔记')
+          throw new Error(t('auth.insert_failed_create_note'))
         savedNote = insertedData[0]
         addNoteToList(savedNote)
         lastSavedId.value = savedNote.id
@@ -535,7 +535,7 @@ async function saveNote({ showMessage = false } = {}) {
       const newId = generateUniqueId()
       const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
       if (insertError || !insertedData?.length)
-        throw new Error('插入失败：无法创建新笔记')
+        throw new Error(t('auth.insert_failed_create_note'))
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       lastSavedId.value = savedNote.id
