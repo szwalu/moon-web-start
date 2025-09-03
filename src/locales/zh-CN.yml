@@ -324,6 +324,8 @@ notes:
   items_selected: '已选 {count} 条笔记'
   copy_success_multiple: '已成功复制 {count} 条笔记'
   delete_success_multiple: '已成功删除 {count} 条笔记'
+  delete_second_confirm_tip: '你即将永久删除 {count} 条笔记。'
+  delete_second_confirm_hint: 此操作无法撤销，请再次确认。
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？此操作无法撤销'

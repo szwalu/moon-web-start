@@ -302,6 +302,8 @@ notes:
   items_selected: '{count} 件のノートを選択しました'
   copy_success_multiple: '{count} 件のノートをコピーしました'
   delete_success_multiple: '{count} 件のノートを削除しました'
+  delete_second_confirm_tip: '{count} 件のノートを完全に削除しようとしています。'
+  delete_second_confirm_hint: この操作は元に戻せません。もう一度ご確認ください。
 dialog:
   delete_note_title: ノートを削除
   delete_note_content: このノートを削除してもよろしいですか？この操作は元に戻せません

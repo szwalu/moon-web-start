@@ -815,38 +815,72 @@ async function handleCopySelected() {
 /**
  * 删除所有已选中的笔记
  */
-function handleDeleteSelected() {
+async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
+  // 第一次确认
   dialog.warning({
-    // [国际化]
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
     positiveText: t('dialog.confirm_button'),
     negativeText: t('dialog.cancel_button'),
-    onPositiveClick: async () => {
-      try {
-        loading.value = true
-        const idsToDelete = [...selectedNoteIds.value]
-        const { error } = await supabase.from('notes').delete().in('id', idsToDelete)
-        if (error)
-          throw new Error(error.message)
+    onPositiveClick: () => {
+      // 第二次确认（更强提示）
+      dialog.warning({
+        title: t('dialog.delete_note_title'),
+        // ⚠️ 这里必须用函数返回 VNode，而不是直接写 VNode
+        content: () =>
+          h('div', { style: 'line-height:1.6' }, [
+            h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
+            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
+          ]),
+        positiveText: t('notes.confirm_delete'),
+        negativeText: t('notes.cancel'),
+        onPositiveClick: async () => {
+          try {
+            loading.value = true
+            const idsToDelete = [...selectedNoteIds.value]
 
-        notes.value = notes.value.filter(note => !idsToDelete.includes(note.id))
-        cachedPages.value.clear()
+            const { error } = await supabase
+              .from('notes')
+              .delete()
+              .in('id', idsToDelete)
+              .eq('user_id', user.value!.id)
 
-        // [国际化]
-        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
-      }
-      catch (err: any) {
-        // [国际化]
-        messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
-      }
-      finally {
-        loading.value = false
-        isSelectionModeActive.value = false
-        selectedNoteIds.value = []
-      }
+            if (error)
+              throw new Error(error.message)
+
+            // 前端状态更新
+            notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
+            cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
+
+            if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+              content.value = ''
+              lastSavedId.value = null
+              editingNote.value = null
+              localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+              localStorage.removeItem(LOCAL_CONTENT_KEY)
+            }
+
+            totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
+            hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+            hasPreviousNotes.value = currentPage.value > 1
+            cachedPages.value.clear()
+
+            isSelectionModeActive.value = false
+            selectedNoteIds.value = []
+
+            messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+          }
+          catch (err: any) {
+            messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
+          }
+          finally {
+            loading.value = false
+          }
+        },
+      })
     },
   })
 }
