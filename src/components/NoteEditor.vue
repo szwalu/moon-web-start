@@ -46,33 +46,37 @@ function handleViewportResize() {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
 
+    // 我们仍然需要这个计算来“侦测”键盘是否弹出
     const keyboardHeight = window.innerHeight - visualViewport.height
     const heightReduced = initialInnerHeight.value > 0 && window.innerHeight < initialInnerHeight.value * 0.9
 
     // 当键盘弹出时
     if (keyboardHeight > 100 || heightReduced) {
-      // 以下部分是您原有的正确逻辑，保持不变
-      editorEl.style.bottom = `${keyboardHeight}px`
+      // --- [终极核心修复] ---
+      // 抛弃之前所有基于 bottom 的计算。
+      // 直接将 visualViewport 的几何属性精确地应用到我们的编辑器上。
+      // 这可以确保编辑器完美填充用户真正可见的屏幕区域。
+      editorEl.style.top = `${visualViewport.offsetTop}px`
       editorEl.style.height = `${visualViewport.height}px`
+
+      // 清理掉可能与 top 冲突的旧样式
+      editorEl.style.bottom = ''
       editorEl.style.maxHeight = 'none'
 
-      // --- [核心修改 2] ---
-      // 当我们确认键盘已经弹出，并且容器已经被JS定位到正确位置后，
-      // 就移除准备类，让容器以正确姿态“现身”。
+      // “准备”逻辑保持不变，它负责防止初始跳动
       if (editorEl.classList.contains('editor-preparing')) {
-        // 使用一个极短的延时，确保样式的应用和移除在不同的渲染帧，防止冲突
         setTimeout(() => {
           editorEl.classList.remove('editor-preparing')
         }, 50)
       }
     }
     else {
-      // 键盘收起，恢复由 CSS 控制样式
-      editorEl.style.bottom = '0px'
+      // 当键盘收起时，恢复由CSS驱动的初始样式
+      editorEl.style.top = ''
       editorEl.style.height = ''
+      editorEl.style.bottom = '' // 让 CSS 的 bottom: 0 重新生效
       editorEl.style.maxHeight = ''
 
-      // 同样，在键盘收起时，也要确保移除准备类
       editorEl.classList.remove('editor-preparing')
     }
   }
