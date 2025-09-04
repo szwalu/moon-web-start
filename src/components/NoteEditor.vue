@@ -25,7 +25,6 @@ const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 const MAX_EDITOR_HEIGHT = window.innerHeight * 0.6
 const footerRef = ref<HTMLDivElement | null>(null)
-// [修正2-1] 增加一个标志位，用于防止 v-model 的反馈循环
 const isUpdatingInternally = ref(false)
 
 // --- 标签功能所需的状态变量 ---
@@ -81,7 +80,7 @@ function handleClose() {
   emit('close')
 }
 
-// ... 其他标签相关函数无变动 ...
+// --- 标签功能所需的全部函数 ---
 function handleTagSuggestions(cm: CodeMirror.Editor) {
   const cursor = cm.getDoc().getCursor()
   const line = cm.getDoc().getLine(cursor.line)
@@ -142,6 +141,7 @@ function moveSuggestionSelection(offset: number) {
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
+// --- EasyMDE 编辑器核心逻辑 ---
 function initializeEasyMDE(initialValue = '') {
   if (!textareaRef.value || easymde.value)
     return
@@ -151,7 +151,9 @@ function initializeEasyMDE(initialValue = '') {
   const mobileToolbar: (EasyMDE.ToolbarIcon | string)[] = [
     {
       name: 'tags',
-      action: () => { showAllTagsPanel.value = !showAllTagsPanel.value },
+      action: () => {
+        showAllTagsPanel.value = !showAllTagsPanel.value
+      },
       className: 'fa fa-tags',
       title: 'Tags',
     },
@@ -173,8 +175,17 @@ function initializeEasyMDE(initialValue = '') {
     'link',
     'image',
     'quote',
-    { name: 'spacer', className: 'toolbar-spacer', action: () => {} },
-    { name: 'close', action: handleClose, className: 'fa fa-times custom-close-button', title: 'Close Editor' },
+    {
+      name: 'spacer',
+      className: 'toolbar-spacer',
+      action: () => {},
+    },
+    {
+      name: 'close',
+      action: handleClose,
+      className: 'fa fa-times custom-close-button',
+      title: 'Close Editor',
+    },
   ]
 
   easymde.value = new EasyMDE({ element: textareaRef.value, initialValue, spellChecker: false, placeholder: t('notes.content_placeholder'), toolbar: mobileToolbar, status: false, minHeight: '30px', maxHeight: `${MAX_EDITOR_HEIGHT}px`, lineWrapping: true })
@@ -190,9 +201,11 @@ function initializeEasyMDE(initialValue = '') {
   cm.on('change', (instance) => {
     const editorContent = easymde.value?.value() ?? ''
     if (contentModel.value !== editorContent) {
-      // [修正2-2] 在 emit 更新前，设置标志位
       isUpdatingInternally.value = true
       contentModel.value = editorContent
+      setTimeout(() => {
+        isUpdatingInternally.value = false
+      }, 0)
     }
 
     updateEditorHeight()
@@ -201,12 +214,11 @@ function initializeEasyMDE(initialValue = '') {
     nextTick(() => {
       cm.scrollIntoView(null)
       ensureCursorVisible()
-      // [修正2-3] 在 DOM 更新后，重置标志位
-      isUpdatingInternally.value = false
     })
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
+
     else
       emit('triggerAutoSave')
   })
@@ -238,6 +250,7 @@ function initializeEasyMDE(initialValue = '') {
   })
 }
 
+// --- 其他函数、生命周期钩子和 Watchers ---
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -257,14 +270,19 @@ function focusEditor() {
   if (!easymde.value)
     return
 
-  const cm = easymde.value!.codemirror
-  cm.focus()
-  const doc = cm.getDoc()
-  doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+  const cm = easymde.value.codemirror
+  cm.focus() // focus()会触发移动端键盘弹出
 
-  // [修正1] 使用 CodeMirror 内置的 scrollIntoView 来进行初始化定位
-  // 它比我们自定义的 ensureCursorVisible 更稳定，能避免初始化时的大幅跳动。
-  cm.scrollIntoView()
+  // 针对移动端键盘动画进行延迟处理
+  // 在移动端，键盘弹出有动画过程，立即定位光标和滚动会导致计算错误。
+  // 我们延迟300毫秒，等待键盘动画基本完成、视口稳定后再执行后续操作。
+  setTimeout(() => {
+    if (easymde.value) { // 确保在延迟后编辑器实例仍然存在
+      const doc = easymde.value.codemirror.getDoc()
+      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+      easymde.value.codemirror.scrollIntoView()
+    }
+  }, 300)
 }
 
 function handleSubmit() {
@@ -279,13 +297,10 @@ onUnmounted(() => {
   destroyEasyMDE()
 })
 
-// [修正2-4] 恢复 watch，并用标志位进行“守卫”
 watch(() => props.modelValue, (newValue) => {
-  // 如果是内部更新触发的 prop 变化，则忽略，避免死循环
   if (isUpdatingInternally.value)
     return
 
-  // 只有当外部（如父组件）改变了 modelValue 时，才从外部更新编辑器内容
   if (easymde.value && newValue !== easymde.value.value()) {
     easymde.value.value(newValue)
     nextTick(() => updateEditorHeight())
