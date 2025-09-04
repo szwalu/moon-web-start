@@ -41,32 +41,39 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 键盘与视口适配 ---
-// --- 修改：更新视口调整逻辑以兼容 Chrome 和 Safari ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
 
-    // Safari 的键盘高度计算方式 (键盘覆盖内容，innerHeight 不变)
     const keyboardHeight = window.innerHeight - visualViewport.height
-    // Chrome 的键盘检测方式 (键盘挤压内容，innerHeight 变小)
     const heightReduced = initialInnerHeight.value > 0 && window.innerHeight < initialInnerHeight.value * 0.9
 
-    // 当键盘弹出时 (满足 Safari 或 Chrome 的任一条件)
+    // 当键盘弹出时
     if (keyboardHeight > 100 || heightReduced) {
-      // 对 Safari, keyboardHeight > 0, bottom 会被设置, 将容器推上去
-      // 对 Chrome, keyboardHeight ≈ 0, bottom 为 0, 浏览器已处理好定位
+      // 以下部分是您原有的正确逻辑，保持不变
       editorEl.style.bottom = `${keyboardHeight}px`
-      // 关键修复：统一将容器高度设置为可见视口的高度，解决 Chrome 依赖 vh 单位导致的问题
       editorEl.style.height = `${visualViewport.height}px`
-      // 覆盖 CSS 中的 max-height，允许容器完全利用可视空间
       editorEl.style.maxHeight = 'none'
+
+      // --- [核心修改 2] ---
+      // 当我们确认键盘已经弹出，并且容器已经被JS定位到正确位置后，
+      // 就移除准备类，让容器以正确姿态“现身”。
+      if (editorEl.classList.contains('editor-preparing')) {
+        // 使用一个极短的延时，确保样式的应用和移除在不同的渲染帧，防止冲突
+        setTimeout(() => {
+          editorEl.classList.remove('editor-preparing')
+        }, 50)
+      }
     }
     else {
       // 键盘收起，恢复由 CSS 控制样式
       editorEl.style.bottom = '0px'
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
+
+      // 同样，在键盘收起时，也要确保移除准备类
+      editorEl.classList.remove('editor-preparing')
     }
   }
 }
@@ -194,30 +201,10 @@ function focusEditor() {
 
   nextTick(() => {
     const cm = easymde.value!.codemirror
-
-    // 1. 获取 CodeMirror 底层真实操作的 <textarea> 元素
-    const textarea = cm.getInputField()
-
-    // 2. 【核心修复】使用 preventScroll 选项来聚焦
-    // 这是解决问题的关键。它能让输入框获得焦点、弹出键盘，
-    // 但同时强制浏览器“不许动”，禁止了那次导致问题的原生滚动行为。
-    if (textarea)
-      textarea.focus({ preventScroll: true })
-
-    // 3. 补充调用 CodeMirror 的 focus，以确保其内部状态正确
     cm.focus()
-
-    // 4. 正常设置光标到末尾
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-
-    // 5. 在短暂延迟后，手动执行我们自己的滚动
-    // 因为第2步阻止了原生滚动，此时页面是静止的。键盘弹出后，
-    // 我们的 handleViewportResize 会正确调整编辑器位置。
-    // 等这一切稳定后，我们再将光标滚动到视图内，万无一失。
-    setTimeout(() => {
-      cm.scrollIntoView(null)
-    }, 300) // 延迟300ms确保UI完全稳定
+    cm.scrollIntoView(null)
   })
 }
 
@@ -293,9 +280,18 @@ function handleClose() {
 }
 
 // --- 生命周期钩子 ---
+// --- onMounted 生命周期钩子 ---
 onMounted(async () => {
   // --- 新增：在挂载时记录初始视口高度，作为后续判断基准 ---
   initialInnerHeight.value = window.innerHeight
+
+  // --- [核心修改 1] ---
+  // 在初始化和聚焦之前，立即为容器添加“准备”类
+  if (editorContainerRef.value)
+    editorContainerRef.value.classList.add('editor-preparing')
+
+  // 等待DOM更新，确保类已生效
+  await nextTick()
 
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
@@ -306,10 +302,11 @@ onMounted(async () => {
     }
   }
 
+  // 现在，在容器处于“安全”状态下初始化编辑器，这会间接触发 focus
   initializeEasyMDE(initialContent)
 
   window.visualViewport?.addEventListener('resize', handleViewportResize)
-  handleViewportResize()
+  handleViewportResize() // 首次调用以处理初始状态
 })
 
 onUnmounted(() => {
@@ -417,6 +414,16 @@ watch(() => props.editingNote?.id, () => {
   background-color: #1e1e1e;
   border-top-color: #3a3a3c;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.note-editor-container.editor-preparing {
+  /* 在准备阶段，将其从危险的屏幕底部（bottom: 0）移开，
+    放到一个相对安全的位置，避免浏览器因其在底部而剧烈滚动。
+    同时设置为不可见，防止用户看到闪烁。
+  */
+  bottom: 30vh;
+  visibility: hidden;
+  transition: none; /* 在准备阶段禁用过渡动画 */
 }
 
 .editor-form {
