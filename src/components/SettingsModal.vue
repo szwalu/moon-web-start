@@ -61,6 +61,9 @@ const selectedFontSize = computed({
           <NRadioButton value="large">
             {{ t('settings.font_size_large', '大') }}
           </NRadioButton>
+          <NRadioButton value="extra-large">
+            {{ t('settings.font_size_extra_large', '特大') }}
+          </NRadioButton>
         </NRadioGroup>
       </NSpace>
     </NCard>

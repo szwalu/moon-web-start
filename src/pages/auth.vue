@@ -2,7 +2,7 @@
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDatePicker, useDialog, useMessage } from 'naive-ui'
+import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
@@ -77,9 +77,29 @@ const CACHED_NOTES_KEY = 'cached_notes_page_1'
 
 let authListener: any = null
 
+const mainMenuOptions = computed(() => [
+  {
+    label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'),
+    key: 'toggleSelection',
+  },
+  {
+    label: t('settings.font_title'),
+    key: 'settings',
+  },
+  {
+    label: t('notes.export_all'),
+    key: 'export',
+  },
+  {
+    label: t('auth.account_title'),
+    key: 'account',
+  },
+])
+
 // --- 核心认证逻辑 ---
 onMounted(() => {
   const cachedData = localStorage.getItem(CACHED_NOTES_KEY)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   if (cachedData) {
     notes.value = JSON.parse(cachedData)
     isNotesCached.value = true
@@ -135,7 +155,39 @@ onUnmounted(() => {
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
   debouncedSaveNote.cancel()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
+
+// [新增] 当用户切回此标签页时，检查会话是否仍然有效
+async function handleVisibilityChange() {
+  // 只在页面变为可见时执行检查
+  if (document.visibilityState === 'visible') {
+    const { data, error } = await supabase.auth.getSession()
+
+    // 如果会话已失效 (没有 session 或获取时出错) 并且 Pinia/Vuex 状态仍然认为用户在线
+    if ((!data.session || error) && authStore.user) {
+      messageHook.warning(t('auth.session_expired_relogin')) // 提示用户会话已过期
+
+      // 重置认证状态
+      authStore.user = null
+
+      // 清理本地数据
+      notes.value = []
+      allTags.value = []
+      content.value = ''
+      editingNote.value = null
+      localStorage.removeItem(CACHED_NOTES_KEY)
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+
+      // 如果有 Authentication 组件或登录页，可以强制跳转
+      // 这里的逻辑取决于你的路由设置，如果没有 Authentication 组件在当前页面，
+      // 你可能需要用 router.push('/login') 跳转到登录页。
+      // 由于你的 auth.vue 包含了 <Authentication /> 组件，
+      // 所以理论上重置 authStore.user 就会自动显示登录界面。
+    }
+  }
+}
 
 // --- 笔记相关方法 ---
 const displayedNotes = computed(() => {
@@ -146,17 +198,6 @@ function closeDropdownOnClickOutside(event: MouseEvent) {
   if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
     showDropdown.value = false
 }
-
-watch(showDropdown, (isOpen) => {
-  if (isOpen) {
-    nextTick(() => {
-      document.addEventListener('click', closeDropdownOnClickOutside)
-    })
-  }
-  else {
-    document.removeEventListener('click', closeDropdownOnClickOutside)
-  }
-})
 
 async function fetchAllTags() {
   if (!user.value?.id)
@@ -431,8 +472,8 @@ function updateNoteInList(updatedNote: any) {
 async function fetchNotes() {
   if (!user.value)
     return
-  if (!isNotesCached.value)
-    isLoadingNotes.value = true
+  // if (!isNotesCached.value)
+  isLoadingNotes.value = true
 
   try {
     const from = (currentPage.value - 1) * notesPerPage
@@ -884,37 +925,43 @@ async function handleDeleteSelected() {
     },
   })
 }
+
+// [新增] 处理汉堡菜单选项点击的函数
+function handleMainMenuSelect(key: string) {
+  switch (key) {
+    case 'toggleSelection':
+      toggleSelectionMode()
+      break
+    case 'settings':
+      showSettingsModal.value = true
+      break
+    case 'export':
+      handleBatchExport()
+      break
+    case 'account':
+      showAccountModal.value = true
+      break
+  }
+}
 </script>
 
 <template>
   <div class="auth-container">
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
-        <div ref="dropdownContainerRef" class="dropdown-menu-container">
-          <button class="header-action-btn" @click.stop="showDropdown = !showDropdown">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z"
-              />
-            </svg>
-          </button>
-          <Transition name="fade">
-            <div v-if="showDropdown" class="dropdown-menu">
-              <div class="dropdown-item" @click.stop="toggleSelectionMode">
-                {{ isSelectionModeActive ? $t('notes.cancel_selection') : $t('notes.select_notes') }}
-              </div>
-              <div class="dropdown-item" @click.stop="showSettingsModal = true; showDropdown = false">
-                {{ $t('settings.font_title') }}
-              </div>
-              <div class="dropdown-item" @click.stop="handleBatchExport">
-                {{ $t('notes.export_all') }}
-              </div>
-              <div class="dropdown-item" @click.stop="showAccountModal = true; showDropdown = false">
-                {{ $t('auth.account_title') }}
-              </div>
-            </div>
-          </Transition>
+        <div class="dropdown-menu-container">
+          <NDropdown
+            trigger="click"
+            placement="bottom-start"
+            :options="mainMenuOptions"
+            @select="handleMainMenuSelect"
+          >
+            <button class="header-action-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
+              </svg>
+            </button>
+          </NDropdown>
         </div>
         <h1 class="page-title">
           {{ $t('notes.notes') }}

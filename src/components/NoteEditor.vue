@@ -183,7 +183,7 @@ function destroyEasyMDE() {
 function applyEditorFontSize() {
   if (easymde.value) {
     const cmWrapper = easymde.value.codemirror.getWrapperElement()
-    cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large')
+    cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large', 'font-size-extra-large')
     cmWrapper.classList.add(`font-size-${settingsStore.noteFontSize}`)
   }
 }
@@ -613,4 +613,5 @@ watch(() => props.editingNote?.id, () => {
 .CodeMirror.font-size-small { font-size: 14px !important; }
 .CodeMirror.font-size-medium { font-size: 16px !important; }
 .CodeMirror.font-size-large { font-size: 20px !important; }
+.CodeMirror.font-size-extra-large { font-size: 22px !important; }
 </style>

@@ -389,6 +389,10 @@ function handleNoteContentClick(event: MouseEvent) {
   font-size: 20px !important;
 }
 
+:deep(.prose.font-size-extra-large) {
+  font-size: 22px !important;
+}
+
 /* In NoteItem.vue's <style scoped> section */
 :deep(table) {
   width: auto;

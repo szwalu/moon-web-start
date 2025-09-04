@@ -33,6 +33,7 @@ settings:
   font_size_small: Small
   font_size_medium: Medium
   font_size_large: Large
+  font_size_extra_large: extra large
   theme:
     title: Theme
     earlySpring: Early Spring

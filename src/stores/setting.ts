@@ -12,7 +12,7 @@ export type SettingKey = keyof Settings
 // =================================================================
 
 // 1. 为笔记的字号定义一个清晰的类型，方便在整个项目中使用
-export type NoteFontSize = 'small' | 'medium' | 'large'
+export type NoteFontSize = 'small' | 'medium' | 'large' | 'extra-large'
 
 // =================================================================
 // ===== 新增区域 END =====
@@ -88,7 +88,7 @@ export const useSettingStore = defineStore('setting', () => {
 
   // 4. 提供一个 action (函数) 来修改字号
   function setNoteFontSize(newSize: NoteFontSize) {
-    if (['small', 'medium', 'large'].includes(newSize))
+    if (['small', 'medium', 'large', 'extra-large'].includes(newSize))
       noteFontSize.value = newSize
   }
 

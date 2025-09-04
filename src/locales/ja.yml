@@ -33,6 +33,7 @@ settings:
   font_size_small: 小
   font_size_medium: 中
   font_size_large: 大
+  font_size_extra_large: 特大
   theme:
     title: テーマ
     earlySpring: 早春

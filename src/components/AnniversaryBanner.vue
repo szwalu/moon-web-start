@@ -45,12 +45,16 @@ async function loadAnniversaryNotes() {
         throw error
 
       if (data) {
+        const currentYear = today.getFullYear() // 获取当前年份
         const currentMonth = today.getMonth()
         const currentDay = today.getDate()
 
         const filtered = data.filter((note) => {
           const noteDate = new Date(note.created_at)
-          return noteDate.getMonth() === currentMonth && noteDate.getDate() === currentDay
+          // 核心修改：增加年份不等于今年的判断
+          return noteDate.getMonth() === currentMonth
+                 && noteDate.getDate() === currentDay
+                 && noteDate.getFullYear() !== currentYear
         })
 
         anniversaryNotes.value = filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())

@@ -113,7 +113,7 @@ function handleNoteAction(action: (...args: any[]) => void, ...args: any[]) {
       </div>
 
       <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
-        loading...
+        {{ t('notes.loading', '正在加载...') }}
       </div>
     </div>
   </div>
