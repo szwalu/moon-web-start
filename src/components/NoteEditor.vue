@@ -25,6 +25,9 @@ const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 const MAX_EDITOR_HEIGHT = window.innerHeight * 0.6
 const footerRef = ref<HTMLDivElement | null>(null)
+// [修正2-1] 增加一个标志位，用于防止 v-model 的反馈循环
+const isUpdatingInternally = ref(false)
+
 // --- 标签功能所需的状态变量 ---
 const showAllTagsPanel = ref(false)
 const showTagSuggestions = ref(false)
@@ -78,7 +81,7 @@ function handleClose() {
   emit('close')
 }
 
-// --- 标签功能所需的全部函数 (无变动) ---
+// ... 其他标签相关函数无变动 ...
 function handleTagSuggestions(cm: CodeMirror.Editor) {
   const cursor = cm.getDoc().getCursor()
   const line = cm.getDoc().getLine(cursor.line)
@@ -139,7 +142,6 @@ function moveSuggestionSelection(offset: number) {
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
-// --- EasyMDE 编辑器核心逻辑 ---
 function initializeEasyMDE(initialValue = '') {
   if (!textareaRef.value || easymde.value)
     return
@@ -187,8 +189,11 @@ function initializeEasyMDE(initialValue = '') {
 
   cm.on('change', (instance) => {
     const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent)
+    if (contentModel.value !== editorContent) {
+      // [修正2-2] 在 emit 更新前，设置标志位
+      isUpdatingInternally.value = true
       contentModel.value = editorContent
+    }
 
     updateEditorHeight()
     handleTagSuggestions(instance)
@@ -196,6 +201,8 @@ function initializeEasyMDE(initialValue = '') {
     nextTick(() => {
       cm.scrollIntoView(null)
       ensureCursorVisible()
+      // [修正2-3] 在 DOM 更新后，重置标志位
+      isUpdatingInternally.value = false
     })
 
     if (!isReadyForAutoSave.value)
@@ -204,7 +211,6 @@ function initializeEasyMDE(initialValue = '') {
       emit('triggerAutoSave')
   })
 
-  // 正确的写法
   cm.on('keydown', (cm_instance, event) => {
     if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
       if (event.key === 'ArrowDown') {
@@ -226,16 +232,12 @@ function initializeEasyMDE(initialValue = '') {
     }
   })
 
-  // [修正1] 调整初始化顺序
-  // 必须先在 nextTick 中等待 DOM 渲染完成，然后先更新高度，再聚焦。
-  // 这样可以确保聚焦和滚动计算是基于正确的编辑器尺寸。
   nextTick(() => {
     updateEditorHeight()
     focusEditor()
   })
 }
 
-// --- 其他函数、生命周期钩子和 Watchers ---
 function destroyEasyMDE() {
   if (easymde.value) {
     easymde.value.toTextArea()
@@ -255,14 +257,14 @@ function focusEditor() {
   if (!easymde.value)
     return
 
-  nextTick(() => {
-    const cm = easymde.value!.codemirror
-    cm.focus()
-    const doc = cm.getDoc()
-    doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-    // 延迟一下确保滚动位置正确，尤其是在移动设备上键盘弹起后
-    setTimeout(ensureCursorVisible, 100)
-  })
+  const cm = easymde.value!.codemirror
+  cm.focus()
+  const doc = cm.getDoc()
+  doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+
+  // [修正1] 使用 CodeMirror 内置的 scrollIntoView 来进行初始化定位
+  // 它比我们自定义的 ensureCursorVisible 更稳定，能避免初始化时的大幅跳动。
+  cm.scrollIntoView()
 }
 
 function handleSubmit() {
@@ -277,18 +279,18 @@ onUnmounted(() => {
   destroyEasyMDE()
 })
 
-// [修正2] 移除这个 watch
-// 这是导致光标跳到第一行的根本原因。它创建了一个数据反馈循环：
-// 编辑器输入 -> emit update -> prop 改变 -> watch 触发 -> 重置编辑器内容 -> 光标跳动。
-// 切换笔记的逻辑已经由下面的 `watch(() => props.editingNote?.id, ...)` 处理了，所以这个 watch 是多余且有害的。
-/*
+// [修正2-4] 恢复 watch，并用标志位进行“守卫”
 watch(() => props.modelValue, (newValue) => {
+  // 如果是内部更新触发的 prop 变化，则忽略，避免死循环
+  if (isUpdatingInternally.value)
+    return
+
+  // 只有当外部（如父组件）改变了 modelValue 时，才从外部更新编辑器内容
   if (easymde.value && newValue !== easymde.value.value()) {
     easymde.value.value(newValue)
     nextTick(() => updateEditorHeight())
   }
 })
-*/
 
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
