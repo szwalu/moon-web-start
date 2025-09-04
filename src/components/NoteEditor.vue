@@ -1,434 +1,291 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { type PropType, computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import EasyMDE from 'easymde'
-import type CodeMirror from 'codemirror'
+import autosize from 'autosize'
 import { useSettingStore } from '@/stores/setting'
-import 'easymde/dist/easymde.min.css'
 
-// --- Props & Emits ---
 const props = defineProps({
   modelValue: { type: String, required: true },
-  editingNote: { type: Object as () => any | null, default: null },
+  editingNote: { type: Object as PropType<any | null>, default: null },
   isLoading: { type: Boolean, default: false },
+  // [本次最终修正] 修正 allTags 的类型定义，这解决了您当前遇到的报错
+  allTags: { type: Array as PropType<string[]>, default: () => [] },
   maxNoteLength: { type: Number, default: 3000 },
-  lastSavedTime: { type: String, default: '' },
-  allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'submit', 'triggerAutoSave', 'close'])
 
-// --- 核心状态 ---
+const emit = defineEmits(['update:modelValue', 'submit'])
+
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const easymde = ref<EasyMDE | null>(null)
-const isReadyForAutoSave = ref(false)
-const MAX_EDITOR_HEIGHT = window.innerHeight * 0.6
-const footerRef = ref<HTMLDivElement | null>(null)
-const isUpdatingInternally = ref(false)
-
-// --- 标签功能所需的状态变量 ---
-const showAllTagsPanel = ref(false)
-const showTagSuggestions = ref(false)
-const tagSuggestions = ref<string[]>([])
-const suggestionsStyle = ref({ top: '0px', left: '0px' })
-const highlightedSuggestionIndex = ref(-1)
+const isComposing = ref(false)
+const isEditingInline = computed(() => !!props.editingNote)
 
 const contentModel = computed({
   get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
 })
-const charCount = computed(() => contentModel.value.length)
 
-function ensureCursorVisible() {
-  if (!easymde.value || !window.visualViewport || !footerRef.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const cursorCoords = cm.cursorCoords(true, 'page')
-  if (!cursorCoords)
-    return
-
-  const footerHeight = footerRef.value.offsetHeight
-  const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
-  const scrollOffset = cursorCoords.bottom - viewportBottom + 15
-
-  if (scrollOffset > 0) {
-    window.scrollBy({
-      top: scrollOffset,
-      behavior: 'auto',
-    })
+const editorFontSizeClass = computed(() => {
+  const sizeMap: { [key: string]: string } = {
+    'small': 'font-size-small',
+    'medium': 'font-size-medium',
+    'large': 'font-size-large',
+    'extra-large': 'font-size-extra-large',
   }
-}
-
-function updateEditorHeight() {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const wrapper = cm.getWrapperElement()
-  const scroller = cm.getScrollerElement()
-  wrapper.style.height = 'auto'
-  scroller.style.height = 'auto'
-  const contentHeight = Math.max(scroller.scrollHeight, 30)
-  const finalHeight = Math.min(contentHeight, MAX_EDITOR_HEIGHT)
-  wrapper.style.height = `${finalHeight}px`
-  scroller.style.height = `${finalHeight}px`
-}
-
-function handleClose() {
-  emit('close')
-}
-
-// --- 标签功能所需的全部函数 ---
-function handleTagSuggestions(cm: CodeMirror.Editor) {
-  const cursor = cm.getDoc().getCursor()
-  const line = cm.getDoc().getLine(cursor.line)
-  const textBefore = line.substring(0, cursor.ch)
-  const lastHashIndex = textBefore.lastIndexOf('#')
-  if (lastHashIndex === -1 || /\s/.test(textBefore.substring(lastHashIndex + 1))) {
-    showTagSuggestions.value = false
-    return
-  }
-  const term = textBefore.substring(lastHashIndex + 1)
-  tagSuggestions.value = props.allTags.filter(tag =>
-    tag.toLowerCase().startsWith(`#${term.toLowerCase()}`),
-  )
-  if (tagSuggestions.value.length > 0) {
-    const coords = cm.cursorCoords(true, 'local')
-    suggestionsStyle.value = { top: `${coords.bottom}px`, left: `${coords.left}px` }
-    showTagSuggestions.value = true
-    highlightedSuggestionIndex.value = 0
-  }
-  else {
-    showTagSuggestions.value = false
-  }
-}
-
-function selectTag(tag: string) {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  const doc = cm.getDoc()
-  const cursor = doc.getCursor()
-  const line = doc.getLine(cursor.line)
-  const textBeforeCursor = line.substring(0, cursor.ch)
-  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-  if (lastHashIndex !== -1) {
-    const start = { line: cursor.line, ch: lastHashIndex }
-    doc.replaceRange(`${tag} `, start, cursor)
-  }
-  showTagSuggestions.value = false
-  cm.focus()
-}
-
-function insertTag(tag: string) {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  cm.getDoc().replaceSelection(`${tag} `)
-  showAllTagsPanel.value = false
-  cm.focus()
-}
-
-function moveSuggestionSelection(offset: number) {
-  const count = tagSuggestions.value.length
-  if (count === 0)
-    return
-
-  highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
-}
-
-// --- EasyMDE 编辑器核心逻辑 ---
-function initializeEasyMDE(initialValue = '') {
-  if (!textareaRef.value || easymde.value)
-    return
-
-  isReadyForAutoSave.value = false
-
-  const mobileToolbar: (EasyMDE.ToolbarIcon | string)[] = [
-    {
-      name: 'tags',
-      action: () => {
-        showAllTagsPanel.value = !showAllTagsPanel.value
-      },
-      className: 'fa fa-tags',
-      title: 'Tags',
-    },
-    'bold',
-    'italic',
-    'heading',
-    'unordered-list',
-    'ordered-list',
-    {
-      name: 'taskList',
-      action: (editor: EasyMDE) => {
-        const cm = editor.codemirror
-        cm.getDoc().replaceSelection('- [ ] ', cm.getDoc().getCursor())
-        cm.focus()
-      },
-      className: 'fa fa-check-square-o',
-      title: 'Task List',
-    },
-    'link',
-    'image',
-    'quote',
-    {
-      name: 'spacer',
-      className: 'toolbar-spacer',
-      action: () => {},
-    },
-    {
-      name: 'close',
-      action: handleClose,
-      className: 'fa fa-times custom-close-button',
-      title: 'Close Editor',
-    },
-  ]
-
-  easymde.value = new EasyMDE({ element: textareaRef.value, initialValue, spellChecker: false, placeholder: t('notes.content_placeholder'), toolbar: mobileToolbar, status: false, minHeight: '30px', maxHeight: `${MAX_EDITOR_HEIGHT}px`, lineWrapping: true })
-
-  const cm = easymde.value.codemirror
-  applyEditorFontSize()
-
-  const cmWrapper = cm.getWrapperElement()
-  cmWrapper.style.whiteSpace = 'pre-wrap'
-  cmWrapper.style.wordBreak = 'break-all'
-  cmWrapper.style.overflowWrap = 'break-word'
-
-  cm.on('change', (instance) => {
-    const editorContent = easymde.value?.value() ?? ''
-    if (contentModel.value !== editorContent) {
-      isUpdatingInternally.value = true
-      contentModel.value = editorContent
-      setTimeout(() => {
-        isUpdatingInternally.value = false
-      }, 0)
-    }
-
-    updateEditorHeight()
-    handleTagSuggestions(instance)
-
-    nextTick(() => {
-      cm.scrollIntoView(null)
-      ensureCursorVisible()
-    })
-
-    if (!isReadyForAutoSave.value)
-      isReadyForAutoSave.value = true
-
-    else
-      emit('triggerAutoSave')
-  })
-
-  cm.on('keydown', (cm_instance, event) => {
-    if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        moveSuggestionSelection(1)
-      }
-      else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        moveSuggestionSelection(-1)
-      }
-      else if (event.key === 'Enter' || event.key === 'Tab') {
-        event.preventDefault()
-        selectTag(tagSuggestions.value[highlightedSuggestionIndex.value])
-      }
-      else if (event.key === 'Escape') {
-        event.preventDefault()
-        showTagSuggestions.value = false
-      }
-    }
-  })
-
-  nextTick(() => {
-    updateEditorHeight()
-    focusEditor()
-  })
-}
-
-// --- 其他函数、生命周期钩子和 Watchers ---
-function destroyEasyMDE() {
-  if (easymde.value) {
-    easymde.value.toTextArea()
-    easymde.value = null
-  }
-}
-
-function applyEditorFontSize() {
-  if (easymde.value) {
-    const cmWrapper = easymde.value.codemirror.getWrapperElement()
-    cmWrapper.classList.remove('font-size-small', 'font-size-medium', 'font-size-large', 'font-size-extra-large')
-    cmWrapper.classList.add(`font-size-${settingsStore.noteFontSize}`)
-  }
-}
-
-function focusEditor() {
-  if (!easymde.value)
-    return
-
-  const cm = easymde.value.codemirror
-  cm.focus() // focus()会触发移动端键盘弹出
-
-  // 针对移动端键盘动画进行延迟处理
-  // 在移动端，键盘弹出有动画过程，立即定位光标和滚动会导致计算错误。
-  // 我们延迟300毫秒，等待键盘动画基本完成、视口稳定后再执行后续操作。
-  setTimeout(() => {
-    if (easymde.value) { // 确保在延迟后编辑器实例仍然存在
-      const doc = easymde.value.codemirror.getDoc()
-      doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-      easymde.value.codemirror.scrollIntoView()
-    }
-  }, 300)
-}
+  return sizeMap[settingsStore.noteFontSize] || 'font-size-medium'
+})
 
 function handleSubmit() {
+  if (props.isLoading || !contentModel.value.trim())
+    return
   emit('submit')
 }
 
-onMounted(async () => {
-  initializeEasyMDE(props.modelValue)
-})
-
-onUnmounted(() => {
-  destroyEasyMDE()
-})
-
-watch(() => props.modelValue, (newValue) => {
-  if (isUpdatingInternally.value)
+function insertTag() {
+  if (!textareaRef.value)
     return
+  const cursorPosition = textareaRef.value.selectionStart
+  const text = contentModel.value
+  const newText = `${text.slice(0, cursorPosition)}#${text.slice(cursorPosition)}`
+  contentModel.value = newText
 
-  if (easymde.value && newValue !== easymde.value.value()) {
-    easymde.value.value(newValue)
-    nextTick(() => updateEditorHeight())
+  nextTick(() => {
+    if (textareaRef.value) {
+      textareaRef.value.selectionStart = cursorPosition + 1
+      textareaRef.value.selectionEnd = cursorPosition + 1
+      textareaRef.value.focus()
+    }
+  })
+}
+
+function insertCheckbox() {
+  if (!textareaRef.value)
+    return
+  const cursorPosition = textareaRef.value.selectionStart
+  const text = contentModel.value
+  const lineStart = text.lastIndexOf('\n', cursorPosition - 1) + 1
+  const newText = `${text.slice(0, lineStart)}- [ ] ${text.slice(lineStart)}`
+  contentModel.value = newText
+
+  nextTick(() => {
+    if (textareaRef.value) {
+      const newCursorPosition = cursorPosition + 6
+      textareaRef.value.selectionStart = newCursorPosition
+      textareaRef.value.selectionEnd = newCursorPosition
+      textareaRef.value.focus()
+    }
+  })
+}
+
+onMounted(() => {
+  if (textareaRef.value) {
+    autosize(textareaRef.value)
+    if (!isEditingInline.value) {
+      textareaRef.value.focus()
+    }
+    else {
+      const el = textareaRef.value
+      el.focus()
+      const len = el.value.length
+      el.setSelectionRange(len, len)
+    }
   }
 })
 
-watch(() => settingsStore.noteFontSize, () => {
-  applyEditorFontSize()
-  nextTick(() => updateEditorHeight())
+onUnmounted(() => {
+  if (textareaRef.value)
+    autosize.destroy(textareaRef.value)
 })
 
-watch(() => props.editingNote?.id, () => {
-  destroyEasyMDE()
+watch(() => props.editingNote?.id, (newId, oldId) => {
+  if (newId !== oldId && textareaRef.value) {
+    nextTick(() => {
+      autosize.update(textareaRef.value!)
+      textareaRef.value!.focus()
+    })
+  }
+})
+
+watch(contentModel, () => {
   nextTick(() => {
-    initializeEasyMDE(props.modelValue)
+    if (textareaRef.value) {
+      const el = textareaRef.value
+      const { selectionStart, scrollHeight, clientHeight, scrollTop } = el
+
+      if (scrollHeight > clientHeight) {
+        const tempEl = document.createElement('div')
+        tempEl.style.cssText = `
+                    position: absolute; visibility: hidden; width: ${el.clientWidth}px;
+                    box-sizing: border-box; padding: ${window.getComputedStyle(el).padding};
+                    font: ${window.getComputedStyle(el).font};
+                    line-height: ${window.getComputedStyle(el).lineHeight};
+                    white-space: ${window.getComputedStyle(el).whiteSpace};
+                    word-wrap: ${window.getComputedStyle(el).wordWrap};
+                    word-break: ${window.getComputedStyle(el).wordBreak};
+                `
+        document.body.appendChild(tempEl)
+        tempEl.textContent = `${el.value.substring(0, selectionStart)}|`
+        const cursorPositionInPixels = tempEl.offsetHeight
+        document.body.removeChild(tempEl)
+
+        const desiredScrollTop = cursorPositionInPixels - clientHeight + Number.parseFloat(window.getComputedStyle(el).lineHeight) * 1.5
+
+        if (scrollTop < desiredScrollTop)
+          el.scrollTop = desiredScrollTop
+      }
+    }
   })
 })
 </script>
 
 <template>
-  <div class="note-editor-flomo-container">
-    <form class="editor-form" autocomplete="off" @submit.prevent="handleSubmit">
-      <textarea ref="textareaRef" style="display: none;" />
-      <div v-if="showAllTagsPanel" class="all-tags-panel">
-        <ul>
-          <li v-for="tag in allTags" :key="tag" @mousedown.prevent="insertTag(tag)">
-            {{ tag }}
-          </li>
-        </ul>
+  <div class="new-note-editor" :class="{ 'is-inline-editing': isEditingInline }">
+    <div class="editor-main">
+      <textarea
+        ref="textareaRef"
+        v-model="contentModel"
+        :placeholder="t('notes.content_placeholder', '写点什么...')"
+        class="editor-textarea"
+        :class="editorFontSizeClass"
+        rows="3"
+        @compositionstart="isComposing = true"
+        @compositionend="isComposing = false"
+      />
+    </div>
+    <div class="editor-actions">
+      <div class="action-buttons">
+        <button type="button" class="action-btn" title="插入标签" @click="insertTag">#</button>
+        <button type="button" class="action-btn" title="插入待办事项" @click="insertCheckbox">✓</button>
       </div>
-      <div
-        v-if="showTagSuggestions && tagSuggestions.length"
-        class="tag-suggestions"
-        :style="suggestionsStyle"
-      >
-        <ul>
-          <li
-            v-for="(tag, index) in tagSuggestions"
-            :key="tag"
-            :class="{ highlighted: index === highlightedSuggestionIndex }"
-            @mousedown.prevent="selectTag(tag)"
-          >
-            {{ tag }}
-          </li>
-        </ul>
-      </div>
-    </form>
-    <div ref="footerRef" class="editor-footer">
-      <div class="status-bar">
-        <span class="char-counter">
-          {{ charCount }}/{{ maxNoteLength }}
+      <button type="button" class="submit-btn" :disabled="isLoading || !contentModel.trim()" @click="handleSubmit">
+        <span v-if="!isEditingInline">
+          {{ isLoading ? t('notes.saving', '保存中...') : t('notes.save_note', '保存') }}
         </span>
-        <span v-if="lastSavedTime" class="save-status">
-          💾 {{ lastSavedTime }}
+        <span v-else>
+          {{ isLoading ? t('notes.saving', '保存中...') : t('notes.update_note', '更新') }}
         </span>
-      </div>
-      <button
-        type="button"
-        class="submit-btn"
-        :disabled="isLoading || !contentModel"
-        @click="handleSubmit"
-      >
-        {{ isLoading ? $t('notes.saving') : $t('notes.save_note') }}
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Scoped 样式不变 */
-.note-editor-flomo-container { padding: 16px; background-color: #ffffff; }
-.dark .note-editor-flomo-container { background-color: #1e1e1e; }
-.editor-form { position: relative; }
-.editor-footer {
+.new-note-editor {
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 6px !important; /* [修改] 减小内边距并强制生效 */
-  margin-top: 8px !important; /* [修改] 减小外边距并强制生效 */
-  border-top: 1px solid #e5e7eb;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
 }
-.dark .editor-footer { border-top-color: #3a3a3c; }
-.status-bar { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #6b7280; }
-.dark .status-bar { color: #9ca3af; }
+.is-inline-editing {
+    box-shadow: 0 6px 20px rgba(0, 100, 200, 0.12);
+    border: 1px solid #c0c0c0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-radius: 8px;
+}
+.dark .new-note-editor {
+  background-color: #2a2a2a;
+  border-color: #444;
+}
+.editor-main {
+  padding: 12px 16px 8px;
+}
+.editor-textarea {
+  width: 100%;
+  border: none;
+  background-color: transparent;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333;
+  box-sizing: border-box;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+.dark .editor-textarea {
+  color: #f0f0f0;
+}
+.editor-textarea::placeholder {
+  color: #999;
+}
+.dark .editor-textarea::placeholder {
+  color: #777;
+}
+.editor-textarea.font-size-small { font-size: 14px; }
+.editor-textarea.font-size-medium { font-size: 16px; }
+.editor-textarea.font-size-large { font-size: 20px; }
+.editor-textarea.font-size-extra-large { font-size: 22px; }
+.editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px 8px;
+  border-top: 1px solid #eee;
+}
+.dark .editor-actions {
+  border-top-color: #444;
+}
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+.action-btn {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.action-btn:hover {
+  background-color: #e0e0e0;
+}
+.dark .action-btn {
+  color: #aaa;
+}
+.dark .action-btn:hover {
+  background-color: #555;
+}
 .submit-btn {
-  background-color: #00b386;
+  background-color: #333;
   color: white;
   border: none;
-  border-radius: 6px;
-  padding: 5px 14px !important; /* [核心] 减小内边距并强制生效 */
+  border-radius: 8px;
+  padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
 }
-.submit-btn:disabled { background-color: #a5a5a5; cursor: not-allowed; }
-.tag-suggestions, .all-tags-panel { position: absolute; background-color: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1010; max-height: 150px; overflow-y: auto; min-width: 120px; }
-.dark .tag-suggestions, .dark .all-tags-panel { background-color: #2c2c2e; border-color: #48484a; }
-.tag-suggestions ul, .all-tags-panel ul { list-style: none; margin: 0; padding: 4px 0; }
-.tag-suggestions li, .all-tags-panel li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
-.tag-suggestions li:hover, .tag-suggestions li.highlighted, .all-tags-panel li:hover { background-color: #f0f0f0; }
-.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted, .dark .all-tags-panel li:hover { background-color: #404040; }
-.all-tags-panel { top: 38px; left: 5px; }
-</style>
-
-<style>
-/* 全局样式不变 */
-.note-editor-flomo-container .EasyMDEContainer { border: none !important; }
-.note-editor-flomo-container .editor-toolbar {
-  border: none !important;
-  border-bottom: 1px solid #e5e7eb !important;
-  background-color: transparent !important;
-  padding: 2px 8px 4px 8px !important; /* [核心] 精确控制上下左右内边距 */
-  display: flex !important;
-  align-items: center !important;
-  min-height: auto !important; /* [新增] 重置最小高度 */
-  height: auto !important; /* [新增] 重置高度 */
+.submit-btn:hover {
+  background-color: #000;
 }
-.dark .note-editor-flomo-container .editor-toolbar { border-bottom-color: #3a3a3c !important; }
-.dark .note-editor-flomo-container .editor-toolbar a { color: #d1d5db !important; }
-.note-editor-flomo-container .editor-toolbar .toolbar-spacer { flex-grow: 1; background: none !important; border: none !important; cursor: default !important; }
-.note-editor-flomo-container .editor-toolbar .toolbar-spacer:hover { background: none !important; }
-@media (max-width: 767px) { .note-editor-flomo-container .editor-toolbar .toolbar-spacer { flex-grow: 0; } }
-.note-editor-flomo-container .editor-toolbar a.custom-close-button { font-size: 1.2em; margin-left: 8px; }
-.note-editor-flomo-container .CodeMirror { padding: 10px 0 !important; font-size: 16px !important; line-height: 1.6 !important; background-color: transparent !important; transition: height 0.1s ease-out; }
-.note-editor-flomo-container .CodeMirror-scroll { padding-bottom: 40px !important; }
-.dark .note-editor-flomo-container .CodeMirror { color: #f3f4f6 !important; }
-.CodeMirror.font-size-small { font-size: 14px !important; }
-.CodeMirror.font-size-medium { font-size: 16px !important; }
-.CodeMirror.font-size-large { font-size: 20px !important; }
-.CodeMirror.font-size-extra-large { font-size: 22px !important; }
+.submit-btn:disabled {
+  background-color: #a5a5a5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.dark .submit-btn {
+    background-color: #f0f0f0;
+    color: #1a1a1a;
+}
+.dark .submit-btn:hover {
+    background-color: #fff;
+}
+.dark .submit-btn:disabled {
+  background-color: #4b5563;
+  color: #999;
+}
 </style>
