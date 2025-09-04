@@ -41,23 +41,32 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 键盘与视口适配 ---
-// --- 修改 2: 替换为更简洁、更可靠的视口调整逻辑 ---
+// --- 修改 2: 更新视口调整逻辑，融合两个版本的优点 ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
+    const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
-    // 获取布局视口的高度 (layout viewport)
-    const layoutViewportHeight = window.innerHeight
-    // 获取可视视口的高度 (visual viewport), 它会因键盘弹出而变小
-    const visualViewportHeight = window.visualViewport.height
 
-    // 两者之差即为键盘（及输入法工具栏）的高度。
-    // 当键盘收起时，这个差值接近 0。
-    const keyboardHeight = layoutViewportHeight - visualViewportHeight
+    // 统一使用 visualViewport 计算键盘高度，这在所有现代移动浏览器上都是可靠的
+    const keyboardHeight = window.innerHeight - visualViewport.height
 
-    // 关键：只改变容器的 bottom 值，将其推到键盘的上方。
-    // 不再触碰 height 或 max-height，让 CSS 和浏览器本身去处理高度。
-    // 这种方法对 Chrome (它会缩小布局视口) 和 Safari (它不会缩小布局视口) 都能很好地工作。
-    editorEl.style.bottom = `${keyboardHeight}px`
+    // 设定一个更可靠的阈值（例如150px）来判断键盘是否确实已弹出
+    // 这避免了对 initialInnerHeight 的依赖，解决了首次加载时可能出现的时序问题
+    if (keyboardHeight > 150) {
+      // **保留**原版的关键逻辑：
+      // 1. 将容器向上推移键盘的高度
+      editorEl.style.bottom = `${keyboardHeight}px`
+      // 2. 将容器的精确高度设置为可见视口的高度，防止其自身因vh单位变化而收缩
+      editorEl.style.height = `${visualViewport.height}px`
+      // 3. 覆盖CSS中的max-height，允许容器完全利用可视空间
+      editorEl.style.maxHeight = 'none'
+    }
+    else {
+      // 键盘收起时，恢复由 CSS 控制样式，这部分逻辑保持不变
+      editorEl.style.bottom = '0px'
+      editorEl.style.height = ''
+      editorEl.style.maxHeight = ''
+    }
   }
 }
 
@@ -115,7 +124,7 @@ function initializeEasyMDE(initialValue = '') {
     toolbar: mobileToolbar,
     status: false,
     minHeight: '100px',
-    lineWrapping: true, // --- 新增此行，从根本上开启自动换行 ---
+    lineWrapping: true,
   })
 
   const cm = easymde.value.codemirror
@@ -279,7 +288,6 @@ onMounted(async () => {
   initializeEasyMDE(initialContent)
 
   window.visualViewport?.addEventListener('resize', handleViewportResize)
-  // 首次挂载时立即执行一次，以确保初始布局正确
   handleViewportResize()
 })
 
