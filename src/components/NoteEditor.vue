@@ -389,6 +389,8 @@ watch(() => props.editingNote?.id, () => {
   width: 100%;
   z-index: 1002;
 
+  box-sizing: border-box;
+
   background-color: #ffffff;
   border-top: 1px solid #e5e7eb;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
