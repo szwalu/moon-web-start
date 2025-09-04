@@ -24,7 +24,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
 const MAX_EDITOR_HEIGHT = window.innerHeight * 0.6
-
+const footerRef = ref<HTMLDivElement | null>(null)
 // --- 标签功能所需的状态变量 ---
 const showAllTagsPanel = ref(false)
 const showTagSuggestions = ref(false)
@@ -40,15 +40,28 @@ const charCount = computed(() => contentModel.value.length)
 
 // --- 光标和高度函数 ---
 function ensureCursorVisible() {
-  if (!easymde.value || !window.visualViewport)
+  if (!easymde.value || !window.visualViewport || !footerRef.value)
     return
 
   const cm = easymde.value.codemirror
   const cursorCoords = cm.cursorCoords(true, 'page')
-  const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height
+
+  // 1. 获取页脚的高度
+  const footerHeight = footerRef.value.offsetHeight
+
+  // 2. 计算出真正的“可见区域”底部（需要减去页脚的高度）
+  const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
+
+  // 3. 重新计算滚动偏移量（并额外增加 10px 的缓冲空间）
   const scrollOffset = cursorCoords.bottom - viewportBottom + 10
-  if (scrollOffset > 0)
-    window.scrollBy({ top: scrollOffset, behavior: 'smooth' })
+
+  // 如果光标的底部已经超出了我们计算出的安全区域
+  if (scrollOffset > 0) {
+    window.scrollBy({
+      top: scrollOffset,
+      behavior: 'smooth',
+    })
+  }
 }
 
 function updateEditorHeight() {
@@ -320,7 +333,7 @@ watch(() => props.editingNote?.id, () => {
         </ul>
       </div>
     </form>
-    <div class="editor-footer">
+    <div ref="footerRef" class="editor-footer">
       <div class="status-bar">
         <span class="char-counter">
           {{ charCount }}/{{ maxNoteLength }}
