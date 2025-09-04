@@ -170,17 +170,7 @@ function initializeEasyMDE(initialValue = '') {
       }
     }
   })
-
-  // --- [核心修改] ---
-  // 修复中文输入法首次打开时光标位置问题。
-  // 移动端，特别是中文输入法弹出时，会导致页面布局在短时间内多次变化（reflow）。
-  // 如果立即调用 focus() 和 scrollIntoView()，很可能在布局稳定前执行，
-  // 导致浏览器基于不正确的布局信息进行滚动，使页面跳到顶部。
-  // 使用 setTimeout 创建一个宏任务，延迟聚焦操作，
-  // 确保在键盘弹出动画和视口（viewport）大小调整基本完成后再执行，从而避免错误的滚动行为。
-  setTimeout(() => {
-    focusEditor()
-  }, 250) // 250ms 是一个比较安全的经验值，足以应对大多数设备的延迟。
+  focusEditor()
 }
 
 function destroyEasyMDE() {
@@ -204,10 +194,21 @@ function focusEditor() {
 
   nextTick(() => {
     const cm = easymde.value!.codemirror
+
+    // 1. 立即聚焦，确保光标出现并触发键盘
     cm.focus()
+
+    // 2. 将光标设置到文本末尾
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-    cm.scrollIntoView(null)
+
+    // 3. [核心修改] 延迟滚动操作
+    // 聚焦后，键盘会弹出，我们的 handleViewportResize 会调整容器位置。
+    // 我们必须等待这个调整过程基本完成后再执行滚动，以避免页面跳动。
+    // 将 scrollIntoView 单独延迟，可以解决这个问题。
+    setTimeout(() => {
+      cm.scrollIntoView(null)
+    }, 250) // 延迟250毫秒，等待UI稳定
   })
 }
 
