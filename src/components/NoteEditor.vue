@@ -211,10 +211,17 @@ function initializeEasyMDE(initialValue = '') {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
+    // 1. 先触发高度更新和处理标签建议
     updateEditorHeight()
-    cm.scrollIntoView(null)
     handleTagSuggestions(instance)
-    setTimeout(ensureCursorVisible, 50)
+
+    // 2. [核心修改] 在下一个DOM更新周期，再进行所有滚动和光标位置检查
+    nextTick(() => {
+      cm.scrollIntoView(null) // 处理编辑器内部滚动
+      ensureCursorVisible() // 处理整个页面滚动
+    })
+
+    // 3. 处理自动保存逻辑
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
 
