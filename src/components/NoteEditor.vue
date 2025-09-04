@@ -110,49 +110,8 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
   }
 })
 
-// --- [核心修改] 新增这个 watch 监听器来确保光标可见 ---
-watch(contentModel, () => {
-  nextTick(() => {
-    if (textareaRef.value) {
-      const el = textareaRef.value
-      // 只有当文本框出现滚动条时才执行逻辑
-      if (el.scrollHeight > el.clientHeight) {
-        // 创建一个隐藏的 div 来模拟文本内容，用于计算光标的精确像素位置
-        const tempDiv = document.createElement('div')
-        // 复制所有关键样式以确保高度计算准确
-        tempDiv.style.cssText = `
-          position: absolute;
-          visibility: hidden;
-          width: ${el.clientWidth}px;
-          box-sizing: border-box;
-          padding: ${window.getComputedStyle(el).padding};
-          font: ${window.getComputedStyle(el).font};
-          line-height: ${window.getComputedStyle(el).lineHeight};
-          white-space: ${window.getComputedStyle(el).whiteSpace};
-          word-wrap: ${window.getComputedStyle(el).wordWrap};
-          word-break: ${window.getComputedStyle(el).wordBreak};
-        `
-        document.body.appendChild(tempDiv)
-
-        // 将光标前的内容放入隐藏 div，并计算其高度
-        tempDiv.textContent = el.value.substring(0, el.selectionEnd)
-        const cursorPixelPosition = tempDiv.offsetHeight
-
-        // 计算完成后立即移除该 div
-        document.body.removeChild(tempDiv)
-
-        // 计算为了让光标可见，文本框需要滚动的最小距离
-        // (额外加上 1.5 倍行高作为缓冲，让光标更舒适地显示在中间)
-        const buffer = Number.parseFloat(window.getComputedStyle(el).lineHeight) * 1.5
-        const requiredScrollTop = cursorPixelPosition - el.clientHeight + buffer
-
-        // 如果当前滚动距离小于所需距离，则自动滚动到目标位置
-        if (el.scrollTop < requiredScrollTop)
-          el.scrollTop = requiredScrollTop
-      }
-    }
-  })
-})
+// [核心修改] 删除了之前用来计算光标位置的复杂 watch 监听器。
+// 我们将用更简单的 CSS 方案替代它。
 </script>
 
 <template>
@@ -224,6 +183,10 @@ watch(contentModel, () => {
   box-sizing: border-box;
   overflow-y: auto;
   max-height: 50vh;
+
+  /* --- [核心修改] 添加这一行 CSS 属性 --- */
+  /* 这会为滚动区域的底部添加 150px 的内边距，确保光标永远不会被遮挡 */
+  scroll-padding-bottom: 150px;
 }
 .dark .editor-textarea {
   color: #f0f0f0;
