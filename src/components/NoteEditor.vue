@@ -38,35 +38,31 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
+// [核心修正 1] 移除 setTimeout，将函数改为同步执行
+// 这可以确保滚动逻辑在 nextTick 中按顺序执行，避免时序问题。
 function ensureCursorVisible() {
   if (!easymde.value || !window.visualViewport || !footerRef.value)
     return
 
   const cm = easymde.value.codemirror
+  const cursorCoords = cm.cursorCoords(true, 'page')
+  if (!cursorCoords)
+    return
 
-  // [修改] 增加一个短暂延时
-  // 确保在 CodeMirror 渲染完新字符、内部滚动结束后，再计算光标位置
-  setTimeout(() => {
-    const cursorCoords = cm.cursorCoords(true, 'page')
-    if (!cursorCoords)
-      return
+  const footerHeight = footerRef.value.offsetHeight
+  const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
 
-    const footerHeight = footerRef.value.offsetHeight
-    const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
+  // 增加 15px 的缓冲空间，避免光标紧贴页脚
+  const scrollOffset = cursorCoords.bottom - viewportBottom + 15
 
-    // 增加 15px 的缓冲空间
-    const scrollOffset = cursorCoords.bottom - viewportBottom + 15
-
-    if (scrollOffset > 0) {
-      // [核心修复1] 滚动行为改为 'auto'，瞬间完成，避免时序冲突
-      window.scrollBy({
-        top: scrollOffset,
-        behavior: 'auto',
-      })
-      // [核心修复2] 滚动后，立刻让编辑器重新获取焦点，确保光标不消失
-      cm.focus()
-    }
-  }, 50) // 50毫秒的延时足以应对大多数渲染延迟
+  if (scrollOffset > 0) {
+    window.scrollBy({
+      top: scrollOffset,
+      behavior: 'auto', // 瞬间滚动
+    })
+  }
+  // [核心修正 2] 移除了 cm.focus()
+  // 因为此时编辑器已经有焦点，强制 focus 反而可能引起不必要的副作用。
 }
 
 function updateEditorHeight() {
@@ -211,17 +207,18 @@ function initializeEasyMDE(initialValue = '') {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    // 1. 先触发高度更新和处理标签建议
     updateEditorHeight()
     handleTagSuggestions(instance)
 
-    // 2. [核心修改] 在下一个DOM更新周期，再进行所有滚动和光标位置检查
+    // [核心修正 3] 这里的逻辑顺序是正确的，现在 ensureCursorVisible 变成了同步函数，
+    // 整个 nextTick 中的操作序列变得稳定可靠。
     nextTick(() => {
-      cm.scrollIntoView(null) // 处理编辑器内部滚动
-      ensureCursorVisible() // 处理整个页面滚动
+      // 1. 先让 CodeMirror 处理内部滚动
+      cm.scrollIntoView(null)
+      // 2. 再处理窗口级别的滚动，确保光标可见
+      ensureCursorVisible()
     })
 
-    // 3. 处理自动保存逻辑
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
 
