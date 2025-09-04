@@ -195,20 +195,29 @@ function focusEditor() {
   nextTick(() => {
     const cm = easymde.value!.codemirror
 
-    // 1. 立即聚焦，确保光标出现并触发键盘
+    // 1. 获取 CodeMirror 底层真实操作的 <textarea> 元素
+    const textarea = cm.getInputField()
+
+    // 2. 【核心修复】使用 preventScroll 选项来聚焦
+    // 这是解决问题的关键。它能让输入框获得焦点、弹出键盘，
+    // 但同时强制浏览器“不许动”，禁止了那次导致问题的原生滚动行为。
+    if (textarea)
+      textarea.focus({ preventScroll: true })
+
+    // 3. 补充调用 CodeMirror 的 focus，以确保其内部状态正确
     cm.focus()
 
-    // 2. 将光标设置到文本末尾
+    // 4. 正常设置光标到末尾
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
 
-    // 3. [核心修改] 延迟滚动操作
-    // 聚焦后，键盘会弹出，我们的 handleViewportResize 会调整容器位置。
-    // 我们必须等待这个调整过程基本完成后再执行滚动，以避免页面跳动。
-    // 将 scrollIntoView 单独延迟，可以解决这个问题。
+    // 5. 在短暂延迟后，手动执行我们自己的滚动
+    // 因为第2步阻止了原生滚动，此时页面是静止的。键盘弹出后，
+    // 我们的 handleViewportResize 会正确调整编辑器位置。
+    // 等这一切稳定后，我们再将光标滚动到视图内，万无一失。
     setTimeout(() => {
       cm.scrollIntoView(null)
-    }, 250) // 延迟250毫秒，等待UI稳定
+    }, 300) // 延迟300ms确保UI完全稳定
   })
 }
 
