@@ -38,8 +38,6 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// [核心修正 1] 移除 setTimeout，将函数改为同步执行
-// 这可以确保滚动逻辑在 nextTick 中按顺序执行，避免时序问题。
 function ensureCursorVisible() {
   if (!easymde.value || !window.visualViewport || !footerRef.value)
     return
@@ -51,18 +49,14 @@ function ensureCursorVisible() {
 
   const footerHeight = footerRef.value.offsetHeight
   const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
-
-  // 增加 15px 的缓冲空间，避免光标紧贴页脚
   const scrollOffset = cursorCoords.bottom - viewportBottom + 15
 
   if (scrollOffset > 0) {
     window.scrollBy({
       top: scrollOffset,
-      behavior: 'auto', // 瞬间滚动
+      behavior: 'auto',
     })
   }
-  // [核心修正 2] 移除了 cm.focus()
-  // 因为此时编辑器已经有焦点，强制 focus 反而可能引起不必要的副作用。
 }
 
 function updateEditorHeight() {
@@ -84,7 +78,7 @@ function handleClose() {
   emit('close')
 }
 
-// --- 标签功能所需的全部函数 ---
+// --- 标签功能所需的全部函数 (无变动) ---
 function handleTagSuggestions(cm: CodeMirror.Editor) {
   const cursor = cm.getDoc().getCursor()
   const line = cm.getDoc().getLine(cursor.line)
@@ -155,9 +149,7 @@ function initializeEasyMDE(initialValue = '') {
   const mobileToolbar: (EasyMDE.ToolbarIcon | string)[] = [
     {
       name: 'tags',
-      action: () => {
-        showAllTagsPanel.value = !showAllTagsPanel.value
-      },
+      action: () => { showAllTagsPanel.value = !showAllTagsPanel.value },
       className: 'fa fa-tags',
       title: 'Tags',
     },
@@ -179,17 +171,8 @@ function initializeEasyMDE(initialValue = '') {
     'link',
     'image',
     'quote',
-    {
-      name: 'spacer',
-      className: 'toolbar-spacer',
-      action: () => {},
-    },
-    {
-      name: 'close',
-      action: handleClose,
-      className: 'fa fa-times custom-close-button',
-      title: 'Close Editor',
-    },
+    { name: 'spacer', className: 'toolbar-spacer', action: () => {} },
+    { name: 'close', action: handleClose, className: 'fa fa-times custom-close-button', title: 'Close Editor' },
   ]
 
   easymde.value = new EasyMDE({ element: textareaRef.value, initialValue, spellChecker: false, placeholder: t('notes.content_placeholder'), toolbar: mobileToolbar, status: false, minHeight: '30px', maxHeight: `${MAX_EDITOR_HEIGHT}px`, lineWrapping: true })
@@ -210,22 +193,18 @@ function initializeEasyMDE(initialValue = '') {
     updateEditorHeight()
     handleTagSuggestions(instance)
 
-    // [核心修正 3] 这里的逻辑顺序是正确的，现在 ensureCursorVisible 变成了同步函数，
-    // 整个 nextTick 中的操作序列变得稳定可靠。
     nextTick(() => {
-      // 1. 先让 CodeMirror 处理内部滚动
       cm.scrollIntoView(null)
-      // 2. 再处理窗口级别的滚动，确保光标可见
       ensureCursorVisible()
     })
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-
     else
       emit('triggerAutoSave')
   })
 
+  // 正确的写法
   cm.on('keydown', (cm_instance, event) => {
     if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
       if (event.key === 'ArrowDown') {
@@ -247,9 +226,12 @@ function initializeEasyMDE(initialValue = '') {
     }
   })
 
-  focusEditor()
+  // [修正1] 调整初始化顺序
+  // 必须先在 nextTick 中等待 DOM 渲染完成，然后先更新高度，再聚焦。
+  // 这样可以确保聚焦和滚动计算是基于正确的编辑器尺寸。
   nextTick(() => {
     updateEditorHeight()
+    focusEditor()
   })
 }
 
@@ -278,6 +260,7 @@ function focusEditor() {
     cm.focus()
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
+    // 延迟一下确保滚动位置正确，尤其是在移动设备上键盘弹起后
     setTimeout(ensureCursorVisible, 100)
   })
 }
@@ -294,12 +277,18 @@ onUnmounted(() => {
   destroyEasyMDE()
 })
 
+// [修正2] 移除这个 watch
+// 这是导致光标跳到第一行的根本原因。它创建了一个数据反馈循环：
+// 编辑器输入 -> emit update -> prop 改变 -> watch 触发 -> 重置编辑器内容 -> 光标跳动。
+// 切换笔记的逻辑已经由下面的 `watch(() => props.editingNote?.id, ...)` 处理了，所以这个 watch 是多余且有害的。
+/*
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value()) {
     easymde.value.value(newValue)
     nextTick(() => updateEditorHeight())
   }
 })
+*/
 
 watch(() => settingsStore.noteFontSize, () => {
   applyEditorFontSize()
