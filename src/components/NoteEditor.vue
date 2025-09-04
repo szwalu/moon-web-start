@@ -8,7 +8,6 @@ const props = defineProps({
   modelValue: { type: String, required: true },
   editingNote: { type: Object as PropType<any | null>, default: null },
   isLoading: { type: Boolean, default: false },
-  // [本次最终修正] 修正 allTags 的类型定义，这解决了您当前遇到的报错
   allTags: { type: Array as PropType<string[]>, default: () => [] },
   maxNoteLength: { type: Number, default: 3000 },
 })
@@ -103,38 +102,53 @@ onUnmounted(() => {
 watch(() => props.editingNote?.id, (newId, oldId) => {
   if (newId !== oldId && textareaRef.value) {
     nextTick(() => {
-      autosize.update(textareaRef.value!)
-      textareaRef.value!.focus()
+      if (textareaRef.value) {
+        autosize.update(textareaRef.value)
+        textareaRef.value.focus()
+      }
     })
   }
 })
 
+// --- [核心修改] 新增这个 watch 监听器来确保光标可见 ---
 watch(contentModel, () => {
   nextTick(() => {
     if (textareaRef.value) {
       const el = textareaRef.value
-      const { selectionStart, scrollHeight, clientHeight, scrollTop } = el
+      // 只有当文本框出现滚动条时才执行逻辑
+      if (el.scrollHeight > el.clientHeight) {
+        // 创建一个隐藏的 div 来模拟文本内容，用于计算光标的精确像素位置
+        const tempDiv = document.createElement('div')
+        // 复制所有关键样式以确保高度计算准确
+        tempDiv.style.cssText = `
+          position: absolute;
+          visibility: hidden;
+          width: ${el.clientWidth}px;
+          box-sizing: border-box;
+          padding: ${window.getComputedStyle(el).padding};
+          font: ${window.getComputedStyle(el).font};
+          line-height: ${window.getComputedStyle(el).lineHeight};
+          white-space: ${window.getComputedStyle(el).whiteSpace};
+          word-wrap: ${window.getComputedStyle(el).wordWrap};
+          word-break: ${window.getComputedStyle(el).wordBreak};
+        `
+        document.body.appendChild(tempDiv)
 
-      if (scrollHeight > clientHeight) {
-        const tempEl = document.createElement('div')
-        tempEl.style.cssText = `
-                    position: absolute; visibility: hidden; width: ${el.clientWidth}px;
-                    box-sizing: border-box; padding: ${window.getComputedStyle(el).padding};
-                    font: ${window.getComputedStyle(el).font};
-                    line-height: ${window.getComputedStyle(el).lineHeight};
-                    white-space: ${window.getComputedStyle(el).whiteSpace};
-                    word-wrap: ${window.getComputedStyle(el).wordWrap};
-                    word-break: ${window.getComputedStyle(el).wordBreak};
-                `
-        document.body.appendChild(tempEl)
-        tempEl.textContent = `${el.value.substring(0, selectionStart)}|`
-        const cursorPositionInPixels = tempEl.offsetHeight
-        document.body.removeChild(tempEl)
+        // 将光标前的内容放入隐藏 div，并计算其高度
+        tempDiv.textContent = el.value.substring(0, el.selectionEnd)
+        const cursorPixelPosition = tempDiv.offsetHeight
 
-        const desiredScrollTop = cursorPositionInPixels - clientHeight + Number.parseFloat(window.getComputedStyle(el).lineHeight) * 1.5
+        // 计算完成后立即移除该 div
+        document.body.removeChild(tempDiv)
 
-        if (scrollTop < desiredScrollTop)
-          el.scrollTop = desiredScrollTop
+        // 计算为了让光标可见，文本框需要滚动的最小距离
+        // (额外加上 1.5 倍行高作为缓冲，让光标更舒适地显示在中间)
+        const buffer = Number.parseFloat(window.getComputedStyle(el).lineHeight) * 1.5
+        const requiredScrollTop = cursorPixelPosition - el.clientHeight + buffer
+
+        // 如果当前滚动距离小于所需距离，则自动滚动到目标位置
+        if (el.scrollTop < requiredScrollTop)
+          el.scrollTop = requiredScrollTop
       }
     }
   })
