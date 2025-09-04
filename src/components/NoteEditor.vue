@@ -31,8 +31,8 @@ const suggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedSuggestionIndex = ref(-1)
 const showAllTagsPanel = ref(false)
 
-// --- 新增：用于在组件挂载时存储初始窗口高度 ---
-const initialInnerHeight = ref(0)
+// --- 修改 1: 移除不再需要的 initialInnerHeight ---
+// const initialInnerHeight = ref(0)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -41,33 +41,23 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 键盘与视口适配 ---
-// --- 修改：更新视口调整逻辑以兼容 Chrome 和 Safari ---
+// --- 修改 2: 替换为更简洁、更可靠的视口调整逻辑 ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
-    const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
+    // 获取布局视口的高度 (layout viewport)
+    const layoutViewportHeight = window.innerHeight
+    // 获取可视视口的高度 (visual viewport), 它会因键盘弹出而变小
+    const visualViewportHeight = window.visualViewport.height
 
-    // Safari 的键盘高度计算方式 (键盘覆盖内容，innerHeight 不变)
-    const keyboardHeight = window.innerHeight - visualViewport.height
-    // Chrome 的键盘检测方式 (键盘挤压内容，innerHeight 变小)
-    const heightReduced = initialInnerHeight.value > 0 && window.innerHeight < initialInnerHeight.value * 0.9
+    // 两者之差即为键盘（及输入法工具栏）的高度。
+    // 当键盘收起时，这个差值接近 0。
+    const keyboardHeight = layoutViewportHeight - visualViewportHeight
 
-    // 当键盘弹出时 (满足 Safari 或 Chrome 的任一条件)
-    if (keyboardHeight > 100 || heightReduced) {
-      // 对 Safari, keyboardHeight > 0, bottom 会被设置, 将容器推上去
-      // 对 Chrome, keyboardHeight ≈ 0, bottom 为 0, 浏览器已处理好定位
-      editorEl.style.bottom = `${keyboardHeight}px`
-      // 关键修复：统一将容器高度设置为可见视口的高度，解决 Chrome 依赖 vh 单位导致的问题
-      editorEl.style.height = `${visualViewport.height}px`
-      // 覆盖 CSS 中的 max-height，允许容器完全利用可视空间
-      editorEl.style.maxHeight = 'none'
-    }
-    else {
-      // 键盘收起，恢复由 CSS 控制样式
-      editorEl.style.bottom = '0px'
-      editorEl.style.height = ''
-      editorEl.style.maxHeight = ''
-    }
+    // 关键：只改变容器的 bottom 值，将其推到键盘的上方。
+    // 不再触碰 height 或 max-height，让 CSS 和浏览器本身去处理高度。
+    // 这种方法对 Chrome (它会缩小布局视口) 和 Safari (它不会缩小布局视口) 都能很好地工作。
+    editorEl.style.bottom = `${keyboardHeight}px`
   }
 }
 
@@ -274,8 +264,8 @@ function handleClose() {
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  // --- 新增：在挂载时记录初始视口高度，作为后续判断基准 ---
-  initialInnerHeight.value = window.innerHeight
+  // --- 修改 3: 移除对 initialInnerHeight 的赋值 ---
+  // initialInnerHeight.value = window.innerHeight
 
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
@@ -289,6 +279,7 @@ onMounted(async () => {
   initializeEasyMDE(initialContent)
 
   window.visualViewport?.addEventListener('resize', handleViewportResize)
+  // 首次挂载时立即执行一次，以确保初始布局正确
   handleViewportResize()
 })
 
