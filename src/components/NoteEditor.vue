@@ -204,7 +204,6 @@ function focusEditor() {
     cm.focus()
     const doc = cm.getDoc()
     doc.setCursor(doc.lastLine(), doc.getLine(doc.lastLine()).length)
-    cm.scrollIntoView(null)
   })
 }
 
