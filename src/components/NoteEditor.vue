@@ -38,30 +38,35 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// --- 光标和高度函数 ---
 function ensureCursorVisible() {
   if (!easymde.value || !window.visualViewport || !footerRef.value)
     return
 
   const cm = easymde.value.codemirror
-  const cursorCoords = cm.cursorCoords(true, 'page')
 
-  // 1. 获取页脚的高度
-  const footerHeight = footerRef.value.offsetHeight
+  // [修改] 增加一个短暂延时
+  // 确保在 CodeMirror 渲染完新字符、内部滚动结束后，再计算光标位置
+  setTimeout(() => {
+    const cursorCoords = cm.cursorCoords(true, 'page')
+    if (!cursorCoords)
+      return
 
-  // 2. 计算出真正的“可见区域”底部（需要减去页脚的高度）
-  const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
+    const footerHeight = footerRef.value.offsetHeight
+    const viewportBottom = window.visualViewport.offsetTop + window.visualViewport.height - footerHeight
 
-  // 3. 重新计算滚动偏移量（并额外增加 10px 的缓冲空间）
-  const scrollOffset = cursorCoords.bottom - viewportBottom + 10
+    // 增加 15px 的缓冲空间
+    const scrollOffset = cursorCoords.bottom - viewportBottom + 15
 
-  // 如果光标的底部已经超出了我们计算出的安全区域
-  if (scrollOffset > 0) {
-    window.scrollBy({
-      top: scrollOffset,
-      behavior: 'smooth',
-    })
-  }
+    if (scrollOffset > 0) {
+      // [核心修复1] 滚动行为改为 'auto'，瞬间完成，避免时序冲突
+      window.scrollBy({
+        top: scrollOffset,
+        behavior: 'auto',
+      })
+      // [核心修复2] 滚动后，立刻让编辑器重新获取焦点，确保光标不消失
+      cm.focus()
+    }
+  }, 50) // 50毫秒的延时足以应对大多数渲染延迟
 }
 
 function updateEditorHeight() {
