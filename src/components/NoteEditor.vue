@@ -31,8 +31,8 @@ const suggestionsStyle = ref({ top: '0px', left: '0px' })
 const highlightedSuggestionIndex = ref(-1)
 const showAllTagsPanel = ref(false)
 
-// --- 修改 1: 移除不再需要的 initialInnerHeight ---
-// const initialInnerHeight = ref(0)
+// --- 新增：用于在组件挂载时存储初始窗口高度 ---
+const initialInnerHeight = ref(0)
 
 const contentModel = computed({
   get: () => props.modelValue,
@@ -41,28 +41,29 @@ const contentModel = computed({
 const charCount = computed(() => contentModel.value.length)
 
 // --- 键盘与视口适配 ---
-// --- 修改 2: 更新视口调整逻辑，融合两个版本的优点 ---
+// --- 修改：更新视口调整逻辑以兼容 Chrome 和 Safari ---
 function handleViewportResize() {
   if (editorContainerRef.value && window.visualViewport) {
     const visualViewport = window.visualViewport
     const editorEl = editorContainerRef.value
 
-    // 统一使用 visualViewport 计算键盘高度，这在所有现代移动浏览器上都是可靠的
+    // Safari 的键盘高度计算方式 (键盘覆盖内容，innerHeight 不变)
     const keyboardHeight = window.innerHeight - visualViewport.height
+    // Chrome 的键盘检测方式 (键盘挤压内容，innerHeight 变小)
+    const heightReduced = initialInnerHeight.value > 0 && window.innerHeight < initialInnerHeight.value * 0.9
 
-    // 设定一个更可靠的阈值（例如150px）来判断键盘是否确实已弹出
-    // 这避免了对 initialInnerHeight 的依赖，解决了首次加载时可能出现的时序问题
-    if (keyboardHeight > 150) {
-      // **保留**原版的关键逻辑：
-      // 1. 将容器向上推移键盘的高度
+    // 当键盘弹出时 (满足 Safari 或 Chrome 的任一条件)
+    if (keyboardHeight > 100 || heightReduced) {
+      // 对 Safari, keyboardHeight > 0, bottom 会被设置, 将容器推上去
+      // 对 Chrome, keyboardHeight ≈ 0, bottom 为 0, 浏览器已处理好定位
       editorEl.style.bottom = `${keyboardHeight}px`
-      // 2. 将容器的精确高度设置为可见视口的高度，防止其自身因vh单位变化而收缩
+      // 关键修复：统一将容器高度设置为可见视口的高度，解决 Chrome 依赖 vh 单位导致的问题
       editorEl.style.height = `${visualViewport.height}px`
-      // 3. 覆盖CSS中的max-height，允许容器完全利用可视空间
+      // 覆盖 CSS 中的 max-height，允许容器完全利用可视空间
       editorEl.style.maxHeight = 'none'
     }
     else {
-      // 键盘收起时，恢复由 CSS 控制样式，这部分逻辑保持不变
+      // 键盘收起，恢复由 CSS 控制样式
       editorEl.style.bottom = '0px'
       editorEl.style.height = ''
       editorEl.style.maxHeight = ''
@@ -70,6 +71,7 @@ function handleViewportResize() {
   }
 }
 
+// --- EasyMDE 编辑器核心逻辑 ---
 // --- EasyMDE 编辑器核心逻辑 ---
 function initializeEasyMDE(initialValue = '') {
   if (!textareaRef.value || easymde.value)
@@ -124,7 +126,7 @@ function initializeEasyMDE(initialValue = '') {
     toolbar: mobileToolbar,
     status: false,
     minHeight: '100px',
-    lineWrapping: true,
+    lineWrapping: true, // --- 新增此行，从根本上开启自动换行 ---
   })
 
   const cm = easymde.value.codemirror
@@ -169,7 +171,16 @@ function initializeEasyMDE(initialValue = '') {
     }
   })
 
-  focusEditor()
+  // --- [核心修改] ---
+  // 修复中文输入法首次打开时光标位置问题。
+  // 移动端，特别是中文输入法弹出时，会导致页面布局在短时间内多次变化（reflow）。
+  // 如果立即调用 focus() 和 scrollIntoView()，很可能在布局稳定前执行，
+  // 导致浏览器基于不正确的布局信息进行滚动，使页面跳到顶部。
+  // 使用 setTimeout 创建一个宏任务，延迟聚焦操作，
+  // 确保在键盘弹出动画和视口（viewport）大小调整基本完成后再执行，从而避免错误的滚动行为。
+  setTimeout(() => {
+    focusEditor()
+  }, 250) // 250ms 是一个比较安全的经验值，足以应对大多数设备的延迟。
 }
 
 function destroyEasyMDE() {
@@ -273,8 +284,8 @@ function handleClose() {
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  // --- 修改 3: 移除对 initialInnerHeight 的赋值 ---
-  // initialInnerHeight.value = window.innerHeight
+  // --- 新增：在挂载时记录初始视口高度，作为后续判断基准 ---
+  initialInnerHeight.value = window.innerHeight
 
   let initialContent = props.modelValue
   if (!props.editingNote && !initialContent) {
