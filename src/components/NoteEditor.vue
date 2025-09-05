@@ -10,14 +10,13 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus'])
 
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 
-// [核心修改] 从 useTextareaAutosize 中获取 triggerResize 函数
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 
 const charCount = computed(() => contentModel.value.length)
@@ -31,7 +30,7 @@ function handleCancel() {
   emit('cancel')
 }
 
-// [核心修改] 暴露 triggerResize 方法给父组件，不再需要 watch
+// [核心修改] 暴露 triggerResize 方法给父组件
 defineExpose({
   triggerResize,
 })
@@ -46,6 +45,7 @@ defineExpose({
         class="editor-textarea"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
+        @focus="emit('focus')"
       />
     </div>
 
@@ -95,8 +95,7 @@ defineExpose({
 .editor-textarea {
   width: 100%;
   min-height: 120px;
-  /* --- 在这里微调，找到最适合你设备的高度 --- */
-  max-height: 40vh; /* 我把它从 50vh 调小到了 43vh，你可以继续微调 */
+  max-height: 40vh;
   padding: 16px;
   border: none;
   background-color: transparent;
