@@ -17,10 +17,11 @@ const emit = defineEmits(['update:modelValue', 'submit'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const editorMainRef = ref<HTMLDivElement | null>(null)
 const isComposing = ref(false)
 const isEditingInline = computed(() => !!props.editingNote)
 
-// —— 新增：输入法/键盘占用的底部偏移（px）
+// —— 输入法/键盘占用的底部偏移（px）
 const imeBottomOffset = ref(0)
 
 // content 双向绑定
@@ -41,33 +42,39 @@ const editorFontSizeClass = computed(() => {
   return sizeMap[settingsStore.noteFontSize] || 'font-size-medium'
 })
 
-// —— 新增：保证“光标行”可见（考虑 IME / 保存按钮高度）
+// —— 保证“光标行”可见（滚动 .editor-main，而不是 textarea）
 function ensureCaretVisible() {
-  const el = textareaRef.value
-  if (!el)
+  const ta = textareaRef.value
+  const container = editorMainRef.value
+  if (!ta || !container)
     return
 
   const ACTIONS_HEIGHT = 52 // 与样式中 .editor-actions 的 min-height 保持一致
   const desiredBottomPadding = imeBottomOffset.value + ACTIONS_HEIGHT + 16
 
-  const scrollTop = el.scrollTop
-  const viewHeight = el.clientHeight
-  const totalHeight = el.scrollHeight
-
-  // 用行高近似估算光标位置
-  const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight || '24')
-  const caretPos = el.selectionEnd || 0
-  const textUptoCaret = el.value.slice(0, caretPos)
+  // 用行高近似估算光标位置（相对于 textarea 顶部）
+  const lineHeight = Number.parseFloat(getComputedStyle(ta).lineHeight || '24')
+  const caretPos = ta.selectionEnd || 0
+  const textUptoCaret = ta.value.slice(0, caretPos)
   const caretLines = (textUptoCaret.match(/\n/g)?.length ?? 0) + 1
-  const caretY = (caretLines - 1) * lineHeight
+  const caretYInTextarea = (caretLines - 1) * lineHeight + lineHeight // 光标所在行底部
 
-  const viewportBottom = scrollTop + viewHeight
-  const targetBottom = caretY + lineHeight + desiredBottomPadding
+  // textarea 在容器里的偏移
+  const taOffsetTop = ta.offsetTop
 
-  if (targetBottom > viewportBottom)
-    el.scrollTop = Math.min(targetBottom - viewHeight, totalHeight - viewHeight)
-  else if (caretY < scrollTop)
-    el.scrollTop = Math.max(caretY - 8, 0)
+  // 光标的绝对位置（相对于容器滚动起点）
+  const caretAbsY = taOffsetTop + caretYInTextarea
+
+  const viewTop = container.scrollTop
+  const viewHeight = container.clientHeight
+  const viewBottom = viewTop + viewHeight
+
+  const targetBottom = caretAbsY + desiredBottomPadding
+
+  if (targetBottom > viewBottom)
+    container.scrollTop = Math.min(targetBottom - viewHeight, container.scrollHeight - viewHeight)
+  else if (caretAbsY - lineHeight < viewTop)
+    container.scrollTop = Math.max(caretAbsY - lineHeight - 8, 0)
 }
 
 function handleSubmit() {
@@ -142,7 +149,7 @@ onMounted(() => {
       el.setSelectionRange(len, len)
     }
 
-    // 用“光标行”定位替代 scrollIntoView 底部滚动
+    // 这里观察 textarea 尺寸变化，让容器在内容增长时自动跟随并校正可视
     resizeObserver = new ResizeObserver(() => {
       if (document.activeElement === textareaRef.value)
         ensureCaretVisible()
@@ -150,7 +157,6 @@ onMounted(() => {
     resizeObserver.observe(textareaRef.value)
   }
 
-  // 监听 visualViewport 变化（IME / 键盘）
   updateImeOffsetFn()
   window.visualViewport?.addEventListener('resize', updateImeOffsetFn)
   window.visualViewport?.addEventListener('scroll', updateImeOffsetFn)
@@ -189,7 +195,7 @@ watch(
     :class="{ 'is-inline-editing': isEditingInline }"
     :style="{ '--ime-bottom': `${imeBottomOffset}px` }"
   >
-    <div class="editor-main">
+    <div ref="editorMainRef" class="editor-main">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -249,44 +255,40 @@ watch(
   border-color: #444;
 }
 
+/* 核心：容器滚动，textarea 自适应高度，不滚自己 */
 .editor-main {
   padding: 12px 16px 8px;
+  flex: 1 1 auto;
+  min-height: 0;               /* 允许内部滚动 */
+  overflow-y: auto;            /* ← 滚动放在容器 */
+  /* 为底部操作区 + IME 预留空间（滚动缓冲 & 视觉留白） */
+  padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
+  scroll-padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
 }
 
-/* 文本域：滚动 + 底部留白（操作区 + IME + 安全区） */
+/* 文本域：只负责自适应高度，不承担滚动和大留白 */
 .editor-textarea {
   width: 100%;
   border: none;
   background-color: transparent;
-  resize: none;
+  resize: none;                /* autosize 控制高度 */
   outline: none;
   font-family: inherit;
   font-size: 16px;
   line-height: 1.6;
   color: #333;
   box-sizing: border-box;
-  overflow-y: auto;
+  overflow: hidden;            /* 不滚动自己 */
+  display: block;
 
-  /* 键盘弹起时，视口变小 —— 用 dvh 更准确 */
-  max-height: calc(60dvh);
-
-  /* 底部留白：16px + IME 高度 + 安全区 + 操作区高度(52px) */
-  padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
-
-  /* 滚动定位的底部缓冲，配合 ensureCaretVisible/粘性操作区 */
-  scroll-padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
+  /* 适度的最小高度（3行左右），其余交给 autosize */
+  min-height: 3.2em;
 }
 
-.dark .editor-textarea {
-  color: #f0f0f0;
-}
+.dark .editor-textarea { color: #f0f0f0; }
 
-.editor-textarea::placeholder {
-  color: #999;
-}
-.dark .editor-textarea::placeholder {
-  color: #777;
-}
+.editor-textarea::placeholder { color: #999; }
+.dark .editor-textarea::placeholder { color: #777; }
 
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
@@ -306,14 +308,9 @@ watch(
   background: inherit;
   z-index: 1;
 }
-.dark .editor-actions {
-  border-top-color: #444;
-}
+.dark .editor-actions { border-top-color: #444; }
 
-.action-buttons {
-  display: flex;
-  gap: 8px;
-}
+.action-buttons { display: flex; gap: 8px; }
 .action-btn {
   background: none;
   border: none;
@@ -325,15 +322,9 @@ watch(
   border-radius: 6px;
   transition: background-color 0.2s;
 }
-.action-btn:hover {
-  background-color: #e0e0e0;
-}
-.dark .action-btn {
-  color: #aaa;
-}
-.dark .action-btn:hover {
-  background-color: #555;
-}
+.action-btn:hover { background-color: #e0e0e0; }
+.dark .action-btn { color: #aaa; }
+.dark .action-btn:hover { background-color: #555; }
 
 .submit-btn {
   background-color: #333;
@@ -346,23 +337,13 @@ watch(
   cursor: pointer;
   transition: background-color 0.2s, opacity 0.2s;
 }
-.submit-btn:hover {
-  background-color: #000;
-}
+.submit-btn:hover { background-color: #000; }
 .submit-btn:disabled {
   background-color: #a5a5a5;
   cursor: not-allowed;
   opacity: 0.7;
 }
-.dark .submit-btn {
-  background-color: #f0f0f0;
-  color: #1a1a1a;
-}
-.dark .submit-btn:hover {
-  background-color: #fff;
-}
-.dark .submit-btn:disabled {
-  background-color: #4b5563;
-  color: #999;
-}
+.dark .submit-btn { background-color: #f0f0f0; color: #1a1a1a; }
+.dark .submit-btn:hover { background-color: #fff; }
+.dark .submit-btn:disabled { background-color: #4b5563; color: #999; }
 </style>
