@@ -24,6 +24,8 @@ const rootRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
 const isReadyForAutoSave = ref(false)
+// 新增：底部状态区引用，用于测量高度
+const footerEl = ref<HTMLElement | null>(null)
 
 // 标签联想 / 面板
 const showTagSuggestions = ref(false)
@@ -39,24 +41,55 @@ const contentModel = computed({
 })
 const charCount = computed(() => contentModel.value.length)
 
-// ============= 核心：保证光标永远可见 =============
+// ============= 软键盘/状态栏适配：计算底部占用并写入 CSS 变量 =============
+function updateViewportInsets() {
+  const vv = window.visualViewport
+  const host = rootRef.value
+  if (!vv || !host)
+    return
+
+  // 键盘高度（包含 viewport 缩小和顶部偏移带来的可视高度损失）
+  const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+  host.style.setProperty('--kb', `${kb}px`)
+
+  // 底部状态条/保存区高度
+  const footerH = (footerEl.value?.offsetHeight ?? 0)
+  host.style.setProperty('--footer', `${footerH}px`)
+
+  // 方向变化或键盘高度变化后，下一帧校正光标
+  if (easymde.value) {
+    const cm = easymde.value.codemirror
+    requestAnimationFrame(() => ensureCaretVisible(cm))
+  }
+}
+
+// ============= 核心：保证光标永远可见（考虑键盘与底栏占用） =============
 function ensureCaretVisible(cm: any) {
-  // 仅在编辑器存在时处理
   if (!cm)
     return
   const scroller: HTMLElement = cm.getScrollerElement()
   const coords = cm.cursorCoords(null, 'local') // 相对滚动容器的坐标
-  const margin = 10 // 留一点可视边距，避免贴边隐藏
+
+  // 读取根元素上的 CSS 变量
+  const host = rootRef.value
+  let kb = 0
+  let footer = 0
+  if (host) {
+    const cs = getComputedStyle(host)
+    kb = Number.parseInt(cs.getPropertyValue('--kb')) || 0
+    footer = Number.parseInt(cs.getPropertyValue('--footer')) || 0
+  }
+  const bottomInset = kb + footer + 8 // 额外留 8px 缓冲
+  const margin = 10
+
   const viewTop = scroller.scrollTop
-  const viewBottom = viewTop + scroller.clientHeight
+  const viewBottomAdj = viewTop + scroller.clientHeight - bottomInset
   const caretTop = coords.top
   const caretBottom = coords.bottom
 
-  // 若光标下边缘超出可视底部 -> 往下滚
-  if (caretBottom + margin > viewBottom)
-    scroller.scrollTop = caretBottom + margin - scroller.clientHeight
+  if (caretBottom + margin > viewBottomAdj)
+    scroller.scrollTop = (caretBottom + margin) - (scroller.clientHeight - bottomInset)
 
-  // 若光标上边缘超出可视顶部 -> 往上滚
   else if (caretTop - margin < viewTop)
     scroller.scrollTop = Math.max(0, caretTop - margin)
 }
@@ -108,17 +141,14 @@ function initializeEasyMDE(initialValue = '') {
     toolbar,
     status: false,
     lineWrapping: true,
-    // 以下两行让 CM 绕过虚拟渲染，避免光标跳动与隐藏（内容不大完全可承受）
-    autosave: undefined as any, // 显式禁用 EasyMDE 内置 autosave，使用我们自己的
+    // 显式禁用 EasyMDE 内置 autosave，使用我们自己的
+    autosave: undefined as any,
   })
 
-  // 跟随字号
   applyEditorFontSize()
 
   const cm = easymde.value.codemirror
 
-  // ------- 关键：高度自适应 + 内部滚动上限（见样式） -------
-  // 交给 CSS：.CodeMirror {height:auto} + .CodeMirror-scroll {max-height: var(--editor-max-height)}
   // 每次编辑都确保光标可见
   cm.on('change', (instance: any) => {
     const editorContent = easymde.value?.value() ?? ''
@@ -127,18 +157,19 @@ function initializeEasyMDE(initialValue = '') {
 
     if (!isReadyForAutoSave.value)
       isReadyForAutoSave.value = true
-    else
-      emit('triggerAutoSave')
+    else emit('triggerAutoSave')
 
-    // 标签联想
     handleTagSuggestions(instance)
-
-    // 让布局/滚动在 DOM 刷新后执行，避免抖动
     nextTick(() => ensureCaretVisible(instance))
   })
 
   cm.on('cursorActivity', (instance: any) => {
     nextTick(() => ensureCaretVisible(instance))
+  })
+
+  // 中文/日文等输入法合成结束后再校正一次
+  cm.getInputField().addEventListener('compositionend', () => {
+    requestAnimationFrame(() => ensureCaretVisible(cm))
   })
 
   cm.on('keydown', (instance: any, event: KeyboardEvent) => {
@@ -259,9 +290,20 @@ function handleClose() {
 onMounted(async () => {
   const initialContent = props.modelValue
   initializeEasyMDE(initialContent)
+
+  // 绑定 viewport 监听，适配软键盘
+  updateViewportInsets()
+  window.visualViewport?.addEventListener('resize', updateViewportInsets)
+  window.visualViewport?.addEventListener('scroll', updateViewportInsets)
+  window.addEventListener('orientationchange', updateViewportInsets)
 })
 
-onUnmounted(() => destroyEasyMDE())
+onUnmounted(() => {
+  destroyEasyMDE()
+  window.visualViewport?.removeEventListener('resize', updateViewportInsets)
+  window.visualViewport?.removeEventListener('scroll', updateViewportInsets)
+  window.removeEventListener('orientationchange', updateViewportInsets)
+})
 
 // 父级变更内容 → 同步到编辑器
 watch(() => props.modelValue, (v) => {
@@ -319,7 +361,7 @@ watch(() => props.editingNote?.id, () => {
       </div>
     </form>
 
-    <div class="composer-footer">
+    <div ref="footerEl" class="composer-footer">
       <span class="counter">{{ charCount }}/{{ maxNoteLength }}</span>
     </div>
   </div>
@@ -332,6 +374,10 @@ watch(() => props.editingNote?.id, () => {
   --editor-max-height: clamp(180px, 45vh, 420px); /* 达到上限后内部滚动，确保光标露出 */
   --radius: 12px;
 
+  /* 动态占位：软键盘 + 底栏（供内部 CSS 变量读取） */
+  --kb: 0px;
+  --footer: 0px;
+
   width: 100%;
   max-width: var(--editor-max-width);
   margin: 0 auto 16px;
@@ -340,6 +386,7 @@ watch(() => props.editingNote?.id, () => {
   border-radius: var(--radius);
   box-shadow: 0 4px 20px rgba(0,0,0,.05);
   overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .dark .composer-card {
   --bg: #1e1e1e;
@@ -447,11 +494,13 @@ watch(() => props.editingNote?.id, () => {
 .dark .composer-card .CodeMirror { background: transparent !important; color: #f3f4f6 !important; }
 .dark .composer-card .CodeMirror-cursor { border-left-color: #f3f4f6 !important; }
 
-/* 关键2：滚动容器限制最大高度，超出时内部滚动，保证光标不会被“页脚”遮住 */
+/* 关键2：滚动容器限制最大高度，超出时内部滚动 */
 .composer-card .CodeMirror-scroll {
   max-height: var(--editor-max-height) !important;
   min-height: 120px !important;
   overflow-y: auto !important;
+  /* 关键3：为键盘与底部栏留出可滚动空间，避免光标被遮挡 */
+  padding-bottom: calc(var(--kb, 0px) + var(--footer, 0px) + 16px) !important;
 }
 
 /* 字号映射（跟随 settingsStore.noteFontSize） */
