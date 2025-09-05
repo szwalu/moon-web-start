@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 
 const props = defineProps({
@@ -18,9 +18,9 @@ const contentModel = computed({
   set: (value) => { emit('update:modelValue', value) },
 })
 
-// 使用 @vueuse/core 实现文本域高度自适应
-const textarea = ref<HTMLTextAreaElement | null>(null)
-useTextareaAutosize({ element: textarea })
+// [核心修改] 将 v-model (contentModel) 传递给 useTextareaAutosize
+// 这样，每当 contentModel 变化时，文本域就会自动重新计算高度
+const { textarea, input } = useTextareaAutosize({ input: contentModel })
 
 const charCount = computed(() => contentModel.value.length)
 
@@ -39,7 +39,7 @@ function handleCancel() {
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
-        v-model="contentModel"
+        v-model="input"
         class="editor-textarea"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
@@ -103,6 +103,8 @@ function handleCancel() {
   outline: none; /* 移除焦点时的外边框 */
   box-sizing: border-box;
   font-family: inherit;
+  /* [新增] 确保高度变化时有平滑的过渡效果 */
+  transition: height 0.1s ease-out;
 }
 
 .editor-footer {
