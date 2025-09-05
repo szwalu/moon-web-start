@@ -71,6 +71,9 @@ const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
 
+// --- [核心修改 1] 新增用于存储动态计算的底部内边距的状态 ---
+const scrollPaddingBottom = ref(0)
+
 const LOCAL_CONTENT_KEY = 'note_content'
 const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
@@ -95,6 +98,16 @@ const mainMenuOptions = computed(() => [
     key: 'account',
   },
 ])
+
+// --- [核心修改 2] 新增监听可视窗口变化的处理函数 ---
+function handleViewportResize() {
+  if (window.visualViewport) {
+    // 键盘高度 = 整个窗口高度 - 可视区域高度
+    const keyboardHeight = window.innerHeight - window.visualViewport.height
+    // 只有当键盘被识别为弹起时 (高度差大于100px)，才设置padding
+    scrollPaddingBottom.value = keyboardHeight > 100 ? keyboardHeight : 0
+  }
+}
 
 onMounted(() => {
   const cachedData = localStorage.getItem(CACHED_NOTES_KEY)
@@ -141,6 +154,9 @@ onMounted(() => {
   nextTick(() => {
     isRestoringFromCache.value = false
   })
+
+  // --- [核心修改 3] 添加视口监听 ---
+  window.visualViewport?.addEventListener('resize', handleViewportResize)
 })
 
 const debouncedSaveNote = debounce(() => {
@@ -157,6 +173,9 @@ onUnmounted(() => {
 
   debouncedSaveNote.cancel()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+  // --- [核心修改 4] 移除视口监听 ---
+  window.visualViewport?.removeEventListener('resize', handleViewportResize)
 })
 
 async function handleVisibilityChange() {
@@ -957,7 +976,12 @@ function handleMainMenuSelect(key: string) {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
+      <div
+        v-if="showNotesList"
+        ref="notesListWrapperRef"
+        class="notes-list-wrapper"
+        :style="{ scrollPaddingBottom: `${scrollPaddingBottom}px` }"
+      >
         <NoteList
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
@@ -1056,14 +1080,7 @@ function handleMainMenuSelect(key: string) {
 .dark .cancel-search-btn:hover { background-color: rgba(255,255,255,0.1); }
 .slide-fade-enter-active, .slide-fade-leave-active { transition: all 0.3s ease-out; max-height: 100px; }
 .slide-fade-enter-from, .slide-fade-leave-to { opacity: 0; transform: translateY(-10px); max-height: 0; }
-.notes-list-wrapper {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  margin-top: 0.5rem;
-  /* --- 新增下面这一行 --- */
-  scroll-padding-bottom: 40vh;
-}
+.notes-list-wrapper { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0.5rem; scroll-padding-bottom: 40vh; }
 .selection-actions-popup { position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%); width: calc(100% - 3rem); max-width: 432px; background-color: #333; color: white; border-radius: 8px; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; z-index: 15; }
 .dark .selection-actions-popup { background-color: #444; }
 .selection-info { font-size: 14px; }
