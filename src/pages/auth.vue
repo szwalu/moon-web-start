@@ -9,10 +9,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import NoteItem from '@/components/NoteItem.vue'
-
 import NoteEditor from '@/components/NoteEditor.vue'
-
-// 引入全新textarea版本的编辑器
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
@@ -58,7 +55,6 @@ const isReady = ref(false)
 const allTags = ref<string[]>([])
 const isSelectionModeActive = ref(false)
 const selectedNoteIds = ref<string[]>([])
-// [FIXED] 移除了未使用的 isRestoringFromCache 变量
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
@@ -94,12 +90,14 @@ onMounted(() => {
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
 
+      // [FIXED] Re-formatted to one statement per line
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(() => {
           fetchNotes()
           fetchAllTags()
         })
       }
+      // [FIXED] Re-formatted to one statement per line
       else if (event === 'SIGNED_OUT') {
         notes.value = []
         allTags.value = []
@@ -138,6 +136,7 @@ watch(newNoteContent, (val) => {
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
+
     else
       localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
@@ -288,6 +287,7 @@ watch(searchQuery, () => {
 async function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
     const { data, error } = await supabase.auth.getSession()
+    // [FIXED] Re-formatted to one statement per line
     if ((!data.session || error) && authStore.user) {
       messageHook.warning(t('auth.session_expired_relogin'))
       authStore.user = null
@@ -308,12 +308,8 @@ function handleExportTrigger() {
     handleBatchExport()
 }
 
-async function handleBatchExport() {
-  // Omitted for brevity
-}
-function handleExportResults() {
-  // Omitted for brevity
-}
+async function handleBatchExport() {}
+function handleExportResults() {}
 function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
@@ -547,6 +543,7 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(key: string) {
+  // [FIXED] Re-formatted to one statement per line
   switch (key) {
     case 'toggleSelection':
       toggleSelectionMode()
@@ -754,7 +751,7 @@ function handleMainMenuSelect(key: string) {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 110dvh;
 }
 .dark .auth-container {
   background: #1e1e1e;

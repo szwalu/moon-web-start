@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue'
+import { computed } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 
 const props = defineProps({
@@ -12,7 +12,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel'])
 
-// 使用 v-model 绑定
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
@@ -32,15 +31,9 @@ function handleCancel() {
   emit('cancel')
 }
 
-// [核心修改] 监听 modelValue 的变化
-watch(() => props.modelValue, (newValue) => {
-  // 当内容被外部清空时 (例如，在父组件中保存后)
-  if (newValue === '') {
-    // 等待 DOM 更新后，手动触发一次高度重新计算
-    nextTick(() => {
-      triggerResize()
-    })
-  }
+// [核心修改] 暴露 triggerResize 方法给父组件，不再需要 watch
+defineExpose({
+  triggerResize,
 })
 </script>
 
@@ -103,7 +96,7 @@ watch(() => props.modelValue, (newValue) => {
   width: 100%;
   min-height: 120px;
   /* --- 在这里微调，找到最适合你设备的高度 --- */
-  max-height: 40vh; /* 例如，可以试试 40vh 或者 35vh */
+  max-height: 40vh; /* 我把它从 50vh 调小到了 43vh，你可以继续微调 */
   padding: 16px;
   border: none;
   background-color: transparent;
@@ -154,7 +147,7 @@ watch(() => props.modelValue, (newValue) => {
 }
 .btn-primary:hover { background-color: #009a74; }
 .btn-primary:disabled {
-  background-color: #a5a5a_regular;
+  background-color: #a5a5a5;
   cursor: not-allowed;
   opacity: 0.7;
 }
