@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 
 const props = defineProps({
@@ -18,9 +18,8 @@ const contentModel = computed({
   set: (value) => { emit('update:modelValue', value) },
 })
 
-// [核心修改] 将 v-model (contentModel) 传递给 useTextareaAutosize
-// 这样，每当 contentModel 变化时，文本域就会自动重新计算高度
-const { textarea, input } = useTextareaAutosize({ input: contentModel })
+// [核心修改] 从 useTextareaAutosize 中获取 triggerResize 函数
+const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 
 const charCount = computed(() => contentModel.value.length)
 
@@ -32,6 +31,17 @@ function handleSave() {
 function handleCancel() {
   emit('cancel')
 }
+
+// [核心修改] 监听 modelValue 的变化
+watch(() => props.modelValue, (newValue) => {
+  // 当内容被外部清空时 (例如，在父组件中保存后)
+  if (newValue === '') {
+    // 等待 DOM 更新后，手动触发一次高度重新计算
+    nextTick(() => {
+      triggerResize()
+    })
+  }
+})
 </script>
 
 <template>
@@ -92,18 +102,18 @@ function handleCancel() {
 .editor-textarea {
   width: 100%;
   min-height: 120px;
-  max-height: 50vh; /* 限制最大高度，超过后出现滚动条 */
+  /* --- 在这里微调，找到最适合你设备的高度 --- */
+  max-height: 40vh; /* 例如，可以试试 40vh 或者 35vh */
   padding: 16px;
   border: none;
   background-color: transparent;
   color: inherit;
   font-size: 16px;
   line-height: 1.6;
-  resize: none; /* 禁止用户手动拖拽大小 */
-  outline: none; /* 移除焦点时的外边框 */
+  resize: none;
+  outline: none;
   box-sizing: border-box;
   font-family: inherit;
-  /* [新增] 确保高度变化时有平滑的过渡效果 */
   transition: height 0.1s ease-out;
 }
 
@@ -114,7 +124,7 @@ function handleCancel() {
   padding: 8px 14px;
   border-top: 1px solid #e0e0e0;
   background-color: #fff;
-  border-radius: 0 0 11px 11px; /* 配合父容器的圆角 */
+  border-radius: 0 0 11px 11px;
 }
 .dark .editor-footer {
   background-color: #1e1e1e;
@@ -144,7 +154,7 @@ function handleCancel() {
 }
 .btn-primary:hover { background-color: #009a74; }
 .btn-primary:disabled {
-  background-color: #a5a5a5;
+  background-color: #a5a5a_regular;
   cursor: not-allowed;
   opacity: 0.7;
 }
