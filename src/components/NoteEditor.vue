@@ -17,7 +17,7 @@ const emit = defineEmits(['update:modelValue', 'submit'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const cardRef = ref<HTMLDivElement | null>(null)
+const editorMainRef = ref<HTMLDivElement | null>(null)
 const isComposing = ref(false)
 const isEditingInline = computed(() => !!props.editingNote)
 
@@ -39,12 +39,11 @@ const editorFontSizeClass = computed(() => {
   return sizeMap[settingsStore.noteFontSize] || 'font-size-medium'
 })
 
-/** 用“镜像 div”获取 textarea 光标在页面上的 Y 坐标（像素） */
+/** mirror div：获取光标相对页面的 Y（像素） */
 function getCaretPageY(ta: HTMLTextAreaElement): number | null {
   const cs = getComputedStyle(ta)
   const mirror = document.createElement('div')
 
-  // 尽量还原样式环境
   mirror.style.position = 'absolute'
   mirror.style.visibility = 'hidden'
   mirror.style.whiteSpace = 'pre-wrap'
@@ -60,25 +59,15 @@ function getCaretPageY(ta: HTMLTextAreaElement): number | null {
   mirror.style.border = cs.border
   mirror.style.width = `${ta.clientWidth}px`
 
-  // 放到与 textarea 相同的位置
   const taRect = ta.getBoundingClientRect()
   mirror.style.left = `${window.scrollX + taRect.left}px`
   mirror.style.top = `${window.scrollY + taRect.top}px`
 
-  // 组装到光标处的文本（使用安全转义，避免不可见字符）
   const value = ta.value
   const selEnd = ta.selectionEnd ?? value.length
-  const before = value
-    .slice(0, selEnd)
-    .replace(/\n$/g, '\n ') // 尾部换行占位
-    .replace(/ /g, '\u00A0') // 空格 -> 不换行空格
-    .replace(/\n/g, '<br/>') // 换行 -> <br/>
-  const after = value
-    .slice(selEnd)
-    .replace(/ /g, '\u00A0')
-    .replace(/\n/g, '<br/>')
+  const before = value.slice(0, selEnd).replace(/\n$/g, '\n ').replace(/ /g, '\u00A0').replace(/\n/g, '<br/>')
+  const after = value.slice(selEnd).replace(/ /g, '\u00A0').replace(/\n/g, '<br/>')
 
-  // ✅ 这里不再插入零宽空白，避免 no-irregular-whitespace
   mirror.innerHTML = `${before}<span data-caret></span>${after}`
   document.body.appendChild(mirror)
 
@@ -88,22 +77,18 @@ function getCaretPageY(ta: HTMLTextAreaElement): number | null {
     const caretRect = caretSpan.getBoundingClientRect()
     caretY = window.scrollY + caretRect.top
   }
-
   document.body.removeChild(mirror)
   return caretY
 }
 
-/** 让页面滚动以保证“光标行”可见（考虑保存栏 + IME + 安全区） */
-function ensureCaretVisible() {
+/** 让 .editor-main 容器滚动，保证“光标行”可见（考虑保存栏 + IME + 安全区） */
+function ensureCaretVisibleInContainer() {
   const ta = textareaRef.value
-  const card = cardRef.value
-  if (!ta || !card)
+  const container = editorMainRef.value
+  if (!ta || !container)
     return
 
-  // 保存栏视觉高度（与样式一致）
   const ACTIONS_HEIGHT = 56
-
-  // 从 visualViewport 推断键盘高度
   const vv = (window as any).visualViewport
   const safeFromVV = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0
   const bottomReserve = Math.max(imeBottomOffset.value, safeFromVV) + ACTIONS_HEIGHT + 16
@@ -112,18 +97,26 @@ function ensureCaretVisible() {
   if (caretPageY == null)
     return
 
-  const viewportTop = window.scrollY
-  const viewportBottom = viewportTop + window.innerHeight
-  const targetBottom = caretPageY + bottomReserve
+  const containerRect = container.getBoundingClientRect()
+  const containerPageTop = window.scrollY + containerRect.top
+
+  // 光标相对容器内容起点的 Y 坐标（不随容器滚动）
+  const caretInContainer = caretPageY - containerPageTop
+
+  const viewTop = container.scrollTop
+  const viewHeight = container.clientHeight
+  const viewBottom = viewTop + viewHeight
+  const targetBottom = caretInContainer + bottomReserve
+
   const lineHeight = Number.parseFloat(getComputedStyle(ta).lineHeight || '24')
 
-  if (targetBottom > viewportBottom - 4) {
-    const newTop = targetBottom - window.innerHeight
-    window.scrollTo({ top: Math.max(newTop, 0), behavior: 'auto' })
+  if (targetBottom > viewBottom - 2) {
+    const newTop = targetBottom - viewHeight
+    container.scrollTop = Math.min(newTop, container.scrollHeight - viewHeight)
   }
-  else if (caretPageY - lineHeight < viewportTop + 4) {
-    const newTop = caretPageY - lineHeight - 8
-    window.scrollTo({ top: Math.max(newTop, 0), behavior: 'auto' })
+  else if (caretInContainer - lineHeight < viewTop + 2) {
+    const newTop = Math.max(caretInContainer - lineHeight - 8, 0)
+    container.scrollTop = newTop
   }
 }
 
@@ -144,7 +137,7 @@ function insertTag() {
     const ta = textareaRef.value!
     ta.selectionStart = ta.selectionEnd = cursor + 1
     ta.focus()
-    ensureCaretVisible()
+    ensureCaretVisibleInContainer()
   })
 }
 
@@ -161,13 +154,13 @@ function insertCheckbox() {
     const newCursor = cursor + 6
     ta.selectionStart = ta.selectionEnd = newCursor
     ta.focus()
-    ensureCaretVisible()
+    ensureCaretVisibleInContainer()
   })
 }
 
 let resizeObserver: ResizeObserver | null = null
 
-// 计算 IME 高度；onUnmounted 时移除
+// IME 高度更新函数
 function updateImeOffsetFn() {
   const vv = (window as any).visualViewport
   if (!vv) {
@@ -179,28 +172,28 @@ function updateImeOffsetFn() {
 }
 
 onMounted(() => {
-  const el = textareaRef.value
-  if (el) {
-    autosize(el)
+  const ta = textareaRef.value
+  if (ta) {
+    autosize(ta)
 
     if (!isEditingInline.value) {
-      el.focus()
+      ta.focus()
     }
     else {
-      const len = el.value.length
-      el.focus()
-      el.setSelectionRange(len, len)
+      const len = ta.value.length
+      ta.focus()
+      ta.setSelectionRange(len, len)
     }
 
-    // autosize 导致高度变化时，保持光标可见
+    // textarea 自身高度变化（autosize）时，保持光标可见
     resizeObserver = new ResizeObserver(() => {
-      if (document.activeElement === el)
-        ensureCaretVisible()
+      if (document.activeElement === ta)
+        ensureCaretVisibleInContainer()
     })
-    resizeObserver.observe(el)
+    resizeObserver.observe(ta)
 
-    // 初次确保可见
-    nextTick(() => ensureCaretVisible())
+    // 初次也校正一次
+    nextTick(() => ensureCaretVisibleInContainer())
   }
 
   updateImeOffsetFn()
@@ -209,17 +202,7 @@ onMounted(() => {
     vv.addEventListener('resize', updateImeOffsetFn)
     vv.addEventListener('scroll', updateImeOffsetFn)
   }
-
-  // iOS/Safari 在滚动后再次校正
-  window.addEventListener('scroll', onWindowScroll, { passive: true })
 })
-
-function onWindowScroll() {
-  const el = textareaRef.value
-  if (!el || document.activeElement !== el)
-    return
-  requestAnimationFrame(() => ensureCaretVisible())
-}
 
 onUnmounted(() => {
   if (textareaRef.value && resizeObserver)
@@ -233,7 +216,6 @@ onUnmounted(() => {
     vv.removeEventListener('resize', updateImeOffsetFn)
     vv.removeEventListener('scroll', updateImeOffsetFn)
   }
-  window.removeEventListener('scroll', onWindowScroll)
 })
 
 watch(
@@ -244,7 +226,7 @@ watch(
         const el = textareaRef.value!
         autosize.update(el)
         el.focus()
-        ensureCaretVisible()
+        ensureCaretVisibleInContainer()
       })
     }
   },
@@ -253,12 +235,11 @@ watch(
 
 <template>
   <div
-    ref="cardRef"
     class="new-note-editor"
     :class="{ 'is-inline-editing': isEditingInline }"
     :style="{ '--ime-bottom': `${imeBottomOffset}px` }"
   >
-    <div class="editor-main">
+    <div ref="editorMainRef" class="editor-main">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -267,11 +248,11 @@ watch(
         :class="editorFontSizeClass"
         rows="3"
         @compositionstart="isComposing = true"
-        @compositionend="() => { isComposing = false; ensureCaretVisible() }"
-        @input="ensureCaretVisible"
-        @keyup="ensureCaretVisible"
-        @click="ensureCaretVisible"
-        @focus="ensureCaretVisible"
+        @compositionend="() => { isComposing = false; ensureCaretVisibleInContainer() }"
+        @input="ensureCaretVisibleInContainer"
+        @keyup="ensureCaretVisibleInContainer"
+        @click="ensureCaretVisibleInContainer"
+        @focus="ensureCaretVisibleInContainer"
       />
     </div>
 
@@ -298,8 +279,9 @@ watch(
   border: 1px solid #e0e0e0;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  display: block;               /* 允许随内容自然增高 */
-  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   margin-bottom: 1.5rem;
   padding-bottom: env(safe-area-inset-bottom); /* iOS 安全区 */
 }
@@ -317,18 +299,24 @@ watch(
   border-color: #444;
 }
 
-/* 不做内部滚动，随内容增长；由页面滚动 */
+/* 👇 核心：固定为“半屏多一点”的高度，由容器滚动 */
 .editor-main {
   padding: 12px 16px 8px;
-  overflow: visible;
+  flex: 0 0 auto;
+  max-height: 58dvh; /* 你要的：页面的一半多一点；可按需改 56~60dvh */
+  overflow-y: auto;
+
+  /* 为底部操作区 + IME + 安全区预留空间（滚动缓冲 & 视觉留白） */
+  padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 56px);
+  scroll-padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 56px);
 }
 
-/* 文本域：只自适应高度（autosize），不滚自己，不设 max-height */
+/* 文本域：只自适应高度（autosize），不滚自己 */
 .editor-textarea {
   width: 100%;
   border: none;
   background-color: transparent;
-  resize: none;
+  resize: none;     /* autosize 控制高度 */
   outline: none;
   font-family: inherit;
   font-size: 16px;
@@ -337,7 +325,7 @@ watch(
   box-sizing: border-box;
   overflow: hidden;
   display: block;
-  min-height: 3.2em; /* 3行左右起始高度 */
+  min-height: 3.2em;
 }
 
 .dark .editor-textarea { color: #f0f0f0; }
@@ -349,14 +337,14 @@ watch(
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-/* 操作区 sticky 到视窗底部（跟随页面滚动），不与键盘打架 */
+/* 操作区 sticky 在卡片内部底部，与滚动容器独立 */
 .editor-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
   border-top: 1px solid #eee;
-  min-height: 56px;          /* 与脚本常量保持一致 */
+  min-height: 56px;  /* 与脚本 ACTIONS_HEIGHT 一致 */
   position: sticky;
   bottom: 0;
   background: inherit;
