@@ -17,20 +17,18 @@ const emit = defineEmits(['update:modelValue', 'submit'])
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const editorMainRef = ref<HTMLDivElement | null>(null)
 const isComposing = ref(false)
 const isEditingInline = computed(() => !!props.editingNote)
 
-// 输入法/键盘底部偏移（px）
-const imeBottomOffset = ref(0)
-
 const contentModel = computed({
   get: () => props.modelValue,
-  set: value => emit('update:modelValue', value),
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
 })
 
 const editorFontSizeClass = computed(() => {
-  const sizeMap: Record<string, string> = {
+  const sizeMap: { [key: string]: string } = {
     'small': 'font-size-small',
     'medium': 'font-size-medium',
     'large': 'font-size-large',
@@ -39,87 +37,6 @@ const editorFontSizeClass = computed(() => {
   return sizeMap[settingsStore.noteFontSize] || 'font-size-medium'
 })
 
-/** mirror div：获取光标相对页面的 Y（像素） */
-function getCaretPageY(ta: HTMLTextAreaElement): number | null {
-  const cs = getComputedStyle(ta)
-  const mirror = document.createElement('div')
-
-  mirror.style.position = 'absolute'
-  mirror.style.visibility = 'hidden'
-  mirror.style.whiteSpace = 'pre-wrap'
-  mirror.style.wordWrap = 'break-word'
-  mirror.style.overflowWrap = 'break-word'
-  mirror.style.boxSizing = cs.boxSizing
-  mirror.style.fontFamily = cs.fontFamily
-  mirror.style.fontSize = cs.fontSize
-  mirror.style.fontWeight = cs.fontWeight
-  mirror.style.lineHeight = cs.lineHeight
-  mirror.style.letterSpacing = cs.letterSpacing
-  mirror.style.padding = cs.padding
-  mirror.style.border = cs.border
-  mirror.style.width = `${ta.clientWidth}px`
-
-  const taRect = ta.getBoundingClientRect()
-  mirror.style.left = `${window.scrollX + taRect.left}px`
-  mirror.style.top = `${window.scrollY + taRect.top}px`
-
-  const value = ta.value
-  const selEnd = ta.selectionEnd ?? value.length
-  const before = value.slice(0, selEnd).replace(/\n$/g, '\n ').replace(/ /g, '\u00A0').replace(/\n/g, '<br/>')
-  const after = value.slice(selEnd).replace(/ /g, '\u00A0').replace(/\n/g, '<br/>')
-
-  mirror.innerHTML = `${before}<span data-caret></span>${after}`
-  document.body.appendChild(mirror)
-
-  const caretSpan = mirror.querySelector('span[data-caret]') as HTMLSpanElement | null
-  let caretY: number | null = null
-  if (caretSpan) {
-    const caretRect = caretSpan.getBoundingClientRect()
-    caretY = window.scrollY + caretRect.top
-  }
-  document.body.removeChild(mirror)
-  return caretY
-}
-
-/** 让 .editor-main 容器滚动，保证“光标行”可见（考虑保存栏 + IME + 安全区） */
-function ensureCaretVisibleInContainer() {
-  const ta = textareaRef.value
-  const container = editorMainRef.value
-  if (!ta || !container)
-    return
-
-  const ACTIONS_HEIGHT = 56
-  const vv = (window as any).visualViewport
-  const safeFromVV = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0
-  const bottomReserve = Math.max(imeBottomOffset.value, safeFromVV) + ACTIONS_HEIGHT + 16
-
-  const caretPageY = getCaretPageY(ta)
-  if (caretPageY == null)
-    return
-
-  const containerRect = container.getBoundingClientRect()
-  const containerPageTop = window.scrollY + containerRect.top
-
-  // 光标相对容器内容起点的 Y 坐标（不随容器滚动）
-  const caretInContainer = caretPageY - containerPageTop
-
-  const viewTop = container.scrollTop
-  const viewHeight = container.clientHeight
-  const viewBottom = viewTop + viewHeight
-  const targetBottom = caretInContainer + bottomReserve
-
-  const lineHeight = Number.parseFloat(getComputedStyle(ta).lineHeight || '24')
-
-  if (targetBottom > viewBottom - 2) {
-    const newTop = targetBottom - viewHeight
-    container.scrollTop = Math.min(newTop, container.scrollHeight - viewHeight)
-  }
-  else if (caretInContainer - lineHeight < viewTop + 2) {
-    const newTop = Math.max(caretInContainer - lineHeight - 8, 0)
-    container.scrollTop = newTop
-  }
-}
-
 function handleSubmit() {
   if (props.isLoading || !contentModel.value.trim())
     return
@@ -127,119 +44,123 @@ function handleSubmit() {
 }
 
 function insertTag() {
-  const el = textareaRef.value
-  if (!el)
+  if (!textareaRef.value)
     return
-  const cursor = el.selectionStart
+  const cursorPosition = textareaRef.value.selectionStart
   const text = contentModel.value
-  contentModel.value = `${text.slice(0, cursor)}#${text.slice(cursor)}`
+  const newText = `${text.slice(0, cursorPosition)}#${text.slice(cursorPosition)}`
+  contentModel.value = newText
+
   nextTick(() => {
-    const ta = textareaRef.value!
-    ta.selectionStart = ta.selectionEnd = cursor + 1
-    ta.focus()
-    ensureCaretVisibleInContainer()
+    if (textareaRef.value) {
+      textareaRef.value.selectionStart = cursorPosition + 1
+      textareaRef.value.selectionEnd = cursorPosition + 1
+      textareaRef.value.focus()
+    }
   })
 }
 
 function insertCheckbox() {
-  const el = textareaRef.value
-  if (!el)
+  if (!textareaRef.value)
     return
-  const cursor = el.selectionStart
+  const cursorPosition = textareaRef.value.selectionStart
   const text = contentModel.value
-  const lineStart = text.lastIndexOf('\n', cursor - 1) + 1
-  contentModel.value = `${text.slice(0, lineStart)}- [ ] ${text.slice(lineStart)}`
+  const lineStart = text.lastIndexOf('\n', cursorPosition - 1) + 1
+  const newText = `${text.slice(0, lineStart)}- [ ] ${text.slice(lineStart)}`
+  contentModel.value = newText
+
   nextTick(() => {
-    const ta = textareaRef.value!
-    const newCursor = cursor + 6
-    ta.selectionStart = ta.selectionEnd = newCursor
-    ta.focus()
-    ensureCaretVisibleInContainer()
+    if (textareaRef.value) {
+      const newCursorPosition = cursorPosition + 6
+      textareaRef.value.selectionStart = newCursorPosition
+      textareaRef.value.selectionEnd = newCursorPosition
+      textareaRef.value.focus()
+    }
   })
 }
 
-let resizeObserver: ResizeObserver | null = null
-
-// IME 高度更新函数
-function updateImeOffsetFn() {
-  const vv = (window as any).visualViewport
-  if (!vv) {
-    imeBottomOffset.value = 0
-    return
-  }
-  const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-  imeBottomOffset.value = keyboard > 80 ? Math.round(keyboard) : 0
-}
-
 onMounted(() => {
-  const ta = textareaRef.value
-  if (ta) {
-    autosize(ta)
-
+  if (textareaRef.value) {
+    autosize(textareaRef.value)
     if (!isEditingInline.value) {
-      ta.focus()
+      textareaRef.value.focus()
     }
     else {
-      const len = ta.value.length
-      ta.focus()
-      ta.setSelectionRange(len, len)
+      const el = textareaRef.value
+      el.focus()
+      const len = el.value.length
+      el.setSelectionRange(len, len)
     }
-
-    // textarea 自身高度变化（autosize）时，保持光标可见
-    resizeObserver = new ResizeObserver(() => {
-      if (document.activeElement === ta)
-        ensureCaretVisibleInContainer()
-    })
-    resizeObserver.observe(ta)
-
-    // 初次也校正一次
-    nextTick(() => ensureCaretVisibleInContainer())
-  }
-
-  updateImeOffsetFn()
-  const vv = (window as any).visualViewport
-  if (vv) {
-    vv.addEventListener('resize', updateImeOffsetFn)
-    vv.addEventListener('scroll', updateImeOffsetFn)
   }
 })
 
 onUnmounted(() => {
-  if (textareaRef.value && resizeObserver)
-    resizeObserver.unobserve(textareaRef.value)
-
   if (textareaRef.value)
     autosize.destroy(textareaRef.value)
+})
 
-  const vv = (window as any).visualViewport
-  if (vv) {
-    vv.removeEventListener('resize', updateImeOffsetFn)
-    vv.removeEventListener('scroll', updateImeOffsetFn)
+watch(() => props.editingNote?.id, (newId, oldId) => {
+  if (newId !== oldId && textareaRef.value) {
+    nextTick(() => {
+      if (textareaRef.value) {
+        autosize.update(textareaRef.value)
+        textareaRef.value.focus()
+      }
+    })
   }
 })
 
-watch(
-  () => props.editingNote?.id,
-  (newId, oldId) => {
-    if (newId !== oldId && textareaRef.value) {
-      nextTick(() => {
-        const el = textareaRef.value!
-        autosize.update(el)
-        el.focus()
-        ensureCaretVisibleInContainer()
-      })
+// --- [核心逻辑] 监听输入，手动控制滚动 ---
+watch(contentModel, () => {
+  nextTick(() => {
+    const el = textareaRef.value
+    if (!el)
+      return
+
+    // 仅在文本框成为滚动容器后才执行
+    if (el.scrollHeight > el.clientHeight) {
+      // 创建一个隐藏的div用于测量光标的精确像素位置
+      const measurementDiv = document.createElement('div')
+      // 必须精确复制所有影响布局的样式
+      const style = window.getComputedStyle(el)
+      measurementDiv.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        width: ${el.clientWidth}px;
+        box-sizing: ${style.boxSizing};
+        padding: ${style.padding};
+        font: ${style.font};
+        line-height: ${style.lineHeight};
+        white-space: ${style.whiteSpace};
+        word-wrap: ${style.wordWrap};
+        word-break: ${style.wordBreak};
+      `
+      document.body.appendChild(measurementDiv)
+
+      // 测量光标之前文本的高度
+      measurementDiv.textContent = el.value.substring(0, el.selectionEnd)
+      const cursorPixelPosition = measurementDiv.offsetHeight
+      document.body.removeChild(measurementDiv)
+
+      // 定义一个“危险区域”：输入框可见高度的底部区域
+      // 我们希望光标永远不要进入这个区域
+      const lineHeight = Number.parseFloat(style.lineHeight)
+      const dangerZoneTop = el.scrollTop + el.clientHeight - (lineHeight * 2.5) // 预留2.5行作为缓冲区
+
+      // 如果光标位置进入了危险区域，就向上滚动
+      if (cursorPixelPosition > dangerZoneTop) {
+        // 新的滚动位置 = 光标位置 - 可见高度 + 缓冲区大小
+        // 这样可以让光标始终保持在缓冲区上方
+        el.scrollTop = cursorPixelPosition - el.clientHeight + (lineHeight * 2.5)
+      }
     }
-  },
-)
+  })
+}, { flush: 'post' }) // 使用 'post' flush 确保在DOM更新后执行
 </script>
 
 <template>
-  <div
-    class="new-note-editor"
-    :class="{ 'is-inline-editing': isEditingInline }"
-    :style="{ '--ime-bottom': `${imeBottomOffset}px` }"
-  >
-    <div ref="editorMainRef" class="editor-main">
+  <div class="new-note-editor" :class="{ 'is-inline-editing': isEditingInline }">
+    <div class="editor-main">
       <textarea
         ref="textareaRef"
         v-model="contentModel"
@@ -248,14 +169,9 @@ watch(
         :class="editorFontSizeClass"
         rows="3"
         @compositionstart="isComposing = true"
-        @compositionend="() => { isComposing = false; ensureCaretVisibleInContainer() }"
-        @input="ensureCaretVisibleInContainer"
-        @keyup="ensureCaretVisibleInContainer"
-        @click="ensureCaretVisibleInContainer"
-        @focus="ensureCaretVisibleInContainer"
+        @compositionend="isComposing = false"
       />
     </div>
-
     <div class="editor-actions">
       <div class="action-buttons">
         <button type="button" class="action-btn" title="插入标签" @click="insertTag">#</button>
@@ -283,76 +199,63 @@ watch(
   flex-direction: column;
   overflow: hidden;
   margin-bottom: 1.5rem;
-  padding-bottom: env(safe-area-inset-bottom); /* iOS 安全区 */
 }
-
 .is-inline-editing {
-  box-shadow: 0 6px 20px rgba(0, 100, 200, 0.12);
-  border: 1px solid #c0c0c0;
-  margin-top: 0;
-  margin-bottom: 0;
-  border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 100, 200, 0.12);
+    border: 1px solid #c0c0c0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-radius: 8px;
 }
-
 .dark .new-note-editor {
   background-color: #2a2a2a;
   border-color: #444;
 }
-
-/* 👇 核心：固定为“半屏多一点”的高度，由容器滚动 */
 .editor-main {
   padding: 12px 16px 8px;
-  flex: 0 0 auto;
-  max-height: 58dvh; /* 你要的：页面的一半多一点；可按需改 56~60dvh */
-  overflow-y: auto;
-
-  /* 为底部操作区 + IME + 安全区预留空间（滚动缓冲 & 视觉留白） */
-  padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 56px);
-  scroll-padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 56px);
 }
-
-/* 文本域：只自适应高度（autosize），不滚自己 */
 .editor-textarea {
   width: 100%;
   border: none;
   background-color: transparent;
-  resize: none;     /* autosize 控制高度 */
+  resize: none;
   outline: none;
   font-family: inherit;
   font-size: 16px;
   line-height: 1.6;
   color: #333;
   box-sizing: border-box;
-  overflow: hidden;
-  display: block;
-  min-height: 3.2em;
+  overflow-y: auto;
+  /* --- [核心修改] 设定一个明确的最大高度 --- */
+  max-height: 60vh;
 }
-
-.dark .editor-textarea { color: #f0f0f0; }
-.editor-textarea::placeholder { color: #999; }
-.dark .editor-textarea::placeholder { color: #777; }
-
+.dark .editor-textarea {
+  color: #f0f0f0;
+}
+.editor-textarea::placeholder {
+  color: #999;
+}
+.dark .editor-textarea::placeholder {
+  color: #777;
+}
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
-
-/* 操作区 sticky 在卡片内部底部，与滚动容器独立 */
 .editor-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: 4px 12px 8px;
   border-top: 1px solid #eee;
-  min-height: 56px;  /* 与脚本 ACTIONS_HEIGHT 一致 */
-  position: sticky;
-  bottom: 0;
-  background: inherit;
-  z-index: 1;
 }
-.dark .editor-actions { border-top-color: #444; }
-
-.action-buttons { display: flex; gap: 8px; }
+.dark .editor-actions {
+  border-top-color: #444;
+}
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
 .action-btn {
   background: none;
   border: none;
@@ -364,10 +267,15 @@ watch(
   border-radius: 6px;
   transition: background-color 0.2s;
 }
-.action-btn:hover { background-color: #e0e0e0; }
-.dark .action-btn { color: #aaa; }
-.dark .action-btn:hover { background-color: #555; }
-
+.action-btn:hover {
+  background-color: #e0e0e0;
+}
+.dark .action-btn {
+  color: #aaa;
+}
+.dark .action-btn:hover {
+  background-color: #555;
+}
 .submit-btn {
   background-color: #333;
   color: white;
@@ -379,13 +287,23 @@ watch(
   cursor: pointer;
   transition: background-color 0.2s, opacity 0.2s;
 }
-.submit-btn:hover { background-color: #000; }
+.submit-btn:hover {
+  background-color: #000;
+}
 .submit-btn:disabled {
   background-color: #a5a5a5;
   cursor: not-allowed;
   opacity: 0.7;
 }
-.dark .submit-btn { background-color: #f0f0f0; color: #1a1a1a; }
-.dark .submit-btn:hover { background-color: #fff; }
-.dark .submit-btn:disabled { background-color: #4b5563; color: #999; }
+.dark .submit-btn {
+    background-color: #f0f0f0;
+    color: #1a1a1a;
+}
+.dark .submit-btn:hover {
+    background-color: #fff;
+}
+.dark .submit-btn:disabled {
+  background-color: #4b5563;
+  color: #999;
+}
 </style>
