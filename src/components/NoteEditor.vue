@@ -11,8 +11,6 @@ import 'easymde/dist/easymde.min.css'
 // --- Props & Emits 定义 ---
 const props = defineProps({
   modelValue: { type: String, required: true },
-  // 新增一个 prop，用于区分是“创建新笔记”还是“编辑旧笔记”的场景
-  // 这有助于我们显示不同的按钮或占位符
   isEditing: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
   allTags: { type: Array as () => string[], default: () => [] },
@@ -26,7 +24,7 @@ const { t } = useI18n()
 const settingsStore = useSettingStore()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const easymde = ref<EasyMDE | null>(null)
-const isReadyForAutoSave = ref(false)
+let isReadyForAutoSave = false // 改为 let 变量，避免响应式触发
 
 // --- 标签建议功能状态 ---
 const showTagSuggestions = ref(false)
@@ -44,7 +42,7 @@ const charCount = computed(() => contentModel.value.length)
 function initializeEasyMDE() {
   if (!textareaRef.value || easymde.value)
     return
-  isReadyForAutoSave.value = false
+  isReadyForAutoSave = false
 
   const mobileToolbar: (EasyMDE.ToolbarIcon | string)[] = [
     'bold',
@@ -68,13 +66,10 @@ function initializeEasyMDE() {
     spellChecker: false,
     placeholder: props.isEditing ? t('notes.edit_placeholder') : t('notes.create_placeholder'),
     toolbar: mobileToolbar,
-    status: false, // 我们使用自己的状态栏
-    // --- 实现自动增高的核心配置 ---
+    status: false,
     codemirror: {
-      // 这个选项是让 CodeMirror 渲染所有行，从而让容器可以自然增高
       viewportMargin: Number.POSITIVE_INFINITY,
     },
-    // 为了美观，可以关闭自带的最大高度限制，我们用 CSS 控制
     maxHeight: 'none',
     lineWrapping: true,
   })
@@ -88,23 +83,53 @@ function initializeEasyMDE() {
     if (contentModel.value !== editorContent)
       contentModel.value = editorContent
 
-    // 继承自动保存逻辑
-    if (!isReadyForAutoSave.value)
-      isReadyForAutoSave.value = true
+    if (!isReadyForAutoSave)
+      isReadyForAutoSave = true
     else
       emit('triggerAutoSave')
 
     handleTagSuggestions(instance)
 
-    // --- 保证光标可见的核心逻辑 ---
-    // 每当内容变化，都确保光标所在位置滚动到视野内
+    // --- [核心修改] ---
+    // 智能处理光标可见性，防止被输入法遮挡
     nextTick(() => {
-      const cursor = instance.getCursor()
-      instance.scrollIntoView({ line: cursor.line, ch: cursor.ch }, 10) // 10px 的边距
+      if (!easymde.value)
+        return
+      const cmInstance = easymde.value.codemirror
+
+      // 1. 先确保光标在编辑器内部滚动到可见位置，并留出20px边距
+      cmInstance.scrollIntoView(null, 20)
+
+      // 2. 检查光标相对于浏览器窗口的位置，处理主页面滚动
+      // window.visualViewport 提供了不受虚拟键盘影响的真实可视区域信息
+      if (window.visualViewport) {
+        // 'window' 模式获取光标相对于可视窗口的坐标
+        const coords = cmInstance.cursorCoords(true, 'window')
+
+        // 在可视窗口底部设置一个安全区，高度可以根据需要调整
+        // 50px 通常足以容纳大部分输入法的候选词栏
+        const bottomSafeArea = 50
+
+        // 可视窗口的底部边缘
+        const viewportBottom = window.visualViewport.height
+
+        // 如果光标的底部进入了下方的“不安全”区域
+        if (coords.bottom > viewportBottom - bottomSafeArea) {
+          // 计算需要向上滚动的距离
+          const scrollAmount = coords.bottom - (viewportBottom - bottomSafeArea)
+
+          // 平滑地滚动主窗口，将光标“托”起来
+          window.scrollBy({
+            top: scrollAmount,
+            left: 0,
+            behavior: 'smooth',
+          })
+        }
+      }
     })
   })
 
-  cm.on('keydown', (cm, event) => {
+  cm.on('keydown', (cmInstance, event) => {
     if (showTagSuggestions.value && tagSuggestions.value.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -124,7 +149,6 @@ function initializeEasyMDE() {
       }
     }
 
-    // 添加快捷键保存 (Ctrl/Cmd + S)
     if ((event.ctrlKey || event.metaKey) && event.key === 's') {
       event.preventDefault()
       handleSave()
@@ -141,7 +165,6 @@ function destroyEasyMDE() {
   }
 }
 
-// 继承字号选择逻辑
 function applyEditorFontSize() {
   if (easymde.value) {
     const cmWrapper = easymde.value.codemirror.getWrapperElement()
@@ -153,7 +176,6 @@ function applyEditorFontSize() {
 function focusEditor() {
   nextTick(() => {
     easymde.value?.codemirror.focus()
-    // 如果是编辑模式，将光标移动到末尾
     if (props.isEditing) {
       const cm = easymde.value!.codemirror
       const doc = cm.getDoc()
@@ -162,7 +184,6 @@ function focusEditor() {
   })
 }
 
-// --- 继承标签建议相关方法 (保持不变) ---
 function handleTagSuggestions(cm: CodeMirror.Editor) {
   const cursor = cm.getDoc().getCursor()
   const line = cm.getDoc().getLine(cursor.line)
@@ -176,7 +197,7 @@ function handleTagSuggestions(cm: CodeMirror.Editor) {
 
   const term = textBefore.substring(lastHashIndex + 1)
   tagSuggestions.value = props.allTags.filter(tag =>
-    tag.toLowerCase().startsWith(term.toLowerCase()), // 简化了逻辑，不需要在标签前加'#'
+    tag.toLowerCase().startsWith(term.toLowerCase()),
   )
 
   if (tagSuggestions.value.length > 0) {
@@ -213,7 +234,6 @@ function moveSuggestionSelection(offset: number) {
   highlightedSuggestionIndex.value = (highlightedSuggestionIndex.value + offset + count) % count
 }
 
-// --- 组件事件处理 ---
 function handleSave() {
   if (!props.isLoading && contentModel.value)
     emit('save', contentModel.value)
@@ -234,10 +254,9 @@ onUnmounted(() => {
 
 watch(() => settingsStore.noteFontSize, applyEditorFontSize)
 
-// 当 modelValue 从外部变化时（例如，点击不同的笔记进行编辑），更新编辑器内容
 watch(() => props.modelValue, (newValue) => {
   if (easymde.value && newValue !== easymde.value.value()) {
-    isReadyForAutoSave.value = false // 重置自动保存状态
+    isReadyForAutoSave = false
     easymde.value.value(newValue)
   }
 })
@@ -295,7 +314,7 @@ watch(() => props.modelValue, (newValue) => {
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  position: relative; /* 为标签建议面板提供定位上下文 */
+  position: relative;
   transition: box-shadow 0.2s ease;
 }
 .note-editor:focus-within {
@@ -376,7 +395,7 @@ watch(() => props.modelValue, (newValue) => {
 }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
-/* --- 标签建议样式 (基本保持不变) --- */
+/* --- 标签建议样式 --- */
 .tag-suggestions {
   position: absolute;
   background-color: #fff;
@@ -419,27 +438,23 @@ watch(() => props.modelValue, (newValue) => {
 }
 
 .note-editor .CodeMirror {
-  /* --- 关键：让编辑器高度自适应内容 --- */
   height: auto !important;
-
   border: none !important;
-  background-color: transparent !important; /* 使其背景透明，由.note-editor控制 */
+  background-color: transparent !important;
   padding: 16px;
   font-size: 16px !important;
   line-height: 1.6 !important;
-  min-height: 120px; /* 编辑器的最小高度 */
+  min-height: 120px;
 }
 .dark .note-editor .CodeMirror {
   color: #f3f4f6 !important;
 }
 
-/* --- 核心：控制编辑器达到最大高度后出现滚动条 --- */
 .note-editor .CodeMirror-scroll {
-  max-height: 50vh; /* 编辑器最大高度为屏幕高度的50% */
+  max-height: 50vh;
   overflow-y: auto;
 }
 
-/* 继承字体大小设置 */
 .note-editor .CodeMirror.font-size-small { font-size: 14px !important; }
 .note-editor .CodeMirror.font-size-medium { font-size: 16px !important; }
 .note-editor .CodeMirror.font-size-large { font-size: 20px !important; }
