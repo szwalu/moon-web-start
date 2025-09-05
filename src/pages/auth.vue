@@ -1056,7 +1056,14 @@ function handleMainMenuSelect(key: string) {
 .dark .cancel-search-btn:hover { background-color: rgba(255,255,255,0.1); }
 .slide-fade-enter-active, .slide-fade-leave-active { transition: all 0.3s ease-out; max-height: 100px; }
 .slide-fade-enter-from, .slide-fade-leave-to { opacity: 0; transform: translateY(-10px); max-height: 0; }
-.notes-list-wrapper { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0.5rem; }
+.notes-list-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+  /* --- 新增下面这一行 --- */
+  scroll-padding-bottom: 40vh;
+}
 .selection-actions-popup { position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%); width: calc(100% - 3rem); max-width: 432px; background-color: #333; color: white; border-radius: 8px; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; z-index: 15; }
 .dark .selection-actions-popup { background-color: #444; }
 .selection-info { font-size: 14px; }

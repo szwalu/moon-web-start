@@ -79,6 +79,9 @@ function insertCheckbox() {
   })
 }
 
+// --- [核心修改 1] 新增一个变量来持有 ResizeObserver 实例 ---
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
   if (textareaRef.value) {
     autosize(textareaRef.value)
@@ -91,10 +94,28 @@ onMounted(() => {
       const len = el.value.length
       el.setSelectionRange(len, len)
     }
+
+    // --- [核心修改 2] 创建 ResizeObserver 逻辑 ---
+    // 创建一个实例，当观察到元素尺寸变化时执行回调
+    resizeObserver = new ResizeObserver(() => {
+      // 只有当用户正在此输入框中输入时才触发滚动
+      if (document.activeElement === textareaRef.value) {
+        // 命令浏览器将输入框的底部滚动到视野内
+        // 这会触发父容器滚动，并因 scroll-padding-bottom 而留出安全空间
+        textareaRef.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }
+    })
+
+    // 开始用 resizeObserver 监听 textarea 元素的高度变化
+    resizeObserver.observe(textareaRef.value)
   }
 })
 
 onUnmounted(() => {
+  // --- [核心修改 3] 组件卸载时，停止监听 ---
+  if (textareaRef.value && resizeObserver)
+    resizeObserver.unobserve(textareaRef.value)
+
   if (textareaRef.value)
     autosize.destroy(textareaRef.value)
 })
@@ -109,9 +130,6 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
     })
   }
 })
-
-// [核心修改] 删除了之前用来计算光标位置的复杂 watch 监听器。
-// 我们将用更简单的 CSS 方案替代它。
 </script>
 
 <template>
@@ -183,10 +201,7 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
   box-sizing: border-box;
   overflow-y: auto;
   max-height: 50vh;
-
-  /* --- [核心修改] 添加这一行 CSS 属性 --- */
-  /* 这会为滚动区域的底部添加 150px 的内边距，确保光标永远不会被遮挡 */
-  scroll-padding-bottom: 150px;
+  /* --- [核心修改 4] 移除之前无效的 scroll-padding-bottom --- */
 }
 .dark .editor-textarea {
   color: #f0f0f0;
