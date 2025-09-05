@@ -737,8 +737,10 @@ function handleMainMenuSelect(key: string) {
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.create_placeholder')"
+          :all-tags="allTags"
           @save="handleCreateNote"
           @focus="handleEditorFocus(newNoteEditorContainerRef)"
+          @height-change="handleEditorFocus(newNoteEditorContainerRef)"
         />
       </div>
 
@@ -765,9 +767,11 @@ function handleMainMenuSelect(key: string) {
                 :is-loading="isUpdating"
                 :max-note-length="maxNoteLength"
                 :placeholder="$t('notes.edit_placeholder')"
+                :all-tags="allTags"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
                 @focus="handleEditorFocus(noteContainers[note.id])"
+                @height-change="handleEditorFocus(noteContainers[note.id])"
               />
               <NoteItem
                 v-else
