@@ -5,7 +5,6 @@ import { useDark } from '@vueuse/core'
 import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
-import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import NoteList from '@/components/NoteList.vue'
@@ -13,9 +12,12 @@ import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
 
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
+
+// 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
 import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
+import 'easymde/dist/easymde.min.css'
 
 // --- 初始化 & 状态定义 ---
 useDark()
@@ -25,6 +27,7 @@ const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
+const showEditorModal = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
@@ -51,22 +54,19 @@ const hasPreviousNotes = ref(false)
 const maxNoteLength = 3000
 const isNotesCached = ref(false)
 const cachedNotes = ref<any[]>([])
-const cachedPages = ref(new Map<number, {
-  totalNotes: number
-  hasMoreNotes: boolean
-  hasPreviousNotes: boolean
-  notes: any[]
-}>())
+const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
 
+// [新增] 多选笔记相关状态
 const isSelectionModeActive = ref(false)
 const selectedNoteIds = ref<string[]>([])
 
 const isRestoringFromCache = ref(false)
 
+// --- 那年今日功能状态 ---
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
@@ -96,6 +96,7 @@ const mainMenuOptions = computed(() => [
   },
 ])
 
+// --- 核心认证逻辑 ---
 onMounted(() => {
   const cachedData = localStorage.getItem(CACHED_NOTES_KEY)
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -152,20 +153,25 @@ onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
 
-  if (dropdownContainerRef.value)
-    document.removeEventListener('click', closeDropdownOnClickOutside)
-
+  document.removeEventListener('click', closeDropdownOnClickOutside)
   debouncedSaveNote.cancel()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
+// [新增] 当用户切回此标签页时，检查会话是否仍然有效
 async function handleVisibilityChange() {
+  // 只在页面变为可见时执行检查
   if (document.visibilityState === 'visible') {
     const { data, error } = await supabase.auth.getSession()
 
+    // 如果会话已失效 (没有 session 或获取时出错) 并且 Pinia/Vuex 状态仍然认为用户在线
     if ((!data.session || error) && authStore.user) {
-      messageHook.warning(t('auth.session_expired_relogin'))
+      messageHook.warning(t('auth.session_expired_relogin')) // 提示用户会话已过期
+
+      // 重置认证状态
       authStore.user = null
+
+      // 清理本地数据
       notes.value = []
       allTags.value = []
       content.value = ''
@@ -173,14 +179,19 @@ async function handleVisibilityChange() {
       localStorage.removeItem(CACHED_NOTES_KEY)
       localStorage.removeItem(LOCAL_CONTENT_KEY)
       localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+
+      // 如果有 Authentication 组件或登录页，可以强制跳转
+      // 这里的逻辑取决于你的路由设置，如果没有 Authentication 组件在当前页面，
+      // 你可能需要用 router.push('/login') 跳转到登录页。
+      // 由于你的 auth.vue 包含了 <Authentication /> 组件，
+      // 所以理论上重置 authStore.user 就会自动显示登录界面。
     }
   }
 }
 
+// --- 笔记相关方法 ---
 const displayedNotes = computed(() => {
-  if (isAnniversaryViewActive.value && anniversaryNotes.value)
-    return anniversaryNotes.value
-  return notes.value
+  return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
 })
 
 function closeDropdownOnClickOutside(event: MouseEvent) {
@@ -191,12 +202,10 @@ function closeDropdownOnClickOutside(event: MouseEvent) {
 async function fetchAllTags() {
   if (!user.value?.id)
     return
-
   try {
     const { data, error } = await supabase.from('notes').select('content').eq('user_id', user.value.id)
     if (error)
       throw error
-
     const tagSet = new Set<string>()
     const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
     if (data) {
@@ -235,7 +244,6 @@ const debouncedSearch = debounce(async () => {
     const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).ilike('content', `%${searchQuery.value.trim()}%`).order('updated_at', { ascending: false }).limit(100)
     if (error)
       throw error
-
     notes.value = data || []
     hasMoreNotes.value = false
     hasPreviousNotes.value = false
@@ -252,16 +260,13 @@ watch(searchQuery, () => {
   debouncedSearch()
 })
 
-watch(content, async (val) => {
+watch(content, async (val, _oldVal) => {
+  // 增加对 isRestoringFromCache.value 的判断
   if (!isReady.value || isRestoringFromCache.value)
     return
-
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
-
-  else
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
-
+  else localStorage.removeItem(LOCAL_CONTENT_KEY)
   if (val.length > maxNoteLength) {
     content.value = val.slice(0, maxNoteLength)
     messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
@@ -271,10 +276,10 @@ watch(content, async (val) => {
     console.error('Auto-save: No valid session in authStore')
 })
 
+// [ADDED] 新函数：用于导出当前显示的笔记（即搜索结果）
 function handleExportResults() {
   if (isExporting.value)
     return
-
   isExporting.value = true
   messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
   try {
@@ -312,19 +317,19 @@ function handleExportResults() {
   }
 }
 
+// [ADDED] 新的调度函数，根据情况决定执行哪个导出逻辑
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
 
   else
-    handleBatchExport()
+    handleBatchExport() // 如果没有搜索词，依然执行导出全部的逻辑
 }
 
 async function handleBatchExport() {
   showDropdown.value = false
   if (isExporting.value)
     return
-
   if (!user.value?.id) {
     messageHook.error(t('auth.session_expired'))
     return
@@ -357,7 +362,6 @@ async function handleBatchExport() {
           let query = supabase.from('notes').select('content, created_at').eq('user_id', user.value!.id).order('created_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
-
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
@@ -366,7 +370,6 @@ async function handleBatchExport() {
           const { data, error } = await query
           if (error)
             throw error
-
           if (data && data.length > 0) {
             allNotes = allNotes.concat(data)
             page++
@@ -417,7 +420,6 @@ function addNoteToList(newNote: any) {
     cachedNotes.value.unshift(newNote)
     if (currentPage.value === 1 && showNotesList.value)
       notes.value = notes.value.slice(0, notesPerPage)
-
     totalNotes.value += 1
     hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
     hasPreviousNotes.value = currentPage.value > 1
@@ -436,13 +438,11 @@ function addNoteToList(newNote: any) {
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
-
   const newPinStatus = !note.is_pinned
   try {
     const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
-
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
     cachedPages.value.clear()
     await fetchNotes()
@@ -469,12 +469,12 @@ function updateNoteInList(updatedNote: any) {
   }
   nextTick()
 }
-
 async function fetchNotes() {
   if (!user.value)
     return
-
+  // if (!isNotesCached.value)
   isLoadingNotes.value = true
+
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
@@ -488,7 +488,6 @@ async function fetchNotes() {
 
     if (currentPage.value > 1)
       notes.value = [...notes.value, ...newNotes]
-
     else
       notes.value = newNotes
 
@@ -516,7 +515,6 @@ async function fetchNotes() {
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
-
   currentPage.value++
   await fetchNotes()
 }
@@ -524,7 +522,6 @@ async function nextPage() {
 function generateUniqueId() {
   return uuidv4()
 }
-
 async function toggleExpand(noteId: string) {
   if (expandedNote.value === noteId) {
     const noteElement = document.querySelector(`[data-note-id="${noteId}"]`)
@@ -537,15 +534,10 @@ async function toggleExpand(noteId: string) {
     expandedNote.value = noteId
   }
 }
-
 async function saveNote({ showMessage = false } = {}) {
-  if (!content.value.trim() || !user.value?.id) {
-    if (!content.value.trim() && showMessage)
-      messageHook.warning(t('notes.content_required'))
-
-    else if (!user.value?.id)
+  if (!content.value || !user.value?.id) {
+    if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (content.value.length > maxNoteLength) {
@@ -560,25 +552,35 @@ async function saveNote({ showMessage = false } = {}) {
   }
   let savedNote
   try {
-    const noteId = editingNote.value?.id || lastSavedId.value
-    if (noteId && editingNote.value) {
-      const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).select()
-      if (updateError || !updatedData?.length)
-        throw new Error(t('auth.update_failed'))
-
-      savedNote = updatedData[0]
-      updateNoteInList(savedNote)
+    const noteId = lastSavedId.value || editingNote.value?.id
+    if (noteId) {
+      const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).eq('user_id', user.value.id).single()
+      if (data && !error) {
+        const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).eq('user_id', user.value.id).select()
+        if (updateError || !updatedData?.length)
+          throw new Error(t('auth.update_failed'))
+        savedNote = updatedData[0]
+        updateNoteInList(savedNote)
+      }
+      else {
+        const newId = generateUniqueId()
+        const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
+        if (insertError || !insertedData?.length)
+          throw new Error(t('auth.insert_failed_create_note'))
+        savedNote = insertedData[0]
+        addNoteToList(savedNote)
+        lastSavedId.value = savedNote.id
+      }
     }
     else {
       const newId = generateUniqueId()
       const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
-
       savedNote = insertedData[0]
       addNoteToList(savedNote)
+      lastSavedId.value = savedNote.id
     }
-    lastSavedId.value = savedNote.id
     localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
     lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
       year: 'numeric',
@@ -588,7 +590,7 @@ async function saveNote({ showMessage = false } = {}) {
       minute: '2-digit',
     }).replace(/\//g, '.')
     if (showMessage)
-      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.create_success', '创建成功'))
+      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved', '保存成功'))
 
     if (savedNote)
       await fetchAllTags()
@@ -614,23 +616,42 @@ function handleHeaderClick() {
   if (notesListWrapperRef.value) {
     notesListWrapperRef.value.scrollTo({
       top: 0,
-      behavior: 'smooth',
+      behavior: 'smooth', // 使用 'smooth' 可以实现平滑的滚动效果
     })
   }
 }
 
 async function handleSubmit() {
   debouncedSaveNote.cancel()
-  loading.value = true
+
+  const timeout = setTimeout(() => {
+    messageHook.error(t('auth.session_expired_or_timeout'))
+    loading.value = false
+  }, 30000)
   try {
+    const { data, error } = await supabase.auth.getSession()
+    if (error || !data.session?.user) {
+      messageHook.error(t('auth.session_expired'))
+      clearTimeout(timeout)
+      return
+    }
+    if (!content.value) {
+      messageHook.warning(t('notes.content_required'))
+      clearTimeout(timeout)
+      return
+    }
+    loading.value = true
     const saved = await saveNote({ showMessage: true })
-    if (saved)
+    if (saved) {
       resetEditorAndState()
+      showEditorModal.value = false
+    }
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
   }
   finally {
+    clearTimeout(timeout)
     loading.value = false
   }
 }
@@ -638,19 +659,16 @@ async function handleSubmit() {
 function handleEdit(note: any) {
   if (!note?.id)
     return
-
   content.value = note.content
   editingNote.value = { ...note }
   lastSavedId.value = note.id
   localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
-
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  showEditorModal.value = true
 }
 
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
-
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -663,7 +681,6 @@ async function triggerDeleteConfirmation(id: string) {
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message || '删除失败')
-
         notes.value = notes.value.filter(note => note.id !== id)
         cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
@@ -738,7 +755,6 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
-
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
@@ -750,10 +766,10 @@ async function handleCopy(noteContent: string) {
 
 function handleAddNewNoteClick() {
   debouncedSaveNote.cancel()
-  if (editingNote.value || content.value)
+  if (editingNote.value)
     resetEditorAndState()
 
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  showEditorModal.value = true
 }
 
 function toggleSearchBar() {
@@ -777,37 +793,58 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
+function closeEditorModal() {
+  showEditorModal.value = false
+  debouncedSaveNote.cancel()
+}
+
+// --- [新增] 多选笔记相关方法 ---
+
+/**
+ * 切换笔记选择模式
+ */
 function toggleSelectionMode() {
   isSelectionModeActive.value = !isSelectionModeActive.value
+  // 退出选择模式时，清空已选中的笔记
   if (!isSelectionModeActive.value)
     selectedNoteIds.value = []
 
-  showDropdown.value = false
+  showDropdown.value = false // 点击后关闭菜单
 }
 
+/**
+ * 处理单个笔记的选中/取消选中
+ * @param {string} noteId - 被点击的笔记ID
+ */
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
-
   const index = selectedNoteIds.value.indexOf(noteId)
-  if (index > -1)
+  if (index > -1) {
+    // 如果已选中，则从数组中移除
     selectedNoteIds.value.splice(index, 1)
-
-  else
+  }
+  else {
+    // 如果未选中，则添加到数组
     selectedNoteIds.value.push(noteId)
+  }
 }
 
+/**
+ * 复制所有已选中的笔记内容
+ */
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
-
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
     await navigator.clipboard.writeText(textContent)
+    // [国际化]
     messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
   }
   catch (err) {
+    // [国际化]
     messageHook.error(t('notes.copy_error'))
   }
   finally {
@@ -816,18 +853,24 @@ async function handleCopySelected() {
   }
 }
 
+/**
+ * 删除所有已选中的笔记
+ */
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
 
+  // 第一次确认
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
     positiveText: t('dialog.confirm_button'),
     negativeText: t('dialog.cancel_button'),
     onPositiveClick: () => {
+      // 第二次确认（更强提示）
       dialog.warning({
         title: t('dialog.delete_note_title'),
+        // ⚠️ 这里必须用函数返回 VNode，而不是直接写 VNode
         content: () =>
           h('div', { style: 'line-height:1.6' }, [
             h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
@@ -849,6 +892,7 @@ async function handleDeleteSelected() {
             if (error)
               throw new Error(error.message)
 
+            // 前端状态更新
             notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
             cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
 
@@ -882,6 +926,7 @@ async function handleDeleteSelected() {
   })
 }
 
+// [新增] 处理汉堡菜单选项点击的函数
 function handleMainMenuSelect(key: string) {
   switch (key) {
     case 'toggleSelection':
@@ -912,13 +957,16 @@ function handleMainMenuSelect(key: string) {
             @select="handleMainMenuSelect"
           >
             <button class="header-action-btn" @click.stop>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
+              </svg>
             </button>
           </NDropdown>
         </div>
         <h1 class="page-title">
           {{ $t('notes.notes') }}
         </h1>
+
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">
             🔍
@@ -944,24 +992,9 @@ function handleMainMenuSelect(key: string) {
         </div>
       </Transition>
 
-      <NoteEditor
-        v-model="content"
-        :editing-note="editingNote"
-        :is-loading="loading"
-        :all-tags="allTags"
-        :max-note-length="maxNoteLength"
-        :last-saved-time="lastSavedTime"
-        @submit="handleSubmit"
-        @trigger-auto-save="debouncedSaveNote"
-      />
-
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div
-        v-if="showNotesList"
-        ref="notesListWrapperRef"
-        class="notes-list-wrapper"
-      >
+      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
         <NoteList
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
@@ -982,11 +1015,33 @@ function handleMainMenuSelect(key: string) {
       </div>
 
       <button v-if="!isSelectionModeActive" class="fab" @click="handleAddNewNoteClick">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M11 17h2v-4h4v-2h-4V7h-2v4H7v2h4v4Zm1 5q-2.075 0-3.9-.788t-3.175-2.137q-1.35-1.35-2.137-3.175T2 12q0-2.075.788-3.9t2.137-3.175q1.35-1.35 3.175-2.137T12 2q2.075 0 3.9.788t3.175 2.137q1.35 1.35 2.138 3.175T22 12q0 2.075-.788 3.9t-2.137 3.175q-1.35 1.35-3.175 2.138T12 22Zm0-2q3.35 0 5.675-2.325T20 12q0-3.35-2.325-5.675T12 4Q8.65 4 6.325 6.325T4 12q0 3.35 2.325 5.675T12 20Z" /></svg>
+        +
       </button>
 
+      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
+        <NoteEditor
+          v-model="content"
+          :editing-note="editingNote"
+          :is-loading="loading"
+          :all-tags="allTags"
+          :max-note-length="maxNoteLength"
+          :last-saved-time="lastSavedTime"
+          @submit="handleSubmit"
+          @trigger-auto-save="debouncedSaveNote"
+          @close="closeEditorModal"
+        />
+      </div>
+
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+
+      <AccountModal
+        :show="showAccountModal"
+        :email="user?.email"
+        :total-notes="totalNotes"
+        :user="user"
+        @close="showAccountModal = false"
+      />
+
       <Transition name="slide-up-fade">
         <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
           <div class="selection-info">
@@ -1010,12 +1065,171 @@ function handleMainMenuSelect(key: string) {
 </template>
 
 <style scoped>
+.auth-container {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 1rem 1.5rem 0.75rem 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative;
+}
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  position: relative;
+  height: 44px;
+}
+
+.page-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+.dark .page-title {
+    color: #f0f0f0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-action-btn {
+  font-size: 16px;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #555;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+.header-action-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+.dark .header-action-btn {
+  color: #bbb;
+}
+.dark .header-action-btn:hover {
+  background-color: rgba(255,255,255,0.1);
+}
+
+.close-page-btn {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 300;
+}
+
+.dropdown-menu-container {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border: 1px solid #eee;
+  padding: 0.5rem 0;
+  z-index: 100;
+  width: auto; /* 宽度自适应 */
+  min-width: 120px;
+}
+.dark .dropdown-menu {
+  background: #2c2c2e;
+  border-color: #444;
+}
+
+.dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+.dropdown-item:hover {
+  background-color: #f0f0f0;
+}
+.dark .dropdown-item:hover {
+  background-color: #3a3a3c;
+}
+
+.search-bar-container {
+  position: absolute;
+  top: 60px;
+  left: 6.5rem;
+  right: 6.5rem;
+  z-index: 5;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.search-bar-container > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.cancel-search-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+.dark .cancel-search-btn {
+  color: #bbb;
+}
+.cancel-search-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+.dark .cancel-search-btn:hover {
+  background-color: rgba(255,255,255,0.1);
+}
+
 .fab {
-  position: fixed;
+  position: absolute;
   bottom: 2.5rem;
-  right: 2.5rem;
-  width: 56px;
-  height: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background-color: #00b386;
   color: white;
@@ -1031,7 +1245,7 @@ function handleMainMenuSelect(key: string) {
   z-index: 10;
 }
 .fab:hover {
-  transform: scale(1.05);
+  transform: translateX(-50%) scale(1.05);
   background-color: #009a74;
 }
 .dark .fab {
@@ -1040,38 +1254,163 @@ function handleMainMenuSelect(key: string) {
 .dark .fab:hover {
     background-color: #00c291;
 }
-.auth-container { max-width: 480px; margin: 0 auto; padding: 0 1.5rem 0.75rem 1.5rem; background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100dvh; }
-.dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
-.page-header { flex-shrink: 0; padding: 0.75rem 0; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; position: relative; height: 44px; }
-.page-title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 22px; font-weight: 600; margin: 0; color: #333; }
-.dark .page-title { color: #f0f0f0; }
-.header-actions { display: flex; align-items: center; gap: 0.5rem; }
-.header-action-btn { font-size: 16px; background: none; border: none; padding: 4px; cursor: pointer; color: #555; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s ease; }
-.header-action-btn:hover { background-color: rgba(0,0,0,0.05); }
-.dark .header-action-btn { color: #bbb; }
-.dark .header-action-btn:hover { background-color: rgba(255,255,255,0.1); }
-.close-page-btn { font-size: 28px; line-height: 1; font-weight: 300; }
-.dropdown-menu-container { position: relative; }
-.search-bar-container { position: absolute; top: 60px; left: 6.5rem; right: 6.5rem; z-index: 5; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
-.search-bar-container > :first-child { flex: 1; min-width: 0; }
-.cancel-search-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0.5rem; border-radius: 6px; transition: background-color 0.2s ease; white-space: nowrap; }
-.dark .cancel-search-btn { color: #bbb; }
-.cancel-search-btn:hover { background-color: rgba(0,0,0,0.05); }
-.dark .cancel-search-btn:hover { background-color: rgba(255,255,255,0.1); }
-.slide-fade-enter-active, .slide-fade-leave-active { transition: all 0.3s ease-out; max-height: 100px; }
-.slide-fade-enter-from, .slide-fade-leave-to { opacity: 0; transform: translateY(-10px); max-height: 0; }
+
+.editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease-out;
+  max-height: 100px;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+  max-height: 0;
+}
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  padding-right: 2.5rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  color: #999;
+  padding: 0 0.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dark .clear-search-btn {
+  color: #777;
+}
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.auth-container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 1.5rem 0.75rem 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.page-header {
+  flex-shrink: 0;
+  padding: 0.75rem 0;
+}
+
 .notes-list-wrapper {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   margin-top: 0.5rem;
 }
-.selection-actions-popup { position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%); width: calc(100% - 3rem); max-width: 432px; background-color: #333; color: white; border-radius: 8px; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; z-index: 15; }
-.dark .selection-actions-popup { background-color: #444; }
-.selection-info { font-size: 14px; }
-.selection-buttons { display: flex; gap: 3rem; }
-.action-btn { background: none; border: none; color: white; font-size: 14px; cursor: pointer; font-weight: 500; padding: 0.25rem; }
-.action-btn.delete-btn { color: #ff5252; }
-.slide-up-fade-enter-active, .slide-up-fade-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
-.slide-up-fade-enter-from, .slide-up-fade-leave-to { opacity: 0; transform: translate(-50%, 20px); }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selection-actions-popup {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 3rem);
+  max-width: 432px;
+  background-color: #333;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  z-index: 15;
+}
+.dark .selection-actions-popup {
+  background-color: #444;
+}
+
+.selection-info {
+  font-size: 14px;
+}
+
+.selection-buttons {
+  display: flex;
+  gap: 3rem; /* 根据您的要求修改为 2rem */
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.25rem;
+}
+
+.action-btn.delete-btn {
+  color: #ff5252;
+}
+
+.slide-up-fade-enter-active,
+.slide-up-fade-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.slide-up-fade-enter-from,
+.slide-up-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
+}
 </style>

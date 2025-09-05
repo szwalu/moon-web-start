@@ -426,12 +426,4 @@ function handleNoteContentClick(event: MouseEvent) {
 .dark :deep(th) {
     background-color: #374151;
 }
-
-:deep(.prose) {
-  /* 强制浏览器在任意字符间断行，以防止长英文单词溢出 */
-  word-break: break-all;
-
-  /* 推荐：同时保留您在笔记中输入的回车换行 */
-  white-space: pre-wrap;
-}
 </style>
