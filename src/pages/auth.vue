@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
 import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import NoteItem from '@/components/NoteItem.vue'
-
 import NoteEditor from '@/components/NoteEditor.vue'
-
-// 引入全新textarea版本的编辑器
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
@@ -27,6 +24,9 @@ const router = useRouter()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
+
+const newNoteEditorContainerRef = ref(null)
+const noteContainers = ref({})
 
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
@@ -143,11 +143,16 @@ watch(newNoteContent, (val) => {
   }
 })
 
-function startEdit(note: any) {
+async function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
+
+  await nextTick()
+  const container = noteContainers.value[note.id]
+  if (container)
+    handleEditorFocus(container)
 }
 
 function cancelEdit() {
@@ -301,6 +306,12 @@ async function handleVisibilityChange() {
   }
 }
 
+function handleEditorFocus(containerEl: HTMLElement) {
+  setTimeout(() => {
+    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, 300)
+}
+
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
@@ -308,8 +319,133 @@ function handleExportTrigger() {
     handleBatchExport()
 }
 
-async function handleBatchExport() {}
-function handleExportResults() {}
+async function handleBatchExport() {
+  showDropdown.value = false
+  if (isExporting.value)
+    return
+  if (!user.value?.id) {
+    messageHook.error(t('auth.session_expired'))
+    return
+  }
+  const dialogDateRange = ref<[number, number] | null>(null)
+  dialog.info({
+    title: t('notes.export_confirm_title'),
+    content: () => h(NDatePicker, {
+      'value': dialogDateRange.value,
+      'type': 'daterange',
+      'clearable': true,
+      'placeholder': t('notes.select_date_range_placeholder'),
+      'class': 'dialog-date-picker',
+      'onUpdate:value': (newValue) => {
+        dialogDateRange.value = newValue
+      },
+    }),
+    positiveText: t('notes.confirm_export'),
+    negativeText: t('notes.cancel'),
+    onPositiveClick: async () => {
+      isExporting.value = true
+      messageHook.info(t('notes.export_preparing'), { duration: 5000 })
+      try {
+        const [startDate, endDate] = dialogDateRange.value || [null, null]
+        const BATCH_SIZE = 100
+        let allNotes: any[] = []
+        let page = 0
+        let hasMore = true
+        while (hasMore) {
+          let query = supabase.from('notes').select('content, created_at').eq('user_id', user.value!.id).order('created_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+          if (startDate)
+            query = query.gte('created_at', new Date(startDate).toISOString())
+          if (endDate) {
+            const endOfDay = new Date(endDate)
+            endOfDay.setHours(23, 59, 59, 999)
+            query = query.lte('created_at', endOfDay.toISOString())
+          }
+          const { data, error } = await query
+          if (error)
+            throw error
+          if (data && data.length > 0) {
+            allNotes = allNotes.concat(data)
+            page++
+          }
+          else {
+            hasMore = false
+          }
+          if (data && data.length < BATCH_SIZE)
+            hasMore = false
+        }
+        if (allNotes.length === 0) {
+          messageHook.warning(t('notes.no_notes_to_export_in_range'))
+          return
+        }
+        const textContent = allNotes.map((note) => {
+          const separator = '----------------------------------------'
+          const date = new Date(note.created_at).toLocaleString('zh-CN')
+          return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+        }).join('')
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        const datePart = startDate && endDate ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}` : 'all'
+        const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+        a.download = `notes_export_${datePart}_${timestamp}.txt`
+        document.body.appendChild(a)
+        a.click()
+        setTimeout(() => {
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 100)
+        messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
+      }
+      catch (error: any) {
+        messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
+      }
+      finally {
+        isExporting.value = false
+      }
+    },
+  })
+}
+function handleExportResults() {
+  if (isExporting.value)
+    return
+  isExporting.value = true
+  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
+  try {
+    const notesToExport = displayedNotes.value
+    if (!notesToExport || notesToExport.length === 0) {
+      messageHook.warning('没有可导出的搜索结果。')
+      return
+    }
+    const textContent = notesToExport.map((note: any) => {
+      const separator = '----------------------------------------'
+      const date = new Date(note.created_at).toLocaleString('zh-CN')
+      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+    }).join('')
+
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+    a.download = `notes_search_results_${timestamp}.txt`
+    document.body.appendChild(a)
+    a.click()
+
+    setTimeout(() => {
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }, 100)
+    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
+  }
+  catch (error: any) {
+    messageHook.error(`导出失败: ${error.message}`)
+  }
+  finally {
+    isExporting.value = false
+  }
+}
+
 function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
@@ -594,7 +730,7 @@ function handleMainMenuSelect(key: string) {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div class="new-note-editor-container">
+      <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           v-model="newNoteContent"
           :is-editing="false"
@@ -602,6 +738,7 @@ function handleMainMenuSelect(key: string) {
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.create_placeholder')"
           @save="handleCreateNote"
+          @focus="handleEditorFocus(newNoteEditorContainerRef)"
         />
       </div>
 
@@ -612,6 +749,7 @@ function handleMainMenuSelect(key: string) {
           <div
             v-for="note in displayedNotes"
             :key="note.id"
+            :ref="(el) => { if (el) noteContainers[note.id] = el }"
             class="note-container"
             :class="{ 'selection-mode': isSelectionModeActive }"
             @click.stop="isSelectionModeActive && handleToggleSelect(note.id)"
@@ -629,6 +767,7 @@ function handleMainMenuSelect(key: string) {
                 :placeholder="$t('notes.edit_placeholder')"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
+                @focus="handleEditorFocus(noteContainers[note.id])"
               />
               <NoteItem
                 v-else

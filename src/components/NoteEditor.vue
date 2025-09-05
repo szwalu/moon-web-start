@@ -2,6 +2,10 @@
 import { computed } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 
+import { useSettingStore } from '@/stores/setting'
+
+// 重新引入 setting store
+
 const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
@@ -12,12 +16,14 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus'])
 
+const settingsStore = useSettingStore() // 初始化 store
+
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 
-const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+const { textarea, input } = useTextareaAutosize({ input: contentModel })
 
 const charCount = computed(() => contentModel.value.length)
 
@@ -29,11 +35,6 @@ function handleSave() {
 function handleCancel() {
   emit('cancel')
 }
-
-// [核心修改] 暴露 triggerResize 方法给父组件
-defineExpose({
-  triggerResize,
-})
 </script>
 
 <template>
@@ -43,6 +44,7 @@ defineExpose({
         ref="textarea"
         v-model="input"
         class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
@@ -100,7 +102,6 @@ defineExpose({
   border: none;
   background-color: transparent;
   color: inherit;
-  font-size: 16px;
   line-height: 1.6;
   resize: none;
   outline: none;
@@ -108,6 +109,12 @@ defineExpose({
   font-family: inherit;
   transition: height 0.1s ease-out;
 }
+
+/* --- 新增：同步字体大小 --- */
+.editor-textarea.font-size-small { font-size: 14px; }
+.editor-textarea.font-size-medium { font-size: 16px; }
+.editor-textarea.font-size-large { font-size: 20px; }
+.editor-textarea.font-size-extra-large { font-size: 22px; }
 
 .editor-footer {
   display: flex;
