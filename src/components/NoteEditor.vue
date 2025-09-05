@@ -20,6 +20,10 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isComposing = ref(false)
 const isEditingInline = computed(() => !!props.editingNote)
 
+// —— 新增：输入法/键盘占用的底部偏移（px）
+const imeBottomOffset = ref(0)
+
+// content 双向绑定
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -36,6 +40,35 @@ const editorFontSizeClass = computed(() => {
   }
   return sizeMap[settingsStore.noteFontSize] || 'font-size-medium'
 })
+
+// —— 新增：保证“光标行”可见（考虑 IME / 保存按钮高度）
+function ensureCaretVisible() {
+  const el = textareaRef.value
+  if (!el)
+    return
+
+  const ACTIONS_HEIGHT = 52 // 与样式中 .editor-actions 的 min-height 保持一致
+  const desiredBottomPadding = imeBottomOffset.value + ACTIONS_HEIGHT + 16
+
+  const scrollTop = el.scrollTop
+  const viewHeight = el.clientHeight
+  const totalHeight = el.scrollHeight
+
+  // 用行高近似估算光标位置
+  const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight || '24')
+  const caretPos = el.selectionEnd || 0
+  const textUptoCaret = el.value.slice(0, caretPos)
+  const caretLines = (textUptoCaret.match(/\n/g)?.length ?? 0) + 1
+  const caretY = (caretLines - 1) * lineHeight
+
+  const viewportBottom = scrollTop + viewHeight
+  const targetBottom = caretY + lineHeight + desiredBottomPadding
+
+  if (targetBottom > viewportBottom)
+    el.scrollTop = Math.min(targetBottom - viewHeight, totalHeight - viewHeight)
+  else if (caretY < scrollTop)
+    el.scrollTop = Math.max(caretY - 8, 0)
+}
 
 function handleSubmit() {
   if (props.isLoading || !contentModel.value.trim())
@@ -56,6 +89,7 @@ function insertTag() {
       textareaRef.value.selectionStart = cursorPosition + 1
       textareaRef.value.selectionEnd = cursorPosition + 1
       textareaRef.value.focus()
+      ensureCaretVisible()
     }
   })
 }
@@ -75,15 +109,29 @@ function insertCheckbox() {
       textareaRef.value.selectionStart = newCursorPosition
       textareaRef.value.selectionEnd = newCursorPosition
       textareaRef.value.focus()
+      ensureCaretVisible()
     }
   })
 }
 
 let resizeObserver: ResizeObserver | null = null
 
+// —— 可视视口变化 → 计算 IME 高度；需在 onUnmounted 中用同一引用移除
+function updateImeOffsetFn() {
+  const vv = window.visualViewport
+  if (!vv) {
+    imeBottomOffset.value = 0
+    return
+  }
+  // 键盘高度 ≈ 窗口内高 - 可视高 - 可视顶部偏移
+  const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+  imeBottomOffset.value = keyboard > 80 ? Math.round(keyboard) : 0
+}
+
 onMounted(() => {
   if (textareaRef.value) {
     autosize(textareaRef.value)
+
     if (!isEditingInline.value) {
       textareaRef.value.focus()
     }
@@ -94,13 +142,18 @@ onMounted(() => {
       el.setSelectionRange(len, len)
     }
 
+    // 用“光标行”定位替代 scrollIntoView 底部滚动
     resizeObserver = new ResizeObserver(() => {
       if (document.activeElement === textareaRef.value)
-        textareaRef.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+        ensureCaretVisible()
     })
-
     resizeObserver.observe(textareaRef.value)
   }
+
+  // 监听 visualViewport 变化（IME / 键盘）
+  updateImeOffsetFn()
+  window.visualViewport?.addEventListener('resize', updateImeOffsetFn)
+  window.visualViewport?.addEventListener('scroll', updateImeOffsetFn)
 })
 
 onUnmounted(() => {
@@ -109,22 +162,33 @@ onUnmounted(() => {
 
   if (textareaRef.value)
     autosize.destroy(textareaRef.value)
+
+  window.visualViewport?.removeEventListener('resize', updateImeOffsetFn)
+  window.visualViewport?.removeEventListener('scroll', updateImeOffsetFn)
 })
 
-watch(() => props.editingNote?.id, (newId, oldId) => {
-  if (newId !== oldId && textareaRef.value) {
-    nextTick(() => {
-      if (textareaRef.value) {
-        autosize.update(textareaRef.value)
-        textareaRef.value.focus()
-      }
-    })
-  }
-})
+watch(
+  () => props.editingNote?.id,
+  (newId, oldId) => {
+    if (newId !== oldId && textareaRef.value) {
+      nextTick(() => {
+        if (textareaRef.value) {
+          autosize.update(textareaRef.value)
+          textareaRef.value.focus()
+          ensureCaretVisible()
+        }
+      })
+    }
+  },
+)
 </script>
 
 <template>
-  <div class="new-note-editor" :class="{ 'is-inline-editing': isEditingInline }">
+  <div
+    class="new-note-editor"
+    :class="{ 'is-inline-editing': isEditingInline }"
+    :style="{ '--ime-bottom': `${imeBottomOffset}px` }"
+  >
     <div class="editor-main">
       <textarea
         ref="textareaRef"
@@ -134,9 +198,12 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
         :class="editorFontSizeClass"
         rows="3"
         @compositionstart="isComposing = true"
-        @compositionend="isComposing = false"
+        @compositionend="() => { isComposing = false; ensureCaretVisible() }"
+        @input="ensureCaretVisible"
+        @focus="ensureCaretVisible"
       />
     </div>
+
     <div class="editor-actions">
       <div class="action-buttons">
         <button type="button" class="action-btn" title="插入标签" @click="insertTag">#</button>
@@ -164,21 +231,29 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
   flex-direction: column;
   overflow: hidden;
   margin-bottom: 1.5rem;
+
+  /* 防止被系统底部条覆盖（iOS 安全区） */
+  padding-bottom: env(safe-area-inset-bottom);
 }
+
 .is-inline-editing {
-    box-shadow: 0 6px 20px rgba(0, 100, 200, 0.12);
-    border: 1px solid #c0c0c0;
-    margin-top: 0;
-    margin-bottom: 0;
-    border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 100, 200, 0.12);
+  border: 1px solid #c0c0c0;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-radius: 8px;
 }
+
 .dark .new-note-editor {
   background-color: #2a2a2a;
   border-color: #444;
 }
+
 .editor-main {
   padding: 12px 16px 8px;
 }
+
+/* 文本域：滚动 + 底部留白（操作区 + IME + 安全区） */
 .editor-textarea {
   width: 100%;
   border: none;
@@ -191,31 +266,50 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
   color: #333;
   box-sizing: border-box;
   overflow-y: auto;
-  max-height: 50vh;
+
+  /* 键盘弹起时，视口变小 —— 用 dvh 更准确 */
+  max-height: calc(60dvh);
+
+  /* 底部留白：16px + IME 高度 + 安全区 + 操作区高度(52px) */
+  padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
+
+  /* 滚动定位的底部缓冲，配合 ensureCaretVisible/粘性操作区 */
+  scroll-padding-bottom: calc(16px + var(--ime-bottom, 0px) + env(safe-area-inset-bottom) + 52px);
 }
+
 .dark .editor-textarea {
   color: #f0f0f0;
 }
+
 .editor-textarea::placeholder {
   color: #999;
 }
 .dark .editor-textarea::placeholder {
   color: #777;
 }
+
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
+
+/* 操作区 sticky 在容器内部底部，不与系统状态栏/键盘打架 */
 .editor-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 12px 8px;
+  padding: 8px 12px;
   border-top: 1px solid #eee;
+  min-height: 52px;          /* —— 与脚本常量一致 */
+  position: sticky;
+  bottom: 0;
+  background: inherit;
+  z-index: 1;
 }
 .dark .editor-actions {
   border-top-color: #444;
 }
+
 .action-buttons {
   display: flex;
   gap: 8px;
@@ -240,6 +334,7 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
 .dark .action-btn:hover {
   background-color: #555;
 }
+
 .submit-btn {
   background-color: #333;
   color: white;
@@ -260,11 +355,11 @@ watch(() => props.editingNote?.id, (newId, oldId) => {
   opacity: 0.7;
 }
 .dark .submit-btn {
-    background-color: #f0f0f0;
-    color: #1a1a1a;
+  background-color: #f0f0f0;
+  color: #1a1a1a;
 }
 .dark .submit-btn:hover {
-    background-color: #fff;
+  background-color: #fff;
 }
 .dark .submit-btn:disabled {
   background-color: #4b5563;
