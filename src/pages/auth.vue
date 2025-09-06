@@ -736,7 +736,7 @@ function handleMainMenuSelect(key: string) {
           :is-editing="false"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.create_placeholder')"
+          :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
           @focus="handleEditorFocus(newNoteEditorContainerRef)"
