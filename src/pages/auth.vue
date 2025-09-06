@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
@@ -8,10 +7,13 @@ import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
-import NoteItem from '@/components/NoteItem.vue'
+import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
+
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
+
+// 1. 引入新组件
 import SettingsModal from '@/components/SettingsModal.vue'
 import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
@@ -25,9 +27,7 @@ const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
-const newNoteEditorContainerRef = ref(null)
-const noteContainers = ref({})
-
+const showEditorModal = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
@@ -35,15 +35,17 @@ const showSearchBar = ref(false)
 const dropdownContainerRef = ref(null)
 const notesListWrapperRef = ref<HTMLElement | null>(null)
 const user = computed(() => authStore.user)
-const isCreating = ref(false)
-const isUpdating = ref(false)
+const loading = ref(false)
+
+// --- 笔记相关状态 ---
 const notes = ref<any[]>([])
-const newNoteContent = ref('')
-const editingNoteId = ref<string | null>(null)
-const editingNoteContent = ref('')
+const content = ref('')
+const editingNote = ref<any>(null)
 const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
+const lastSavedId = ref<string | null>(null)
+const lastSavedTime = ref('')
 const currentPage = ref(1)
 const notesPerPage = 20
 const totalNotes = ref(0)
@@ -51,35 +53,50 @@ const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
 const maxNoteLength = 3000
 const isNotesCached = ref(false)
+const cachedNotes = ref<any[]>([])
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
+
+// [新增] 多选笔记相关状态
 const isSelectionModeActive = ref(false)
 const selectedNoteIds = ref<string[]>([])
+
+const isRestoringFromCache = ref(false)
+
+// --- 那年今日功能状态 ---
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
-const LOCAL_CONTENT_KEY = 'new_note_content_draft'
+
+const LOCAL_CONTENT_KEY = 'note_content'
+const LOCAL_NOTE_ID_KEY = 'note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
+
 let authListener: any = null
 
 const mainMenuOptions = computed(() => [
-  { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
-  { label: t('settings.font_title'), key: 'settings' },
-  { label: t('notes.export_all'), key: 'export' },
-  { label: t('auth.account_title'), key: 'account' },
+  {
+    label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'),
+    key: 'toggleSelection',
+  },
+  {
+    label: t('settings.font_title'),
+    key: 'settings',
+  },
+  {
+    label: t('notes.export_all'),
+    key: 'export',
+  },
+  {
+    label: t('auth.account_title'),
+    key: 'account',
+  },
 ])
 
-const handleScroll = debounce(() => {
-  const el = notesListWrapperRef.value
-  if (!el || isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
-    return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
-    nextPage()
-}, 200)
-
+// --- 核心认证逻辑 ---
 onMounted(() => {
   const cachedData = localStorage.getItem(CACHED_NOTES_KEY)
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -87,6 +104,7 @@ onMounted(() => {
     notes.value = JSON.parse(cachedData)
     isNotesCached.value = true
   }
+
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
       const currentUser = session?.user ?? null
@@ -102,126 +120,76 @@ onMounted(() => {
       else if (event === 'SIGNED_OUT') {
         notes.value = []
         allTags.value = []
-        newNoteContent.value = ''
-        cancelEdit()
+        content.value = ''
+        editingNote.value = null
         localStorage.removeItem(CACHED_NOTES_KEY)
-        localStorage.removeItem(LOCAL_CONTENT_KEY)
       }
     },
   )
   authListener = result.data.subscription
+
+  isRestoringFromCache.value = true
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
-    newNoteContent.value = savedContent
+    content.value = savedContent
+
+  const savedNoteId = localStorage.getItem(LOCAL_NOTE_ID_KEY)
+  if (savedNoteId)
+    lastSavedId.value = savedNoteId
 
   isReady.value = true
+
+  nextTick(() => {
+    isRestoringFromCache.value = false
+  })
 })
+
+const debouncedSaveNote = debounce(() => {
+  if (content.value && user.value?.id && !isRestoringFromCache.value)
+    saveNote({ showMessage: false })
+}, 12000)
 
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
+
   document.removeEventListener('click', closeDropdownOnClickOutside)
+  debouncedSaveNote.cancel()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.removeEventListener('scroll', handleScroll)
 })
 
-watch(notesListWrapperRef, (newEl, oldEl) => {
-  if (oldEl)
-    oldEl.removeEventListener('scroll', handleScroll)
-  if (newEl)
-    newEl.addEventListener('scroll', handleScroll)
-})
+// [新增] 当用户切回此标签页时，检查会话是否仍然有效
+async function handleVisibilityChange() {
+  // 只在页面变为可见时执行检查
+  if (document.visibilityState === 'visible') {
+    const { data, error } = await supabase.auth.getSession()
 
-watch(newNoteContent, (val) => {
-  if (isReady.value) {
-    if (val)
-      localStorage.setItem(LOCAL_CONTENT_KEY, val)
+    // 如果会话已失效 (没有 session 或获取时出错) 并且 Pinia/Vuex 状态仍然认为用户在线
+    if ((!data.session || error) && authStore.user) {
+      messageHook.warning(t('auth.session_expired_relogin')) // 提示用户会话已过期
 
-    else
+      // 重置认证状态
+      authStore.user = null
+
+      // 清理本地数据
+      notes.value = []
+      allTags.value = []
+      content.value = ''
+      editingNote.value = null
+      localStorage.removeItem(CACHED_NOTES_KEY)
       localStorage.removeItem(LOCAL_CONTENT_KEY)
-  }
-})
+      localStorage.removeItem(LOCAL_NOTE_ID_KEY)
 
-async function startEdit(note: any) {
-  if (editingNoteId.value)
-    cancelEdit()
-  editingNoteId.value = note.id
-  editingNoteContent.value = note.content
-
-  await nextTick()
-  const container = noteContainers.value[note.id]
-  if (container)
-    handleEditorFocus(container)
-}
-
-function cancelEdit() {
-  editingNoteId.value = null
-  editingNoteContent.value = ''
-}
-
-async function handleCreateNote(content: string) {
-  isCreating.value = true
-  const saved = await saveNote(content, null, { showMessage: true })
-  if (saved) {
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
-    newNoteContent.value = ''
-  }
-  isCreating.value = false
-}
-
-async function handleUpdateNote(content: string) {
-  if (!editingNoteId.value)
-    return
-  isUpdating.value = true
-  const saved = await saveNote(content, editingNoteId.value, { showMessage: true })
-  if (saved)
-    cancelEdit()
-
-  isUpdating.value = false
-}
-
-async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { showMessage = false } = {}) {
-  if (!contentToSave.trim() || !user.value?.id) {
-    if (!user.value?.id)
-      messageHook.error(t('auth.session_expired'))
-    return null
-  }
-  if (contentToSave.length > maxNoteLength) {
-    messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
-    return null
-  }
-  const noteData = { content: contentToSave.trim(), updated_at: new Date().toISOString(), user_id: user.value.id }
-  let savedNote
-  try {
-    if (noteIdToUpdate) {
-      const { data: updatedData, error: updateError } = await supabase.from('notes').update(noteData).eq('id', noteIdToUpdate).eq('user_id', user.value.id).select()
-      if (updateError || !updatedData?.length)
-        throw new Error(t('auth.update_failed'))
-      savedNote = updatedData[0]
-      updateNoteInList(savedNote)
-      if (showMessage)
-        messageHook.success(t('notes.update_success'))
+      // 如果有 Authentication 组件或登录页，可以强制跳转
+      // 这里的逻辑取决于你的路由设置，如果没有 Authentication 组件在当前页面，
+      // 你可能需要用 router.push('/login') 跳转到登录页。
+      // 由于你的 auth.vue 包含了 <Authentication /> 组件，
+      // 所以理论上重置 authStore.user 就会自动显示登录界面。
     }
-    else {
-      const newId = generateUniqueId()
-      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...noteData, id: newId }).select()
-      if (insertError || !insertedData?.length)
-        throw new Error(t('auth.insert_failed_create_note'))
-      savedNote = insertedData[0]
-      addNoteToList(savedNote)
-      if (showMessage)
-        messageHook.success(t('notes.save_success'))
-    }
-    await fetchAllTags()
-    return savedNote
-  }
-  catch (error: any) {
-    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
-    return null
   }
 }
 
+// --- 笔记相关方法 ---
 const displayedNotes = computed(() => {
   return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
 })
@@ -263,12 +231,14 @@ const debouncedSearch = debounce(async () => {
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
+
   if (!searchQuery.value.trim()) {
     currentPage.value = 1
     cachedPages.value.clear()
     await fetchNotes()
     return
   }
+
   isLoadingNotes.value = true
   try {
     const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).ilike('content', `%${searchQuery.value.trim()}%`).order('updated_at', { ascending: false }).limit(100)
@@ -290,33 +260,70 @@ watch(searchQuery, () => {
   debouncedSearch()
 })
 
-async function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    const { data, error } = await supabase.auth.getSession()
-    if ((!data.session || error) && authStore.user) {
-      messageHook.warning(t('auth.session_expired_relogin'))
-      authStore.user = null
-      notes.value = []
-      allTags.value = []
-      newNoteContent.value = ''
-      cancelEdit()
-      localStorage.removeItem(CACHED_NOTES_KEY)
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
+watch(content, async (val, _oldVal) => {
+  // 增加对 isRestoringFromCache.value 的判断
+  if (!isReady.value || isRestoringFromCache.value)
+    return
+  if (val)
+    localStorage.setItem(LOCAL_CONTENT_KEY, val)
+  else localStorage.removeItem(LOCAL_CONTENT_KEY)
+  if (val.length > maxNoteLength) {
+    content.value = val.slice(0, maxNoteLength)
+    messageHook.warning(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return
+  }
+  if (!authStore.user)
+    console.error('Auto-save: No valid session in authStore')
+})
+
+// [ADDED] 新函数：用于导出当前显示的笔记（即搜索结果）
+function handleExportResults() {
+  if (isExporting.value)
+    return
+  isExporting.value = true
+  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
+  try {
+    const notesToExport = displayedNotes.value
+    if (!notesToExport || notesToExport.length === 0) {
+      messageHook.warning('没有可导出的搜索结果。')
+      return
     }
+    const textContent = notesToExport.map((note: any) => {
+      const separator = '----------------------------------------'
+      const date = new Date(note.created_at).toLocaleString('zh-CN')
+      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+    }).join('')
+
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+    a.download = `notes_search_results_${timestamp}.txt`
+    document.body.appendChild(a)
+    a.click()
+
+    setTimeout(() => {
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }, 100)
+    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
+  }
+  catch (error: any) {
+    messageHook.error(`导出失败: ${error.message}`)
+  }
+  finally {
+    isExporting.value = false
   }
 }
 
-function handleEditorFocus(containerEl: HTMLElement) {
-  setTimeout(() => {
-    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 300)
-}
-
+// [ADDED] 新的调度函数，根据情况决定执行哪个导出逻辑
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
+
   else
-    handleBatchExport()
+    handleBatchExport() // 如果没有搜索词，依然执行导出全部的逻辑
 }
 
 async function handleBatchExport() {
@@ -406,50 +413,25 @@ async function handleBatchExport() {
     },
   })
 }
-function handleExportResults() {
-  if (isExporting.value)
-    return
-  isExporting.value = true
-  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
-  try {
-    const notesToExport = displayedNotes.value
-    if (!notesToExport || notesToExport.length === 0) {
-      messageHook.warning('没有可导出的搜索结果。')
-      return
-    }
-    const textContent = notesToExport.map((note: any) => {
-      const separator = '----------------------------------------'
-      const date = new Date(note.created_at).toLocaleString('zh-CN')
-      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-    }).join('')
-
-    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-    a.download = `notes_search_results_${timestamp}.txt`
-    document.body.appendChild(a)
-    a.click()
-
-    setTimeout(() => {
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }, 100)
-    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
-  }
-  catch (error: any) {
-    messageHook.error(`导出失败: ${error.message}`)
-  }
-  finally {
-    isExporting.value = false
-  }
-}
 
 function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
+    cachedNotes.value.unshift(newNote)
+    if (currentPage.value === 1 && showNotesList.value)
+      notes.value = notes.value.slice(0, notesPerPage)
     totalNotes.value += 1
+    hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+    hasPreviousNotes.value = currentPage.value > 1
+    if (!searchQuery.value) {
+      cachedPages.value.set(currentPage.value, {
+        totalNotes: totalNotes.value,
+        hasMoreNotes: hasMoreNotes.value,
+        hasPreviousNotes: hasPreviousNotes.value,
+        notes: notes.value.slice(),
+      })
+    }
+    nextTick()
   }
 }
 
@@ -462,6 +444,7 @@ async function handlePinToggle(note: any) {
     if (error)
       throw error
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+    cachedPages.value.clear()
     await fetchNotes()
   }
   catch (err: any) {
@@ -470,38 +453,65 @@ async function handlePinToggle(note: any) {
 }
 
 function updateNoteInList(updatedNote: any) {
-  const index = notes.value.findIndex(n => n.id === updatedNote.id)
-  if (index !== -1) {
-    notes.value[index] = { ...updatedNote }
-    notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+  const updateInArray = (arr: any[]) => {
+    const index = arr.findIndex(n => n.id === updatedNote.id)
+    if (index !== -1)
+      arr[index] = { ...updatedNote }
   }
+  updateInArray(notes.value)
+  updateInArray(cachedNotes.value)
+  if (!searchQuery.value) {
+    const cachedPage = cachedPages.value.get(currentPage.value)
+    if (cachedPage) {
+      updateInArray(cachedPage.notes)
+      cachedPages.value.set(currentPage.value, { ...cachedPage })
+    }
+  }
+  nextTick()
 }
-
 async function fetchNotes() {
   if (!user.value)
     return
+  // if (!isNotesCached.value)
   isLoadingNotes.value = true
+
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
     const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
-    if (error)
-      throw error
+    if (error) {
+      messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
+      return
+    }
     const newNotes = data || []
     totalNotes.value = count || 0
-    notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+
+    if (currentPage.value > 1)
+      notes.value = [...notes.value, ...newNotes]
+    else
+      notes.value = newNotes
+
     if (currentPage.value === 1 && newNotes.length > 0)
       localStorage.setItem(CACHED_NOTES_KEY, JSON.stringify(newNotes))
+
     hasMoreNotes.value = to + 1 < totalNotes.value
+    hasPreviousNotes.value = currentPage.value > 1
+    cachedPages.value.set(currentPage.value, {
+      totalNotes: totalNotes.value,
+      hasMoreNotes: hasMoreNotes.value,
+      hasPreviousNotes: hasPreviousNotes.value,
+      notes: notes.value.slice(),
+    })
+    isNotesCached.value = true
   }
   catch (err) {
     messageHook.error(t('notes.fetch_error'))
   }
   finally {
     isLoadingNotes.value = false
+    nextTick()
   }
 }
-
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
@@ -512,20 +522,148 @@ async function nextPage() {
 function generateUniqueId() {
   return uuidv4()
 }
-
 async function toggleExpand(noteId: string) {
-  if (editingNoteId.value === noteId)
-    return
-  if (expandedNote.value === noteId)
+  if (expandedNote.value === noteId) {
+    const noteElement = document.querySelector(`[data-note-id="${noteId}"]`)
     expandedNote.value = null
-
-  else
+    await nextTick()
+    if (noteElement)
+      noteElement.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }
+  else {
     expandedNote.value = noteId
+  }
+}
+async function saveNote({ showMessage = false } = {}) {
+  if (!content.value || !user.value?.id) {
+    if (!user.value?.id)
+      messageHook.error(t('auth.session_expired'))
+    return null
+  }
+  if (content.value.length > maxNoteLength) {
+    messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
+    return null
+  }
+  const now = Date.now()
+  const note = {
+    content: content.value.trim(),
+    updated_at: new Date().toISOString(),
+    user_id: user.value.id,
+  }
+  let savedNote
+  try {
+    const noteId = lastSavedId.value || editingNote.value?.id
+    if (noteId) {
+      const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).eq('user_id', user.value.id).single()
+      if (data && !error) {
+        const { data: updatedData, error: updateError } = await supabase.from('notes').update(note).eq('id', noteId).eq('user_id', user.value.id).select()
+        if (updateError || !updatedData?.length)
+          throw new Error(t('auth.update_failed'))
+        savedNote = updatedData[0]
+        updateNoteInList(savedNote)
+      }
+      else {
+        const newId = generateUniqueId()
+        const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
+        if (insertError || !insertedData?.length)
+          throw new Error(t('auth.insert_failed_create_note'))
+        savedNote = insertedData[0]
+        addNoteToList(savedNote)
+        lastSavedId.value = savedNote.id
+      }
+    }
+    else {
+      const newId = generateUniqueId()
+      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...note, id: newId }).select()
+      if (insertError || !insertedData?.length)
+        throw new Error(t('auth.insert_failed_create_note'))
+      savedNote = insertedData[0]
+      addNoteToList(savedNote)
+      lastSavedId.value = savedNote.id
+    }
+    localStorage.setItem(LOCAL_NOTE_ID_KEY, savedNote.id)
+    lastSavedTime.value = new Date(now).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).replace(/\//g, '.')
+    if (showMessage)
+      messageHook.success(editingNote.value ? t('notes.update_success') : t('notes.auto_saved', '保存成功'))
+
+    if (savedNote)
+      await fetchAllTags()
+
+    return savedNote
+  }
+  catch (error: any) {
+    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
+    return null
+  }
+}
+
+function resetEditorAndState() {
+  content.value = ''
+  editingNote.value = null
+  lastSavedId.value = null
+  lastSavedTime.value = ''
+  localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+  localStorage.removeItem(LOCAL_CONTENT_KEY)
 }
 
 function handleHeaderClick() {
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+  if (notesListWrapperRef.value) {
+    notesListWrapperRef.value.scrollTo({
+      top: 0,
+      behavior: 'smooth', // 使用 'smooth' 可以实现平滑的滚动效果
+    })
+  }
+}
+
+async function handleSubmit() {
+  debouncedSaveNote.cancel()
+
+  const timeout = setTimeout(() => {
+    messageHook.error(t('auth.session_expired_or_timeout'))
+    loading.value = false
+  }, 30000)
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    if (error || !data.session?.user) {
+      messageHook.error(t('auth.session_expired'))
+      clearTimeout(timeout)
+      return
+    }
+    if (!content.value) {
+      messageHook.warning(t('notes.content_required'))
+      clearTimeout(timeout)
+      return
+    }
+    loading.value = true
+    const saved = await saveNote({ showMessage: true })
+    if (saved) {
+      resetEditorAndState()
+      showEditorModal.value = false
+    }
+  }
+  catch (err: any) {
+    messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
+  }
+  finally {
+    clearTimeout(timeout)
+    loading.value = false
+  }
+}
+
+function handleEdit(note: any) {
+  if (!note?.id)
+    return
+  content.value = note.content
+  editingNote.value = { ...note }
+  lastSavedId.value = note.id
+  localStorage.setItem(LOCAL_NOTE_ID_KEY, note.id)
+  showEditorModal.value = true
 }
 
 async function triggerDeleteConfirmation(id: string) {
@@ -537,18 +675,42 @@ async function triggerDeleteConfirmation(id: string) {
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
+      debouncedSaveNote.cancel()
       try {
+        loading.value = true
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
-          throw new Error(error.message)
+          throw new Error(error.message || '删除失败')
         notes.value = notes.value.filter(note => note.id !== id)
+        cachedNotes.value = cachedNotes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
+        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+        hasPreviousNotes.value = currentPage.value > 1
+        if (cachedPages.value.has(currentPage.value)) {
+          const pageData = cachedPages.value.get(currentPage.value)
+          if (pageData) {
+            cachedPages.value.set(currentPage.value, {
+              ...pageData,
+              totalNotes: totalNotes.value,
+              hasMoreNotes: hasMoreNotes.value,
+              hasPreviousNotes: hasPreviousNotes.value,
+              notes: notes.value.filter(n => n.id !== id),
+            })
+          }
+        }
+        if (id === lastSavedId.value) {
+          content.value = ''
+          lastSavedId.value = null
+          editingNote.value = null
+          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+        }
         messageHook.success(t('notes.delete_success'))
-        if (editingNoteId.value === id)
-          cancelEdit()
       }
       catch (err: any) {
         messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+      }
+      finally {
+        loading.value = false
       }
     },
   })
@@ -558,6 +720,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
+
   const originalContent = noteToUpdate.content
   try {
     const lines = originalContent.split('\n')
@@ -566,13 +729,21 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
       if (line.trim().match(/^-\s\[( |x)\]/))
         taskLineIndexes.push(index)
     })
+
     if (itemIndex < taskLineIndexes.length) {
       const lineIndexToChange = taskLineIndexes[itemIndex]
       const lineContent = lines[lineIndexToChange]
-      lines[lineIndexToChange] = lineContent.includes('[ ]') ? lineContent.replace('[ ]', '[x]') : lineContent.replace('[x]', '[ ]')
+      lines[lineIndexToChange] = lineContent.includes('[ ]')
+        ? lineContent.replace('[ ]', '[x]')
+        : lineContent.replace('[x]', '[ ]')
+
       const newContent = lines.join('\n')
       noteToUpdate.content = newContent
-      await supabase.from('notes').update({ content: newContent, updated_at: new Date().toISOString() }).eq('id', noteId).eq('user_id', user.value!.id)
+      await supabase
+        .from('notes')
+        .update({ content: newContent, updated_at: new Date().toISOString() })
+        .eq('id', noteId)
+        .eq('user_id', user.value!.id)
     }
   }
   catch (err: any) {
@@ -591,6 +762,14 @@ async function handleCopy(noteContent: string) {
   catch (err) {
     messageHook.error(t('notes.copy_error'))
   }
+}
+
+function handleAddNewNoteClick() {
+  debouncedSaveNote.cancel()
+  if (editingNote.value)
+    resetEditorAndState()
+
+  showEditorModal.value = true
 }
 
 function toggleSearchBar() {
@@ -614,25 +793,46 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
+function closeEditorModal() {
+  showEditorModal.value = false
+  debouncedSaveNote.cancel()
+}
+
+// --- [新增] 多选笔记相关方法 ---
+
+/**
+ * 切换笔记选择模式
+ */
 function toggleSelectionMode() {
   isSelectionModeActive.value = !isSelectionModeActive.value
+  // 退出选择模式时，清空已选中的笔记
   if (!isSelectionModeActive.value)
     selectedNoteIds.value = []
 
-  showDropdown.value = false
+  showDropdown.value = false // 点击后关闭菜单
 }
 
+/**
+ * 处理单个笔记的选中/取消选中
+ * @param {string} noteId - 被点击的笔记ID
+ */
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
   const index = selectedNoteIds.value.indexOf(noteId)
-  if (index > -1)
+  if (index > -1) {
+    // 如果已选中，则从数组中移除
     selectedNoteIds.value.splice(index, 1)
-
-  else
+  }
+  else {
+    // 如果未选中，则添加到数组
     selectedNoteIds.value.push(noteId)
+  }
 }
 
+/**
+ * 复制所有已选中的笔记内容
+ */
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
@@ -640,9 +840,11 @@ async function handleCopySelected() {
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
     await navigator.clipboard.writeText(textContent)
+    // [国际化]
     messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
   }
   catch (err) {
+    // [国际化]
     messageHook.error(t('notes.copy_error'))
   }
   finally {
@@ -651,33 +853,80 @@ async function handleCopySelected() {
   }
 }
 
+/**
+ * 删除所有已选中的笔记
+ */
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
+  // 第一次确认
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
     positiveText: t('dialog.confirm_button'),
     negativeText: t('dialog.cancel_button'),
     onPositiveClick: () => {
-      try {
-        const idsToDelete = [...selectedNoteIds.value]
-        if (editingNoteId.value && idsToDelete.includes(editingNoteId.value))
-          cancelEdit()
+      // 第二次确认（更强提示）
+      dialog.warning({
+        title: t('dialog.delete_note_title'),
+        // ⚠️ 这里必须用函数返回 VNode，而不是直接写 VNode
+        content: () =>
+          h('div', { style: 'line-height:1.6' }, [
+            h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
+            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
+          ]),
+        positiveText: t('notes.confirm_delete'),
+        negativeText: t('notes.cancel'),
+        onPositiveClick: async () => {
+          try {
+            loading.value = true
+            const idsToDelete = [...selectedNoteIds.value]
 
-        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
-      }
-      catch (err) {
-        // error handling
-      }
-      finally {
-        isSelectionModeActive.value = false
-        selectedNoteIds.value = []
-      }
+            const { error } = await supabase
+              .from('notes')
+              .delete()
+              .in('id', idsToDelete)
+              .eq('user_id', user.value!.id)
+
+            if (error)
+              throw new Error(error.message)
+
+            // 前端状态更新
+            notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
+            cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
+
+            if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+              content.value = ''
+              lastSavedId.value = null
+              editingNote.value = null
+              localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+              localStorage.removeItem(LOCAL_CONTENT_KEY)
+            }
+
+            totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
+            hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+            hasPreviousNotes.value = currentPage.value > 1
+            cachedPages.value.clear()
+
+            isSelectionModeActive.value = false
+            selectedNoteIds.value = []
+
+            messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+          }
+          catch (err: any) {
+            messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
+          }
+          finally {
+            loading.value = false
+          }
+        },
+      })
     },
   })
 }
 
+// [新增] 处理汉堡菜单选项点击的函数
 function handleMainMenuSelect(key: string) {
   switch (key) {
     case 'toggleSelection':
@@ -714,91 +963,97 @@ function handleMainMenuSelect(key: string) {
             </button>
           </NDropdown>
         </div>
-        <h1 class="page-title">{{ $t('notes.notes') }}</h1>
+        <h1 class="page-title">
+          {{ $t('notes.notes') }}
+        </h1>
+
         <div class="header-actions">
-          <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <button class="header-action-btn close-page-btn" @click.stop="router.push('/')">×</button>
+          <button class="header-action-btn" @click.stop="toggleSearchBar">
+            🔍
+          </button>
+          <button class="header-action-btn close-page-btn" @click.stop="router.push('/')">
+            ×
+          </button>
         </div>
       </div>
 
       <Transition name="slide-fade">
         <div v-if="showSearchBar" class="search-bar-container">
-          <NoteActions v-model="searchQuery" :all-tags="allTags" :is-exporting="isExporting" :search-query="searchQuery" @export="handleExportTrigger" />
-          <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
+          <NoteActions
+            v-model="searchQuery"
+            :all-tags="allTags"
+            :is-exporting="isExporting"
+            :search-query="searchQuery"
+            @export="handleExportTrigger"
+          />
+          <button class="cancel-search-btn" @click="handleCancelSearch">
+            {{ $t('notes.cancel') }}
+          </button>
         </div>
       </Transition>
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
-        <NoteEditor
-          v-model="newNoteContent"
-          :is-editing="false"
-          :is-loading="isCreating"
-          :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.content_placeholder')"
-          :all-tags="allTags"
-          @save="handleCreateNote"
-          @focus="handleEditorFocus(newNoteEditorContainerRef)"
-          @height-change="handleEditorFocus(newNoteEditorContainerRef)"
+      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
+        <NoteList
+          :notes="displayedNotes"
+          :is-loading="isLoadingNotes"
+          :expanded-note-id="expandedNote"
+          :has-more="!isAnniversaryViewActive && hasMoreNotes"
+          :scroll-container="notesListWrapperRef"
+          :is-selection-mode-active="isSelectionModeActive"
+          :selected-note-ids="selectedNoteIds"
+          @load-more="nextPage"
+          @toggle-expand="toggleExpand"
+          @edit="handleEdit"
+          @copy="handleCopy"
+          @pin="handlePinToggle"
+          @delete="triggerDeleteConfirmation"
+          @task-toggle="handleNoteContentClick"
+          @toggle-select="handleToggleSelect"
         />
       </div>
 
-      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
-        <div v-if="isLoadingNotes && notes.length === 0" class="notes-list-message">{{ t('notes.loading') }}</div>
-        <div v-else-if="notes.length === 0" class="notes-list-message">{{ t('notes.no_notes') }}</div>
-        <div v-else class="notes-list-content">
-          <div
-            v-for="note in displayedNotes"
-            :key="note.id"
-            :ref="(el) => { if (el) noteContainers[note.id] = el }"
-            class="note-container"
-            :class="{ 'selection-mode': isSelectionModeActive }"
-            @click.stop="isSelectionModeActive && handleToggleSelect(note.id)"
-          >
-            <div v-if="isSelectionModeActive" class="selection-indicator">
-              <div class="selection-circle" :class="{ selected: selectedNoteIds.includes(note.id) }" />
-            </div>
-            <div class="note-item-wrapper">
-              <NoteEditor
-                v-if="editingNoteId === note.id"
-                v-model="editingNoteContent"
-                :is-editing="true"
-                :is-loading="isUpdating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.edit_placeholder')"
-                :all-tags="allTags"
-                @save="handleUpdateNote"
-                @cancel="cancelEdit"
-                @focus="handleEditorFocus(noteContainers[note.id])"
-                @height-change="handleEditorFocus(noteContainers[note.id])"
-              />
-              <NoteItem
-                v-else
-                :note="note"
-                :is-expanded="expandedNote === note.id"
-                :is-selection-mode-active="isSelectionModeActive"
-                @toggle-expand="toggleExpand"
-                @edit="startEdit"
-                @copy="handleCopy"
-                @pin="handlePinToggle"
-                @delete="triggerDeleteConfirmation"
-                @task-toggle="handleNoteContentClick"
-              />
-            </div>
-          </div>
-          <div v-if="isLoadingNotes && notes.length > 0" class="notes-list-message">{{ t('notes.loading') }}</div>
-        </div>
+      <button v-if="!isSelectionModeActive" class="fab" @click="handleAddNewNoteClick">
+        +
+      </button>
+
+      <div v-if="showEditorModal" class="editor-overlay" @click.self="closeEditorModal">
+        <NoteEditor
+          v-model="content"
+          :editing-note="editingNote"
+          :is-loading="loading"
+          :all-tags="allTags"
+          :max-note-length="maxNoteLength"
+          :last-saved-time="lastSavedTime"
+          @submit="handleSubmit"
+          @trigger-auto-save="debouncedSaveNote"
+          @close="closeEditorModal"
+        />
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+
+      <AccountModal
+        :show="showAccountModal"
+        :email="user?.email"
+        :total-notes="totalNotes"
+        :user="user"
+        @close="showAccountModal = false"
+      />
+
       <Transition name="slide-up-fade">
         <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
-          <div class="selection-info">{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</div>
+          <div class="selection-info">
+            {{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}
+          </div>
           <div class="selection-buttons">
-            <button class="action-btn copy-btn" @click="handleCopySelected">{{ $t('notes.copy') }}</button>
-            <button class="action-btn delete-btn" @click="handleDeleteSelected">{{ $t('notes.delete') }}</button>
+            <button class="action-btn copy-btn" @click="handleCopySelected">
+              {{ $t('notes.copy') }}
+            </button>
+            <button class="action-btn delete-btn" @click="handleDeleteSelected">
+              {{ $t('notes.delete') }}
+            </button>
           </div>
         </div>
       </Transition>
@@ -810,84 +1065,18 @@ function handleMainMenuSelect(key: string) {
 </template>
 
 <style scoped>
-/* Scoped 样式与上一版完全相同，无需改动 */
-.new-note-editor-container {
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-  flex-shrink: 0;
-}
-
-.notes-list-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-.notes-list-message {
-    text-align: center;
-    color: #888;
-    padding: 2rem;
-}
-.note-container {
-  display: flex;
-  gap: 0.75rem;
-  transition: background-color 0.2s;
-}
-.note-container.selection-mode {
-  cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem;
-  border-radius: 8px;
-}
-.note-container.selection-mode:hover {
-  background-color: rgba(0, 0, 0, 0.03);
-}
-.dark .note-container.selection-mode:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-.note-item-wrapper {
-  flex: 1;
-  min-width: 0;
-}
-.selection-indicator {
-  padding-top: 0.75rem;
-}
-.selection-circle {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid #ccc;
-  transition: all 0.2s ease;
-}
-.dark .selection-circle {
-  border-color: #555;
-}
-.selection-circle.selected {
-  background-color: #00b386;
-  border-color: #00b386;
-  position: relative;
-}
-.selection-circle.selected::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
 .auth-container {
   max-width: 480px;
-  margin: 0 auto;
-  padding: 0 1.5rem 0.75rem 1.5rem;
+  margin: 2rem auto;
+  padding: 1rem 1.5rem 0.75rem 1.5rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
   font-family: system-ui, sans-serif;
-  display: flex;
-  flex-direction: column;
-  height: 110dvh;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -896,20 +1085,12 @@ function handleMainMenuSelect(key: string) {
 }
 
 .page-header {
-  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.75rem;
   position: relative;
   height: 44px;
-  padding-top: 0.75rem;
-}
-
-.notes-list-wrapper {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  margin-top: 0.5rem;
 }
 
 .page-title {
@@ -920,15 +1101,18 @@ function handleMainMenuSelect(key: string) {
   font-size: 22px;
   font-weight: 600;
   margin: 0;
+  color: #333;
 }
 .dark .page-title {
     color: #f0f0f0;
 }
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
+
 .header-action-btn {
   font-size: 16px;
   background: none;
@@ -951,14 +1135,234 @@ function handleMainMenuSelect(key: string) {
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
 }
+
 .close-page-btn {
   font-size: 28px;
   line-height: 1;
   font-weight: 300;
 }
-.selection-actions-popup {
+
+.dropdown-menu-container {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border: 1px solid #eee;
+  padding: 0.5rem 0;
+  z-index: 100;
+  width: auto; /* 宽度自适应 */
+  min-width: 120px;
+}
+.dark .dropdown-menu {
+  background: #2c2c2e;
+  border-color: #444;
+}
+
+.dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+.dropdown-item:hover {
+  background-color: #f0f0f0;
+}
+.dark .dropdown-item:hover {
+  background-color: #3a3a3c;
+}
+
+.search-bar-container {
+  position: absolute;
+  top: 60px;
+  left: 6.5rem;
+  right: 6.5rem;
+  z-index: 5;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.search-bar-container > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.cancel-search-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+.dark .cancel-search-btn {
+  color: #bbb;
+}
+.cancel-search-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+.dark .cancel-search-btn:hover {
+  background-color: rgba(255,255,255,0.1);
+}
+
+.fab {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #00b386;
+  color: white;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+.fab:hover {
+  transform: translateX(-50%) scale(1.05);
+  background-color: #009a74;
+}
+.dark .fab {
+    background-color: #00b386;
+}
+.dark .fab:hover {
+    background-color: #00c291;
+}
+
+.editor-overlay {
   position: fixed;
-  bottom: 1.5rem;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease-out;
+  max-height: 100px;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+  max-height: 0;
+}
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  padding-right: 2.5rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  color: #999;
+  padding: 0 0.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dark .clear-search-btn {
+  color: #777;
+}
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.auth-container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 1.5rem 0.75rem 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.page-header {
+  flex-shrink: 0;
+  padding: 0.75rem 0;
+}
+
+.notes-list-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selection-actions-popup {
+  position: absolute;
+  bottom: 2.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 3rem);
@@ -976,13 +1380,16 @@ function handleMainMenuSelect(key: string) {
 .dark .selection-actions-popup {
   background-color: #444;
 }
+
 .selection-info {
   font-size: 14px;
 }
+
 .selection-buttons {
   display: flex;
-  gap: 1rem;
+  gap: 3rem; /* 根据您的要求修改为 2rem */
 }
+
 .action-btn {
   background: none;
   border: none;
@@ -992,9 +1399,11 @@ function handleMainMenuSelect(key: string) {
   font-weight: 500;
   padding: 0.25rem;
 }
+
 .action-btn.delete-btn {
   color: #ff5252;
 }
+
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
@@ -1003,10 +1412,5 @@ function handleMainMenuSelect(key: string) {
 .slide-up-fade-leave-to {
   opacity: 0;
   transform: translate(-50%, 20px);
-}
-.search-bar-container {
-  padding-bottom: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
 }
 </style>
