@@ -134,7 +134,18 @@ watch(notesListWrapperRef, (newEl, oldEl) => {
     newEl.addEventListener('scroll', handleScroll)
 })
 
-watch(newNoteContent, (val) => {
+watch(newNoteContent, (val, oldVal) => { // 1. 增加 oldVal 参数来获取旧值
+  // 2. 添加一次性滚动逻辑
+  // 如果之前是空的，而现在有了内容（即首次输入）
+  if (oldVal === '' && val.length > 0) {
+    // 为了让输入框'向上'移动，页面本身需要'向下'滚动
+    window.scrollBy({
+      top: 80, // 向下滚动 80 像素
+      behavior: 'smooth',
+    })
+  }
+
+  // 保留原有的草稿保存逻辑
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
@@ -313,8 +324,7 @@ async function handleVisibilityChange() {
 
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
-    // 只需将 'nearest' 修改为 'center'
-    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, 300)
 }
 
