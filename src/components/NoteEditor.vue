@@ -38,6 +38,14 @@ function handleCancel() {
   emit('cancel')
 }
 
+// 新增一个处理 blur 事件的函数
+function handleBlur() {
+  // 设置一个短暂的延迟，是为了让你在点击标签建议时，blur 事件不会立即隐藏建议列表，导致点击失效
+  setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200) // 延迟200毫秒
+}
+
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
@@ -147,7 +155,7 @@ defineExpose({
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
         @input="handleInput"
-        @blur="setTimeout(() => showTagSuggestions = false, 200)"
+        @blur="handleBlur"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
