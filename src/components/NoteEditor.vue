@@ -28,7 +28,6 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// ✨ 1. 新增一个 ref 标志位，用于跟踪是否已执行过滚动
 const hasScrolledOnBottom = ref(false)
 
 function handleSave() {
@@ -104,24 +103,30 @@ function selectTag(tag: string) {
   })
 }
 
-// ✨ 2. 更新滚动处理函数逻辑
+// ✨ 更新：彻底修正滚动处理逻辑
 function handleTextareaScroll() {
   const el = textarea.value
   if (!el)
     return
 
-  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1
+  // 关键修复：
+  // 1. 检查 textarea 是否真的出现了滚动条 (内容高度 > 可见高度)
+  const isScrollable = el.scrollHeight > el.clientHeight
 
-  if (isAtBottom) {
-    // 只有在滚动到底部且【之前没有触发过滚动】时，才执行
+  // 2. 检查是否滚动到底部。增加一点容差（如5px），使其在不同浏览器和缩放级别下更稳定。
+  const tolerance = 5
+  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= tolerance
+
+  // 只有当【出现滚动条】并且【滚动到了底部】时，才执行逻辑
+  if (isScrollable && isAtBottom) {
+    // 并且是第一次到达底部
     if (!hasScrolledOnBottom.value) {
       window.scrollBy({ top: 60, behavior: 'smooth' })
-      // 将标志位设为 true，防止再次触发
       hasScrolledOnBottom.value = true
     }
   }
   else {
-    // 如果用户向上滚动，离开了底部区域，就重置标志位
+    // 只要没在底部（比如向上滚动了），就重置标志位
     hasScrolledOnBottom.value = false
   }
 }
@@ -277,7 +282,7 @@ watch(textarea, (newTextarea, _, onCleanup) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  padding: 2px 14px;
   border-top: 1px solid #e0e0e0;
   background-color: #fff;
   border-radius: 0 0 11px 11px;
@@ -312,8 +317,8 @@ watch(textarea, (newTextarea, _, onCleanup) => {
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 14px;
+  padding: 1px 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -335,8 +340,8 @@ watch(textarea, (newTextarea, _, onCleanup) => {
   color: #333;
   border: 1px solid #ccc;
   border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 14px;
+  padding: 3px 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
