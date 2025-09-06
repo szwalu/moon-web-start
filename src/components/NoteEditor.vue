@@ -221,7 +221,7 @@ defineExpose({
   .editor-textarea {
     width: 100%;
     min-height: 120px;
-    max-height: 50vh;
+    max-height: 47vh;
     padding: 16px;
     border: none;
     background-color: transparent;
