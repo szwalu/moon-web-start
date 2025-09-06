@@ -983,7 +983,7 @@ function handleMainMenuSelect(key: string) {
 }
 .selection-buttons {
   display: flex;
-  gap: 1rem;
+  gap: 3rem;
 }
 .action-btn {
   background: none;
