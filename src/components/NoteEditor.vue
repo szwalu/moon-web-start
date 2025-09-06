@@ -12,7 +12,6 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-// [FIXED] 修改事件名为驼峰式
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
 
 const settingsStore = useSettingStore()
@@ -102,6 +101,22 @@ function selectTag(tag: string) {
   })
 }
 
+// ✨ 新增：处理 textarea 滚动的函数
+function handleTextareaScroll() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 检查是否滚动到底部（使用 1px 的容差以避免像素计算问题）
+  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1
+
+  if (isAtBottom) {
+    // 如果滚动到底部，就让整个页面向上滚动一点距离
+    // 为了更好的体验，可以添加 'smooth' 行为
+    window.scrollBy({ top: 60, behavior: 'smooth' })
+  }
+}
+
 watch(() => props.modelValue, (newValue) => {
   if (newValue === '') {
     nextTick(() => {
@@ -110,15 +125,26 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-watch(textarea, (newTextarea) => {
+// ✨ 更新：修改这个 watch 侦听器
+watch(textarea, (newTextarea, _, onCleanup) => {
   if (newTextarea) {
+    // 保持原有的 MutationObserver 逻辑
     const observer = new MutationObserver(() => {
-      // [FIXED] 修改事件名为驼峰式
       emit('heightChange')
     })
     observer.observe(newTextarea, {
       attributes: true,
       attributeFilter: ['style'],
+    })
+
+    // 添加新的 scroll 事件监听器
+    newTextarea.addEventListener('scroll', handleTextareaScroll)
+
+    // 使用 onCleanup 来确保在组件卸载或 textarea 元素变化时
+    // 移除监听器和观察者，防止内存泄漏
+    onCleanup(() => {
+      observer.disconnect()
+      newTextarea.removeEventListener('scroll', handleTextareaScroll)
     })
   }
 })

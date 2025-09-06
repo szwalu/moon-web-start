@@ -816,13 +816,7 @@ function handleMainMenuSelect(key: string) {
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
-.notes-list-wrapper {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 4px 1rem 0;
-  margin-right: -4px;
-}
+
 .notes-list-content {
   display: flex;
   flex-direction: column;
@@ -900,6 +894,7 @@ function handleMainMenuSelect(key: string) {
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
+
 .page-header {
   flex-shrink: 0;
   display: flex;
@@ -909,6 +904,14 @@ function handleMainMenuSelect(key: string) {
   height: 44px;
   padding-top: 0.75rem;
 }
+
+.notes-list-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
 .page-title {
   position: absolute;
   left: 50%;
