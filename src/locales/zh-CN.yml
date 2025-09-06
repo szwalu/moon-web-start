@@ -261,7 +261,7 @@ index:
 notes:
   notes: 云笔记
   save_note: 保存
-  more_notes: 更多笔记>>
+  more_notes: 更多笔记
   content_placeholder: 写点什么...
   add_success: 添加成功
   add_error: 添加失败
@@ -303,8 +303,8 @@ notes:
   unpin: 取消置顶
   pinned_success: 笔记已置顶
   unpinned_success: 已取消置顶
-  expand: 展开>>
-  collapse: <<收起
+  expand: 展开
+  collapse: 收起
   copy: 复制
   copy_success: 笔记内容已复制到剪贴板！
   copy_error: 复制失败

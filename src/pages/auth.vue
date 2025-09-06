@@ -839,7 +839,7 @@ function handleClosePage() {
                 :is-editing="true"
                 :is-loading="isUpdating"
                 :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.edit_placeholder')"
+                :placeholder="$t('notes.update_note')"
                 :all-tags="allTags"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
