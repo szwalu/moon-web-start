@@ -303,4 +303,11 @@ function clearSearch() {
   right: 0;
   margin-top: 4px;
 }
+
+/* 新增：移动端响应式布局 */
+@media (max-width: 768px) {
+  .export-all-button {
+    display: none; /* 在宽度小于等于 768px 的屏幕上，隐藏导出按钮 */
+  }
+}
 </style>
