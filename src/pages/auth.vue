@@ -313,7 +313,8 @@ async function handleVisibilityChange() {
 
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
-    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    // 只需将 'nearest' 修改为 'center'
+    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, 300)
 }
 
@@ -699,6 +700,10 @@ function handleMainMenuSelect(key: string) {
       break
   }
 }
+
+function handleClosePage() {
+  router.push('/')
+}
 </script>
 
 <template>
@@ -722,7 +727,7 @@ function handleMainMenuSelect(key: string) {
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <button class="header-action-btn close-page-btn" @click.stop="router.push('/')">×</button>
+          <button class="header-action-btn close-page-btn" @click.stop="handleClosePage">×</button>
         </div>
       </div>
 
