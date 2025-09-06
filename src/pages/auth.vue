@@ -26,6 +26,7 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const newNoteEditorContainerRef = ref(null)
+const newNoteEditorRef = ref(null) // 1. 为 NoteEditor 组件创建一个新的 ref
 const noteContainers = ref({})
 
 const showSettingsModal = ref(false)
@@ -166,6 +167,10 @@ async function handleCreateNote(content: string) {
   if (saved) {
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     newNoteContent.value = ''
+    // 2. 在内容清空后，调用子组件的 reset 方法
+    nextTick(() => {
+      newNoteEditorRef.value?.reset()
+    })
   }
   isCreating.value = false
 }
@@ -732,7 +737,7 @@ function handleMainMenuSelect(key: string) {
 
       <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
-          v-model="newNoteContent"
+          ref="newNoteEditorRef" v-model="newNoteContent"
           :is-editing="false"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"

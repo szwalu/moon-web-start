@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useSettingStore } from '@/stores/setting'
 
@@ -121,6 +121,17 @@ watch(textarea, (newTextarea) => {
       attributeFilter: ['style'],
     })
   }
+})
+
+// 2. 定义一个 reset 方法
+function reset() {
+  // 手动触发 useTextareaAutosize 重新计算高度
+  triggerResize()
+}
+
+// 3. 将 reset 方法暴露给父组件
+defineExpose({
+  reset,
 })
 </script>
 
