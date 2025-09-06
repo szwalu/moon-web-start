@@ -893,7 +893,7 @@ function handleMainMenuSelect(key: string) {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 110dvh;
+  height: 100dvh;
 }
 .dark .auth-container {
   background: #1e1e1e;

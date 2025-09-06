@@ -220,7 +220,6 @@ watch(textarea, (newTextarea) => {
     outline: 0;
     box-sizing: border-box;
     font-family: inherit;
-    transition: height 0.1s ease-out;
   }
 
   .editor-textarea.font-size-small {
