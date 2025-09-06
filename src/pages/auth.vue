@@ -216,7 +216,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       if (showMessage)
-        messageHook.success(t('notes.save_success'))
+        messageHook.success(t('notes.auto_saved'))
     }
     await fetchAllTags()
     return savedNote
@@ -741,7 +741,7 @@ function handleMainMenuSelect(key: string) {
           :is-editing="false"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.create_placeholder')"
+          :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
           @focus="handleEditorFocus(newNoteEditorContainerRef)"

@@ -172,7 +172,7 @@ function clearSearch() {
 
 .search-input {
   flex: 4;
-  padding: 0.5rem 2rem 0.5rem 0.5rem;
+  padding: 1.0rem 2rem 1.0rem 0.5rem;
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;

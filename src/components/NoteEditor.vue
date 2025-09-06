@@ -253,7 +253,7 @@ defineExpose({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 14px;
+    padding: 2px 13px;
     border-top: 1px solid #e0e0e0;
     background-color: #fff;
     border-radius: 0 0 11px 11px;
@@ -283,8 +283,8 @@ defineExpose({
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 14px;
+    padding: 3px 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: background-color 0.2s;
@@ -305,7 +305,7 @@ defineExpose({
     color: #333;
     border: 1px solid #ccc;
     border-radius: 6px;
-    padding: 6px 14px;
+    padding: 3px 14px;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
