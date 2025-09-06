@@ -28,6 +28,9 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
+// ✨ 1. 新增一个 ref 标志位，用于跟踪是否已执行过滚动
+const hasScrolledOnBottom = ref(false)
+
 function handleSave() {
   if (!props.isLoading && contentModel.value)
     emit('save', contentModel.value)
@@ -101,19 +104,25 @@ function selectTag(tag: string) {
   })
 }
 
-// ✨ 新增：处理 textarea 滚动的函数
+// ✨ 2. 更新滚动处理函数逻辑
 function handleTextareaScroll() {
   const el = textarea.value
   if (!el)
     return
 
-  // 检查是否滚动到底部（使用 1px 的容差以避免像素计算问题）
   const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1
 
   if (isAtBottom) {
-    // 如果滚动到底部，就让整个页面向上滚动一点距离
-    // 为了更好的体验，可以添加 'smooth' 行为
-    window.scrollBy({ top: 60, behavior: 'smooth' })
+    // 只有在滚动到底部且【之前没有触发过滚动】时，才执行
+    if (!hasScrolledOnBottom.value) {
+      window.scrollBy({ top: 60, behavior: 'smooth' })
+      // 将标志位设为 true，防止再次触发
+      hasScrolledOnBottom.value = true
+    }
+  }
+  else {
+    // 如果用户向上滚动，离开了底部区域，就重置标志位
+    hasScrolledOnBottom.value = false
   }
 }
 
@@ -125,10 +134,8 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-// ✨ 更新：修改这个 watch 侦听器
 watch(textarea, (newTextarea, _, onCleanup) => {
   if (newTextarea) {
-    // 保持原有的 MutationObserver 逻辑
     const observer = new MutationObserver(() => {
       emit('heightChange')
     })
@@ -137,11 +144,8 @@ watch(textarea, (newTextarea, _, onCleanup) => {
       attributeFilter: ['style'],
     })
 
-    // 添加新的 scroll 事件监听器
     newTextarea.addEventListener('scroll', handleTextareaScroll)
 
-    // 使用 onCleanup 来确保在组件卸载或 textarea 元素变化时
-    // 移除监听器和观察者，防止内存泄漏
     onCleanup(() => {
       observer.disconnect()
       newTextarea.removeEventListener('scroll', handleTextareaScroll)
