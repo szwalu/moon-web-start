@@ -12,6 +12,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
+// [FIXED] 修改事件名为驼峰式
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
 
 const settingsStore = useSettingStore()
@@ -28,8 +29,6 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-const hasScrolledOnBottom = ref(false)
-
 function handleSave() {
   if (!props.isLoading && contentModel.value)
     emit('save', contentModel.value)
@@ -39,9 +38,7 @@ function handleCancel() {
   emit('cancel')
 }
 
-// ✨ 更新：将所有滚动逻辑放入 input 事件处理器中
 function handleInput(event: Event) {
-  // --- 保留原有的标签建议逻辑 ---
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
@@ -49,68 +46,41 @@ function handleInput(event: Event) {
 
   if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
-    // return // 注意：这里不能 return，要让后面的 nextTick 执行
+    return
+  }
+
+  const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
+  tagSuggestions.value = props.allTags.filter(tag =>
+    tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
+  )
+
+  if (tagSuggestions.value.length > 0) {
+    const textLines = textBeforeCursor.split('\n')
+    const currentLine = textLines.length - 1
+    const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
+    const topOffset = currentLine * lineHeight
+
+    const measure = document.createElement('span')
+    measure.style.cssText = `
+      position: absolute;
+      visibility: hidden;
+      font: inherit;
+      white-space: pre;
+    `
+    measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
+    el.parentNode?.appendChild(measure)
+    const leftOffset = measure.offsetWidth
+    el.parentNode?.removeChild(measure)
+
+    suggestionsStyle.value = {
+      top: `${el.offsetTop + topOffset + lineHeight}px`,
+      left: `${el.offsetLeft + leftOffset}px`,
+    }
+    showTagSuggestions.value = true
   }
   else {
-    const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
-    tagSuggestions.value = props.allTags.filter(tag =>
-      tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
-    )
-
-    if (tagSuggestions.value.length > 0) {
-      const textLines = textBeforeCursor.split('\n')
-      const currentLine = textLines.length - 1
-      const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
-      const topOffset = currentLine * lineHeight
-
-      const measure = document.createElement('span')
-      measure.style.cssText = `
-        position: absolute;
-        visibility: hidden;
-        font: inherit;
-        white-space: pre;
-      `
-      measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-      el.parentNode?.appendChild(measure)
-      const leftOffset = measure.offsetWidth
-      el.parentNode?.removeChild(measure)
-
-      suggestionsStyle.value = {
-        top: `${el.offsetTop + topOffset + lineHeight}px`,
-        left: `${el.offsetLeft + leftOffset}px`,
-      }
-      showTagSuggestions.value = true
-    }
-    else {
-      showTagSuggestions.value = false
-    }
+    showTagSuggestions.value = false
   }
-
-  // --- 新增：将滚动逻辑放在 nextTick 中 ---
-  // nextTick 会在 DOM 更新循环之后执行，确保我们获取到的是最新的、正确的高度值
-  nextTick(() => {
-    const textareaEl = textarea.value
-    if (!textareaEl)
-      return
-
-    // 检查 textarea 是否真的出现了滚动条 (内容高度 > 可见高度)
-    const isScrollable = textareaEl.scrollHeight > textareaEl.clientHeight
-
-    // 检查是否滚动到底部
-    const tolerance = 5
-    const isAtBottom = textareaEl.scrollHeight - textareaEl.scrollTop - textareaEl.clientHeight <= tolerance
-
-    if (isScrollable && isAtBottom) {
-      if (!hasScrolledOnBottom.value) {
-        window.scrollBy({ top: 60, behavior: 'smooth' })
-        hasScrolledOnBottom.value = true
-      }
-    }
-    else {
-      // 只要不满足触底条件，就重置标志位
-      hasScrolledOnBottom.value = false
-    }
-  })
 }
 
 function selectTag(tag: string) {
@@ -132,8 +102,6 @@ function selectTag(tag: string) {
   })
 }
 
-// ✨ 删除：不再需要 handleTextareaScroll 函数
-
 watch(() => props.modelValue, (newValue) => {
   if (newValue === '') {
     nextTick(() => {
@@ -142,7 +110,18 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-// ✨ 删除：不再需要 watch(textarea, ...) 这个侦听器
+watch(textarea, (newTextarea) => {
+  if (newTextarea) {
+    const observer = new MutationObserver(() => {
+      // [FIXED] 修改事件名为驼峰式
+      emit('heightChange')
+    })
+    observer.observe(newTextarea, {
+      attributes: true,
+      attributeFilter: ['style'],
+    })
+  }
+})
 </script>
 
 <template>
@@ -303,7 +282,7 @@ watch(() => props.modelValue, (newValue) => {
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 1px 14px;
+  padding: 2px 14px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
