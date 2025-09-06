@@ -903,7 +903,7 @@ function handleClosePage() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 110dvh;
 }
 .dark .auth-container {
   background: #1e1e1e;
