@@ -215,7 +215,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea {
   width: 100%;
   min-height: 120px;
-  max-height: 48vh; /* 最大高度为视窗的40% */
+  max-height: 40vh; /* 最大高度为视窗的40% */
   padding: 16px;
   border: none;
   background-color: transparent;
