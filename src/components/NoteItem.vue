@@ -355,7 +355,7 @@ function handleNoteContentClick(event: MouseEvent) {
 .is-expanded .toggle-button-row {
   position: -webkit-sticky;
   position: sticky;
-  bottom: 1rem;
+  bottom: 1.5rem;
   z-index: 5;
 
   /* 背景和边框都设置为透明或移除 */
@@ -421,5 +421,19 @@ function handleNoteContentClick(event: MouseEvent) {
 
 .dark :deep(th) {
     background-color: #374151;
+}
+
+/* 新增：为“收起”按钮本身添加白色背景和胶囊样式 */
+.collapse-button {
+  background-color: white;
+  padding: 4px 12px; /* 增加内边距，让背景比文字大一点 */
+  border-radius: 9999px; /* 使用一个很大的值来制作胶囊形状的圆角 */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); /* 添加一点阴影，让它有悬浮感 */
+}
+
+/* 新增：暗黑模式下的“收起”按钮样式 */
+.dark .collapse-button {
+  background-color: #374151; /* 使用一个深色背景 */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 </style>

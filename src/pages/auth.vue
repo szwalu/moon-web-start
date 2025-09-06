@@ -837,9 +837,6 @@ function handleClosePage() {
   flex-shrink: 0;
 }
 .notes-list-wrapper {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   padding: 0 4px 1rem 0;
   margin-right: -4px;
 }
@@ -913,7 +910,7 @@ function handleClosePage() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 110dvh;
+  min-height: 100dvh; /* 确保这里是 min-height */
 }
 .dark .auth-container {
   background: #1e1e1e;
