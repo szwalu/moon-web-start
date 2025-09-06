@@ -1103,4 +1103,12 @@ function handleClosePage() {
   flex: 1; /* 核心属性：让此元素占据所有剩余空间 */
   min-width: 0; /* 配合 flex: 1 使用，防止内容溢出时出现布局问题 */
 }
+
+/* 新增：专门为移动端优化“取消”按钮的大小 */
+@media (max-width: 768px) {
+  .cancel-search-btn {
+    font-size: 14px; /* 稍微增大字体，让文字更清晰 */
+    padding: 0.6rem 1rem; /* 关键：增加按钮的内边距，让它的尺寸和可点击区域变大 */
+  }
+}
 </style>
