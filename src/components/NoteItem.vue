@@ -319,6 +319,7 @@ function handleNoteContentClick(event: MouseEvent) {
   */
   font-size: 17px !important;
   line-height: 1.6;
+  overflow-wrap: break-word; /* 新增：允许在长单词内部换行 */
 }
 
 .line-clamp-3 {
