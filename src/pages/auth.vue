@@ -728,7 +728,7 @@ function handleMainMenuSelect(key: string) {
 
       <Transition name="slide-fade">
         <div v-if="showSearchBar" class="search-bar-container">
-          <NoteActions v-model="searchQuery" :all-tags="allTags" :is-exporting="isExporting" :search-query="searchQuery" @export="handleExportTrigger" />
+          <NoteActions v-model="searchQuery" class="search-actions-wrapper" :all-tags="allTags" :is-exporting="isExporting" :search-query="searchQuery" @export="handleExportTrigger" />
           <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
         </div>
       </Transition>
@@ -1010,5 +1010,12 @@ function handleMainMenuSelect(key: string) {
   padding-bottom: 0.5rem;
   display: flex;
   gap: 0.5rem;
+  align-items: center; /* 推荐增加此行，确保垂直居中对齐 */
+}
+
+/* 2. 添加新的样式规则 */
+.search-actions-wrapper {
+  flex: 1; /* 核心属性：让此元素占据所有剩余空间 */
+  min-width: 0; /* 配合 flex: 1 使用，防止内容溢出时出现布局问题 */
 }
 </style>
