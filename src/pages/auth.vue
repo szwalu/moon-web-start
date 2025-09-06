@@ -814,7 +814,6 @@ function handleClosePage() {
           :all-tags="allTags"
           @save="handleCreateNote"
           @focus="handleEditorFocus(newNoteEditorContainerRef)"
-          @height-change="handleEditorFocus(newNoteEditorContainerRef)"
         />
       </div>
 
