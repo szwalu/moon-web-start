@@ -351,30 +351,26 @@ function handleNoteContentClick(event: MouseEvent) {
 :deep(.prose > :last-child) {
   margin-bottom: 0 !important;
 }
-
 /* 关键改动3：为展开状态下的“收起”按钮行添加粘性定位 */
 .is-expanded .toggle-button-row {
   position: -webkit-sticky;
   position: sticky;
-  bottom: 0rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
+  bottom: 1rem;
   z-index: 5;
 
-  /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
-  background-color: #f3f4f6; /* 对应 .bg-gray-100 */
+  /* 背景和边框都设置为透明或移除 */
+  background-color: transparent;
+  border-top: none;
 
-  /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
-  /* 使用负边距让背景铺满整个卡片宽度（抵消父元素的padding） */
-  margin-left: -1rem;  /* 1rem = 16px, 对应 p-4 */
-  margin-right: -1rem;
+  /* 保留 padding 以提供更好的点击体验 */
   padding: 0.75rem 1rem;
-  border-top: 1px solid #e5e7eb;
 }
 
 .dark .is-expanded .toggle-button-row {
-  background-color: #374151; /* 对应 .dark .bg-gray-700 */
-  border-top-color: #4b5563;
+  /* 暗黑模式下也一样，确保背景和边框是透明的 */
+  background-color: transparent;
+  border-top: none;
 }
-
 /* 5. 新增：用于动态修改笔记字号的 CSS 规则 */
 /* 使用 :deep() 来确保样式能应用到 v-html 渲染出的 .prose 元素上 */
 :deep(.prose.font-size-small) {
