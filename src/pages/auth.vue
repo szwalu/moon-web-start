@@ -74,10 +74,15 @@ const mainMenuOptions = computed(() => [
 ])
 
 const handleScroll = debounce(() => {
-  const el = notesListWrapperRef.value
-  if (!el || isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
+  // 不再需要 el 变量
+  if (isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
     return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
+
+  // 使用 window 和 document 的属性来判断页面是否滚动到底部
+  // window.scrollY: 页面垂直滚动的距离
+  // window.innerHeight: 浏览器窗口的可见高度
+  // document.documentElement.scrollHeight: 整个页面的总高度
+  if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 50)
     nextPage()
 }, 200)
 
@@ -116,6 +121,7 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
+  window.addEventListener('scroll', handleScroll) // <-- 新增：监听窗口滚动
 })
 
 onUnmounted(() => {
@@ -123,15 +129,9 @@ onUnmounted(() => {
     authListener.unsubscribe()
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('scroll', handleScroll) // <-- 新增：移除窗口滚动监听
   if (notesListWrapperRef.value)
     notesListWrapperRef.value.removeEventListener('scroll', handleScroll)
-})
-
-watch(notesListWrapperRef, (newEl, oldEl) => {
-  if (oldEl)
-    oldEl.removeEventListener('scroll', handleScroll)
-  if (newEl)
-    newEl.addEventListener('scroll', handleScroll)
 })
 
 watch(newNoteContent, (val, oldVal) => { // 1. 增加 oldVal 参数来获取旧值
