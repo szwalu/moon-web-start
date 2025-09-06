@@ -532,11 +532,26 @@ function generateUniqueId() {
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
-  if (expandedNote.value === noteId)
+
+  const isCollapsing = expandedNote.value === noteId // 判断当前操作是否为“收起”
+
+  if (isCollapsing) {
     expandedNote.value = null
 
-  else
+    // 等待 DOM 更新完成 (笔记在视觉上已经收起来了)
+    await nextTick()
+
+    // 找到刚刚收起的那个笔记的 DOM 容器
+    const noteElement = noteContainers.value[noteId]
+    if (noteElement) {
+      // 把它平滑地滚动到视野内最接近的位置
+      noteElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+  else {
+    // 否则，就是展开操作，逻辑不变
     expandedNote.value = noteId
+  }
 }
 
 function handleHeaderClick() {
@@ -922,9 +937,17 @@ function handleClosePage() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative;
+  position: -webkit-sticky; /* 兼容 Safari */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: white;
   height: 44px;
   padding-top: 0.75rem;
+}
+
+.dark .page-header {
+  background: #1e1e1e;
 }
 .page-title {
   position: absolute;
@@ -1019,12 +1042,24 @@ function handleClosePage() {
   transform: translate(-50%, 20px);
 }
 .search-bar-container {
+  /* 新增粘性定位属性 */
+  position: -webkit-sticky;
+  position: sticky;
+  top: 44px; /* 关键：粘在顶部，但往下偏移44px（页眉的高度）*/
+  z-index: 9; /* 比页眉的 z-index: 10 低一点，确保在页眉之下 */
+  background: white; /* 关键：同样需要背景色来遮挡下方滚动的内容 */
+
+  /* 保留原有样式 */
+  padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   display: flex;
   gap: 0.5rem;
-  align-items: center; /* 推荐增加此行，确保垂直居中对齐 */
+  align-items: center;
 }
 
+.dark .search-bar-container {
+  background: #1e1e1e;
+}
 /* 2. 添加新的样式规则 */
 .search-actions-wrapper {
   flex: 1; /* 核心属性：让此元素占据所有剩余空间 */
