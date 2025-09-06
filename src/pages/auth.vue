@@ -108,6 +108,7 @@ onMounted(() => {
         nextTick(() => {
           fetchNotes()
           fetchAllTags()
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
         })
       }
       else if (event === 'SIGNED_OUT') {

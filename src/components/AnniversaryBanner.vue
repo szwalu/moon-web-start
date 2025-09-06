@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { useI18n } from 'vue-i18n'
 
@@ -18,11 +18,6 @@ const isLoading = ref(true)
 const isAnniversaryViewActive = ref(false)
 
 const CACHE_KEY_PREFIX = 'anniversary_notes_'
-
-onMounted(async () => {
-  if (user.value)
-    await loadAnniversaryNotes()
-})
 
 async function loadAnniversaryNotes() {
   isLoading.value = true
@@ -91,8 +86,11 @@ function setView(isActive: boolean) {
   isAnniversaryViewActive.value = isActive
 }
 
-// 将 setView 方法暴露给父组件
-defineExpose({ setView })
+// 将 setView 和 loadAnniversaryNotes 方法都暴露给父组件
+defineExpose({
+  setView,
+  loadAnniversaryNotes,
+})
 </script>
 
 <template>
