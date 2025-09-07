@@ -68,6 +68,7 @@ const loading = ref(false)
 const lastSavedId = ref<string | null>(null) // 新增
 const editingNote = ref<any | null>(null) // 新增
 const cachedNotes = ref<any[]>([]) // 新增
+const calendarViewRef = ref(null)
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
@@ -561,6 +562,7 @@ function handleHeaderClick() {
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
+
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -571,9 +573,16 @@ async function triggerDeleteConfirmation(id: string) {
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message)
+
+        // 更新主列表和总数
         notes.value = notes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
         messageHook.success(t('notes.delete_success'))
+
+        // --- 新增代码 ---
+        // 如果日历视图是打开的，就调用它的刷新方法
+        calendarViewRef.value?.refreshData()
+
         if (editingNoteId.value === id)
           cancelEdit()
       }
@@ -893,10 +902,9 @@ function handleClosePage() {
 
       <Transition name="slide-up-fade">
         <CalendarView
-          v-if="showCalendarView"
+          v-if="showCalendarView" ref="calendarViewRef"
           @close="showCalendarView = false"
           @edit-note="handleEditFromCalendar"
-
           @copy="handleCopy"
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"

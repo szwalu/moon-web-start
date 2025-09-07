@@ -11,14 +11,14 @@ const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete'])
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 
-// --- 全新的、更简单的状态 ---
-const datesWithNotes = ref<Set<string>>(new Set()) // 只存储有笔记的日期字符串 (YYYY-MM-DD)，用于红点
-const selectedDateNotes = ref<any[]>([]) // 只存储当前选中日期的笔记
+// --- 状态 ---
+const datesWithNotes = ref<Set<string>>(new Set())
+const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
-const isLoadingNotes = ref(false) // 只在加载每日笔记时使用
+const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 
-// --- 计算属性：根据 Set 自动生成日历红点 ---
+// --- 计算属性：生成日历蓝点 ---
 const attributes = computed(() => {
   return Array.from(datesWithNotes.value).map(dateStr => ({
     key: dateStr,
@@ -27,7 +27,7 @@ const attributes = computed(() => {
   }))
 })
 
-// --- 逻辑1：组件加载时，获取所有笔记的日期用于显示红点 ---
+// --- 逻辑：获取所有笔记的日期用于显示蓝点 ---
 async function fetchAllNoteDates() {
   if (!user.value)
     return
@@ -40,7 +40,6 @@ async function fetchAllNoteDates() {
     if (error)
       throw error
     if (data) {
-      // 关键修改：将每个 UTC 时间先转换为本地 Date 对象，再取其日期字符串
       const dates = new Set(data.map(note => new Date(note.created_at).toDateString()))
       datesWithNotes.value = dates
     }
@@ -50,17 +49,16 @@ async function fetchAllNoteDates() {
   }
 }
 
-// --- 逻辑2：当点击日期时，只获取那一天的笔记 ---
+// --- 逻辑：当点击日期时，获取那一天的笔记 ---
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
 
   selectedDate.value = date
   isLoadingNotes.value = true
-  selectedDateNotes.value = [] // 先清空
+  selectedDateNotes.value = []
 
   try {
-    // 关键修改：基于本地时区创建一天的开始和结束
     const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
     const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 
@@ -68,7 +66,6 @@ async function fetchNotesForDate(date: Date) {
       .from('notes')
       .select('*')
       .eq('user_id', user.value.id)
-      // .toISOString() 会自动将本地时间转换为正确的 UTC 时间字符串给数据库
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString())
       .order('created_at', { ascending: false })
@@ -85,27 +82,44 @@ async function fetchNotesForDate(date: Date) {
   }
 }
 
+// --- 逻辑：处理展开/收起 ---
 function toggleExpandInCalendar(noteId: string) {
   if (expandedNoteId.value === noteId)
-    expandedNoteId.value = null // 如果点击的是已展开的，就收起
+    expandedNoteId.value = null
   else
-    expandedNoteId.value = noteId // 否则，展开新点击的
+    expandedNoteId.value = noteId
+}
+
+// --- 逻辑：处理顶部点击返回 ---
+const scrollBodyRef = ref<HTMLElement | null>(null)
+function handleHeaderClick() {
+  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // --- 组件加载时执行初始化 ---
 onMounted(() => {
-  fetchAllNoteDates() // 获取所有红点
-  fetchNotesForDate(new Date()) // 获取当天的笔记
+  fetchAllNoteDates()
+  fetchNotesForDate(new Date())
+})
+
+// --- 暴露一个刷新方法给父组件 ---
+function refreshData() {
+  fetchAllNoteDates()
+  fetchNotesForDate(selectedDate.value)
+}
+
+defineExpose({
+  refreshData,
 })
 </script>
 
 <template>
   <div class="calendar-view">
-    <div class="calendar-header">
+    <div class="calendar-header" @click="handleHeaderClick">
       <h2>日历笔记</h2>
-      <button class="close-btn" @click="emit('close')">×</button>
+      <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
-    <div class="calendar-body">
+    <div ref="scrollBodyRef" class="calendar-body">
       <div class="calendar-container">
         <Calendar
           is-expanded
@@ -126,7 +140,6 @@ onMounted(() => {
             :is-expanded="expandedNoteId === note.id"
             @toggle-expand="toggleExpandInCalendar"
             @edit="noteToEdit => emit('editNote', noteToEdit)"
-
             @copy="content => emit('copy', content)"
             @pin="noteToPin => emit('pin', noteToPin)"
             @delete="noteId => emit('delete', noteId)"
@@ -165,6 +178,7 @@ onMounted(() => {
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
+  cursor: pointer;
 }
 .dark .calendar-header {
   border-bottom-color: #374151;
