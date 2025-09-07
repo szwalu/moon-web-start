@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
 import { useAuthStore } from '@/stores/auth'
@@ -10,6 +11,7 @@ const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete'])
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const isDark = useDark()
 
 // --- 状态 ---
 const datesWithNotes = ref<Set<string>>(new Set())
@@ -142,7 +144,7 @@ defineExpose({
         <Calendar
           is-expanded
           :attributes="attributes"
-          @dayclick="day => fetchNotesForDate(day.date)"
+          :is-dark="isDark" @dayclick="day => fetchNotesForDate(day.date)"
         />
       </div>
       <div class="notes-for-day-container">
@@ -172,7 +174,6 @@ defineExpose({
 </template>
 
 <style scoped>
-/* 样式与之前相同 */
 .calendar-view {
   position: fixed;
   top: 0;
@@ -246,7 +247,7 @@ defineExpose({
   color: #888;
   padding: 2rem;
 }
-.dark .no-notes-text {
+.dark .loading-text, .dark .no-notes-text {
   color: #aaa;
 }
 .notes-list {

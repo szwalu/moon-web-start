@@ -16,6 +16,7 @@ declare module 'vue' {
     'Authentication_副本': typeof import('./components/Authentication_副本.vue')['default']
     Blank: typeof import('./components/Blank.vue')['default']
     CalendarView: typeof import('./components/CalendarView.vue')['default']
+    DateTimePickerModal: typeof import('./components/DateTimePickerModal.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCollapse: typeof import('naive-ui')['NCollapse']
     NCollapseItem: typeof import('naive-ui')['NCollapseItem']

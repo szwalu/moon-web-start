@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 
-// --- 新增：从 Naive UI 引入 useDialog ---
-import { useDialog } from 'naive-ui'
+import { NDropdown, useDialog, useMessage } from 'naive-ui'
+
+// 引入 useMessage 用于提示
+import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
+import { supabase } from '@/utils/supabaseClient'
+
 import { useSettingStore } from '@/stores/setting.ts'
 
 // --- Props and Emits ---
@@ -18,12 +22,19 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // 新增：在这里正式声明 isSelectionModeActive 这个 prop
+  isSelectionModeActive: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle'])
+const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated'])
 
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
+const messageHook = useMessage() // 初始化 message
+const showDatePicker = ref(false) // 控制日期选择器显示的状态
 // --- 新增：初始化 dialog ---
 const dialog = useDialog()
 const noteOverflowStatus = ref(false)
@@ -52,10 +63,23 @@ function checkIfNoteOverflows() {
     noteOverflowStatus.value = el.scrollHeight > el.clientHeight
 }
 
+let observer: ResizeObserver | null = null
+
 onMounted(() => {
-  nextTick(() => {
-    checkIfNoteOverflows()
-  })
+  if (contentRef.value) {
+    // 创建一个 ResizeObserver 实例，每当尺寸变化时就重新检查是否溢出
+    observer = new ResizeObserver(() => {
+      checkIfNoteOverflows()
+    })
+    // 开始监视文本内容区域
+    observer.observe(contentRef.value)
+  }
+})
+
+// 在组件卸载时，停止监视，防止内存泄漏
+onUnmounted(() => {
+  if (observer)
+    observer.disconnect()
 })
 
 watch(() => props.note.content, () => {
@@ -97,6 +121,7 @@ function getDropdownOptions(note: any) {
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
     { label: t('notes.delete'), key: 'delete' },
+    { label: '设定日期', key: 'set_date' },
     { key: 'divider-1', type: 'divider' },
     { label: t('notes.word_count', { count: charCount }), key: 'char_count', disabled: true },
     { label: t('notes.created_at', { time: creationTime }), key: 'creation_time', disabled: true },
@@ -114,6 +139,9 @@ function handleDropdownSelect(key: string) {
       break
     case 'pin':
       emit('pin', props.note)
+      break
+    case 'set_date': // <-- 新增
+      showDatePicker.value = true
       break
     // --- 修改：删除操作 ---
     case 'delete':
@@ -146,6 +174,29 @@ function handleNoteContentClick(event: MouseEvent) {
   if (itemIndex !== -1)
     emit('taskToggle', { noteId: props.note.id, itemIndex })
 }
+
+async function handleDateUpdate(newDate: Date) {
+  showDatePicker.value = false // 关闭选择器
+  if (!props.note || !props.note.id)
+    return
+
+  try {
+    const newTimestamp = newDate.toISOString()
+    const { error } = await supabase
+      .from('notes')
+      .update({ created_at: newTimestamp })
+      .eq('id', props.note.id)
+
+    if (error)
+      throw error
+
+    messageHook.success('笔记日期更新成功！')
+    emit('dateUpdated') // 通知父组件日期已更新
+  }
+  catch (err: any) {
+    messageHook.error(`日期更新失败: ${err.message}`)
+  }
+}
 </script>
 
 <template>
@@ -165,7 +216,8 @@ function handleNoteContentClick(event: MouseEvent) {
           {{ $t('notes.pin') }}
         </span>
       </div>
-      <n-dropdown
+
+      <NDropdown
         trigger="click"
         placement="bottom-end"
         :options="getDropdownOptions(note)"
@@ -174,7 +226,7 @@ function handleNoteContentClick(event: MouseEvent) {
         <div class="kebab-menu">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
         </div>
-      </n-dropdown>
+      </NDropdown>
     </div>
 
     <div class="flex-1 min-w-0">
@@ -209,6 +261,13 @@ function handleNoteContentClick(event: MouseEvent) {
       </div>
     </div>
   </div>
+
+  <DateTimePickerModal
+    :show="showDatePicker"
+    :initial-date="new Date(note.created_at)"
+    @close="showDatePicker = false"
+    @confirm="handleDateUpdate"
+  />
 </template>
 
 <style scoped>
@@ -436,5 +495,29 @@ function handleNoteContentClick(event: MouseEvent) {
 .dark .collapse-button {
   background-color: #374151; /* 使用一个深色背景 */
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+</style>
+
+<style>
+/* 注意：这个 style 标签没有 scoped 属性 */
+
+/* 1. 针对被禁用的信息项（如字数、日期）的容器 */
+.n-dropdown-option.n-dropdown-option--disabled {
+  min-height: auto !important; /* 覆盖 naive-ui 的最小高度限制 */
+}
+
+/* 2. 针对这些信息项的内部内容区域 */
+.n-dropdown-option.n-dropdown-option--disabled .n-dropdown-option-body {
+  height: 12px !important; /* 关键：强制设定一个更小的高度 */
+  padding-top: 0 !important; /* 移除上内边距 */
+  padding-bottom: 0 !important; /* 移除下内边距 */
+  font-size: 13px !important; /* 保持较小的字体 */
+  line-height: 22px !important; /* 让文字在新的高度里垂直居中 */
+}
+
+/* 3. 针对分割线 */
+.n-dropdown-divider {
+  margin-top: 3px !important;
+  margin-bottom: 3px !important;
 }
 </style>

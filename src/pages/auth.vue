@@ -52,7 +52,7 @@ const notesPerPage = 20
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
-const maxNoteLength = 3000
+const maxNoteLength = 5000
 const isNotesCached = ref(false)
 const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const searchQuery = ref('')
@@ -69,13 +69,26 @@ const lastSavedId = ref<string | null>(null) // 新增
 const editingNote = ref<any | null>(null) // 新增
 const cachedNotes = ref<any[]>([]) // 新增
 const calendarViewRef = ref(null)
+const activeTagFilter = ref<string | null>(null)
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 const CACHED_NOTES_KEY = 'cached_notes_page_1'
 let authListener: any = null
 
 const mainMenuOptions = computed(() => [
-  { label: '日历笔记', key: 'calendar' },
+  {
+    label: '标签', // 1. 新增“标签”主菜单
+    key: 'tags',
+    // 2. 使用 allTags 动态生成子菜单
+    children: allTags.value.length > 0
+      ? allTags.value.map(tag => ({
+        label: tag,
+        key: tag, // 我们直接用标签本身作为 key
+      }))
+      : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
+  },
+  //  { key: 'd1', type: 'divider' }, // 增加一个分割线
+  { label: '日历', key: 'calendar' },
   { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
   { label: t('settings.font_title'), key: 'settings' },
   { label: t('notes.export_all'), key: 'export' },
@@ -544,7 +557,7 @@ async function toggleExpand(noteId: string) {
     const noteElement = noteContainers.value[noteId]
     if (noteElement) {
       // 把它平滑地滚动到视野内最接近的位置
-      noteElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }
   else {
@@ -760,6 +773,11 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(key: string) {
+// 新增：如果是以 '#' 开头的 key，我们就认为是标签筛选
+  if (key.startsWith('#')) {
+    fetchNotesByTag(key)
+    return // 执行后直接返回，不进入下面的 switch
+  }
   switch (key) {
     case 'calendar':
       showCalendarView.value = true
@@ -789,6 +807,42 @@ function handleEditFromCalendar(note: any) {
 
 function handleClosePage() {
   router.push('/')
+}
+
+async function fetchNotesByTag(tag: string) {
+  if (!user.value)
+    return
+
+  isLoadingNotes.value = true
+  activeTagFilter.value = tag // 记录当前正在筛选的标签
+  notes.value = [] // 先清空列表
+
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', user.value.id)
+      .ilike('content', `%${tag}%`) // 使用 ilike 进行模糊匹配，%是通配符
+      .order('created_at', { ascending: false })
+
+    if (error)
+      throw error
+    notes.value = data || []
+    hasMoreNotes.value = false // 筛选状态下，我们认为没有更多笔记可加载
+  }
+  catch (err: any) {
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
+  }
+  finally {
+    isLoadingNotes.value = false
+  }
+}
+
+function clearTagFilter() {
+  activeTagFilter.value = null // 清空筛选状态
+  currentPage.value = 1 // 重置到第一页
+  notes.value = [] // 清空笔记
+  fetchNotes() // 重新获取所有笔记
 }
 </script>
 
@@ -826,6 +880,12 @@ function handleClosePage() {
 
       <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
+      <div v-if="activeTagFilter" class="active-filter-bar">
+        <span>
+          正在筛选标签：<strong>{{ activeTagFilter }}</strong>
+        </span>
+        <button class="clear-filter-btn" @click="clearTagFilter">×</button>
+      </div>
       <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           ref="newNoteEditorRef"
@@ -879,6 +939,7 @@ function handleClosePage() {
                 @pin="handlePinToggle"
                 @delete="triggerDeleteConfirmation"
                 @task-toggle="handleNoteContentClick"
+                @date-updated="fetchNotes"
               />
             </div>
           </div>
@@ -1144,5 +1205,34 @@ function handleClosePage() {
     font-size: 14px; /* 稍微增大字体，让文字更清晰 */
     padding: 0.6rem 1rem; /* 关键：增加按钮的内边距，让它的尺寸和可点击区域变大 */
   }
+}
+
+.active-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #eef2ff;
+  color: #4338ca;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 14px;
+}
+.dark .active-filter-bar {
+  background-color: #312e81;
+  color: #c7d2fe;
+}
+.clear-filter-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.clear-filter-btn:hover {
+  opacity: 1;
 }
 </style>
