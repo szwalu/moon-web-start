@@ -27,6 +27,7 @@ const charCount = computed(() => contentModel.value.length)
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
+let blurTimeoutId: number | null = null
 
 function handleSave() {
   if (!props.isLoading && contentModel.value)
@@ -38,11 +39,10 @@ function handleCancel() {
 }
 
 function handleBlur() {
-  setTimeout(() => {
+  blurTimeoutId = setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
 }
-
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
@@ -128,6 +128,10 @@ function insertText(prefix: string, suffix: string = '') {
   input.value = el.value.substring(0, start) + newText + el.value.substring(end)
 
   nextTick(() => {
+    if (blurTimeoutId) {
+      clearTimeout(blurTimeoutId) // <-- 新增：清除失焦时设下的定时器
+      blurTimeoutId = null
+    }
     el.focus()
     if (selectedText)
       el.setSelectionRange(start, start + newText.length)
@@ -139,6 +143,12 @@ function insertText(prefix: string, suffix: string = '') {
 
 function addTag() {
   insertText('#')
+
+  // 使用 nextTick 确保 insertText 函数对文本的修改已经更新到 DOM 中
+  nextTick(() => {
+    // 手动在 textarea 元素上触发一次 input 事件
+    textarea.value?.dispatchEvent(new Event('input'))
+  })
 }
 
 function addBold() {
@@ -445,7 +455,7 @@ watch(textarea, (newTextarea) => {
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 3px 14px;
+  padding: 3px 9px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -467,8 +477,8 @@ watch(textarea, (newTextarea) => {
   color: #333;
   border: 1px solid #ccc;
   border-radius: 6px;
-  padding: 3px 14px;
-  font-size: 14px;
+  padding: 3px 9px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -546,14 +556,14 @@ watch(textarea, (newTextarea) => {
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 12px; /* 工具栏和字数统计之间的间距 */
+  gap: 8px; /* 工具栏和字数统计之间的间距 */
 }
 
 /* 3. 明确移除 editor-toolbar 的边框和背景 */
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   border: none; /* 关键：明确移除边框 */
   background: none; /* 确保无背景 */
   padding: 0; /* 确保无内边距 */
