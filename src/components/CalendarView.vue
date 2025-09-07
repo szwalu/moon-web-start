@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -7,8 +7,23 @@ import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import NoteItem from '@/components/NoteItem.vue'
 
+// --- 缓存管理结束 ---
+
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete'])
 
+// --- 新增：缓存管理 ---
+const CACHE_KEYS = {
+  ALL_DATES: 'cached_notes_calendar_all_dates', // 用于缓存所有有笔记的日期（蓝点）
+  DATE_PREFIX: 'cached_notes_calendar_date_', // 用于缓存每一天具体笔记列表的前缀
+}
+
+// 辅助函数：根据日期生成唯一的缓存键，例如 'cached_notes_calendar_date_2025-09-07'
+function getNoteDateCacheKey(date: Date) {
+  const year = date.getFullYear()
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  return `${CACHE_KEYS.DATE_PREFIX}${year}-${month}-${day}`
+}
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
@@ -33,6 +48,15 @@ const attributes = computed(() => {
 async function fetchAllNoteDates() {
   if (!user.value)
     return
+
+  // 修改：首先检查缓存
+  const cachedData = localStorage.getItem(CACHE_KEYS.ALL_DATES)
+  if (cachedData) {
+    // 如果有缓存，直接使用并退出函数
+    datesWithNotes.value = new Set(JSON.parse(cachedData))
+    return
+  }
+
   try {
     const { data, error } = await supabase
       .from('notes')
@@ -42,8 +66,10 @@ async function fetchAllNoteDates() {
     if (error)
       throw error
     if (data) {
-      const dates = new Set(data.map(note => new Date(note.created_at).toDateString()))
-      datesWithNotes.value = dates
+      const dateStrings = data.map(note => new Date(note.created_at).toDateString())
+      datesWithNotes.value = new Set(dateStrings)
+      // 修改：将首次获取的数据存入缓存
+      localStorage.setItem(CACHE_KEYS.ALL_DATES, JSON.stringify(dateStrings))
     }
   }
   catch (err) {
@@ -57,6 +83,16 @@ async function fetchNotesForDate(date: Date) {
     return
 
   selectedDate.value = date
+
+  // 修改：检查指定日期的笔记缓存
+  const cacheKey = getNoteDateCacheKey(date)
+  const cachedData = localStorage.getItem(cacheKey)
+
+  if (cachedData) {
+    selectedDateNotes.value = JSON.parse(cachedData)
+    return // 从缓存加载，直接返回
+  }
+
   isLoadingNotes.value = true
   selectedDateNotes.value = []
 
@@ -75,6 +111,8 @@ async function fetchNotesForDate(date: Date) {
     if (error)
       throw error
     selectedDateNotes.value = data || []
+    // 修改：将获取到的笔记列表存入缓存
+    localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
   }
   catch (err: any) {
     console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
@@ -95,23 +133,13 @@ async function toggleExpandInCalendar(noteId: string) {
   const isCollapsing = expandedNoteId.value === noteId
 
   if (isCollapsing) {
-    // --- 这是“收起”笔记的逻辑 ---
     expandedNoteId.value = null
-
-    // 1. 等待 Vue 完成“收起”笔记的 DOM 更新
     await nextTick()
-
-    // 2. 找到刚刚收起的那个笔记的 DOM 元素
-    // 我们利用 NoteItem 上的 data-note-id 属性来精确查找
     const noteElement = scrollBodyRef.value?.querySelector(`[data-note-id="${noteId}"]`)
-
-    if (noteElement) {
-      // 3. 命令浏览器把它平滑地滚动到视野内
+    if (noteElement)
       noteElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
   }
   else {
-    // --- 这是“展开”笔记的逻辑，保持不变 ---
     expandedNoteId.value = noteId
   }
 }
@@ -124,6 +152,11 @@ onMounted(() => {
 
 // --- 暴露一个刷新方法给父组件 ---
 function refreshData() {
+  // 修改：在重新获取数据前，先清除相关缓存
+  localStorage.removeItem(CACHE_KEYS.ALL_DATES) // 清除蓝点日期缓存
+  localStorage.removeItem(getNoteDateCacheKey(selectedDate.value)) // 清除当前选中日期的笔记缓存
+
+  // 然后再执行数据获取，此时会从服务器拉取最新数据并重建缓存
   fetchAllNoteDates()
   fetchNotesForDate(selectedDate.value)
 }
@@ -157,6 +190,7 @@ defineExpose({
             v-for="note in selectedDateNotes"
             :key="note.id"
             :note="note"
+            :data-note-id="note.id"
             :is-expanded="expandedNoteId === note.id"
             @toggle-expand="toggleExpandInCalendar"
             @edit="noteToEdit => emit('editNote', noteToEdit)"

@@ -27,7 +27,7 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const newNoteEditorContainerRef = ref(null)
-const newNoteEditorRef = ref(null) // 1. 为 NoteEditor 组件创建一个新的 ref
+const newNoteEditorRef = ref(null)
 const noteContainers = ref({})
 const showCalendarView = ref(false)
 
@@ -48,13 +48,11 @@ const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
 const currentPage = ref(1)
-const notesPerPage = 20
+const notesPerPage = 150
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
 const maxNoteLength = 5000
-const isNotesCached = ref(false)
-const cachedPages = ref(new Map<number, { totalNotes: number; hasMoreNotes: boolean; hasPreviousNotes: boolean; notes: any[] }>())
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
@@ -65,29 +63,36 @@ const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(
 const anniversaryNotes = ref<any[] | null>(null)
 const isAnniversaryViewActive = ref(false)
 const loading = ref(false)
-const lastSavedId = ref<string | null>(null) // 新增
-const editingNote = ref<any | null>(null) // 新增
-const cachedNotes = ref<any[]>([]) // 新增
+const lastSavedId = ref<string | null>(null)
+const editingNote = ref<any | null>(null)
+const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
-const CACHED_NOTES_KEY = 'cached_notes_page_1'
 let authListener: any = null
+
+// --- 缓存管理 ---
+const CACHE_KEYS = {
+  HOME: 'cached_notes_home',
+  HOME_META: 'cached_notes_home_meta', // 新增：用于存储分页等元数据
+  TAG_PREFIX: 'cached_notes_tag_',
+  CALENDAR_PREFIX: 'cached_notes_calendar_',
+}
+const getTagCacheKey = (tag: string) => `${CACHE_KEYS.TAG_PREFIX}${tag}`
+// --- 缓存管理结束 ---
 
 const mainMenuOptions = computed(() => [
   {
-    label: '标签', // 1. 新增“标签”主菜单
+    label: '标签',
     key: 'tags',
-    // 2. 使用 allTags 动态生成子菜单
     children: allTags.value.length > 0
       ? allTags.value.map(tag => ({
         label: tag,
-        key: tag, // 我们直接用标签本身作为 key
+        key: tag,
       }))
       : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
   },
-  //  { key: 'd1', type: 'divider' }, // 增加一个分割线
   { label: '日历', key: 'calendar' },
   { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
   { label: t('settings.font_title'), key: 'settings' },
@@ -96,30 +101,25 @@ const mainMenuOptions = computed(() => [
 ])
 
 const handleScroll = debounce(() => {
-  // 新增：如果日历视图是打开的，则立即中断函数，不做任何事
   if (showCalendarView.value)
     return
-
   if (isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
     return
-
   if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 50)
     nextPage()
 }, 200)
 
 onMounted(() => {
-  const cachedData = localStorage.getItem(CACHED_NOTES_KEY)
+  const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  if (cachedData) {
+  if (cachedData)
     notes.value = JSON.parse(cachedData)
-    isNotesCached.value = true
-  }
+
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
       const currentUser = session?.user ?? null
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
-
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(() => {
           fetchNotes()
@@ -132,7 +132,10 @@ onMounted(() => {
         allTags.value = []
         newNoteContent.value = ''
         cancelEdit()
-        localStorage.removeItem(CACHED_NOTES_KEY)
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('cached_notes_'))
+            localStorage.removeItem(key)
+        })
         localStorage.removeItem(LOCAL_CONTENT_KEY)
       }
     },
@@ -141,9 +144,8 @@ onMounted(() => {
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     newNoteContent.value = savedContent
-
   isReady.value = true
-  window.addEventListener('scroll', handleScroll) // <-- 新增：监听窗口滚动
+  window.addEventListener('scroll', handleScroll)
 })
 
 onUnmounted(() => {
@@ -151,17 +153,15 @@ onUnmounted(() => {
     authListener.unsubscribe()
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  window.removeEventListener('scroll', handleScroll) // <-- 新增：移除窗口滚动监听
+  window.removeEventListener('scroll', handleScroll)
   if (notesListWrapperRef.value)
     notesListWrapperRef.value.removeEventListener('scroll', handleScroll)
 })
 
-watch(newNoteContent, (val) => { // 1. 增加 oldVal 参数来获取旧值
-  // 保留原有的草稿保存逻辑
+watch(newNoteContent, (val) => {
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
-
     else
       localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
@@ -190,7 +190,6 @@ async function handleCreateNote(content: string) {
   if (saved) {
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     newNoteContent.value = ''
-    // 2. 在内容清空后，调用子组件的 reset 方法
     nextTick(() => {
       newNoteEditorRef.value?.reset()
     })
@@ -285,16 +284,42 @@ async function fetchAllTags() {
   }
 }
 
+/**
+ * ✨ 新增：从缓存中恢复首页笔记列表和翻页状态的辅助函数
+ * @returns {boolean} 如果成功从缓存恢复，返回 true，否则返回 false
+ */
+function restoreHomepageFromCache(): boolean {
+  const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
+  const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
+
+  if (cachedNotesData && cachedMetaData) {
+    const cachedNotes = JSON.parse(cachedNotesData)
+    const meta = JSON.parse(cachedMetaData)
+
+    notes.value = cachedNotes
+    totalNotes.value = meta.totalNotes
+
+    // 根据已缓存的笔记数量，重新计算当前页码和是否还有更多
+    currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
+    hasMoreNotes.value = cachedNotes.length < meta.totalNotes
+    return true // 表示成功从缓存恢复
+  }
+  return false // 表示缓存不存在或不完整
+}
+
 const debouncedSearch = debounce(async () => {
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
+  // ✨ 修改：当搜索框清空时，优先从缓存恢复，而不是重新请求
   if (!searchQuery.value.trim()) {
-    currentPage.value = 1
-    cachedPages.value.clear()
-    await fetchNotes()
+    if (!restoreHomepageFromCache()) {
+      // 如果缓存恢复失败，才执行网络请求
+      currentPage.value = 1
+      await fetchNotes()
+    }
     return
   }
   isLoadingNotes.value = true
@@ -328,7 +353,10 @@ async function handleVisibilityChange() {
       allTags.value = []
       newNoteContent.value = ''
       cancelEdit()
-      localStorage.removeItem(CACHED_NOTES_KEY)
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('cached_notes_'))
+          localStorage.removeItem(key)
+      })
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
@@ -434,6 +462,7 @@ async function handleBatchExport() {
     },
   })
 }
+
 function handleExportResults() {
   if (isExporting.value)
     return
@@ -518,8 +547,13 @@ async function fetchNotes() {
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
-    if (currentPage.value === 1 && newNotes.length > 0)
-      localStorage.setItem(CACHED_NOTES_KEY, JSON.stringify(newNotes))
+
+    // ✨ 修改：同时缓存笔记列表和包含总数的元数据
+    if (newNotes.length > 0) {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
+    }
+
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
   catch (err) {
@@ -545,23 +579,16 @@ async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
-  const isCollapsing = expandedNote.value === noteId // 判断当前操作是否为“收起”
+  const isCollapsing = expandedNote.value === noteId
 
   if (isCollapsing) {
     expandedNote.value = null
-
-    // 等待 DOM 更新完成 (笔记在视觉上已经收起来了)
     await nextTick()
-
-    // 找到刚刚收起的那个笔记的 DOM 容器
     const noteElement = noteContainers.value[noteId]
-    if (noteElement) {
-      // 把它平滑地滚动到视野内最接近的位置
+    if (noteElement)
       noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
   }
   else {
-    // 否则，就是展开操作，逻辑不变
     expandedNote.value = noteId
   }
 }
@@ -586,13 +613,10 @@ async function triggerDeleteConfirmation(id: string) {
         if (error)
           throw new Error(error.message)
 
-        // 更新主列表和总数
         notes.value = notes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
         messageHook.success(t('notes.delete_success'))
 
-        // --- 新增代码 ---
-        // 如果日历视图是打开的，就调用它的刷新方法
         calendarViewRef.value?.refreshData()
 
         if (editingNoteId.value === id)
@@ -706,17 +730,14 @@ async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
 
-  // 第一次确认
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
     positiveText: t('dialog.confirm_button'),
     negativeText: t('dialog.cancel_button'),
     onPositiveClick: () => {
-      // 第二次确认（更强提示）
       dialog.warning({
         title: t('dialog.delete_note_title'),
-        // ⚠️ 这里必须用函数返回 VNode，而不是直接写 VNode
         content: () =>
           h('div', { style: 'line-height:1.6' }, [
             h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
@@ -738,12 +759,11 @@ async function handleDeleteSelected() {
             if (error)
               throw new Error(error.message)
 
-            // 前端状态更新
             notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
             cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
 
             if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
-              newNoteContent.value = '' // 对应 content.value
+              newNoteContent.value = ''
               lastSavedId.value = null
               editingNote.value = null
               localStorage.removeItem(LOCAL_NOTE_ID_KEY)
@@ -753,7 +773,6 @@ async function handleDeleteSelected() {
             totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
             hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
             hasPreviousNotes.value = currentPage.value > 1
-            cachedPages.value.clear()
 
             isSelectionModeActive.value = false
             selectedNoteIds.value = []
@@ -773,10 +792,9 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(key: string) {
-// 新增：如果是以 '#' 开头的 key，我们就认为是标签筛选
   if (key.startsWith('#')) {
     fetchNotesByTag(key)
-    return // 执行后直接返回，不进入下面的 switch
+    return
   }
   switch (key) {
     case 'calendar':
@@ -799,7 +817,6 @@ function handleMainMenuSelect(key: string) {
 
 function handleEditFromCalendar(note: any) {
   showCalendarView.value = false
-  // 延迟一点执行，确保主视图可见
   nextTick(() => {
     startEdit(note)
   })
@@ -813,22 +830,32 @@ async function fetchNotesByTag(tag: string) {
   if (!user.value)
     return
 
+  const cacheKey = getTagCacheKey(tag)
+  const cachedData = localStorage.getItem(cacheKey)
+  activeTagFilter.value = tag
+
+  if (cachedData) {
+    notes.value = JSON.parse(cachedData)
+    hasMoreNotes.value = false
+    return
+  }
+
   isLoadingNotes.value = true
-  activeTagFilter.value = tag // 记录当前正在筛选的标签
-  notes.value = [] // 先清空列表
+  notes.value = []
 
   try {
     const { data, error } = await supabase
       .from('notes')
       .select('*')
       .eq('user_id', user.value.id)
-      .ilike('content', `%${tag}%`) // 使用 ilike 进行模糊匹配，%是通配符
+      .ilike('content', `%${tag}%`)
       .order('created_at', { ascending: false })
 
     if (error)
       throw error
     notes.value = data || []
-    hasMoreNotes.value = false // 筛选状态下，我们认为没有更多笔记可加载
+    localStorage.setItem(cacheKey, JSON.stringify(notes.value))
+    hasMoreNotes.value = false
   }
   catch (err: any) {
     messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
@@ -839,10 +866,14 @@ async function fetchNotesByTag(tag: string) {
 }
 
 function clearTagFilter() {
-  activeTagFilter.value = null // 清空筛选状态
-  currentPage.value = 1 // 重置到第一页
-  notes.value = [] // 清空笔记
-  fetchNotes() // 重新获取所有笔记
+  // ✨ 修改：优先从缓存恢复，而不是重新请求
+  activeTagFilter.value = null
+  notes.value = []
+  if (!restoreHomepageFromCache()) {
+    // 如果缓存恢复失败，才执行网络请求
+    currentPage.value = 1
+    fetchNotes()
+  }
 }
 </script>
 
