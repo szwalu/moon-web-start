@@ -5,37 +5,23 @@ import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
-import NoteItem from '@/components/NoteItem.vue'
 
-// --- 缓存管理结束 ---
+// ✨ 修改：导入共享的缓存键
+import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
+import NoteItem from '@/components/NoteItem.vue'
 
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete'])
 
-// --- 新增：缓存管理 ---
-const CACHE_KEYS = {
-  ALL_DATES: 'cached_notes_calendar_all_dates', // 用于缓存所有有笔记的日期（蓝点）
-  DATE_PREFIX: 'cached_notes_calendar_date_', // 用于缓存每一天具体笔记列表的前缀
-}
-
-// 辅助函数：根据日期生成唯一的缓存键，例如 'cached_notes_calendar_date_2025-09-07'
-function getNoteDateCacheKey(date: Date) {
-  const year = date.getFullYear()
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const day = date.getDate().toString().padStart(2, '0')
-  return `${CACHE_KEYS.DATE_PREFIX}${year}-${month}-${day}`
-}
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
 
-// --- 状态 ---
 const datesWithNotes = ref<Set<string>>(new Set())
 const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 
-// --- 计算属性：生成日历蓝点 ---
 const attributes = computed(() => {
   return Array.from(datesWithNotes.value).map(dateStr => ({
     key: dateStr,
@@ -44,15 +30,13 @@ const attributes = computed(() => {
   }))
 })
 
-// --- 逻辑：获取所有笔记的日期用于显示蓝点 ---
 async function fetchAllNoteDates() {
   if (!user.value)
     return
 
-  // 修改：首先检查缓存
-  const cachedData = localStorage.getItem(CACHE_KEYS.ALL_DATES)
+  // ✨ 修改：使用共享的缓存键
+  const cachedData = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (cachedData) {
-    // 如果有缓存，直接使用并退出函数
     datesWithNotes.value = new Set(JSON.parse(cachedData))
     return
   }
@@ -68,8 +52,8 @@ async function fetchAllNoteDates() {
     if (data) {
       const dateStrings = data.map(note => new Date(note.created_at).toDateString())
       datesWithNotes.value = new Set(dateStrings)
-      // 修改：将首次获取的数据存入缓存
-      localStorage.setItem(CACHE_KEYS.ALL_DATES, JSON.stringify(dateStrings))
+      // ✨ 修改：使用共享的缓存键
+      localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(dateStrings))
     }
   }
   catch (err) {
@@ -77,20 +61,19 @@ async function fetchAllNoteDates() {
   }
 }
 
-// --- 逻辑：当点击日期时，获取那一天的笔记 ---
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
 
   selectedDate.value = date
 
-  // 修改：检查指定日期的笔记缓存
-  const cacheKey = getNoteDateCacheKey(date)
+  // ✨ 修改：使用共享的缓存键生成函数
+  const cacheKey = getCalendarDateCacheKey(date)
   const cachedData = localStorage.getItem(cacheKey)
 
   if (cachedData) {
     selectedDateNotes.value = JSON.parse(cachedData)
-    return // 从缓存加载，直接返回
+    return
   }
 
   isLoadingNotes.value = true
@@ -111,7 +94,6 @@ async function fetchNotesForDate(date: Date) {
     if (error)
       throw error
     selectedDateNotes.value = data || []
-    // 修改：将获取到的笔记列表存入缓存
     localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
   }
   catch (err: any) {
@@ -122,13 +104,11 @@ async function fetchNotesForDate(date: Date) {
   }
 }
 
-// --- 逻辑：处理顶部点击返回 ---
 const scrollBodyRef = ref<HTMLElement | null>(null)
 function handleHeaderClick() {
   scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-// --- 逻辑：处理展开/收起 ---
 async function toggleExpandInCalendar(noteId: string) {
   const isCollapsing = expandedNoteId.value === noteId
 
@@ -144,19 +124,16 @@ async function toggleExpandInCalendar(noteId: string) {
   }
 }
 
-// --- 组件加载时执行初始化 ---
 onMounted(() => {
   fetchAllNoteDates()
   fetchNotesForDate(new Date())
 })
 
-// --- 暴露一个刷新方法给父组件 ---
 function refreshData() {
-  // 修改：在重新获取数据前，先清除相关缓存
-  localStorage.removeItem(CACHE_KEYS.ALL_DATES) // 清除蓝点日期缓存
-  localStorage.removeItem(getNoteDateCacheKey(selectedDate.value)) // 清除当前选中日期的笔记缓存
+  // ✨ 修改：使用共享的缓存键
+  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
+  localStorage.removeItem(getCalendarDateCacheKey(selectedDate.value))
 
-  // 然后再执行数据获取，此时会从服务器拉取最新数据并重建缓存
   fetchAllNoteDates()
   fetchNotesForDate(selectedDate.value)
 }
@@ -208,6 +185,7 @@ defineExpose({
 </template>
 
 <style scoped>
+/* 样式部分没有改动 */
 .calendar-view {
   position: fixed;
   top: 0;

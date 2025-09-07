@@ -29,6 +29,28 @@ const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 let blurTimeoutId: number | null = null
 
+function updateTextarea(newText: string, newCursorPos: number) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 1. 【关键】在进行任何修改前，保存当前的滚动位置
+  const originalScrollTop = el.scrollTop
+
+  // 2. 更新 ref，这将触发 v-model 的异步 DOM 更新和 useTextareaAutosize 的高度计算
+  input.value = newText
+
+  // 3. 使用 nextTick 来确保我们的代码在 DOM 更新和高度调整完成后执行
+  nextTick(() => {
+    // 4. 首先，恢复焦点并设置正确的光标逻辑位置
+    el.focus()
+    el.setSelectionRange(newCursorPos, newCursorPos)
+
+    // 5. 【关键】然后，将滚动位置恢复到之前保存的位置
+    el.scrollTop = originalScrollTop
+  })
+}
+
 function handleSave() {
   if (!props.isLoading && contentModel.value)
     emit('save', contentModel.value)
@@ -123,22 +145,24 @@ function insertText(prefix: string, suffix: string = '') {
   const start = el.selectionStart
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
-  const newText = `${prefix}${selectedText}${suffix}`
+  const newTextFragment = `${prefix}${selectedText}${suffix}`
 
-  input.value = el.value.substring(0, start) + newText + el.value.substring(end)
+  // 计算最终的完整文本
+  const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
 
-  nextTick(() => {
-    if (blurTimeoutId) {
-      clearTimeout(blurTimeoutId) // <-- 新增：清除失焦时设下的定时器
-      blurTimeoutId = null
-    }
-    el.focus()
-    if (selectedText)
-      el.setSelectionRange(start, start + newText.length)
+  // 计算新的光标位置
+  // 如果有选中文本，光标应在替换内容之后；否则，在插入的前缀之后。
+  const newCursorPos = selectedText
+    ? start + newTextFragment.length
+    : start + prefix.length
 
-    else
-      el.setSelectionRange(start + prefix.length, start + prefix.length)
-  })
+  // 清除可能存在的失焦定时器
+  if (blurTimeoutId) {
+    clearTimeout(blurTimeoutId)
+    blurTimeoutId = null
+  }
+
+  updateTextarea(finalFullText, newCursorPos)
 }
 
 function addTag() {
@@ -165,37 +189,34 @@ function addTodo() {
     return
 
   const start = el.selectionStart
+  // 找到当前行或光标所在行的起始位置
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
-  const newText = '- [ ] '
+  const textToInsert = '- [ ] '
 
-  input.value = el.value.substring(0, currentLineStart) + newText + el.value.substring(currentLineStart)
+  // 计算最终的完整文本
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
 
-  nextTick(() => {
-    el.focus()
-    const newCursorPos = start + newText.length
-    el.setSelectionRange(newCursorPos, newCursorPos)
-  })
+  // 计算新的光标位置
+  const newCursorPos = start + textToInsert.length
+
+  updateTextarea(finalFullText, newCursorPos)
 }
-
 function addOrderedList() {
   const el = textarea.value
   if (!el)
     return
 
   const start = el.selectionStart
-  // 找到当前光标所在行的起始位置
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
-  const newText = '1. ' // Markdown 数字列表的标记
+  const textToInsert = '1. '
 
-  // 在行首插入 "1. "
-  input.value = el.value.substring(0, currentLineStart) + newText + el.value.substring(currentLineStart)
+  // 计算最终的完整文本
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
 
-  // 更新后，重新聚焦并把光标移动到标记的后面
-  nextTick(() => {
-    el.focus()
-    const newCursorPos = start + newText.length
-    el.setSelectionRange(newCursorPos, newCursorPos)
-  })
+  // 计算新的光标位置
+  const newCursorPos = start + textToInsert.length
+
+  updateTextarea(finalFullText, newCursorPos)
 }
 
 function handleEnterKey(event: KeyboardEvent) {
@@ -260,33 +281,25 @@ function addHeading() {
     return
 
   const start = el.selectionStart
-  // 找到当前光标所在行的起始位置
   const lineStart = el.value.lastIndexOf('\n', start - 1) + 1
-  // 找到当前行的结束位置
-  const lineEnd = (!el.value.includes('\n', lineStart)) ? el.value.length : el.value.indexOf('\n', lineStart)
+  const lineEnd = !el.value.includes('\n', lineStart) ? el.value.length : el.value.indexOf('\n', lineStart)
 
   const currentLine = el.value.substring(lineStart, lineEnd)
-  const headingRegex = /^(#+\s)/ // 用于匹配行首的 #
+  const headingRegex = /^(#+\s)/
   let newLineContent
 
-  if (headingRegex.test(currentLine)) {
-    // 如果当前行已经是标题，则移除标题标记
+  if (headingRegex.test(currentLine))
     newLineContent = currentLine.replace(headingRegex, '')
-  }
-  else {
-    // 如果不是标题，则添加二级标题标记
+  else
     newLineContent = `## ${currentLine}`
-  }
 
-  // 替换整行内容
-  input.value = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
+  // 计算最终的完整文本
+  const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
 
-  // 更新后，重新聚焦并把光标放到行末
-  nextTick(() => {
-    el.focus()
-    const newCursorPos = lineStart + newLineContent.length
-    el.setSelectionRange(newCursorPos, newCursorPos)
-  })
+  // 计算新的光标位置
+  const newCursorPos = lineStart + newLineContent.length
+
+  updateTextarea(finalFullText, newCursorPos)
 }
 
 watch(() => props.modelValue, (newValue) => {

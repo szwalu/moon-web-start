@@ -8,6 +8,7 @@ import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
@@ -48,7 +49,7 @@ const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
 const currentPage = ref(1)
-const notesPerPage = 150
+const notesPerPage = 100
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
@@ -71,16 +72,6 @@ const activeTagFilter = ref<string | null>(null)
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
-
-// --- 缓存管理 ---
-const CACHE_KEYS = {
-  HOME: 'cached_notes_home',
-  HOME_META: 'cached_notes_home_meta', // 新增：用于存储分页等元数据
-  TAG_PREFIX: 'cached_notes_tag_',
-  CALENDAR_PREFIX: 'cached_notes_calendar_',
-}
-const getTagCacheKey = (tag: string) => `${CACHE_KEYS.TAG_PREFIX}${tag}`
-// --- 缓存管理结束 ---
 
 const mainMenuOptions = computed(() => [
   {
@@ -167,6 +158,31 @@ watch(newNoteContent, (val) => {
   }
 })
 
+/**
+ * 集中处理缓存失效的核心函数
+ * @param note 发生变更的笔记对象
+ */
+function invalidateCachesOnDataChange(note: any) {
+  if (!note || !note.content)
+    return
+
+  // 1. 清除笔记中包含的所有标签的缓存
+  const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
+  let match
+  // eslint-disable-next-line no-cond-assign
+  while ((match = tagRegex.exec(note.content)) !== null) {
+    if (match[1]) {
+      const tag = `#${match[1]}`
+      localStorage.removeItem(getTagCacheKey(tag))
+    }
+  }
+
+  // 2. 清除日历相关的缓存
+  const noteDate = new Date(note.created_at)
+  localStorage.removeItem(getCalendarDateCacheKey(noteDate)) // 清除当天笔记的缓存
+  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES) // 清除“所有带点的日期”的缓存
+}
+
 async function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
@@ -240,6 +256,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
       if (showMessage)
         messageHook.success(t('notes.auto_saved'))
     }
+    invalidateCachesOnDataChange(savedNote)
     await fetchAllTags()
     return savedNote
   }
@@ -284,10 +301,6 @@ async function fetchAllTags() {
   }
 }
 
-/**
- * ✨ 新增：从缓存中恢复首页笔记列表和翻页状态的辅助函数
- * @returns {boolean} 如果成功从缓存恢复，返回 true，否则返回 false
- */
 function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
@@ -295,16 +308,13 @@ function restoreHomepageFromCache(): boolean {
   if (cachedNotesData && cachedMetaData) {
     const cachedNotes = JSON.parse(cachedNotesData)
     const meta = JSON.parse(cachedMetaData)
-
     notes.value = cachedNotes
     totalNotes.value = meta.totalNotes
-
-    // 根据已缓存的笔记数量，重新计算当前页码和是否还有更多
     currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
     hasMoreNotes.value = cachedNotes.length < meta.totalNotes
-    return true // 表示成功从缓存恢复
+    return true
   }
-  return false // 表示缓存不存在或不完整
+  return false
 }
 
 const debouncedSearch = debounce(async () => {
@@ -313,10 +323,8 @@ const debouncedSearch = debounce(async () => {
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
-  // ✨ 修改：当搜索框清空时，优先从缓存恢复，而不是重新请求
   if (!searchQuery.value.trim()) {
     if (!restoreHomepageFromCache()) {
-      // 如果缓存恢复失败，才执行网络请求
       currentPage.value = 1
       await fetchNotes()
     }
@@ -507,6 +515,8 @@ function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
     totalNotes.value += 1
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
   }
 }
 
@@ -531,6 +541,7 @@ function updateNoteInList(updatedNote: any) {
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
 }
 
@@ -548,7 +559,6 @@ async function fetchNotes() {
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
 
-    // ✨ 修改：同时缓存笔记列表和包含总数的元数据
     if (newNotes.length > 0) {
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
@@ -578,9 +588,7 @@ function generateUniqueId() {
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
-
   const isCollapsing = expandedNote.value === noteId
-
   if (isCollapsing) {
     expandedNote.value = null
     await nextTick()
@@ -602,6 +610,8 @@ async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
 
+  const noteToDelete = notes.value.find(note => note.id === id)
+
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -615,9 +625,12 @@ async function triggerDeleteConfirmation(id: string) {
 
         notes.value = notes.value.filter(note => note.id !== id)
         totalNotes.value -= 1
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
         messageHook.success(t('notes.delete_success'))
 
-        calendarViewRef.value?.refreshData()
+        if (noteToDelete)
+          invalidateCachesOnDataChange(noteToDelete)
 
         if (editingNoteId.value === id)
           cancelEdit()
@@ -750,6 +763,12 @@ async function handleDeleteSelected() {
             loading.value = true
             const idsToDelete = [...selectedNoteIds.value]
 
+            idsToDelete.forEach((id) => {
+              const noteToDelete = notes.value.find(n => n.id === id)
+              if (noteToDelete)
+                invalidateCachesOnDataChange(noteToDelete)
+            })
+
             const { error } = await supabase
               .from('notes')
               .delete()
@@ -773,6 +792,8 @@ async function handleDeleteSelected() {
             totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
             hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
             hasPreviousNotes.value = currentPage.value > 1
+            localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+            localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
             isSelectionModeActive.value = false
             selectedNoteIds.value = []
@@ -866,11 +887,9 @@ async function fetchNotesByTag(tag: string) {
 }
 
 function clearTagFilter() {
-  // ✨ 修改：优先从缓存恢复，而不是重新请求
   activeTagFilter.value = null
   notes.value = []
   if (!restoreHomepageFromCache()) {
-    // 如果缓存恢复失败，才执行网络请求
     currentPage.value = 1
     fetchNotes()
   }
