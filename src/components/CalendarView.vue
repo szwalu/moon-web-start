@@ -82,18 +82,36 @@ async function fetchNotesForDate(date: Date) {
   }
 }
 
-// --- 逻辑：处理展开/收起 ---
-function toggleExpandInCalendar(noteId: string) {
-  if (expandedNoteId.value === noteId)
-    expandedNoteId.value = null
-  else
-    expandedNoteId.value = noteId
-}
-
 // --- 逻辑：处理顶部点击返回 ---
 const scrollBodyRef = ref<HTMLElement | null>(null)
 function handleHeaderClick() {
   scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// --- 逻辑：处理展开/收起 ---
+async function toggleExpandInCalendar(noteId: string) {
+  const isCollapsing = expandedNoteId.value === noteId
+
+  if (isCollapsing) {
+    // --- 这是“收起”笔记的逻辑 ---
+    expandedNoteId.value = null
+
+    // 1. 等待 Vue 完成“收起”笔记的 DOM 更新
+    await nextTick()
+
+    // 2. 找到刚刚收起的那个笔记的 DOM 元素
+    // 我们利用 NoteItem 上的 data-note-id 属性来精确查找
+    const noteElement = scrollBodyRef.value?.querySelector(`[data-note-id="${noteId}"]`)
+
+    if (noteElement) {
+      // 3. 命令浏览器把它平滑地滚动到视野内
+      noteElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+  else {
+    // --- 这是“展开”笔记的逻辑，保持不变 ---
+    expandedNoteId.value = noteId
+  }
 }
 
 // --- 组件加载时执行初始化 ---
