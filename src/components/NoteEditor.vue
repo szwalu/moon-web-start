@@ -167,6 +167,83 @@ function addTodo() {
   })
 }
 
+function addOrderedList() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  // 找到当前光标所在行的起始位置
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const newText = '1. ' // Markdown 数字列表的标记
+
+  // 在行首插入 "1. "
+  input.value = el.value.substring(0, currentLineStart) + newText + el.value.substring(currentLineStart)
+
+  // 更新后，重新聚焦并把光标移动到标记的后面
+  nextTick(() => {
+    el.focus()
+    const newCursorPos = start + newText.length
+    el.setSelectionRange(newCursorPos, newCursorPos)
+  })
+}
+
+function handleEnterKey(event: KeyboardEvent) {
+  // 只处理回车键事件
+  if (event.key !== 'Enter')
+    return
+
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  const end = el.selectionEnd
+
+  // 找到当前光标所在行的起始位置
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const currentLine = el.value.substring(currentLineStart, start)
+
+  // 使用正则表达式匹配 "数字. " 格式，例如 "1. " 或 "12. "
+  const listRegex = /^(\d+)\.\s+/
+  const match = currentLine.match(listRegex)
+
+  // 仅当当前行是数字列表项时才执行特殊逻辑
+  if (match) {
+    // 如果在一个空的列表项上按回车，则取消列表
+    if (currentLine.trim() === match[0].trim()) {
+      // 阻止默认的回车行为
+      event.preventDefault()
+      // 将当前行的 "2. " 删掉，并换行
+      input.value = el.value.substring(0, currentLineStart - 1) + el.value.substring(end)
+
+      nextTick(() => {
+        el.focus()
+        // 恢复光标位置
+        el.setSelectionRange(currentLineStart - 1, currentLineStart - 1)
+      })
+      return
+    }
+
+    // 阻止默认的回车行为（即简单地插入一个换行符）
+    event.preventDefault()
+
+    // 计算下一个序号
+    const currentNumber = Number.parseInt(match[1], 10)
+    const nextPrefix = `\n${currentNumber + 1}. `
+
+    // 插入换行符和下一个序号
+    input.value = el.value.substring(0, start) + nextPrefix + el.value.substring(end)
+
+    // 更新后，重新聚焦并把光标移动到新行的末尾
+    nextTick(() => {
+      el.focus()
+      const newCursorPos = start + nextPrefix.length
+      el.setSelectionRange(newCursorPos, newCursorPos)
+    })
+  }
+}
+
 function addHeading() {
   const el = textarea.value
   if (!el)
@@ -236,6 +313,7 @@ watch(textarea, (newTextarea) => {
         @focus="emit('focus')"
         @input="handleInput"
         @blur="handleBlur"
+        @keydown="handleEnterKey"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -260,6 +338,7 @@ watch(textarea, (newTextarea) => {
           <button type="button" class="toolbar-btn" title="添加标签" @click="addTag">#</button>
           <button type="button" class="toolbar-btn" title="待办事项" @click="addTodo">✓</button>
           <button type="button" class="toolbar-btn" title="加粗" @click="addBold">B</button>
+          <button type="button" class="toolbar-btn" title="数字列表" @click="addOrderedList">1.</button>
           <button type="button" class="toolbar-btn" title="添加标题" @click="addHeading">H</button>
           <button type="button" class="toolbar-btn" title="斜体" @click="addItalic">I</button>
         </div>
@@ -474,7 +553,7 @@ watch(textarea, (newTextarea) => {
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   border: none; /* 关键：明确移除边框 */
   background: none; /* 确保无背景 */
   padding: 0; /* 确保无内边距 */
@@ -490,9 +569,9 @@ watch(textarea, (newTextarea) => {
   color: #6b7280;
   border-radius: 4px;
   font-weight: bold;
-  font-size: 15px;
-  width: 24px;
-  height: 24px;
+  font-size: 18px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
