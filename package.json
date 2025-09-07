@@ -46,6 +46,7 @@
     "solarlunar-es": "^1.0.9",
     "sweetalert2": "^11.22.0",
     "uuid": "^11.1.0",
+    "v-calendar": "^3.1.2",
     "vue": "^3.2.47",
     "vue-i18n": "^9.5.0",
     "vue-router": "^4.1.6",

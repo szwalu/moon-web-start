@@ -16,6 +16,7 @@ import SettingsModal from '@/components/SettingsModal.vue'
 import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
+import CalendarView from '@/components/CalendarView.vue'
 
 // --- 初始化 & 状态定义 ---
 useDark()
@@ -28,6 +29,7 @@ const authStore = useAuthStore()
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null) // 1. 为 NoteEditor 组件创建一个新的 ref
 const noteContainers = ref({})
+const showCalendarView = ref(false)
 
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
@@ -72,6 +74,7 @@ const CACHED_NOTES_KEY = 'cached_notes_page_1'
 let authListener: any = null
 
 const mainMenuOptions = computed(() => [
+  { label: '日历笔记', key: 'calendar' },
   { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
   { label: t('settings.font_title'), key: 'settings' },
   { label: t('notes.export_all'), key: 'export' },
@@ -750,6 +753,9 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   switch (key) {
+    case 'calendar':
+      showCalendarView.value = true
+      break
     case 'toggleSelection':
       toggleSelectionMode()
       break
@@ -763,6 +769,14 @@ function handleMainMenuSelect(key: string) {
       showAccountModal.value = true
       break
   }
+}
+
+function handleEditFromCalendar(note: any) {
+  showCalendarView.value = false
+  // 延迟一点执行，确保主视图可见
+  nextTick(() => {
+    startEdit(note)
+  })
 }
 
 function handleClosePage() {
@@ -806,7 +820,8 @@ function handleClosePage() {
 
       <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
-          ref="newNoteEditorRef" v-model="newNoteContent"
+          ref="newNoteEditorRef"
+          v-model="newNoteContent"
           :is-editing="false"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
@@ -844,7 +859,6 @@ function handleClosePage() {
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
                 @focus="handleEditorFocus(noteContainers[note.id])"
-                @height-change="handleEditorFocus(noteContainers[note.id])"
               />
               <NoteItem
                 v-else
@@ -866,6 +880,7 @@ function handleClosePage() {
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+
       <Transition name="slide-up-fade">
         <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
           <div class="selection-info">{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</div>
@@ -874,6 +889,18 @@ function handleClosePage() {
             <button class="action-btn delete-btn" @click="handleDeleteSelected">{{ $t('notes.delete') }}</button>
           </div>
         </div>
+      </Transition>
+
+      <Transition name="slide-up-fade">
+        <CalendarView
+          v-if="showCalendarView"
+          @close="showCalendarView = false"
+          @edit-note="handleEditFromCalendar"
+
+          @copy="handleCopy"
+          @pin="handlePinToggle"
+          @delete="triggerDeleteConfirmation"
+        />
       </Transition>
     </template>
     <template v-else>
