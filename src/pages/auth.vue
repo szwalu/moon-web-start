@@ -83,14 +83,13 @@ const mainMenuOptions = computed(() => [
 ])
 
 const handleScroll = debounce(() => {
-  // 不再需要 el 变量
+  // 新增：如果日历视图是打开的，则立即中断函数，不做任何事
+  if (showCalendarView.value)
+    return
+
   if (isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
     return
 
-  // 使用 window 和 document 的属性来判断页面是否滚动到底部
-  // window.scrollY: 页面垂直滚动的距离
-  // window.innerHeight: 浏览器窗口的可见高度
-  // document.documentElement.scrollHeight: 整个页面的总高度
   if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 50)
     nextPage()
 }, 200)
