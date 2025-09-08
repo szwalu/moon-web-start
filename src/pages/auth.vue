@@ -743,6 +743,7 @@ function toggleSearchBar() {
 function handleCancelSearch() {
   searchQuery.value = ''
   showSearchBar.value = false
+  handleSearchCleared()
 }
 
 function handleAnniversaryToggle(data: any[] | null) {
