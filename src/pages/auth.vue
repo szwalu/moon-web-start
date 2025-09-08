@@ -113,9 +113,11 @@ onMounted(() => {
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-        nextTick(() => {
-          fetchNotes()
-          fetchAllTags()
+        nextTick(async () => {
+          await fetchNotes() // 首先，只加载最重要的笔记列表
+
+          // 然后再“懒加载”其他数据
+          fetchAllTags() // 这个已经用RPC优化了，所以并发也可以，但错开更好
           anniversaryBannerRef.value?.loadAnniversaryNotes()
         })
       }
@@ -277,31 +279,26 @@ function closeDropdownOnClickOutside(event: MouseEvent) {
 }
 
 async function fetchAllTags() {
-  if (!user.value?.id)
+  if (!user.value?.id) {
+    console.warn('fetchAllTags was called before user ID was available.')
     return
+  }
   try {
-    const { data, error } = await supabase.from('notes').select('content').eq('user_id', user.value.id)
+    const { data, error } = await supabase.rpc('get_unique_tags', {
+      p_user_id: user.value.id,
+    })
+
     if (error)
-      throw error
-    const tagSet = new Set<string>()
-    const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
-    if (data) {
-      for (const note of data) {
-        let match
-        // eslint-disable-next-line no-cond-assign
-        while ((match = tagRegex.exec(note.content)) !== null) {
-          if (match[1])
-            tagSet.add(`#${match[1]}`)
-        }
-      }
-    }
-    allTags.value = Array.from(tagSet).sort()
+      throw error // 如果 Supabase 返回错误，则抛出
+
+    allTags.value = data || []
   }
   catch (err: any) {
-    messageHook.error(`Failed to fetch tags: ${err.message}`)
+    // 捕获上面抛出的错误或网络请求本身的错误
+    console.error('Error fetching tags via RPC:', err)
+    messageHook.error(`获取标签失败: ${err.message}`) // 给用户一个友好的提示
   }
 }
-
 function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
