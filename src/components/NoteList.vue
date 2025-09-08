@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { debounce } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import NoteItem from '@/components/NoteItem.vue'
+import NoteEditor from '@/components/NoteEditor.vue'
 
 const props = defineProps({
   notes: {
@@ -13,19 +16,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  expandedNoteId: {
-    type: String as () => string | null,
-    default: null,
-  },
   hasMore: {
     type: Boolean,
     default: true,
   },
-  scrollContainer: {
-    type: Object as () => HTMLElement | null,
-    default: null,
-  },
-  // --- 新增 props ---
   isSelectionModeActive: {
     type: Boolean,
     default: false,
@@ -34,139 +28,217 @@ const props = defineProps({
     type: Array as () => string[],
     default: () => [],
   },
+  allTags: {
+    type: Array as () => string[],
+    default: () => [],
+  },
+  maxNoteLength: {
+    type: Number,
+    default: 5000,
+  },
+  searchQuery: {
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits([
   'loadMore',
-  'toggleExpand',
-  'edit',
-  'copy',
-  'pin',
-  'delete',
+  'updateNote',
+  'deleteNote',
+  'pinNote',
+  'copyNote',
   'taskToggle',
-  'toggleSelect', // --- 新增 emit ---
+  'toggleSelect',
+  'dateUpdated',
 ])
 
 const { t } = useI18n()
+const scrollerRef = ref(null)
+
+const expandedNote = ref<string | null>(null)
+const editingNoteId = ref<string | null>(null)
+const editingNoteContent = ref('')
+const isUpdating = ref(false)
+const noteContainers = ref({})
 
 const handleScroll = debounce(() => {
-  const el = props.scrollContainer
+  const el = scrollerRef.value?.$el
   if (!el || props.isLoading || !props.hasMore)
     return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50)
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 150)
     emit('loadMore')
 }, 200)
 
-watch(() => props.scrollContainer, (newEl, oldEl) => {
-  if (oldEl)
-    oldEl.removeEventListener('scroll', handleScroll)
-  if (newEl)
-    newEl.addEventListener('scroll', handleScroll)
+onMounted(() => {
+  if (scrollerRef.value?.$el)
+    scrollerRef.value.$el.addEventListener('scroll', handleScroll)
 })
 
 onUnmounted(() => {
   handleScroll.cancel()
-  if (props.scrollContainer)
-    props.scrollContainer.removeEventListener('scroll', handleScroll)
+  if (scrollerRef.value?.$el)
+    scrollerRef.value.$el.removeEventListener('scroll', handleScroll)
 })
 
-// --- 新增方法: 在选择模式下，阻止默认的展开/编辑等操作 ---
-function handleNoteAction(action: (...args: any[]) => void, ...args: any[]) {
-  if (props.isSelectionModeActive)
-    return // 在选择模式下，不执行任何笔记操作
-  action(...args)
+function startEdit(note: any) {
+  if (editingNoteId.value)
+    cancelEdit()
+  editingNoteId.value = note.id
+  editingNoteContent.value = note.content
+  expandedNote.value = null
+}
+
+function cancelEdit() {
+  editingNoteId.value = null
+  editingNoteContent.value = ''
+}
+
+async function handleUpdateNote() {
+  if (!editingNoteId.value)
+    return
+  isUpdating.value = true
+  emit('updateNote', { id: editingNoteId.value, content: editingNoteContent.value }, (success: boolean) => {
+    if (success)
+      cancelEdit()
+
+    isUpdating.value = false
+  })
+}
+
+async function toggleExpand(noteId: string) {
+  if (editingNoteId.value === noteId)
+    return
+  expandedNote.value = expandedNote.value === noteId ? null : noteId
+}
+
+function handleEditorFocus(containerEl: HTMLElement) {
+  setTimeout(() => {
+    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, 300)
 }
 </script>
 
 <template>
-  <div class="notes-list">
+  <div class="notes-list-wrapper">
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.loading') }}
     </div>
     <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.no_notes') }}
     </div>
-    <div v-else class="space-y-6">
-      <div
-        v-for="note in notes"
-        :key="note.id"
-        class="note-selection-wrapper"
-        :class="{ 'selection-mode': isSelectionModeActive }"
-        @click.stop="isSelectionModeActive && emit('toggleSelect', note.id)"
-      >
-        <div v-if="isSelectionModeActive" class="selection-indicator">
-          <div
-            class="selection-circle"
-            :class="{ selected: selectedNoteIds.includes(note.id) }"
-          />
-        </div>
-        <NoteItem
-          :note="note"
-          :is-expanded="expandedNoteId === note.id"
-          @toggle-expand="noteId => handleNoteAction(emit, 'toggleExpand', noteId)"
-          @edit="noteToEdit => handleNoteAction(emit, 'edit', noteToEdit)"
-          @copy="content => handleNoteAction(emit, 'copy', content)"
-          @pin="noteToPin => handleNoteAction(emit, 'pin', noteToPin)"
-          @delete="noteId => handleNoteAction(emit, 'delete', noteId)"
-          @task-toggle="payload => handleNoteAction(emit, 'taskToggle', payload)"
-        />
-      </div>
 
-      <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
-        {{ t('notes.loading', '正在加载...') }}
-      </div>
-    </div>
+    <DynamicScroller
+      v-else
+      ref="scrollerRef"
+      :items="notes"
+      :min-item-size="120"
+      class="scroller"
+      key-field="id"
+    >
+      <template #default="{ item, index, active }">
+        <DynamicScrollerItem
+          :item="item"
+          :active="active"
+          :data-index="index"
+          :size-dependencies="[
+            item.content,
+            expandedNote === item.id,
+            editingNoteId === item.id,
+          ]"
+          class="note-item-container"
+        >
+          <div
+            :ref="(el) => { if (el) noteContainers[item.id] = el }"
+            class="note-selection-wrapper"
+            :class="{ 'selection-mode': isSelectionModeActive }"
+            @click.stop="isSelectionModeActive && emit('toggleSelect', item.id)"
+          >
+            <div v-if="isSelectionModeActive" class="selection-indicator">
+              <div
+                class="selection-circle"
+                :class="{ selected: selectedNoteIds.includes(item.id) }"
+              />
+            </div>
+            <div class="note-content-wrapper">
+              <NoteEditor
+                v-if="editingNoteId === item.id"
+                v-model="editingNoteContent"
+                :is-editing="true"
+                :is-loading="isUpdating"
+                :max-note-length="maxNoteLength"
+                :placeholder="$t('notes.update_note')"
+                :all-tags="allTags"
+                @save="handleUpdateNote"
+                @cancel="cancelEdit"
+                @focus="handleEditorFocus(noteContainers[item.id])"
+              />
+              <NoteItem
+                v-else
+                :note="item"
+                :is-expanded="expandedNote === item.id"
+                :is-selection-mode-active="isSelectionModeActive"
+                :search-query="searchQuery"
+                @toggle-expand="toggleExpand"
+                @edit="startEdit"
+                @copy="(content) => emit('copyNote', content)"
+                @pin="(note) => emit('pinNote', note)"
+                @delete="(id) => emit('deleteNote', id)"
+                @task-toggle="(payload) => emit('taskToggle', payload)"
+                @date-updated="() => emit('dateUpdated')"
+              />
+            </div>
+          </div>
+        </DynamicScrollerItem>
+      </template>
+
+      <template #after>
+        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
+          {{ t('notes.loading') }}
+        </div>
+      </template>
+    </DynamicScroller>
   </div>
 </template>
 
 <style scoped>
-.notes-list {
-  margin-top: 1rem;
+.notes-list-wrapper {
+  height: 100%;
 }
-
-.text-gray-500 {
-  color: #6b7280;
+.scroller {
+  height: 100%;
+  overflow-y: auto;
 }
-.dark .text-gray-500 {
-  color: #9ca3af;
+.note-item-container {
+  padding-bottom: 1.5rem;
 }
-
-.space-y-6 > :not([hidden]) ~ :not([hidden]) {
-  --tw-space-y-reverse: 0;
-  margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
-  margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
+.note-item-container:last-child {
+  padding-bottom: 0;
 }
-
-/* --- 新增样式 --- */
 .note-selection-wrapper {
   display: flex;
-  align-items: flex-start; /* 让圆点和笔记顶部对齐 */
-  gap: 0.75rem; /* 圆点和笔记之间的间距 */
-  transition: background-color 0.2s ease;
+  gap: 0.75rem;
+  transition: background-color 0.2s;
 }
-
 .note-selection-wrapper.selection-mode {
   cursor: pointer;
   padding: 0.5rem;
-  margin: -0.5rem; /* 抵消 padding 带来的额外空间 */
+  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem;
   border-radius: 8px;
 }
-
 .note-selection-wrapper.selection-mode:hover {
   background-color: rgba(0, 0, 0, 0.03);
 }
 .dark .note-selection-wrapper.selection-mode:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
-
-.note-selection-wrapper > :last-child {
-  flex: 1; /* 让 NoteItem 占据剩余空间 */
+.note-content-wrapper {
+  flex: 1;
+  min-width: 0;
 }
-
 .selection-indicator {
-  padding-top: 0.75rem; /* 让圆点和日期大致对齐 */
+  padding-top: 0.75rem;
 }
-
 .selection-circle {
   width: 20px;
   height: 20px;
@@ -177,14 +249,11 @@ function handleNoteAction(action: (...args: any[]) => void, ...args: any[]) {
 .dark .selection-circle {
   border-color: #555;
 }
-
 .selection-circle.selected {
   background-color: #00b386;
   border-color: #00b386;
   position: relative;
 }
-
-/* 在选中的圆点内用伪元素画一个对勾 */
 .selection-circle.selected::after {
   content: '';
   position: absolute;
@@ -195,5 +264,11 @@ function handleNoteAction(action: (...args: any[]) => void, ...args: any[]) {
   border: solid white;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+}
+.text-gray-500 {
+  color: #6b7280;
+}
+.dark .text-gray-500 {
+  color: #9ca3af;
 }
 </style>

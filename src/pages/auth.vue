@@ -1,17 +1,18 @@
 <script setup lang="ts">
+// --- 删除了不再需要的 import ---
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
-import { debounce } from 'lodash-es'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
-import NoteItem from '@/components/NoteItem.vue'
+
+// --- 引入 NoteList 组件 ---
+import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
-import NoteItemSkeleton from '@/components/NoteItemSkeleton.vue'
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
@@ -19,7 +20,6 @@ import 'easymde/dist/easymde.min.css'
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
-
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
 // --- 初始化 & 状态定义 ---
@@ -32,25 +32,18 @@ const authStore = useAuthStore()
 
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
-const noteContainers = ref({})
 const showCalendarView = ref(false)
-
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const dropdownContainerRef = ref(null)
-const notesListWrapperRef = ref<HTMLElement | null>(null)
 const user = computed(() => authStore.user)
 const isCreating = ref(false)
-const isUpdating = ref(false)
 const notes = ref<any[]>([])
 const newNoteContent = ref('')
-const editingNoteId = ref<string | null>(null)
-const editingNoteContent = ref('')
 const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
-const expandedNote = ref<string | null>(null)
 const currentPage = ref(1)
 const notesPerPage = 30
 const totalNotes = ref(0)
@@ -78,6 +71,14 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
+// --- 以下 ref 已被移至 NoteList.vue，故删除 ---
+// const notesListWrapperRef = ref<HTMLElement | null>(null)
+// const noteContainers = ref({})
+// const isUpdating = ref(false)
+// const editingNoteId = ref<string | null>(null)
+// const editingNoteContent = ref('')
+// const expandedNote = ref<string | null>(null)
+
 const mainMenuOptions = computed(() => [
   {
     label: '标签',
@@ -96,20 +97,10 @@ const mainMenuOptions = computed(() => [
   { label: t('auth.account_title'), key: 'account' },
 ])
 
-const handleScroll = debounce(() => {
-  if (showCalendarView.value)
-    return
-  if (isLoadingNotes.value || !hasMoreNotes.value || isAnniversaryViewActive.value)
-    return
-  if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 50)
-    nextPage()
-}, 200)
+// --- handleScroll 方法已移至 NoteList.vue，故删除 ---
 
 onMounted(() => {
-  // 1. 先设置加载状态，让UI可以显示“加载中...”或骨架屏
   isLoadingNotes.value = true
-
-  // 2. 将localStorage操作包装在异步函数中
   const loadCache = async () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
@@ -118,18 +109,13 @@ onMounted(() => {
     }
     catch (e) {
       console.error('Failed to load notes from cache', e)
-      localStorage.removeItem(CACHE_KEYS.HOME) // 如果解析失败，清除坏数据
+      localStorage.removeItem(CACHE_KEYS.HOME)
     }
   }
-
-  // 3. 使用 setTimeout(..., 0) 或 nextTick 让它在下一个事件循环中执行
-  //    这样就不会阻塞当前的渲染流程
   setTimeout(() => {
     loadCache()
   }, 0)
-
   document.addEventListener('visibilitychange', handleVisibilityChange)
-
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
       const currentUser = session?.user ?? null
@@ -137,10 +123,8 @@ onMounted(() => {
         authStore.user = currentUser
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(async () => {
-          await fetchNotes() // 首先，只加载最重要的笔记列表
-
-          // 然后再“懒加载”其他数据
-          fetchAllTags() // 这个已经用RPC优化了，所以并发也可以，但错开更好
+          await fetchNotes()
+          fetchAllTags()
           anniversaryBannerRef.value?.loadAnniversaryNotes()
         })
       }
@@ -148,7 +132,6 @@ onMounted(() => {
         notes.value = []
         allTags.value = []
         newNoteContent.value = ''
-        cancelEdit()
         Object.keys(localStorage).forEach((key) => {
           if (key.startsWith('cached_notes_'))
             localStorage.removeItem(key)
@@ -162,7 +145,7 @@ onMounted(() => {
   if (savedContent)
     newNoteContent.value = savedContent
   isReady.value = true
-  window.addEventListener('scroll', handleScroll)
+  // --- 删除了 window.addEventListener('scroll', handleScroll) ---
 })
 
 onUnmounted(() => {
@@ -170,9 +153,7 @@ onUnmounted(() => {
     authListener.unsubscribe()
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  window.removeEventListener('scroll', handleScroll)
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.removeEventListener('scroll', handleScroll)
+  // --- 删除了 window.removeEventListener('scroll', handleScroll) ---
 })
 
 watch(newNoteContent, (val) => {
@@ -184,15 +165,9 @@ watch(newNoteContent, (val) => {
   }
 })
 
-/**
- * 集中处理缓存失效的核心函数
- * @param note 发生变更的笔记对象
- */
 function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
-
-  // 1. 清除笔记中包含的所有标签的缓存
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
   let match
   // eslint-disable-next-line no-cond-assign
@@ -202,29 +177,12 @@ function invalidateCachesOnDataChange(note: any) {
       localStorage.removeItem(getTagCacheKey(tag))
     }
   }
-
-  // 2. 清除日历相关的缓存
   const noteDate = new Date(note.created_at)
-  localStorage.removeItem(getCalendarDateCacheKey(noteDate)) // 清除当天笔记的缓存
-  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES) // 清除“所有带点的日期”的缓存
+  localStorage.removeItem(getCalendarDateCacheKey(noteDate))
+  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
 }
 
-async function startEdit(note: any) {
-  if (editingNoteId.value)
-    cancelEdit()
-  editingNoteId.value = note.id
-  editingNoteContent.value = note.content
-
-  await nextTick()
-  const container = noteContainers.value[note.id]
-  if (container)
-    handleEditorFocus(container)
-}
-
-function cancelEdit() {
-  editingNoteId.value = null
-  editingNoteContent.value = ''
-}
+// --- startEdit 和 cancelEdit 方法已移至 NoteList.vue，故删除 ---
 
 async function handleCreateNote(content: string) {
   isCreating.value = true
@@ -239,15 +197,11 @@ async function handleCreateNote(content: string) {
   isCreating.value = false
 }
 
-async function handleUpdateNote(content: string) {
-  if (!editingNoteId.value)
-    return
-  isUpdating.value = true
-  const saved = await saveNote(content, editingNoteId.value, { showMessage: true })
-  if (saved)
-    cancelEdit()
-
-  isUpdating.value = false
+// --- handleUpdateNote 已重构，以接收来自子组件的事件和数据 ---
+async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
+  const saved = await saveNote(content, id, { showMessage: true })
+  if (callback)
+    callback(!!saved) // !!saved 会将 saved 对象转换为布尔值
 }
 
 async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { showMessage = false } = {}) {
@@ -310,22 +264,19 @@ async function fetchAllTags() {
     const { data, error } = await supabase.rpc('get_unique_tags', {
       p_user_id: user.value.id,
     })
-
     if (error)
-      throw error // 如果 Supabase 返回错误，则抛出
-
+      throw error
     allTags.value = data || []
   }
   catch (err: any) {
-    // 捕获上面抛出的错误或网络请求本身的错误
     console.error('Error fetching tags via RPC:', err)
-    messageHook.error(`获取标签失败: ${err.message}`) // 给用户一个友好的提示
+    messageHook.error(`获取标签失败: ${err.message}`)
   }
 }
+
 function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
-
   if (cachedNotesData && cachedMetaData) {
     const cachedNotes = JSON.parse(cachedNotesData)
     const meta = JSON.parse(cachedMetaData)
@@ -345,7 +296,7 @@ function handleSearchStarted() {
     anniversaryNotes.value = null
   }
   isLoadingNotes.value = true
-  notes.value = [] // 开始搜索时清空列表，准备接收新结果
+  notes.value = []
 }
 
 function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
@@ -354,14 +305,11 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
     notes.value = []
   }
   else {
-    // 搜索返回的数据现在包含了原始字段和 'headline' 字段
     notes.value = data || []
   }
-  hasMoreNotes.value = false // 搜索结果不分页
+  hasMoreNotes.value = false
   hasPreviousNotes.value = false
   isLoadingNotes.value = false
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.scrollTop = 0
 }
 
 function handleSearchCleared() {
@@ -369,8 +317,6 @@ function handleSearchCleared() {
     currentPage.value = 1
     fetchNotes()
   }
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.scrollTop = 0
 }
 
 async function handleVisibilityChange() {
@@ -382,7 +328,6 @@ async function handleVisibilityChange() {
       notes.value = []
       allTags.value = []
       newNoteContent.value = ''
-      cancelEdit()
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith('cached_notes_'))
           localStorage.removeItem(key)
@@ -406,6 +351,7 @@ function handleExportTrigger() {
 }
 
 async function handleBatchExport() {
+  // ... 此方法无改动 ...
   showDropdown.value = false
   if (isExporting.value)
     return
@@ -494,6 +440,7 @@ async function handleBatchExport() {
 }
 
 function handleExportResults() {
+  // ... 此方法无改动 ...
   if (isExporting.value)
     return
   isExporting.value = true
@@ -509,7 +456,6 @@ function handleExportResults() {
       const date = new Date(note.created_at).toLocaleString('zh-CN')
       return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
     }).join('')
-
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -518,7 +464,6 @@ function handleExportResults() {
     a.download = `notes_search_results_${timestamp}.txt`
     document.body.appendChild(a)
     a.click()
-
     setTimeout(() => {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
@@ -575,19 +520,15 @@ async function fetchNotes() {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
     const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
-
     if (error)
       throw error
-
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
-
     if (newNotes.length > 0) {
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
     }
-
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
   catch (err) {
@@ -609,33 +550,19 @@ function generateUniqueId() {
   return uuidv4()
 }
 
-async function toggleExpand(noteId: string) {
-  if (editingNoteId.value === noteId)
-    return
-  const isCollapsing = expandedNote.value === noteId
-  if (isCollapsing) {
-    expandedNote.value = null
-    await nextTick()
-    const noteElement = noteContainers.value[noteId]
-    if (noteElement)
-      noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-  else {
-    expandedNote.value = noteId
-  }
-}
+// --- toggleExpand 方法已移至 NoteList.vue，故删除 ---
 
 function handleHeaderClick() {
-  if (notesListWrapperRef.value)
-    notesListWrapperRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+  const scroller = document.querySelector('.scroller')
+  if (scroller)
+    scroller.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function triggerDeleteConfirmation(id: string) {
+  // ... 此方法无改动 ...
   if (!id || !user.value?.id)
     return
-
   const noteToDelete = notes.value.find(note => note.id === id)
-
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -646,50 +573,28 @@ async function triggerDeleteConfirmation(id: string) {
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message)
-
-        // --- 开始替换/修改 ---
-
-        // 无论在哪个视图，都从主页的 localStorage 缓存中删除笔记信息，以防万一
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
           const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
         }
-
-        // 更新总数
         totalNotes.value -= 1
         localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-
-        // 根据当前视图，更新UI
         if (activeTagFilter.value) {
-          // 1. 在内存中的主页备份里删除
           mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-          // 2. 在当前显示的筛选列表里删除
           notes.value = notes.value.filter(note => note.id !== id)
         }
         else {
-          // 如果本来就在主页，直接删除
           notes.value = notes.value.filter(note => note.id !== id)
         }
-
-        // --- 结束最终修改 ---
         messageHook.success(t('notes.delete_success'))
-
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
-        // --- 开始添加/修改的代码 ---
-
-        // 检查日历视图是否正处于打开状态
         if (showCalendarView.value && calendarViewRef.value) {
-          // 调用 CalendarView 组件通过 defineExpose 暴露出来的 refreshData 方法
-          // @ts-expect-error (如果TS报错，可以保留此行，因为TS在模板ref上推断类型有时不完美)
+          // @ts-expect-error // TS 无法正确推断 defineExpose 暴露出的方法类型
           calendarViewRef.value.refreshData()
         }
-
-        // --- 结束添加/修改的代码 ---
-        if (editingNoteId.value === id)
-          cancelEdit()
       }
       catch (err: any) {
         messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
@@ -699,6 +604,7 @@ async function triggerDeleteConfirmation(id: string) {
 }
 
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
+  // ... 此方法无改动 ...
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
@@ -763,7 +669,6 @@ function toggleSelectionMode() {
   isSelectionModeActive.value = !isSelectionModeActive.value
   if (!isSelectionModeActive.value)
     selectedNoteIds.value = []
-
   showDropdown.value = false
 }
 
@@ -773,12 +678,12 @@ function handleToggleSelect(noteId: string) {
   const index = selectedNoteIds.value.indexOf(noteId)
   if (index > -1)
     selectedNoteIds.value.splice(index, 1)
-
   else
     selectedNoteIds.value.push(noteId)
 }
 
 async function handleCopySelected() {
+  // ... 此方法无改动 ...
   if (selectedNoteIds.value.length === 0)
     return
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
@@ -797,9 +702,9 @@ async function handleCopySelected() {
 }
 
 async function handleDeleteSelected() {
+  // ... 此方法无改动 ...
   if (selectedNoteIds.value.length === 0)
     return
-
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
@@ -819,25 +724,20 @@ async function handleDeleteSelected() {
           try {
             loading.value = true
             const idsToDelete = [...selectedNoteIds.value]
-
             idsToDelete.forEach((id) => {
               const noteToDelete = notes.value.find(n => n.id === id)
               if (noteToDelete)
                 invalidateCachesOnDataChange(noteToDelete)
             })
-
             const { error } = await supabase
               .from('notes')
               .delete()
               .in('id', idsToDelete)
               .eq('user_id', user.value!.id)
-
             if (error)
               throw new Error(error.message)
-
             notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
             cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
-
             if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
               newNoteContent.value = ''
               lastSavedId.value = null
@@ -845,16 +745,13 @@ async function handleDeleteSelected() {
               localStorage.removeItem(LOCAL_NOTE_ID_KEY)
               localStorage.removeItem(LOCAL_CONTENT_KEY)
             }
-
             totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
             hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
             hasPreviousNotes.value = currentPage.value > 1
             localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
             localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-
             isSelectionModeActive.value = false
             selectedNoteIds.value = []
-
             messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
           }
           catch (err: any) {
@@ -893,11 +790,9 @@ function handleMainMenuSelect(key: string) {
   }
 }
 
-function handleEditFromCalendar(note: any) {
+function handleEditFromCalendar(_note: any) {
   showCalendarView.value = false
-  nextTick(() => {
-    startEdit(note)
-  })
+  messageHook.info('笔记编辑功能已移至主列表，请在主列表找到并编辑该笔记。')
 }
 
 function handleClosePage() {
@@ -905,26 +800,23 @@ function handleClosePage() {
 }
 
 async function fetchNotesByTag(tag: string) {
+  // ... 此方法无改动 ...
   if (!user.value)
     return
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
-
   const cacheKey = getTagCacheKey(tag)
   const cachedData = localStorage.getItem(cacheKey)
   activeTagFilter.value = tag
-
   if (cachedData) {
-    const cachedNotes = JSON.parse(cachedData) // 先解析数据
+    const cachedNotes = JSON.parse(cachedData)
     notes.value = cachedNotes
-    filteredNotesCount.value = cachedNotes.length // <-- 新增：更新缓存中的笔记数量
+    filteredNotesCount.value = cachedNotes.length
     hasMoreNotes.value = false
     return
   }
-
   isLoadingNotes.value = true
   notes.value = []
-
   try {
     const { data, error } = await supabase
       .from('notes')
@@ -932,11 +824,10 @@ async function fetchNotesByTag(tag: string) {
       .eq('user_id', user.value.id)
       .ilike('content', `%${tag}%`)
       .order('created_at', { ascending: false })
-
     if (error)
       throw error
     notes.value = data || []
-    filteredNotesCount.value = notes.value.length // <-- 新增：更新网络获取的笔记数量
+    filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
     hasMoreNotes.value = false
   }
@@ -948,10 +839,9 @@ async function fetchNotesByTag(tag: string) {
   }
 }
 
-// clearTagFilter 函数 - 最终版
 function clearTagFilter() {
   activeTagFilter.value = null
-  notes.value = mainNotesCache // 直接从内存恢复
+  notes.value = mainNotesCache
   mainNotesCache = []
 }
 </script>
@@ -1024,56 +914,26 @@ function clearTagFilter() {
         />
       </div>
 
-      <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
-        <div v-if="isLoadingNotes && notes.length === 0" class="notes-list-content">
-          <NoteItemSkeleton v-for="n in 5" :key="`sk-${n}`" />
-        </div>
+      <div v-if="showNotesList" class="notes-list-container">
+        <NoteList
+          :notes="displayedNotes"
+          :is-loading="isLoadingNotes"
+          :has-more="hasMoreNotes"
+          :is-selection-mode-active="isSelectionModeActive"
+          :selected-note-ids="selectedNoteIds"
+          :all-tags="allTags"
+          :max-note-length="maxNoteLength"
+          :search-query="searchQuery"
+          @load-more="nextPage"
+          @update-note="handleUpdateNote"
+          @delete-note="triggerDeleteConfirmation"
+          @pin-note="handlePinToggle"
+          @copy-note="handleCopy"
 
-        <div v-else-if="notes.length === 0" class="notes-list-message">{{ t('notes.no_notes') }}</div>
-
-        <div v-else class="notes-list-content">
-          <div
-            v-for="note in displayedNotes"
-            :key="note.id"
-            :ref="(el) => { if (el) noteContainers[note.id] = el }"
-            class="note-container"
-            :class="{ 'selection-mode': isSelectionModeActive }"
-            @click.stop="isSelectionModeActive && handleToggleSelect(note.id)"
-          >
-            <div v-if="isSelectionModeActive" class="selection-indicator">
-              <div class="selection-circle" :class="{ selected: selectedNoteIds.includes(note.id) }" />
-            </div>
-            <div class="note-item-wrapper">
-              <NoteEditor
-                v-if="editingNoteId === note.id"
-                v-model="editingNoteContent"
-                :is-editing="true"
-                :is-loading="isUpdating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.update_note')"
-                :all-tags="allTags"
-                @save="handleUpdateNote"
-                @cancel="cancelEdit"
-                @focus="handleEditorFocus(noteContainers[note.id])"
-              />
-              <NoteItem
-                v-else
-                :note="note"
-                :is-expanded="expandedNote === note.id"
-                :is-selection-mode-active="isSelectionModeActive"
-                :search-query="searchQuery"
-                @toggle-expand="toggleExpand"
-                @edit="startEdit"
-                @copy="handleCopy"
-                @pin="handlePinToggle"
-                @delete="triggerDeleteConfirmation"
-                @task-toggle="handleNoteContentClick"
-                @date-updated="fetchNotes"
-              />
-            </div>
-          </div>
-          <div v-if="isLoadingNotes && notes.length > 0" class="notes-list-message">{{ t('notes.loading') }}</div>
-        </div>
+          @task-toggle="handleNoteContentClick"
+          @toggle-select="handleToggleSelect"
+          @date-updated="fetchNotes"
+        />
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
@@ -1107,76 +967,9 @@ function clearTagFilter() {
 </template>
 
 <style scoped>
-/* Scoped 样式与上一版完全相同，无需改动 */
-.new-note-editor-container {
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-  flex-shrink: 0;
-}
-.notes-list-wrapper {
-  padding: 0 4px 1rem 0;
-  margin-right: -4px;
-}
-.notes-list-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-.notes-list-message {
-    text-align: center;
-    color: #888;
-    padding: 2rem;
-}
-.note-container {
-  display: flex;
-  gap: 0.75rem;
-  transition: background-color 0.2s;
-}
-.note-container.selection-mode {
-  cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem;
-  border-radius: 8px;
-}
-.note-container.selection-mode:hover {
-  background-color: rgba(0, 0, 0, 0.03);
-}
-.dark .note-container.selection-mode:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-.note-item-wrapper {
-  flex: 1;
-  min-width: 0;
-}
-.selection-indicator {
-  padding-top: 0.75rem;
-}
-.selection-circle {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid #ccc;
-  transition: all 0.2s ease;
-}
-.dark .selection-circle {
-  border-color: #555;
-}
-.selection-circle.selected {
-  background-color: #00b386;
-  border-color: #00b386;
-  position: relative;
-}
-.selection-circle.selected::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
+/* --- 删除了所有与 note-list, note-container, selection-circle 相关的样式 --- */
+/* --- 这些样式现在已经移至 NoteList.vue --- */
+
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
@@ -1187,19 +980,35 @@ function clearTagFilter() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh; /* 确保这里是 min-height */
+  height: 100dvh; /* 或者 100vh */
+  overflow: hidden;
 }
 .dark .auth-container {
   background: #1e1e1e;
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
+
+/* --- 新增样式：为 NoteList 组件提供一个可伸缩的容器 --- */
+.notes-list-container {
+  flex-grow: 1; /* 明确告知它去占据所有剩余空间 */
+  flex-shrink: 1; /* 允许它在空间不足时收缩 */
+  flex-basis: 0; /* 这是 flex: 1 的一个重要组成部分，确保从0开始计算空间 */
+  overflow-y: hidden; /* 自身不允许滚动，把滚动任务交给子组件 */
+}
+
+.new-note-editor-container {
+  padding-top: 0.5rem;
+  padding-bottom: 1rem;
+  flex-shrink: 0;
+}
+
 .page-header {
   flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: -webkit-sticky; /* 兼容 Safari */
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -1304,14 +1113,11 @@ function clearTagFilter() {
   transform: translate(-50%, 20px);
 }
 .search-bar-container {
-  /* 新增粘性定位属性 */
   position: -webkit-sticky;
   position: sticky;
-  top: 44px; /* 关键：粘在顶部，但往下偏移44px（页眉的高度）*/
-  z-index: 9; /* 比页眉的 z-index: 10 低一点，确保在页眉之下 */
-  background: white; /* 关键：同样需要背景色来遮挡下方滚动的内容 */
-
-  /* 保留原有样式 */
+  top: 44px;
+  z-index: 9;
+  background: white;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   display: flex;
@@ -1322,17 +1128,15 @@ function clearTagFilter() {
 .dark .search-bar-container {
   background: #1e1e1e;
 }
-/* 2. 添加新的样式规则 */
 .search-actions-wrapper {
-  flex: 1; /* 核心属性：让此元素占据所有剩余空间 */
-  min-width: 0; /* 配合 flex: 1 使用，防止内容溢出时出现布局问题 */
+  flex: 1;
+  min-width: 0;
 }
 
-/* 新增：专门为移动端优化“取消”按钮的大小 */
 @media (max-width: 768px) {
   .cancel-search-btn {
-    font-size: 14px; /* 稍微增大字体，让文字更清晰 */
-    padding: 0.6rem 1rem; /* 关键：增加按钮的内边距，让它的尺寸和可点击区域变大 */
+    font-size: 14px;
+    padding: 0.6rem 1rem;
   }
 }
 
