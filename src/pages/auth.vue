@@ -72,6 +72,7 @@ const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
+const filteredNotesCount = ref(0)
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
@@ -914,7 +915,9 @@ async function fetchNotesByTag(tag: string) {
   activeTagFilter.value = tag
 
   if (cachedData) {
-    notes.value = JSON.parse(cachedData)
+    const cachedNotes = JSON.parse(cachedData) // 先解析数据
+    notes.value = cachedNotes
+    filteredNotesCount.value = cachedNotes.length // <-- 新增：更新缓存中的笔记数量
     hasMoreNotes.value = false
     return
   }
@@ -933,6 +936,7 @@ async function fetchNotesByTag(tag: string) {
     if (error)
       throw error
     notes.value = data || []
+    filteredNotesCount.value = notes.value.length // <-- 新增：更新网络获取的笔记数量
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
     hasMoreNotes.value = false
   }
@@ -1000,6 +1004,9 @@ function clearTagFilter() {
       <div v-if="activeTagFilter" class="active-filter-bar">
         <span>
           正在筛选标签：<strong>{{ activeTagFilter }}</strong>
+          <span style="margin-left: 8px; color: #666;">
+            共 {{ filteredNotesCount }} 条笔记
+          </span>
         </span>
         <button class="clear-filter-btn" @click="clearTagFilter">×</button>
       </div>
