@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-
-// [ADDED] 1. 导入 useI18n
 import { useI18n } from 'vue-i18n'
+import { supabase } from '@/utils/supabaseClient'
 
 // --- Props and Emits ---
 const props = defineProps({
@@ -22,14 +21,22 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  user: {
+    type: Object,
+    required: true,
+  },
 })
 
-const emit = defineEmits(['update:modelValue', 'export'])
+const emit = defineEmits([
+  'update:modelValue',
+  'export',
+  'searchStarted',
+  'searchCompleted',
+  'searchCleared',
+])
 
-// [ADDED] 2. 初始化 i18n 的 t 函数
+// --- 初始化 & 状态 ---
 const { t } = useI18n()
-
-// --- State ---
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const showSearchTagSuggestions = ref(false)
 const searchTagSuggestions = ref<string[]>([])
@@ -40,11 +47,42 @@ const searchModel = computed({
   get: () => props.modelValue,
   set: (value) => {
     emit('update:modelValue', value)
-    handleSearchQueryChange(value)
   },
 })
 
-// [MODIFIED] 3. 将按钮文字的硬编码替换为 t() 函数
+// --- 搜索执行函数 ---
+async function executeSearch() {
+  // 如果搜索框是空的，就触发清除事件，恢复列表
+  if (!searchModel.value.trim()) {
+    emit('searchCleared')
+    return
+  }
+
+  if (!props.user?.id) {
+    console.error('搜索中止，原因：用户未登录或用户信息无效')
+    return
+  }
+
+  emit('searchStarted')
+
+  try {
+    const { data, error } = await supabase.rpc('search_notes_with_highlight', {
+      p_user_id: props.user.id,
+      search_term: searchModel.value.trim(),
+    })
+
+    if (error)
+      throw error
+
+    emit('searchCompleted', { data, error: null })
+  }
+  catch (err: any) {
+    console.error('搜索 API 请求失败:', err)
+    emit('searchCompleted', { data: [], error: err })
+  }
+}
+
+// --- 导出按钮文字 ---
 const exportButtonText = computed(() => {
   if (props.isExporting)
     return t('notes.exporting')
@@ -52,7 +90,7 @@ const exportButtonText = computed(() => {
   return props.searchQuery ? t('notes.export_results') : t('notes.export_all')
 })
 
-// --- Tag Suggestion Logic (保持不变) ---
+// --- 标签建议逻辑 (在输入时触发) ---
 function handleSearchQueryChange(query: string) {
   const lastHashIndex = query.lastIndexOf('#')
   if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
@@ -79,7 +117,6 @@ function selectSearchTag(tag: string) {
   const lastHashIndex = searchModel.value.lastIndexOf('#')
   if (lastHashIndex !== -1)
     searchModel.value = `${searchModel.value.substring(0, lastHashIndex) + tag} `
-
   else
     searchModel.value = `${tag} `
 
@@ -92,9 +129,23 @@ function moveSearchSelection(offset: number) {
     highlightedSearchIndex.value = (highlightedSearchIndex.value + offset + searchTagSuggestions.value.length) % searchTagSuggestions.value.length
 }
 
+// --- 回车键处理逻辑 ---
+function handleEnterKey() {
+  // 如果标签建议列表是打开的，并且有高亮项，那么回车键的作用是选择标签
+  if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1) {
+    selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
+  }
+  else {
+    // 否则，回车键的作用是执行搜索
+    executeSearch()
+  }
+}
+
+// --- 清除搜索 ---
 function clearSearch() {
   searchModel.value = ''
   searchInputRef.value?.focus()
+  emit('searchCleared')
 }
 </script>
 
@@ -105,13 +156,14 @@ function clearSearch() {
         ref="searchInputRef"
         v-model="searchModel"
         type="text"
-        :placeholder="t('notes.search_placeholder_tags')"
+        :placeholder="t('notes.search_placeholder_enter', '输入后按回车搜索...')"
         class="search-input"
         autocomplete="off"
+        @input="handleSearchQueryChange(searchModel)"
         @keydown.down.prevent="moveSearchSelection(1)"
         @keydown.up.prevent="moveSearchSelection(-1)"
-        @keydown.enter.prevent="selectSearchTag(searchTagSuggestions[highlightedSearchIndex])"
-        @keydown.esc="showSearchTagSuggestions = false"
+        @keydown.enter.prevent="handleEnterKey"
+        @keydown.esc="showSearchTagSuggestions.value = false"
       >
       <button
         v-if="searchModel"

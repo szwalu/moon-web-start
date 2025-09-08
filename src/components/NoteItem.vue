@@ -26,6 +26,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  searchQuery: { // <-- 在这里添加这个新的 prop
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated'])
@@ -39,13 +43,31 @@ const dialog = useDialog()
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   breaks: true,
 }).use(taskLists, { enabled: true, label: true })
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+
+// 用下面这段代码替换掉你现有的 contentToRender
+const contentToRender = computed(() => {
+  const content = props.note.content
+  const query = props.searchQuery.trim()
+
+  // 1. 如果没有搜索词，直接返回原始内容
+  if (!query)
+    return content
+
+  // 2. 如果有搜索词，执行前端高亮
+  //    - 'gi' 表示全局匹配 (g) 且不区分大小写 (i)
+  //    - new RegExp(...) 用于动态创建正则表达式
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
+  const regex = new RegExp(escapedQuery, 'gi')
+
+  return content.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
+})
 
 // --- Markdown 渲染 ---
 function renderMarkdown(content: string) {
@@ -250,7 +272,7 @@ async function handleDateUpdate(newDate: Date) {
         <div
           class="prose dark:prose-invert max-w-none"
           :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
+          v-html="renderMarkdown(contentToRender)"
         />
         <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
           <button class="toggle-button collapse-button">
@@ -263,7 +285,7 @@ async function handleDateUpdate(newDate: Date) {
           ref="contentRef"
           class="prose dark:prose-invert line-clamp-3 max-w-none"
           :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
+          v-html="renderMarkdown(contentToRender)"
         />
         <div
           v-if="noteOverflowStatus"
@@ -502,5 +524,18 @@ async function handleDateUpdate(newDate: Date) {
 /* 针对分割线，让它更细一些 */
 :deep(.n-dropdown-divider) {
   margin: 2px 0 !important;
+}
+
+/* --- Add these new styles for highlighting --- */
+:deep(.search-highlight) {
+  background-color: #ffdd77; /* A pleasant yellow for light mode */
+  color: #333;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.dark :deep(.search-highlight) {
+  background-color: #8f7400; /* A darker gold for dark mode */
+  color: #f0e6c5;
 }
 </style>

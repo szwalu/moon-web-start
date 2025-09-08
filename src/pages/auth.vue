@@ -336,39 +336,40 @@ function restoreHomepageFromCache(): boolean {
   return false
 }
 
-const debouncedSearch = debounce(async () => {
+function handleSearchStarted() {
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
-  if (!searchQuery.value.trim()) {
-    if (!restoreHomepageFromCache()) {
-      currentPage.value = 1
-      await fetchNotes()
-    }
-    return
-  }
   isLoadingNotes.value = true
-  try {
-    const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).ilike('content', `%${searchQuery.value.trim()}%`).order('updated_at', { ascending: false }).limit(100)
-    if (error)
-      throw error
-    notes.value = data || []
-    hasMoreNotes.value = false
-    hasPreviousNotes.value = false
-  }
-  catch (err: any) {
-    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
-  }
-  finally {
-    isLoadingNotes.value = false
-  }
-}, 500)
+  notes.value = [] // 开始搜索时清空列表，准备接收新结果
+}
 
-watch(searchQuery, () => {
-  debouncedSearch()
-})
+function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
+  if (error) {
+    messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
+    notes.value = []
+  }
+  else {
+    // 搜索返回的数据现在包含了原始字段和 'headline' 字段
+    notes.value = data || []
+  }
+  hasMoreNotes.value = false // 搜索结果不分页
+  hasPreviousNotes.value = false
+  isLoadingNotes.value = false
+  if (notesListWrapperRef.value)
+    notesListWrapperRef.value.scrollTop = 0
+}
+
+function handleSearchCleared() {
+  if (!restoreHomepageFromCache()) {
+    currentPage.value = 1
+    fetchNotes()
+  }
+  if (notesListWrapperRef.value)
+    notesListWrapperRef.value.scrollTop = 0
+}
 
 async function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
@@ -976,7 +977,18 @@ function clearTagFilter() {
 
       <Transition name="slide-fade">
         <div v-if="showSearchBar" class="search-bar-container">
-          <NoteActions v-model="searchQuery" class="search-actions-wrapper" :all-tags="allTags" :is-exporting="isExporting" :search-query="searchQuery" @export="handleExportTrigger" />
+          <NoteActions
+            v-model="searchQuery"
+            class="search-actions-wrapper"
+            :all-tags="allTags"
+            :is-exporting="isExporting"
+            :search-query="searchQuery"
+            :user="user"
+            @export="handleExportTrigger"
+            @search-started="handleSearchStarted"
+            @search-completed="handleSearchCompleted"
+            @search-cleared="handleSearchCleared"
+          />
           <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
         </div>
       </Transition>
@@ -1036,6 +1048,7 @@ function clearTagFilter() {
                 :note="note"
                 :is-expanded="expandedNote === note.id"
                 :is-selection-mode-active="isSelectionModeActive"
+                :search-query="searchQuery"
                 @toggle-expand="toggleExpand"
                 @edit="startEdit"
                 @copy="handleCopy"
