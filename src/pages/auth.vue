@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
@@ -13,11 +13,13 @@ import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
-import SettingsModal from '@/components/SettingsModal.vue'
-import AccountModal from '@/components/AccountModal.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
-import CalendarView from '@/components/CalendarView.vue'
+
+const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
+const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
+
+const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
 // --- 初始化 & 状态定义 ---
 useDark()
@@ -49,7 +51,7 @@ const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
 const expandedNote = ref<string | null>(null)
 const currentPage = ref(1)
-const notesPerPage = 100
+const notesPerPage = 30
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
@@ -102,10 +104,29 @@ const handleScroll = debounce(() => {
 }, 200)
 
 onMounted(() => {
-  const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
+  // 1. 先设置加载状态，让UI可以显示“加载中...”或骨架屏
+  isLoadingNotes.value = true
+
+  // 2. 将localStorage操作包装在异步函数中
+  const loadCache = async () => {
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
+      if (cachedData)
+        notes.value = JSON.parse(cachedData)
+    }
+    catch (e) {
+      console.error('Failed to load notes from cache', e)
+      localStorage.removeItem(CACHE_KEYS.HOME) // 如果解析失败，清除坏数据
+    }
+  }
+
+  // 3. 使用 setTimeout(..., 0) 或 nextTick 让它在下一个事件循环中执行
+  //    这样就不会阻塞当前的渲染流程
+  setTimeout(() => {
+    loadCache()
+  }, 0)
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  if (cachedData)
-    notes.value = JSON.parse(cachedData)
 
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
@@ -551,8 +572,10 @@ async function fetchNotes() {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
     const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
+
     if (error)
       throw error
+
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
@@ -918,11 +941,10 @@ async function fetchNotesByTag(tag: string) {
   }
 }
 
+// clearTagFilter 函数 - 最终版
 function clearTagFilter() {
   activeTagFilter.value = null
-  // 从内存中瞬时恢复主页笔记列表
-  notes.value = mainNotesCache
-  // 清空缓存，以便下次使用
+  notes.value = mainNotesCache // 直接从内存恢复
   mainNotesCache = []
 }
 </script>
