@@ -69,6 +69,7 @@ const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
+let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
@@ -623,15 +624,47 @@ async function triggerDeleteConfirmation(id: string) {
         if (error)
           throw new Error(error.message)
 
-        notes.value = notes.value.filter(note => note.id !== id)
+        // --- 开始替换/修改 ---
+
+        // 无论在哪个视图，都从主页的 localStorage 缓存中删除笔记信息，以防万一
+        const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+        if (homeCacheRaw) {
+          const homeCache = JSON.parse(homeCacheRaw)
+          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
+          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
+        }
+
+        // 更新总数
         totalNotes.value -= 1
-        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
         localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+        // 根据当前视图，更新UI
+        if (activeTagFilter.value) {
+          // 1. 在内存中的主页备份里删除
+          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
+          // 2. 在当前显示的筛选列表里删除
+          notes.value = notes.value.filter(note => note.id !== id)
+        }
+        else {
+          // 如果本来就在主页，直接删除
+          notes.value = notes.value.filter(note => note.id !== id)
+        }
+
+        // --- 结束最终修改 ---
         messageHook.success(t('notes.delete_success'))
 
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
+        // --- 开始添加/修改的代码 ---
 
+        // 检查日历视图是否正处于打开状态
+        if (showCalendarView.value && calendarViewRef.value) {
+          // 调用 CalendarView 组件通过 defineExpose 暴露出来的 refreshData 方法
+          // @ts-expect-error (如果TS报错，可以保留此行，因为TS在模板ref上推断类型有时不完美)
+          calendarViewRef.value.refreshData()
+        }
+
+        // --- 结束添加/修改的代码 ---
         if (editingNoteId.value === id)
           cancelEdit()
       }
@@ -850,6 +883,8 @@ function handleClosePage() {
 async function fetchNotesByTag(tag: string) {
   if (!user.value)
     return
+  if (!activeTagFilter.value)
+    mainNotesCache = [...notes.value]
 
   const cacheKey = getTagCacheKey(tag)
   const cachedData = localStorage.getItem(cacheKey)
@@ -888,11 +923,10 @@ async function fetchNotesByTag(tag: string) {
 
 function clearTagFilter() {
   activeTagFilter.value = null
-  notes.value = []
-  if (!restoreHomepageFromCache()) {
-    currentPage.value = 1
-    fetchNotes()
-  }
+  // 从内存中瞬时恢复主页笔记列表
+  notes.value = mainNotesCache
+  // 清空缓存，以便下次使用
+  mainNotesCache = []
 }
 </script>
 

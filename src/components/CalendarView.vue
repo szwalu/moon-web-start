@@ -146,7 +146,7 @@ defineExpose({
 <template>
   <div class="calendar-view">
     <div class="calendar-header" @click="handleHeaderClick">
-      <h2>日历笔记</h2>
+      <h2>日历</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
