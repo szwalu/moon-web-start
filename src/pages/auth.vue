@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
+import NoteItemSkeleton from '@/components/NoteItemSkeleton.vue'
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
@@ -1017,8 +1018,12 @@ function clearTagFilter() {
       </div>
 
       <div v-if="showNotesList" ref="notesListWrapperRef" class="notes-list-wrapper">
-        <div v-if="isLoadingNotes && notes.length === 0" class="notes-list-message">{{ t('notes.loading') }}</div>
+        <div v-if="isLoadingNotes && notes.length === 0" class="notes-list-content">
+          <NoteItemSkeleton v-for="n in 5" :key="`sk-${n}`" />
+        </div>
+
         <div v-else-if="notes.length === 0" class="notes-list-message">{{ t('notes.no_notes') }}</div>
+
         <div v-else class="notes-list-content">
           <div
             v-for="note in displayedNotes"

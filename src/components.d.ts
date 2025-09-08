@@ -32,6 +32,7 @@ declare module 'vue' {
     'NoteEditor_副本': typeof import('./components/NoteEditor_副本.vue')['default']
     NoteItem: typeof import('./components/NoteItem.vue')['default']
     'NoteItem_副本': typeof import('./components/NoteItem_副本.vue')['default']
+    NoteItemSkeleton: typeof import('./components/NoteItemSkeleton.vue')['default']
     NoteList: typeof import('./components/NoteList.vue')['default']
     'NoteList_副本': typeof import('./components/NoteList_副本.vue')['default']
     NSelect: typeof import('naive-ui')['NSelect']
