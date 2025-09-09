@@ -811,9 +811,6 @@ function clearTagFilter() {
 
 <template>
   <div class="auth-container">
-    <div style="position: fixed; top: 50px; left: 10px; background: yellow; color: black; padding: 5px; border-radius: 5px; z-index: 9999; font-size: 16px;">
-      编辑器聚焦状态: {{ isEditorFocused }}
-    </div>
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -967,12 +964,17 @@ function clearTagFilter() {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
-  max-height: 40vh;
   overflow-y: auto;
-  transition: max-height 0.3s ease-in-out;
+
+  /* 核心改动：使用 flex-basis 和 % 代替 max-height 和 vh */
+  flex-basis: 35%; /* 默认基础尺寸为父容器高度的35% */
+  max-height: 35%; /* 同时也限制 max-height */
+  transition: all 0.3s ease-in-out; /* 让过渡更平滑 */
 }
+
 .new-note-editor-container.is-focused {
-  max-height: 80vh; /* 展开时占据屏幕70%的高度 */
+  flex-basis: 70%; /* 聚焦时基础尺寸变为70% */
+  max-height: 70%; /* 聚焦时最大高度变为70% */
 }
 .page-header {
   flex-shrink: 0;
