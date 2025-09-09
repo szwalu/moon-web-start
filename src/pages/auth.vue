@@ -964,12 +964,6 @@ function clearTagFilter() {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
-  overflow-y: auto;
-
-  /* 核心改动：使用 flex-basis 和 % 代替 max-height 和 vh */
-  flex-basis: 35%; /* 默认基础尺寸为父容器高度的35% */
-  max-height: 35%; /* 同时也限制 max-height */
-  transition: all 0.3s ease-in-out; /* 让过渡更平滑 */
 }
 
 .new-note-editor-container.is-focused {
