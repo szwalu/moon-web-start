@@ -389,7 +389,7 @@ defineExpose({
   color: #007bff;            /* 改为一个漂亮的蓝色，您也可以直接用 'blue' */
   border: 1px solid #e0e0e0;  /* (推荐) 增加一个浅灰色边框，使其更清晰 */
   border-radius: 15px;
-  padding: 6px 12px;
+  padding: 3px 8px;
   font-size: 14px;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* 阴影可以调浅一些 */
