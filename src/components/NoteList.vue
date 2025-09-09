@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+// --- 核心改动：引入 watch ---
+import { ref, watch } from 'vue'
 import { debounce } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
@@ -66,20 +67,36 @@ const handleScroll = debounce(() => {
   const el = scrollerRef.value?.$el
   if (!el || props.isLoading || !props.hasMore)
     return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 150)
+
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300)
     emit('loadMore')
 }, 200)
 
+// --- 核心改动：用 watch 替换 onMounted 和 onUnmounted ---
+watch(scrollerRef, (newScroller, oldScroller) => {
+  // 当组件销毁时，oldScroller 会有值，我们需要移除旧的监听器
+  if (oldScroller?.$el)
+    oldScroller.$el.removeEventListener('scroll', handleScroll)
+
+  // 当组件挂载或更新后，newScroller 会有值，我们添加新的监听器
+  if (newScroller?.$el)
+    newScroller.$el.addEventListener('scroll', handleScroll)
+})
+
+/* --- 核心改动：删除下面的 onMounted 和 onUnmounted ---
 onMounted(() => {
-  if (scrollerRef.value?.$el)
+  if (scrollerRef.value?.$el) {
     scrollerRef.value.$el.addEventListener('scroll', handleScroll)
+  }
 })
 
 onUnmounted(() => {
   handleScroll.cancel()
-  if (scrollerRef.value?.$el)
+  if (scrollerRef.value?.$el) {
     scrollerRef.value.$el.removeEventListener('scroll', handleScroll)
+  }
 })
+*/
 
 function startEdit(note: any) {
   if (editingNoteId.value)
@@ -203,7 +220,11 @@ function handleEditorFocus(containerEl: HTMLElement) {
 
 <style scoped>
 .notes-list-wrapper {
-  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 .scroller {
   height: 100%;

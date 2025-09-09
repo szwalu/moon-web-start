@@ -3,6 +3,7 @@ import { computed, defineExpose, nextTick, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useSettingStore } from '@/stores/setting'
 
+/* ============== Props & Emits ============== */
 const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
@@ -14,40 +15,122 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
 
+/* ============== Stores ============== */
 const settingsStore = useSettingStore()
 
+/* ============== v-model 封装 ============== */
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => { emit('update:modelValue', value) },
 })
 
+/* ============== Autosize ============== */
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
+/* ============== Tag 提示 ============== */
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 let blurTimeoutId: number | null = null
 
+/* ============== IME 组合输入支持 & 光标可见性 ============== */
+const isComposing = ref(false)
+
+function onCompositionStart() {
+  isComposing.value = true
+}
+function onCompositionEnd() {
+  isComposing.value = false
+  nextTick(() => ensureCaretVisible())
+}
+
+function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = node?.parentElement || null
+  while (el) {
+    const style = getComputedStyle(el)
+    const canScroll = /(auto|scroll)/.test(style.overflowY)
+    if (canScroll && el.clientHeight < el.scrollHeight)
+      return el
+
+    el = el.parentElement
+  }
+  return null
+}
+
+function ensureCaretVisible() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const style = getComputedStyle(el)
+  // 构造镜像节点估算 caret 垂直位置（考虑自动换行）
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
+    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
+  `
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  const before = val.slice(0, selEnd)
+    .replace(/\n$/, '\n ')
+    .replace(/ /g, '\u00A0')
+
+  mirror.textContent = before
+
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  // 先保证在 textarea 自身可见
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
+
+  // 如外层还有可滚容器，再确保祖先容器也可见
+  const scrollable = getScrollableAncestor(el)
+  if (scrollable) {
+    const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const ancRect = scrollable.getBoundingClientRect()
+    const padding = 8
+    if (caretAbsTop + lineHeight * 1.5 > ancRect.bottom)
+      scrollable.scrollTop += (caretAbsTop + lineHeight * 1.5) - ancRect.bottom + padding
+    else if (caretAbsTop - lineHeight * 0.5 < ancRect.top)
+      scrollable.scrollTop -= ancRect.top - (caretAbsTop - lineHeight * 0.5) + padding
+  }
+}
+
+/* ============== 文本与插入工具 ============== */
 function updateTextarea(newText: string, newCursorPos: number) {
   const el = textarea.value
   if (!el)
     return
 
-  // 1. 【关键】在进行任何修改前，保存当前的滚动位置
+  // 1) 保存修改前滚动位置
   const originalScrollTop = el.scrollTop
 
-  // 2. 更新 ref，这将触发 v-model 的异步 DOM 更新和 useTextareaAutosize 的高度计算
+  // 2) 更新 ref（触发 v-model + autosize）
   input.value = newText
 
-  // 3. 使用 nextTick 来确保我们的代码在 DOM 更新和高度调整完成后执行
+  // 3) 待 DOM/高度更新后，恢复焦点/光标，并恢复合理滚动位置
   nextTick(() => {
-    // 4. 首先，恢复焦点并设置正确的光标逻辑位置
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
-
-    // 5. 【关键】然后，将滚动位置恢复到之前保存的位置
-    el.scrollTop = originalScrollTop
+    // 只恢复到修改前位置，避免强推到底
+    el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
+    // 保险：确保光标可见（必要时小幅滚动）
+    ensureCaretVisible()
   })
 }
 
@@ -55,16 +138,16 @@ function handleSave() {
   if (!props.isLoading && contentModel.value)
     emit('save', contentModel.value)
 }
-
 function handleCancel() {
   emit('cancel')
 }
 
 function handleBlur() {
-  blurTimeoutId = setTimeout(() => {
+  blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
 }
+
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
@@ -99,9 +182,11 @@ function handleInput(event: Event) {
     const leftOffset = measure.offsetWidth
     el.parentNode?.removeChild(measure)
 
+    const host = el as HTMLElement
+
     suggestionsStyle.value = {
-      top: `${el.offsetTop + topOffset + lineHeight}px`,
-      left: `${el.offsetLeft + leftOffset}px`,
+      top: `${host.offsetTop + topOffset + lineHeight}px`,
+      left: `${host.offsetLeft + leftOffset}px`,
     }
     showTagSuggestions.value = true
   }
@@ -126,16 +211,14 @@ function selectTag(tag: string) {
     const newCursorPos = lastHashIndex + tag.length + 1
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
+    ensureCaretVisible()
   })
 }
 
 function reset() {
   triggerResize()
 }
-
-defineExpose({
-  reset,
-})
+defineExpose({ reset })
 
 function insertText(prefix: string, suffix: string = '') {
   const el = textarea.value
@@ -147,16 +230,9 @@ function insertText(prefix: string, suffix: string = '') {
   const selectedText = el.value.substring(start, end)
   const newTextFragment = `${prefix}${selectedText}${suffix}`
 
-  // 计算最终的完整文本
   const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
+  const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
 
-  // 计算新的光标位置
-  // 如果有选中文本，光标应在替换内容之后；否则，在插入的前缀之后。
-  const newCursorPos = selectedText
-    ? start + newTextFragment.length
-    : start + prefix.length
-
-  // 清除可能存在的失焦定时器
   if (blurTimeoutId) {
     clearTimeout(blurTimeoutId)
     blurTimeoutId = null
@@ -167,11 +243,12 @@ function insertText(prefix: string, suffix: string = '') {
 
 function addTag() {
   insertText('#')
-
-  // 使用 nextTick 确保 insertText 函数对文本的修改已经更新到 DOM 中
   nextTick(() => {
-    // 手动在 textarea 元素上触发一次 input 事件
-    textarea.value?.dispatchEvent(new Event('input'))
+    const el = textarea.value
+    if (el)
+      el.dispatchEvent(new Event('input'))
+
+    ensureCaretVisible()
   })
 }
 
@@ -189,14 +266,9 @@ function addTodo() {
     return
 
   const start = el.selectionStart
-  // 找到当前行或光标所在行的起始位置
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '- [ ] '
-
-  // 计算最终的完整文本
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
-
-  // 计算新的光标位置
   const newCursorPos = start + textToInsert.length
 
   updateTextarea(finalFullText, newCursorPos)
@@ -209,18 +281,13 @@ function addOrderedList() {
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '1. '
-
-  // 计算最终的完整文本
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
-
-  // 计算新的光标位置
   const newCursorPos = start + textToInsert.length
 
   updateTextarea(finalFullText, newCursorPos)
 }
 
 function handleEnterKey(event: KeyboardEvent) {
-  // 只处理回车键事件
   if (event.key !== 'Enter')
     return
 
@@ -231,48 +298,46 @@ function handleEnterKey(event: KeyboardEvent) {
   const start = el.selectionStart
   const end = el.selectionEnd
 
-  // 找到当前光标所在行的起始位置
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const currentLine = el.value.substring(currentLineStart, start)
 
-  // 使用正则表达式匹配 "数字. " 格式，例如 "1. " 或 "12. "
   const listRegex = /^(\d+)\.\s+/
   const match = currentLine.match(listRegex)
 
-  // 仅当当前行是数字列表项时才执行特殊逻辑
-  if (match) {
-    // 如果在一个空的列表项上按回车，则取消列表
-    if (currentLine.trim() === match[0].trim()) {
-      // 阻止默认的回车行为
-      event.preventDefault()
-      // 将当前行的 "2. " 删掉，并换行
-      input.value = el.value.substring(0, currentLineStart - 1) + el.value.substring(end)
+  if (!match)
+    return
 
-      nextTick(() => {
-        el.focus()
-        // 恢复光标位置
-        el.setSelectionRange(currentLineStart - 1, currentLineStart - 1)
-      })
-      return
-    }
-
-    // 阻止默认的回车行为（即简单地插入一个换行符）
+  // 情况 1：在空的列表项上按回车 -> 取消列表
+  if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
+    const before = el.value.substring(0, currentLineStart - 1)
+    const after = el.value.substring(end)
+    input.value = before + after
 
-    // 计算下一个序号
-    const currentNumber = Number.parseInt(match[1], 10)
-    const nextPrefix = `\n${currentNumber + 1}. `
-
-    // 插入换行符和下一个序号
-    input.value = el.value.substring(0, start) + nextPrefix + el.value.substring(end)
-
-    // 更新后，重新聚焦并把光标移动到新行的末尾
     nextTick(() => {
       el.focus()
-      const newCursorPos = start + nextPrefix.length
-      el.setSelectionRange(newCursorPos, newCursorPos)
+      const pos = currentLineStart - 1
+      el.setSelectionRange(pos, pos)
+      ensureCaretVisible()
     })
+    return
   }
+
+  // 情况 2：普通列表项 -> 插入换行并续号
+  event.preventDefault()
+
+  const currentNumber = Number.parseInt(match[1], 10)
+  const nextPrefix = `\n${currentNumber + 1}. `
+  const before = el.value.substring(0, start)
+  const after = el.value.substring(end)
+  input.value = before + nextPrefix + after
+
+  nextTick(() => {
+    el.focus()
+    const newCursorPos = start + nextPrefix.length
+    el.setSelectionRange(newCursorPos, newCursorPos)
+    ensureCaretVisible()
+  })
 }
 
 function addHeading() {
@@ -286,30 +351,23 @@ function addHeading() {
 
   const currentLine = el.value.substring(lineStart, lineEnd)
   const headingRegex = /^(#+\s)/
-  let newLineContent
+  const newLineContent = headingRegex.test(currentLine)
+    ? currentLine.replace(headingRegex, '')
+    : `## ${currentLine}`
 
-  if (headingRegex.test(currentLine))
-    newLineContent = currentLine.replace(headingRegex, '')
-  else
-    newLineContent = `## ${currentLine}`
-
-  // 计算最终的完整文本
   const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
-
-  // 计算新的光标位置
   const newCursorPos = lineStart + newLineContent.length
 
   updateTextarea(finalFullText, newCursorPos)
 }
 
+/* ============== 仅保留必要的 watchers ============== */
 watch(() => props.modelValue, (newValue) => {
-  if (newValue === '') {
-    nextTick(() => {
-      triggerResize()
-    })
-  }
+  if (newValue === '')
+    nextTick(() => { triggerResize() })
 })
 
+// 高度变化 -> 通知父组件重新布局
 watch(textarea, (newTextarea) => {
   if (newTextarea) {
     const observer = new MutationObserver(() => {
@@ -334,9 +392,11 @@ watch(textarea, (newTextarea) => {
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
-        @input="handleInput"
         @blur="handleBlur"
         @keydown="handleEnterKey"
+        @compositionstart="onCompositionStart"
+        @compositionend="onCompositionEnd"
+        @input="(e) => { handleInput(e); if (!isComposing) nextTick(ensureCaretVisible) }"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -414,13 +474,16 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
+  /* 避免浏览器滚动锚定把容器推到底 */
+  overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
-  min-height: 120px;
-  max-height: 50vh;
-  padding: 16px 16px 4px 16px;
+  min-height: 120px;        /* 初始高度：可根据需要调大 */
+  max-height: 35vh;         /* 最大高度：可改 50vh / 固定 px 值 */
+  overflow-y: auto;
+  padding: 16px 16px 12px 16px; /* 底部增加缓冲，避免贴底 */
   border: none;
   background-color: transparent;
   color: inherit;
@@ -429,38 +492,28 @@ watch(textarea, (newTextarea) => {
   outline: 0;
   box-sizing: border-box;
   font-family: inherit;
+  caret-color: currentColor;
+  /* 避免滚动条出现/消失时抖动 */
+  scrollbar-gutter: stable both-edges;
 }
 
-.editor-textarea.font-size-small {
-  font-size: 14px;
-}
-
-.editor-textarea.font-size-medium {
-  font-size: 16px;
-}
-
-.editor-textarea.font-size-large {
-  font-size: 20px;
-}
-
-.editor-textarea.font-size-extra-large {
-  font-size: 22px;
-}
+.editor-textarea.font-size-small { font-size: 14px; }
+.editor-textarea.font-size-medium { font-size: 16px; }
+.editor-textarea.font-size-large { font-size: 20px; }
+.editor-textarea.font-size-extra-large { font-size: 22px; }
 
 .char-counter {
   font-size: 12px;
   color: #6b7280;
 }
 
-.dark .char-counter {
-  color: #9ca3af;
-}
+.dark .char-counter { color: #9ca3af; }
 
 .actions {
   display: flex;
-  align-items: center; /* 确保按钮和字数统计垂直居中对齐 */
-  gap: 8px; /* 按钮之间的间距 */
-  white-space: nowrap; /* 关键：确保按钮不会换行 */
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -474,16 +527,8 @@ watch(textarea, (newTextarea) => {
   cursor: pointer;
   transition: background-color 0.2s;
 }
-
-.btn-primary:hover {
-  background-color: #009a74;
-}
-
-.btn-primary:disabled {
-  background-color: #a5a5a5;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
+.btn-primary:hover { background-color: #009a74; }
+.btn-primary:disabled { background-color: #a5a5a5; cursor: not-allowed; opacity: 0.7; }
 
 .btn-secondary {
   background-color: #f0f0f0;
@@ -496,20 +541,9 @@ watch(textarea, (newTextarea) => {
   cursor: pointer;
   transition: background-color 0.2s;
 }
-
-.btn-secondary:hover {
-  background-color: #e0e0e0;
-}
-
-.dark .btn-secondary {
-  background-color: #4b5563;
-  color: #fff;
-  border-color: #555;
-}
-
-.dark .btn-secondary:hover {
-  background-color: #5a6676;
-}
+.btn-secondary:hover { background-color: #e0e0e0; }
+.dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
+.dark .btn-secondary:hover { background-color: #5a6676; }
 
 .tag-suggestions {
   position: absolute;
@@ -522,67 +556,36 @@ watch(textarea, (newTextarea) => {
   overflow-y: auto;
   min-width: 120px;
 }
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
+.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.tag-suggestions li:hover { background-color: #f0f0f0; }
+.dark .tag-suggestions li:hover { background-color: #404040; }
 
-.dark .tag-suggestions {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-
-.tag-suggestions ul {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0;
-}
-
-.tag-suggestions li {
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.tag-suggestions li:hover {
-  background-color: #f0f0f0;
-}
-
-.dark .tag-suggestions li:hover {
-  background-color: #404040;
-}
-
-/* --- START: Toolbar Final Fix --- */
-
-/* 1. 精简页脚容器，大幅减少垂直内边距 */
+/* --- Toolbar --- */
 .editor-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px; /* 关键：大幅减少上下内边距，控制整体高度 */
+  padding: 4px 12px;
   border-top: none;
   background-color: transparent;
 }
+.dark .editor-footer { background-color: transparent; border-top: none; }
 
-.dark .editor-footer {
-  background-color: transparent;
-  border-top: none;
-}
-
-/* 2. 新增 footer-left 的样式 */
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 8px; /* 工具栏和字数统计之间的间距 */
+  gap: 8px;
 }
-
-/* 3. 明确移除 editor-toolbar 的边框和背景 */
 .editor-toolbar {
   display: flex;
   align-items: center;
   gap: 1px;
-  border: none; /* 关键：明确移除边框 */
-  background: none; /* 确保无背景 */
-  padding: 0; /* 确保无内边距 */
+  border: none;
+  background: none;
+  padding: 0;
 }
-
-/* 4. 保持 toolbar-btn 的精简尺寸 */
 .toolbar-btn {
   background: none;
   border: none;
@@ -600,20 +603,7 @@ watch(textarea, (newTextarea) => {
   justify-content: center;
   transition: background-color 0.2s, color 0.2s;
 }
-
-.toolbar-btn:hover {
-  background-color: #f0f0f0;
-  color: #333;
-}
-
-.dark .toolbar-btn {
-  color: #9ca3af;
-}
-
-.dark .toolbar-btn:hover {
-  background-color: #404040;
-  color: #f0f0f0;
-}
-
-/* --- END: Toolbar Final Fix --- */
+.toolbar-btn:hover { background-color: #f0f0f0; color: #333; }
+.dark .toolbar-btn { color: #9ca3af; }
+.dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 </style>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// --- 删除了不再需要的 import ---
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -9,8 +8,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
-
-// --- 引入 NoteList 组件 ---
 import NoteList from '@/components/NoteList.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
@@ -22,7 +19,6 @@ const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsMo
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
-// --- 初始化 & 状态定义 ---
 useDark()
 const { t } = useI18n()
 const router = useRouter()
@@ -71,14 +67,6 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
-// --- 以下 ref 已被移至 NoteList.vue，故删除 ---
-// const notesListWrapperRef = ref<HTMLElement | null>(null)
-// const noteContainers = ref({})
-// const isUpdating = ref(false)
-// const editingNoteId = ref<string | null>(null)
-// const editingNoteContent = ref('')
-// const expandedNote = ref<string | null>(null)
-
 const mainMenuOptions = computed(() => [
   {
     label: '标签',
@@ -96,8 +84,6 @@ const mainMenuOptions = computed(() => [
   { label: t('notes.export_all'), key: 'export' },
   { label: t('auth.account_title'), key: 'account' },
 ])
-
-// --- handleScroll 方法已移至 NoteList.vue，故删除 ---
 
 onMounted(() => {
   isLoadingNotes.value = true
@@ -145,7 +131,6 @@ onMounted(() => {
   if (savedContent)
     newNoteContent.value = savedContent
   isReady.value = true
-  // --- 删除了 window.addEventListener('scroll', handleScroll) ---
 })
 
 onUnmounted(() => {
@@ -153,7 +138,6 @@ onUnmounted(() => {
     authListener.unsubscribe()
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  // --- 删除了 window.removeEventListener('scroll', handleScroll) ---
 })
 
 watch(newNoteContent, (val) => {
@@ -182,8 +166,6 @@ function invalidateCachesOnDataChange(note: any) {
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
 }
 
-// --- startEdit 和 cancelEdit 方法已移至 NoteList.vue，故删除 ---
-
 async function handleCreateNote(content: string) {
   isCreating.value = true
   const saved = await saveNote(content, null, { showMessage: true })
@@ -197,11 +179,10 @@ async function handleCreateNote(content: string) {
   isCreating.value = false
 }
 
-// --- handleUpdateNote 已重构，以接收来自子组件的事件和数据 ---
 async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
   const saved = await saveNote(content, id, { showMessage: true })
   if (callback)
-    callback(!!saved) // !!saved 会将 saved 对象转换为布尔值
+    callback(!!saved)
 }
 
 async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { showMessage = false } = {}) {
@@ -227,7 +208,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
         messageHook.success(t('notes.update_success'))
     }
     else {
-      const newId = generateUniqueId()
+      const newId = uuidv4()
       const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...noteData, id: newId }).select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
@@ -338,9 +319,15 @@ async function handleVisibilityChange() {
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
-  setTimeout(() => {
-    containerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 300)
+  if (containerEl) {
+    // 关键改动：我们回到 'nearest'，因为它在PC端表现更好
+    // 同时，我们把滚动操作放在一个微任务 (setTimeout with 0ms) 中
+    // 这给了浏览器足够的时间去处理布局变化（特别是移动端键盘弹出）
+    // 然后再执行滚动，大大提高了在移动端成功的概率。
+    setTimeout(() => {
+      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 0)
+  }
 }
 
 function handleExportTrigger() {
@@ -351,7 +338,6 @@ function handleExportTrigger() {
 }
 
 async function handleBatchExport() {
-  // ... 此方法无改动 ...
   showDropdown.value = false
   if (isExporting.value)
     return
@@ -440,7 +426,6 @@ async function handleBatchExport() {
 }
 
 function handleExportResults() {
-  // ... 此方法无改动 ...
   if (isExporting.value)
     return
   isExporting.value = true
@@ -546,12 +531,6 @@ async function nextPage() {
   await fetchNotes()
 }
 
-function generateUniqueId() {
-  return uuidv4()
-}
-
-// --- toggleExpand 方法已移至 NoteList.vue，故删除 ---
-
 function handleHeaderClick() {
   const scroller = document.querySelector('.scroller')
   if (scroller)
@@ -559,7 +538,6 @@ function handleHeaderClick() {
 }
 
 async function triggerDeleteConfirmation(id: string) {
-  // ... 此方法无改动 ...
   if (!id || !user.value?.id)
     return
   const noteToDelete = notes.value.find(note => note.id === id)
@@ -604,7 +582,6 @@ async function triggerDeleteConfirmation(id: string) {
 }
 
 async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
-  // ... 此方法无改动 ...
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
@@ -683,7 +660,6 @@ function handleToggleSelect(noteId: string) {
 }
 
 async function handleCopySelected() {
-  // ... 此方法无改动 ...
   if (selectedNoteIds.value.length === 0)
     return
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
@@ -702,7 +678,6 @@ async function handleCopySelected() {
 }
 
 async function handleDeleteSelected() {
-  // ... 此方法无改动 ...
   if (selectedNoteIds.value.length === 0)
     return
   dialog.warning({
@@ -800,7 +775,6 @@ function handleClosePage() {
 }
 
 async function fetchNotesByTag(tag: string) {
-  // ... 此方法无改动 ...
   if (!user.value)
     return
   if (!activeTagFilter.value)
@@ -929,7 +903,6 @@ function clearTagFilter() {
           @delete-note="triggerDeleteConfirmation"
           @pin-note="handlePinToggle"
           @copy-note="handleCopy"
-
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
@@ -967,9 +940,6 @@ function clearTagFilter() {
 </template>
 
 <style scoped>
-/* --- 删除了所有与 note-list, note-container, selection-circle 相关的样式 --- */
-/* --- 这些样式现在已经移至 NoteList.vue --- */
-
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
@@ -980,27 +950,36 @@ function clearTagFilter() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh; /* 或者 100vh */
+  height: 100dvh;
   overflow: hidden;
+  position: relative;
 }
+
 .dark .auth-container {
   background: #1e1e1e;
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* --- 新增样式：为 NoteList 组件提供一个可伸缩的容器 --- */
 .notes-list-container {
-  flex-grow: 1; /* 明确告知它去占据所有剩余空间 */
-  flex-shrink: 1; /* 允许它在空间不足时收缩 */
-  flex-basis: 0; /* 这是 flex: 1 的一个重要组成部分，确保从0开始计算空间 */
-  overflow-y: hidden; /* 自身不允许滚动，把滚动任务交给子组件 */
+  flex: 1; /* 保持 flex: 1，让它从父容器获得高度 */
+  min-height: 0; /* 关键！防止被内容撑开 */
+  position: relative; /* 保持 position: relative，为 NoteList 提供定位基准 */
 }
 
 .new-note-editor-container {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
+  /* 关键：去掉父级滚动与高度限制 */
+  max-height: none;
+  overflow: visible;
+}
+
+/* 额外：关闭锚定，避免浏览器自动把容器推到底 */
+.new-note-editor-container,
+.editor-wrapper {
+  overflow-anchor: none;
 }
 
 .page-header {
@@ -1020,6 +999,7 @@ function clearTagFilter() {
 .dark .page-header {
   background: #1e1e1e;
 }
+
 .page-title {
   position: absolute;
   left: 50%;
@@ -1029,14 +1009,17 @@ function clearTagFilter() {
   font-weight: 600;
   margin: 0;
 }
+
 .dark .page-title {
     color: #f0f0f0;
 }
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
+
 .header-action-btn {
   font-size: 16px;
   background: none;
@@ -1050,20 +1033,25 @@ function clearTagFilter() {
   justify-content: center;
   transition: background-color 0.2s ease;
 }
+
 .header-action-btn:hover {
   background-color: rgba(0,0,0,0.05);
 }
+
 .dark .header-action-btn {
   color: #bbb;
 }
+
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
 }
+
 .close-page-btn {
   font-size: 28px;
   line-height: 1;
   font-weight: 300;
 }
+
 .selection-actions-popup {
   position: fixed;
   bottom: 1.5rem;
@@ -1081,16 +1069,20 @@ function clearTagFilter() {
   padding: 0.75rem 1rem;
   z-index: 15;
 }
+
 .dark .selection-actions-popup {
   background-color: #444;
 }
+
 .selection-info {
   font-size: 14px;
 }
+
 .selection-buttons {
   display: flex;
   gap: 3rem;
 }
+
 .action-btn {
   background: none;
   border: none;
@@ -1100,18 +1092,22 @@ function clearTagFilter() {
   font-weight: 500;
   padding: 0.25rem;
 }
+
 .action-btn.delete-btn {
   color: #ff5252;
 }
+
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
+
 .slide-up-fade-enter-from,
 .slide-up-fade-leave-to {
   opacity: 0;
   transform: translate(-50%, 20px);
 }
+
 .search-bar-container {
   position: -webkit-sticky;
   position: sticky;
@@ -1128,6 +1124,7 @@ function clearTagFilter() {
 .dark .search-bar-container {
   background: #1e1e1e;
 }
+
 .search-actions-wrapper {
   flex: 1;
   min-width: 0;
@@ -1151,10 +1148,12 @@ function clearTagFilter() {
   margin-bottom: 1rem;
   font-size: 14px;
 }
+
 .dark .active-filter-bar {
   background-color: #312e81;
   color: #c7d2fe;
 }
+
 .clear-filter-btn {
   background: none;
   border: none;
@@ -1165,6 +1164,7 @@ function clearTagFilter() {
   opacity: 0.7;
   transition: opacity 0.2s;
 }
+
 .clear-filter-btn:hover {
   opacity: 1;
 }
