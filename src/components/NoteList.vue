@@ -390,11 +390,13 @@ defineExpose({
   border: 1px solid #e0e0e0;  /* (推荐) 增加一个浅灰色边框，使其更清晰 */
   border-radius: 15px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* 阴影可以调浅一些 */
   transition: opacity 0.2s, transform 0.2s;
   opacity: 0.9; /* 可以让它稍微不那么透明 */
+  font-weight: normal;
+  font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
 .collapse-button:hover {
   opacity: 1;
