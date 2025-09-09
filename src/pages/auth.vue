@@ -966,7 +966,7 @@ function clearTagFilter() {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
-  max-height: 51vh;
+  max-height: 49vh;
   overflow-y: auto;
 }
 .page-header {
