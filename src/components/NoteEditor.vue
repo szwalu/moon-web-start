@@ -13,7 +13,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange', 'blur', 'reachMaxHeight'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
 
 /* ============== Stores ============== */
 const settingsStore = useSettingStore()
@@ -42,8 +42,7 @@ function onCompositionStart() {
 }
 function onCompositionEnd() {
   isComposing.value = false
-  // 使用 setTimeout 确保在浏览器完成所有渲染后再执行
-  setTimeout(() => ensureCaretVisible(), 0)
+  nextTick(() => ensureCaretVisible())
 }
 
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
@@ -141,6 +140,12 @@ function handleSave() {
 }
 function handleCancel() {
   emit('cancel')
+}
+
+function handleBlur() {
+  blurTimeoutId = window.setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200)
 }
 
 function handleInput(event: Event) {
@@ -387,17 +392,11 @@ watch(textarea, (newTextarea) => {
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
-        @blur="emit('blur')"
+        @blur="handleBlur"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
-        @input="(e) => {
-          handleInput(e);
-          if (!isComposing.value) {
-            // 使用 setTimeout 确保在浏览器完成所有渲染后再执行
-            setTimeout(() => ensureCaretVisible(), 0);
-          }
-        }"
+        @input="(e) => { handleInput(e); if (!isComposing) nextTick(ensureCaretVisible) }"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -482,7 +481,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea {
   width: 100%;
   min-height: 100px;        /* 初始高度：可根据需要调大 */
-  max-height: 50vh;         /* 最大高度：可改 50vh / 固定 px 值 */
+  max-height: 48vh;         /* 最大高度：可改 50vh / 固定 px 值 */
   overflow-y: auto;
   padding: 16px 16px 4px 16px; /* 底部增加缓冲，避免贴底 */
   vertical-align: bottom; /* 尝试贴底对齐 */
