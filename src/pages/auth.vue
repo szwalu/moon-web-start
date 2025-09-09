@@ -18,11 +18,15 @@ const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsMo
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
+// 避免 ESLint 误报这些异步组件“未使用”
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView]
+
 useDark()
 const { t } = useI18n()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
+
 const noteListRef = ref(null)
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
@@ -60,7 +64,6 @@ const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
-const kbInset = ref(0)
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
@@ -106,6 +109,7 @@ onMounted(() => {
       const currentUser = session?.user ?? null
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
+
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(async () => {
           await fetchNotes()
@@ -129,50 +133,23 @@ onMounted(() => {
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     newNoteContent.value = savedContent
+
   isReady.value = true
-  attachViewportListeners()
 })
 
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
+
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  detachViewportListeners()
 })
-
-function updateKbInset() {
-  const vv = window.visualViewport
-  if (vv) {
-    // 键盘占用的底部高度 = 视窗总高 - (可见高度 + 顶部偏移)
-    const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-    // 预留一点缓冲，避免光标“紧贴”工具条
-    kbInset.value = Math.round(inset + 12)
-  }
-  else {
-    kbInset.value = 0
-  }
-}
-
-function attachViewportListeners() {
-  if (!window.visualViewport)
-    return
-  window.visualViewport.addEventListener('resize', updateKbInset)
-  window.visualViewport.addEventListener('scroll', updateKbInset)
-  updateKbInset() // 初始化
-}
-
-function detachViewportListeners() {
-  if (!window.visualViewport)
-    return
-  window.visualViewport.removeEventListener('resize', updateKbInset)
-  window.visualViewport.removeEventListener('scroll', updateKbInset)
-}
 
 watch(newNoteContent, (val) => {
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
+
     else
       localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
@@ -181,6 +158,7 @@ watch(newNoteContent, (val) => {
 function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
+
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
   let match
   // eslint-disable-next-line no-cond-assign
@@ -218,6 +196,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
+
     return null
   }
   if (contentToSave.length > maxNoteLength) {
@@ -231,6 +210,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
       const { data: updatedData, error: updateError } = await supabase.from('notes').update(noteData).eq('id', noteIdToUpdate).eq('user_id', user.value.id).select()
       if (updateError || !updatedData?.length)
         throw new Error(t('auth.update_failed'))
+
       savedNote = updatedData[0]
       updateNoteInList(savedNote)
       if (showMessage)
@@ -241,6 +221,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
       const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...noteData, id: newId }).select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
+
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       if (showMessage)
@@ -276,6 +257,7 @@ async function fetchAllTags() {
     })
     if (error)
       throw error
+
     allTags.value = data || []
   }
   catch (err: any) {
@@ -357,6 +339,7 @@ function handleEditorFocus(containerEl: HTMLElement) {
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
+
   else
     handleBatchExport()
 }
@@ -365,6 +348,7 @@ async function handleBatchExport() {
   showDropdown.value = false
   if (isExporting.value)
     return
+
   if (!user.value?.id) {
     messageHook.error(t('auth.session_expired'))
     return
@@ -394,17 +378,26 @@ async function handleBatchExport() {
         let page = 0
         let hasMore = true
         while (hasMore) {
-          let query = supabase.from('notes').select('content, created_at').eq('user_id', user.value!.id).order('created_at', { ascending: false }).range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+          let query = supabase
+            .from('notes')
+            .select('content, created_at')
+            .eq('user_id', user.value!.id)
+            .order('created_at', { ascending: false })
+            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
+
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
             query = query.lte('created_at', endOfDay.toISOString())
           }
+
           const { data, error } = await query
           if (error)
             throw error
+
           if (data && data.length > 0) {
             allNotes = allNotes.concat(data)
             page++
@@ -415,20 +408,25 @@ async function handleBatchExport() {
           if (data && data.length < BATCH_SIZE)
             hasMore = false
         }
+
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
+
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
           return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
+
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        const datePart = startDate && endDate ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}` : 'all'
+        const datePart = startDate && endDate
+          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
+          : 'all'
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
         document.body.appendChild(a)
@@ -452,6 +450,7 @@ async function handleBatchExport() {
 function handleExportResults() {
   if (isExporting.value)
     return
+
   isExporting.value = true
   messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
   try {
@@ -499,11 +498,13 @@ function addNoteToList(newNote: any) {
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
+
   const newPinStatus = !note.is_pinned
   try {
     const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
+
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
     await fetchNotes()
   }
@@ -524,6 +525,7 @@ function updateNoteInList(updatedNote: any) {
 async function fetchNotes() {
   if (!user.value)
     return
+
   isLoadingNotes.value = true
   try {
     const from = (currentPage.value - 1) * notesPerPage
@@ -531,6 +533,7 @@ async function fetchNotes() {
     const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
     if (error)
       throw error
+
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
@@ -551,6 +554,7 @@ async function fetchNotes() {
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
+
   currentPage.value++
   await fetchNotes()
 }
@@ -562,6 +566,7 @@ function handleHeaderClick() {
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
+
   const noteToDelete = notes.value.find(note => note.id === id)
   dialog.warning({
     title: t('notes.delete_confirm_title'),
@@ -573,6 +578,7 @@ async function triggerDeleteConfirmation(id: string) {
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message)
+
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
@@ -591,8 +597,9 @@ async function triggerDeleteConfirmation(id: string) {
         messageHook.success(t('notes.delete_success'))
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
+
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error // TS 无法正确推断 defineExpose 暴露出的方法类型
+          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
           calendarViewRef.value.refreshData()
         }
       }
@@ -607,6 +614,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
+
   const originalContent = noteToUpdate.content
   try {
     const lines = originalContent.split('\n')
@@ -633,6 +641,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
+
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
@@ -668,15 +677,18 @@ function toggleSelectionMode() {
   isSelectionModeActive.value = !isSelectionModeActive.value
   if (!isSelectionModeActive.value)
     selectedNoteIds.value = []
+
   showDropdown.value = false
 }
 
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
+
   const index = selectedNoteIds.value.indexOf(noteId)
   if (index > -1)
     selectedNoteIds.value.splice(index, 1)
+
   else
     selectedNoteIds.value.push(noteId)
 }
@@ -684,6 +696,7 @@ function handleToggleSelect(noteId: string) {
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
@@ -702,6 +715,7 @@ async function handleCopySelected() {
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
@@ -733,6 +747,7 @@ async function handleDeleteSelected() {
               .eq('user_id', user.value!.id)
             if (error)
               throw new Error(error.message)
+
             notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
             cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
             if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
@@ -799,8 +814,10 @@ function handleClosePage() {
 async function fetchNotesByTag(tag: string) {
   if (!user.value)
     return
+
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
+
   const cacheKey = getTagCacheKey(tag)
   const cachedData = localStorage.getItem(cacheKey)
   activeTagFilter.value = tag
@@ -808,7 +825,7 @@ async function fetchNotesByTag(tag: string) {
     const cachedNotes = JSON.parse(cachedData)
     notes.value = cachedNotes
     filteredNotesCount.value = cachedNotes.length
-    // 关键点：筛选时，禁用无限滚动
+    // 筛选时，禁用无限滚动
     hasMoreNotes.value = false
     return
   }
@@ -823,10 +840,11 @@ async function fetchNotesByTag(tag: string) {
       .order('created_at', { ascending: false })
     if (error)
       throw error
+
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
-    // 关键点：筛选时，禁用无限滚动
+    // 筛选时，禁用无限滚动
     hasMoreNotes.value = false
   }
   catch (err: any) {
@@ -841,13 +859,16 @@ function clearTagFilter() {
   activeTagFilter.value = null
   notes.value = mainNotesCache
   mainNotesCache = []
-  // 关键点：清除筛选后，必须根据当前状态重新计算是否还有更多笔记
+  // 清除筛选后，重新计算是否还有更多笔记
   hasMoreNotes.value = notes.value.length < totalNotes.value
 }
+
+// 避免 ESLint 误报这些在模板中使用的函数“未使用”
+const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 </script>
 
 <template>
-  <div class="auth-container" :style="{ paddingBottom: `calc(0.75rem + ${kbInset}px)` }">
+  <div class="auth-container">
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -980,7 +1001,6 @@ function clearTagFilter() {
   height: 100dvh;
   overflow: hidden;
   position: relative;
-  transition: padding-bottom 0.2s ease-in-out;
 }
 .dark .auth-container {
   background: #1e1e1e;
