@@ -42,7 +42,8 @@ function onCompositionStart() {
 }
 function onCompositionEnd() {
   isComposing.value = false
-  nextTick(() => ensureCaretVisible())
+  // 使用 setTimeout 确保在浏览器完成所有渲染后再执行
+  setTimeout(() => ensureCaretVisible(), 0)
 }
 
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
@@ -393,14 +394,8 @@ watch(textarea, (newTextarea) => {
         @input="(e) => {
           handleInput(e);
           if (!isComposing.value) {
-            nextTick(() => {
-              ensureCaretVisible();
-              // 在这里添加我们的高度检测逻辑
-              const el = textarea.value;
-              if (el && el.scrollHeight > el.clientHeight) {
-                emit('reachMaxHeight');
-              }
-            });
+            // 使用 setTimeout 确保在浏览器完成所有渲染后再执行
+            setTimeout(() => ensureCaretVisible(), 0);
           }
         }"
       />
