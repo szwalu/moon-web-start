@@ -60,6 +60,7 @@ const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
+const kbInset = ref(0)
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
@@ -129,6 +130,7 @@ onMounted(() => {
   if (savedContent)
     newNoteContent.value = savedContent
   isReady.value = true
+  attachViewportListeners()
 })
 
 onUnmounted(() => {
@@ -136,7 +138,36 @@ onUnmounted(() => {
     authListener.unsubscribe()
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  detachViewportListeners()
 })
+
+function updateKbInset() {
+  const vv = window.visualViewport
+  if (vv) {
+    // 键盘占用的底部高度 = 视窗总高 - (可见高度 + 顶部偏移)
+    const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+    // 预留一点缓冲，避免光标“紧贴”工具条
+    kbInset.value = Math.round(inset + 12)
+  }
+  else {
+    kbInset.value = 0
+  }
+}
+
+function attachViewportListeners() {
+  if (!window.visualViewport)
+    return
+  window.visualViewport.addEventListener('resize', updateKbInset)
+  window.visualViewport.addEventListener('scroll', updateKbInset)
+  updateKbInset() // 初始化
+}
+
+function detachViewportListeners() {
+  if (!window.visualViewport)
+    return
+  window.visualViewport.removeEventListener('resize', updateKbInset)
+  window.visualViewport.removeEventListener('scroll', updateKbInset)
+}
 
 watch(newNoteContent, (val) => {
   if (isReady.value) {
@@ -816,7 +847,7 @@ function clearTagFilter() {
 </script>
 
 <template>
-  <div class="auth-container">
+  <div class="auth-container" :style="{ paddingBottom: `calc(0.75rem + ${kbInset}px)` }">
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">

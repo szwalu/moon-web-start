@@ -134,6 +134,16 @@ function ensureCaretVisible() {
       scrollable.scrollTop -= deltaUp
     }
   }
+  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
+  if (!scrollable) {
+    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const safeBottom = getSafeViewportBottom()
+    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    if (delta > 0) {
+      // 平滑上推一点
+      window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
+    }
+  }
 }
 
 /* 监听 visualViewport（键盘弹出/收起） */
