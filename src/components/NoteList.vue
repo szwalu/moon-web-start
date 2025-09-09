@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { debounce } from 'lodash-es'
+import { defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+
+// --- 核心改动 1: 导入 throttle 而不是 debounce ---
+import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -31,28 +33,21 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 
-/** 列表滚动容器（DynamicScroller 的根元素） */
 const scrollerRef = ref<any>(null)
-/** 整个列表包裹元素，用于定位浮动按钮 */
 const wrapperRef = ref<HTMLElement | null>(null)
-/** 浮动“收起”按钮自身 */
 const collapseBtnRef = ref<HTMLElement | null>(null)
-/** 浮动按钮可见性与定位样式 */
 const collapseVisible = ref(false)
 const collapseStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
 
-/** 展开中的笔记 ID */
 const expandedNote = ref<string | null>(null)
-/** 编辑中的笔记 */
 const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
 const isUpdating = ref(false)
 
-/** 每个列表项 DOM 容器映射，便于测量位置 */
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-/** 滚动时触底加载 + 更新浮动按钮位置 */
-const handleScroll = debounce(() => {
+// --- 核心改动 2: 使用 throttle (节流) 并设置更快的 30ms 延迟 ---
+const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
   if (!el) {
     updateCollapsePos()
@@ -66,15 +61,28 @@ const handleScroll = debounce(() => {
   }
 
   updateCollapsePos()
-}, 50)
+}, 30) // 更新频率改为 30ms，更平滑
 
-/** 监听 scrollerRef 的挂载/卸载，绑定/解绑滚动事件 */
+function rebindScrollListener() {
+  const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!scrollerElement)
+    return
+  scrollerElement.removeEventListener('scroll', handleScroll)
+  scrollerElement.addEventListener('scroll', handleScroll, { passive: true } as any)
+}
+
+watch(() => props.notes, () => {
+  nextTick(() => {
+    rebindScrollListener()
+    updateCollapsePos()
+  })
+}, { deep: false })
+
 watch(scrollerRef, (newScroller, oldScroller) => {
   if (oldScroller?.$el)
     oldScroller.$el.removeEventListener('scroll', handleScroll)
-
   if (newScroller?.$el) {
-    newScroller.$el.addEventListener('scroll', handleScroll, { passive: true } as any)
+    rebindScrollListener()
     nextTick(() => {
       updateCollapsePos()
     })
@@ -86,14 +94,12 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.removeEventListener('resize', updateCollapsePos)
-  handleScroll.cancel()
+  handleScroll.cancel() // throttle 也有 cancel 方法
 })
 
-/** 编辑相关 */
 function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
-
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
   expandedNote.value = null
@@ -110,7 +116,6 @@ function cancelEdit() {
 async function handleUpdateNote() {
   if (!editingNoteId.value)
     return
-
   isUpdating.value = true
   emit(
     'updateNote',
@@ -118,24 +123,37 @@ async function handleUpdateNote() {
     (success: boolean) => {
       if (success)
         cancelEdit()
-
       isUpdating.value = false
     },
   )
 }
 
-/** 展开/收起 */
+// NoteList.vue -> <script setup>
+
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
-  expandedNote.value = expandedNote.value === noteId ? null : noteId
-  nextTick(() => {
+  const isExpanding = expandedNote.value !== noteId
+
+  expandedNote.value = isExpanding ? noteId : null
+
+  // 核心改动：使用 setTimeout 代替 nextTick
+  // 我们给予一个 50 毫秒的延迟，这足以让虚拟列表库完成它自己的所有内部计算和滚动调整。
+  // 在它完成之后，我们的滚动指令才会执行，从而确保我们的操作是最终的、有效的。
+  setTimeout(() => {
+    // 无论展开还是收起，都先更新浮动按钮的位置
     updateCollapsePos()
-  })
+
+    // 仅当是“展开”操作时，才执行滚动
+    if (isExpanding) {
+      const cardEl = noteContainers.value[noteId]
+      if (cardEl)
+        cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, 50) // 设置 50 毫秒延迟
 }
 
-/** 编辑器聚焦时把对应容器滚到近处 */
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
     if (containerEl && typeof containerEl.scrollIntoView === 'function')
@@ -143,60 +161,55 @@ function handleEditorFocus(containerEl: HTMLElement) {
   }, 300)
 }
 
-/** 当展开项变化时，重新定位按钮 */
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
   })
 })
 
-/** 计算并更新浮动“收起”按钮的位置 */
 function updateCollapsePos() {
   if (!expandedNote.value) {
     collapseVisible.value = false
     return
   }
-
   const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined
   const wrapperEl = wrapperRef.value as HTMLElement | null
   const cardEl = noteContainers.value[expandedNote.value]
-
   if (!scrollerEl || !wrapperEl || !cardEl) {
     collapseVisible.value = false
     return
   }
-
   const scrollerRect = scrollerEl.getBoundingClientRect()
   const wrapperRect = wrapperEl.getBoundingClientRect()
   const cardRect = (cardEl as HTMLElement).getBoundingClientRect()
-
-  // 卡片完全不可见时隐藏
   const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
   if (outOfView) {
     collapseVisible.value = false
     return
   }
-
   const btnEl = collapseBtnRef.value
   const btnH = btnEl ? btnEl.offsetHeight : 36
   const margin = 10
-
   const visibleBottom = Math.min(cardRect.bottom, scrollerRect.bottom - margin)
   const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
-
   let topPx = visibleBottom - btnH
   if (topPx < visibleTop)
     topPx = visibleTop
-
-  // 左边缘对齐到卡片左边
   const leftPx = cardRect.left - wrapperRect.left + 0
-
   collapseStyle.value = {
     left: `${leftPx}px`,
     top: `${topPx - wrapperRect.top}px`,
   }
   collapseVisible.value = true
 }
+
+function scrollToTop() {
+  scrollerRef.value?.scrollToItem(0)
+}
+
+defineExpose({
+  scrollToTop,
+})
 </script>
 
 <template>
@@ -227,9 +240,10 @@ function updateCollapsePos() {
             editingNoteId === item.id,
           ]"
           class="note-item-container"
+          @resize="updateCollapsePos"
         >
           <div
-            :ref="(el) => { if (el) noteContainers[item.id] = el as unknown as HTMLElement }"
+            :ref="(el) => { if (el) noteContainers[item.id] = el as HTMLElement }"
             class="note-selection-wrapper"
             :class="{ 'selection-mode': isSelectionModeActive }"
             @click.stop="isSelectionModeActive && emit('toggleSelect', item.id)"
@@ -279,21 +293,18 @@ function updateCollapsePos() {
       </template>
     </DynamicScroller>
 
-    <!-- 锚定在“当前展开卡片左下角”的全局浮动收起按钮 -->
-    <div
-      v-if="expandedNote && collapseVisible"
-      class="collapse-anchored"
-      :style="collapseStyle"
-    >
+    <Transition name="fade">
       <button
+        v-if="collapseVisible"
         ref="collapseBtnRef"
         type="button"
-        class="collapse-btn"
-        @click.stop="toggleExpand(expandedNote as string)"
+        class="collapse-button"
+        :style="collapseStyle"
+        @click="toggleExpand(expandedNote!)"
       >
-        {{ t('notes.collapse') }}
+        收起
       </button>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -305,19 +316,16 @@ function updateCollapsePos() {
   right: 0;
   bottom: 0;
 }
-
 .scroller {
   height: 100%;
   overflow-y: auto;
 }
-
 .note-item-container {
   padding-bottom: 1.5rem;
 }
 .note-item-container:last-child {
   padding-bottom: 0;
 }
-
 .note-selection-wrapper {
   display: flex;
   gap: 0.75rem;
@@ -335,12 +343,10 @@ function updateCollapsePos() {
 .dark .note-selection-wrapper.selection-mode:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
-
 .note-content-wrapper {
   flex: 1;
   min-width: 0;
 }
-
 .selection-indicator {
   padding-top: 0.75rem;
 }
@@ -370,37 +376,36 @@ function updateCollapsePos() {
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-
 .text-gray-500 {
   color: #6b7280;
 }
 .dark .text-gray-500 {
   color: #9ca3af;
 }
-
-/* 锚定“收起”按钮：相对 .notes-list-wrapper 绝对定位，由 JS 动态设置 left/top */
-.collapse-anchored {
+.collapse-button {
   position: absolute;
-  z-index: 60;
-  pointer-events: auto;
-}
-
-.collapse-btn {
-  background-color: #ffffff;
-  color: #111827;
-  border: none;
-  border-radius: 9999px;
-  padding: 6px 14px;
-  font-size: 14px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  z-index: 10;
+  background-color: #ffffff; /* 改为白色 */
+  color: #007bff;            /* 改为一个漂亮的蓝色，您也可以直接用 'blue' */
+  border: 1px solid #e0e0e0;  /* (推荐) 增加一个浅灰色边框，使其更清晰 */
+  border-radius: 15px;
+  padding: 6px 12px;
+  font-size: 12px;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* 阴影可以调浅一些 */
+  transition: opacity 0.2s, transform 0.2s;
+  opacity: 0.9; /* 可以让它稍微不那么透明 */
 }
-.collapse-btn:hover {
-  box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+.collapse-button:hover {
+  opacity: 1;
+  transform: scale(1.05);
 }
-.dark .collapse-btn {
-  background-color: #374151;
-  color: #e5e7eb;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

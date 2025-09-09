@@ -31,7 +31,7 @@ const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 
 const md = new MarkdownIt({
-  html: true,
+  html: false,
   linkify: true,
   breaks: true,
 }).use(taskLists, { enabled: true, label: true })
@@ -39,26 +39,26 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-/* ---------------- 高亮搜索词 ---------------- */
-const contentToRender = computed(() => {
-  const content = props.note.content || ''
-  const query = props.searchQuery.trim()
-  if (!query)
-    return content
-
-  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(escapedQuery, 'gi')
-  return content.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
-})
-
-/* ---------------- Markdown 渲染 ---------------- */
+// --- 使用这个新函数，替换旧的 renderMarkdown ---
 function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  const html = md.render(content)
-  // 自定义 tag 高亮
-  return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+  // 第1步：先用 markdown-it 将原始内容安全地转为 HTML
+  let html = md.render(content)
+
+  // 第2步：在生成的 HTML 上进行“标签高亮”的再加工
+  html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+
+  // 第3步：在已经处理过的 HTML 上，进行“搜索词高亮”
+  const query = props.searchQuery.trim()
+  if (query) {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escapedQuery, 'gi')
+    html = html.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
+  }
+
+  return html
 }
 
 /* ---------------- 溢出检测 ---------------- */
@@ -247,7 +247,7 @@ async function handleDateUpdate(newDate: Date) {
         <div
           class="prose dark:prose-invert max-w-none"
           :class="fontSizeClass"
-          v-html="renderMarkdown(contentToRender)"
+          v-html="renderMarkdown(note.content)"
         />
         <!-- 注意：展开态不再显示“收起”按钮；交给 NoteList.vue 的全局悬浮按钮来处理 -->
       </div>
@@ -258,7 +258,7 @@ async function handleDateUpdate(newDate: Date) {
           ref="contentRef"
           class="prose dark:prose-invert line-clamp-3 max-w-none"
           :class="fontSizeClass"
-          v-html="renderMarkdown(contentToRender)"
+          v-html="renderMarkdown(note.content)"
         />
         <div
           v-if="noteOverflowStatus"
@@ -273,12 +273,16 @@ async function handleDateUpdate(newDate: Date) {
     </div>
   </div>
 
-  <DateTimePickerModal
-    :show="showDatePicker"
-    :initial-date="new Date(note.created_at)"
-    @close="showDatePicker = false"
-    @confirm="handleDateUpdate"
-  />
+  <Teleport to="body">
+    <DateTimePickerModal
+      v-if="showDatePicker"
+      :show="showDatePicker"
+      :initial-date="new Date(note.created_at)"
+      :style="{ zIndex: 100 }"
+      @close="showDatePicker = false"
+      @confirm="handleDateUpdate"
+    />
+  </Teleport>
 </template>
 
 <style scoped>

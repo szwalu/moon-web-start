@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
@@ -21,11 +20,10 @@ const CalendarView = defineAsyncComponent(() => import('@/components/CalendarVie
 
 useDark()
 const { t } = useI18n()
-const router = useRouter()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
-
+const noteListRef = ref(null)
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
 const showCalendarView = ref(false)
@@ -319,15 +317,10 @@ async function handleVisibilityChange() {
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
-  if (containerEl) {
-    // 关键改动：我们回到 'nearest'，因为它在PC端表现更好
-    // 同时，我们把滚动操作放在一个微任务 (setTimeout with 0ms) 中
-    // 这给了浏览器足够的时间去处理布局变化（特别是移动端键盘弹出）
-    // 然后再执行滚动，大大提高了在移动端成功的概率。
-    setTimeout(() => {
+  setTimeout(() => {
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
       containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }, 0)
-  }
+  }, 0)
 }
 
 function handleExportTrigger() {
@@ -532,9 +525,7 @@ async function nextPage() {
 }
 
 function handleHeaderClick() {
-  const scroller = document.querySelector('.scroller')
-  if (scroller)
-    scroller.scrollTo({ top: 0, behavior: 'smooth' })
+  noteListRef.value?.scrollToTop()
 }
 
 async function triggerDeleteConfirmation(id: string) {
@@ -771,7 +762,7 @@ function handleEditFromCalendar(_note: any) {
 }
 
 function handleClosePage() {
-  router.push('/')
+  window.location.href = '/'
 }
 
 async function fetchNotesByTag(tag: string) {
@@ -786,6 +777,7 @@ async function fetchNotesByTag(tag: string) {
     const cachedNotes = JSON.parse(cachedData)
     notes.value = cachedNotes
     filteredNotesCount.value = cachedNotes.length
+    // 关键点：筛选时，禁用无限滚动
     hasMoreNotes.value = false
     return
   }
@@ -803,6 +795,7 @@ async function fetchNotesByTag(tag: string) {
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
+    // 关键点：筛选时，禁用无限滚动
     hasMoreNotes.value = false
   }
   catch (err: any) {
@@ -817,6 +810,8 @@ function clearTagFilter() {
   activeTagFilter.value = null
   notes.value = mainNotesCache
   mainNotesCache = []
+  // 关键点：清除筛选后，必须根据当前状态重新计算是否还有更多笔记
+  hasMoreNotes.value = notes.value.length < totalNotes.value
 }
 </script>
 
@@ -890,6 +885,7 @@ function clearTagFilter() {
 
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
+          ref="noteListRef" :key="noteListKey"
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
           :has-more="hasMoreNotes"
@@ -954,34 +950,25 @@ function clearTagFilter() {
   overflow: hidden;
   position: relative;
 }
-
 .dark .auth-container {
   background: #1e1e1e;
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
-
 .notes-list-container {
-  flex: 1; /* 保持 flex: 1，让它从父容器获得高度 */
-  min-height: 0; /* 关键！防止被内容撑开 */
-  position: relative; /* 保持 position: relative，为 NoteList 提供定位基准 */
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0;
+  overflow-y: hidden;
+  position: relative;
 }
-
 .new-note-editor-container {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
-  /* 关键：去掉父级滚动与高度限制 */
-  max-height: none;
-  overflow: visible;
+  max-height: 35vh;
+  overflow-y: auto;
 }
-
-/* 额外：关闭锚定，避免浏览器自动把容器推到底 */
-.new-note-editor-container,
-.editor-wrapper {
-  overflow-anchor: none;
-}
-
 .page-header {
   flex-shrink: 0;
   display: flex;
@@ -995,11 +982,9 @@ function clearTagFilter() {
   height: 44px;
   padding-top: 0.75rem;
 }
-
 .dark .page-header {
   background: #1e1e1e;
 }
-
 .page-title {
   position: absolute;
   left: 50%;
@@ -1009,17 +994,14 @@ function clearTagFilter() {
   font-weight: 600;
   margin: 0;
 }
-
 .dark .page-title {
     color: #f0f0f0;
 }
-
 .header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-
 .header-action-btn {
   font-size: 16px;
   background: none;
@@ -1033,25 +1015,20 @@ function clearTagFilter() {
   justify-content: center;
   transition: background-color 0.2s ease;
 }
-
 .header-action-btn:hover {
   background-color: rgba(0,0,0,0.05);
 }
-
 .dark .header-action-btn {
   color: #bbb;
 }
-
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
 }
-
 .close-page-btn {
   font-size: 28px;
   line-height: 1;
   font-weight: 300;
 }
-
 .selection-actions-popup {
   position: fixed;
   bottom: 1.5rem;
@@ -1069,20 +1046,16 @@ function clearTagFilter() {
   padding: 0.75rem 1rem;
   z-index: 15;
 }
-
 .dark .selection-actions-popup {
   background-color: #444;
 }
-
 .selection-info {
   font-size: 14px;
 }
-
 .selection-buttons {
   display: flex;
   gap: 3rem;
 }
-
 .action-btn {
   background: none;
   border: none;
@@ -1092,22 +1065,18 @@ function clearTagFilter() {
   font-weight: 500;
   padding: 0.25rem;
 }
-
 .action-btn.delete-btn {
   color: #ff5252;
 }
-
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
-
 .slide-up-fade-enter-from,
 .slide-up-fade-leave-to {
   opacity: 0;
   transform: translate(-50%, 20px);
 }
-
 .search-bar-container {
   position: -webkit-sticky;
   position: sticky;
@@ -1120,23 +1089,19 @@ function clearTagFilter() {
   gap: 0.5rem;
   align-items: center;
 }
-
 .dark .search-bar-container {
   background: #1e1e1e;
 }
-
 .search-actions-wrapper {
   flex: 1;
   min-width: 0;
 }
-
 @media (max-width: 768px) {
   .cancel-search-btn {
     font-size: 14px;
     padding: 0.6rem 1rem;
   }
 }
-
 .active-filter-bar {
   display: flex;
   justify-content: space-between;
@@ -1148,12 +1113,10 @@ function clearTagFilter() {
   margin-bottom: 1rem;
   font-size: 14px;
 }
-
 .dark .active-filter-bar {
   background-color: #312e81;
   color: #c7d2fe;
 }
-
 .clear-filter-btn {
   background: none;
   border: none;
@@ -1164,7 +1127,6 @@ function clearTagFilter() {
   opacity: 0.7;
   transition: opacity 0.2s;
 }
-
 .clear-filter-btn:hover {
   opacity: 1;
 }
