@@ -484,6 +484,7 @@ watch(textarea, (newTextarea) => {
   max-height: 40vh;         /* 最大高度：可改 50vh / 固定 px 值 */
   overflow-y: auto;
   padding: 16px 16px 4px 16px; /* 底部增加缓冲，避免贴底 */
+  vertical-align: bottom; /* 尝试贴底对齐 */
   border: none;
   background-color: transparent;
   color: inherit;
