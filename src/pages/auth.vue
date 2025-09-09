@@ -811,6 +811,9 @@ function clearTagFilter() {
 
 <template>
   <div class="auth-container">
+    <div style="position: fixed; top: 50px; left: 10px; background: yellow; color: black; padding: 5px; border-radius: 5px; z-index: 9999; font-size: 16px;">
+      编辑器聚焦状态: {{ isEditorFocused }}
+    </div>
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
