@@ -964,12 +964,12 @@ function clearTagFilter() {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
-  max-height: 48vh;
+  max-height: 40vh;
   overflow-y: auto;
   transition: max-height 0.3s ease-in-out;
 }
 .new-note-editor-container.is-focused {
-  max-height: 70vh; /* 展开时占据屏幕70%的高度 */
+  max-height: 80vh; /* 展开时占据屏幕70%的高度 */
 }
 .page-header {
   flex-shrink: 0;
