@@ -13,7 +13,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange', 'blur'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange', 'blur', 'reachMaxHeight'])
 
 /* ============== Stores ============== */
 const settingsStore = useSettingStore()
@@ -390,7 +390,19 @@ watch(textarea, (newTextarea) => {
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
-        @input="(e) => { handleInput(e); if (!isComposing) nextTick(ensureCaretVisible) }"
+        @input="(e) => {
+          handleInput(e);
+          if (!isComposing.value) {
+            nextTick(() => {
+              ensureCaretVisible();
+              // 在这里添加我们的高度检测逻辑
+              const el = textarea.value;
+              if (el && el.scrollHeight > el.clientHeight) {
+                emit('reachMaxHeight');
+              }
+            });
+          }
+        }"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"

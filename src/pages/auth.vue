@@ -877,7 +877,8 @@ function clearTagFilter() {
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
-          @focus="isEditorFocused = true" @blur="isEditorFocused = false"
+          @reach-max-height="isEditorFocused = true"
+          @blur="isEditorFocused = false"
         />
       </div>
 
