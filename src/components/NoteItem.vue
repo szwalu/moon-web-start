@@ -4,44 +4,32 @@ import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
-
 import { useDark } from '@vueuse/core'
 
-// 导入 useDark
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
 
-// --- Props and Emits ---
+/* ---------------- Props & Emits ---------------- */
 const props = defineProps({
-  note: {
-    type: Object,
-    required: true,
-  },
-  isExpanded: {
-    type: Boolean,
-    default: false,
-  },
-  isSelectionModeActive: {
-    type: Boolean,
-    default: false,
-  },
-  searchQuery: { // <-- 在这里添加这个新的 prop
-    type: String,
-    default: '',
-  },
+  note: { type: Object, required: true },
+  isExpanded: { type: Boolean, default: false },
+  isSelectionModeActive: { type: Boolean, default: false },
+  searchQuery: { type: String, default: '' },
 })
 
 const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated'])
 
-// --- 初始化 & 状态 ---
+/* ---------------- 状态 ---------------- */
 const { t } = useI18n()
-const isDark = useDark() // 初始化 useDark
+const isDark = useDark()
 const messageHook = useMessage()
-const showDatePicker = ref(false)
 const dialog = useDialog()
+
+const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
@@ -51,41 +39,36 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// 用下面这段代码替换掉你现有的 contentToRender
+/* ---------------- 高亮搜索词 ---------------- */
 const contentToRender = computed(() => {
-  const content = props.note.content
+  const content = props.note.content || ''
   const query = props.searchQuery.trim()
-
-  // 1. 如果没有搜索词，直接返回原始内容
   if (!query)
     return content
 
-  // 2. 如果有搜索词，执行前端高亮
-  //    - 'gi' 表示全局匹配 (g) 且不区分大小写 (i)
-  //    - new RegExp(...) 用于动态创建正则表达式
-  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(escapedQuery, 'gi')
-
   return content.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
 })
 
-// --- Markdown 渲染 ---
+/* ---------------- Markdown 渲染 ---------------- */
 function renderMarkdown(content: string) {
   if (!content)
     return ''
+
   const html = md.render(content)
+  // 自定义 tag 高亮
   return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
 }
 
-// --- DOM 相关 ---
+/* ---------------- 溢出检测 ---------------- */
 function checkIfNoteOverflows() {
-  const el = contentRef.value
+  const el = contentRef.value as HTMLElement | null
   if (el)
     noteOverflowStatus.value = el.scrollHeight > el.clientHeight
 }
 
 let observer: ResizeObserver | null = null
-
 onMounted(() => {
   if (contentRef.value) {
     observer = new ResizeObserver(() => {
@@ -94,19 +77,17 @@ onMounted(() => {
     observer.observe(contentRef.value)
   }
 })
-
 onUnmounted(() => {
   if (observer)
     observer.disconnect()
 })
-
 watch(() => props.note.content, () => {
   nextTick(() => {
     checkIfNoteOverflows()
   })
 })
 
-// --- 下拉菜单逻辑 ---
+/* ---------------- 下拉菜单 ---------------- */
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
   const creationTime = new Date(note.created_at).toLocaleString('zh-CN', {
@@ -135,27 +116,19 @@ function getDropdownOptions(note: any) {
       key: 'info-block',
       type: 'render',
       render: () => {
-        // 根据暗黑模式动态设置文字颜色
         const textColor = isDark.value ? '#aaa' : '#666'
-
-        // 定义一个可复用的、包含紧凑行高的内联样式对象
         const pStyle = {
           margin: '0',
           padding: '0',
-          lineHeight: '1.8', // 强制设置紧凑的行高
+          lineHeight: '1.8',
           whiteSpace: 'nowrap',
           fontSize: '13px',
           color: textColor,
-        }
+        } as const
 
         return h(
           'div',
-          {
-            style: {
-              padding: '4px 12px', // 给整个块一个小的内边距
-              cursor: 'default',
-            },
-          },
+          { style: { padding: '4px 12px', cursor: 'default' } },
           [
             h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
             h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),
@@ -192,10 +165,12 @@ function handleDropdownSelect(key: string) {
         },
       })
       break
+    default:
+      break
   }
 }
 
-// --- 任务列表点击处理 ---
+/* ---------------- 任务项点击 ---------------- */
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
@@ -203,15 +178,14 @@ function handleNoteContentClick(event: MouseEvent) {
     return
 
   event.stopPropagation()
-
-  const noteCard = (event.currentTarget as HTMLElement)
+  const noteCard = event.currentTarget as HTMLElement
   const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
   const itemIndex = allListItems.indexOf(listItem)
-
   if (itemIndex !== -1)
     emit('taskToggle', { noteId: props.note.id, itemIndex })
 }
 
+/* ---------------- 日期更新 ---------------- */
 async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
@@ -268,18 +242,17 @@ async function handleDateUpdate(newDate: Date) {
     </div>
 
     <div class="flex-1 min-w-0">
+      <!-- 展开态：外包一层成为滚动容器 -->
       <div v-if="isExpanded">
         <div
           class="prose dark:prose-invert max-w-none"
           :class="fontSizeClass"
           v-html="renderMarkdown(contentToRender)"
         />
-        <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
-          <button class="toggle-button collapse-button">
-            {{ $t('notes.collapse') }}
-          </button>
-        </div>
+        <!-- 注意：展开态不再显示“收起”按钮；交给 NoteList.vue 的全局悬浮按钮来处理 -->
       </div>
+
+      <!-- 收起态 -->
       <div v-else>
         <div
           ref="contentRef"
@@ -309,13 +282,17 @@ async function handleDateUpdate(newDate: Date) {
 </template>
 
 <style scoped>
-/* 为了方便，我直接使用 Tailwind 的 @apply 指令来整合基础样式 */
 .note-card {
-  @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
+  /* Tailwind 合成：等价于 rounded + 背景 + 阴影 + padding + margin */
+  border-radius: 0.5rem;
+  background-color: #f3f4f6; /* gray-100 */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .dark .note-card {
-  @apply bg-gray-700;
+  background-color: #374151; /* gray-700 */
 }
 
 .note-card-top-bar {
@@ -332,10 +309,7 @@ async function handleDateUpdate(newDate: Date) {
   margin: 0;
   padding: 0;
 }
-
-.dark .note-date {
-  color: #aaa;
-}
+.dark .note-date { color: #aaa; }
 
 .note-meta-left {
   display: flex;
@@ -352,15 +326,11 @@ async function handleDateUpdate(newDate: Date) {
   border-radius: 9999px;
   line-height: 1;
 }
-
-.dark .pinned-indicator {
-  color: #fde68a;
-  background-color: #78350f;
-}
+.dark .pinned-indicator { color: #fde68a; background-color: #78350f; }
 
 .kebab-menu {
   cursor: pointer;
-  padding: 2px; /* <-- 最终修复1：从 4px 改为 2px，解决遮挡问题 */
+  padding: 2px;
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -369,14 +339,8 @@ async function handleDateUpdate(newDate: Date) {
   justify-content: center;
   transition: background-color 0.2s;
 }
-
-.kebab-menu:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.dark .kebab-menu:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
+.kebab-menu:hover { background-color: rgba(0,0,0,0.1); }
+.dark .kebab-menu:hover { background-color: rgba(255,255,255,0.1); }
 
 .toggle-button-row {
   width: 100%;
@@ -399,21 +363,15 @@ async function handleDateUpdate(newDate: Date) {
   font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
+.dark .toggle-button { color: #38bdf8 !important; }
+.toggle-button:hover { text-decoration: underline; }
 
-.dark .toggle-button {
-  color: #38bdf8 !important;
-}
-
-.toggle-button:hover {
-  text-decoration: underline;
-}
-
+/* 文字内容排版 */
 :deep(.prose) {
   font-size: 17px !important;
   line-height: 1.6;
   overflow-wrap: break-word;
 }
-
 .line-clamp-3 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -422,6 +380,7 @@ async function handleDateUpdate(newDate: Date) {
   -webkit-box-orient: vertical;
 }
 
+/* 自定义 tag 样式 */
 :deep(.custom-tag) {
   background-color: #eef2ff;
   color: #4338ca;
@@ -431,51 +390,18 @@ async function handleDateUpdate(newDate: Date) {
   font-weight: 500;
   margin: 0 2px;
 }
+.dark :deep(.custom-tag) { background-color: #312e81; color: #c7d2fe; }
 
-.dark :deep(.custom-tag) {
-  background-color: #312e81;
-  color: #c7d2fe;
-}
+:deep(.prose > :first-child) { margin-top: 0 !important; }
+:deep(.prose > :last-child)  { margin-bottom: 0 !important; }
 
-:deep(.prose > :first-child) {
-  margin-top: 0 !important;
-}
+/* 不同字号 */
+:deep(.prose.font-size-small)        { font-size: 14px !important; }
+:deep(.prose.font-size-medium)       { font-size: 17px !important; }
+:deep(.prose.font-size-large)        { font-size: 20px !important; }
+:deep(.prose.font-size-extra-large)  { font-size: 22px !important; }
 
-:deep(.prose > :last-child) {
-  margin-bottom: 0 !important;
-}
-
-.is-expanded .toggle-button-row {
-  position: -webkit-sticky;
-  position: sticky;
-  bottom: 1.5rem;
-  z-index: 5;
-  background-color: transparent;
-  border-top: none;
-  padding: 0.75rem 1rem;
-}
-
-.dark .is-expanded .toggle-button-row {
-  background-color: transparent;
-  border-top: none;
-}
-
-:deep(.prose.font-size-small) {
-  font-size: 14px !important;
-}
-
-:deep(.prose.font-size-medium) {
-  font-size: 17px !important;
-}
-
-:deep(.prose.font-size-large) {
-  font-size: 20px !important;
-}
-
-:deep(.prose.font-size-extra-large) {
-  font-size: 22px !important;
-}
-
+/* 表格样式 */
 :deep(table) {
   width: auto;
   border-collapse: collapse;
@@ -484,58 +410,36 @@ async function handleDateUpdate(newDate: Date) {
   border: 1px solid #dfe2e5;
   display: table !important;
 }
+.dark :deep(table) { border-color: #4b5563; }
+:deep(th), :deep(td) { padding: 8px 15px; border: 1px solid #dfe2e5; }
+.dark :deep(th), .dark :deep(td) { border-color: #4b5563; }
+:deep(th) { font-weight: 600; background-color: #f6f8fa; }
+.dark :deep(th) { background-color: #374151; }
 
-.dark :deep(table) {
-  border-color: #4b5563;
-}
-
-:deep(th),
-:deep(td) {
-  padding: 8px 15px;
-  border: 1px solid #dfe2e5;
-}
-
-.dark :deep(th),
-.dark :deep(td) {
-    border-color: #4b5563;
-}
-
-:deep(th) {
-  font-weight: 600;
-  background-color: #f6f8fa;
-}
-
-.dark :deep(th) {
-    background-color: #374151;
-}
-
+/* 收起按钮样式 */
 .collapse-button {
   background-color: white;
   padding: 4px 12px;
   border-radius: 9999px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
-
 .dark .collapse-button {
   background-color: #374151;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 
-/* 针对分割线，让它更细一些 */
-:deep(.n-dropdown-divider) {
-  margin: 2px 0 !important;
-}
+/* dropdown 分割线更细 */
+:deep(.n-dropdown-divider) { margin: 2px 0 !important; }
 
-/* --- Add these new styles for highlighting --- */
+/* 搜索高亮 */
 :deep(.search-highlight) {
-  background-color: #ffdd77; /* A pleasant yellow for light mode */
+  background-color: #ffdd77;
   color: #333;
   padding: 0 2px;
   border-radius: 3px;
 }
-
 .dark :deep(.search-highlight) {
-  background-color: #8f7400; /* A darker gold for dark mode */
+  background-color: #8f7400;
   color: #f0e6c5;
 }
 </style>
