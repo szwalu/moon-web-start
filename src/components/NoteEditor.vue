@@ -13,7 +13,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange', 'blur'])
 
 /* ============== Stores ============== */
 const settingsStore = useSettingStore()
@@ -140,12 +140,6 @@ function handleSave() {
 }
 function handleCancel() {
   emit('cancel')
-}
-
-function handleBlur() {
-  blurTimeoutId = window.setTimeout(() => {
-    showTagSuggestions.value = false
-  }, 200)
 }
 
 function handleInput(event: Event) {
@@ -392,7 +386,7 @@ watch(textarea, (newTextarea) => {
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
-        @blur="handleBlur"
+        @blur="emit('blur')"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"

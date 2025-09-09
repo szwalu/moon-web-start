@@ -60,6 +60,7 @@ const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
+const isEditorFocused = ref(false)
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
@@ -314,13 +315,6 @@ async function handleVisibilityChange() {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
-}
-
-function handleEditorFocus(containerEl: HTMLElement) {
-  setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 0)
 }
 
 function handleExportTrigger() {
@@ -869,7 +863,11 @@ function clearTagFilter() {
         </span>
         <button class="clear-filter-btn" @click="clearTagFilter">×</button>
       </div>
-      <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
+      <div
+        ref="newNoteEditorContainerRef"
+        class="new-note-editor-container"
+        :class="{ 'is-focused': isEditorFocused }"
+      >
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
@@ -879,7 +877,7 @@ function clearTagFilter() {
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
-          @focus="handleEditorFocus(newNoteEditorContainerRef)"
+          @focus="isEditorFocused = true" @blur="isEditorFocused = false"
         />
       </div>
 
@@ -968,6 +966,10 @@ function clearTagFilter() {
   flex-shrink: 0;
   max-height: 48vh;
   overflow-y: auto;
+  transition: max-height 0.3s ease-in-out;
+}
+.new-note-editor-container.is-focused {
+  max-height: 70vh; /* 展开时占据屏幕70%的高度 */
 }
 .page-header {
   flex-shrink: 0;
