@@ -980,6 +980,7 @@ function clearTagFilter() {
   height: 100dvh;
   overflow: hidden;
   position: relative;
+  transition: padding-bottom 0.2s ease-in-out;
 }
 .dark .auth-container {
   background: #1e1e1e;
