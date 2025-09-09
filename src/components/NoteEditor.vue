@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useSettingStore } from '@/stores/setting'
 
@@ -45,6 +45,21 @@ function onCompositionEnd() {
   nextTick(() => ensureCaretVisible())
 }
 
+onMounted(() => {
+  if (window.visualViewport) {
+    // 键盘弹出/收起、或浏览器 UI 变化时，重新确认光标可见
+    window.visualViewport.addEventListener('resize', ensureCaretVisible)
+    window.visualViewport.addEventListener('scroll', ensureCaretVisible)
+  }
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', ensureCaretVisible)
+    window.visualViewport.removeEventListener('scroll', ensureCaretVisible)
+  }
+})
+
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
   let el: HTMLElement | null = node?.parentElement || null
   while (el) {
@@ -56,6 +71,17 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
     el = el.parentElement
   }
   return null
+}
+
+/** 真实的可视区域底边（考虑键盘/工具栏占用） */
+function getSafeViewportBottom() {
+  const vv = window.visualViewport
+  // 预留一点缓冲，避免光标刚好贴住遮挡条
+  const SAFE_PADDING = 10
+  if (vv)
+    return vv.offsetTop + vv.height - SAFE_PADDING
+
+  return window.innerHeight - SAFE_PADDING
 }
 
 function ensureCaretVisible() {
@@ -98,16 +124,25 @@ function ensureCaretVisible() {
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
 
-  // 如外层还有可滚容器，再确保祖先容器也可见
+  // 如外层还有可滚容器，再确保祖先容器也可见（考虑键盘占用的可视底边）
   const scrollable = getScrollableAncestor(el)
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const ancRect = scrollable.getBoundingClientRect()
+
+    // 关键：祖先容器底边要和“可视区域底边”取较小值
+    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
+    const visibleTop = ancRect.top
     const padding = 8
-    if (caretAbsTop + lineHeight * 1.5 > ancRect.bottom)
-      scrollable.scrollTop += (caretAbsTop + lineHeight * 1.5) - ancRect.bottom + padding
-    else if (caretAbsTop - lineHeight * 0.5 < ancRect.top)
-      scrollable.scrollTop -= ancRect.top - (caretAbsTop - lineHeight * 0.5) + padding
+
+    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
+      const delta = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
+      scrollable.scrollTop += delta
+    }
+    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
+      const delta = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
+      scrollable.scrollTop -= delta
+    }
   }
 }
 
