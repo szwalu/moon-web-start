@@ -680,14 +680,22 @@ function handleCancelSearch() {
   handleSearchCleared()
 }
 
+// 在 auth.vue 中找到这个函数
+
 function handleAnniversaryToggle(data: any[] | null) {
   if (data) {
+    // 进入“那年今日”视图
     anniversaryNotes.value = data
     isAnniversaryViewActive.value = true
+    // 【关键新增】告诉列表，在这个视图下没有更多笔记了
+    hasMoreNotes.value = false
   }
   else {
+    // 退出“那年今日”视图，返回主列表
     anniversaryNotes.value = null
     isAnniversaryViewActive.value = false
+    // 【关键新增】根据主列表的实际情况，恢复“是否有更多”的状态
+    hasMoreNotes.value = notes.value.length < totalNotes.value
   }
 }
 
