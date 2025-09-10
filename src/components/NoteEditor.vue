@@ -202,6 +202,7 @@ function handleBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
+  emit('blur')
 }
 
 function handleInput(event: Event) {

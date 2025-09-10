@@ -53,6 +53,7 @@ const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
 const allTags = ref<string[]>([])
+const isEditorActive = ref(false)
 const isSelectionModeActive = ref(false)
 const selectedNoteIds = ref<string[]>([])
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
@@ -338,8 +339,19 @@ function handleEditorFocus(containerEl: HTMLElement) {
   }, 0)
 }
 
-function handleEditorBlur() {
-  compactWhileTyping.value = false // 恢复页眉
+let editorHideTimer: number | null = null
+function onEditorFocus() {
+  if (editorHideTimer) {
+    clearTimeout(editorHideTimer)
+    editorHideTimer = null
+  }
+  isEditorActive.value = true
+}
+function onEditorBlur() {
+  // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
+  editorHideTimer = window.setTimeout(() => {
+    isEditorActive.value = false
+  }, 120)
 }
 
 function handleExportTrigger() {
@@ -557,16 +569,16 @@ async function fetchNotes() {
   }
 }
 
+function handleHeaderClick() {
+  noteListRef.value?.scrollToTop()
+}
+
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
 
   currentPage.value++
   await fetchNotes()
-}
-
-function handleHeaderClick() {
-  noteListRef.value?.scrollToTop()
 }
 
 async function triggerDeleteConfirmation(id: string) {
@@ -876,7 +888,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 <template>
   <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }">
     <template v-if="user">
-      <div v-show="!compactWhileTyping" class="page-header" @click="handleHeaderClick">
+      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             trigger="click"
@@ -899,7 +911,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       </div>
 
       <Transition name="slide-fade">
-        <div v-if="showSearchBar && !compactWhileTyping" class="search-bar-container">
+        <div v-if="showSearchBar" v-show="!isEditorActive" class="search-bar-container">
           <NoteActions
             v-model="searchQuery"
             class="search-actions-wrapper"
@@ -918,7 +930,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
       <AnniversaryBanner v-show="!compactWhileTyping" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="activeTagFilter" class="active-filter-bar">
+      <div v-if="activeTagFilter" v-show="!isEditorActive" class="active-filter-bar">
         <span>
           正在筛选标签：<strong>{{ activeTagFilter }}</strong>
           <span style="margin-left: 8px; color: #666;">
@@ -937,8 +949,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
-          @focus="handleEditorFocus(newNoteEditorContainerRef)"
-          @blur="handleEditorBlur"
+          @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
+          @blur="onEditorBlur"
         />
       </div>
 
