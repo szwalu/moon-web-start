@@ -69,6 +69,44 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
+// --- iOS Chrome 识别 & 额外上推补偿（只作用于 iOS Chrome / CriOS）---
+function isIOSChrome() {
+  const ua = navigator.userAgent || ''
+  const isiOS = /iPhone|iPad|iPod/.test(ua)
+  const isCriOS = /CriOS\/\d+/.test(ua) // iOS Chrome 的标识
+  const isOtherBlinkOnIOS = /EdgiOS|OPT\/|DuckDuckGo/.test(ua) // 其他 iOS 浏览器（避免误伤）
+  const isFirefoxiOS = /FxiOS\/\d+/.test(ua)
+  return isiOS && isCriOS && !isFirefoxiOS && !isOtherBlinkOnIOS
+}
+
+// 这个数值就是“还差一点点”的那一点：可按手感调 12/14/16/18...
+const IOS_CHROME_EXTRA_BOTTOM = 16
+
+let vvHandler: (() => void) | null = null
+
+function applyViewportPadding() {
+  const listEl = document.querySelector('.notes-list-container') as HTMLElement | null
+  if (!listEl)
+    return
+
+  const vv = window.visualViewport
+  if (!vv) {
+    // 没有 visualViewport（老环境），还原
+    listEl.style.paddingBottom = ''
+    return
+  }
+
+  // 键盘弹出时，视口底部“被占用”的高度（iOS 上较准）
+  const rawInset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height))
+  const extra = isIOSChrome() ? IOS_CHROME_EXTRA_BOTTOM : 0
+
+  // rawInset 在动画帧早期可能为 0；iOS Chrome 下也给最小补偿
+  const applied = rawInset > 0 ? rawInset + extra : extra
+
+  // 有值才设置，没值就清空（避免残留）
+  listEl.style.paddingBottom = applied ? `${applied}px` : ''
+}
+
 const mainMenuOptions = computed(() => [
   {
     label: '标签',
@@ -135,6 +173,20 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
+  // ====== 新增：键盘弹出/收起时，动态为列表容器增加底部 padding ======
+  if (window.visualViewport) {
+    vvHandler = () => {
+      // 用 rAF 等布局稳定后再设置，避免抖动
+      requestAnimationFrame(() => {
+        applyViewportPadding()
+      })
+    }
+    window.visualViewport.addEventListener('resize', vvHandler)
+    window.visualViewport.addEventListener('scroll', vvHandler)
+
+    // 初始执行一次（进入页面就对齐当前可视区域）
+    applyViewportPadding()
+  }
 })
 
 onUnmounted(() => {
@@ -143,6 +195,12 @@ onUnmounted(() => {
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  // ====== 新增：清理 visualViewport 监听 ======
+  if (window.visualViewport && vvHandler) {
+    window.visualViewport.removeEventListener('resize', vvHandler)
+    window.visualViewport.removeEventListener('scroll', vvHandler)
+    vvHandler = null
+  }
 })
 
 watch(newNoteContent, (val) => {
