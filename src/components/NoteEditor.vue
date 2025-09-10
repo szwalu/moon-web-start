@@ -315,6 +315,15 @@ function addTag() {
   })
 }
 
+function runToolbarAction(fn: () => void) {
+  // 统一执行工具动作，并把焦点回到 textarea，保持页眉隐藏状态
+  fn()
+  nextTick(() => {
+    textarea.value?.focus()
+    ensureCaretVisible()
+  })
+}
+
 function addBold() {
   insertText('**', '**')
 }
@@ -486,7 +495,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="添加标签"
             @mousedown.prevent @touchstart.prevent
-            @click="addTag"
+            @pointerdown.prevent="runToolbarAction(addTag)"
+            @keydown.enter.prevent="runToolbarAction(addTag)"
+            @keydown.space.prevent="runToolbarAction(addTag)"
           >
             #
           </button>
@@ -494,7 +505,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="待办事项"
             @mousedown.prevent @touchstart.prevent
-            @click="addTodo"
+            @pointerdown.prevent="runToolbarAction(addTodo)"
+            @keydown.enter.prevent="runToolbarAction(addTodo)"
+            @keydown.space.prevent="runToolbarAction(addTodo)"
           >
             ✓
           </button>
@@ -502,7 +515,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="加粗"
             @mousedown.prevent @touchstart.prevent
-            @click="addBold"
+            @pointerdown.prevent="runToolbarAction(addBold)"
+            @keydown.enter.prevent="runToolbarAction(addBold)"
+            @keydown.space.prevent="runToolbarAction(addBold)"
           >
             B
           </button>
@@ -510,7 +525,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="数字列表"
             @mousedown.prevent @touchstart.prevent
-            @click="addOrderedList"
+            @pointerdown.prevent="runToolbarAction(addOrderedList)"
+            @keydown.enter.prevent="runToolbarAction(addOrderedList)"
+            @keydown.space.prevent="runToolbarAction(addOrderedList)"
           >
             1.
           </button>
@@ -518,7 +535,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="添加标题"
             @mousedown.prevent @touchstart.prevent
-            @click="addHeading"
+            @pointerdown.prevent="runToolbarAction(addHeading)"
+            @keydown.enter.prevent="runToolbarAction(addHeading)"
+            @keydown.space.prevent="runToolbarAction(addHeading)"
           >
             H
           </button>
@@ -526,7 +545,9 @@ watch(textarea, (newTextarea) => {
           <button
             type="button" class="toolbar-btn" title="斜体"
             @mousedown.prevent @touchstart.prevent
-            @click="addItalic"
+            @pointerdown.prevent="runToolbarAction(addItalic)"
+            @keydown.enter.prevent="runToolbarAction(addItalic)"
+            @keydown.space.prevent="runToolbarAction(addItalic)"
           >
             I
           </button>
