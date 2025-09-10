@@ -71,8 +71,20 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 确保光标可见（textarea + 外层可滚容器 + 键盘遮挡） ============== */
+/* ============== 光标可见性（合帧版） ============== */
+let rafId: number | null = null
 function ensureCaretVisible() {
+  // 多次调用合并到同一帧，避免过度滚动造成“突然空白”
+  if (rafId !== null)
+    cancelAnimationFrame(rafId)
+
+  rafId = requestAnimationFrame(() => {
+    ensureCaretVisibleCore()
+    rafId = null
+  })
+}
+
+function ensureCaretVisibleCore() {
   const el = textarea.value
   if (!el)
     return
@@ -134,14 +146,16 @@ function ensureCaretVisible() {
       scrollable.scrollTop -= deltaUp
     }
   }
-  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
-  if (!scrollable) {
+  else {
+    // —— 兜底：没有可滚祖先时，只滚动文档根（更温和，避免 window.scrollBy 过头）
     const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const safeBottom = getSafeViewportBottom()
-    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    const delta = Math.ceil((caretAbsTop2 + lineHeight * 1.8) - safeBottom)
+
     if (delta > 0) {
-      // 平滑上推一点
-      window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
+      const scroller = (document.scrollingElement || document.documentElement) as HTMLElement
+      const targetTop = scroller.scrollTop + delta + 8
+      scroller.scrollTo({ top: targetTop, behavior: 'smooth' })
     }
   }
 }
@@ -166,6 +180,10 @@ onUnmounted(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
+  }
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
   }
 })
 
@@ -249,12 +267,9 @@ function handleInput(event: Event) {
     }
   }
 
-  // 输入过程中（非 IME 组字阶段）也要保证光标可见
-  if (!isComposing.value) {
-    nextTick(() => {
-      ensureCaretVisible()
-    })
-  }
+  // 输入过程中（非 IME 组字阶段）也要保证光标可见（合帧）
+  if (!isComposing.value)
+    ensureCaretVisible()
 }
 
 function selectTag(tag: string) {
@@ -555,7 +570,9 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  /* 避免滚动条出现/消失时抖动 */
+
+  /* 关键：减小滚动链和抖动，避免焦点瞬间“白屏”观感 */
+  overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
 }
 
