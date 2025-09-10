@@ -543,7 +543,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea {
   width: 100%;
   min-height: 120px;         /* 初始高度可按需调整 */
-  max-height: 55vh;          /* 最大高度：可 40~60vh */
+  max-height: 50vh;          /* 最大高度：可 40~60vh */
   overflow-y: auto;
   padding: 16px 16px 8px 16px; /* 底部缓冲，避免贴底 */
   border: none;
