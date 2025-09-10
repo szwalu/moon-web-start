@@ -80,7 +80,7 @@ function isIOSChrome() {
 }
 
 // 这个数值就是“还差一点点”的那一点：可按手感调 12/14/16/18...
-const IOS_CHROME_EXTRA_BOTTOM = 16
+const IOS_CHROME_EXTRA_BOTTOM = 20
 
 let vvHandler: (() => void) | null = null
 
