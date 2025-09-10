@@ -35,6 +35,7 @@ const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
+const compactWhileTyping = ref(false)
 const dropdownContainerRef = ref(null)
 const user = computed(() => authStore.user)
 const isCreating = ref(false)
@@ -330,10 +331,15 @@ async function handleVisibilityChange() {
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
+  compactWhileTyping.value = true // 新增：隐藏页眉
   setTimeout(() => {
     if (containerEl && typeof containerEl.scrollIntoView === 'function')
       containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, 0)
+}
+
+function handleEditorBlur() {
+  compactWhileTyping.value = false // 恢复页眉
 }
 
 function handleExportTrigger() {
@@ -868,9 +874,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </script>
 
 <template>
-  <div class="auth-container">
+  <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }">
     <template v-if="user">
-      <div class="page-header" @click="handleHeaderClick">
+      <div v-show="!compactWhileTyping" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             trigger="click"
@@ -893,7 +899,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       </div>
 
       <Transition name="slide-fade">
-        <div v-if="showSearchBar" class="search-bar-container">
+        <div v-if="showSearchBar && !compactWhileTyping" class="search-bar-container">
           <NoteActions
             v-model="searchQuery"
             class="search-actions-wrapper"
@@ -910,7 +916,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </Transition>
 
-      <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
+      <AnniversaryBanner v-show="!compactWhileTyping" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
       <div v-if="activeTagFilter" class="active-filter-bar">
         <span>
@@ -932,6 +938,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :all-tags="allTags"
           @save="handleCreateNote"
           @focus="handleEditorFocus(newNoteEditorContainerRef)"
+          @blur="handleEditorBlur"
         />
       </div>
 
@@ -1179,5 +1186,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 }
 .clear-filter-btn:hover {
   opacity: 1;
+}
+
+.auth-container.is-typing .new-note-editor-container {
+  padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
 }
 </style>

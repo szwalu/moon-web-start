@@ -13,7 +13,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'heightChange'])
 
 /* ============== Store ============== */
 const settingsStore = useSettingStore()
@@ -457,7 +457,7 @@ watch(textarea, (newTextarea) => {
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
-        @blur="handleBlur"
+        @blur="(e) => { handleBlur(); emit('blur') }"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
