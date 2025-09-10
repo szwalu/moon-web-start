@@ -80,31 +80,39 @@ function isIOSChrome() {
 }
 
 // 这个数值就是“还差一点点”的那一点：可按手感调 12/14/16/18...
-const IOS_CHROME_EXTRA_BOTTOM = 20
+const IOS_CHROME_EXTRA_BOTTOM = 28
 
 let vvHandler: (() => void) | null = null
 
 function applyViewportPadding() {
-  const listEl = document.querySelector('.notes-list-container') as HTMLElement | null
-  if (!listEl)
+  // 关键：选中真正滚动的容器（DynamicScroller 的根元素）
+  const scrollerEl
+    = document.querySelector('.notes-list-container .scroller') as HTMLElement | null
+  // 兜底：万一没找到，再退回到外层容器（大多时候 scroller 存在）
+  const hostEl = scrollerEl || (document.querySelector('.notes-list-container') as HTMLElement | null)
+  if (!hostEl)
     return
 
   const vv = window.visualViewport
   if (!vv) {
-    // 没有 visualViewport（老环境），还原
-    listEl.style.paddingBottom = ''
+    hostEl.style.paddingBottom = ''
     return
   }
 
-  // 键盘弹出时，视口底部“被占用”的高度（iOS 上较准）
-  const rawInset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height))
+  // 多种“键盘占用高度”估算，取最大值更稳（iOS Chrome 有时某些值为 0）
+  const byOffset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height))
+  const byHeight = Math.max(0, window.innerHeight - vv.height)
+  const byDoc = Math.max(0, document.documentElement.clientHeight - vv.height)
+
+  const rawInset = Math.max(byOffset, byHeight, byDoc)
+
+  // iOS Chrome 额外再“推一点点”（你可以继续调这个值）
   const extra = isIOSChrome() ? IOS_CHROME_EXTRA_BOTTOM : 0
 
-  // rawInset 在动画帧早期可能为 0；iOS Chrome 下也给最小补偿
+  // 某些时刻（动画早期）可能读到 0；iOS Chrome 也给一个最小补偿
   const applied = rawInset > 0 ? rawInset + extra : extra
 
-  // 有值才设置，没值就清空（避免残留）
-  listEl.style.paddingBottom = applied ? `${applied}px` : ''
+  hostEl.style.paddingBottom = applied ? `${applied}px` : ''
 }
 
 const mainMenuOptions = computed(() => [
