@@ -52,7 +52,6 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
     const canScroll = /(auto|scroll)/.test(style.overflowY)
     if (canScroll && el.clientHeight < el.scrollHeight)
       return el
-
     el = el.parentElement
   }
   return null
@@ -64,7 +63,6 @@ function ensureCaretVisible() {
     return
 
   const style = getComputedStyle(el)
-  // 构造镜像节点估算 caret 垂直位置（考虑自动换行）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -87,7 +85,6 @@ function ensureCaretVisible() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 先保证在 textarea 自身可见
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
@@ -98,7 +95,6 @@ function ensureCaretVisible() {
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
 
-  // 如外层还有可滚容器，再确保祖先容器也可见
   const scrollable = getScrollableAncestor(el)
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
@@ -117,19 +113,13 @@ function updateTextarea(newText: string, newCursorPos: number) {
   if (!el)
     return
 
-  // 1) 保存修改前滚动位置
   const originalScrollTop = el.scrollTop
-
-  // 2) 更新 ref（触发 v-model + autosize）
   input.value = newText
 
-  // 3) 待 DOM/高度更新后，恢复焦点/光标，并恢复合理滚动位置
   nextTick(() => {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
-    // 只恢复到修改前位置，避免强推到底
     el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
-    // 保险：确保光标可见（必要时小幅滚动）
     ensureCaretVisible()
   })
 }
@@ -141,7 +131,6 @@ function handleSave() {
 function handleCancel() {
   emit('cancel')
 }
-
 function handleBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
@@ -183,7 +172,6 @@ function handleInput(event: Event) {
     el.parentNode?.removeChild(measure)
 
     const host = el as HTMLElement
-
     suggestionsStyle.value = {
       top: `${host.offsetTop + topOffset + lineHeight}px`,
       left: `${host.offsetLeft + leftOffset}px`,
@@ -255,7 +243,6 @@ function addTag() {
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
@@ -303,17 +290,15 @@ function handleEnterKey(event: KeyboardEvent) {
 
   const listRegex = /^(\d+)\.\s+/
   const match = currentLine.match(listRegex)
-
   if (!match)
     return
 
-  // 情况 1：在空的列表项上按回车 -> 取消列表
+  // 空列表项 -> 取消列表
   if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
     input.value = before + after
-
     nextTick(() => {
       el.focus()
       const pos = currentLineStart - 1
@@ -323,15 +308,13 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
-  // 情况 2：普通列表项 -> 插入换行并续号
+  // 普通列表项 -> 插入换行并续号
   event.preventDefault()
-
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
   const before = el.value.substring(0, start)
   const after = el.value.substring(end)
   input.value = before + nextPrefix + after
-
   nextTick(() => {
     el.focus()
     const newCursorPos = start + nextPrefix.length
@@ -456,17 +439,14 @@ watch(textarea, (newTextarea) => {
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
-
 .note-editor-reborn:focus-within {
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
 }
-
 .dark .note-editor-reborn {
   background-color: #2c2c2e;
   border-color: #48484a;
 }
-
 .dark .note-editor-reborn:focus-within {
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
@@ -474,17 +454,19 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
-  /* 避免浏览器滚动锚定把容器推到底 */
   overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
-  min-height: 100px;        /* 初始高度：可根据需要调大 */
-  max-height: 46vh;         /* 最大高度：可改 50vh / 固定 px 值 */
+  min-height: 100px;
+  max-height: 48vh;
   overflow-y: auto;
-  padding: 16px 16px 4px 16px; /* 底部增加缓冲，避免贴底 */
-  vertical-align: bottom; /* 尝试贴底对齐 */
+
+  /* 关键：叠加 --kb-pad，避免被移动端键盘覆盖 */
+  padding: 16px 16px calc(4px + var(--kb-pad, 0px)) 16px;
+
+  vertical-align: bottom;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -494,7 +476,6 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  /* 避免滚动条出现/消失时抖动 */
   scrollbar-gutter: stable both-edges;
 }
 
@@ -503,11 +484,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-.char-counter {
-  font-size: 12px;
-  color: #6b7280;
-}
-
+.char-counter { font-size: 12px; color: #6b7280; }
 .dark .char-counter { color: #9ca3af; }
 
 .actions {
@@ -574,34 +551,12 @@ watch(textarea, (newTextarea) => {
 }
 .dark .editor-footer { background-color: transparent; border-top: none; }
 
-.footer-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  border: none;
-  background: none;
-  padding: 0;
-}
+.footer-left { display: flex; align-items: center; gap: 8px; }
+.editor-toolbar { display: flex; align-items: center; gap: 1px; border: none; background: none; padding: 0; }
 .toolbar-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  color: #6b7280;
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 18px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+  color: #6b7280; border-radius: 4px; font-weight: bold; font-size: 18px;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
   transition: background-color 0.2s, color 0.2s;
 }
 .toolbar-btn:hover { background-color: #f0f0f0; color: #333; }
