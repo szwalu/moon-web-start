@@ -320,6 +320,50 @@ defineExpose({
   height: 100%;
   overflow-y: auto;
 }
+/* --- 全新的卡片化样式 --- */
+
+/* 1. 给列表的背景一个非常浅的灰色，以衬托卡片 */
+.scroller {
+  height: 100%;
+  overflow-y: auto;
+  /* 新增：为滚动区域设置背景色 */
+  background-color: #f9fafb;
+  padding: 0.5rem; /* 给卡片和列表边缘留出一些空间 */
+}
+.dark .scroller {
+  background-color: #111827; /* 深色模式下的深灰色背景 */
+}
+
+/* 2. 定义每个笔记卡片的基础样式 */
+.note-content-wrapper {
+  background-color: #ffffff; /* 卡片使用纯白色背景 */
+  border-radius: 12px; /* 更圆润的卡片圆角 */
+  padding: 1rem; /* 卡片内部的文字留白 */
+  /* 关键：添加漂亮的阴影 */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s ease-in-out;
+}
+.note-content-wrapper:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
+}
+
+/* 3. 为深色模式定义卡片样式 */
+.dark .note-content-wrapper {
+  background-color: #1f2937; /* 深色卡片背景 */
+  border: 1px solid #374151; /* 在深色模式下加一个细边框，轮廓更清晰 */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.dark .note-content-wrapper:hover {
+   box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* 4. 调整外部容器的间距 */
+.note-item-container {
+  padding-bottom: 1rem; /* 设置卡片之间的垂直间距 */
+}
+.note-item-container:last-child {
+  padding-bottom: 0.5rem; /* 最后一个卡片的间距可以小一点 */
+}
 .note-item-container {
   padding-bottom: 1.5rem;
 }
