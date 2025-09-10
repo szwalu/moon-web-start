@@ -14,11 +14,10 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 
+// 异步组件（保留引用，避免被 tree-shake）
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
-
-// 避免 ESLint 误报这些异步组件“未使用”
 const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView]
 
 useDark()
@@ -27,15 +26,15 @@ const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
-const noteListRef = ref(null)
-const newNoteEditorContainerRef = ref(null)
-const newNoteEditorRef = ref(null)
+const noteListRef = ref<any>(null)
+const newNoteEditorContainerRef = ref<HTMLElement | null>(null)
+const newNoteEditorRef = ref<any>(null)
 const showCalendarView = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
-const dropdownContainerRef = ref(null)
+const dropdownContainerRef = ref<HTMLElement | null>(null)
 const user = computed(() => authStore.user)
 const isCreating = ref(false)
 const notes = ref<any[]>([])
@@ -61,7 +60,7 @@ const loading = ref(false)
 const lastSavedId = ref<string | null>(null)
 const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
-const calendarViewRef = ref(null)
+const calendarViewRef = ref<any>(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
 let mainNotesCache: any[] = []
@@ -69,15 +68,33 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
+// ===== 键盘补丁：把键盘高度暴露成 CSS 变量 --kb-pad =====
+const kbPad = ref(0)
+onMounted(() => {
+  const vv = (window as any).visualViewport as VisualViewport | undefined
+  if (!vv)
+    return
+  const updateKbPad = () => {
+    const pad = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+    kbPad.value = Math.round(pad)
+  }
+  vv.addEventListener('resize', updateKbPad)
+  vv.addEventListener('scroll', updateKbPad)
+  updateKbPad()
+
+  onUnmounted(() => {
+    vv.removeEventListener('resize', updateKbPad)
+    vv.removeEventListener('scroll', updateKbPad)
+  })
+})
+// ========================================================
+
 const mainMenuOptions = computed(() => [
   {
     label: '标签',
     key: 'tags',
     children: allTags.value.length > 0
-      ? allTags.value.map(tag => ({
-        label: tag,
-        key: tag,
-      }))
+      ? allTags.value.map(tag => ({ label: tag, key: tag }))
       : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
   },
   { label: '日历', key: 'calendar' },
@@ -103,6 +120,7 @@ onMounted(() => {
   setTimeout(() => {
     loadCache()
   }, 0)
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
@@ -130,6 +148,7 @@ onMounted(() => {
     },
   )
   authListener = result.data.subscription
+
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     newNoteContent.value = savedContent
@@ -140,27 +159,24 @@ onMounted(() => {
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
-
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 watch(newNoteContent, (val) => {
-  if (isReady.value) {
-    if (val)
-      localStorage.setItem(LOCAL_CONTENT_KEY, val)
-
-    else
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-  }
+  if (!isReady.value)
+    return
+  if (val)
+    localStorage.setItem(LOCAL_CONTENT_KEY, val)
+  else
+    localStorage.removeItem(LOCAL_CONTENT_KEY)
 })
 
 function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
-
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
-  let match
+  let match: RegExpExecArray | null
   // eslint-disable-next-line no-cond-assign
   while ((match = tagRegex.exec(note.content)) !== null) {
     if (match[1]) {
@@ -196,7 +212,6 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (contentToSave.length > maxNoteLength) {
@@ -204,13 +219,17 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
     return null
   }
   const noteData = { content: contentToSave.trim(), updated_at: new Date().toISOString(), user_id: user.value.id }
-  let savedNote
+  let savedNote: any
   try {
     if (noteIdToUpdate) {
-      const { data: updatedData, error: updateError } = await supabase.from('notes').update(noteData).eq('id', noteIdToUpdate).eq('user_id', user.value.id).select()
+      const { data: updatedData, error: updateError } = await supabase
+        .from('notes')
+        .update(noteData)
+        .eq('id', noteIdToUpdate)
+        .eq('user_id', user.value.id)
+        .select()
       if (updateError || !updatedData?.length)
         throw new Error(t('auth.update_failed'))
-
       savedNote = updatedData[0]
       updateNoteInList(savedNote)
       if (showMessage)
@@ -218,10 +237,12 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
     }
     else {
       const newId = uuidv4()
-      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...noteData, id: newId }).select()
+      const { data: insertedData, error: insertError } = await supabase
+        .from('notes')
+        .insert({ ...noteData, id: newId })
+        .select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
-
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       if (showMessage)
@@ -257,7 +278,6 @@ async function fetchAllTags() {
     })
     if (error)
       throw error
-
     allTags.value = data || []
   }
   catch (err: any) {
@@ -339,7 +359,6 @@ function handleEditorFocus(containerEl: HTMLElement) {
 function handleExportTrigger() {
   if (searchQuery.value.trim())
     handleExportResults()
-
   else
     handleBatchExport()
 }
@@ -348,7 +367,6 @@ async function handleBatchExport() {
   showDropdown.value = false
   if (isExporting.value)
     return
-
   if (!user.value?.id) {
     messageHook.error(t('auth.session_expired'))
     return
@@ -384,20 +402,16 @@ async function handleBatchExport() {
             .eq('user_id', user.value!.id)
             .order('created_at', { ascending: false })
             .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
-
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
-
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
             query = query.lte('created_at', endOfDay.toISOString())
           }
-
           const { data, error } = await query
           if (error)
             throw error
-
           if (data && data.length > 0) {
             allNotes = allNotes.concat(data)
             page++
@@ -408,25 +422,20 @@ async function handleBatchExport() {
           if (data && data.length < BATCH_SIZE)
             hasMore = false
         }
-
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
-
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
           return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
-
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        const datePart = startDate && endDate
-          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
-          : 'all'
+        const datePart = startDate && endDate ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}` : 'all'
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
         document.body.appendChild(a)
@@ -450,7 +459,6 @@ async function handleBatchExport() {
 function handleExportResults() {
   if (isExporting.value)
     return
-
   isExporting.value = true
   messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
   try {
@@ -498,13 +506,11 @@ function addNoteToList(newNote: any) {
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
-
   const newPinStatus = !note.is_pinned
   try {
     const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
-
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
     await fetchNotes()
   }
@@ -525,15 +531,19 @@ function updateNoteInList(updatedNote: any) {
 async function fetchNotes() {
   if (!user.value)
     return
-
   isLoadingNotes.value = true
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-    const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
+    const { data, error, count } = await supabase
+      .from('notes')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.value.id)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(from, to)
     if (error)
       throw error
-
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
@@ -554,7 +564,6 @@ async function fetchNotes() {
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
-
   currentPage.value++
   await fetchNotes()
 }
@@ -566,7 +575,6 @@ function handleHeaderClick() {
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
-
   const noteToDelete = notes.value.find(note => note.id === id)
   dialog.warning({
     title: t('notes.delete_confirm_title'),
@@ -578,7 +586,6 @@ async function triggerDeleteConfirmation(id: string) {
         const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
         if (error)
           throw new Error(error.message)
-
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
@@ -597,7 +604,6 @@ async function triggerDeleteConfirmation(id: string) {
         messageHook.success(t('notes.delete_success'))
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
-
         if (showCalendarView.value && calendarViewRef.value) {
           // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
           calendarViewRef.value.refreshData()
@@ -614,7 +620,6 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
-
   const originalContent = noteToUpdate.content
   try {
     const lines = originalContent.split('\n')
@@ -641,7 +646,6 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
-
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
@@ -684,11 +688,9 @@ function toggleSelectionMode() {
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
-
   const index = selectedNoteIds.value.indexOf(noteId)
   if (index > -1)
     selectedNoteIds.value.splice(index, 1)
-
   else
     selectedNoteIds.value.push(noteId)
 }
@@ -696,7 +698,6 @@ function handleToggleSelect(noteId: string) {
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
-
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
@@ -715,7 +716,6 @@ async function handleCopySelected() {
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
-
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
@@ -747,7 +747,6 @@ async function handleDeleteSelected() {
               .eq('user_id', user.value!.id)
             if (error)
               throw new Error(error.message)
-
             notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
             cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
             if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
@@ -807,6 +806,9 @@ function handleEditFromCalendar(_note: any) {
   messageHook.info('笔记编辑功能已移至主列表，请在主列表找到并编辑该笔记。')
 }
 
+// 避免模板函数被误判未使用（某些 ESLint 组合不会读取模板）
+const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
+
 function handleClosePage() {
   window.location.href = '/'
 }
@@ -814,18 +816,16 @@ function handleClosePage() {
 async function fetchNotesByTag(tag: string) {
   if (!user.value)
     return
-
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
-
   const cacheKey = getTagCacheKey(tag)
   const cachedData = localStorage.getItem(cacheKey)
   activeTagFilter.value = tag
   if (cachedData) {
-    const cachedNotes = JSON.parse(cachedData)
-    notes.value = cachedNotes
-    filteredNotesCount.value = cachedNotes.length
-    // 筛选时，禁用无限滚动
+    const cachedNotesParsed = JSON.parse(cachedData)
+    notes.value = cachedNotesParsed
+    filteredNotesCount.value = cachedNotesParsed.length
+    // 筛选时禁用无限滚动
     hasMoreNotes.value = false
     return
   }
@@ -840,11 +840,9 @@ async function fetchNotesByTag(tag: string) {
       .order('created_at', { ascending: false })
     if (error)
       throw error
-
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
-    // 筛选时，禁用无限滚动
     hasMoreNotes.value = false
   }
   catch (err: any) {
@@ -859,16 +857,12 @@ function clearTagFilter() {
   activeTagFilter.value = null
   notes.value = mainNotesCache
   mainNotesCache = []
-  // 清除筛选后，重新计算是否还有更多笔记
   hasMoreNotes.value = notes.value.length < totalNotes.value
 }
-
-// 避免 ESLint 误报这些在模板中使用的函数“未使用”
-const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 </script>
 
 <template>
-  <div class="auth-container">
+  <div class="auth-container" :style="{ '--kb-pad': `${kbPad}px` }">
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -921,6 +915,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </span>
         <button class="clear-filter-btn" @click="clearTagFilter">×</button>
       </div>
+
       <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           ref="newNoteEditorRef"
@@ -937,7 +932,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
-          ref="noteListRef" :key="noteListKey"
+          ref="noteListRef"
           :notes="displayedNotes"
           :is-loading="isLoadingNotes"
           :has-more="hasMoreNotes"
@@ -992,6 +987,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   max-width: 480px;
   margin: 0 auto;
   padding: 0 1.5rem 0.75rem 1.5rem;
+  /* 关键：把键盘高度加到底部内边距，避免遮挡 */
+  padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
+
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -1007,18 +1005,24 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   color: #e0e0e0;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
+
+/* 列表容器也叠加 kb-pad，且内部 scroller 用 scroll-padding-bottom 配合 */
 .notes-list-container {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
   overflow-y: hidden;
   position: relative;
+
+  padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
 }
+
 .new-note-editor-container {
   padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
+
 .page-header {
   flex-shrink: 0;
   display: flex;
@@ -1035,6 +1039,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .dark .page-header {
   background: #1e1e1e;
 }
+
 .page-title {
   position: absolute;
   left: 50%;
@@ -1045,8 +1050,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   margin: 0;
 }
 .dark .page-title {
-    color: #f0f0f0;
+  color: #f0f0f0;
 }
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -1079,6 +1085,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   line-height: 1;
   font-weight: 300;
 }
+
 .selection-actions-popup {
   position: fixed;
   bottom: 1.5rem;
@@ -1096,16 +1103,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   padding: 0.75rem 1rem;
   z-index: 15;
 }
-.dark .selection-actions-popup {
-  background-color: #444;
-}
-.selection-info {
-  font-size: 14px;
-}
-.selection-buttons {
-  display: flex;
-  gap: 3rem;
-}
+.dark .selection-actions-popup { background-color: #444; }
+
+.selection-info { font-size: 14px; }
+.selection-buttons { display: flex; gap: 3rem; }
 .action-btn {
   background: none;
   border: none;
@@ -1115,9 +1116,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   font-weight: 500;
   padding: 0.25rem;
 }
-.action-btn.delete-btn {
-  color: #ff5252;
-}
+.action-btn.delete-btn { color: #ff5252; }
+
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
@@ -1127,6 +1127,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   opacity: 0;
   transform: translate(-50%, 20px);
 }
+
 .search-bar-container {
   position: -webkit-sticky;
   position: sticky;
@@ -1142,16 +1143,14 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .dark .search-bar-container {
   background: #1e1e1e;
 }
-.search-actions-wrapper {
-  flex: 1;
-  min-width: 0;
-}
+.search-actions-wrapper { flex: 1; min-width: 0; }
 @media (max-width: 768px) {
   .cancel-search-btn {
     font-size: 14px;
     padding: 0.6rem 1rem;
   }
 }
+
 .active-filter-bar {
   display: flex;
   justify-content: space-between;
@@ -1177,7 +1176,13 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   opacity: 0.7;
   transition: opacity 0.2s;
 }
-.clear-filter-btn:hover {
-  opacity: 1;
+.clear-filter-btn:hover { opacity: 1; }
+
+/* 你的 NoteList 内部 scroller 类名，如存在，建议也加 scroll-padding-bottom */
+.scroller {
+  height: 100%;
+  overflow-y: auto;
+  /* 让 scrollIntoView 时底部留白 = 键盘高度 */
+  scroll-padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
 }
 </style>
