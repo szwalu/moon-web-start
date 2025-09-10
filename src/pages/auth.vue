@@ -14,10 +14,11 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 
-// 异步组件（保留引用，避免被 tree-shake）
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
+
+// 防止被误判未使用（部分 TS/ESLint 组合会摇树）
 const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView]
 
 useDark()
@@ -35,6 +36,7 @@ const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const dropdownContainerRef = ref<HTMLElement | null>(null)
+
 const user = computed(() => authStore.user)
 const isCreating = ref(false)
 const notes = ref<any[]>([])
@@ -64,48 +66,95 @@ const calendarViewRef = ref<any>(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
 let mainNotesCache: any[] = []
+
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
-// ===== 键盘补丁：把键盘高度暴露成 CSS 变量 --kb-pad =====
-const kbPad = ref(0)
+/* ========== 关键：用 visualViewport 顶起页面（设置到 root/body） ========== */
+function applyKbPadFromViewport() {
+  const vv = (window as any).visualViewport as VisualViewport | undefined
+  if (!vv) {
+    document.documentElement.style.setProperty('--kb-pad', '0px')
+    document.body.style.paddingBottom = '0px'
+    return
+  }
+  const pad = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+  const px = `${Math.round(pad)}px`
+  document.documentElement.style.setProperty('--kb-pad', px)
+  document.body.style.paddingBottom = px
+}
+
+let _vvBound = false
+
 onMounted(() => {
   const vv = (window as any).visualViewport as VisualViewport | undefined
-  if (!vv)
-    return
-  const updateKbPad = () => {
-    const pad = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-    kbPad.value = Math.round(pad)
+
+  if (vv && !_vvBound) {
+    _vvBound = true
+    const handler = () => {
+      applyKbPadFromViewport()
+    }
+    vv.addEventListener('resize', handler)
+    vv.addEventListener('scroll', handler)
+    applyKbPadFromViewport()
+
+    onUnmounted(() => {
+      vv.removeEventListener('resize', handler)
+      vv.removeEventListener('scroll', handler)
+    })
   }
-  vv.addEventListener('resize', updateKbPad)
-  vv.addEventListener('scroll', updateKbPad)
-  updateKbPad()
+  else {
+    applyKbPadFromViewport()
+  }
+
+  const onFocusIn = (e: Event) => {
+    const el = e.target as HTMLElement
+    if (!el)
+      return
+    const isEditable = el.tagName === 'TEXTAREA' || (el as any).isContentEditable
+    if (!isEditable)
+      return
+
+    setTimeout(() => {
+      try {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+      }
+      catch {
+        // ignore
+      }
+    }, 0)
+  }
+
+  window.addEventListener('focusin', onFocusIn, { passive: true })
 
   onUnmounted(() => {
-    vv.removeEventListener('resize', updateKbPad)
-    vv.removeEventListener('scroll', updateKbPad)
+    window.removeEventListener('focusin', onFocusIn)
   })
 })
-// ========================================================
+/* ===================================================================== */
 
-const mainMenuOptions = computed(() => [
-  {
-    label: '标签',
-    key: 'tags',
-    children: allTags.value.length > 0
-      ? allTags.value.map(tag => ({ label: tag, key: tag }))
-      : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
-  },
-  { label: '日历', key: 'calendar' },
-  { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
-  { label: t('settings.font_title'), key: 'settings' },
-  { label: t('notes.export_all'), key: 'export' },
-  { label: t('auth.account_title'), key: 'account' },
-])
+const mainMenuOptions = computed(() => {
+  const base = [
+    {
+      label: '标签',
+      key: 'tags',
+      children: allTags.value.length > 0
+        ? allTags.value.map(tag => ({ label: tag, key: tag }))
+        : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
+    },
+    { label: '日历', key: 'calendar' },
+    { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
+    { label: t('settings.font_title'), key: 'settings' },
+    { label: t('notes.export_all'), key: 'export' },
+    { label: t('auth.account_title'), key: 'account' },
+  ]
+  return base
+})
 
 onMounted(() => {
   isLoadingNotes.value = true
+
   const loadCache = async () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
@@ -117,36 +166,41 @@ onMounted(() => {
       localStorage.removeItem(CACHE_KEYS.HOME)
     }
   }
+
   setTimeout(() => {
     loadCache()
   }, 0)
 
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  const result = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      const currentUser = session?.user ?? null
-      if (authStore.user?.id !== currentUser?.id)
-        authStore.user = currentUser
 
-      if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-        nextTick(async () => {
-          await fetchNotes()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        })
-      }
-      else if (event === 'SIGNED_OUT') {
-        notes.value = []
-        allTags.value = []
-        newNoteContent.value = ''
-        Object.keys(localStorage).forEach((key) => {
-          if (key.startsWith('cached_notes_'))
-            localStorage.removeItem(key)
-        })
-        localStorage.removeItem(LOCAL_CONTENT_KEY)
-      }
-    },
-  )
+  const result = supabase.auth.onAuthStateChange((event, session) => {
+    const currentUser = session?.user ?? null
+
+    if (authStore.user?.id !== currentUser?.id)
+      authStore.user = currentUser
+
+    if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
+      nextTick(async () => {
+        await fetchNotes()
+        fetchAllTags()
+        if (anniversaryBannerRef.value)
+          anniversaryBannerRef.value.loadAnniversaryNotes()
+      })
+    }
+    else if (event === 'SIGNED_OUT') {
+      notes.value = []
+      allTags.value = []
+      newNoteContent.value = ''
+
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('cached_notes_'))
+          localStorage.removeItem(key)
+      })
+
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+    }
+  })
+
   authListener = result.data.subscription
 
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
@@ -159,6 +213,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
+
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
@@ -166,17 +221,21 @@ onUnmounted(() => {
 watch(newNoteContent, (val) => {
   if (!isReady.value)
     return
+
   if (val)
     localStorage.setItem(LOCAL_CONTENT_KEY, val)
+
   else
     localStorage.removeItem(LOCAL_CONTENT_KEY)
 })
 
 function invalidateCachesOnDataChange(note: any) {
-  if (!note || !note.content)
+  if (!note?.content)
     return
+
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
   let match: RegExpExecArray | null
+
   // eslint-disable-next-line no-cond-assign
   while ((match = tagRegex.exec(note.content)) !== null) {
     if (match[1]) {
@@ -184,6 +243,7 @@ function invalidateCachesOnDataChange(note: any) {
       localStorage.removeItem(getTagCacheKey(tag))
     }
   }
+
   const noteDate = new Date(note.created_at)
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
@@ -196,60 +256,86 @@ async function handleCreateNote(content: string) {
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     newNoteContent.value = ''
     nextTick(() => {
-      newNoteEditorRef.value?.reset()
+      if (newNoteEditorRef.value)
+        newNoteEditorRef.value.reset()
     })
   }
   isCreating.value = false
 }
 
-async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
+async function handleUpdateNote(
+  { id, content }: { id: string; content: string },
+  cb: (success: boolean) => void,
+) {
   const saved = await saveNote(content, id, { showMessage: true })
-  if (callback)
-    callback(!!saved)
+  if (cb)
+    cb(!!saved)
 }
 
-async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { showMessage = false } = {}) {
+async function saveNote(
+  contentToSave: string,
+  noteIdToUpdate: string | null,
+  { showMessage = false } = {},
+) {
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
+
     return null
   }
+
   if (contentToSave.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  const noteData = { content: contentToSave.trim(), updated_at: new Date().toISOString(), user_id: user.value.id }
+
+  const noteData = {
+    content: contentToSave.trim(),
+    updated_at: new Date().toISOString(),
+    user_id: user.value.id,
+  }
+
   let savedNote: any
+
   try {
     if (noteIdToUpdate) {
-      const { data: updatedData, error: updateError } = await supabase
+      const { data, error } = await supabase
         .from('notes')
         .update(noteData)
         .eq('id', noteIdToUpdate)
         .eq('user_id', user.value.id)
         .select()
-      if (updateError || !updatedData?.length)
+
+      if (error || !data?.length)
         throw new Error(t('auth.update_failed'))
-      savedNote = updatedData[0]
+
+      savedNote = data[0]
       updateNoteInList(savedNote)
+
       if (showMessage)
         messageHook.success(t('notes.update_success'))
     }
     else {
       const newId = uuidv4()
-      const { data: insertedData, error: insertError } = await supabase
+
+      const { data, error } = await supabase
         .from('notes')
         .insert({ ...noteData, id: newId })
         .select()
-      if (insertError || !insertedData?.length)
+
+      if (error || !data?.length)
         throw new Error(t('auth.insert_failed_create_note'))
-      savedNote = insertedData[0]
+
+      savedNote = data[0]
       addNoteToList(savedNote)
+
       if (showMessage)
         messageHook.success(t('notes.auto_saved'))
     }
+
     invalidateCachesOnDataChange(savedNote)
     await fetchAllTags()
+
     return savedNote
   }
   catch (error: any) {
@@ -259,25 +345,27 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
 }
 
 const displayedNotes = computed(() => {
-  return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
+  if (isAnniversaryViewActive.value)
+    return anniversaryNotes.value
+
+  return notes.value
 })
 
 function closeDropdownOnClickOutside(event: MouseEvent) {
-  if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
+  const root = dropdownContainerRef.value as HTMLElement | null
+  if (root && !root.contains(event.target as Node))
     showDropdown.value = false
 }
 
 async function fetchAllTags() {
-  if (!user.value?.id) {
-    console.warn('fetchAllTags was called before user ID was available.')
+  if (!user.value?.id)
     return
-  }
+
   try {
-    const { data, error } = await supabase.rpc('get_unique_tags', {
-      p_user_id: user.value.id,
-    })
+    const { data, error } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
     if (error)
       throw error
+
     allTags.value = data || []
   }
   catch (err: any) {
@@ -289,24 +377,31 @@ async function fetchAllTags() {
 function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
+
   if (cachedNotesData && cachedMetaData) {
-    const cachedNotes = JSON.parse(cachedNotesData)
+    const cachedNotesParsed = JSON.parse(cachedNotesData)
     const meta = JSON.parse(cachedMetaData)
-    notes.value = cachedNotes
+
+    notes.value = cachedNotesParsed
     totalNotes.value = meta.totalNotes
-    currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
-    hasMoreNotes.value = cachedNotes.length < meta.totalNotes
+    currentPage.value = Math.max(1, Math.ceil(cachedNotesParsed.length / notesPerPage))
+    hasMoreNotes.value = cachedNotesParsed.length < meta.totalNotes
+
     return true
   }
+
   return false
 }
 
 function handleSearchStarted() {
   if (isAnniversaryViewActive.value) {
-    anniversaryBannerRef.value?.setView(false)
+    if (anniversaryBannerRef.value)
+      anniversaryBannerRef.value.setView(false)
+
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
+
   isLoadingNotes.value = true
   notes.value = []
 }
@@ -319,33 +414,39 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
   else {
     notes.value = data || []
   }
+
   hasMoreNotes.value = false
   hasPreviousNotes.value = false
   isLoadingNotes.value = false
 }
 
 function handleSearchCleared() {
-  if (!restoreHomepageFromCache()) {
+  const ok = restoreHomepageFromCache()
+  if (!ok) {
     currentPage.value = 1
     fetchNotes()
   }
 }
 
 async function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    const { data, error } = await supabase.auth.getSession()
-    if ((!data.session || error) && authStore.user) {
-      messageHook.warning(t('auth.session_expired_relogin'))
-      authStore.user = null
-      notes.value = []
-      allTags.value = []
-      newNoteContent.value = ''
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('cached_notes_'))
-          localStorage.removeItem(key)
-      })
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
+  if (document.visibilityState !== 'visible')
+    return
+
+  const { data, error } = await supabase.auth.getSession()
+
+  if ((!data.session || error) && authStore.user) {
+    messageHook.warning(t('auth.session_expired_relogin'))
+    authStore.user = null
+    notes.value = []
+    allTags.value = []
+    newNoteContent.value = ''
+
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('cached_notes_'))
+        localStorage.removeItem(key)
+    })
+
+    localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
 }
 
@@ -357,44 +458,57 @@ function handleEditorFocus(containerEl: HTMLElement) {
 }
 
 function handleExportTrigger() {
-  if (searchQuery.value.trim())
+  const q = searchQuery.value.trim()
+  if (q)
     handleExportResults()
+
   else
     handleBatchExport()
 }
 
 async function handleBatchExport() {
   showDropdown.value = false
+
   if (isExporting.value)
     return
+
   if (!user.value?.id) {
     messageHook.error(t('auth.session_expired'))
     return
   }
+
   const dialogDateRange = ref<[number, number] | null>(null)
+
   dialog.info({
     title: t('notes.export_confirm_title'),
-    content: () => h(NDatePicker, {
-      'value': dialogDateRange.value,
-      'type': 'daterange',
-      'clearable': true,
-      'placeholder': t('notes.select_date_range_placeholder'),
-      'class': 'dialog-date-picker',
-      'onUpdate:value': (newValue) => {
-        dialogDateRange.value = newValue
-      },
-    }),
+    content: () => {
+      return h(NDatePicker, {
+        'value': dialogDateRange.value,
+        'type': 'daterange',
+        'clearable': true,
+        'placeholder': t('notes.select_date_range_placeholder'),
+        'class': 'dialog-date-picker',
+        'onUpdate:value': (v: any) => {
+          dialogDateRange.value = v
+        },
+      })
+    },
     positiveText: t('notes.confirm_export'),
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       isExporting.value = true
       messageHook.info(t('notes.export_preparing'), { duration: 5000 })
+
       try {
-        const [startDate, endDate] = dialogDateRange.value || [null, null]
+        const pair = dialogDateRange.value || [null, null]
+        const startDate = pair[0]
+        const endDate = pair[1]
+
         const BATCH_SIZE = 100
         let allNotes: any[] = []
         let page = 0
         let hasMore = true
+
         while (hasMore) {
           let query = supabase
             .from('notes')
@@ -402,48 +516,66 @@ async function handleBatchExport() {
             .eq('user_id', user.value!.id)
             .order('created_at', { ascending: false })
             .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
+
           if (endDate) {
-            const endOfDay = new Date(endDate)
-            endOfDay.setHours(23, 59, 59, 999)
-            query = query.lte('created_at', endOfDay.toISOString())
+            const eod = new Date(endDate)
+            eod.setHours(23, 59, 59, 999)
+            query = query.lte('created_at', eod.toISOString())
           }
+
           const { data, error } = await query
+
           if (error)
             throw error
+
           if (data && data.length > 0) {
             allNotes = allNotes.concat(data)
-            page++
+            page += 1
           }
           else {
             hasMore = false
           }
+
           if (data && data.length < BATCH_SIZE)
             hasMore = false
         }
+
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
-        const textContent = allNotes.map((note) => {
-          const separator = '----------------------------------------'
-          const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-        }).join('')
+
+        const textContent = allNotes
+          .map((note) => {
+            const sep = '----------------------------------------'
+            const date = new Date(note.created_at).toLocaleString('zh-CN')
+            return `${sep}\n创建于: ${date}\n${sep}\n\n${note.content}\n\n========================================\n\n`
+          })
+          .join('')
+
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        const datePart = startDate && endDate ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}` : 'all'
-        const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-        a.download = `notes_export_${datePart}_${timestamp}.txt`
+
+        const datePart = startDate && endDate
+          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
+          : 'all'
+
+        const ts = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+        a.download = `notes_export_${datePart}_${ts}.txt`
+
         document.body.appendChild(a)
         a.click()
+
         setTimeout(() => {
           document.body.removeChild(a)
           URL.revokeObjectURL(url)
         }, 100)
+
         messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
       }
       catch (error: any) {
@@ -459,31 +591,41 @@ async function handleBatchExport() {
 function handleExportResults() {
   if (isExporting.value)
     return
+
   isExporting.value = true
   messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
+
   try {
     const notesToExport = displayedNotes.value
     if (!notesToExport || notesToExport.length === 0) {
       messageHook.warning('没有可导出的搜索结果。')
       return
     }
-    const textContent = notesToExport.map((note: any) => {
-      const separator = '----------------------------------------'
-      const date = new Date(note.created_at).toLocaleString('zh-CN')
-      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-    }).join('')
+
+    const textContent = notesToExport
+      .map((note: any) => {
+        const sep = '----------------------------------------'
+        const date = new Date(note.created_at).toLocaleString('zh-CN')
+        return `${sep}\n创建于: ${date}\n${sep}\n\n${note.content}\n\n========================================\n\n`
+      })
+      .join('')
+
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-    a.download = `notes_search_results_${timestamp}.txt`
+
+    const ts = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+    a.download = `notes_search_results_${ts}.txt`
+
     document.body.appendChild(a)
     a.click()
+
     setTimeout(() => {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     }, 100)
+
     messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
   }
   catch (error: any) {
@@ -495,9 +637,11 @@ function handleExportResults() {
 }
 
 function addNoteToList(newNote: any) {
-  if (!notes.value.some(note => note.id === newNote.id)) {
+  const exists = notes.value.some(n => n.id === newNote.id)
+  if (!exists) {
     notes.value.unshift(newNote)
     totalNotes.value += 1
+
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
     localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
   }
@@ -506,11 +650,19 @@ function addNoteToList(newNote: any) {
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
+
   const newPinStatus = !note.is_pinned
+
   try {
-    const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
+    const { error } = await supabase
+      .from('notes')
+      .update({ is_pinned: newPinStatus })
+      .eq('id', note.id)
+      .eq('user_id', user.value.id)
+
     if (error)
       throw error
+
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
     await fetchNotes()
   }
@@ -520,10 +672,21 @@ async function handlePinToggle(note: any) {
 }
 
 function updateNoteInList(updatedNote: any) {
-  const index = notes.value.findIndex(n => n.id === updatedNote.id)
-  if (index !== -1) {
-    notes.value[index] = { ...updatedNote }
-    notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+  const i = notes.value.findIndex(n => n.id === updatedNote.id)
+
+  if (i !== -1) {
+    notes.value[i] = { ...updatedNote }
+
+    notes.value.sort((a, b) => {
+      const pinDiff = Number(b.is_pinned) - Number(a.is_pinned)
+      if (pinDiff !== 0)
+        return pinDiff
+
+      const t1 = new Date(b.created_at).getTime()
+      const t2 = new Date(a.created_at).getTime()
+      return t1 - t2
+    })
+
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
 }
@@ -531,10 +694,13 @@ function updateNoteInList(updatedNote: any) {
 async function fetchNotes() {
   if (!user.value)
     return
+
   isLoadingNotes.value = true
+
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
+
     const { data, error, count } = await supabase
       .from('notes')
       .select('*', { count: 'exact' })
@@ -542,15 +708,20 @@ async function fetchNotes() {
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .range(from, to)
+
     if (error)
       throw error
+
     const newNotes = data || []
+
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+
     if (newNotes.length > 0) {
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
     }
+
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
   catch (err) {
@@ -562,20 +733,27 @@ async function fetchNotes() {
 }
 
 async function nextPage() {
-  if (isLoadingNotes.value || !hasMoreNotes.value)
+  if (isLoadingNotes.value)
     return
-  currentPage.value++
+
+  if (!hasMoreNotes.value)
+    return
+
+  currentPage.value += 1
   await fetchNotes()
 }
 
 function handleHeaderClick() {
-  noteListRef.value?.scrollToTop()
+  if (noteListRef.value && typeof noteListRef.value.scrollToTop === 'function')
+    noteListRef.value.scrollToTop()
 }
 
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
-  const noteToDelete = notes.value.find(note => note.id === id)
+
+  const noteToDelete = notes.value.find(n => n.id === id)
+
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -583,29 +761,45 @@ async function triggerDeleteConfirmation(id: string) {
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       try {
-        const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.value!.id)
+
         if (error)
           throw new Error(error.message)
+
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
+          const updatedHomeCache = homeCache.filter((n: any) => n.id !== id)
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
         }
+
         totalNotes.value -= 1
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+        localStorage.setItem(
+          CACHE_KEYS.HOME_META,
+          JSON.stringify({ totalNotes: totalNotes.value }),
+        )
+
         if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-          notes.value = notes.value.filter(note => note.id !== id)
+          mainNotesCache = mainNotesCache.filter(n => n.id !== id)
+          notes.value = notes.value.filter(n => n.id !== id)
         }
         else {
-          notes.value = notes.value.filter(note => note.id !== id)
+          notes.value = notes.value.filter(n => n.id !== id)
         }
+
         messageHook.success(t('notes.delete_success'))
+
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
+
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断，这里仅在运行时调用
           calendarViewRef.value.refreshData()
         }
       }
@@ -616,25 +810,45 @@ async function triggerDeleteConfirmation(id: string) {
   })
 }
 
-async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
+async function handleNoteContentClick(
+  { noteId, itemIndex }: { noteId: string; itemIndex: number },
+) {
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
+
   const originalContent = noteToUpdate.content
+
   try {
     const lines = originalContent.split('\n')
     const taskLineIndexes: number[] = []
+
     lines.forEach((line, index) => {
-      if (line.trim().match(/^-\s\[( |x)\]/))
+      const isTask = line.trim().match(/^-\s\[( |x)\]/)
+      if (isTask)
         taskLineIndexes.push(index)
     })
-    if (itemIndex < taskLineIndexes.length) {
+
+    const inRange = itemIndex < taskLineIndexes.length
+    if (inRange) {
       const lineIndexToChange = taskLineIndexes[itemIndex]
       const lineContent = lines[lineIndexToChange]
-      lines[lineIndexToChange] = lineContent.includes('[ ]') ? lineContent.replace('[ ]', '[x]') : lineContent.replace('[x]', '[ ]')
+      const isUnchecked = lineContent.includes('[ ]')
+
+      if (isUnchecked)
+        lines[lineIndexToChange] = lineContent.replace('[ ]', '[x]')
+
+      else
+        lines[lineIndexToChange] = lineContent.replace('[x]', '[ ]')
+
       const newContent = lines.join('\n')
       noteToUpdate.content = newContent
-      await supabase.from('notes').update({ content: newContent, updated_at: new Date().toISOString() }).eq('id', noteId).eq('user_id', user.value!.id)
+
+      await supabase
+        .from('notes')
+        .update({ content: newContent, updated_at: new Date().toISOString() })
+        .eq('id', noteId)
+        .eq('user_id', user.value!.id)
     }
   }
   catch (err: any) {
@@ -646,11 +860,12 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
+
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
   }
-  catch (err) {
+  catch {
     messageHook.error(t('notes.copy_error'))
   }
 }
@@ -667,18 +882,13 @@ function handleCancelSearch() {
 }
 
 function handleAnniversaryToggle(data: any[] | null) {
-  if (data) {
-    anniversaryNotes.value = data
-    isAnniversaryViewActive.value = true
-  }
-  else {
-    anniversaryNotes.value = null
-    isAnniversaryViewActive.value = false
-  }
+  isAnniversaryViewActive.value = !!data
+  anniversaryNotes.value = data
 }
 
 function toggleSelectionMode() {
   isSelectionModeActive.value = !isSelectionModeActive.value
+
   if (!isSelectionModeActive.value)
     selectedNoteIds.value = []
 
@@ -688,9 +898,13 @@ function toggleSelectionMode() {
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
-  const index = selectedNoteIds.value.indexOf(noteId)
-  if (index > -1)
-    selectedNoteIds.value.splice(index, 1)
+
+  const i = selectedNoteIds.value.indexOf(noteId)
+  const exists = i > -1
+
+  if (exists)
+    selectedNoteIds.value.splice(i, 1)
+
   else
     selectedNoteIds.value.push(noteId)
 }
@@ -698,13 +912,15 @@ function handleToggleSelect(noteId: string) {
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
-  const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
-  const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
+
+  const notesToCopy = notes.value.filter(n => selectedNoteIds.value.includes(n.id))
+  const textContent = notesToCopy.map(n => n.content).join('\n\n---\n\n')
+
   try {
     await navigator.clipboard.writeText(textContent)
     messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
   }
-  catch (err) {
+  catch {
     messageHook.error(t('notes.copy_error'))
   }
   finally {
@@ -716,6 +932,7 @@ async function handleCopySelected() {
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
@@ -724,46 +941,65 @@ async function handleDeleteSelected() {
     onPositiveClick: () => {
       dialog.warning({
         title: t('dialog.delete_note_title'),
-        content: () =>
-          h('div', { style: 'line-height:1.6' }, [
-            h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
-            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
-          ]),
+        content: () => {
+          return h(
+            'div',
+            { style: 'line-height:1.6' },
+            [
+              h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
+              h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
+            ],
+          )
+        },
         positiveText: t('notes.confirm_delete'),
         negativeText: t('notes.cancel'),
         onPositiveClick: async () => {
           try {
             loading.value = true
-            const idsToDelete = [...selectedNoteIds.value]
-            idsToDelete.forEach((id) => {
+
+            const ids = [...selectedNoteIds.value]
+
+            ids.forEach((id) => {
               const noteToDelete = notes.value.find(n => n.id === id)
               if (noteToDelete)
                 invalidateCachesOnDataChange(noteToDelete)
             })
+
             const { error } = await supabase
               .from('notes')
               .delete()
-              .in('id', idsToDelete)
+              .in('id', ids)
               .eq('user_id', user.value!.id)
+
             if (error)
               throw new Error(error.message)
-            notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
-            cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
-            if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+
+            notes.value = notes.value.filter(n => !ids.includes(n.id))
+            cachedNotes.value = cachedNotes.value.filter(n => !ids.includes(n.id))
+
+            const hitLast = lastSavedId.value && ids.includes(lastSavedId.value)
+            if (hitLast) {
               newNoteContent.value = ''
               lastSavedId.value = null
               editingNote.value = null
               localStorage.removeItem(LOCAL_NOTE_ID_KEY)
               localStorage.removeItem(LOCAL_CONTENT_KEY)
             }
-            totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
+
+            totalNotes.value = Math.max(0, (totalNotes.value || 0) - ids.length)
             hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
             hasPreviousNotes.value = currentPage.value > 1
+
             localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-            localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+            localStorage.setItem(
+              CACHE_KEYS.HOME_META,
+              JSON.stringify({ totalNotes: totalNotes.value }),
+            )
+
             isSelectionModeActive.value = false
             selectedNoteIds.value = []
-            messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+
+            messageHook.success(t('notes.delete_success_multiple', { count: ids.length }))
           }
           catch (err: any) {
             messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
@@ -778,10 +1014,12 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(key: string) {
-  if (key.startsWith('#')) {
+  const isTag = key.startsWith('#')
+  if (isTag) {
     fetchNotesByTag(key)
     return
   }
+
   switch (key) {
     case 'calendar':
       showCalendarView.value = true
@@ -806,7 +1044,7 @@ function handleEditFromCalendar(_note: any) {
   messageHook.info('笔记编辑功能已移至主列表，请在主列表找到并编辑该笔记。')
 }
 
-// 避免模板函数被误判未使用（某些 ESLint 组合不会读取模板）
+// 避免模板函数被误判未使用
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 
 function handleClosePage() {
@@ -816,21 +1054,26 @@ function handleClosePage() {
 async function fetchNotesByTag(tag: string) {
   if (!user.value)
     return
+
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
+
   const cacheKey = getTagCacheKey(tag)
   const cachedData = localStorage.getItem(cacheKey)
+
   activeTagFilter.value = tag
+
   if (cachedData) {
     const cachedNotesParsed = JSON.parse(cachedData)
     notes.value = cachedNotesParsed
     filteredNotesCount.value = cachedNotesParsed.length
-    // 筛选时禁用无限滚动
     hasMoreNotes.value = false
     return
   }
+
   isLoadingNotes.value = true
   notes.value = []
+
   try {
     const { data, error } = await supabase
       .from('notes')
@@ -838,11 +1081,15 @@ async function fetchNotesByTag(tag: string) {
       .eq('user_id', user.value.id)
       .ilike('content', `%${tag}%`)
       .order('created_at', { ascending: false })
+
     if (error)
       throw error
+
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
+
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
+
     hasMoreNotes.value = false
   }
   catch (err: any) {
@@ -862,7 +1109,7 @@ function clearTagFilter() {
 </script>
 
 <template>
-  <div class="auth-container" :style="{ '--kb-pad': `${kbPad}px` }">
+  <div class="auth-container">
     <template v-if="user">
       <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -879,7 +1126,9 @@ function clearTagFilter() {
             </button>
           </NDropdown>
         </div>
+
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
+
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button class="header-action-btn close-page-btn" @click.stop="handleClosePage">×</button>
@@ -900,11 +1149,16 @@ function clearTagFilter() {
             @search-completed="handleSearchCompleted"
             @search-cleared="handleSearchCleared"
           />
-          <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
+          <button class="cancel-search-btn" @click="handleCancelSearch">
+            {{ $t('notes.cancel') }}
+          </button>
         </div>
       </Transition>
 
-      <AnniversaryBanner ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
+      <AnniversaryBanner
+        ref="anniversaryBannerRef"
+        @toggle-view="handleAnniversaryToggle"
+      />
 
       <div v-if="activeTagFilter" class="active-filter-bar">
         <span>
@@ -952,22 +1206,39 @@ function clearTagFilter() {
         />
       </div>
 
-      <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+      <SettingsModal
+        :show="showSettingsModal"
+        @close="showSettingsModal = false"
+      />
+
+      <AccountModal
+        :show="showAccountModal"
+        :email="user?.email"
+        :total-notes="totalNotes"
+        :user="user"
+        @close="showAccountModal = false"
+      />
 
       <Transition name="slide-up-fade">
         <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
-          <div class="selection-info">{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</div>
+          <div class="selection-info">
+            {{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}
+          </div>
           <div class="selection-buttons">
-            <button class="action-btn copy-btn" @click="handleCopySelected">{{ $t('notes.copy') }}</button>
-            <button class="action-btn delete-btn" @click="handleDeleteSelected">{{ $t('notes.delete') }}</button>
+            <button class="action-btn copy-btn" @click="handleCopySelected">
+              {{ $t('notes.copy') }}
+            </button>
+            <button class="action-btn delete-btn" @click="handleDeleteSelected">
+              {{ $t('notes.delete') }}
+            </button>
           </div>
         </div>
       </Transition>
 
       <Transition name="slide-up-fade">
         <CalendarView
-          v-if="showCalendarView" ref="calendarViewRef"
+          v-if="showCalendarView"
+          ref="calendarViewRef"
           @close="showCalendarView = false"
           @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
@@ -976,6 +1247,7 @@ function clearTagFilter() {
         />
       </Transition>
     </template>
+
     <template v-else>
       <Authentication />
     </template>
@@ -983,21 +1255,22 @@ function clearTagFilter() {
 </template>
 
 <style scoped>
+/* 外层容器允许滚动，才能被 visualViewport 顶起 */
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
   padding: 0 1.5rem 0.75rem 1.5rem;
-  /* 关键：把键盘高度加到底部内边距，避免遮挡 */
-  padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
 
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
   font-family: system-ui, sans-serif;
+
   display: flex;
   flex-direction: column;
+
   height: 100dvh;
-  overflow: hidden;
+  overflow-y: auto;
   position: relative;
 }
 .dark .auth-container {
@@ -1006,15 +1279,11 @@ function clearTagFilter() {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-/* 列表容器也叠加 kb-pad，且内部 scroller 用 scroll-padding-bottom 配合 */
 .notes-list-container {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
-  overflow-y: hidden;
   position: relative;
-
-  padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
 }
 
 .new-note-editor-container {
@@ -1103,10 +1372,16 @@ function clearTagFilter() {
   padding: 0.75rem 1rem;
   z-index: 15;
 }
-.dark .selection-actions-popup { background-color: #444; }
-
-.selection-info { font-size: 14px; }
-.selection-buttons { display: flex; gap: 3rem; }
+.dark .selection-actions-popup {
+  background-color: #444;
+}
+.selection-info {
+  font-size: 14px;
+}
+.selection-buttons {
+  display: flex;
+  gap: 3rem;
+}
 .action-btn {
   background: none;
   border: none;
@@ -1116,7 +1391,9 @@ function clearTagFilter() {
   font-weight: 500;
   padding: 0.25rem;
 }
-.action-btn.delete-btn { color: #ff5252; }
+.action-btn.delete-btn {
+  color: #ff5252;
+}
 
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
@@ -1143,14 +1420,12 @@ function clearTagFilter() {
 .dark .search-bar-container {
   background: #1e1e1e;
 }
-.search-actions-wrapper { flex: 1; min-width: 0; }
-@media (max-width: 768px) {
-  .cancel-search-btn {
-    font-size: 14px;
-    padding: 0.6rem 1rem;
-  }
+.search-actions-wrapper {
+  flex: 1;
+  min-width: 0;
 }
 
+/* 标签筛选条 */
 .active-filter-bar {
   display: flex;
   justify-content: space-between;
@@ -1176,13 +1451,14 @@ function clearTagFilter() {
   opacity: 0.7;
   transition: opacity 0.2s;
 }
-.clear-filter-btn:hover { opacity: 1; }
+.clear-filter-btn:hover {
+  opacity: 1;
+}
 
-/* 你的 NoteList 内部 scroller 类名，如存在，建议也加 scroll-padding-bottom */
+/* 如果你的虚拟列表 scroller 类名为 .scroller，建议加 scroll-padding-bottom */
 .scroller {
   height: 100%;
   overflow-y: auto;
-  /* 让 scrollIntoView 时底部留白 = 键盘高度 */
   scroll-padding-bottom: max(var(--kb-pad, 0px), env(safe-area-inset-bottom, 0px));
 }
 </style>
