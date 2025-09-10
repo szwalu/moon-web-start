@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useSettingStore } from '@/stores/setting'
 
@@ -15,13 +15,15 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'heightChange'])
 
-/* ============== Stores ============== */
+/* ============== Store ============== */
 const settingsStore = useSettingStore()
 
-/* ============== v-model 封装 ============== */
+/* ============== v-model（外层值） ============== */
 const contentModel = computed({
   get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
 })
 
 /* ============== Autosize ============== */
@@ -34,17 +36,19 @@ const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 let blurTimeoutId: number | null = null
 
-/* ============== IME 组合输入支持 & 光标可见性 ============== */
+/* ============== IME 组合输入支持 ============== */
 const isComposing = ref(false)
-
 function onCompositionStart() {
   isComposing.value = true
 }
 function onCompositionEnd() {
   isComposing.value = false
-  nextTick(() => ensureCaretVisible())
+  nextTick(() => {
+    ensureCaretVisible()
+  })
 }
 
+/* ============== 可滚动祖先容器 ============== */
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
   let el: HTMLElement | null = node?.parentElement || null
   while (el) {
@@ -57,12 +61,25 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+/* ============== 视觉视口（键盘弹出占用） ============== */
+function getSafeViewportBottom(): number {
+  const vv = window.visualViewport
+  const SAFE_PADDING = 10
+  if (vv)
+    return vv.offsetTop + vv.height - SAFE_PADDING
+
+  return window.innerHeight - SAFE_PADDING
+}
+
+/* ============== 确保光标可见（textarea + 外层可滚容器 + 键盘遮挡） ============== */
 function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
     return
 
   const style = getComputedStyle(el)
+
+  // 构造 mirror 估算 caret 垂直位置（考虑自动换行）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -85,27 +102,72 @@ function ensureCaretVisible() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  // 先保证在 textarea 自身可见
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+  if (caretDesiredBottom > viewBottom) {
+    const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+    el.scrollTop = newTop
+  }
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
 
+  // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const ancRect = scrollable.getBoundingClientRect()
+    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
+    const visibleTop = ancRect.top
     const padding = 8
-    if (caretAbsTop + lineHeight * 1.5 > ancRect.bottom)
-      scrollable.scrollTop += (caretAbsTop + lineHeight * 1.5) - ancRect.bottom + padding
-    else if (caretAbsTop - lineHeight * 0.5 < ancRect.top)
-      scrollable.scrollTop -= ancRect.top - (caretAbsTop - lineHeight * 0.5) + padding
+
+    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
+      const deltaDown = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
+      scrollable.scrollTop += deltaDown
+    }
+    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
+      const deltaUp = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
+      scrollable.scrollTop -= deltaUp
+    }
+  }
+  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
+  if (!scrollable) {
+    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const safeBottom = getSafeViewportBottom()
+    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    if (delta > 0) {
+      // 平滑上推一点
+      window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
+    }
   }
 }
+
+/* 监听 visualViewport（键盘弹出/收起） */
+function handleViewportChange() {
+  // 等布局稳定后再校正，避免抖动
+  requestAnimationFrame(() => {
+    nextTick(() => {
+      ensureCaretVisible()
+    })
+  })
+}
+
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange)
+    window.visualViewport.addEventListener('scroll', handleViewportChange)
+  }
+})
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportChange)
+    window.visualViewport.removeEventListener('scroll', handleViewportChange)
+  }
+})
 
 /* ============== 文本与插入工具 ============== */
 function updateTextarea(newText: string, newCursorPos: number) {
@@ -113,9 +175,13 @@ function updateTextarea(newText: string, newCursorPos: number) {
   if (!el)
     return
 
+  // 1) 保存修改前滚动位置
   const originalScrollTop = el.scrollTop
+
+  // 2) 更新 ref（触发 v-model + autosize）
   input.value = newText
 
+  // 3) 待 DOM/高度更新后，恢复焦点/光标，并恢复合理滚动位置
   nextTick(() => {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
@@ -131,6 +197,7 @@ function handleSave() {
 function handleCancel() {
   emit('cancel')
 }
+
 function handleBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
@@ -145,50 +212,59 @@ function handleInput(event: Event) {
 
   if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
-    return
-  }
-
-  const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
-  tagSuggestions.value = props.allTags.filter(tag =>
-    tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
-  )
-
-  if (tagSuggestions.value.length > 0) {
-    const textLines = textBeforeCursor.split('\n')
-    const currentLine = textLines.length - 1
-    const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
-    const topOffset = currentLine * lineHeight
-
-    const measure = document.createElement('span')
-    measure.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      font: inherit;
-      white-space: pre;
-    `
-    measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-    el.parentNode?.appendChild(measure)
-    const leftOffset = measure.offsetWidth
-    el.parentNode?.removeChild(measure)
-
-    const host = el as HTMLElement
-    suggestionsStyle.value = {
-      top: `${host.offsetTop + topOffset + lineHeight}px`,
-      left: `${host.offsetLeft + leftOffset}px`,
-    }
-    showTagSuggestions.value = true
   }
   else {
-    showTagSuggestions.value = false
+    const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
+    tagSuggestions.value = props.allTags.filter(tag =>
+      tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
+    )
+
+    if (tagSuggestions.value.length > 0) {
+      const textLines = textBeforeCursor.split('\n')
+      const currentLine = textLines.length - 1
+      const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
+      const topOffset = currentLine * lineHeight
+
+      const measure = document.createElement('span')
+      measure.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        font: inherit;
+        white-space: pre;
+      `
+      measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
+      el.parentNode?.appendChild(measure)
+      const leftOffset = measure.offsetWidth
+      el.parentNode?.removeChild(measure)
+
+      const host = el as HTMLElement
+      suggestionsStyle.value = {
+        top: `${host.offsetTop + topOffset + lineHeight}px`,
+        left: `${host.offsetLeft + leftOffset}px`,
+      }
+      showTagSuggestions.value = true
+    }
+    else {
+      showTagSuggestions.value = false
+    }
+  }
+
+  // 输入过程中（非 IME 组字阶段）也要保证光标可见
+  if (!isComposing.value) {
+    nextTick(() => {
+      ensureCaretVisible()
+    })
   }
 }
 
 function selectTag(tag: string) {
-  const el = textarea.value!
+  const el = textarea.value
+  if (!el)
+    return
+
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-
   const textAfterCursor = el.value.substring(cursorPos)
   const newText = `${el.value.substring(0, lastHashIndex)}${tag} ${textAfterCursor}`
 
@@ -217,7 +293,6 @@ function insertText(prefix: string, suffix: string = '') {
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
   const newTextFragment = `${prefix}${selectedText}${suffix}`
-
   const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
   const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
 
@@ -243,6 +318,7 @@ function addTag() {
 function addBold() {
   insertText('**', '**')
 }
+
 function addItalic() {
   insertText('*', '*')
 }
@@ -260,6 +336,7 @@ function addTodo() {
 
   updateTextarea(finalFullText, newCursorPos)
 }
+
 function addOrderedList() {
   const el = textarea.value
   if (!el)
@@ -284,21 +361,22 @@ function handleEnterKey(event: KeyboardEvent) {
 
   const start = el.selectionStart
   const end = el.selectionEnd
-
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const currentLine = el.value.substring(currentLineStart, start)
 
   const listRegex = /^(\d+)\.\s+/
   const match = currentLine.match(listRegex)
+
   if (!match)
     return
 
-  // 空列表项 -> 取消列表
+  // 情况 1：空的列表项 -> 取消列表并换行
   if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
     input.value = before + after
+
     nextTick(() => {
       el.focus()
       const pos = currentLineStart - 1
@@ -308,13 +386,14 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
-  // 普通列表项 -> 插入换行并续号
+  // 情况 2：普通列表项 -> 插入换行并续号
   event.preventDefault()
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
   const before = el.value.substring(0, start)
   const after = el.value.substring(end)
   input.value = before + nextPrefix + after
+
   nextTick(() => {
     el.focus()
     const newCursorPos = start + nextPrefix.length
@@ -344,10 +423,13 @@ function addHeading() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-/* ============== 仅保留必要的 watchers ============== */
+/* ============== Watchers（尽量精简） ============== */
 watch(() => props.modelValue, (newValue) => {
-  if (newValue === '')
-    nextTick(() => { triggerResize() })
+  if (newValue === '') {
+    nextTick(() => {
+      triggerResize()
+    })
+  }
 })
 
 // 高度变化 -> 通知父组件重新布局
@@ -379,7 +461,7 @@ watch(textarea, (newTextarea) => {
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
-        @input="(e) => { handleInput(e); if (!isComposing) nextTick(ensureCaretVisible) }"
+        @input="handleInput"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -454,19 +536,16 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
+  /* 避免浏览器滚动锚定把容器推到底 */
   overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
-  min-height: 100px;
-  max-height: 48vh;
+  min-height: 120px;         /* 初始高度可按需调整 */
+  max-height: 50vh;          /* 最大高度：可 40~60vh */
   overflow-y: auto;
-
-  /* 关键：叠加 --kb-pad，避免被移动端键盘覆盖 */
-  padding: 16px 16px calc(4px + var(--kb-pad, 0px)) 16px;
-
-  vertical-align: bottom;
+  padding: 16px 16px 8px 16px; /* 底部缓冲，避免贴底 */
   border: none;
   background-color: transparent;
   color: inherit;
@@ -476,6 +555,7 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
+  /* 避免滚动条出现/消失时抖动 */
   scrollbar-gutter: stable both-edges;
 }
 
@@ -484,7 +564,10 @@ watch(textarea, (newTextarea) => {
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-.char-counter { font-size: 12px; color: #6b7280; }
+.char-counter {
+  font-size: 12px;
+  color: #6b7280;
+}
 .dark .char-counter { color: #9ca3af; }
 
 .actions {
@@ -551,12 +634,34 @@ watch(textarea, (newTextarea) => {
 }
 .dark .editor-footer { background-color: transparent; border-top: none; }
 
-.footer-left { display: flex; align-items: center; gap: 8px; }
-.editor-toolbar { display: flex; align-items: center; gap: 1px; border: none; background: none; padding: 0; }
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  border: none;
+  background: none;
+  padding: 0;
+}
 .toolbar-btn {
-  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
-  color: #6b7280; border-radius: 4px; font-weight: bold; font-size: 18px;
-  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: #6b7280;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 18px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background-color 0.2s, color 0.2s;
 }
 .toolbar-btn:hover { background-color: #f0f0f0; color: #333; }
