@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-
-// --- 核心改动 1: 导入 throttle 而不是 debounce ---
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
@@ -46,7 +44,6 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// --- 核心改动 2: 使用 throttle (节流) 并设置更快的 30ms 延迟 ---
 const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
   if (!el) {
@@ -61,7 +58,7 @@ const handleScroll = throttle(() => {
   }
 
   updateCollapsePos()
-}, 30) // 更新频率改为 30ms，更平滑
+}, 30)
 
 function rebindScrollListener() {
   const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
@@ -94,7 +91,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.removeEventListener('resize', updateCollapsePos)
-  handleScroll.cancel() // throttle 也有 cancel 方法
+  handleScroll.cancel()
 })
 
 function startEdit(note: any) {
@@ -128,30 +125,41 @@ async function handleUpdateNote() {
   )
 }
 
-// NoteList.vue -> <script setup>
+// ✨✨✨ 核心改动 1: 重写 ensureCardVisible 函数，使用更精确的逻辑 ✨✨✨
+function ensureCardVisible(noteId: string) {
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  const card = noteContainers.value[noteId] as HTMLElement | undefined
+  if (!scroller || !card)
+    return
+
+  const scrollerRect = scroller.getBoundingClientRect()
+  const cardRect = card.getBoundingClientRect()
+  const padding = 12 // 顶部留出一点边距，体验更好
+
+  // 优先级 1: 如果笔记的顶部在可视区上方（被遮挡），则滚动到顶部
+  if (cardRect.top < scrollerRect.top + padding)
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  // 优先级 2: 否则，如果笔记的底部在可视区下方（溢出），则使用 'nearest' 滚动
+  // 此时因为顶部是可见的，'nearest' 会智能地只滚动下方内容
+  else if (cardRect.bottom > scrollerRect.bottom)
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
 
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
   const isExpanding = expandedNote.value !== noteId
-
   expandedNote.value = isExpanding ? noteId : null
 
-  // 核心改动：使用 setTimeout 代替 nextTick
-  // 我们给予一个 50 毫秒的延迟，这足以让虚拟列表库完成它自己的所有内部计算和滚动调整。
-  // 在它完成之后，我们的滚动指令才会执行，从而确保我们的操作是最终的、有效的。
   setTimeout(() => {
-    // 无论展开还是收起，都先更新浮动按钮的位置
     updateCollapsePos()
-
-    // 仅当是“展开”操作时，才执行滚动
     if (isExpanding) {
-      const cardEl = noteContainers.value[noteId]
-      if (cardEl)
-        cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // ✨✨✨ 核心改动 2: 调用我们新的、更可靠的函数 ✨✨✨
+      ensureCardVisible(noteId)
     }
-  }, 50) // 设置 50 毫秒延迟
+  }, 50)
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
