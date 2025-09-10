@@ -69,52 +69,6 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 
-// --- iOS Chrome 识别 & 额外上推补偿（只作用于 iOS Chrome / CriOS）---
-function isIOSChrome() {
-  const ua = navigator.userAgent || ''
-  const isiOS = /iPhone|iPad|iPod/.test(ua)
-  const isCriOS = /CriOS\/\d+/.test(ua) // iOS Chrome 的标识
-  const isOtherBlinkOnIOS = /EdgiOS|OPT\/|DuckDuckGo/.test(ua) // 其他 iOS 浏览器（避免误伤）
-  const isFirefoxiOS = /FxiOS\/\d+/.test(ua)
-  return isiOS && isCriOS && !isFirefoxiOS && !isOtherBlinkOnIOS
-}
-
-// 这个数值就是“还差一点点”的那一点：可按手感调 12/14/16/18...
-const IOS_CHROME_EXTRA_BOTTOM = 28
-
-let vvHandler: (() => void) | null = null
-
-function applyViewportPadding() {
-  // 关键：选中真正滚动的容器（DynamicScroller 的根元素）
-  const scrollerEl
-    = document.querySelector('.notes-list-container .scroller') as HTMLElement | null
-  // 兜底：万一没找到，再退回到外层容器（大多时候 scroller 存在）
-  const hostEl = scrollerEl || (document.querySelector('.notes-list-container') as HTMLElement | null)
-  if (!hostEl)
-    return
-
-  const vv = window.visualViewport
-  if (!vv) {
-    hostEl.style.paddingBottom = ''
-    return
-  }
-
-  // 多种“键盘占用高度”估算，取最大值更稳（iOS Chrome 有时某些值为 0）
-  const byOffset = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height))
-  const byHeight = Math.max(0, window.innerHeight - vv.height)
-  const byDoc = Math.max(0, document.documentElement.clientHeight - vv.height)
-
-  const rawInset = Math.max(byOffset, byHeight, byDoc)
-
-  // iOS Chrome 额外再“推一点点”（你可以继续调这个值）
-  const extra = isIOSChrome() ? IOS_CHROME_EXTRA_BOTTOM : 0
-
-  // 某些时刻（动画早期）可能读到 0；iOS Chrome 也给一个最小补偿
-  const applied = rawInset > 0 ? rawInset + extra : extra
-
-  hostEl.style.paddingBottom = applied ? `${applied}px` : ''
-}
-
 const mainMenuOptions = computed(() => [
   {
     label: '标签',
@@ -181,20 +135,6 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
-  // ====== 新增：键盘弹出/收起时，动态为列表容器增加底部 padding ======
-  if (window.visualViewport) {
-    vvHandler = () => {
-      // 用 rAF 等布局稳定后再设置，避免抖动
-      requestAnimationFrame(() => {
-        applyViewportPadding()
-      })
-    }
-    window.visualViewport.addEventListener('resize', vvHandler)
-    window.visualViewport.addEventListener('scroll', vvHandler)
-
-    // 初始执行一次（进入页面就对齐当前可视区域）
-    applyViewportPadding()
-  }
 })
 
 onUnmounted(() => {
@@ -203,12 +143,6 @@ onUnmounted(() => {
 
   document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  // ====== 新增：清理 visualViewport 监听 ======
-  if (window.visualViewport && vvHandler) {
-    window.visualViewport.removeEventListener('resize', vvHandler)
-    window.visualViewport.removeEventListener('scroll', vvHandler)
-    vvHandler = null
-  }
 })
 
 watch(newNoteContent, (val) => {
