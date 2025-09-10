@@ -483,12 +483,53 @@ watch(textarea, (newTextarea) => {
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <button type="button" class="toolbar-btn" title="添加标签" @click="addTag">#</button>
-          <button type="button" class="toolbar-btn" title="待办事项" @click="addTodo">✓</button>
-          <button type="button" class="toolbar-btn" title="加粗" @click="addBold">B</button>
-          <button type="button" class="toolbar-btn" title="数字列表" @click="addOrderedList">1.</button>
-          <button type="button" class="toolbar-btn" title="添加标题" @click="addHeading">H</button>
-          <button type="button" class="toolbar-btn" title="斜体" @click="addItalic">I</button>
+          <button
+            type="button" class="toolbar-btn" title="添加标签"
+            @mousedown.prevent @touchstart.prevent
+            @click="addTag"
+          >
+            #
+          </button>
+
+          <button
+            type="button" class="toolbar-btn" title="待办事项"
+            @mousedown.prevent @touchstart.prevent
+            @click="addTodo"
+          >
+            ✓
+          </button>
+
+          <button
+            type="button" class="toolbar-btn" title="加粗"
+            @mousedown.prevent @touchstart.prevent
+            @click="addBold"
+          >
+            B
+          </button>
+
+          <button
+            type="button" class="toolbar-btn" title="数字列表"
+            @mousedown.prevent @touchstart.prevent
+            @click="addOrderedList"
+          >
+            1.
+          </button>
+
+          <button
+            type="button" class="toolbar-btn" title="添加标题"
+            @mousedown.prevent @touchstart.prevent
+            @click="addHeading"
+          >
+            H
+          </button>
+
+          <button
+            type="button" class="toolbar-btn" title="斜体"
+            @mousedown.prevent @touchstart.prevent
+            @click="addItalic"
+          >
+            I
+          </button>
         </div>
         <span class="char-counter">
           {{ charCount }}/{{ maxNoteLength }}
