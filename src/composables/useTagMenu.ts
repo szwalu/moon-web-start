@@ -131,7 +131,7 @@ export function useTagMenu(
                   e.stopPropagation()
                   togglePin(tag)
                 },
-                title: t('notes.unpin') || '取消常用',
+                title: t('notes.unpin_favorites') || '取消常用',
               },
               '★',
             ),
@@ -169,7 +169,7 @@ export function useTagMenu(
                     e.stopPropagation()
                     togglePin(tag)
                   },
-                  title: t('notes.pin') || '设为常用',
+                  title: t('notes.pin_favorites') || '设为常用',
                 },
                 isPinned(tag) ? '★' : '☆',
               ),

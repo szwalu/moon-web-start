@@ -84,6 +84,7 @@ let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
+const noteListKey = ref(0)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -916,19 +917,32 @@ async function handleDeleteSelected() {
   })
 }
 
-function handleMainMenuSelect(key: string) {
-  if (key.startsWith('tag:')) {
-    const pure = key.slice(4) // 拿到原始标签，如 "#work"
-    fetchNotesByTag(pure)
-    mainMenuVisible.value = false
+function handleMainMenuSelect(rawKey: string) {
+  // 统一规范：最终交给 fetchNotesByTag 的格式一律 "#xxx"
+  const toHashTag = (k: string) => {
+    let kk = k || ''
+    if (kk.startsWith('tag:'))
+      kk = kk.slice(4) // tag:work  -> work
+    kk = kk.trim()
+    if (!kk)
+      return ''
+    if (!kk.startsWith('#'))
+      kk = `#${kk}` // work      -> #work
+    return kk
+  }
+
+  // 标签项（来自子菜单）
+  if (rawKey.startsWith('tag:') || rawKey.startsWith('#')) {
+    const tag = toHashTag(rawKey)
+    if (tag) {
+      fetchNotesByTag(tag)
+      mainMenuVisible.value = false
+    }
     return
   }
-  if (key.startsWith('#')) {
-    fetchNotesByTag(key)
-    mainMenuVisible.value = false
-    return
-  }
-  switch (key) {
+
+  // 其它一级菜单项
+  switch (rawKey) {
     case 'calendar':
       showCalendarView.value = true
       break
@@ -944,6 +958,10 @@ function handleMainMenuSelect(key: string) {
     case 'account':
       showAccountModal.value = true
       break
+    // 支持 “标签” 这个一级项本身点了没事；仅子项（真正的标签）触发
+    case 'tags':
+    default:
+      break
   }
 }
 
@@ -957,24 +975,37 @@ function handleClosePage() {
 }
 
 async function fetchNotesByTag(tag: string) {
+  // 统一为 "#xxx"
+  if (!tag)
+    return
+  const normalize = (k: string) => (k.startsWith('#') ? k : `#${k}`)
+  const hashTag = normalize(tag)
+
   isShowingSearchResults.value = false
+  showSearchBar.value = false // 关闭搜索栏，避免“看起来没变化”
+  searchQuery.value = '' // 清空搜索关键字
   if (!user.value)
     return
 
+  // 首次进入标签筛选时，缓存一下主列表，方便清除时还原
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
 
-  const cacheKey = getTagCacheKey(tag)
+  const cacheKey = getTagCacheKey(hashTag)
+  activeTagFilter.value = hashTag
+
+  // 先走本地缓存
   const cachedData = localStorage.getItem(cacheKey)
-  activeTagFilter.value = tag
   if (cachedData) {
     const cachedNotes = JSON.parse(cachedData)
     notes.value = cachedNotes
     filteredNotesCount.value = cachedNotes.length
-    // 筛选时，禁用无限滚动
     hasMoreNotes.value = false
+    noteListKey.value++ // 强制刷新 NoteList
     return
   }
+
+  // 无缓存，拉取
   isLoadingNotes.value = true
   notes.value = []
   try {
@@ -982,16 +1013,17 @@ async function fetchNotesByTag(tag: string) {
       .from('notes')
       .select('*')
       .eq('user_id', user.value.id)
-      .ilike('content', `%${tag}%`)
+      .ilike('content', `%${hashTag}%`)
       .order('created_at', { ascending: false })
+
     if (error)
       throw error
 
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
-    // 筛选时，禁用无限滚动
     hasMoreNotes.value = false
+    noteListKey.value++ // 强制刷新 NoteList
   }
   catch (err: any) {
     messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
@@ -1005,8 +1037,8 @@ function clearTagFilter() {
   activeTagFilter.value = null
   notes.value = mainNotesCache
   mainNotesCache = []
-  // 清除筛选后，重新计算是否还有更多笔记
   hasMoreNotes.value = notes.value.length < totalNotes.value
+  noteListKey.value++ // 还原后也刷新列表
 }
 
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”
@@ -1429,10 +1461,18 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </style>
 
 <style>
-/* 只限制第二级（直接子级）菜单；一级菜单不受影响 */
-.n-dropdown-menu > .n-dropdown-menu {
-  max-height: min(60vh, 420px);
-  overflow: auto;
+/* === 全局样式（非 scoped）=== */
+
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+.n-dropdown-menu {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* 只给【子菜单】（第二级及更深）加滚动和高度上限 */
+.n-dropdown-menu .n-dropdown-menu {
+  max-height: min(60vh, 420px) !important;
+  overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
@@ -1446,7 +1486,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 /* 移动端：给子菜单更多可视空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
-    max-height: 70vh;
+    max-height: 70vh !important;
   }
 }
 </style>

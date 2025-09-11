@@ -85,14 +85,6 @@ async function executeSearch() {
   }
 }
 
-// --- 导出按钮文字 ---
-const exportButtonText = computed(() => {
-  if (props.isExporting)
-    return t('notes.exporting')
-
-  return props.searchQuery ? t('notes.export_results') : t('notes.export_all')
-})
-
 // --- 标签建议逻辑 (在输入时触发) ---
 function handleSearchQueryChange(query: string) {
   const lastHashIndex = query.lastIndexOf('#')
@@ -191,14 +183,6 @@ defineExpose({
         </ul>
       </div>
     </div>
-    <button
-      v-if="props.showExportButton"
-      class="export-all-button"
-      :disabled="isExporting"
-      @click="emit('export')"
-    >
-      {{ exportButtonText }}
-    </button>
   </div>
 </template>
 
@@ -286,32 +270,6 @@ defineExpose({
 
 .dark .clear-search-button:hover {
   color: #fff;
-}
-
-.export-all-button {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  margin: 0 !important;
-  font-size: 12px !important;
-  border-radius: 6px;
-  border: 1px solid #bbf7d0 !important;
-  cursor: pointer;
-  background-color: #f0fdf4 !important;
-  color: #16a34a !important;
-  white-space: nowrap;
-  text-align: center;
-  height: 23px;
-}
-
-.dark .export-all-button {
-  border-color: #22c55e !important;
-  background-color: #166534 !important;
-  color: #dcfce7 !important;
-}
-
-.export-all-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .tag-suggestions {
