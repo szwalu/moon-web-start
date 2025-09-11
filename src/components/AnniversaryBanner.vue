@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+
 import { useI18n } from 'vue-i18n'
+
+// 1. 引入 useI18n
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits(['toggleView'])
-const { t } = useI18n()
+
+const { t } = useI18n() // 2. 初始化 t 函数
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 
@@ -13,19 +17,27 @@ const anniversaryNotes = ref<any[]>([])
 const isLoading = ref(true)
 const isAnniversaryViewActive = ref(false)
 
-// 在 AnniversaryBanner.vue 中
+const CACHE_KEY_PREFIX = 'anniversary_notes_'
 
-// 在 AnniversaryBanner.vue 中
+// 这是唯一需要修改的部分
 
 async function loadAnniversaryNotes() {
   isLoading.value = true
-  try {
-    const cachedData = localStorage.getItem(`anniversary_notes_${user.value!.id}`)
 
+  // 沿用您旧代码的缓存 Key 生成方式
+  const todayForCache = new Date()
+  const todayString = `${todayForCache.getFullYear()}-${String(todayForCache.getMonth() + 1).padStart(2, '0')}-${String(todayForCache.getDate()).padStart(2, '0')}`
+  const cacheKey = `${CACHE_KEY_PREFIX}${user.value!.id}_${todayString}`
+
+  try {
+    const cachedData = localStorage.getItem(cacheKey)
     if (cachedData) {
       anniversaryNotes.value = JSON.parse(cachedData)
     }
     else {
+      // --- 这里是修改的核心 ---
+      // 不再获取所有笔记，而是直接调用数据库函数
+
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const today = new Date()
       const year = today.getFullYear()
@@ -42,14 +54,15 @@ async function loadAnniversaryNotes() {
       if (error)
         throw error
 
-      // 【关键修正】这里已经从 a.created.at 改回了正确的 a.created_at
+      // 直接使用数据库返回并排序好的数据
       anniversaryNotes.value = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-      localStorage.setItem(`anniversary_notes_${user.value!.id}`, JSON.stringify(anniversaryNotes.value))
+      // 将结果存入缓存
+      localStorage.setItem(cacheKey, JSON.stringify(anniversaryNotes.value))
 
+      // 沿用您旧代码的清理缓存逻辑
       Object.keys(localStorage).forEach((key) => {
-        const cacheKeyString = `anniversary_notes_${user.value!.id}`
-        if (key.startsWith('anniversary_notes_') && key !== cacheKeyString)
+        if (key.startsWith(CACHE_KEY_PREFIX) && key !== cacheKey)
           localStorage.removeItem(key)
       })
     }
@@ -65,14 +78,19 @@ async function loadAnniversaryNotes() {
 function handleBannerClick() {
   if (anniversaryNotes.value.length === 0)
     return
+
   isAnniversaryViewActive.value = !isAnniversaryViewActive.value
-  emit('toggleView', isAnniversaryViewActive.value ? anniversaryNotes.value : null)
+  if (isAnniversaryViewActive.value)
+    emit('toggleView', anniversaryNotes.value)
+  else
+    emit('toggleView', null)
 }
 
 function setView(isActive: boolean) {
   isAnniversaryViewActive.value = isActive
 }
 
+// 将 setView 和 loadAnniversaryNotes 方法都暴露给父组件
 defineExpose({
   setView,
   loadAnniversaryNotes,
