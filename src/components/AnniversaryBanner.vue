@@ -16,42 +16,56 @@ const isAnniversaryViewActive = ref(false)
 // 缓存 Key 不再需要日期，因为数据库函数总会返回当天的结果
 const CACHE_KEY = `anniversary_notes_${user.value!.id}`
 
+// 在 AnniversaryBanner.vue 中
+
 async function loadAnniversaryNotes() {
-  isLoading.value = true
+  isLoading.value = true;
   try {
-    const cachedData = localStorage.getItem(CACHE_KEY)
+    // 尝试从缓存读取数据，直接使用字符串
+    const cachedData = localStorage.getItem(`anniversary_notes_${user.value!.id}`);
+    
     if (cachedData) {
-      anniversaryNotes.value = JSON.parse(cachedData)
-    }
-    else {
-      // 调用我们在 Supabase 中创建的数据库函数
-      const { data, error } = await supabase.rpc('get_anniversary_notes', {
+      // 如果缓存中有数据，则直接使用
+      anniversaryNotes.value = JSON.parse(cachedData);
+    } else {
+      // 如果缓存中没有，才从服务器获取
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const clientDateString = `${year}-${month}-${day}`;
+
+      const { data, error } = await supabase.rpc('get_anniversary_notes_for_date', {
         p_user_id: user.value!.id,
-      })
+        p_client_date: clientDateString,
+        p_timezone: userTimezone
+      });
 
-      if (error)
-        throw error
+      if (error) {
+        throw error;
+      }
+      
+      anniversaryNotes.value = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created.at).getTime());
+      
+      // 将新数据存入缓存，直接使用字符串
+      localStorage.setItem(`anniversary_notes_${user.value!.id}`, JSON.stringify(anniversaryNotes.value));
 
-      // 按时间倒序排序
-      anniversaryNotes.value = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-      // 缓存今天的结果
-      localStorage.setItem(CACHE_KEY, JSON.stringify(anniversaryNotes.value))
-
-      // 清理其他可能的旧缓存
+      // 清理旧的缓存
       Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('anniversary_notes_') && key !== CACHE_KEY)
-          localStorage.removeItem(key)
-      })
+        const cacheKeyString = `anniversary_notes_${user.value!.id}`;
+        if (key.startsWith('anniversary_notes_') && key !== cacheKeyString) {
+          localStorage.removeItem(key);
+        }
+      });
     }
-  }
-  catch (err) {
-    console.error('获取那年今日笔记失败:', err)
-  }
-  finally {
-    isLoading.value = false
+  } catch (err) {
+    console.error('获取那年今日笔记失败:', err);
+  } finally {
+    isLoading.value = false;
   }
 }
+
 
 function handleBannerClick() {
   if (anniversaryNotes.value.length === 0)
