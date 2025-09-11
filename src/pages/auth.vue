@@ -917,9 +917,15 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(key: string) {
+  if (key.startsWith('tag:')) {
+    const pure = key.slice(4) // 拿到原始标签，如 "#work"
+    fetchNotesByTag(pure)
+    mainMenuVisible.value = false
+    return
+  }
   if (key.startsWith('#')) {
-    fetchNotesByTag(key) // 原有：按标签筛选
-    mainMenuVisible.value = false // ★ 新增：选中后收起一级菜单
+    fetchNotesByTag(key)
+    mainMenuVisible.value = false
     return
   }
   switch (key) {
@@ -1013,6 +1019,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
+            v-model:show="mainMenuVisible"
             trigger="click"
             placement="bottom-start"
             :options="mainMenuOptions"
@@ -1422,13 +1429,13 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </style>
 
 <style>
-/* 只限制“子菜单”（第二级及更深层级）。一级菜单不受影响。*/
-.n-dropdown-menu .n-dropdown-menu {
+/* 只限制第二级（直接子级）菜单；一级菜单不受影响 */
+.n-dropdown-menu > .n-dropdown-menu {
   max-height: min(60vh, 420px);
   overflow: auto;
-  overscroll-behavior: contain;      /* 防止滚动穿透页面 */
-  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
-  padding-right: 4px;                /* 给滚动条留点空隙 */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
 
 /* 子菜单里的每一项更紧凑些，显示更多可见项 */

@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
+import { NDropdown } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
+import { useTagMenu } from '@/composables/useTagMenu'
 
 /* ============== Props & Emits ============== */
 const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
-  maxNoteLength: { type: Number, default: 3000 },
+  maxNoteLength: { type: Number, default: 5000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
@@ -35,6 +38,86 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 let blurTimeoutId: number | null = null
+
+/* ============== 标签下拉（useTagMenu 接入） ============== */
+const { t } = useI18n()
+const allTagsRef = computed(() => props.allTags)
+// 菜单最大高度：较小的一方（视口 60% 或 360）
+const dropdownMaxHeight = computed(() => Math.min(Math.floor(window.innerHeight * 0.6), 360))
+
+// 新增：抑制“打开标签下拉时”的那一次 blur 外发
+const suppressNextBlur = ref(false)
+
+// 新增一个稳妥的回焦工具（双 rAF，确保浮层卸载后聚焦）
+function refocusEditorAndAnnounce() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      textarea.value?.focus()
+      emit('focus') // 告诉父组件：仍在输入中（保持页眉隐藏）
+    })
+  })
+}
+
+function handleSelectFromMenu(tag: string) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const cursorPos = el.selectionStart
+  const before = el.value.substring(0, cursorPos)
+  const lastHashIndex = before.lastIndexOf('#')
+  const after = el.value.substring(cursorPos)
+
+  // 如果处在 "#xxx" 输入中，用已有补全流程
+  if (lastHashIndex !== -1 && !/\s/.test(before.substring(lastHashIndex + 1))) {
+    selectTag(tag)
+    refocusEditorAndAnnounce() // ★ 确保回焦与“输入中”状态
+    return
+  }
+
+  // 否则在光标处插入标签（带空格）
+  const textToInsert = `${tag} `
+  const newText = `${before}${textToInsert}${after}`
+  const newPos = cursorPos + textToInsert.length
+  updateTextarea(newText, newPos)
+
+  refocusEditorAndAnnounce() // ★ 同样回焦与“输入中”状态
+}
+
+// 连接 useTagMenu（菜单可见性 + 子项）
+const {
+  mainMenuVisible: tagMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+
+// （稳妥）为“叶子标签项”注入 onClick，避免个别版本 @select 不触发
+type Opt = any
+function injectClickHandlers(opts: Opt[]): Opt[] {
+  return opts.map((o) => {
+    if (!o)
+      return o
+    if (o.type === 'group' && Array.isArray(o.children))
+      return { ...o, children: injectClickHandlers(o.children) }
+
+    if (o.type === 'render')
+      return o
+
+    if (typeof o.key === 'string' && o.key.startsWith('#')) {
+      const click = (_e: MouseEvent) => {
+        handleSelectFromMenu(o.key)
+        tagMenuVisible.value = false
+      }
+      const mergedProps = { ...(o.props || {}), onClick: click }
+      const wrappedLabel
+        = typeof o.label === 'function'
+          ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()])
+          : o.label
+      return { ...o, props: mergedProps, label: wrappedLabel }
+    }
+    return o
+  })
+}
+const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 /* ============== IME 组合输入支持 ============== */
 const isComposing = ref(false)
@@ -199,6 +282,11 @@ function handleCancel() {
 }
 
 function handleBlur() {
+  // 如果是点击“#”打开下拉引起的一次性 blur，则忽略外发与本地计时器
+  if (suppressNextBlur.value) {
+    suppressNextBlur.value = false
+    return
+  }
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
@@ -305,13 +393,12 @@ function insertText(prefix: string, suffix: string = '') {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-function addTag() {
+function _addTag() {
   insertText('#')
   nextTick(() => {
     const el = textarea.value
     if (el)
       el.dispatchEvent(new Event('input'))
-
     ensureCaretVisible()
   })
 }
@@ -493,15 +580,28 @@ watch(textarea, (newTextarea) => {
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <button
-            type="button" class="toolbar-btn" title="添加标签"
-            @mousedown.prevent @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addTag)"
-            @keydown.enter.prevent="runToolbarAction(addTag)"
-            @keydown.space.prevent="runToolbarAction(addTag)"
+          <!-- 用标签下拉替换原按钮（默认插槽仅一个子节点） -->
+          <NDropdown
+            v-model:show="tagMenuVisible"
+            trigger="click"
+            placement="top-start"
+            :options="tagDropdownOptions"
+            :show-arrow="false"
+            :width="260"
+            :scrollable="true"
+            :max-height="dropdownMaxHeight"
           >
-            #
-          </button>
+            <span class="toolbar-trigger">
+              <button
+                type="button" class="toolbar-btn" title="添加标签"
+                @pointerdown.prevent="suppressNextBlur = true"
+                @mousedown.prevent
+                @touchstart.prevent
+              >
+                #
+              </button>
+            </span>
+          </NDropdown>
 
           <button
             type="button" class="toolbar-btn" title="待办事项"
@@ -606,7 +706,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea {
   width: 100%;
   min-height: 40px;         /* 初始高度可按需调整 */
-  max-height: 50vh;          /* 最大高度：可 40~60vh */
+  max-height: 50vh;         /* 最大高度：可 40~60vh */
   overflow-y: auto;
   padding: 16px 16px 8px 16px; /* 底部缓冲，避免贴底 */
   border: none;
@@ -669,6 +769,7 @@ watch(textarea, (newTextarea) => {
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
+/* 提示浮层（输入 # 的联想） */
 .tag-suggestions {
   position: absolute;
   background-color: #fff;
@@ -730,4 +831,16 @@ watch(textarea, (newTextarea) => {
 .toolbar-btn:hover { background-color: #f0f0f0; color: #333; }
 .dark .toolbar-btn { color: #9ca3af; }
 .dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
+
+/* 触发器包裹，确保 NDropdown 默认插槽只有一个子节点 */
+.toolbar-trigger {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 注意：必须是全局选择器，Dropdown 菜单 teleport 到 <body> */
+:global(.n-dropdown-menu) {
+  max-height: min(60vh, 360px);
+  overflow-y: auto;
+}
 </style>
