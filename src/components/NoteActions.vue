@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineExpose, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -12,6 +12,10 @@ const props = defineProps({
   isExporting: {
     type: Boolean,
     default: false,
+  },
+  showExportButton: {
+    type: Boolean,
+    default: true,
   },
   allTags: {
     type: Array as () => string[],
@@ -52,7 +56,6 @@ const searchModel = computed({
 
 // --- 搜索执行函数 ---
 async function executeSearch() {
-  // 如果搜索框是空的，就触发清除事件，恢复列表
   if (!searchModel.value.trim()) {
     emit('searchCleared')
     return
@@ -98,7 +101,8 @@ function handleSearchQueryChange(query: string) {
     const potentialTag = query.substring(lastHashIndex)
     if (!/\s/.test(potentialTag)) {
       searchTagSuggestions.value = props.allTags.filter(tag =>
-        tag.toLowerCase().startsWith(`#${term.toLowerCase()}`))
+        tag.toLowerCase().startsWith(`#${term.toLowerCase()}`),
+      )
       showSearchTagSuggestions.value = searchTagSuggestions.value.length > 0
       highlightedSearchIndex.value = 0
     }
@@ -131,14 +135,11 @@ function moveSearchSelection(offset: number) {
 
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
-  // 如果标签建议列表是打开的，并且有高亮项，那么回车键的作用是选择标签
-  if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1) {
+  if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
     selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
-  }
-  else {
-    // 否则，回车键的作用是执行搜索
+
+  else
     executeSearch()
-  }
 }
 
 // --- 清除搜索 ---
@@ -147,6 +148,11 @@ function clearSearch() {
   searchInputRef.value?.focus()
   emit('searchCleared')
 }
+
+// --- 暴露方法给父组件 ---
+defineExpose({
+  executeSearch,
+})
 </script>
 
 <template>
@@ -186,6 +192,7 @@ function clearSearch() {
       </div>
     </div>
     <button
+      v-if="props.showExportButton"
       class="export-all-button"
       :disabled="isExporting"
       @click="emit('export')"
@@ -196,7 +203,6 @@ function clearSearch() {
 </template>
 
 <style scoped>
-/* 样式部分保持不变 */
 .search-export-bar {
   display: flex;
   gap: 0.5rem;
@@ -224,7 +230,7 @@ function clearSearch() {
 
 .search-input {
   flex: 4;
-  padding: 1.0rem 2rem 1.0rem 0.5rem;
+  padding: 1rem 2rem 1rem 0.5rem;
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -233,7 +239,6 @@ function clearSearch() {
   min-width: 0;
 }
 
-/* [ADDED] 为移动设备添加样式，防止输入时自动放大页面 */
 @media (max-width: 768px) {
   .search-input {
     font-size: 16px;
@@ -356,10 +361,9 @@ function clearSearch() {
   margin-top: 4px;
 }
 
-/* 新增：移动端响应式布局 */
 @media (max-width: 768px) {
   .export-all-button {
-    display: none; /* 在宽度小于等于 768px 的屏幕上，隐藏导出按钮 */
+    display: none;
   }
 }
 </style>

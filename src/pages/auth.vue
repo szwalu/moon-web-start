@@ -30,6 +30,7 @@ const authStore = useAuthStore()
 const noteListRef = ref(null)
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
+const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
@@ -66,10 +67,42 @@ const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
+const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
+
+// ++ 新增：定义用于sessionStorage的键
+const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
+const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
+const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
+const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
+
+watch(searchQuery, (newValue) => {
+  if (newValue && newValue.trim()) {
+    sessionStorage.setItem(SESSION_SEARCH_QUERY_KEY, newValue)
+  }
+  else {
+    sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+    // ++ 新增：当关键词被清除时，必须同时清除对应的结果缓存
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+  }
+})
+
+// ++ 新增：监听搜索栏显示状态变化，并存入sessionStorage
+watch(showSearchBar, (newValue) => {
+  sessionStorage.setItem(SESSION_SHOW_SEARCH_BAR_KEY, String(newValue))
+})
+
+// ++ 新增：监听标签筛选变化，并存入sessionStorage
+watch(activeTagFilter, (newValue) => {
+  if (newValue)
+    sessionStorage.setItem(SESSION_TAG_FILTER_KEY, newValue)
+
+  else
+    sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+})
 
 const mainMenuOptions = computed(() => [
   {
@@ -89,8 +122,26 @@ const mainMenuOptions = computed(() => [
   { label: t('auth.account_title'), key: 'account' },
 ])
 
+// ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
+const showAnniversaryBanner = computed(() => {
+  // 如果正在编辑新笔记，则隐藏
+  if (compactWhileTyping.value)
+    return false
+
+  // 如果激活了标签筛选，则隐藏
+  if (activeTagFilter.value)
+    return false
+
+  // 如果搜索框内有文字，则隐藏
+  if (searchQuery.value && searchQuery.value.trim() !== '')
+    return false
+
+  // 满足所有条件，才显示
+  return true
+})
+
 onMounted(() => {
-  isLoadingNotes.value = true
+  // isLoadingNotes.value = true
   const loadCache = async () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
@@ -114,9 +165,51 @@ onMounted(() => {
 
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(async () => {
-          await fetchNotes()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
+          // --- 重构后的逻辑 ---
+          // 1. 优先检查所有可能的缓存状态
+          const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
+          const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
+          const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
+
+          // 2. 根据缓存情况决定执行路径
+          if (savedSearchQuery && savedSearchResults) {
+            // 路径A：有完整的搜索缓存，直接恢复，不请求网络
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            try {
+              notes.value = JSON.parse(savedSearchResults)
+            }
+            catch (e) {
+              console.error('Failed to parse cached search results:', e)
+              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+            }
+            isLoadingNotes.value = false // 确保没有加载动画
+            hasMoreNotes.value = false
+            // 恢复后，再去获取标签等次要信息
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          else if (savedSearchQuery) {
+            // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            noteActionsRef.value?.executeSearch()
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          else if (savedTagFilter) {
+            // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
+            await fetchNotesByTag(savedTagFilter)
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          else {
+            // 路径D：没有任何缓存，正常首次加载主页
+            isLoadingNotes.value = true // 只有在这里才需要设置加载状态
+            await fetchNotes() // fetchNotes内部会把加载状态设为false
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
         })
       }
       else if (event === 'SIGNED_OUT') {
@@ -289,17 +382,24 @@ function handleSearchStarted() {
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
+  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
   isLoadingNotes.value = true
   notes.value = []
+  isShowingSearchResults.value = false // ++ 新增
 }
 
 function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
   if (error) {
     messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
     notes.value = []
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY) // ++ 搜索失败，清除缓存
+    isShowingSearchResults.value = false
   }
   else {
     notes.value = data || []
+    // ++ 搜索成功，将结果存入 sessionStorage
+    sessionStorage.setItem(SESSION_SEARCH_RESULTS_KEY, JSON.stringify(notes.value))
+    isShowingSearchResults.value = true
   }
   hasMoreNotes.value = false
   hasPreviousNotes.value = false
@@ -307,6 +407,7 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 }
 
 function handleSearchCleared() {
+  isShowingSearchResults.value = false
   if (!restoreHomepageFromCache()) {
     currentPage.value = 1
     fetchNotes()
@@ -349,7 +450,6 @@ function onEditorFocus() {
 }
 function onEditorBlur() {
   // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
-  // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
   editorHideTimer = window.setTimeout(() => {
     isEditorActive.value = false
     // 关键：失焦后恢复横幅
@@ -358,9 +458,11 @@ function onEditorBlur() {
 }
 
 function handleExportTrigger() {
-  if (searchQuery.value.trim())
+  // ++ 修改逻辑：如果正在显示搜索结果或标签筛选结果，则导出当前列表
+  if (isShowingSearchResults.value || activeTagFilter.value)
     handleExportResults()
 
+  // 否则，执行包含所有笔记的批量导出
   else
     handleBatchExport()
 }
@@ -841,6 +943,7 @@ function handleClosePage() {
 }
 
 async function fetchNotesByTag(tag: string) {
+  isShowingSearchResults.value = false
   if (!user.value)
     return
 
@@ -924,12 +1027,14 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       <Transition name="slide-fade">
         <div v-if="showSearchBar" v-show="!isEditorActive" class="search-bar-container">
           <NoteActions
+            ref="noteActionsRef"
             v-model="searchQuery"
             class="search-actions-wrapper"
             :all-tags="allTags"
             :is-exporting="isExporting"
             :search-query="searchQuery"
             :user="user"
+            :show-export-button="!isShowingSearchResults"
             @export="handleExportTrigger"
             @search-started="handleSearchStarted"
             @search-completed="handleSearchCompleted"
@@ -939,17 +1044,39 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </Transition>
 
-      <AnniversaryBanner v-show="!compactWhileTyping" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
+      <AnniversaryBanner v-show="showAnniversaryBanner" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
       <div v-if="activeTagFilter" v-show="!isEditorActive" class="active-filter-bar">
-        <span>
-          正在筛选标签：<strong>{{ activeTagFilter }}</strong>
-          <span style="margin-left: 8px; color: #666;">
+        <span class="banner-info">
+          <span class="banner-text-main">
+            正在筛选标签：<strong>{{ activeTagFilter }}</strong>
+          </span>
+          <span class="banner-text-count">
             共 {{ filteredNotesCount }} 条笔记
           </span>
         </span>
-        <button class="clear-filter-btn" @click="clearTagFilter">×</button>
+        <div class="banner-actions">
+          <button class="export-results-btn" @click="handleExportTrigger">导出</button>
+          <button class="clear-filter-btn" @click="clearTagFilter">×</button>
+        </div>
       </div>
+
+      <div v-if="isShowingSearchResults" v-show="!isEditorActive" class="active-filter-bar search-results-bar">
+        <span class="banner-info">
+          <span class="banner-text-main">
+            搜索“<strong>{{ searchQuery }}</strong>”的结果
+          </span>
+          <span class="banner-text-count">
+            共 {{ notes.length }} 条笔记
+          </span>
+        </span>
+        <div class="banner-actions">
+          <button class="export-results-btn" @click="handleExportTrigger">
+            导出
+          </button>
+        </div>
+      </div>
+
       <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           ref="newNoteEditorRef"
@@ -1182,21 +1309,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
     padding: 0.6rem 1rem;
   }
 }
-.active-filter-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #eef2ff;
-  color: #4338ca;
-  padding: 8px 12px;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  font-size: 14px;
-}
-.dark .active-filter-bar {
-  background-color: #312e81;
-  color: #c7d2fe;
-}
+
 .clear-filter-btn {
   background: none;
   border: none;
@@ -1209,6 +1322,88 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 }
 .clear-filter-btn:hover {
   opacity: 1;
+}
+
+/* ++ 修改：让导出按钮样式能应用于所有横幅 */
+.active-filter-bar .export-results-btn {
+  background: none;
+  border: 1px solid #6366f1;
+  color: #4338ca;
+  padding: 4px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.search-results-bar .export-results-btn:hover {
+  background-color: #4338ca;
+  color: white;
+}
+
+.dark .search-results-bar .export-results-btn {
+  border-color: #a5b4fc;
+  color: #c7d2fe;
+}
+
+.dark .search-results-bar .export-results-btn:hover {
+  background-color: #a5b4fc;
+  color: #312e81;
+}
+
+.active-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem; /* 在内容和按钮之间设置一个间距 */
+  background-color: #eef2ff;
+  color: #4338ca;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 14px;
+}
+
+/* 修改：让 .banner-info 成为一个 flex 容器来管理其内部元素 */
+.banner-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* 将主文本和数量推到两端 */
+}
+
+/* 新增：定义主文本区域的样式（这部分将负责收缩和显示省略号） */
+.banner-text-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 新增：定义笔记数量的样式（这部分将受到保护，不会被压缩） */
+.banner-text-count {
+  flex-shrink: 0; /* 禁止收缩 */
+  margin-left: 1rem; /* 与主文本保持一些距离 */
+  color: #6c757d; /* 稍微调整颜色以更好地区分 */
+}
+
+/* 新增：为暗黑模式下的数量文本适配颜色 */
+.dark .banner-text-count {
+  color: #adb5bd;
+}
+
+.banner-actions {
+  /* 按钮区域：保持固定宽度，绝不收缩 */
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dark .active-filter-bar {
+  background-color: #312e81;
+  color: #c7d2fe;
 }
 
 .auth-container.is-typing .new-note-editor-container {
