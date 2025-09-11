@@ -13,6 +13,20 @@ import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
+import { useTagMenu } from '@/composables/useTagMenu'
+
+// ---- 只保留这一处 useI18n 声明 ----
+const { t } = useI18n()
+// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
+const allTags = ref<string[]>([])
+
+const onSelectTag = (tag: string) => fetchNotesByTag(tag)
+
+// 组合式：放在 t / allTags 之后
+const {
+  mainMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTags, onSelectTag, t)
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
@@ -22,7 +36,6 @@ const CalendarView = defineAsyncComponent(() => import('@/components/CalendarVie
 const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView]
 
 useDark()
-const { t } = useI18n()
 const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
@@ -53,7 +66,6 @@ const maxNoteLength = 5000
 const searchQuery = ref('')
 const isExporting = ref(false)
 const isReady = ref(false)
-const allTags = ref<string[]>([])
 const isEditorActive = ref(false)
 const isSelectionModeActive = ref(false)
 const selectedNoteIds = ref<string[]>([])
@@ -108,12 +120,7 @@ const mainMenuOptions = computed(() => [
   {
     label: '标签',
     key: 'tags',
-    children: allTags.value.length > 0
-      ? allTags.value.map(tag => ({
-        label: tag,
-        key: tag,
-      }))
-      : [{ label: '暂无标签', key: 'no_tags', disabled: true }],
+    children: tagMenuChildren.value, // <<— 来自 composable
   },
   { label: '日历', key: 'calendar' },
   { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
@@ -911,7 +918,8 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   if (key.startsWith('#')) {
-    fetchNotesByTag(key)
+    fetchNotesByTag(key) // 原有：按标签筛选
+    mainMenuVisible.value = false // ★ 新增：选中后收起一级菜单
     return
   }
   switch (key) {
@@ -1008,6 +1016,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
             trigger="click"
             placement="bottom-start"
             :options="mainMenuOptions"
+            :show-arrow="false"
+            :width="240"
             @select="handleMainMenuSelect"
           >
             <button class="header-action-btn" @click.stop>
@@ -1408,5 +1418,28 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
+}
+</style>
+
+<style>
+/* 只限制“子菜单”（第二级及更深层级）。一级菜单不受影响。*/
+.n-dropdown-menu .n-dropdown-menu {
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;      /* 防止滚动穿透页面 */
+  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
+  padding-right: 4px;                /* 给滚动条留点空隙 */
+}
+
+/* 子菜单里的每一项更紧凑些，显示更多可见项 */
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
+  line-height: 1.2;
+}
+
+/* 移动端：给子菜单更多可视空间 */
+@media (max-width: 768px) {
+  .n-dropdown-menu .n-dropdown-menu {
+    max-height: 70vh;
+  }
 }
 </style>
