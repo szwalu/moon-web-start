@@ -44,6 +44,9 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
+// ✨✨✨ 核心改动 1: 增加一个变量来存储“展开”前的稳定滚动位置 ✨✨✨
+let stableScrollTop = 0
+
 const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
   if (!el) {
@@ -125,7 +128,6 @@ async function handleUpdateNote() {
   )
 }
 
-// ✨✨✨ 核心改动 1: 重写 ensureCardVisible 函数，使用更精确的逻辑 ✨✨✨
 function ensureCardVisible(noteId: string) {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   const card = noteContainers.value[noteId] as HTMLElement | undefined
@@ -134,57 +136,47 @@ function ensureCardVisible(noteId: string) {
 
   const scrollerRect = scroller.getBoundingClientRect()
   const cardRect = card.getBoundingClientRect()
-  const padding = 12 // 顶部留出一点边距，体验更好
+  const padding = 12
 
-  // 优先级 1: 如果笔记的顶部在可视区上方（被遮挡），则滚动到顶部
   if (cardRect.top < scrollerRect.top + padding)
     card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
-  // 优先级 2: 否则，如果笔记的底部在可视区下方（溢出），则使用 'nearest' 滚动
-  // 此时因为顶部是可见的，'nearest' 会智能地只滚动下方内容
   else if (cardRect.bottom > scrollerRect.bottom)
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 
-// 请将旧的 toggleExpand 函数完整替换为这个新函数
-
+// ✨✨✨ 核心改动 2: 重构 toggleExpand 函数以解决竞态问题 ✨✨✨
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!scroller)
+    return // 安全检查
+
   const isExpanding = expandedNote.value !== noteId
 
-  // ✨✨✨ 核心改动：分别处理展开和收起两种情况 ✨✨✨
-
-  // --- 情况1: 收起笔记 ---
-  if (!isExpanding) {
-    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-    if (scroller) {
-      // 步骤1: 记录当前的滚动位置
-      const top = scroller.scrollTop
-      // 步骤2: 执行收起操作
-      expandedNote.value = null
-
-      // 步骤3: 在DOM更新后，立刻恢复滚动位置
-      nextTick(() => {
-        scroller.scrollTop = top
-        // 同时更新一下“收起”按钮的位置（此时它会消失）
-        updateCollapsePos()
-      })
-    }
-    else {
-      // 如果获取不到 scroller，执行原始的收起逻辑
-      expandedNote.value = null
-    }
-    return // 收起逻辑处理完毕，提前退出
+  if (isExpanding) {
+    // --- 展开逻辑 ---
+    // 1. 在执行任何操作前，先记录下当前稳定的滚动位置
+    stableScrollTop = scroller.scrollTop
+    // 2. 更新状态以展开笔记
+    expandedNote.value = noteId
+    // 3. 异步执行滚动动画
+    setTimeout(() => {
+      updateCollapsePos()
+      ensureCardVisible(noteId)
+    }, 50)
   }
-
-  // --- 情况2: 展开笔记 (保持原有逻辑不变) ---
-  expandedNote.value = noteId
-  setTimeout(() => {
-    updateCollapsePos()
-    ensureCardVisible(noteId)
-  }, 50)
+  else {
+    // --- 收起逻辑 ---
+    // 1. 更新状态以收起笔记
+    expandedNote.value = null
+    // 2. 在 DOM 更新后，恢复到我们之前保存的稳定位置
+    nextTick(() => {
+      scroller.scrollTop = stableScrollTop
+      updateCollapsePos()
+    })
+  }
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
