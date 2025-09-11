@@ -146,19 +146,44 @@ function ensureCardVisible(noteId: string) {
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 
+// 请将旧的 toggleExpand 函数完整替换为这个新函数
+
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
   const isExpanding = expandedNote.value !== noteId
-  expandedNote.value = isExpanding ? noteId : null
 
+  // ✨✨✨ 核心改动：分别处理展开和收起两种情况 ✨✨✨
+
+  // --- 情况1: 收起笔记 ---
+  if (!isExpanding) {
+    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+    if (scroller) {
+      // 步骤1: 记录当前的滚动位置
+      const top = scroller.scrollTop
+      // 步骤2: 执行收起操作
+      expandedNote.value = null
+
+      // 步骤3: 在DOM更新后，立刻恢复滚动位置
+      nextTick(() => {
+        scroller.scrollTop = top
+        // 同时更新一下“收起”按钮的位置（此时它会消失）
+        updateCollapsePos()
+      })
+    }
+    else {
+      // 如果获取不到 scroller，执行原始的收起逻辑
+      expandedNote.value = null
+    }
+    return // 收起逻辑处理完毕，提前退出
+  }
+
+  // --- 情况2: 展开笔记 (保持原有逻辑不变) ---
+  expandedNote.value = noteId
   setTimeout(() => {
     updateCollapsePos()
-    if (isExpanding) {
-      // ✨✨✨ 核心改动 2: 调用我们新的、更可靠的函数 ✨✨✨
-      ensureCardVisible(noteId)
-    }
+    ensureCardVisible(noteId)
   }, 50)
 }
 
