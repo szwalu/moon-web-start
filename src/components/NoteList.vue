@@ -29,6 +29,13 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
+// 记录“展开瞬间”的锚点，用于收起时恢复
+const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
+  noteId: null,
+  topOffset: 0,
+  scrollTop: 0,
+})
+
 const { t } = useI18n()
 
 const scrollerRef = ref<any>(null)
@@ -44,8 +51,45 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// ✨✨✨ 核心改动 1: 增加一个变量来存储“展开”前的稳定滚动位置 ✨✨✨
-let stableScrollTop = 0
+// ---- 新增：供 :ref 使用的辅助函数，避免模板里出现多语句 ----
+function setNoteContainer(el: Element | null, id: string) {
+  if (!el)
+    return
+  const $el = el as HTMLElement
+  $el.setAttribute('data-note-id', id)
+  noteContainers.value[id] = $el
+}
+
+// ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
+const isUserScrolling = ref(false)
+let scrollHideTimer: number | null = null
+
+// ---- 新增：位置恢复轻量重试（最多 12 帧） ----
+let collapseRetryId: number | null = null
+let collapseRetryCount = 0
+function scheduleCollapseRetry() {
+  if (collapseRetryId !== null)
+    return
+  collapseRetryCount = 0
+  const step = () => {
+    collapseRetryId = requestAnimationFrame(() => {
+      // 如果用户又开始滚动，停止重试
+      if (isUserScrolling.value) {
+        cancelAnimationFrame(collapseRetryId!)
+        collapseRetryId = null
+        return
+      }
+      updateCollapsePos()
+      if (collapseVisible.value || ++collapseRetryCount >= 12) {
+        cancelAnimationFrame(collapseRetryId!)
+        collapseRetryId = null
+        return
+      }
+      step()
+    })
+  }
+  step()
+}
 
 const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
@@ -54,14 +98,29 @@ const handleScroll = throttle(() => {
     return
   }
 
+  // 触底加载
   if (!props.isLoading && props.hasMore) {
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300
     if (nearBottom)
       emit('loadMore')
   }
 
+  // —— 新增：滚动中先隐藏按钮，等停止 120ms 再恢复定位 —— //
+  isUserScrolling.value = true
+  collapseVisible.value = false
+  if (scrollHideTimer !== null) {
+    window.clearTimeout(scrollHideTimer)
+    scrollHideTimer = null
+  }
+  scrollHideTimer = window.setTimeout(() => {
+    isUserScrolling.value = false
+    updateCollapsePos()
+    // 停止后再安排一次轻量重试，确保复用中的节点就位后能恢复按钮
+    scheduleCollapseRetry()
+  }, 120)
+
   updateCollapsePos()
-}, 30)
+}, 16)
 
 function rebindScrollListener() {
   const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
@@ -95,6 +154,10 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateCollapsePos)
   handleScroll.cancel()
+  if (collapseRetryId !== null) {
+    cancelAnimationFrame(collapseRetryId)
+    collapseRetryId = null
+  }
 })
 
 function startEdit(note: any) {
@@ -128,7 +191,7 @@ async function handleUpdateNote() {
   )
 }
 
-function ensureCardVisible(noteId: string) {
+function _ensureCardVisible(noteId: string) {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   const card = noteContainers.value[noteId] as HTMLElement | undefined
   if (!scroller || !card)
@@ -139,50 +202,127 @@ function ensureCardVisible(noteId: string) {
   const padding = 12
 
   if (cardRect.top < scrollerRect.top + padding)
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    card.scrollIntoView({ behavior: 'auto', block: 'start' })
   else if (cardRect.bottom > scrollerRect.bottom)
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
 }
 
-// ✨✨✨ 核心改动 2: 重构 toggleExpand 函数以解决竞态问题 ✨✨✨
+// 展开：记录锚点 → 展开 → 等布局 → 把卡片顶部对齐到容器顶部
+// 收起：按“展开瞬间的锚点”恢复位置（你之前的逻辑保持不变）
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-  if (!scroller)
-    return // 安全检查
-
+  const card = noteContainers.value[noteId] as HTMLElement | undefined
   const isExpanding = expandedNote.value !== noteId
 
+  if (!scroller)
+    return
+
   if (isExpanding) {
-    // --- 展开逻辑 ---
-    // 1. 在执行任何操作前，先记录下当前稳定的滚动位置
-    stableScrollTop = scroller.scrollTop
-    // 2. 更新状态以展开笔记
+    // —— 展开：先记录锚点（用于日后收起时恢复“展开前”的位置）——
+    if (card) {
+      const scRect = scroller.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      expandAnchor.value = {
+        noteId,
+        topOffset: cardRect.top - scRect.top, // 展开瞬间卡片顶部在容器内的相对位置
+        scrollTop: scroller.scrollTop,
+      }
+    }
+    else {
+      expandAnchor.value = { noteId, topOffset: 0, scrollTop: scroller.scrollTop }
+    }
+
+    // 真正展开
     expandedNote.value = noteId
-    // 3. 异步执行滚动动画
-    setTimeout(() => {
-      updateCollapsePos()
-      ensureCardVisible(noteId)
-    }, 50)
+
+    // 等虚拟列表完成布局
+    await nextTick()
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+    // —— 新增：把“展开后的卡片顶部”对齐到容器顶部（留一点上边距更舒服）——
+    const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
+    if (cardAfter) {
+      scroller.style.overflowAnchor = 'none' // 防止浏览器滚动锚定干扰
+      const scRectAfter = scroller.getBoundingClientRect()
+      const cardRectAfter = cardAfter.getBoundingClientRect()
+
+      // 想留 8~12px 余白可改成 8 或 12
+      const topPadding = 0
+      const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
+      const target = scroller.scrollTop + deltaAlign
+      await stableSetScrollTop(scroller, target, 6, 0.5)
+    }
+
+    updateCollapsePos()
+    return
   }
-  else {
-    // --- 收起逻辑 ---
-    // 1. 更新状态以收起笔记
-    expandedNote.value = null
-    // 2. 在 DOM 更新后，恢复到我们之前保存的稳定位置
-    nextTick(() => {
-      scroller.scrollTop = stableScrollTop
-      updateCollapsePos()
-    })
+
+  // —— 收起：用“展开瞬间记录的锚点”恢复（你的现有收起逻辑保持不变）——
+  expandedNote.value = null
+  scroller.style.overflowAnchor = 'none'
+
+  await nextTick()
+  await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+  const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
+  if (!cardAfter) {
+    updateCollapsePos()
+    return
   }
+
+  const scRectAfter = scroller.getBoundingClientRect()
+  const cardRectAfter = cardAfter.getBoundingClientRect()
+
+  const anchor = expandAnchor.value
+  const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
+  const currentTopOffset = cardRectAfter.top - scRectAfter.top
+  const delta = currentTopOffset - wantTopOffset
+
+  let target = scroller.scrollTop + delta
+  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+  target = Math.min(Math.max(0, target), maxScrollTop)
+
+  await stableSetScrollTop(scroller, target, 6, 0.5)
+  expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
+
+  updateCollapsePos()
+}
+
+// 在多帧内反复设定 scrollTop，直到稳定（解决虚拟列表/浏览器锚定回拉）
+async function stableSetScrollTop(
+  el: HTMLElement,
+  target: number,
+  tries = 5, // 最多纠正 5 帧
+  epsilon = 0.5, // 允许的误差
+) {
+  target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
+
+  return new Promise<void>((resolve) => {
+    let count = 0
+    const tick = () => {
+      const diff = Math.abs(el.scrollTop - target)
+      if (diff > epsilon)
+        el.scrollTop = target
+
+      if (++count >= tries || Math.abs(el.scrollTop - target) <= epsilon) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(tick)
+    }
+    // 先设一次，再进入多帧校正
+    el.scrollTop = target
+    requestAnimationFrame(tick)
+  })
 }
 
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
     if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
   }, 300)
 }
 
@@ -193,6 +333,12 @@ watch(expandedNote, () => {
 })
 
 function updateCollapsePos() {
+  // 滚动过程中先隐藏，停止后由 handleScroll 延时恢复
+  if (isUserScrolling.value) {
+    collapseVisible.value = false
+    return
+  }
+
   if (!expandedNote.value) {
     collapseVisible.value = false
     return
@@ -200,16 +346,28 @@ function updateCollapsePos() {
   const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined
   const wrapperEl = wrapperRef.value as HTMLElement | null
   const cardEl = noteContainers.value[expandedNote.value]
-  if (!scrollerEl || !wrapperEl || !cardEl) {
+  if (!scrollerEl || !wrapperEl || !cardEl || !cardEl.isConnected) {
     collapseVisible.value = false
+    // 组件在复用/挂载的边缘态，安排轻量重试
+    scheduleCollapseRetry()
     return
   }
+  // —— 强校验该元素仍属于当前展开的笔记（防止虚拟列表复用导致错位） —— //
+  const dataId = (cardEl as HTMLElement).getAttribute('data-note-id')
+  if (dataId !== expandedNote.value) {
+    collapseVisible.value = false
+    scheduleCollapseRetry()
+    return
+  }
+
   const scrollerRect = scrollerEl.getBoundingClientRect()
   const wrapperRect = wrapperEl.getBoundingClientRect()
   const cardRect = (cardEl as HTMLElement).getBoundingClientRect()
   const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
   if (outOfView) {
     collapseVisible.value = false
+    // 已回到卡片附近时，下一两帧就会入视口，安排轻量重试
+    scheduleCollapseRetry()
     return
   }
   const btnEl = collapseBtnRef.value
@@ -268,7 +426,7 @@ defineExpose({
           @resize="updateCollapsePos"
         >
           <div
-            :ref="(el) => { if (el) noteContainers[item.id] = el as HTMLElement }"
+            :ref="(el) => setNoteContainer(el, item.id)"
             class="note-selection-wrapper"
             :class="{ 'selection-mode': isSelectionModeActive }"
             @click.stop="isSelectionModeActive && emit('toggleSelect', item.id)"
@@ -312,7 +470,7 @@ defineExpose({
       </template>
 
       <template #after>
-        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
+        <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
           {{ t('notes.loading') }}
         </div>
       </template>
@@ -325,7 +483,7 @@ defineExpose({
         type="button"
         class="collapse-button"
         :style="collapseStyle"
-        @click="toggleExpand(expandedNote!)"
+        @click.stop.prevent="toggleExpand(expandedNote!, $event)"
       >
         收起
       </button>
@@ -344,6 +502,8 @@ defineExpose({
 .scroller {
   height: 100%;
   overflow-y: auto;
+  overflow-anchor: none; /* 关闭浏览器自身的锚定，避免与手动补偿冲突 */
+  scroll-behavior: auto;
 }
 /* --- 全新的卡片化样式 --- */
 
