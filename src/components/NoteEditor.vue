@@ -46,9 +46,10 @@ const allTagsRef = computed(() => props.allTags)
 // 菜单最大高度：随屏幕/键盘动态调整
 const dropdownMaxHeight = ref(320)
 function calcDropdownMaxHeight() {
-  const vv = window.visualViewport
-  const vh = vv ? vv.height : window.innerHeight
-  dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight
+  const kb = getKeyboardHeight()
+  const effective = Math.max(200, Math.min(vh - 64, 360 - Math.min(kb, 200) * 0.25))
+  dropdownMaxHeight.value = Math.round(effective)
 }
 
 // 新增：抑制“打开标签下拉时”的那一次 blur 外发
@@ -58,8 +59,11 @@ const suppressNextBlur = ref(false)
 function refocusEditorAndAnnounce() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      textarea.value?.focus()
-      emit('focus') // 告诉父组件：仍在输入中（保持页眉隐藏）
+      if (textarea.value)
+        textarea.value.focus()
+
+      emit('focus')
+      ensureCaretVisible()
     })
   })
 }
@@ -102,6 +106,7 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
     if (!o)
       return o
+
     if (o.type === 'group' && Array.isArray(o.children))
       return { ...o, children: injectClickHandlers(o.children) }
 
@@ -153,15 +158,48 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
     const canScroll = /(auto|scroll)/.test(style.overflowY)
     if (canScroll && el.clientHeight < el.scrollHeight)
       return el
+
     el = el.parentElement
   }
   return null
 }
 
-/* ============== 视觉视口（键盘弹出占用） ============== */
-function getSafeViewportBottom(): number {
+/* ============== 键盘高度与安全可见区（双保险） ============== */
+function getVKRect(): DOMRect | null {
+  const vk = (navigator as any).virtualKeyboard
+  if (vk && vk.boundingRect && typeof vk.boundingRect === 'object') {
+    const rect: DOMRect = vk.boundingRect
+    if (rect && rect.height >= 1)
+      return rect
+  }
+  return null
+}
+
+function getKeyboardHeight(): number {
+  // 1) Android/Chrome：Virtual Keyboard API
+  const vkRect = getVKRect()
+  if (vkRect)
+    return Math.round(vkRect.height)
+
+  // 2) 通用兜底：visualViewport 推算
   const vv = window.visualViewport
+  if (vv) {
+    const keyboardTop = vv.offsetTop + vv.height
+    const h = Math.max(0, Math.round(window.innerHeight - keyboardTop))
+    return h
+  }
+  return 0
+}
+
+/** 返回“安全可见底边”的 Y 坐标（键盘上沿 - padding） */
+function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
+  const vkRect = getVKRect()
+  if (vkRect) {
+    const keyboardTop = Math.min(window.innerHeight, Math.max(0, vkRect.top))
+    return keyboardTop - SAFE_PADDING
+  }
+  const vv = window.visualViewport
   if (vv)
     return vv.offsetTop + vv.height - SAFE_PADDING
 
@@ -176,7 +214,7 @@ function ensureCaretVisible() {
 
   const style = getComputedStyle(el)
 
-  // 构造 mirror 估算 caret 垂直位置（考虑自动换行）
+  // —— 估算 caret 在 textarea 内的垂直位置（mirror 技术）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -189,59 +227,51 @@ function ensureCaretVisible() {
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd)
-    .replace(/\n$/, '\n ')
-    .replace(/ /g, '\u00A0')
-
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 先保证在 textarea 自身可见
+  // —— 先在 textarea 内部滚到可见
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
-    const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-    el.scrollTop = newTop
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 
-  // 再保证外层滚动容器可见（考虑键盘占用）
+  // —— 再保证外层滚动容器不要被键盘遮挡
   const scrollable = getScrollableAncestor(el)
-  if (scrollable) {
-    const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const ancRect = scrollable.getBoundingClientRect()
-    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
-    const visibleTop = ancRect.top
-    const padding = 8
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const visibleBottom = scrollable
+    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
+    : getSafeViewportBottom()
+  const visibleTop = scrollable ? scrollable.getBoundingClientRect().top : 0
+  const padding = 8
 
-    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
-      const deltaDown = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
-      scrollable.scrollTop += deltaDown
-    }
-    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
-      const deltaUp = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
-      scrollable.scrollTop -= deltaUp
-    }
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+  if (caretAbsBottom > visibleBottom) {
+    const delta = (caretAbsBottom - visibleBottom) + padding
+    if (scrollable)
+      scrollable.scrollTop += delta
+    else
+      window.scrollBy({ top: delta, left: 0, behavior: 'smooth' })
   }
-  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
-  if (!scrollable) {
-    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const safeBottom = getSafeViewportBottom()
-    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
-    if (delta > 0)
-      window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
+  else if (caretAbsTop < visibleTop) {
+    const delta = (visibleTop - caretAbsTop) + padding
+    if (scrollable)
+      scrollable.scrollTop -= delta
+    else
+      window.scrollBy({ top: -delta, left: 0, behavior: 'smooth' })
   }
 }
 
-/* 监听 visualViewport（键盘弹出/收起） */
+/* ============== 监听键盘/可视区域几何变化（双保险） ============== */
 function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
@@ -252,16 +282,38 @@ function handleViewportChange() {
 }
 
 onMounted(() => {
+  // 计算初值
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
 
+  // Android/Chrome：Virtual Keyboard API
+  const vk = (navigator as any).virtualKeyboard
+  if (vk && typeof vk.addEventListener === 'function') {
+    try {
+      vk.overlaysContent = true
+    }
+    catch (_) {}
+    vk.addEventListener('geometrychange', handleViewportChange)
+  }
+
+  // 其它浏览器：visualViewport
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
 })
+
 onUnmounted(() => {
   window.removeEventListener('resize', calcDropdownMaxHeight)
+
+  const vk = (navigator as any).virtualKeyboard
+  if (vk && typeof vk.removeEventListener === 'function') {
+    try {
+      vk.overlaysContent = true
+    }
+    catch (_) {}
+    vk.removeEventListener('geometrychange', handleViewportChange)
+  }
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
@@ -298,6 +350,12 @@ function handleCancel() {
   emit('cancel')
 }
 
+// 抽出单独 onBlur，避免模板中一行两语句
+function onBlur() {
+  handleBlur()
+  emit('blur')
+}
+
 function handleBlur() {
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
@@ -306,7 +364,6 @@ function handleBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
-  emit('blur')
 }
 
 function handleInput(event: Event) {
@@ -422,7 +479,9 @@ function _addTag() {
 function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
-    textarea.value?.focus()
+    if (textarea.value)
+      textarea.value.focus()
+
     ensureCaretVisible()
   })
 }
@@ -430,7 +489,6 @@ function runToolbarAction(fn: () => void) {
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
@@ -445,7 +503,6 @@ function addTodo() {
   const textToInsert = '- [ ] '
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
   const newCursorPos = start + textToInsert.length
-
   updateTextarea(finalFullText, newCursorPos)
 }
 
@@ -459,7 +516,6 @@ function addOrderedList() {
   const textToInsert = '1. '
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
   const newCursorPos = start + textToInsert.length
-
   updateTextarea(finalFullText, newCursorPos)
 }
 
@@ -478,7 +534,6 @@ function handleEnterKey(event: KeyboardEvent) {
 
   const listRegex = /^(\d+)\.\s+/
   const match = currentLine.match(listRegex)
-
   if (!match)
     return
 
@@ -569,7 +624,7 @@ watch(textarea, (newTextarea) => {
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="emit('focus')"
-        @blur="(e) => { handleBlur(); emit('blur') }"
+        @blur="onBlur"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
@@ -618,7 +673,8 @@ watch(textarea, (newTextarea) => {
 
           <button
             type="button" class="toolbar-btn" title="待办事项"
-            @mousedown.prevent @touchstart.prevent
+            @mousedown.prevent
+            @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
             @keydown.enter.prevent="runToolbarAction(addTodo)"
             @keydown.space.prevent="runToolbarAction(addTodo)"
@@ -628,7 +684,8 @@ watch(textarea, (newTextarea) => {
 
           <button
             type="button" class="toolbar-btn" title="加粗"
-            @mousedown.prevent @touchstart.prevent
+            @mousedown.prevent
+            @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addBold)"
             @keydown.enter.prevent="runToolbarAction(addBold)"
             @keydown.space.prevent="runToolbarAction(addBold)"
@@ -638,7 +695,8 @@ watch(textarea, (newTextarea) => {
 
           <button
             type="button" class="toolbar-btn" title="数字列表"
-            @mousedown.prevent @touchstart.prevent
+            @mousedown.prevent
+            @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addOrderedList)"
             @keydown.enter.prevent="runToolbarAction(addOrderedList)"
             @keydown.space.prevent="runToolbarAction(addOrderedList)"
@@ -648,7 +706,8 @@ watch(textarea, (newTextarea) => {
 
           <button
             type="button" class="toolbar-btn" title="添加标题"
-            @mousedown.prevent @touchstart.prevent
+            @mousedown.prevent
+            @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addHeading)"
             @keydown.enter.prevent="runToolbarAction(addHeading)"
             @keydown.space.prevent="runToolbarAction(addHeading)"
@@ -658,7 +717,8 @@ watch(textarea, (newTextarea) => {
 
           <button
             type="button" class="toolbar-btn" title="斜体"
-            @mousedown.prevent @touchstart.prevent
+            @mousedown.prevent
+            @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addItalic)"
             @keydown.enter.prevent="runToolbarAction(addItalic)"
             @keydown.space.prevent="runToolbarAction(addItalic)"
