@@ -222,39 +222,60 @@ function ensureCaretVisible() {
   }
 }
 
-function handleViewportChange() {
-  requestAnimationFrame(() => {
-    nextTick(() => {
-      ensureCaretVisible()
-      calcDropdownMaxHeight()
-    })
-  })
-}
-
-/* ============== 移动端浮动工具条（Teleport 版） ============== */
+/* ============== 浮动工具条：三重检测 ============== */
 const isMobile = ref(false)
 const isKeyboardOpen = ref(false)
 const focused = ref(false)
-const keyboardHeight = ref(0)
+const baselineVVH = ref<number | null>(null) // 基准视觉视口高度
+const baselineInnerH = ref<number | null>(null) // 基准 innerHeight
+
+function computeIsMobile(): boolean {
+  const ua = navigator.userAgent || ''
+  const likePhone = /Android|iPhone|iPod|Mobile/i.test(ua)
+  const narrow = Math.min(window.innerWidth, window.innerHeight) <= 900
+  const coarse = window.matchMedia('(pointer: coarse)').matches
+  return likePhone || (coarse && narrow)
+}
 
 function updateIsMobile() {
-  // 更稳妥：触摸或较窄视口任一成立
-  isMobile.value = window.matchMedia('(pointer: coarse), (max-width: 900px)').matches
+  isMobile.value = computeIsMobile()
+}
+
+function captureBaselines() {
+  const vv = window.visualViewport
+  baselineVVH.value = vv ? vv.height : null
+  baselineInnerH.value = window.innerHeight
 }
 
 function updateKeyboardState() {
   const vv = window.visualViewport
-  if (!vv) {
-    isKeyboardOpen.value = false
-    keyboardHeight.value = 0
-    return
-  }
-  const shrink = window.innerHeight - (vv.height + vv.offsetTop)
-  keyboardHeight.value = Math.max(0, shrink)
-  isKeyboardOpen.value = keyboardHeight.value > 80 // 阈值可微调
+  let open = false
+  if (vv && baselineVVH.value)
+    open = baselineVVH.value - vv.height > 80 // 视觉视口变小
+
+  // 兜底：有些环境 innerHeight 会随键盘变化
+  if (!open && baselineInnerH.value)
+    open = baselineInnerH.value - window.innerHeight > 80
+
+  isKeyboardOpen.value = open
 }
 
-const showFloating = computed(() => isMobile.value && (focused.value || isKeyboardOpen.value))
+// 任何时候，只要 textarea 真正处于活动元素，也视为编辑中
+function recomputeFocusFromActiveElement() {
+  const el = textarea.value
+  focused.value = !!(el && document.activeElement === el)
+}
+
+// 满足任一：移动端 +（聚焦 或 键盘开）=> 显示浮动
+const showFloating = computed(() => {
+  if (!isMobile.value)
+    return false
+  if (focused.value)
+    return true
+  return isKeyboardOpen.value
+})
+
+// 给根容器加底部预留，避免浮动条遮住最后一行
 const footerPadPx = computed(() => (showFloating.value ? 64 : 0))
 
 function handleFocus() {
@@ -274,50 +295,60 @@ function handleBlur() {
 }
 
 /* ============== 生命周期 & 事件 ============== */
-function onDocFocusIn(e: FocusEvent) {
-  const target = e.target as HTMLElement | null
-  const el = textarea.value
-  focused.value = !!(el && target && (target === el || el.contains(target)))
+function onDocFocusIn(_e: FocusEvent) {
+  recomputeFocusFromActiveElement()
 }
 function onDocFocusOut(_e: FocusEvent) {
-  // 让真正的 blur 里处理，避免与 suppressNextBlur 冲突
+  // 交给 handleBlur 控制 focused，避免与 suppressNextBlur 冲突
+}
+
+function onVVChange() {
+  updateKeyboardState()
+  calcDropdownMaxHeight()
+  // 键盘状态变化时再确认一次焦点
+  recomputeFocusFromActiveElement()
+  // 让光标可见
+  requestAnimationFrame(() => {
+    nextTick(() => ensureCaretVisible())
+  })
 }
 
 onMounted(() => {
+  updateIsMobile()
+  captureBaselines()
+  updateKeyboardState()
+
+  window.addEventListener('resize', updateIsMobile)
+  window.addEventListener('orientationchange', () => {
+    captureBaselines()
+    updateKeyboardState()
+    updateIsMobile()
+  })
+
+  document.addEventListener('focusin', onDocFocusIn, true)
+  document.addEventListener('focusout', onDocFocusOut, true)
+
+  // 初装载：下拉高度 & 视觉视口监听
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
 
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportChange)
-    window.visualViewport.addEventListener('scroll', handleViewportChange)
+    window.visualViewport.addEventListener('resize', onVVChange)
+    window.visualViewport.addEventListener('scroll', onVVChange)
   }
-
-  updateIsMobile()
-  updateKeyboardState()
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateKeyboardState)
-    window.visualViewport.addEventListener('scroll', updateKeyboardState)
-  }
-  window.addEventListener('resize', updateIsMobile)
-  window.addEventListener('orientationchange', updateIsMobile)
-
-  document.addEventListener('focusin', onDocFocusIn)
-  document.addEventListener('focusout', onDocFocusOut)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateIsMobile)
+  window.removeEventListener('orientationchange', () => {})
+  document.removeEventListener('focusin', onDocFocusIn, true)
+  document.removeEventListener('focusout', onDocFocusOut, true)
+
   window.removeEventListener('resize', calcDropdownMaxHeight)
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', handleViewportChange)
-    window.visualViewport.removeEventListener('scroll', handleViewportChange)
-    window.visualViewport.removeEventListener('resize', updateKeyboardState)
-    window.visualViewport.removeEventListener('scroll', updateKeyboardState)
+    window.visualViewport.removeEventListener('resize', onVVChange)
+    window.visualViewport.removeEventListener('scroll', onVVChange)
   }
-  window.removeEventListener('resize', updateIsMobile)
-  window.removeEventListener('orientationchange', updateIsMobile)
-
-  document.removeEventListener('focusin', onDocFocusIn)
-  document.removeEventListener('focusout', onDocFocusOut)
 })
 
 // 打开下拉瞬间再算一次，确保精准
@@ -449,7 +480,7 @@ function insertText(prefix: string, suffix: string = '') {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-// 备用：通过按钮触发插入 #（以下划线前缀避免未使用报错）
+// 备用：通过按钮触发插入 #
 function _addTag() {
   insertText('#')
   nextTick(() => {
@@ -611,11 +642,8 @@ watch(textarea, (newTextarea) => {
       </div>
     </div>
 
-    <!-- 桌面端：普通版工具条（组件内，非浮动） -->
-    <div
-      v-show="!isMobile"
-      class="editor-footer"
-    >
+    <!-- 桌面端：普通版工具条 -->
+    <div v-show="!isMobile" class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
           <NDropdown
@@ -691,7 +719,7 @@ watch(textarea, (newTextarea) => {
       </div>
     </div>
 
-    <!-- 移动端：浮动版工具条（Teleport 到 body，确保贴着键盘上沿） -->
+    <!-- 移动端：浮动版工具条（Teleport 到 body） -->
     <teleport to="body">
       <div
         v-show="isMobile && showFloating"
@@ -939,7 +967,7 @@ watch(textarea, (newTextarea) => {
   left: 0;
   right: 0;
   bottom: max(8px, env(safe-area-inset-bottom));
-  z-index: 2147483647; /* 顶层，避免被上层布局覆盖 */
+  z-index: 2147483647; /* 顶层 */
   margin: 0 12px;
   padding: 6px 12px;
   border-radius: 10px;
@@ -968,7 +996,7 @@ watch(textarea, (newTextarea) => {
 }
 </style>
 
-<!-- 只针对“可滚动”的 Naive UI 下拉，恢复高度与滚动（不会影响主页一级菜单） -->
+<!-- 只针对“可滚动”的 Naive UI 下拉，恢复高度与滚动 -->
 <style>
 .n-dropdown-menu.n-dropdown-menu--scrollable {
   max-height: min(60vh, 360px) !important;
