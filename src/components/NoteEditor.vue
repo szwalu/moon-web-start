@@ -123,6 +123,14 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
     return o
   })
 }
+
+function openTagMenu() {
+  // 抑制随之而来的 textarea blur
+  suppressNextBlur.value = true
+  // 直接打开下拉
+  tagMenuVisible.value = true
+}
+
 const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 /* ============== IME 组合输入支持 ============== */
@@ -590,7 +598,7 @@ watch(textarea, (newTextarea) => {
           <!-- 用标签下拉替换原按钮（默认插槽仅一个子节点） -->
           <NDropdown
             v-model:show="tagMenuVisible"
-            trigger="click"
+            trigger="manual"
             placement="top-start"
             :options="tagDropdownOptions"
             :show-arrow="false"
@@ -601,9 +609,7 @@ watch(textarea, (newTextarea) => {
             <span class="toolbar-trigger">
               <button
                 type="button" class="toolbar-btn" title="添加标签"
-                @pointerdown.prevent="suppressNextBlur = true"
-                @mousedown.prevent
-                @touchstart.prevent
+                @click.stop="openTagMenu"
               >
                 #
               </button>
