@@ -39,7 +39,6 @@ const editorFooterRef = ref<HTMLElement | null>(null)
 
 /* ============== 运行期状态：聚焦与抖动抑制 ============== */
 const isFocused = ref(false)
-/** 在此时间戳之前禁止 window.scrollBy（仅允许滚动可滚容器），避免 iOS/Android 聚焦被程序滚动打断 */
 let suppressWindowScrollUntil = 0
 
 /* ============== 平台探测 & “键盘稳定后再执行”调度器 ============== */
@@ -362,6 +361,7 @@ function handleViewportChange() {
   if (vvDebounceId !== null)
     window.clearTimeout(vvDebounceId)
 
+  // [最终优化] 增加 debounce 时间，减少因内容快速变化导致的频繁重计算
   vvDebounceId = window.setTimeout(() => {
     vvDebounceId = null
     scheduleAfterKeyboardStable(() => {
@@ -369,7 +369,7 @@ function handleViewportChange() {
       ensureCaretVisible()
       calcDropdownMaxHeight()
     })
-  }, 100)
+  }, 150)
 }
 
 onMounted(() => {
@@ -501,6 +501,8 @@ function handleInput(event: Event) {
   }
 
   if (!isComposing.value) {
+    // [最终优化] 在输入期间，短暂抑制窗口滚动，给内部滚动和浏览器原生行为更高优先级
+    suppressWindowScrollUntil = Date.now() + 150
     nextTick(() => {
       ensureCaretVisible()
     })
@@ -608,7 +610,8 @@ function handleEnterKey(event: KeyboardEvent) {
   if (!el)
     return
 
-  suppressWindowScrollUntil = Date.now() + 200
+  // [最终优化] 增加回车时的抑制时间，因为回车往往会引起较大的布局变化
+  suppressWindowScrollUntil = Date.now() + 300
 
   const start = el.selectionStart
   const end = el.selectionEnd
