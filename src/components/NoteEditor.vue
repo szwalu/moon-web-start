@@ -229,7 +229,8 @@ function applyDynamicMaxHeight() {
   el.style.maxHeight = `${maxPx}px`
 }
 
-/* ============== 确保光标可见（原样保留） ============== */
+/* ============== 两种“让光标可见”的策略 ============== */
+/** 原先的“强力版”，必要时会滚动 textarea 与外层容器/窗口 */
 function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
@@ -280,96 +281,119 @@ function ensureCaretVisible() {
   const caretAbsBottom = caretAbsTop + lineHeight * 1.2
   if (caretAbsBottom > visibleBottom) {
     const delta = (caretAbsBottom - visibleBottom) + padding
-    if (scrollable)
+    if (scrollable) {
       scrollable.scrollTop += delta
-    else
-      window.scrollBy({ top: delta, left: 0, behavior: 'smooth' })
+    }
+    else {
+      // 避免平滑滚动造成“抖动错觉”
+      window.scrollBy({ top: delta, left: 0, behavior: 'auto' })
+    }
   }
   else if (caretAbsTop < visibleTop) {
     const delta = (visibleTop - caretAbsTop) + padding
     if (scrollable)
       scrollable.scrollTop -= delta
     else
-      window.scrollBy({ top: -delta, left: 0, behavior: 'smooth' })
+      window.scrollBy({ top: -delta, left: 0, behavior: 'auto' })
   }
 }
 
-/* ============== 新增：仅在“用户点到末尾”时贴到键盘上沿 ============== */
+/** 新增：温和版——仅在“确实被键盘遮住”且“光标在末尾”时，做最小位移 */
+const lastTapWasAtEnd = ref(false)
+function gentleRevealIfOccluded() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
+  if (!atEnd)
+    return
+
+  // 不动 textarea 内部滚动，只判断是否被遮住，必要时只滚外层最小量
+  const style = getComputedStyle(el)
+
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
+    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
+  `
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const before = val.slice(0, el.selectionEnd ?? val.length).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const scrollable = getScrollableAncestor(el)
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+  const visibleBottom = scrollable
+    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
+    : getSafeViewportBottom()
+  const padding = 8
+  const desiredBottom = visibleBottom - padding
+
+  const need = desiredBottom - caretAbsBottom
+  if (need > 1) {
+    if (scrollable)
+      scrollable.scrollTop += need
+    else
+      window.scrollBy({ top: need, left: 0, behavior: 'auto' })
+  }
+}
+
+/* ============== 仅在“用户点到末尾”时触发温和对齐 ============== */
 function handleTapAlignIfAtEnd() {
   const el = textarea.value
   if (!el)
     return
 
-  // 等浏览器把插入符定位完成（tap 后 selection 会在下一帧稳定）
+  // 等浏览器把插入符定位完成
   requestAnimationFrame(() => {
     nextTick(() => {
       if (!textarea.value)
         return
 
-      const posStart = el.selectionStart
-      const posEnd = el.selectionEnd
-      const atEnd = posStart === posEnd && posEnd === el.value.length
-      if (!atEnd)
+      const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
+      if (!atEnd) {
+        lastTapWasAtEnd.value = false
         return
-
-      // 基于当前 caret 位置，将其“对齐到键盘上沿”（即安全底边）
-      // 1) 先确保高度按键盘限制
-      applyDynamicMaxHeight()
-
-      // 2) 重新计算 caret 的绝对位置
-      const style = getComputedStyle(el)
-
-      const mirror = document.createElement('div')
-      mirror.style.cssText = `
-        position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
-        box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
-        font:${style.font}; line-height:${style.lineHeight};
-        padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
-        border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
-      `
-      document.body.appendChild(mirror)
-
-      const val = el.value
-      const before = val.slice(0, el.selectionEnd ?? val.length).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-      mirror.textContent = before
-
-      const lineHeight = Number.parseFloat(style.lineHeight || '20')
-      const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-      document.body.removeChild(mirror)
-
-      const scrollable = getScrollableAncestor(el)
-      const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-      const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-      const visibleBottom = scrollable
-        ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
-        : getSafeViewportBottom()
-      const padding = 8
-      const desiredBottom = visibleBottom - padding
-
-      // 仅当“未触底”时，向下滚动把 caret 贴到键盘上沿
-      const need = desiredBottom - caretAbsBottom
-      if (need > 1) {
-        if (scrollable)
-          scrollable.scrollTop += need
-        else
-          window.scrollBy({ top: need, left: 0, behavior: 'smooth' })
       }
-      else {
-        // 已经在边上或更低（被遮挡时 ensureCaretVisible 会处理），这里不动
-      }
+      lastTapWasAtEnd.value = true
+      // 先不要强制重排，只做温和对齐
+      gentleRevealIfOccluded()
+      // 标记短暂有效，避免后续几何变化被强力对齐“拉走”
+      window.setTimeout(() => {
+        lastTapWasAtEnd.value = false
+      }, 600)
     })
   })
 }
 
-/* ============== 监听键盘/可视区域几何变化（双保险） ============== */
+/* ============== 监听键盘/可视区域几何变化：轻量防抖 ============== */
+let vvDebounceId: number | null = null
 function handleViewportChange() {
-  requestAnimationFrame(() => {
-    nextTick(() => {
-      applyDynamicMaxHeight()
+  if (vvDebounceId !== null)
+    window.clearTimeout(vvDebounceId)
+
+  vvDebounceId = window.setTimeout(() => {
+    vvDebounceId = null
+    // 先统一更新可用高度
+    applyDynamicMaxHeight()
+    calcDropdownMaxHeight()
+
+    // 若用户刚点到末尾，优先走“温和对齐”；否则走原强力版
+    if (lastTapWasAtEnd.value)
+      gentleRevealIfOccluded()
+    else
       ensureCaretVisible()
-      calcDropdownMaxHeight()
-    })
-  })
+  }, 120) // 等键盘动画/viewport 稳定，避免抖动
 }
 
 onMounted(() => {
@@ -435,7 +459,7 @@ watch(() => tagMenuVisible.value, (v) => {
     calcDropdownMaxHeight()
 })
 
-/* ============== 文本与插入工具（原样保留） ============== */
+/* ============== 文本与插入工具（保持原样） ============== */
 function updateTextarea(newText: string, newCursorPos: number) {
   const el = textarea.value
   if (!el)
@@ -702,30 +726,9 @@ function addHeading() {
 
   const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
   const newCursorPos = lineStart + newLineContent.length
-  updateTextarea(finalFullText, newCursorPos)
+
+  updateTextarea(finalFullText, newCursorPos) // ← 用回 finalFullText
 }
-
-/* ============== Watchers（尽量精简） ============== */
-watch(() => props.modelValue, (newValue) => {
-  if (newValue === '') {
-    nextTick(() => {
-      triggerResize()
-    })
-  }
-})
-
-// 高度变化 -> 通知父组件重新布局
-watch(textarea, (newTextarea) => {
-  if (newTextarea) {
-    const observer = new MutationObserver(() => {
-      emit('heightChange')
-    })
-    observer.observe(newTextarea, {
-      attributes: true,
-      attributeFilter: ['style'],
-    })
-  }
-})
 </script>
 
 <template>
@@ -982,7 +985,7 @@ watch(textarea, (newTextarea) => {
   overflow-y: auto;
   min-width: 120px;
 }
-.dark .tag-suggestions { background颜色: #2c2c2e; border-color: #48484a; }
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
 .tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
