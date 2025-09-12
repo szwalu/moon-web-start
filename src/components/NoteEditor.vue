@@ -50,10 +50,10 @@ function calcDropdownMaxHeight() {
   dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
 }
 
-// 新增：抑制“打开标签下拉时”的那一次 blur 外发
+// 抑制“打开标签下拉时”的那一次 blur 外发
 const suppressNextBlur = ref(false)
 
-// 新增一个稳妥的回焦工具（双 rAF，确保浮层卸载后聚焦）
+// 稳妥回焦（双 rAF）
 function refocusEditorAndAnnounce() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -73,29 +73,24 @@ function handleSelectFromMenu(tag: string) {
   const lastHashIndex = before.lastIndexOf('#')
   const after = el.value.substring(cursorPos)
 
-  // 如果处在 "#xxx" 输入中，用已有补全流程
   if (lastHashIndex !== -1 && !/\s/.test(before.substring(lastHashIndex + 1))) {
     selectTag(tag)
     refocusEditorAndAnnounce()
     return
   }
 
-  // 否则在光标处插入标签（带空格）
   const textToInsert = `${tag} `
   const newText = `${before}${textToInsert}${after}`
   const newPos = cursorPos + textToInsert.length
   updateTextarea(newText, newPos)
-
   refocusEditorAndAnnounce()
 }
 
-// 连接 useTagMenu（菜单可见性 + 子项）
 const {
   mainMenuVisible: tagMenuVisible,
   tagMenuChildren,
 } = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 
-// （稳妥）为“叶子标签项”注入 onClick，避免个别版本 @select 不触发
 type Opt = any
 function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o: any) => {
@@ -122,14 +117,10 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
     return o
   })
 }
-
 function openTagMenu() {
-  // 抑制随之而来的 textarea blur
   suppressNextBlur.value = true
-  // 直接打开下拉
   tagMenuVisible.value = true
 }
-
 const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 /* ============== IME 组合输入支持 ============== */
@@ -166,15 +157,13 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 确保光标可见（textarea + 外层可滚容器 + 键盘遮挡） ============== */
+/* ============== 确保光标可见 ============== */
 function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
     return
 
   const style = getComputedStyle(el)
-
-  // 构造 mirror 估算 caret 垂直位置（考虑自动换行）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -187,17 +176,13 @@ function ensureCaretVisible() {
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd)
-    .replace(/\n$/, '\n ')
-    .replace(/ /g, '\u00A0')
-
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 先保证在 textarea 自身可见
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
@@ -211,7 +196,6 @@ function ensureCaretVisible() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
   }
 
-  // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
@@ -229,9 +213,7 @@ function ensureCaretVisible() {
       scrollable.scrollTop -= deltaUp
     }
   }
-
-  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
-  if (!scrollable) {
+  else {
     const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const safeBottom = getSafeViewportBottom()
     const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
@@ -240,7 +222,6 @@ function ensureCaretVisible() {
   }
 }
 
-/* 监听 visualViewport（键盘弹出/收起） */
 function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
@@ -250,33 +231,58 @@ function handleViewportChange() {
   })
 }
 
-/* ============== 移动端浮动工具条（核心新增） ============== */
+/* ============== 移动端浮动工具条（Teleport 版） ============== */
 const isMobile = ref(false)
 const isKeyboardOpen = ref(false)
-const focused = ref(false) // 本地聚焦态
+const focused = ref(false)
+const keyboardHeight = ref(0)
 
 function updateIsMobile() {
+  // 更稳妥：触摸或较窄视口任一成立
   isMobile.value = window.matchMedia('(pointer: coarse), (max-width: 900px)').matches
 }
-function updateKeyboardOpen() {
+
+function updateKeyboardState() {
   const vv = window.visualViewport
   if (!vv) {
     isKeyboardOpen.value = false
+    keyboardHeight.value = 0
     return
   }
   const shrink = window.innerHeight - (vv.height + vv.offsetTop)
-  isKeyboardOpen.value = shrink > 100
+  keyboardHeight.value = Math.max(0, shrink)
+  isKeyboardOpen.value = keyboardHeight.value > 80 // 阈值可微调
 }
+
 const showFloating = computed(() => isMobile.value && (focused.value || isKeyboardOpen.value))
-// 给根容器加底部预留，避免浮动条遮住最后一行
 const footerPadPx = computed(() => (showFloating.value ? 64 : 0))
 
 function handleFocus() {
   focused.value = true
   emit('focus')
 }
+function handleBlur() {
+  if (suppressNextBlur.value) {
+    suppressNextBlur.value = false
+    return
+  }
+  blurTimeoutId = window.setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200)
+  focused.value = false
+  emit('blur')
+}
 
-/* ============== 生命周期 ============== */
+/* ============== 生命周期 & 事件 ============== */
+function onDocFocusIn(e: FocusEvent) {
+  const target = e.target as HTMLElement | null
+  const el = textarea.value
+  focused.value = !!(el && target && (target === el || el.contains(target)))
+}
+function onDocFocusOut(_e: FocusEvent) {
+  // 让真正的 blur 里处理，避免与 suppressNextBlur 冲突
+}
+
 onMounted(() => {
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
@@ -287,12 +293,16 @@ onMounted(() => {
   }
 
   updateIsMobile()
+  updateKeyboardState()
   if (window.visualViewport) {
-    updateKeyboardOpen()
-    window.visualViewport.addEventListener('resize', updateKeyboardOpen)
-    window.visualViewport.addEventListener('scroll', updateKeyboardOpen)
+    window.visualViewport.addEventListener('resize', updateKeyboardState)
+    window.visualViewport.addEventListener('scroll', updateKeyboardState)
   }
   window.addEventListener('resize', updateIsMobile)
+  window.addEventListener('orientationchange', updateIsMobile)
+
+  document.addEventListener('focusin', onDocFocusIn)
+  document.addEventListener('focusout', onDocFocusOut)
 })
 
 onUnmounted(() => {
@@ -300,13 +310,14 @@ onUnmounted(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
-  }
-
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateKeyboardOpen)
-    window.visualViewport.removeEventListener('scroll', updateKeyboardOpen)
+    window.visualViewport.removeEventListener('resize', updateKeyboardState)
+    window.visualViewport.removeEventListener('scroll', updateKeyboardState)
   }
   window.removeEventListener('resize', updateIsMobile)
+  window.removeEventListener('orientationchange', updateIsMobile)
+
+  document.removeEventListener('focusin', onDocFocusIn)
+  document.removeEventListener('focusout', onDocFocusOut)
 })
 
 // 打开下拉瞬间再算一次，确保精准
@@ -337,18 +348,6 @@ function handleSave() {
 }
 function handleCancel() {
   emit('cancel')
-}
-
-function handleBlur() {
-  if (suppressNextBlur.value) {
-    suppressNextBlur.value = false
-    return
-  }
-  blurTimeoutId = window.setTimeout(() => {
-    showTagSuggestions.value = false
-  }, 200)
-  focused.value = false
-  emit('blur')
 }
 
 function handleInput(event: Event) {
@@ -450,7 +449,7 @@ function insertText(prefix: string, suffix: string = '') {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-// 命名以下划线以满足 unused-vars 规则（可由按钮触发时使用）
+// 备用：通过按钮触发插入 #（以下划线前缀避免未使用报错）
 function _addTag() {
   insertText('#')
   nextTick(() => {
@@ -472,43 +471,34 @@ function runToolbarAction(fn: () => void) {
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
-
 function addTodo() {
   const el = textarea.value
   if (!el)
     return
-
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '- [ ] '
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
   const newCursorPos = start + textToInsert.length
-
   updateTextarea(finalFullText, newCursorPos)
 }
-
 function addOrderedList() {
   const el = textarea.value
   if (!el)
     return
-
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '1. '
   const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
   const newCursorPos = start + textToInsert.length
-
   updateTextarea(finalFullText, newCursorPos)
 }
-
 function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter')
     return
-
   const el = textarea.value
   if (!el)
     return
@@ -517,20 +507,16 @@ function handleEnterKey(event: KeyboardEvent) {
   const end = el.selectionEnd
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const currentLine = el.value.substring(currentLineStart, start)
-
   const listRegex = /^(\d+)\.\s+/
   const match = currentLine.match(listRegex)
-
   if (!match)
     return
 
-  // 情况 1：空的列表项 -> 取消列表并换行
   if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
     input.value = before + after
-
     nextTick(() => {
       el.focus()
       const pos = currentLineStart - 1
@@ -540,14 +526,12 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
-  // 情况 2：普通列表项 -> 插入换行并续号
   event.preventDefault()
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
   const before = el.value.substring(0, start)
   const after = el.value.substring(end)
   input.value = before + nextPrefix + after
-
   nextTick(() => {
     el.focus()
     const newCursorPos = start + nextPrefix.length
@@ -555,25 +539,18 @@ function handleEnterKey(event: KeyboardEvent) {
     ensureCaretVisible()
   })
 }
-
 function addHeading() {
   const el = textarea.value
   if (!el)
     return
-
   const start = el.selectionStart
   const lineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const lineEnd = !el.value.includes('\n', lineStart) ? el.value.length : el.value.indexOf('\n', lineStart)
-
   const currentLine = el.value.substring(lineStart, lineEnd)
   const headingRegex = /^(#+\s)/
-  const newLineContent = headingRegex.test(currentLine)
-    ? currentLine.replace(headingRegex, '')
-    : `## ${currentLine}`
-
+  const newLineContent = headingRegex.test(currentLine) ? currentLine.replace(headingRegex, '') : `## ${currentLine}`
   const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
   const newCursorPos = lineStart + newLineContent.length
-
   updateTextarea(finalFullText, newCursorPos)
 }
 
@@ -634,15 +611,13 @@ watch(textarea, (newTextarea) => {
       </div>
     </div>
 
-    <!-- 桌面端：一直显示；移动端：仅在编辑/键盘开时显示，并变为浮动 -->
+    <!-- 桌面端：普通版工具条（组件内，非浮动） -->
     <div
-      v-show="!isMobile || showFloating"
+      v-show="!isMobile"
       class="editor-footer"
-      :class="{ floating: showFloating }"
     >
       <div class="footer-left">
         <div class="editor-toolbar">
-          <!-- 用标签下拉替换原按钮（默认插槽仅一个子节点） -->
           <NDropdown
             v-model:show="tagMenuVisible"
             trigger="manual"
@@ -654,23 +629,13 @@ watch(textarea, (newTextarea) => {
             :max-height="dropdownMaxHeight"
           >
             <span class="toolbar-trigger">
-              <button
-                type="button"
-                class="toolbar-btn"
-                title="添加标签"
-                @click.stop="openTagMenu"
-              >
-                #
-              </button>
+              <button type="button" class="toolbar-btn" title="添加标签" @click.stop="openTagMenu">#</button>
             </span>
           </NDropdown>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="待办事项"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="待办事项"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
             @keydown.enter.prevent="runToolbarAction(addTodo)"
             @keydown.space.prevent="runToolbarAction(addTodo)"
@@ -679,11 +644,8 @@ watch(textarea, (newTextarea) => {
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="加粗"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="加粗"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addBold)"
             @keydown.enter.prevent="runToolbarAction(addBold)"
             @keydown.space.prevent="runToolbarAction(addBold)"
@@ -692,11 +654,8 @@ watch(textarea, (newTextarea) => {
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="数字列表"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="数字列表"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addOrderedList)"
             @keydown.enter.prevent="runToolbarAction(addOrderedList)"
             @keydown.space.prevent="runToolbarAction(addOrderedList)"
@@ -705,11 +664,8 @@ watch(textarea, (newTextarea) => {
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="添加标题"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="添加标题"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addHeading)"
             @keydown.enter.prevent="runToolbarAction(addHeading)"
             @keydown.space.prevent="runToolbarAction(addHeading)"
@@ -718,11 +674,8 @@ watch(textarea, (newTextarea) => {
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="斜体"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="斜体"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addItalic)"
             @keydown.enter.prevent="runToolbarAction(addItalic)"
             @keydown.space.prevent="runToolbarAction(addItalic)"
@@ -730,24 +683,98 @@ watch(textarea, (newTextarea) => {
             I
           </button>
         </div>
-        <span class="char-counter">
-          {{ charCount }}/{{ maxNoteLength }}
-        </span>
+        <span class="char-counter">{{ charCount }}/{{ maxNoteLength }}</span>
       </div>
       <div class="actions">
-        <button v-if="isEditing" type="button" class="btn-secondary" @click="handleCancel">
-          取消
-        </button>
-        <button
-          type="button"
-          class="btn-primary"
-          :disabled="isLoading || !contentModel"
-          @click="handleSave"
-        >
-          保存
-        </button>
+        <button v-if="isEditing" type="button" class="btn-secondary" @click="handleCancel">取消</button>
+        <button type="button" class="btn-primary" :disabled="isLoading || !contentModel" @click="handleSave">保存</button>
       </div>
     </div>
+
+    <!-- 移动端：浮动版工具条（Teleport 到 body，确保贴着键盘上沿） -->
+    <teleport to="body">
+      <div
+        v-show="isMobile && showFloating"
+        class="editor-footer floating"
+        role="toolbar"
+        aria-label="编辑工具"
+      >
+        <div class="footer-left">
+          <div class="editor-toolbar">
+            <NDropdown
+              v-model:show="tagMenuVisible"
+              trigger="manual"
+              placement="top-start"
+              :options="tagDropdownOptions"
+              :show-arrow="false"
+              :width="260"
+              :scrollable="true"
+              :max-height="dropdownMaxHeight"
+            >
+              <span class="toolbar-trigger">
+                <button type="button" class="toolbar-btn" title="添加标签" @click.stop="openTagMenu">#</button>
+              </span>
+            </NDropdown>
+
+            <button
+              type="button" class="toolbar-btn" title="待办事项"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addTodo)"
+              @keydown.enter.prevent="runToolbarAction(addTodo)"
+              @keydown.space.prevent="runToolbarAction(addTodo)"
+            >
+              ✓
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="加粗"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addBold)"
+              @keydown.enter.prevent="runToolbarAction(addBold)"
+              @keydown.space.prevent="runToolbarAction(addBold)"
+            >
+              B
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="数字列表"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addOrderedList)"
+              @keydown.enter.prevent="runToolbarAction(addOrderedList)"
+              @keydown.space.prevent="runToolbarAction(addOrderedList)"
+            >
+              1.
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="添加标题"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addHeading)"
+              @keydown.enter.prevent="runToolbarAction(addHeading)"
+              @keydown.space.prevent="runToolbarAction(addHeading)"
+            >
+              H
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="斜体"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addItalic)"
+              @keydown.enter.prevent="runToolbarAction(addItalic)"
+              @keydown.space.prevent="runToolbarAction(addItalic)"
+            >
+              I
+            </button>
+          </div>
+          <span class="char-counter">{{ charCount }}/{{ maxNoteLength }}</span>
+        </div>
+
+        <div class="actions">
+          <button v-if="isEditing" type="button" class="btn-secondary" @click="handleCancel">取消</button>
+          <button type="button" class="btn-primary" :disabled="isLoading || !contentModel" @click="handleSave">保存</button>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -802,10 +829,7 @@ watch(textarea, (newTextarea) => {
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-.char-counter {
-  font-size: 12px;
-  color: #6b7280;
-}
+.char-counter { font-size: 12px; color: #6b7280; }
 .dark .char-counter { color: #9ca3af; }
 
 .actions {
@@ -862,7 +886,7 @@ watch(textarea, (newTextarea) => {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* --- Toolbar / Footer --- */
+/* --- Toolbar / Footer（普通版） --- */
 .editor-footer {
   display: flex;
   align-items: center;
@@ -907,24 +931,20 @@ watch(textarea, (newTextarea) => {
 .dark .toolbar-btn { color: #9ca3af; }
 .dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 
-/* 触发器包裹，确保 NDropdown 默认插槽只有一个子节点 */
-.toolbar-trigger {
-  display: inline-flex;
-  align-items: center;
-}
+.toolbar-trigger { display: inline-flex; align-items: center; }
 
-/* --- 移动端浮动工具条 --- */
+/* --- 移动端浮动工具条（Teleport 到 body） --- */
 .editor-footer.floating {
-  position: fixed;              /* 固定在视觉视口底部，随键盘上移 */
+  position: fixed;
   left: 0;
   right: 0;
-  bottom: max(8px, env(safe-area-inset-bottom)); /* 兼容 iOS 底部手势区 */
-  z-index: 999;
-  margin: 0 12px;               /* 两侧留一点呼吸感 */
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 2147483647; /* 顶层，避免被上层布局覆盖 */
+  margin: 0 12px;
   padding: 6px 12px;
   border-radius: 10px;
   backdrop-filter: saturate(180%) blur(10px);
-  background-color: color-mix(in oklab, rgba(250,250,250,0.96), transparent 0%);
+  background-color: rgba(250,250,250,0.96);
   box-shadow: 0 8px 24px rgba(0,0,0,0.08);
   border: 1px solid rgba(0,0,0,0.06);
 }
@@ -938,11 +958,9 @@ watch(textarea, (newTextarea) => {
   padding: 6px 10px;
   font-size: 14px;
 }
-.editor-footer.floating .char-counter {
-  font-size: 12px;
-}
+.editor-footer.floating .char-counter { font-size: 12px; }
 
-/* 这里不要再强行设定高度，交给 props 控制；滚动增强 */
+/* Naive UI 下拉增强 */
 :global(.n-dropdown-menu) {
   overflow-y: auto;
   overscroll-behavior: contain;
