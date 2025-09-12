@@ -42,8 +42,14 @@ let blurTimeoutId: number | null = null
 /* ============== 标签下拉（useTagMenu 接入） ============== */
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
-// 菜单最大高度：较小的一方（视口 60% 或 360）
-const dropdownMaxHeight = computed(() => Math.min(Math.floor(window.innerHeight * 0.6), 360))
+
+// 菜单最大高度：随屏幕/键盘动态调整
+const dropdownMaxHeight = ref(320)
+function calcDropdownMaxHeight() {
+  const vv = window.visualViewport
+  const vh = vv ? vv.height : window.innerHeight
+  dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
+}
 
 // 新增：抑制“打开标签下拉时”的那一次 blur 外发
 const suppressNextBlur = ref(false)
@@ -71,7 +77,7 @@ function handleSelectFromMenu(tag: string) {
   // 如果处在 "#xxx" 输入中，用已有补全流程
   if (lastHashIndex !== -1 && !/\s/.test(before.substring(lastHashIndex + 1))) {
     selectTag(tag)
-    refocusEditorAndAnnounce() // ★ 确保回焦与“输入中”状态
+    refocusEditorAndAnnounce()
     return
   }
 
@@ -81,7 +87,7 @@ function handleSelectFromMenu(tag: string) {
   const newPos = cursorPos + textToInsert.length
   updateTextarea(newText, newPos)
 
-  refocusEditorAndAnnounce() // ★ 同样回焦与“输入中”状态
+  refocusEditorAndAnnounce()
 }
 
 // 连接 useTagMenu（菜单可见性 + 子项）
@@ -222,34 +228,42 @@ function ensureCaretVisible() {
     const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const safeBottom = getSafeViewportBottom()
     const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
-    if (delta > 0) {
-      // 平滑上推一点
+    if (delta > 0)
       window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
-    }
   }
 }
 
 /* 监听 visualViewport（键盘弹出/收起） */
 function handleViewportChange() {
-  // 等布局稳定后再校正，避免抖动
   requestAnimationFrame(() => {
     nextTick(() => {
       ensureCaretVisible()
+      calcDropdownMaxHeight()
     })
   })
 }
 
 onMounted(() => {
+  calcDropdownMaxHeight()
+  window.addEventListener('resize', calcDropdownMaxHeight)
+
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
 })
 onUnmounted(() => {
+  window.removeEventListener('resize', calcDropdownMaxHeight)
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
   }
+})
+
+// 打开下拉瞬间再算一次，确保精准
+watch(() => tagMenuVisible.value, (v) => {
+  if (v)
+    calcDropdownMaxHeight()
 })
 
 /* ============== 文本与插入工具 ============== */
@@ -258,13 +272,8 @@ function updateTextarea(newText: string, newCursorPos: number) {
   if (!el)
     return
 
-  // 1) 保存修改前滚动位置
   const originalScrollTop = el.scrollTop
-
-  // 2) 更新 ref（触发 v-model + autosize）
   input.value = newText
-
-  // 3) 待 DOM/高度更新后，恢复焦点/光标，并恢复合理滚动位置
   nextTick(() => {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
@@ -282,7 +291,6 @@ function handleCancel() {
 }
 
 function handleBlur() {
-  // 如果是点击“#”打开下拉引起的一次性 blur，则忽略外发与本地计时器
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -338,7 +346,6 @@ function handleInput(event: Event) {
     }
   }
 
-  // 输入过程中（非 IME 组字阶段）也要保证光标可见
   if (!isComposing.value) {
     nextTick(() => {
       ensureCaretVisible()
@@ -399,12 +406,12 @@ function _addTag() {
     const el = textarea.value
     if (el)
       el.dispatchEvent(new Event('input'))
+
     ensureCaretVisible()
   })
 }
 
 function runToolbarAction(fn: () => void) {
-  // 统一执行工具动作，并把焦点回到 textarea，保持页眉隐藏状态
   fn()
   nextTick(() => {
     textarea.value?.focus()
@@ -699,16 +706,15 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
-  /* 避免浏览器滚动锚定把容器推到底 */
   overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
-  min-height: 40px;         /* 初始高度可按需调整 */
-  max-height: 50vh;         /* 最大高度：可 40~60vh */
+  min-height: 40px;
+  max-height: 50vh;
   overflow-y: auto;
-  padding: 16px 16px 8px 16px; /* 底部缓冲，避免贴底 */
+  padding: 16px 16px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -718,7 +724,6 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  /* 避免滚动条出现/消失时抖动 */
   scrollbar-gutter: stable both-edges;
 }
 
@@ -838,9 +843,20 @@ watch(textarea, (newTextarea) => {
   align-items: center;
 }
 
-/* 注意：必须是全局选择器，Dropdown 菜单 teleport 到 <body> */
+/* 这里不要再强行设定高度，交给 props 控制；滚动增强 */
 :global(.n-dropdown-menu) {
-  max-height: min(60vh, 360px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+</style>
+
+<!-- 只针对“可滚动”的 Naive UI 下拉，恢复高度与滚动（不会影响主页一级菜单） -->
+<style>
+.n-dropdown-menu.n-dropdown-menu--scrollable {
+  max-height: min(60vh, 360px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 </style>
