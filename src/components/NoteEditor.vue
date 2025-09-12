@@ -227,10 +227,10 @@ function applyDynamicMaxHeight() {
   const maxPx = Math.max(120, usable)
 
   el.style.maxHeight = `${maxPx}px`
+  // 不在此处直接滚动，滚动统一由 ensureCaretVisible 处理
 }
 
-/* ============== 两种“让光标可见”的策略 ============== */
-/** 原先的“强力版”，必要时会滚动 textarea 与外层容器/窗口 */
+/* ============== 确保光标可见 ============== */
 function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
@@ -281,119 +281,29 @@ function ensureCaretVisible() {
   const caretAbsBottom = caretAbsTop + lineHeight * 1.2
   if (caretAbsBottom > visibleBottom) {
     const delta = (caretAbsBottom - visibleBottom) + padding
-    if (scrollable) {
+    if (scrollable)
       scrollable.scrollTop += delta
-    }
-    else {
-      // 避免平滑滚动造成“抖动错觉”
-      window.scrollBy({ top: delta, left: 0, behavior: 'auto' })
-    }
+    else
+      window.scrollBy({ top: delta, left: 0, behavior: 'smooth' })
   }
   else if (caretAbsTop < visibleTop) {
     const delta = (visibleTop - caretAbsTop) + padding
     if (scrollable)
       scrollable.scrollTop -= delta
     else
-      window.scrollBy({ top: -delta, left: 0, behavior: 'auto' })
+      window.scrollBy({ top: -delta, left: 0, behavior: 'smooth' })
   }
 }
 
-/** 新增：温和版——仅在“确实被键盘遮住”且“光标在末尾”时，做最小位移 */
-const lastTapWasAtEnd = ref(false)
-function gentleRevealIfOccluded() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
-  if (!atEnd)
-    return
-
-  // 不动 textarea 内部滚动，只判断是否被遮住，必要时只滚外层最小量
-  const style = getComputedStyle(el)
-
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `
-    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
-    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
-    font:${style.font}; line-height:${style.lineHeight};
-    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
-    border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
-  `
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const before = val.slice(0, el.selectionEnd ?? val.length).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const scrollable = getScrollableAncestor(el)
-  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-  const visibleBottom = scrollable
-    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
-    : getSafeViewportBottom()
-  const padding = 8
-  const desiredBottom = visibleBottom - padding
-
-  const need = desiredBottom - caretAbsBottom
-  if (need > 1) {
-    if (scrollable)
-      scrollable.scrollTop += need
-    else
-      window.scrollBy({ top: need, left: 0, behavior: 'auto' })
-  }
-}
-
-/* ============== 仅在“用户点到末尾”时触发温和对齐 ============== */
-function handleTapAlignIfAtEnd() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  // 等浏览器把插入符定位完成
+/* ============== 监听键盘/可视区域几何变化（双保险） ============== */
+function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
-      if (!textarea.value)
-        return
-
-      const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
-      if (!atEnd) {
-        lastTapWasAtEnd.value = false
-        return
-      }
-      lastTapWasAtEnd.value = true
-      // 先不要强制重排，只做温和对齐
-      gentleRevealIfOccluded()
-      // 标记短暂有效，避免后续几何变化被强力对齐“拉走”
-      window.setTimeout(() => {
-        lastTapWasAtEnd.value = false
-      }, 600)
+      applyDynamicMaxHeight()
+      ensureCaretVisible()
+      calcDropdownMaxHeight()
     })
   })
-}
-
-/* ============== 监听键盘/可视区域几何变化：轻量防抖 ============== */
-let vvDebounceId: number | null = null
-function handleViewportChange() {
-  if (vvDebounceId !== null)
-    window.clearTimeout(vvDebounceId)
-
-  vvDebounceId = window.setTimeout(() => {
-    vvDebounceId = null
-    // 先统一更新可用高度
-    applyDynamicMaxHeight()
-    calcDropdownMaxHeight()
-
-    // 若用户刚点到末尾，优先走“温和对齐”；否则走原强力版
-    if (lastTapWasAtEnd.value)
-      gentleRevealIfOccluded()
-    else
-      ensureCaretVisible()
-  }, 120) // 等键盘动画/viewport 稳定，避免抖动
 }
 
 onMounted(() => {
@@ -459,7 +369,7 @@ watch(() => tagMenuVisible.value, (v) => {
     calcDropdownMaxHeight()
 })
 
-/* ============== 文本与插入工具（保持原样） ============== */
+/* ============== 文本与插入工具 ============== */
 function updateTextarea(newText: string, newCursorPos: number) {
   const el = textarea.value
   if (!el)
@@ -484,7 +394,7 @@ function handleCancel() {
   emit('cancel')
 }
 
-// 抽出单独 onBlur（保留优秀版做法）
+// 抽出单独 onBlur，避免模板中一行两语句
 function onBlur() {
   handleBlur()
   emit('blur')
@@ -726,9 +636,30 @@ function addHeading() {
 
   const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
   const newCursorPos = lineStart + newLineContent.length
-
-  updateTextarea(finalFullText, newCursorPos) // ← 用回 finalFullText
+  updateTextarea(finalFullText, newCursorPos)
 }
+
+/* ============== Watchers（尽量精简） ============== */
+watch(() => props.modelValue, (newValue) => {
+  if (newValue === '') {
+    nextTick(() => {
+      triggerResize()
+    })
+  }
+})
+
+// 高度变化 -> 通知父组件重新布局
+watch(textarea, (newTextarea) => {
+  if (newTextarea) {
+    const observer = new MutationObserver(() => {
+      emit('heightChange')
+    })
+    observer.observe(newTextarea, {
+      attributes: true,
+      attributeFilter: ['style'],
+    })
+  }
+})
 </script>
 
 <template>
@@ -747,8 +678,6 @@ function addHeading() {
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
         @input="handleInput"
-        @pointerup="handleTapAlignIfAtEnd"
-        @click="handleTapAlignIfAtEnd"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -910,7 +839,7 @@ function addHeading() {
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 兜底；运行时由 JS 用像素 max-height 覆盖 */
+  /* 下面这行仅作兜底；运行时由 JS 动态设置像素 max-height 覆盖它 */
   max-height: 50vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
