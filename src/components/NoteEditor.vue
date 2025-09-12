@@ -47,15 +47,19 @@ let blurTimeoutId: number | null = null
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
+// 下拉最大高度（只与 visualViewport 相关，避免未使用函数）
 const dropdownMaxHeight = ref(320)
 function calcDropdownMaxHeight() {
   const vv = window.visualViewport
   const vh = vv ? vv.height : window.innerHeight
-  dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
+  const maxH = Math.round(Math.min(vh * 0.6, 360))
+  dropdownMaxHeight.value = maxH
 }
 
+// 抑制“打开标签下拉时”的那一次 blur 外发
 const suppressNextBlur = ref(false)
 
+// 稳妥回焦（双 rAF）
 function refocusEditorAndAnnounce() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -96,6 +100,7 @@ const {
   tagMenuChildren,
 } = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 
+// 为“叶子标签项”注入 onClick
 type Opt = any
 function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
@@ -206,7 +211,6 @@ function applyDynamicMaxHeight() {
   const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
   const maxPx = Math.max(120, usable)
 
-  // 仅在变化时写 style，避免频繁重排
   const prev = (el.style.maxHeight || '').trim()
   const next = `${maxPx}px`
   if (prev !== next)
@@ -221,6 +225,7 @@ function ensureCaretVisible() {
 
   const style = getComputedStyle(el)
 
+  // mirror 估算 caret 垂直位置（考虑自动换行）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -233,10 +238,7 @@ function ensureCaretVisible() {
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd)
-    .replace(/\n$/, '\n ')
-    .replace(/ /g, '\u00A0')
-
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
@@ -259,34 +261,92 @@ function ensureCaretVisible() {
 
   // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
-  if (scrollable) {
-    const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const ancRect = scrollable.getBoundingClientRect()
-    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
-    const visibleTop = ancRect.top
-    const padding = 8
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const visibleBottom = scrollable
+    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
+    : getSafeViewportBottom()
+  const visibleTop = scrollable ? scrollable.getBoundingClientRect().top : 0
+  const padding = 8
 
-    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
-      const deltaDown = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+  if (caretAbsBottom > visibleBottom) {
+    const deltaDown = (caretAbsBottom - visibleBottom) + padding
+    if (scrollable)
       scrollable.scrollTop += deltaDown
-    }
-    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
-      const deltaUp = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
-      scrollable.scrollTop -= deltaUp
-    }
+    else
+      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
   }
-
-  // 兜底：如果没可滚祖先，尝试滚动窗口
-  if (!scrollable) {
-    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const safeBottom = getSafeViewportBottom()
-    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
-    if (delta > 0)
-      window.scrollBy({ top: delta + 8, left: 0, behavior: 'auto' })
+  else if (caretAbsTop < visibleTop) {
+    const deltaUp = (visibleTop - caretAbsTop) + padding
+    if (scrollable)
+      scrollable.scrollTop -= deltaUp
+    else
+      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
   }
 }
 
-/* ============== 监听（键盘弹出/收起 + 视口变化） ============== */
+/* ============== 焦点阶段：先限高，再校正（编辑旧笔记更稳） ============== */
+function handleFocus() {
+  requestAnimationFrame(() => {
+    nextTick(() => {
+      applyDynamicMaxHeight()
+      ensureCaretVisible()
+      emit('focus')
+    })
+  })
+}
+
+/* ============== 末尾点击：温和上顶，避免大跳 ============== */
+function gentleRevealIfOccludedAtEnd() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
+  if (!atEnd)
+    return
+
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
+    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
+  `
+  document.body.appendChild(mirror)
+  const before = el.value.slice(0, el.selectionEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const scrollable = getScrollableAncestor(el)
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+  const safeBottom = getSafeViewportBottom()
+  const padding = 8
+  const desiredBottom = safeBottom - padding
+  const need = desiredBottom - caretAbsBottom
+  if (need > 1) {
+    if (scrollable)
+      scrollable.scrollTop += need
+    else
+      window.scrollBy({ top: need, left: 0, behavior: 'auto' })
+  }
+}
+
+function handleTapAlignIfAtEnd() {
+  requestAnimationFrame(() => {
+    nextTick(() => {
+      applyDynamicMaxHeight()
+      gentleRevealIfOccludedAtEnd()
+    })
+  })
+}
+
+/* ============== 监听（键盘弹出/收起 + 视口变化）：先限高再校正 ============== */
 let vvDebounceId: number | null = null
 function handleViewportChange() {
   if (vvDebounceId !== null)
@@ -308,7 +368,6 @@ onMounted(() => {
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
 
-  // 初始：根据键盘状态限制像素 max-height
   applyDynamicMaxHeight()
 
   // Android/Chrome：Virtual Keyboard API
@@ -393,6 +452,7 @@ function handleCancel() {
   emit('cancel')
 }
 
+// 抽出 onBlur，避免模板中一行两语句
 function onBlur() {
   handleBlur()
   emit('blur')
@@ -535,7 +595,6 @@ function runToolbarAction(fn: () => void) {
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
@@ -584,6 +643,7 @@ function handleEnterKey(event: KeyboardEvent) {
   if (!match)
     return
 
+  // 情况 1：空的列表项 -> 取消列表并换行
   if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
@@ -600,6 +660,7 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
+  // 情况 2：普通列表项 -> 插入换行并续号
   event.preventDefault()
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
@@ -646,6 +707,7 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
+// 高度变化 -> 通知父组件重新布局
 watch(textarea, (newTextarea) => {
   if (newTextarea) {
     const observer = new MutationObserver(() => {
@@ -669,12 +731,14 @@ watch(textarea, (newTextarea) => {
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
-        @focus="emit('focus')"
+        @focus="handleFocus"
         @blur="onBlur"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
         @input="handleInput"
+        @pointerup="handleTapAlignIfAtEnd"
+        @click="handleTapAlignIfAtEnd"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -829,6 +893,7 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
+  /* 避免浏览器滚动锚定把容器推到底 */
   overflow-anchor: none;
 }
 
@@ -848,6 +913,7 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
+  /* 避免滚动条出现/消失时抖动 */
   scrollbar-gutter: stable both-edges;
 }
 
