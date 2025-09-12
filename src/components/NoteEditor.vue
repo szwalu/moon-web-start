@@ -230,6 +230,36 @@ function applyDynamicMaxHeight() {
   // 不在此处直接滚动，滚动统一由 ensureCaretVisible 处理
 }
 
+/** 把光标移动到文本末尾，并确保滚到可见（键盘上沿之上） */
+function moveCaretToEndAndReveal() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 双 rAF + nextTick：等待键盘动画/视觉视口稳定后再定位
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      nextTick(() => {
+        const len = el.value.length
+        el.focus()
+        el.setSelectionRange(len, len)
+        // 先尽量把 textarea 内部滚到底（避免先前位置影响）
+        el.scrollTop = el.scrollHeight
+
+        // 动态限制高度，再确保可见
+        applyDynamicMaxHeight()
+        ensureCaretVisible()
+      })
+    })
+  })
+}
+
+/** 焦点回调：外发 focus 事件 + 移至末尾并滚动到安全区 */
+function onFocus() {
+  emit('focus')
+  moveCaretToEndAndReveal()
+}
+
 /* ============== 确保光标可见 ============== */
 function ensureCaretVisible() {
   const el = textarea.value
@@ -302,6 +332,14 @@ function handleViewportChange() {
       applyDynamicMaxHeight()
       ensureCaretVisible()
       calcDropdownMaxHeight()
+
+      // 如果当前正在编辑（textarea 有焦点），再贴边一次更保险
+      const el = textarea.value
+      if (el && document.activeElement === el) {
+        // 不改变选区（如果用户手动选中间就尊重），只做可见性校正
+        // 但如果你希望“始终到末尾”，可以改为 moveCaretToEndAndReveal()
+        ensureCaretVisible()
+      }
     })
   })
 }
@@ -672,7 +710,7 @@ watch(textarea, (newTextarea) => {
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
-        @focus="emit('focus')"
+        @focus="onFocus"
         @blur="onBlur"
         @keydown="handleEnterKey"
         @compositionstart="onCompositionStart"
