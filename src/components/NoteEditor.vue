@@ -47,19 +47,15 @@ let blurTimeoutId: number | null = null
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
-// 菜单最大高度：随屏幕/键盘动态调整（仅用于下拉，不影响编辑器）
 const dropdownMaxHeight = ref(320)
 function calcDropdownMaxHeight() {
-  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight
-  const kb = getKeyboardHeight()
-  const effective = Math.max(200, Math.min(vh - 64, 360 - Math.min(kb, 200) * 0.25))
-  dropdownMaxHeight.value = Math.round(effective)
+  const vv = window.visualViewport
+  const vh = vv ? vv.height : window.innerHeight
+  dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
 }
 
-// 抑制“打开标签下拉时”的那一次 blur 外发
 const suppressNextBlur = ref(false)
 
-// 稳妥回焦（双 rAF）
 function refocusEditorAndAnnounce() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -95,13 +91,11 @@ function handleSelectFromMenu(tag: string) {
   refocusEditorAndAnnounce()
 }
 
-// 连接 useTagMenu
 const {
   mainMenuVisible: tagMenuVisible,
   tagMenuChildren,
 } = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 
-// 为“叶子标签项”注入 onClick
 type Opt = any
 function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
@@ -145,7 +139,7 @@ function onCompositionStart() {
 function onCompositionEnd() {
   isComposing.value = false
   nextTick(() => {
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -175,20 +169,6 @@ function getVKRect(): DOMRect | null {
   return null
 }
 
-function getKeyboardHeight(): number {
-  const vkRect = getVKRect()
-  if (vkRect)
-    return Math.round(vkRect.height)
-
-  const vv = window.visualViewport
-  if (vv) {
-    const keyboardTop = vv.offsetTop + vv.height
-    const h = Math.max(0, Math.round(window.innerHeight - keyboardTop))
-    return h
-  }
-  return 0
-}
-
 /** 返回“安全可见底边”的 Y 坐标（键盘上沿 - padding） */
 function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
@@ -204,41 +184,36 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 关键：仅用“底部留白”抵消遮挡，不再改高度 ============== */
-/** 计算键盘遮挡高度 */
-function getOccludedHeight(): number {
-  const vk = (navigator as any).virtualKeyboard
-  if (vk && vk.boundingRect && typeof vk.boundingRect === 'object') {
-    const rect: DOMRect = vk.boundingRect
-    if (rect && rect.height >= 1)
-      return Math.round(rect.height)
-  }
-  const vv = window.visualViewport
-  if (vv) {
-    const keyboardTop = vv.offsetTop + vv.height
-    return Math.max(0, Math.round(window.innerHeight - keyboardTop))
-  }
-  return 0
+/* ============== 动态 max-height（像素）：基于安全底边精确限制 ============== */
+function getFooterHeight(): number {
+  const el = editorFooterRef.value
+  if (!el)
+    return 0
+
+  return el.offsetHeight || 0
 }
 
-/** 用“外层 padding-bottom”抵消遮挡：不改 textarea 高度，只提供可滚空间 */
-function applyOcclusionPadding() {
-  const host = editorWrapperRef.value
-  if (!host)
+function applyDynamicMaxHeight() {
+  const el = textarea.value
+  if (!el)
     return
 
-  const footerH = editorFooterRef.value?.offsetHeight || 0
-  const SAFE_GAP = 8
-  const occluded = getOccludedHeight()
-  const need = Math.max(0, occluded - footerH + SAFE_GAP)
+  const rect = el.getBoundingClientRect()
+  const safeBottom = getSafeViewportBottom()
+  const footerH = getFooterHeight()
+  const SAFE_GAP = 10
 
-  const prev = (host.style.paddingBottom || '0').replace('px', '')
-  const prevNum = Number.isFinite(+prev) ? +prev : 0
-  if (Math.abs(prevNum - need) > 1)
-    host.style.paddingBottom = `${need}px`
+  const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
+  const maxPx = Math.max(120, usable)
+
+  // 仅在变化时写 style，避免频繁重排
+  const prev = (el.style.maxHeight || '').trim()
+  const next = `${maxPx}px`
+  if (prev !== next)
+    el.style.maxHeight = next
 }
 
-/* ============== 确保光标可见（原样保留，微调滚动） ============== */
+/* ============== 确保光标可见（textarea + 外层可滚容器 + 键盘遮挡） ============== */
 function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
@@ -246,7 +221,6 @@ function ensureCaretVisible() {
 
   const style = getComputedStyle(el)
 
-  // mirror 估算 caret 垂直位置（考虑自动换行）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
@@ -259,7 +233,10 @@ function ensureCaretVisible() {
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  const before = val.slice(0, selEnd)
+    .replace(/\n$/, '\n ')
+    .replace(/ /g, '\u00A0')
+
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
@@ -272,54 +249,67 @@ function ensureCaretVisible() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+  if (caretDesiredBottom > viewBottom) {
+    const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+    el.scrollTop = newTop
+  }
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
 
   // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
-  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-  const visibleBottom = scrollable
-    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
-    : getSafeViewportBottom()
-  const visibleTop = scrollable ? scrollable.getBoundingClientRect().top : 0
-  const padding = 8
+  if (scrollable) {
+    const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const ancRect = scrollable.getBoundingClientRect()
+    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
+    const visibleTop = ancRect.top
+    const padding = 8
 
-  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-  if (caretAbsBottom > visibleBottom) {
-    const deltaDown = (caretAbsBottom - visibleBottom) + padding
-    if (scrollable)
+    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
+      const deltaDown = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
       scrollable.scrollTop += deltaDown
-    else
-      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
-  }
-  else if (caretAbsTop < visibleTop) {
-    const deltaUp = (visibleTop - caretAbsTop) + padding
-    if (scrollable)
+    }
+    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
+      const deltaUp = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
       scrollable.scrollTop -= deltaUp
-    else
-      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
+    }
+  }
+
+  // 兜底：如果没可滚祖先，尝试滚动窗口
+  if (!scrollable) {
+    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const safeBottom = getSafeViewportBottom()
+    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    if (delta > 0)
+      window.scrollBy({ top: delta + 8, left: 0, behavior: 'auto' })
   }
 }
 
-/* 监听 visualViewport（键盘弹出/收起） */
+/* ============== 监听（键盘弹出/收起 + 视口变化） ============== */
+let vvDebounceId: number | null = null
 function handleViewportChange() {
-  requestAnimationFrame(() => {
-    nextTick(() => {
-      applyOcclusionPadding()
-      ensureCaretVisible()
-      calcDropdownMaxHeight()
+  if (vvDebounceId !== null)
+    window.clearTimeout(vvDebounceId)
+
+  vvDebounceId = window.setTimeout(() => {
+    vvDebounceId = null
+    requestAnimationFrame(() => {
+      nextTick(() => {
+        applyDynamicMaxHeight()
+        ensureCaretVisible()
+        calcDropdownMaxHeight()
+      })
     })
-  })
+  }, 80)
 }
 
 onMounted(() => {
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
 
-  // 初始：根据键盘状态加底部留白
-  applyOcclusionPadding()
+  // 初始：根据键盘状态限制像素 max-height
+  applyDynamicMaxHeight()
 
   // Android/Chrome：Virtual Keyboard API
   const vk = (navigator as any).virtualKeyboard
@@ -339,9 +329,9 @@ onMounted(() => {
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
 
-  // 监听 footer 高度变化（按钮显隐/文字换行等），重算底部留白
+  // 监听 footer 高度变化（按钮显隐/文字换行等），重算像素 max-height
   const ro = new ResizeObserver(() => {
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
   })
   if (editorFooterRef.value)
     ro.observe(editorFooterRef.value)
@@ -378,7 +368,7 @@ watch(() => tagMenuVisible.value, (v) => {
     calcDropdownMaxHeight()
 })
 
-/* ============== 文本与插入工具（保持原样，仅替换为 applyOcclusionPadding） ============== */
+/* ============== 文本与插入工具（保持优秀版逻辑） ============== */
 function updateTextarea(newText: string, newCursorPos: number) {
   const el = textarea.value
   if (!el)
@@ -390,7 +380,7 @@ function updateTextarea(newText: string, newCursorPos: number) {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
     el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -403,7 +393,6 @@ function handleCancel() {
   emit('cancel')
 }
 
-// 抽出单独 onBlur，避免模板中一行两语句
 function onBlur() {
   handleBlur()
   emit('blur')
@@ -466,7 +455,7 @@ function handleInput(event: Event) {
 
   if (!isComposing.value) {
     nextTick(() => {
-      applyOcclusionPadding()
+      applyDynamicMaxHeight()
       ensureCaretVisible()
     })
   }
@@ -490,7 +479,7 @@ function selectTag(tag: string) {
     const newCursorPos = lastHashIndex + tag.length + 1
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -527,7 +516,7 @@ function _addTag() {
     if (el)
       el.dispatchEvent(new Event('input'))
 
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -538,7 +527,7 @@ function runToolbarAction(fn: () => void) {
     if (textarea.value)
       textarea.value.focus()
 
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -595,7 +584,6 @@ function handleEnterKey(event: KeyboardEvent) {
   if (!match)
     return
 
-  // 情况 1：空的列表项 -> 取消列表并换行
   if (currentLine.trim() === match[0].trim()) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
@@ -606,13 +594,12 @@ function handleEnterKey(event: KeyboardEvent) {
       el.focus()
       const pos = currentLineStart - 1
       el.setSelectionRange(pos, pos)
-      applyOcclusionPadding()
+      applyDynamicMaxHeight()
       ensureCaretVisible()
     })
     return
   }
 
-  // 情况 2：普通列表项 -> 插入换行并续号
   event.preventDefault()
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
@@ -624,7 +611,7 @@ function handleEnterKey(event: KeyboardEvent) {
     el.focus()
     const newCursorPos = start + nextPrefix.length
     el.setSelectionRange(newCursorPos, newCursorPos)
-    applyOcclusionPadding()
+    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -659,7 +646,6 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-// 高度变化 -> 通知父组件重新布局
 watch(textarea, (newTextarea) => {
   if (newTextarea) {
     const observer = new MutationObserver(() => {
@@ -710,7 +696,6 @@ watch(textarea, (newTextarea) => {
     <div ref="editorFooterRef" class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <!-- 用标签下拉替换原按钮（默认插槽仅一个子节点） -->
           <NDropdown
             v-model:show="tagMenuVisible"
             trigger="manual"
@@ -844,15 +829,14 @@ watch(textarea, (newTextarea) => {
 
 .editor-wrapper {
   position: relative;
-  /* 避免浏览器滚动锚定把容器推到底 */
   overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 固定视觉上限：不再由 JS 改写 */
-  max-height: 70vh;
+  /* 下面这行仅作兜底；运行时由 JS 动态设置像素 max-height 覆盖它 */
+  max-height: 50vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -864,7 +848,6 @@ watch(textarea, (newTextarea) => {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  /* 避免滚动条出现/消失时抖动 */
   scrollbar-gutter: stable both-edges;
 }
 
@@ -984,7 +967,7 @@ watch(textarea, (newTextarea) => {
   align-items: center;
 }
 
-/* 这里不要再强行设定高度，交给 props 控制；滚动增强 */
+/* 仅用于 NDropdown 下拉 */
 :global(.n-dropdown-menu) {
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -992,7 +975,6 @@ watch(textarea, (newTextarea) => {
 }
 </style>
 
-<!-- 只针对“可滚动”的 Naive UI 下拉，恢复高度与滚动（不会影响主页一级菜单） -->
 <style>
 .n-dropdown-menu.n-dropdown-menu--scrollable {
   max-height: min(60vh, 360px) !important;
