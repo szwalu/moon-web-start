@@ -39,8 +39,39 @@ const editorFooterRef = ref<HTMLElement | null>(null)
 
 /* ============== 运行期状态：聚焦与抖动抑制 ============== */
 const isFocused = ref(false)
-/** 在此时间戳之前禁止 window.scrollBy（仅允许滚动可滚容器），避免 iOS 聚焦被程序滚动打断 */
+/** 在此时间戳之前禁止 window.scrollBy（仅允许滚动可滚容器），避免 iOS/Android 聚焦被程序滚动打断 */
 let suppressWindowScrollUntil = 0
+
+/* ============== 平台探测 & “键盘稳定后再执行”调度器 ============== */
+const ua = navigator.userAgent.toLowerCase()
+const isAndroid = /android/.test(ua)
+const isChromeLike = ((/chrome|crios/.test(ua) && !/edge|edg\//.test(ua)) || /samsungbrowser/.test(ua))
+const isAndroidChrome = isAndroid && isChromeLike
+
+let keyboardStableTimer: number | null = null
+let pendingKeyboardTasks: Array<() => void> = []
+
+function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 450 : 300) {
+  pendingKeyboardTasks.push(fn)
+  if (keyboardStableTimer !== null)
+    window.clearTimeout(keyboardStableTimer)
+
+  keyboardStableTimer = window.setTimeout(flushKeyboardTasks, fallbackMs)
+}
+
+function flushKeyboardTasks() {
+  const tasks = pendingKeyboardTasks.slice()
+  pendingKeyboardTasks = []
+  keyboardStableTimer = null
+  for (const task of tasks) {
+    try {
+      task()
+    }
+    catch {
+      // ignore
+    }
+  }
+}
 
 /* ============== Tag 提示 ============== */
 const showTagSuggestions = ref(false)
@@ -143,7 +174,7 @@ function onCompositionStart() {
 function onCompositionEnd() {
   isComposing.value = false
   nextTick(() => {
-    applyDynamicMaxHeight()
+    // 输入结束时不强制改高，仅校正可见性（改高放到键盘稳定时机）
     ensureCaretVisible()
   })
 }
@@ -187,7 +218,7 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 动态 max-height（像素）：先限高，再校正 ============== */
+/* ============== 动态 max-height（像素）：先限高，再校正（集中在键盘稳定时） ============== */
 function getFooterHeight(): number {
   const el = editorFooterRef.value
   if (!el)
@@ -289,25 +320,40 @@ function ensureCaretVisible() {
 
 /* ============== 焦点获取：延后校正，避免首点失焦与抖动 ============== */
 function handlePointerDown() {
-  // no-op: 保留绑定以兼容模板，避免 iOS 双击放大一类副作用
+  // Android Chrome 某些机型 click 不触发 focus：加兜底
+  const el = textarea.value
+  if (!el)
+    return
+
+  window.setTimeout(() => {
+    if (document.activeElement !== el)
+      el.focus()
+  }, 60)
 }
 
 function handleFocus() {
   isFocused.value = true
   emit('focus')
 
-  const now = Date.now()
-  suppressWindowScrollUntil = now + 400
+  // 尝试开启 overlaysContent（部分机型需要在 focus 后设置）
+  const vk = (navigator as any).virtualKeyboard
+  if (vk) {
+    try {
+      vk.overlaysContent = true
+    }
+    catch {
+      // ignore
+    }
+  }
 
-  requestAnimationFrame(() => {
-    nextTick(() => {
-      applyDynamicMaxHeight()
-      ensureCaretVisible()
-      window.setTimeout(() => {
-        applyDynamicMaxHeight()
-        ensureCaretVisible()
-      }, 120)
-    })
+  // 键盘动画期禁止 window 滚动
+  const now = Date.now()
+  suppressWindowScrollUntil = now + (isAndroidChrome ? 600 : 400)
+
+  // 等键盘稳定后再统一改高 + 对齐
+  scheduleAfterKeyboardStable(() => {
+    applyDynamicMaxHeight()
+    ensureCaretVisible()
   })
 }
 
@@ -372,35 +418,32 @@ function gentleRevealIfOccludedAtEnd() {
 }
 
 function handleTapAlignIfAtEnd() {
-  // 仅在真正获得焦点后再去对齐，避免首点因程序滚动丢焦
   if (!isFocused.value)
     return
 
   requestAnimationFrame(() => {
     nextTick(() => {
-      applyDynamicMaxHeight()
+      // 对齐时不强制改高，保持平稳
       gentleRevealIfOccludedAtEnd()
     })
   })
 }
 
-/* ============== 键盘/视口变化：先限高再校正 + 轻防抖 ============== */
+/* ============== 键盘/视口变化：先限高再校正 + 轻防抖（统一调度） ============== */
 let vvDebounceId: number | null = null
 function handleViewportChange() {
   // 键盘动画期禁止 window 滚动
-  suppressWindowScrollUntil = Date.now() + 220
+  suppressWindowScrollUntil = Date.now() + (isAndroidChrome ? 320 : 220)
 
   if (vvDebounceId !== null)
     window.clearTimeout(vvDebounceId)
 
   vvDebounceId = window.setTimeout(() => {
     vvDebounceId = null
-    requestAnimationFrame(() => {
-      nextTick(() => {
-        applyDynamicMaxHeight()
-        ensureCaretVisible()
-        calcDropdownMaxHeight()
-      })
+    scheduleAfterKeyboardStable(() => {
+      applyDynamicMaxHeight()
+      ensureCaretVisible()
+      calcDropdownMaxHeight()
     })
   }, 80)
 }
@@ -409,7 +452,10 @@ onMounted(() => {
   calcDropdownMaxHeight()
   window.addEventListener('resize', calcDropdownMaxHeight)
 
-  applyDynamicMaxHeight()
+  // 初次也放入“键盘稳定”队列，避免刚进页面测量扰动
+  scheduleAfterKeyboardStable(() => {
+    applyDynamicMaxHeight()
+  })
 
   // Android/Chrome：Virtual Keyboard API
   const vk = (navigator as any).virtualKeyboard
@@ -417,7 +463,7 @@ onMounted(() => {
     try {
       vk.overlaysContent = true
     }
-    catch (_e) {
+    catch {
       // ignore
     }
     vk.addEventListener('geometrychange', handleViewportChange)
@@ -429,9 +475,11 @@ onMounted(() => {
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
 
-  // 监听 footer 高度变化，重算像素 max-height
+  // 监听 footer 高度变化，重算像素 max-height（同样放入稳定调度）
   const ro = new ResizeObserver(() => {
-    applyDynamicMaxHeight()
+    scheduleAfterKeyboardStable(() => {
+      applyDynamicMaxHeight()
+    })
   })
   if (editorFooterRef.value)
     ro.observe(editorFooterRef.value)
@@ -447,7 +495,7 @@ onUnmounted(() => {
     try {
       vk.overlaysContent = true
     }
-    catch (_e) {
+    catch {
       // ignore
     }
     vk.removeEventListener('geometrychange', handleViewportChange)
@@ -480,7 +528,7 @@ function updateTextarea(newText: string, newCursorPos: number) {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
     el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
-    applyDynamicMaxHeight()
+    // 这里仅做可见性校正，不再改 maxHeight，避免输入期抖动
     ensureCaretVisible()
   })
 }
@@ -540,7 +588,7 @@ function handleInput(event: Event) {
 
   if (!isComposing.value) {
     nextTick(() => {
-      applyDynamicMaxHeight()
+      // 输入期只滚动可见性，不改 maxHeight
       ensureCaretVisible()
     })
   }
@@ -564,7 +612,7 @@ function selectTag(tag: string) {
     const newCursorPos = lastHashIndex + tag.length + 1
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
-    applyDynamicMaxHeight()
+    // 选中标签后也只做可见性校正
     ensureCaretVisible()
   })
 }
@@ -601,7 +649,6 @@ function _addTag() {
     if (el)
       el.dispatchEvent(new Event('input'))
 
-    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -612,7 +659,6 @@ function runToolbarAction(fn: () => void) {
     if (textarea.value)
       textarea.value.focus()
 
-    applyDynamicMaxHeight()
     ensureCaretVisible()
   })
 }
@@ -683,7 +729,6 @@ function handleEnterKey(event: KeyboardEvent) {
         el.focus()
         const pos = currentLineStart - 1
         el.setSelectionRange(pos, pos)
-        applyDynamicMaxHeight()
         ensureCaretVisible()
       })
     })
@@ -703,7 +748,6 @@ function handleEnterKey(event: KeyboardEvent) {
       el.focus()
       const newCursorPos = start + nextPrefix.length
       el.setSelectionRange(newCursorPos, newCursorPos)
-      applyDynamicMaxHeight()
       ensureCaretVisible()
     })
   })
