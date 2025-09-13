@@ -169,6 +169,7 @@ defineExpose({
             :note="note"
             :data-note-id="note.id"
             :is-expanded="expandedNoteId === note.id"
+            :dropdown-in-place="true"
             @toggle-expand="toggleExpandInCalendar"
             @edit="noteToEdit => emit('editNote', noteToEdit)"
             @copy="content => emit('copy', content)"

@@ -16,6 +16,7 @@ const props = defineProps({
   isExpanded: { type: Boolean, default: false },
   isSelectionModeActive: { type: Boolean, default: false },
   searchQuery: { type: String, default: '' },
+  dropdownInPlace: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated'])
@@ -233,6 +234,8 @@ async function handleDateUpdate(newDate: Date) {
         placement="bottom-end"
         :options="getDropdownOptions(note)"
         :style="{ minWidth: '220px' }"
+        :to="props.dropdownInPlace ? false : undefined"
+        :z-index="props.dropdownInPlace ? 6001 : undefined"
         @select="handleDropdownSelect"
       >
         <div class="kebab-menu">
