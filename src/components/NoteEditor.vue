@@ -2,7 +2,6 @@
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { useTagMenu } from '@/composables/useTagMenu'
 
@@ -44,15 +43,9 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// ============== 平台探测 & 键盘稳定调度器 ==============
-const ua = navigator.userAgent.toLowerCase()
-const isAndroid = /android/.test(ua)
-const isChromeLike = ((/chrome|crios/.test(ua) && !/edge|edg\//.test(ua)) || /samsungbrowser/.test(ua))
-const isAndroidChrome = isAndroid && isChromeLike
-
+// ============== 键盘稳定调度器 ==============
 let keyboardStableTimer: number | null = null
-
-function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 500 : 300) {
+function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = 300) {
   if (keyboardStableTimer !== null)
     window.clearTimeout(keyboardStableTimer)
   keyboardStableTimer = window.setTimeout(() => {
@@ -63,19 +56,7 @@ function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrom
   }, fallbackMs)
 }
 
-// ============== 视口与键盘高度计算 ==============
-function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
-  let el: HTMLElement | null = node?.parentElement || null
-  while (el) {
-    const style = getComputedStyle(el)
-    const canScroll = /(auto|scroll)/.test(style.overflowY)
-    if (canScroll && el.clientHeight < el.scrollHeight)
-      return el
-    el = el.parentElement
-  }
-  return null
-}
-
+// ============== 视口与高度计算 ==============
 function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
   const vv = window.visualViewport
@@ -124,50 +105,13 @@ function onBlur() {
 function handleViewportChange() {
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-  }, 150)
+  })
 }
 
-function gentleRevealIfOccludedAtEnd() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
-  if (!atEnd)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-  const before = el.value.slice(0, el.selectionEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const scrollable = getScrollableAncestor(el)
-  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-  const safeBottom = getSafeViewportBottom()
-  const padding = 8
-  const desiredBottom = safeBottom - padding
-  const need = desiredBottom - caretAbsBottom
-  if (need > 1) {
-    if (scrollable)
-      scrollable.scrollTop += need
-
-    else
-      window.scrollBy({ top: need, left: 0, behavior: 'auto' })
-  }
-}
-
-function handleTapAlignIfAtEnd() {
+function handleTap() {
+  // 简单点击时，只调整高度，把滚动交给浏览器
   requestAnimationFrame(() => {
-    nextTick(() => {
-      applyDynamicMaxHeight()
-      gentleRevealIfOccludedAtEnd()
-    })
+    applyDynamicMaxHeight()
   })
 }
 
@@ -359,7 +303,7 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-// ============== 标签菜单。 ==============
+// ============== 标签菜单 ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
@@ -417,8 +361,7 @@ defineExpose({ reset: triggerResize })
         :maxlength="maxNoteLength"
         @focus="handleFocus"
         @blur="onBlur"
-        @click="handleTapAlignIfAtEnd"
-        @pointerup="handleTapAlignIfAtEnd"
+        @click="handleTap"
         @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
