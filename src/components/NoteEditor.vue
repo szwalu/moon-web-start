@@ -154,11 +154,12 @@ function gentleRevealIfOccludedAtEnd() {
   const desiredBottom = safeBottom - padding
   const need = desiredBottom - caretAbsBottom
   if (need > 1) {
-    if (scrollable)
+    if (scrollable) {
       scrollable.scrollTop += need
-
-    else
+    }
+    else {
       window.scrollBy({ top: need, left: 0, behavior: 'auto' })
+    }
   }
 }
 
@@ -326,6 +327,7 @@ function handleEnterKey(event: KeyboardEvent) {
   const after2 = el.value.substring(end)
   updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
+
 
 // ============== 生命周期与 Watchers ==============
 onMounted(() => {
