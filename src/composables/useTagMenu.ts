@@ -108,6 +108,7 @@ export function useTagMenu(
             'clearable': true,
             'autofocus': true,
             'size': 'small',
+            'style': 'font-size:16px;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(), // 防止方向键影响菜单聚焦
           }),
         ]),
