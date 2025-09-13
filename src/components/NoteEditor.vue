@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, ref, watch } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -29,75 +29,140 @@ const contentModel = computed({
   },
 })
 
-// ============== Autosize (核心功能) ==============
+// ============== Autosize ==============
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
-// ============== 状态 ==============
+// ============== Refs ==============
+const editorFooterRef = ref<HTMLElement | null>(null)
+
+// ============== 状态与抑制标志 ==============
 const isComposing = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
+let suppressWindowScrollUntil = 0
 
-// ============== Tag 提示 ==============
-const showTagSuggestions = ref(false)
-const tagSuggestions = ref<string[]>([])
-const suggestionsStyle = ref({ top: '0px', left: '0px' })
+// ============== 平台探测 & 键盘稳定调度器 ==============
+const ua = navigator.userAgent.toLowerCase()
+const isAndroid = /android/.test(ua)
+const isChromeLike = ((/chrome|crios/.test(ua) && !/edge|edg\//.test(ua)) || /samsungbrowser/.test(ua))
+const isAndroidChrome = isAndroid && isChromeLike
 
-// ============== 标签下拉菜单 ==============
-const { t } = useI18n()
-const allTagsRef = computed(() => props.allTags)
+let keyboardStableTimer: number | null = null
 
-function handleSelectFromMenu(tag: string) {
+function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 500 : 300) {
+  if (keyboardStableTimer !== null)
+    window.clearTimeout(keyboardStableTimer)
+
+  keyboardStableTimer = window.setTimeout(() => {
+    try {
+      fn()
+    }
+    catch { /* ignore */ }
+  }, fallbackMs)
+}
+
+// ============== 视口与键盘高度计算 (核心功能恢复) ==============
+function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = node?.parentElement || null
+  while (el) {
+    const style = getComputedStyle(el)
+    const canScroll = /(auto|scroll)/.test(style.overflowY)
+    if (canScroll && el.clientHeight < el.scrollHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
+function getSafeViewportBottom(): number {
+  const SAFE_PADDING = 10
+  const vv = window.visualViewport
+  if (vv)
+    return vv.offsetTop + vv.height - SAFE_PADDING
+  return window.innerHeight - SAFE_PADDING
+}
+
+function getFooterHeight(): number {
+  return editorFooterRef.value?.offsetHeight || 0
+}
+
+function applyDynamicMaxHeight() {
   const el = textarea.value
   if (!el)
     return
 
-  const cursorPos = el.selectionStart
-  const before = el.value.substring(0, cursorPos)
-  const after = el.value.substring(cursorPos)
-  const textToInsert = `${tag} `
-  const newText = `${before}${textToInsert}${after}`
-  const newPos = cursorPos + textToInsert.length
-  updateTextarea(newText, newPos)
+  const rect = el.getBoundingClientRect()
+  const safeBottom = getSafeViewportBottom()
+  const footerH = getFooterHeight()
+  const SAFE_GAP = 10
+  const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
+  const maxPx = Math.max(120, usable)
+
+  el.style.maxHeight = `${maxPx}px`
 }
 
-const {
-  mainMenuVisible: tagMenuVisible,
-  tagMenuChildren,
-} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+function ensureCaretVisible() {
+  const el = textarea.value
+  if (!el)
+    return
 
-type Opt = any
-function injectClickHandlers(opts: Opt[]): Opt[] {
-  return opts.map((o) => {
-    if (!o)
-      return o
-    if (o.type === 'group' && Array.isArray(o.children))
-      return { ...o, children: injectClickHandlers(o.children) }
-    if (o.type === 'render')
-      return o
-    if (typeof o.key === 'string' && o.key.startsWith('#')) {
-      const click = (_e: MouseEvent) => {
-        handleSelectFromMenu(o.key)
-        tagMenuVisible.value = false
-      }
-      const mergedProps = { ...(o.props || {}), onClick: click }
-      const wrappedLabel = typeof o.label === 'function' ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()]) : o.label
-      return { ...o, props: mergedProps, label: wrappedLabel }
-    }
-    return o
-  })
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
+
+  const scrollable = getScrollableAncestor(el)
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const visibleBottom = scrollable ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom()) : getSafeViewportBottom()
+  const visibleTop = scrollable ? scrollable.getBoundingClientRect().top : 0
+  const padding = 8
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+
+  if (caretAbsBottom > visibleBottom) {
+    const deltaDown = (caretAbsBottom - visibleBottom) + padding
+    if (scrollable)
+      scrollable.scrollTop += deltaDown
+    else if (Date.now() > suppressWindowScrollUntil)
+      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
+  }
+  else if (caretAbsTop < visibleTop) {
+    const deltaUp = (visibleTop - caretAbsTop) + padding
+    if (scrollable)
+      scrollable.scrollTop -= deltaUp
+    else if (Date.now() > suppressWindowScrollUntil)
+      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
+  }
 }
-
-function openTagMenu() {
-  suppressNextBlur.value = true
-  tagMenuVisible.value = true
-}
-
-const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
+  const now = Date.now()
+  suppressWindowScrollUntil = now + (isAndroidChrome ? 650 : 400)
+  scheduleAfterKeyboardStable(() => {
+    applyDynamicMaxHeight()
+    ensureCaretVisible()
+  })
 }
 
 function onBlur() {
@@ -111,8 +176,16 @@ function onBlur() {
   }, 200)
 }
 
+function handleViewportChange() {
+  scheduleAfterKeyboardStable(() => {
+    applyDynamicMaxHeight()
+    ensureCaretVisible()
+  }, 150)
+}
+
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
+  // Tag suggestion logic
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
@@ -125,7 +198,6 @@ function handleInput(event: Event) {
     tagSuggestions.value = props.allTags.filter(tag =>
       tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
     )
-
     if (tagSuggestions.value.length > 0) {
       const textLines = textBeforeCursor.split('\n')
       const currentLine = textLines.length - 1
@@ -137,10 +209,9 @@ function handleInput(event: Event) {
       el.parentNode?.appendChild(measure)
       const leftOffset = measure.offsetWidth
       el.parentNode?.removeChild(measure)
-      const host = el as HTMLElement
       suggestionsStyle.value = {
-        top: `${host.offsetTop + topOffset + lineHeight}px`,
-        left: `${host.offsetLeft + leftOffset}px`,
+        top: `${el.offsetTop + topOffset + lineHeight}px`,
+        left: `${el.offsetLeft + leftOffset}px`,
       }
       showTagSuggestions.value = true
     }
@@ -150,17 +221,16 @@ function handleInput(event: Event) {
   }
 }
 
-// ============== 文本操作 ==============
+// ============== 文本与工具栏操作 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
-  const el = textarea.value
-  if (!el)
-    return
-
   input.value = newText
   nextTick(() => {
-    el.focus()
-    if (newCursorPos !== undefined)
-      el.setSelectionRange(newCursorPos, newCursorPos)
+    const el = textarea.value
+    if (el) {
+      el.focus()
+      if (newCursorPos !== undefined)
+        el.setSelectionRange(newCursorPos, newCursorPos)
+    }
   })
 }
 
@@ -168,15 +238,13 @@ function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
     return
-
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
   const textAfterCursor = el.value.substring(cursorPos)
   const newText = `${el.value.substring(0, lastHashIndex)}${tag} ${textAfterCursor}`
-
-  showTagSuggestions.value = false
   const newCursorPos = lastHashIndex + tag.length + 1
+  showTagSuggestions.value = false
   updateTextarea(newText, newCursorPos)
 }
 
@@ -184,19 +252,16 @@ function insertText(prefix: string, suffix = '') {
   const el = textarea.value
   if (!el)
     return
-
   const start = el.selectionStart
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
   const newTextFragment = `${prefix}${selectedText}${suffix}`
   const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
   const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
-
   if (blurTimeoutId) {
     clearTimeout(blurTimeoutId)
     blurTimeoutId = null
   }
-
   updateTextarea(finalFullText, newCursorPos)
 }
 
@@ -262,9 +327,7 @@ function handleEnterKey(event: KeyboardEvent) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
-    const newText = before + after
-    const newPos = currentLineStart - 1
-    updateTextarea(newText, newPos)
+    updateTextarea(before + after, currentLineStart - 1)
     return
   }
 
@@ -273,21 +336,79 @@ function handleEnterKey(event: KeyboardEvent) {
   const nextPrefix = `\n${currentNumber + 1}. `
   const before2 = el.value.substring(0, start)
   const after2 = el.value.substring(end)
-  const newText = before2 + nextPrefix + after2
-  const newCursorPos = start + nextPrefix.length
-  updateTextarea(newText, newCursorPos)
+  updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
 
-// ============== Watchers & Expose ==============
+// ============== 生命周期与 Watchers ==============
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange)
+    window.visualViewport.addEventListener('scroll', handleViewportChange)
+  }
+  const ro = new ResizeObserver(applyDynamicMaxHeight)
+  if (editorFooterRef.value)
+    ro.observe(editorFooterRef.value)
+
+  ;(editorFooterRef as any)._ro = ro
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportChange)
+    window.visualViewport.removeEventListener('scroll', handleViewportChange)
+  }
+  const ro = (editorFooterRef as any)._ro
+  if (ro && editorFooterRef.value)
+    ro.unobserve(editorFooterRef.value)
+})
+
 watch(() => props.modelValue, (newValue) => {
   if (newValue === '') {
     nextTick(() => {
       triggerResize()
+      // 清空时也重设一下高度
+      applyDynamicMaxHeight()
     })
   }
 })
 
-// 向父组件暴露方法
+// ============== 标签菜单 ==============
+const { t } = useI18n()
+const allTagsRef = computed(() => props.allTags)
+const {
+  mainMenuVisible: tagMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+
+type Opt = any
+function injectClickHandlers(opts: Opt[]): Opt[] {
+  return opts.map((o) => {
+    if (!o)
+      return o
+    if (o.type === 'group' && Array.isArray(o.children))
+      return { ...o, children: injectClickHandlers(o.children) }
+    if (o.type === 'render')
+      return o
+    if (typeof o.key === 'string' && o.key.startsWith('#')) {
+      const click = (_e: MouseEvent) => {
+        handleSelectFromMenu(o.key)
+        tagMenuVisible.value = false
+      }
+      const mergedProps = { ...(o.props || {}), onClick: click }
+      const wrappedLabel = typeof o.label === 'function' ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()]) : o.label
+      return { ...o, props: mergedProps, label: wrappedLabel }
+    }
+    return o
+  })
+}
+
+function openTagMenu() {
+  suppressNextBlur.value = true
+  tagMenuVisible.value = true
+}
+
+const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
+
 defineExpose({ reset: triggerResize })
 </script>
 
@@ -325,7 +446,7 @@ defineExpose({ reset: triggerResize })
       </div>
     </div>
 
-    <div class="editor-footer">
+    <div ref="editorFooterRef" class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
           <NDropdown
@@ -457,7 +578,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 这是唯一的最大高度限制，行为稳定可预测 */
+  /* 运行时由 JS 动态设置像素 max-height 覆盖它 */
   max-height: 50vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
