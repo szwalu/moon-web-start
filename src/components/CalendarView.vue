@@ -193,7 +193,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   background: white;
-  z-index: 100;
+  z-index: 5000;
   display: flex;
   flex-direction: column;
   color: #333;
