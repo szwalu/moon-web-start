@@ -41,11 +41,14 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// ============== 滚动校准 ==============
-function ensureCaretVisibleInTextarea() {
+// [新功能] “虚拟折叠”滚动逻辑
+function keepCaretAboveFold() {
   const el = textarea.value
   if (!el)
     return
+
+  const FOLD_PERCENTAGE = 0.50 // 光标“停靠”在屏幕50%的位置
+  const foldY = window.innerHeight * FOLD_PERCENTAGE
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
@@ -57,29 +60,29 @@ function ensureCaretVisibleInTextarea() {
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const caretAbsoluteY = el.getBoundingClientRect().top + caretTopInTextarea - el.scrollTop
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  if (caretAbsoluteY > foldY) {
+    const scrollAmount = caretAbsoluteY - foldY
+    el.scrollTop += scrollAmount
+  }
 }
 
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(keepCaretAboveFold)
 }
 
 function onBlur() {
   emit('blur')
+  // [新功能] 收起键盘时，重置滚动条到顶部
+  if (textarea.value)
+    textarea.value.scrollTop = 0
+
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -90,10 +93,11 @@ function onBlur() {
 }
 
 function handleClick() {
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(keepCaretAboveFold)
 }
 
 function handleInput(event: Event) {
+  // 业务逻辑照旧
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
@@ -128,6 +132,10 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
+
+  // [新功能] 每次输入后，都检查一次光标位置
+  if (!isComposing.value)
+    nextTick(keepCaretAboveFold)
 }
 
 // ============== 文本与工具栏操作 ==============
@@ -139,7 +147,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
-      ensureCaretVisibleInTextarea()
+      keepCaretAboveFold()
     }
   })
 }
@@ -461,8 +469,8 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 唯一的最大高度限制，行为稳定可预测 */
-  max-height: 50vh;
+  /* [新功能] 增大物理最大高度 */
+  max-height: 70vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
