@@ -16,7 +16,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'heightChange'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -56,7 +56,6 @@ let keyboardStableTimer: number | null = null
 function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 500 : 300) {
   if (keyboardStableTimer !== null)
     window.clearTimeout(keyboardStableTimer)
-
   keyboardStableTimer = window.setTimeout(() => {
     try {
       fn()
@@ -66,18 +65,6 @@ function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrom
 }
 
 // ============== 视口与键盘高度计算 ==============
-function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
-  let el: HTMLElement | null = node?.parentElement || null
-  while (el) {
-    const style = getComputedStyle(el)
-    const canScroll = /(auto|scroll)/.test(style.overflowY)
-    if (canScroll && el.clientHeight < el.scrollHeight)
-      return el
-    el = el.parentElement
-  }
-  return null
-}
-
 function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
   const vv = window.visualViewport
@@ -101,22 +88,14 @@ function applyDynamicMaxHeight() {
   const SAFE_GAP = 10
   const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
   const maxPx = Math.max(120, usable)
-
   el.style.maxHeight = `${maxPx}px`
 }
 
-function ensureCaretVisible() {
+function ensureCaretVisibleOnPage() {
   const el = textarea.value
   if (!el)
     return
 
-  // [最终修正] 拆分滚动逻辑，外部滚动现在只在这里处理
-  const scrollable = getScrollableAncestor(el)
-  if (scrollable) {
-    // 暂时简化，主要处理窗口滚动
-  }
-
-  // 仅处理页面级别的滚动
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
@@ -133,7 +112,7 @@ function ensureCaretVisible() {
 
   const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
   const visibleBottom = getSafeViewportBottom()
-  const visibleTop = 0 // 简化为页面顶部
+  const visibleTop = 0
   const padding = 8
   const caretAbsBottom = caretAbsTop + lineHeight * 1.2
 
@@ -149,7 +128,6 @@ function ensureCaretVisible() {
   }
 }
 
-// [最终修正] “轻推”函数，只负责文本框内部滚动
 function gentleScrollTextareaToShowCaret() {
   const el = textarea.value
   if (!el)
@@ -159,21 +137,17 @@ function gentleScrollTextareaToShowCaret() {
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
-
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
-
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
-
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
   else if (caretDesiredTop < viewTop)
@@ -187,7 +161,8 @@ function handleFocus() {
   suppressWindowScrollUntil = now + (isAndroidChrome ? 650 : 400)
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-    ensureCaretVisible()
+    gentleScrollTextareaToShowCaret()
+    ensureCaretVisibleOnPage()
   })
 }
 
@@ -205,13 +180,12 @@ function onBlur() {
 function handleViewportChange() {
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-    ensureCaretVisible()
+    gentleScrollTextareaToShowCaret()
+    ensureCaretVisibleOnPage()
   }, 150)
 }
 
-// [最终修正] 添加 Click 事件处理，执行“轻推”
 function handleClick() {
-  // 延迟一帧执行，确保浏览器光标定位先生效
   requestAnimationFrame(() => {
     gentleScrollTextareaToShowCaret()
   })
@@ -219,7 +193,6 @@ function handleClick() {
 
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
-  // Tag suggestion logic
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
@@ -309,9 +282,11 @@ function runToolbarAction(fn: () => void) {
 function addHeading() {
   insertText('## ', '')
 }
+
 function addBold() {
   insertText('**', '**')
 }
+
 function addItalic() {
   insertText('*', '*')
 }
