@@ -121,16 +121,17 @@ watch(activeTagFilter, (newValue) => {
 })
 
 const mainMenuOptions = computed(() => [
-  {
-    label: '标签',
-    key: 'tags',
-    children: tagMenuChildren.value, // <<— 来自 composable
-  },
   { label: '日历', key: 'calendar' },
   { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
   { label: t('settings.font_title'), key: 'settings' },
   { label: t('notes.export_all'), key: 'export' },
   { label: t('auth.account_title'), key: 'account' },
+
+  // —— 分界线 ——
+  { type: 'divider', key: 'div-tags' },
+
+  // —— 直接把标签分组“平铺”到根菜单中（包含常用分组、A-Z 分组、以及顶部搜索框 render） ——
+  ...tagMenuChildren.value,
 ])
 
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
@@ -1535,12 +1536,15 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 /* === 全局样式（非 scoped）=== */
 
 /* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
-  max-height: none !important;
-  overflow: visible !important;
+  max-height: min(70vh, 520px) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* 只给【子菜单】（第二级及更深）加滚动和高度上限 */
+/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
