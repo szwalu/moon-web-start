@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
@@ -15,47 +15,79 @@ const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const loading = ref(false)
 const lastBackupTime = ref('N/A')
-// 关键改动1：新增一个 sessionReady 状态，默认为 false
+// 关键改动：sessionReady 控制页面可交互时机
 const sessionReady = ref(false)
+let authListener: any = null
 
-// --- 数据获取 ---
-// onMounted 会在组件挂载后执行
+// --- 生命周期：预热 session + 监听变更 ---
 onMounted(async () => {
-  // 关键改动2：主动调用 refreshUser 来确保获取最新的用户状态
-  // 这会等待 Supabase 确认完毕，再继续执行
-  await authStore.refreshUser()
+  // [PATCH-1] 预热一次 session，避免仅依赖回调导致“未知态”
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    if (!error) {
+      const currentUser = data?.session?.user ?? null
+      if (authStore.user?.id !== currentUser?.id)
+        authStore.user = currentUser
+    }
+  }
+  catch {
+    // 忽略错误
+  }
 
+  // [PATCH-2] 订阅会话变更，兜底同步 user，避免卡在未知分支
+  const result = supabase.auth.onAuthStateChange((_event, session) => {
+    authStore.user = session?.user ?? null
+  })
+  authListener = result.data.subscription
+
+  // 加载页面数据
   if (user.value) {
     const { data } = await supabase
       .from('profiles')
       .select('updated_at')
       .eq('id', user.value.id)
       .single()
-    lastBackupTime.value = data?.updated_at
-      ? new Date(`${data.updated_at}Z`).toLocaleString()
-      : '暂无备份'
+    if (data?.updated_at)
+      lastBackupTime.value = new Date(`${data.updated_at}Z`).toLocaleString()
+    else
+      lastBackupTime.value = '暂无备份'
   }
-  // 关键改动3：所有数据加载完毕后，才将 sessionReady 设为 true，允许页面显示内容
+
   sessionReady.value = true
+})
+
+onUnmounted(() => {
+  if (authListener)
+    authListener.unsubscribe()
 })
 
 const lastLoginTime = computed(() => {
   if (user.value?.last_sign_in_at)
     return new Date(user.value.last_sign_in_at).toLocaleString()
+
   return 'N/A'
 })
 
 // --- 方法 ---
 async function handleLogout() {
   loading.value = true
-  await supabase.auth.signOut()
-  window.location.href = '/' // 登出后强制刷新到主页
-  loading.value = false
+  try {
+    await supabase.auth.signOut()
+  }
+  finally {
+    try {
+      await router.replace('/')
+    }
+    catch {
+      window.location.assign('/')
+    }
+    loading.value = false
+  }
 }
 </script>
 
 <template>
-  <div class="account-container">
+  <div class="account-container" :aria-busy="!sessionReady">
     <div v-if="sessionReady && user">
       <h1 class="account-title">{{ t('auth.account_title') }}</h1>
       <div class="info-grid">
@@ -74,10 +106,11 @@ async function handleLogout() {
       </div>
 
       <div class="button-group">
-        <button :disabled="loading" @click="router.push('/')">
+        <!-- [PATCH-3] 返回首页改为纯导航，避免依赖 JS 状态导致点击无效 -->
+        <RouterLink to="/" class="btn-like" role="button" aria-label="Home">
           {{ t('auth.return_home') }}
-        </button>
-        <button class="button--secondary" :disabled="loading" @click="handleLogout">
+        </RouterLink>
+        <button type="button" class="button--secondary" :disabled="loading" @click="handleLogout">
           {{ loading ? t('auth.loading') : t('auth.logout') }}
         </button>
       </div>
@@ -89,7 +122,7 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-/* 这里是账户页面专用的样式 */
+/* 容器与主题 */
 .account-container {
   max-width: 480px;
   margin: 2rem auto;
@@ -102,6 +135,7 @@ async function handleLogout() {
   background: #1e1e1e;
   color: #e0e0e0;
 }
+.account-container[aria-busy="true"] { cursor: progress; }
 
 .account-title {
   font-size: 18px;
@@ -109,10 +143,9 @@ async function handleLogout() {
   margin-bottom: 2rem;
   font-weight: bold;
 }
-.dark .account-title {
-    color: #ffffff;
-}
+.dark .account-title { color: #ffffff; }
 
+/* 信息区 */
 .info-grid p {
   display: flex;
   justify-content: space-between;
@@ -120,25 +153,13 @@ async function handleLogout() {
   padding: 0.5rem 0;
   margin: 0;
 }
-.dark .info-grid p {
-  border-bottom-color: #333;
-}
-.info-label {
-  color: #555;
-  font-weight: bold;
-}
-.dark .info-label {
-  color: #adadad;
-}
+.dark .info-grid p { border-bottom-color: #333; }
+.info-label { color: #555; font-weight: bold; }
+.dark .info-label { color: #adadad; }
+.info-value { color: #111; word-break: break-all; }
+.dark .info-value { color: #ffffff; }
 
-.info-value {
-  color: #111;
-  word-break: break-all;
-}
-.dark .info-value {
-  color: #ffffff;
-}
-
+/* 按钮区 */
 .button-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -146,7 +167,11 @@ async function handleLogout() {
   margin-top: 2rem;
 }
 
+/* RouterLink 视觉上像按钮 */
+.btn-like,
 button {
+  display: inline-block;
+  text-align: center;
   padding: 0.8rem;
   background-color: #00b386;
   color: white;
@@ -154,11 +179,9 @@ button {
   border-radius: 6px;
   cursor: pointer;
   font-size: 15px;
+  text-decoration: none;
 }
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .button--secondary {
   background-color: #f0f0f0;
@@ -170,12 +193,11 @@ button:disabled {
   color: #e0e0e0;
   border-color: #555;
 }
+
 .loading-container {
   text-align: center;
   padding: 2rem;
   color: #666;
 }
-.dark .loading-container {
-  color: #aaa;
-}
+.dark .loading-container { color: #aaa; }
 </style>

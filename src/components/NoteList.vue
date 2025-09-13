@@ -62,6 +62,18 @@ function setNoteContainer(el: Element | null, id: string) {
   noteContainers.value[id] = $el
 }
 
+// ✅ 新增：强制让 DynamicScroller 重新测量/刷新一次（兼容不同版本）
+async function forceRemeasure() {
+  await nextTick()
+  await new Promise<void>(r => requestAnimationFrame(r))
+  await new Promise<void>(r => requestAnimationFrame(r))
+  const s = scrollerRef.value
+  if (s?.forceUpdate)
+    s.forceUpdate(true)
+  else if (s?.updateVisibleItems)
+    s.updateVisibleItems(true)
+}
+
 // ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
 const isUserScrolling = ref(false)
 let scrollHideTimer: number | null = null
@@ -148,6 +160,11 @@ watch(scrollerRef, (newScroller, oldScroller) => {
       updateCollapsePos()
     })
   }
+})
+
+// ✅ 新增：选择模式切换时，强制重测高度，清空旧缓存
+watch(() => props.isSelectionModeActive, () => {
+  forceRemeasure()
 })
 
 onMounted(() => {
@@ -253,6 +270,8 @@ async function toggleExpand(noteId: string) {
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
 
+    // ✅ 新增：展开后立即强制重测，清理高度缓存
+    await forceRemeasure()
     updateCollapsePos()
     return
   }
@@ -283,6 +302,9 @@ async function toggleExpand(noteId: string) {
   target = Math.min(Math.max(0, target), maxScrollTop)
 
   await stableSetScrollTop(scroller, target, 6, 0.5)
+
+  // ✅ 新增：收起后也强制重测一次
+  await forceRemeasure()
   expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
 
   updateCollapsePos()
