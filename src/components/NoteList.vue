@@ -51,20 +51,23 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// ---- 新增：供 :ref 使用的辅助函数，避免模板里出现多语句 ----
+// 供 :ref 使用的辅助函数（处理挂载与卸载）
 function setNoteContainer(el: Element | null, id: string) {
-  if (!el)
+  if (!el) {
+    // 关键：卸载时清理映射，避免命中被复用的旧 DOM
+    delete noteContainers.value[id]
     return
+  }
   const $el = el as HTMLElement
   $el.setAttribute('data-note-id', id)
   noteContainers.value[id] = $el
 }
 
-// ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
+// 滚动状态（快速滚动时先隐藏按钮，停止后再恢复）
 const isUserScrolling = ref(false)
 let scrollHideTimer: number | null = null
 
-// ---- 新增：位置恢复轻量重试（最多 12 帧） ----
+// 位置恢复轻量重试（最多 12 帧）
 let collapseRetryId: number | null = null
 let collapseRetryCount = 0
 function scheduleCollapseRetry() {
@@ -73,7 +76,6 @@ function scheduleCollapseRetry() {
   collapseRetryCount = 0
   const step = () => {
     collapseRetryId = requestAnimationFrame(() => {
-      // 如果用户又开始滚动，停止重试
       if (isUserScrolling.value) {
         cancelAnimationFrame(collapseRetryId!)
         collapseRetryId = null
@@ -105,7 +107,7 @@ const handleScroll = throttle(() => {
       emit('loadMore')
   }
 
-  // —— 新增：滚动中先隐藏按钮，等停止 120ms 再恢复定位 —— //
+  // 滚动中先隐藏按钮，等停止 120ms 再恢复定位
   isUserScrolling.value = true
   collapseVisible.value = false
   if (scrollHideTimer !== null) {
@@ -115,7 +117,6 @@ const handleScroll = throttle(() => {
   scrollHideTimer = window.setTimeout(() => {
     isUserScrolling.value = false
     updateCollapsePos()
-    // 停止后再安排一次轻量重试，确保复用中的节点就位后能恢复按钮
     scheduleCollapseRetry()
   }, 120)
 
@@ -126,20 +127,24 @@ function rebindScrollListener() {
   const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
   if (!scrollerElement)
     return
-  scrollerElement.removeEventListener('scroll', handleScroll)
-  scrollerElement.addEventListener('scroll', handleScroll, { passive: true } as any)
+  scrollerElement.removeEventListener('scroll', handleScroll as any)
+  scrollerElement.addEventListener('scroll', handleScroll as any, { passive: true } as any)
 }
 
-watch(() => props.notes, () => {
-  nextTick(() => {
-    rebindScrollListener()
-    updateCollapsePos()
-  })
-}, { deep: false })
+watch(
+  () => props.notes,
+  () => {
+    nextTick(() => {
+      rebindScrollListener()
+      updateCollapsePos()
+    })
+  },
+  { deep: false },
+)
 
 watch(scrollerRef, (newScroller, oldScroller) => {
   if (oldScroller?.$el)
-    oldScroller.$el.removeEventListener('scroll', handleScroll)
+    oldScroller.$el.removeEventListener('scroll', handleScroll as any)
   if (newScroller?.$el) {
     rebindScrollListener()
     nextTick(() => {
@@ -180,15 +185,11 @@ async function handleUpdateNote() {
   if (!editingNoteId.value)
     return
   isUpdating.value = true
-  emit(
-    'updateNote',
-    { id: editingNoteId.value, content: editingNoteContent.value },
-    (success: boolean) => {
-      if (success)
-        cancelEdit()
-      isUpdating.value = false
-    },
-  )
+  emit('updateNote', { id: editingNoteId.value, content: editingNoteContent.value }, (success: boolean) => {
+    if (success)
+      cancelEdit()
+    isUpdating.value = false
+  })
 }
 
 function _ensureCardVisible(noteId: string) {
@@ -207,8 +208,7 @@ function _ensureCardVisible(noteId: string) {
     card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
 }
 
-// 展开：记录锚点 → 展开 → 等布局 → 把卡片顶部对齐到容器顶部
-// 收起：按“展开瞬间的锚点”恢复位置（你之前的逻辑保持不变）
+// 展开/收起逻辑
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
@@ -221,13 +221,13 @@ async function toggleExpand(noteId: string) {
     return
 
   if (isExpanding) {
-    // —— 展开：先记录锚点（用于日后收起时恢复“展开前”的位置）——
+    // 展开前记录锚点
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
       expandAnchor.value = {
         noteId,
-        topOffset: cardRect.top - scRect.top, // 展开瞬间卡片顶部在容器内的相对位置
+        topOffset: cardRect.top - scRect.top,
         scrollTop: scroller.scrollTop,
       }
     }
@@ -235,23 +235,21 @@ async function toggleExpand(noteId: string) {
       expandAnchor.value = { noteId, topOffset: 0, scrollTop: scroller.scrollTop }
     }
 
-    // 真正展开
+    // 展开
     expandedNote.value = noteId
 
     // 等虚拟列表完成布局
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    // —— 新增：把“展开后的卡片顶部”对齐到容器顶部（留一点上边距更舒服）——
+    // 把展开后的卡片顶部对齐到容器顶部
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      scroller.style.overflowAnchor = 'none' // 防止浏览器滚动锚定干扰
+      scroller.style.overflowAnchor = 'none'
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
-
-      // 想留 8~12px 余白可改成 8 或 12
       const topPadding = 0
-      const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
+      const deltaAlign = cardRectAfter.top - scRectAfter.top - topPadding
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
@@ -260,7 +258,7 @@ async function toggleExpand(noteId: string) {
     return
   }
 
-  // —— 收起：用“展开瞬间记录的锚点”恢复（你的现有收起逻辑保持不变）——
+  // 收起：按展开瞬间锚点恢复
   expandedNote.value = null
   scroller.style.overflowAnchor = 'none'
 
@@ -277,7 +275,7 @@ async function toggleExpand(noteId: string) {
   const cardRectAfter = cardAfter.getBoundingClientRect()
 
   const anchor = expandAnchor.value
-  const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
+  const wantTopOffset = anchor.noteId === noteId ? anchor.topOffset : 0
   const currentTopOffset = cardRectAfter.top - scRectAfter.top
   const delta = currentTopOffset - wantTopOffset
 
@@ -295,8 +293,8 @@ async function toggleExpand(noteId: string) {
 async function stableSetScrollTop(
   el: HTMLElement,
   target: number,
-  tries = 5, // 最多纠正 5 帧
-  epsilon = 0.5, // 允许的误差
+  tries = 5,
+  epsilon = 0.5,
 ) {
   target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
 
@@ -313,7 +311,6 @@ async function stableSetScrollTop(
       }
       requestAnimationFrame(tick)
     }
-    // 先设一次，再进入多帧校正
     el.scrollTop = target
     requestAnimationFrame(tick)
   })
@@ -333,12 +330,10 @@ watch(expandedNote, () => {
 })
 
 function updateCollapsePos() {
-  // 滚动过程中先隐藏，停止后由 handleScroll 延时恢复
   if (isUserScrolling.value) {
     collapseVisible.value = false
     return
   }
-
   if (!expandedNote.value) {
     collapseVisible.value = false
     return
@@ -348,11 +343,9 @@ function updateCollapsePos() {
   const cardEl = noteContainers.value[expandedNote.value]
   if (!scrollerEl || !wrapperEl || !cardEl || !cardEl.isConnected) {
     collapseVisible.value = false
-    // 组件在复用/挂载的边缘态，安排轻量重试
     scheduleCollapseRetry()
     return
   }
-  // —— 强校验该元素仍属于当前展开的笔记（防止虚拟列表复用导致错位） —— //
   const dataId = (cardEl as HTMLElement).getAttribute('data-note-id')
   if (dataId !== expandedNote.value) {
     collapseVisible.value = false
@@ -366,7 +359,6 @@ function updateCollapsePos() {
   const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
   if (outOfView) {
     collapseVisible.value = false
-    // 已回到卡片附近时，下一两帧就会入视口，安排轻量重试
     scheduleCollapseRetry()
     return
   }
@@ -408,17 +400,21 @@ defineExpose({
       v-else
       ref="scrollerRef"
       :items="notes"
-      :min-item-size="120"
+      :min-item-size="64"
       class="scroller"
       key-field="id"
     >
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
+          :key="item.id + (expandedNote === item.id ? '_open' : '_shut') + (editingNoteId === item.id ? '_edit' : '') + (isSelectionModeActive ? '_sel' : '')"
           :item="item"
           :active="active"
           :data-index="index"
           :size-dependencies="[
             item.content,
+            item.updated_at ?? '',
+            item.pinned ?? false,
+            isSelectionModeActive,
             expandedNote === item.id,
             editingNoteId === item.id,
           ]"
@@ -470,7 +466,7 @@ defineExpose({
       </template>
 
       <template #after>
-        <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
+        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
           {{ t('notes.loading') }}
         </div>
       </template>
@@ -483,7 +479,7 @@ defineExpose({
         type="button"
         class="collapse-button"
         :style="collapseStyle"
-        @click.stop.prevent="toggleExpand(expandedNote!, $event)"
+        @click.stop.prevent="toggleExpand(expandedNote!)"
       >
         收起
       </button>
@@ -499,62 +495,29 @@ defineExpose({
   right: 0;
   bottom: 0;
 }
+
+/* 统一定义一次 .scroller */
 .scroller {
   height: 100%;
   overflow-y: auto;
   overflow-anchor: none; /* 关闭浏览器自身的锚定，避免与手动补偿冲突 */
   scroll-behavior: auto;
-}
-/* --- 全新的卡片化样式 --- */
-
-/* 1. 给列表的背景一个非常浅的灰色，以衬托卡片 */
-.scroller {
-  height: 100%;
-  overflow-y: auto;
-  /* 新增：为滚动区域设置背景色 */
+  /* 背景与内边距（衬托卡片） */
   background-color: #f9fafb;
-  padding: 0.5rem; /* 给卡片和列表边缘留出一些空间 */
+  padding: 0.5rem;
 }
 .dark .scroller {
-  background-color: #111827; /* 深色模式下的深灰色背景 */
+  background-color: #111827;
 }
 
-/* 2. 定义每个笔记卡片的基础样式 */
-.note-content-wrapper {
-  background-color: #ffffff; /* 卡片使用纯白色背景 */
-  border-radius: 12px; /* 更圆润的卡片圆角 */
-  padding: 1rem; /* 卡片内部的文字留白 */
-  /* 关键：添加漂亮的阴影 */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.2s ease-in-out;
-}
-.note-content-wrapper:hover {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
-}
-
-/* 3. 为深色模式定义卡片样式 */
-.dark .note-content-wrapper {
-  background-color: #1f2937; /* 深色卡片背景 */
-  border: 1px solid #374151; /* 在深色模式下加一个细边框，轮廓更清晰 */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-.dark .note-content-wrapper:hover {
-   box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15);
-}
-
-/* 4. 调整外部容器的间距 */
+/* 根项是虚拟列表测量对象：必须稳定、可测 */
 .note-item-container {
-  padding-bottom: 1rem; /* 设置卡片之间的垂直间距 */
+  box-sizing: border-box;
+  display: flow-root;   /* 建立 BFC，避免 margin 折叠 */
+  padding: 0.75rem 0;   /* 用 padding 形成卡片间距的外框 */
 }
-.note-item-container:last-child {
-  padding-bottom: 0.5rem; /* 最后一个卡片的间距可以小一点 */
-}
-.note-item-container {
-  padding-bottom: 1.5rem;
-}
-.note-item-container:last-child {
-  padding-bottom: 0;
-}
+
+/* 选择模式：不要用负 margin 影响测量 */
 .note-selection-wrapper {
   display: flex;
   gap: 0.75rem;
@@ -563,7 +526,7 @@ defineExpose({
 .note-selection-wrapper.selection-mode {
   cursor: pointer;
   padding: 0.5rem;
-  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem;
+  margin: 0;            /* 关键：去掉负 margin/外层 margin */
   border-radius: 8px;
 }
 .note-selection-wrapper.selection-mode:hover {
@@ -572,10 +535,33 @@ defineExpose({
 .dark .note-selection-wrapper.selection-mode:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
+
+/* 卡片本体 */
 .note-content-wrapper {
   flex: 1;
   min-width: 0;
+  margin: 0.25rem 0;         /* 卡片之间竖向间距放在内部容器 */
+  background-color: #ffffff; /* 亮色卡片 */
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s ease-in-out;
 }
+.note-content-wrapper:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
+}
+
+/* 深色模式卡片 */
+.dark .note-content-wrapper {
+  background-color: #1f2937;
+  border: 1px solid #374151;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.dark .note-content-wrapper:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* 选择指示器 */
 .selection-indicator {
   padding-top: 0.75rem;
 }
@@ -605,25 +591,29 @@ defineExpose({
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+
+/* 辅助文本色 */
 .text-gray-500 {
   color: #6b7280;
 }
 .dark .text-gray-500 {
   color: #9ca3af;
 }
+
+/* 收起按钮 */
 .collapse-button {
   position: absolute;
   z-index: 10;
-  background-color: #ffffff; /* 改为白色 */
-  color: #007bff;            /* 改为一个漂亮的蓝色，您也可以直接用 'blue' */
-  border: 1px solid #e0e0e0;  /* (推荐) 增加一个浅灰色边框，使其更清晰 */
+  background-color: #ffffff;
+  color: #007bff;
+  border: 1px solid #e0e0e0;
   border-radius: 15px;
   padding: 3px 8px;
   font-size: 14px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* 阴影可以调浅一些 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: opacity 0.2s, transform 0.2s;
-  opacity: 0.9; /* 可以让它稍微不那么透明 */
+  opacity: 0.9;
   font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
@@ -631,6 +621,8 @@ defineExpose({
   opacity: 1;
   transform: scale(1.05);
 }
+
+/* 渐隐动画 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;

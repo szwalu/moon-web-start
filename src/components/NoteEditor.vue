@@ -102,7 +102,6 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
     if (!o)
       return o
-
     if (o.type === 'group' && Array.isArray(o.children))
       return { ...o, children: injectClickHandlers(o.children) }
 
@@ -154,7 +153,6 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
     const canScroll = /(auto|scroll)/.test(style.overflowY)
     if (canScroll && el.clientHeight < el.scrollHeight)
       return el
-
     el = el.parentElement
   }
   return null
@@ -170,24 +168,10 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 自由滚动窗口 + 护航光标 ============== */
-// 自由滚动窗口：用户主动滚动后的一小段时间，不自动改 scrollTop
-let freeScrollUntil = 0
-function inFreeScrollWindow() {
-  return Date.now() < freeScrollUntil
-}
-/** 开启自由滚动窗口（毫秒） */
-function startFreeScrollWindow(ms = 1200) {
-  freeScrollUntil = Date.now() + ms
-}
-
-// 拖动（touch/mouse 按下并移动）期间完全不干预
-let isUserDragging = false
-let dragEndTimer: number | null = null
-
-/** 当真的需要时可强制确保光标可见：ensureCaretVisible(true) */
+/* ============== 确保光标可见（按需强制） ============== */
+/** 仅在 force=true 时主动滚动；默认不干预，避免与用户滚动“打架” */
 function ensureCaretVisible(force = false) {
-  if (!force && (inFreeScrollWindow() || isUserDragging))
+  if (!force)
     return
 
   const el = textarea.value
@@ -225,7 +209,6 @@ function ensureCaretVisible(force = false) {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // 只有当光标确实超出可见区，才去改 scrollTop（减少轻微抖动）
   if (caretDesiredBottom > viewBottom) {
     const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
     el.scrollTop = newTop
@@ -233,18 +216,13 @@ function ensureCaretVisible(force = false) {
   else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
   }
-  else if (!force) {
-    // 光标本就可见，且不是强制模式：不做任何事，尊重用户当前阅读位置
-    return
-  }
 
   // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
-  const safeBottom = getSafeViewportBottom()
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const ancRect = scrollable.getBoundingClientRect()
-    const visibleBottom = Math.min(ancRect.bottom, safeBottom)
+    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
     const visibleTop = ancRect.top
     const padding = 8
 
@@ -260,7 +238,7 @@ function ensureCaretVisible(force = false) {
   else {
     // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
     const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    const delta = (caretAbsTop2 + lineHeight * 1.8) - getSafeViewportBottom()
     if (delta > 0)
       window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
   }
@@ -270,73 +248,10 @@ function ensureCaretVisible(force = false) {
 function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
-      ensureCaretVisible(false) // 尊重自由滚动窗口/拖动
+      // 不再强制滚动，仅更新下拉高度
       calcDropdownMaxHeight()
     })
   })
-}
-
-/* ===== 用户交互：滚动/点击/方向键/选区变化，协同自由窗口与锚点切换 ===== */
-function onUserScroll() {
-  // 滚动过程中持续续期到 2 秒，保证有充足的阅读窗口
-  startFreeScrollWindow(2000)
-}
-function onUserWheel() {
-  startFreeScrollWindow(2000)
-}
-function onUserTouchStart() {
-  isUserDragging = true
-  startFreeScrollWindow(2000)
-}
-function onUserTouchMove() {
-  // 拖动中续期
-  startFreeScrollWindow(2000)
-}
-function onUserTouchEnd() {
-  if (dragEndTimer)
-    window.clearTimeout(dragEndTimer)
-
-  // 给一点“惯性滚动”时间，再结束拖动状态
-  dragEndTimer = window.setTimeout(() => {
-    isUserDragging = false
-  }, 250)
-}
-function onUserMouseDown() {
-  isUserDragging = true
-  startFreeScrollWindow(2000)
-}
-function onUserMouseMove() {
-  if (isUserDragging)
-    startFreeScrollWindow(2000)
-}
-function onUserMouseUp() {
-  if (dragEndTimer)
-    window.clearTimeout(dragEndTimer)
-
-  dragEndTimer = window.setTimeout(() => {
-    isUserDragging = false
-  }, 50)
-}
-
-function onCaretClick() {
-  // 结束自由滚动窗口，光标既然被点到上面了，就让它成为新的锚点
-  startFreeScrollWindow(0)
-  requestAnimationFrame(() => ensureCaretVisible(true))
-}
-function onArrowKey(e: KeyboardEvent) {
-  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
-    startFreeScrollWindow(0)
-    requestAnimationFrame(() => ensureCaretVisible(true))
-  }
-}
-function onSelectionChange() {
-  // 在自由窗口或拖动期间不抢滚；只有明确的光标变更且不在自由窗口时才对齐
-  if (inFreeScrollWindow() || isUserDragging)
-    return
-
-  const el = textarea.value
-  if (el && document.activeElement === el)
-    requestAnimationFrame(() => ensureCaretVisible(true))
 }
 
 onMounted(() => {
@@ -347,61 +262,13 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
-
-  const el = textarea.value
-  if (el) {
-    // 滚动
-    el.addEventListener('scroll', onUserScroll, { passive: true })
-    el.addEventListener('wheel', onUserWheel, { passive: true })
-
-    // 触摸（移动端）
-    el.addEventListener('touchstart', onUserTouchStart, { passive: true })
-    el.addEventListener('touchmove', onUserTouchMove, { passive: true })
-    el.addEventListener('touchend', onUserTouchEnd, { passive: true })
-    el.addEventListener('touchcancel', onUserTouchEnd, { passive: true })
-
-    // 鼠标拖动（桌面端）
-    el.addEventListener('mousedown', onUserMouseDown)
-    window.addEventListener('mousemove', onUserMouseMove)
-    window.addEventListener('mouseup', onUserMouseUp)
-
-    // 光标点击与方向键
-    el.addEventListener('click', onCaretClick, { passive: true })
-    el.addEventListener('keyup', onArrowKey)
-  }
-
-  document.addEventListener('selectionchange', onSelectionChange)
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', calcDropdownMaxHeight)
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
   }
-
-  const el = textarea.value
-  if (el) {
-    el.removeEventListener('scroll', onUserScroll)
-    el.removeEventListener('wheel', onUserWheel)
-
-    el.removeEventListener('touchstart', onUserTouchStart)
-    el.removeEventListener('touchmove', onUserTouchMove)
-    el.removeEventListener('touchend', onUserTouchEnd)
-    el.removeEventListener('touchcancel', onUserTouchEnd)
-
-    el.removeEventListener('mousedown', onUserMouseDown)
-    window.removeEventListener('mousemove', onUserMouseMove)
-    window.removeEventListener('mouseup', onUserMouseUp)
-
-    el.removeEventListener('click', onCaretClick)
-    el.removeEventListener('keyup', onArrowKey)
-  }
-
-  document.removeEventListener('selectionchange', onSelectionChange)
-
-  if (dragEndTimer)
-    window.clearTimeout(dragEndTimer)
 })
 
 // 打开下拉瞬间再算一次，确保精准
@@ -490,11 +357,7 @@ function handleInput(event: Event) {
     }
   }
 
-  if (!isComposing.value) {
-    nextTick(() => {
-      ensureCaretVisible(true)
-    })
-  }
+  // 关键点：输入时不再强制回到光标，避免与用户滚动对抗
 }
 
 function selectTag(tag: string) {
