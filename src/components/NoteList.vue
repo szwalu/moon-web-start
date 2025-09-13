@@ -51,27 +51,13 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// ---- 仅此一改：挂载/卸载都正确维护映射，避免命中被复用的旧 DOM ----
+// ---- 新增：供 :ref 使用的辅助函数，避免模板里出现多语句 ----
 function setNoteContainer(el: Element | null, id: string) {
-  if (!el) {
-    delete noteContainers.value[id]
+  if (!el)
     return
-  }
   const $el = el as HTMLElement
   $el.setAttribute('data-note-id', id)
   noteContainers.value[id] = $el
-}
-
-// ✅ 新增：强制让 DynamicScroller 重新测量/刷新一次（兼容不同版本）
-async function forceRemeasure() {
-  await nextTick()
-  await new Promise<void>(r => requestAnimationFrame(r))
-  await new Promise<void>(r => requestAnimationFrame(r))
-  const s = scrollerRef.value
-  if (s?.forceUpdate)
-    s.forceUpdate(true)
-  else if (s?.updateVisibleItems)
-    s.updateVisibleItems(true)
 }
 
 // ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
@@ -119,7 +105,7 @@ const handleScroll = throttle(() => {
       emit('loadMore')
   }
 
-  // —— 滚动中先隐藏按钮，等停止 120ms 再恢复定位 —— //
+  // —— 新增：滚动中先隐藏按钮，等停止 120ms 再恢复定位 —— //
   isUserScrolling.value = true
   collapseVisible.value = false
   if (scrollHideTimer !== null) {
@@ -160,11 +146,6 @@ watch(scrollerRef, (newScroller, oldScroller) => {
       updateCollapsePos()
     })
   }
-})
-
-// ✅ 新增：选择模式切换时，强制重测高度，清空旧缓存
-watch(() => props.isSelectionModeActive, () => {
-  forceRemeasure()
 })
 
 onMounted(() => {
@@ -227,7 +208,7 @@ function _ensureCardVisible(noteId: string) {
 }
 
 // 展开：记录锚点 → 展开 → 等布局 → 把卡片顶部对齐到容器顶部
-// 收起：按“展开瞬间的锚点”恢复位置（你的逻辑保持不变）
+// 收起：按“展开瞬间的锚点”恢复位置（你之前的逻辑保持不变）
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
@@ -240,12 +221,13 @@ async function toggleExpand(noteId: string) {
     return
 
   if (isExpanding) {
+    // —— 展开：先记录锚点（用于日后收起时恢复“展开前”的位置）——
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
       expandAnchor.value = {
         noteId,
-        topOffset: cardRect.top - scRect.top,
+        topOffset: cardRect.top - scRect.top, // 展开瞬间卡片顶部在容器内的相对位置
         scrollTop: scroller.scrollTop,
       }
     }
@@ -253,30 +235,32 @@ async function toggleExpand(noteId: string) {
       expandAnchor.value = { noteId, topOffset: 0, scrollTop: scroller.scrollTop }
     }
 
+    // 真正展开
     expandedNote.value = noteId
 
+    // 等虚拟列表完成布局
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
+    // —— 新增：把“展开后的卡片顶部”对齐到容器顶部（留一点上边距更舒服）——
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      scroller.style.overflowAnchor = 'none'
+      scroller.style.overflowAnchor = 'none' // 防止浏览器滚动锚定干扰
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
 
+      // 想留 8~12px 余白可改成 8 或 12
       const topPadding = 0
       const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
 
-    // ✅ 新增：展开后立即强制重测，清理高度缓存
-    await forceRemeasure()
     updateCollapsePos()
     return
   }
 
-  // 收起：用“展开瞬间记录的锚点”恢复
+  // —— 收起：用“展开瞬间记录的锚点”恢复（你的现有收起逻辑保持不变）——
   expandedNote.value = null
   scroller.style.overflowAnchor = 'none'
 
@@ -302,9 +286,6 @@ async function toggleExpand(noteId: string) {
   target = Math.min(Math.max(0, target), maxScrollTop)
 
   await stableSetScrollTop(scroller, target, 6, 0.5)
-
-  // ✅ 新增：收起后也强制重测一次
-  await forceRemeasure()
   expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
 
   updateCollapsePos()
@@ -440,7 +421,6 @@ defineExpose({
             item.content,
             expandedNote === item.id,
             editingNoteId === item.id,
-            isSelectionModeActive,
           ]"
           class="note-item-container"
           @resize="updateCollapsePos"
@@ -490,7 +470,7 @@ defineExpose({
       </template>
 
       <template #after>
-        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
+        <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
           {{ t('notes.loading') }}
         </div>
       </template>
@@ -503,7 +483,7 @@ defineExpose({
         type="button"
         class="collapse-button"
         :style="collapseStyle"
-        @click.stop.prevent="toggleExpand(expandedNote!)"
+        @click.stop.prevent="toggleExpand(expandedNote!, $event)"
       >
         收起
       </button>
