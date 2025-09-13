@@ -149,6 +149,20 @@ const showAnniversaryBanner = computed(() => {
 })
 
 onMounted(() => {
+  // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
+  (async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (!error) {
+        const currentUser = data?.session?.user ?? null
+        if (authStore.user?.id !== currentUser?.id)
+          authStore.user = currentUser
+      }
+    }
+    catch {}
+  })()
+  // === [PATCH-3 END] ===
+
   // isLoadingNotes.value = true
   const loadCache = async () => {
     try {
@@ -230,6 +244,10 @@ onMounted(() => {
         })
         localStorage.removeItem(LOCAL_CONTENT_KEY)
       }
+      else {
+        // [PATCH-4] 兜底：未知事件也同步一次 user，避免卡在未知态
+        authStore.user = session?.user ?? null
+      }
     },
   )
   authListener = result.data.subscription
@@ -283,7 +301,7 @@ async function handleCreateNote(content: string) {
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     newNoteContent.value = ''
     nextTick(() => {
-      newNoteEditorRef.value?.reset()
+      (newNoteEditorRef.value as any)?.reset?.()
     })
   }
   isCreating.value = false
@@ -683,7 +701,7 @@ async function fetchNotes() {
 }
 
 function handleHeaderClick() {
-  noteListRef.value?.scrollToTop()
+  (noteListRef.value as any)?.scrollToTop?.()
 }
 
 async function nextPage() {
@@ -731,7 +749,7 @@ async function triggerDeleteConfirmation(id: string) {
 
         if (showCalendarView.value && calendarViewRef.value) {
           // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-          calendarViewRef.value.refreshData()
+          ;(calendarViewRef.value as any).refreshData?.()
         }
       }
       catch (err: any) {
@@ -751,7 +769,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
     const lines = originalContent.split('\n')
     const taskLineIndexes: number[] = []
     lines.forEach((line, index) => {
-      if (line.trim().match(/^-\s\[( |x)\]/))
+      if (line.trim().match(/^\-\s\[( |x)\]/))
         taskLineIndexes.push(index)
     })
     if (itemIndex < taskLineIndexes.length) {
@@ -970,10 +988,6 @@ function handleEditFromCalendar(_note: any) {
   messageHook.info('笔记编辑功能已移至主列表，请在主列表找到并编辑该笔记。')
 }
 
-function handleClosePage() {
-  window.location.href = '/'
-}
-
 async function fetchNotesByTag(tag: string) {
   // 统一为 "#xxx"
   if (!tag)
@@ -1046,7 +1060,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </script>
 
 <template>
-  <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }">
+  <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }" :aria-busy="!isReady">
     <template v-if="user">
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -1069,7 +1083,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <button class="header-action-btn close-page-btn" @click.stop="handleClosePage">×</button>
+          <!-- [PATCH-X] 退出改为纯导航，避免 JS/状态导致的无响应 -->
+          <RouterLink to="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</RouterLink>
         </div>
       </div>
 
@@ -1233,7 +1248,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   position: -webkit-sticky;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
   background: white;
   height: 44px;
   padding-top: 0.75rem;
