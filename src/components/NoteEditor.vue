@@ -102,6 +102,7 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
     if (!o)
       return o
+
     if (o.type === 'group' && Array.isArray(o.children))
       return { ...o, children: injectClickHandlers(o.children) }
 
@@ -153,6 +154,7 @@ function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
     const canScroll = /(auto|scroll)/.test(style.overflowY)
     if (canScroll && el.clientHeight < el.scrollHeight)
       return el
+
     el = el.parentElement
   }
   return null
@@ -179,9 +181,13 @@ function startFreeScrollWindow(ms = 1200) {
   freeScrollUntil = Date.now() + ms
 }
 
+// 拖动（touch/mouse 按下并移动）期间完全不干预
+let isUserDragging = false
+let dragEndTimer: number | null = null
+
 /** 当真的需要时可强制确保光标可见：ensureCaretVisible(true) */
 function ensureCaretVisible(force = false) {
-  if (!force && inFreeScrollWindow())
+  if (!force && (inFreeScrollWindow() || isUserDragging))
     return
 
   const el = textarea.value
@@ -264,7 +270,7 @@ function ensureCaretVisible(force = false) {
 function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
-      ensureCaretVisible(false) // 尊重自由滚动窗口
+      ensureCaretVisible(false) // 尊重自由滚动窗口/拖动
       calcDropdownMaxHeight()
     })
   })
@@ -272,17 +278,46 @@ function handleViewportChange() {
 
 /* ===== 用户交互：滚动/点击/方向键/选区变化，协同自由窗口与锚点切换 ===== */
 function onUserScroll() {
-  const el = textarea.value
-  if (!el)
-    return
-  startFreeScrollWindow(1200)
+  // 滚动过程中持续续期到 2 秒，保证有充足的阅读窗口
+  startFreeScrollWindow(2000)
 }
 function onUserWheel() {
-  startFreeScrollWindow(1200)
+  startFreeScrollWindow(2000)
 }
 function onUserTouchStart() {
-  startFreeScrollWindow(1200)
+  isUserDragging = true
+  startFreeScrollWindow(2000)
 }
+function onUserTouchMove() {
+  // 拖动中续期
+  startFreeScrollWindow(2000)
+}
+function onUserTouchEnd() {
+  if (dragEndTimer)
+    window.clearTimeout(dragEndTimer)
+
+  // 给一点“惯性滚动”时间，再结束拖动状态
+  dragEndTimer = window.setTimeout(() => {
+    isUserDragging = false
+  }, 250)
+}
+function onUserMouseDown() {
+  isUserDragging = true
+  startFreeScrollWindow(2000)
+}
+function onUserMouseMove() {
+  if (isUserDragging)
+    startFreeScrollWindow(2000)
+}
+function onUserMouseUp() {
+  if (dragEndTimer)
+    window.clearTimeout(dragEndTimer)
+
+  dragEndTimer = window.setTimeout(() => {
+    isUserDragging = false
+  }, 50)
+}
+
 function onCaretClick() {
   // 结束自由滚动窗口，光标既然被点到上面了，就让它成为新的锚点
   startFreeScrollWindow(0)
@@ -295,11 +330,13 @@ function onArrowKey(e: KeyboardEvent) {
   }
 }
 function onSelectionChange() {
+  // 在自由窗口或拖动期间不抢滚；只有明确的光标变更且不在自由窗口时才对齐
+  if (inFreeScrollWindow() || isUserDragging)
+    return
+
   const el = textarea.value
-  if (el && document.activeElement === el) {
-    startFreeScrollWindow(0)
+  if (el && document.activeElement === el)
     requestAnimationFrame(() => ensureCaretVisible(true))
-  }
 }
 
 onMounted(() => {
@@ -313,9 +350,22 @@ onMounted(() => {
 
   const el = textarea.value
   if (el) {
+    // 滚动
     el.addEventListener('scroll', onUserScroll, { passive: true })
     el.addEventListener('wheel', onUserWheel, { passive: true })
+
+    // 触摸（移动端）
     el.addEventListener('touchstart', onUserTouchStart, { passive: true })
+    el.addEventListener('touchmove', onUserTouchMove, { passive: true })
+    el.addEventListener('touchend', onUserTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onUserTouchEnd, { passive: true })
+
+    // 鼠标拖动（桌面端）
+    el.addEventListener('mousedown', onUserMouseDown)
+    window.addEventListener('mousemove', onUserMouseMove)
+    window.addEventListener('mouseup', onUserMouseUp)
+
+    // 光标点击与方向键
     el.addEventListener('click', onCaretClick, { passive: true })
     el.addEventListener('keyup', onArrowKey)
   }
@@ -334,12 +384,24 @@ onUnmounted(() => {
   if (el) {
     el.removeEventListener('scroll', onUserScroll)
     el.removeEventListener('wheel', onUserWheel)
+
     el.removeEventListener('touchstart', onUserTouchStart)
+    el.removeEventListener('touchmove', onUserTouchMove)
+    el.removeEventListener('touchend', onUserTouchEnd)
+    el.removeEventListener('touchcancel', onUserTouchEnd)
+
+    el.removeEventListener('mousedown', onUserMouseDown)
+    window.removeEventListener('mousemove', onUserMouseMove)
+    window.removeEventListener('mouseup', onUserMouseUp)
+
     el.removeEventListener('click', onCaretClick)
     el.removeEventListener('keyup', onArrowKey)
   }
 
   document.removeEventListener('selectionchange', onSelectionChange)
+
+  if (dragEndTimer)
+    window.clearTimeout(dragEndTimer)
 })
 
 // 打开下拉瞬间再算一次，确保精准
