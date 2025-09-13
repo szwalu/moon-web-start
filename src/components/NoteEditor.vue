@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, ref } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -33,6 +33,9 @@ const contentModel = computed({
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
+// ============== Refs ==============
+const editorFooterRef = ref<HTMLElement | null>(null)
+
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
 const suppressNextBlur = ref(false)
@@ -41,15 +44,62 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// [最终修正] 采用相对定位法的“虚拟折叠”滚动逻辑
-function keepCaretAboveFold() {
+// ============== 键盘稳定调度器 ==============
+let keyboardStableTimer: number | null = null
+function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = 350) {
+  if (keyboardStableTimer !== null)
+    window.clearTimeout(keyboardStableTimer)
+  keyboardStableTimer = window.setTimeout(() => {
+    try {
+      fn()
+    }
+    catch { /* ignore */ }
+  }, fallbackMs)
+}
+
+// ============== 视口与高度计算 ==============
+function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = node?.parentElement || null
+  while (el) {
+    const style = getComputedStyle(el)
+    const canScroll = /(auto|scroll)/.test(style.overflowY)
+    if (canScroll && el.clientHeight < el.scrollHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
+function getSafeViewportBottom(): number {
+  const SAFE_PADDING = 10
+  const vv = window.visualViewport
+  if (vv)
+    return vv.offsetTop + vv.height - SAFE_PADDING
+  return window.innerHeight - SAFE_PADDING
+}
+
+function getFooterHeight(): number {
+  return editorFooterRef.value?.offsetHeight || 0
+}
+
+function applyDynamicMaxHeight() {
   const el = textarea.value
   if (!el)
     return
 
-  // [测试] 按照您的要求，先设置为 20%。成功后您可以改为 0.5 (50%) 或其他值。
-  const FOLD_PERCENTAGE = 0.20
-  const foldInTextarea = el.clientHeight * FOLD_PERCENTAGE
+  const rect = el.getBoundingClientRect()
+  const safeBottom = getSafeViewportBottom()
+  const footerH = getFooterHeight()
+  const SAFE_GAP = 10
+  const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
+  const maxPx = Math.max(120, usable)
+  el.style.maxHeight = `${maxPx}px`
+}
+
+function ensureCaretVisible() {
+  const el = textarea.value
+  if (!el)
+    return
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
@@ -61,23 +111,55 @@ function keepCaretAboveFold() {
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const caretRelativeY = caretTopInTextarea - el.scrollTop
+  // 1. 校准内部滚动
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 
-  if (caretRelativeY > foldInTextarea) {
-    const newScrollTop = caretTopInTextarea - foldInTextarea
-    if (newScrollTop > el.scrollTop)
-      el.scrollTop = newScrollTop
+  // 2. 校准外部页面滚动
+  const scrollable = getScrollableAncestor(el)
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const visibleBottom = scrollable
+    ? Math.min(scrollable.getBoundingClientRect().bottom, getSafeViewportBottom())
+    : getSafeViewportBottom()
+  const visibleTop = scrollable ? scrollable.getBoundingClientRect().top : 0
+  const padding = 8
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+
+  if (caretAbsBottom > visibleBottom) {
+    const deltaDown = (caretAbsBottom - visibleBottom) + padding
+    if (scrollable)
+      scrollable.scrollTop += deltaDown
+
+    else
+      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
+  }
+  else if (caretAbsTop < visibleTop) {
+    const deltaUp = (visibleTop - caretAbsTop) + padding
+    if (scrollable)
+      scrollable.scrollTop -= deltaUp
+
+    else
+      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
   }
 }
 
-// [最终修正] 创建一个统一的、时序绝对安全的调度函数
-function scheduleCaretCheck() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      keepCaretAboveFold()
+// ============== 统一布局函数 ==============
+function updateLayout() {
+  applyDynamicMaxHeight()
+  nextTick(() => {
+    triggerResize()
+    nextTick(() => {
+      ensureCaretVisible()
     })
   })
 }
@@ -85,14 +167,11 @@ function scheduleCaretCheck() {
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
-  scheduleCaretCheck()
+  scheduleAfterKeyboardStable(updateLayout)
 }
 
 function onBlur() {
   emit('blur')
-  if (textarea.value)
-    textarea.value.scrollTop = 0
-
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -102,8 +181,13 @@ function onBlur() {
   }, 200)
 }
 
-function handleClick() {
-  scheduleCaretCheck()
+function handleViewportChange() {
+  scheduleAfterKeyboardStable(updateLayout)
+}
+
+function handleTap() {
+  // 点击时也使用统一的、带防抖的布局更新，避免状态错乱
+  scheduleAfterKeyboardStable(updateLayout)
 }
 
 function handleInput(event: Event) {
@@ -142,8 +226,9 @@ function handleInput(event: Event) {
     }
   }
 
+  // 额外增加一次内部滚动检查，作为辅助
   if (!isComposing.value)
-    scheduleCaretCheck()
+    nextTick(ensureCaretVisible)
 }
 
 // ============== 文本与工具栏操作 ==============
@@ -155,7 +240,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
-      scheduleCaretCheck()
     }
   })
 }
@@ -264,6 +348,38 @@ function handleEnterKey(event: KeyboardEvent) {
   updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
 
+// ============== 生命周期与 Watchers ==============
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange)
+    window.visualViewport.addEventListener('scroll', handleViewportChange)
+  }
+  const ro = new ResizeObserver(scheduleLayoutUpdate)
+  if (editorFooterRef.value)
+    ro.observe(editorFooterRef.value)
+
+  ;(editorFooterRef as any)._ro = ro
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportChange)
+    window.visualViewport.removeEventListener('scroll', handleViewportChange)
+  }
+  const ro = (editorFooterRef as any)._ro
+  if (ro && editorFooterRef.value)
+    ro.unobserve(editorFooterRef.value)
+})
+
+watch(() => props.modelValue, (newValue) => {
+  if (newValue === '') {
+    nextTick(() => {
+      triggerResize()
+      applyDynamicMaxHeight()
+    })
+  }
+})
+
 // ============== 标签菜单 ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
@@ -322,7 +438,8 @@ defineExpose({ reset: triggerResize })
         :maxlength="maxNoteLength"
         @focus="handleFocus"
         @blur="onBlur"
-        @click="handleClick"
+        @click="handleTap"
+        @pointerup="handleTap"
         @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
@@ -345,7 +462,7 @@ defineExpose({ reset: triggerResize })
       </div>
     </div>
 
-    <div class="editor-footer">
+    <div ref="editorFooterRef" class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
           <NDropdown
@@ -477,7 +594,8 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 70vh;
+  /* 运行时由 JS 动态设置像素 max-height 覆盖它 */
+  max-height: 50vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
