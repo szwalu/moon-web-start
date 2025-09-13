@@ -41,14 +41,15 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// [最终修正] “虚拟折叠”滚动逻辑
+// [终极修正] “虚拟折叠”滚动逻辑 - 采用相对定位法
 function keepCaretAboveFold() {
   const el = textarea.value
   if (!el)
     return
 
-  const FOLD_PERCENTAGE = 0.50 // 光标“停靠”在屏幕50%的位置
-  const foldY = window.innerHeight * FOLD_PERCENTAGE
+  // [测试] 按照您的要求，先设置为 20%。成功后您可以改为 0.5 (50%) 或其他值。
+  const FOLD_PERCENTAGE = 0.20
+  const foldInTextarea = el.clientHeight * FOLD_PERCENTAGE
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
@@ -63,17 +64,11 @@ function keepCaretAboveFold() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const textareaTop = el.getBoundingClientRect().top
-  const caretAbsoluteY = textareaTop + caretTopInTextarea - el.scrollTop
+  const caretRelativeY = caretTopInTextarea - el.scrollTop
 
-  // 只有当光标的绝对位置低于“折叠线”时，才进行干预
-  if (caretAbsoluteY > foldY) {
-    // 我们希望光标最终停在 foldY 的位置。
-    // 所以，我们希望 (textareaTop + caretTopInTextarea - newScrollTop) = foldY
-    // 解方程可得：
-    const newScrollTop = textareaTop + caretTopInTextarea - foldY
-
-    // 确保只向上滚动内容
+  if (caretRelativeY > foldInTextarea) {
+    // 直接计算出能让光标停在折叠线上的 scrollTop 目标值
+    const newScrollTop = caretTopInTextarea - foldInTextarea
     if (newScrollTop > el.scrollTop)
       el.scrollTop = newScrollTop
   }
@@ -474,7 +469,6 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* [新功能] 增大物理最大高度 */
   max-height: 70vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
