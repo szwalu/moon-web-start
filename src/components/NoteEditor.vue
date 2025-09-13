@@ -462,7 +462,7 @@ defineExpose({ reset: triggerResize })
   width: 100%;
   min-height: 40px;
   /* 唯一的最大高度限制，行为稳定可预测 */
-  max-height: 48vh;
+  max-height: 49vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
