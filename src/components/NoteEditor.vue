@@ -41,8 +41,14 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// 新增：根节点引用，用于判断点外区域
+// 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
+const lastSelectionStart = ref<number>(0)
+function captureCaret() {
+  const el = textarea.value
+  if (el && typeof el.selectionStart === 'number')
+    lastSelectionStart.value = el.selectionStart
+}
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
@@ -75,9 +81,10 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// ============== 事件处理 ==============
+// ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
+  captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
@@ -93,11 +100,14 @@ function onBlur() {
 }
 
 function handleClick() {
+  captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
+  captureCaret()
+
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
@@ -133,7 +143,7 @@ function handleInput(event: Event) {
   }
 }
 
-// ============== 文本与工具栏操作 ==============
+// ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
   nextTick(() => {
@@ -142,29 +152,18 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
+
+      captureCaret()
       ensureCaretVisibleInTextarea()
     }
   })
-}
-
-function selectTag(tag: string) {
-  const el = textarea.value
-  if (!el)
-    return
-  const cursorPos = el.selectionStart
-  const textBeforeCursor = el.value.substring(0, cursorPos)
-  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
-  const textAfterCursor = el.value.substring(cursorPos)
-  const newText = `${el.value.substring(0, lastHashIndex)}${tag} ${textAfterCursor}`
-  const newCursorPos = lastHashIndex + tag.length + 1
-  showTagSuggestions.value = false
-  updateTextarea(newText, newCursorPos)
 }
 
 function insertText(prefix: string, suffix = '') {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
@@ -181,7 +180,11 @@ function insertText(prefix: string, suffix = '') {
 function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
-    textarea.value?.focus()
+    const el = textarea.value
+    if (el)
+      el.focus()
+
+    captureCaret()
   })
 }
 
@@ -199,6 +202,7 @@ function addTodo() {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '- [ ] '
@@ -211,6 +215,7 @@ function addOrderedList() {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '1. '
@@ -222,6 +227,7 @@ function addOrderedList() {
 function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
+
   const el = textarea.value
   if (!el)
     return
@@ -251,36 +257,81 @@ function handleEnterKey(event: KeyboardEvent) {
   updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
 
-// ============== 标签菜单 ==============
+// ============== 标签菜单（顺序很关键） ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
+// 先声明（函数声明可提升），用于传入 useTagMenu
 function handleSelectFromMenu(tag: string) {
   selectTag(tag)
 }
 
+// 先解构，避免 “used before it was defined”
 const {
   mainMenuVisible: tagMenuVisible,
   tagMenuChildren,
 } = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 
 const dropdownMaxHeight = ref(320)
+
+// 选择标签：使用 lastSelectionStart，稳定替换“#片段”
+function selectTag(tag: string) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const value = el.value
+  const cursorPos = Number.isFinite(lastSelectionStart.value)
+    ? Math.min(Math.max(lastSelectionStart.value, 0), value.length)
+    : value.length
+
+  const hashIndex = value.lastIndexOf('#', Math.max(cursorPos - 1, 0))
+
+  let replaceFrom = -1
+  if (hashIndex >= 0) {
+    const between = value.slice(hashIndex + 1, cursorPos)
+    if (!/\s/.test(between))
+      replaceFrom = hashIndex
+  }
+
+  let newText = ''
+  let newCursorPos = 0
+  const textAfterCursor = value.slice(cursorPos)
+
+  if (replaceFrom >= 0) {
+    newText = `${value.slice(0, replaceFrom) + tag} ${textAfterCursor}`
+    newCursorPos = replaceFrom + tag.length + 1
+  }
+  else {
+    newText = `${value.slice(0, cursorPos) + tag} ${value.slice(cursorPos)}`
+    newCursorPos = cursorPos + tag.length + 1
+  }
+
+  updateTextarea(newText, newCursorPos)
+  tagMenuVisible.value = false
+}
+
 type Opt = any
 function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
     if (!o)
       return o
+
     if (o.type === 'group' && Array.isArray(o.children))
       return { ...o, children: injectClickHandlers(o.children) }
+
     if (o.type === 'render')
       return o
+
     if (typeof o.key === 'string' && o.key.startsWith('#')) {
       const click = (_e: MouseEvent) => {
         handleSelectFromMenu(o.key)
         tagMenuVisible.value = false
       }
       const mergedProps = { ...(o.props || {}), onClick: click }
-      const wrappedLabel = typeof o.label === 'function' ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()]) : o.label
+      const wrappedLabel = typeof o.label === 'function'
+        ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()])
+        : o.label
       return { ...o, props: mergedProps, label: wrappedLabel }
     }
     return o
@@ -288,30 +339,35 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
 }
 
 function openTagMenu() {
+  captureCaret()
   suppressNextBlur.value = true
   tagMenuVisible.value = true
 }
 
-// ===== 新增：点外关闭 + Esc 关闭（适配 trigger="manual"） =====
+const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
+
+// ===== 全局：点外/ESC 关闭（适配 trigger="manual"） =====
 function shouldKeepOpenByTarget(target: EventTarget | null): boolean {
   const node = target as HTMLElement | null
   if (!node)
     return false
-  // 1) 点击在 Naive UI 的下拉菜单内部：保持
+
   if (node.closest('.n-dropdown'))
     return true
-  // 2) 点击在“# 按钮”（toolbar-trigger）上：保持
+
   if (rootRef.value && node.closest('.toolbar-trigger') && rootRef.value.contains(node))
     return true
+
   return false
 }
 
 function handleGlobalPointerDown(e: PointerEvent) {
   if (!tagMenuVisible.value)
     return
+
   if (shouldKeepOpenByTarget(e.target))
     return
-  // 其余情况一律关闭
+
   tagMenuVisible.value = false
 }
 
@@ -321,7 +377,6 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  // 用 capture，确保尽早拿到事件
   document.addEventListener('pointerdown', handleGlobalPointerDown, true)
   window.addEventListener('keydown', handleGlobalKeydown)
 })
@@ -330,8 +385,6 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
-
-const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 defineExpose({ reset: triggerResize })
 </script>
@@ -349,6 +402,9 @@ defineExpose({ reset: triggerResize })
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
+        @keydown="captureCaret"
+        @keyup="captureCaret"
+        @mouseup="captureCaret"
         @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
@@ -503,10 +559,9 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 唯一的最大高度限制，行为稳定可预测 */
   max-height: 48vh;
   overflow-y: auto;
-  padding: 16px 8px 8px 16px;
+  padding: 16px 16px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
