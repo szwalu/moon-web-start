@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { useTagMenu } from '@/composables/useTagMenu'
 
-// ============== Props & Emits ==============
+/* ============== Props & Emits ============== */
 const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
@@ -15,13 +15,12 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'heightChange'])
 
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
-
-// ============== Store ==============
+/* ============== Store ============== */
 const settingsStore = useSettingStore()
 
-// ============== v-model ==============
+/* ============== v-model（外层值） ============== */
 const contentModel = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -29,76 +28,150 @@ const contentModel = computed({
   },
 })
 
-// ============== Autosize ==============
+/* ============== Autosize ============== */
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
-// ============== Refs ==============
-const editorFooterRef = ref<HTMLElement | null>(null)
-
-// ============== 状态与响应式变量 ==============
-const isComposing = ref(false)
-const suppressNextBlur = ref(false)
-let blurTimeoutId: number | null = null
-let suppressWindowScrollUntil = 0
+/* ============== Tag 提示 ============== */
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
+let blurTimeoutId: number | null = null
 
-// ============== 平台探测 & 键盘稳定调度器 ==============
-const ua = navigator.userAgent.toLowerCase()
-const isAndroid = /android/.test(ua)
-const isChromeLike = ((/chrome|crios/.test(ua) && !/edge|edg\//.test(ua)) || /samsungbrowser/.test(ua))
-const isAndroidChrome = isAndroid && isChromeLike
+/* ============== 标签下拉（useTagMenu 接入） ============== */
+const { t } = useI18n()
+const allTagsRef = computed(() => props.allTags)
 
-let keyboardStableTimer: number | null = null
-
-function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 500 : 300) {
-  if (keyboardStableTimer !== null)
-    window.clearTimeout(keyboardStableTimer)
-  keyboardStableTimer = window.setTimeout(() => {
-    try {
-      fn()
-    }
-    catch { /* ignore */ }
-  }, fallbackMs)
+// 菜单最大高度：随屏幕/键盘动态调整
+const dropdownMaxHeight = ref(320)
+function calcDropdownMaxHeight() {
+  const vv = window.visualViewport
+  const vh = vv ? vv.height : window.innerHeight
+  dropdownMaxHeight.value = Math.round(Math.min(vh * 0.6, 360))
 }
 
-// ============== 视口与键盘高度计算 ==============
+// 抑制“打开标签下拉时”的那一次 blur 外发
+const suppressNextBlur = ref(false)
+
+// 稳妥回焦（双 rAF）
+function refocusEditorAndAnnounce() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      textarea.value?.focus()
+      emit('focus')
+    })
+  })
+}
+
+function handleSelectFromMenu(tag: string) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const cursorPos = el.selectionStart
+  const before = el.value.substring(0, cursorPos)
+  const lastHashIndex = before.lastIndexOf('#')
+  const after = el.value.substring(cursorPos)
+
+  if (lastHashIndex !== -1 && !/\s/.test(before.substring(lastHashIndex + 1))) {
+    selectTag(tag)
+    refocusEditorAndAnnounce()
+    return
+  }
+
+  const textToInsert = `${tag} `
+  const newText = `${before}${textToInsert}${after}`
+  const newPos = cursorPos + textToInsert.length
+  updateTextarea(newText, newPos)
+  refocusEditorAndAnnounce()
+}
+
+const {
+  mainMenuVisible: tagMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+
+type Opt = any
+function injectClickHandlers(opts: Opt[]): Opt[] {
+  return opts.map((o: any) => {
+    if (!o)
+      return o
+    if (o.type === 'group' && Array.isArray(o.children))
+      return { ...o, children: injectClickHandlers(o.children) }
+
+    if (o.type === 'render')
+      return o
+
+    if (typeof o.key === 'string' && o.key.startsWith('#')) {
+      const click = (_e: MouseEvent) => {
+        handleSelectFromMenu(o.key)
+        tagMenuVisible.value = false
+      }
+      const mergedProps = { ...(o.props || {}), onClick: click }
+      const wrappedLabel
+        = typeof o.label === 'function'
+          ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()])
+          : o.label
+      return { ...o, props: mergedProps, label: wrappedLabel }
+    }
+    return o
+  })
+}
+function openTagMenu() {
+  suppressNextBlur.value = true
+  tagMenuVisible.value = true
+}
+const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
+
+/* ============== IME 组合输入支持 ============== */
+const isComposing = ref(false)
+function onCompositionStart() {
+  isComposing.value = true
+}
+function onCompositionEnd() {
+  isComposing.value = false
+  nextTick(() => {
+    ensureCaretVisible()
+  })
+}
+
+/* ============== 可滚动祖先容器 ============== */
+function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = node?.parentElement || null
+  while (el) {
+    const style = getComputedStyle(el)
+    const canScroll = /(auto|scroll)/.test(style.overflowY)
+    if (canScroll && el.clientHeight < el.scrollHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
+/* ============== 视觉视口（键盘弹出占用） ============== */
 function getSafeViewportBottom(): number {
-  const SAFE_PADDING = 10
   const vv = window.visualViewport
+  const SAFE_PADDING = 10
   if (vv)
     return vv.offsetTop + vv.height - SAFE_PADDING
   return window.innerHeight - SAFE_PADDING
 }
 
-function getFooterHeight(): number {
-  return editorFooterRef.value?.offsetHeight || 0
-}
-
-function applyDynamicMaxHeight() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const rect = el.getBoundingClientRect()
-  const safeBottom = getSafeViewportBottom()
-  const footerH = getFooterHeight()
-  const SAFE_GAP = 10
-  const usable = Math.floor(safeBottom - rect.top - footerH - SAFE_GAP)
-  const maxPx = Math.max(120, usable)
-  el.style.maxHeight = `${maxPx}px`
-}
-
-function ensureCaretVisibleOnPage() {
+/* ============== 确保光标可见 ============== */
+function ensureCaretVisible() {
   const el = textarea.value
   if (!el)
     return
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
+    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth} solid transparent;
+  `
   document.body.appendChild(mirror)
 
   const val = el.value
@@ -110,64 +183,58 @@ function ensureCaretVisibleOnPage() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-  const visibleBottom = getSafeViewportBottom()
-  const visibleTop = 0
-  const padding = 8
-  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-
-  if (caretAbsBottom > visibleBottom) {
-    const deltaDown = (caretAbsBottom - visibleBottom) + padding
-    if (Date.now() > suppressWindowScrollUntil)
-      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
-  }
-  else if (caretAbsTop < visibleTop) {
-    const deltaUp = (visibleTop - caretAbsTop) + padding
-    if (Date.now() > suppressWindowScrollUntil)
-      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
-  }
-}
-
-function gentleScrollTextareaToShowCaret() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+
+  if (caretDesiredBottom > viewBottom) {
+    const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+    el.scrollTop = newTop
+  }
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
+
+  const scrollable = getScrollableAncestor(el)
+  if (scrollable) {
+    const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const ancRect = scrollable.getBoundingClientRect()
+    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
+    const visibleTop = ancRect.top
+    const padding = 8
+
+    if (caretAbsTop + lineHeight * 1.5 > visibleBottom) {
+      const deltaDown = (caretAbsTop + lineHeight * 1.5) - visibleBottom + padding
+      scrollable.scrollTop += deltaDown
+    }
+    else if (caretAbsTop - lineHeight * 0.5 < visibleTop) {
+      const deltaUp = visibleTop - (caretAbsTop - lineHeight * 0.5) + padding
+      scrollable.scrollTop -= deltaUp
+    }
+  }
+  else {
+    const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+    const safeBottom = getSafeViewportBottom()
+    const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
+    if (delta > 0)
+      window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
+  }
 }
 
-// ============== 事件处理 ==============
+/* ============== 浮动工具条（强制“聚焦即显示”） ============== */
+const focused = ref(false)
+
+// 只要 textarea 聚焦就显示浮动工具条（最稳妥）
+const showFloating = computed(() => focused.value)
+// 底部预留，避免浮动条遮住最后一行
+const footerPadPx = computed(() => (showFloating.value ? 64 : 0))
+
 function handleFocus() {
+  focused.value = true
   emit('focus')
-  const now = Date.now()
-  suppressWindowScrollUntil = now + (isAndroidChrome ? 650 : 400)
-  scheduleAfterKeyboardStable(() => {
-    applyDynamicMaxHeight()
-    gentleScrollTextareaToShowCaret()
-    ensureCaretVisibleOnPage()
-  })
 }
-
-function onBlur() {
-  emit('blur')
+function handleBlur() {
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -175,20 +242,66 @@ function onBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
+  focused.value = false
+  emit('blur')
 }
 
-function handleViewportChange() {
-  scheduleAfterKeyboardStable(() => {
-    applyDynamicMaxHeight()
-    gentleScrollTextareaToShowCaret()
-    ensureCaretVisibleOnPage()
-  }, 150)
-}
-
-function handleClick() {
+/* ============== 生命周期 & 事件 ============== */
+function onVVChange() {
+  // 视觉视口变化时，调整下拉高度并确保光标可见
+  calcDropdownMaxHeight()
   requestAnimationFrame(() => {
-    gentleScrollTextareaToShowCaret()
+    nextTick(() => ensureCaretVisible())
   })
+}
+
+onMounted(() => {
+  // 下拉高度 & 视觉视口监听
+  calcDropdownMaxHeight()
+  window.addEventListener('resize', calcDropdownMaxHeight)
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onVVChange)
+    window.visualViewport.addEventListener('scroll', onVVChange)
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', calcDropdownMaxHeight)
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', onVVChange)
+    window.visualViewport.removeEventListener('scroll', onVVChange)
+  }
+})
+
+// 打开下拉瞬间再算一次，确保精准
+watch(() => tagMenuVisible.value, (v) => {
+  if (v)
+    calcDropdownMaxHeight()
+})
+
+/* ============== 文本与插入工具 ============== */
+function updateTextarea(newText: string, newCursorPos: number) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const originalScrollTop = el.scrollTop
+  input.value = newText
+  nextTick(() => {
+    el.focus()
+    el.setSelectionRange(newCursorPos, newCursorPos)
+    el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
+    ensureCaretVisible()
+  })
+}
+
+function handleSave() {
+  if (!props.isLoading && contentModel.value)
+    emit('save', contentModel.value)
+}
+function handleCancel() {
+  emit('cancel')
 }
 
 function handleInput(event: Event) {
@@ -205,20 +318,29 @@ function handleInput(event: Event) {
     tagSuggestions.value = props.allTags.filter(tag =>
       tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
     )
+
     if (tagSuggestions.value.length > 0) {
       const textLines = textBeforeCursor.split('\n')
       const currentLine = textLines.length - 1
       const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
       const topOffset = currentLine * lineHeight
+
       const measure = document.createElement('span')
-      measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
+      measure.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        font: inherit;
+        white-space: pre;
+      `
       measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
       el.parentNode?.appendChild(measure)
       const leftOffset = measure.offsetWidth
       el.parentNode?.removeChild(measure)
+
+      const host = el as HTMLElement
       suggestionsStyle.value = {
-        top: `${el.offsetTop + topOffset + lineHeight}px`,
-        left: `${el.offsetLeft + leftOffset}px`,
+        top: `${host.offsetTop + topOffset + lineHeight}px`,
+        left: `${host.offsetLeft + leftOffset}px`,
       }
       showTagSuggestions.value = true
     }
@@ -226,71 +348,86 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
-}
 
-// ============== 文本与工具栏操作 ==============
-function updateTextarea(newText: string, newCursorPos?: number) {
-  input.value = newText
-  nextTick(() => {
-    const el = textarea.value
-    if (el) {
-      el.focus()
-      if (newCursorPos !== undefined)
-        el.setSelectionRange(newCursorPos, newCursorPos)
-    }
-  })
+  if (!isComposing.value) {
+    nextTick(() => {
+      ensureCaretVisible()
+    })
+  }
 }
 
 function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
     return
+
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
   const textAfterCursor = el.value.substring(cursorPos)
   const newText = `${el.value.substring(0, lastHashIndex)}${tag} ${textAfterCursor}`
-  const newCursorPos = lastHashIndex + tag.length + 1
+
+  input.value = newText
   showTagSuggestions.value = false
-  updateTextarea(newText, newCursorPos)
+
+  nextTick(() => {
+    const newCursorPos = lastHashIndex + tag.length + 1
+    el.focus()
+    el.setSelectionRange(newCursorPos, newCursorPos)
+    ensureCaretVisible()
+  })
 }
 
-function insertText(prefix: string, suffix = '') {
+function reset() {
+  triggerResize()
+}
+defineExpose({ reset })
+
+function insertText(prefix: string, suffix: string = '') {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
   const newTextFragment = `${prefix}${selectedText}${suffix}`
   const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
   const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
+
   if (blurTimeoutId) {
     clearTimeout(blurTimeoutId)
     blurTimeoutId = null
   }
+
   updateTextarea(finalFullText, newCursorPos)
+}
+
+// 备用：通过按钮触发插入 #
+function _addTag() {
+  insertText('#')
+  nextTick(() => {
+    const el = textarea.value
+    if (el)
+      el.dispatchEvent(new Event('input'))
+    ensureCaretVisible()
+  })
 }
 
 function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
     textarea.value?.focus()
+    ensureCaretVisible()
   })
-}
-
-function addHeading() {
-  insertText('## ', '')
 }
 
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
-
 function addTodo() {
   const el = textarea.value
   if (!el)
@@ -302,7 +439,6 @@ function addTodo() {
   const newCursorPos = start + textToInsert.length
   updateTextarea(finalFullText, newCursorPos)
 }
-
 function addOrderedList() {
   const el = textarea.value
   if (!el)
@@ -314,9 +450,8 @@ function addOrderedList() {
   const newCursorPos = start + textToInsert.length
   updateTextarea(finalFullText, newCursorPos)
 }
-
 function handleEnterKey(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || isComposing.value)
+  if (event.key !== 'Enter')
     return
   const el = textarea.value
   if (!el)
@@ -335,97 +470,69 @@ function handleEnterKey(event: KeyboardEvent) {
     event.preventDefault()
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
-    updateTextarea(before + after, currentLineStart - 1)
+    input.value = before + after
+    nextTick(() => {
+      el.focus()
+      const pos = currentLineStart - 1
+      el.setSelectionRange(pos, pos)
+      ensureCaretVisible()
+    })
     return
   }
 
   event.preventDefault()
   const currentNumber = Number.parseInt(match[1], 10)
   const nextPrefix = `\n${currentNumber + 1}. `
-  const before2 = el.value.substring(0, start)
-  const after2 = el.value.substring(end)
-  updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+  const before = el.value.substring(0, start)
+  const after = el.value.substring(end)
+  input.value = before + nextPrefix + after
+  nextTick(() => {
+    el.focus()
+    const newCursorPos = start + nextPrefix.length
+    el.setSelectionRange(newCursorPos, newCursorPos)
+    ensureCaretVisible()
+  })
+}
+function addHeading() {
+  const el = textarea.value
+  if (!el)
+    return
+  const start = el.selectionStart
+  const lineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const lineEnd = !el.value.includes('\n', lineStart) ? el.value.length : el.value.indexOf('\n', lineStart)
+  const currentLine = el.value.substring(lineStart, lineEnd)
+  const headingRegex = /^(#+\s)/
+  const newLineContent = headingRegex.test(currentLine) ? currentLine.replace(headingRegex, '') : `## ${currentLine}`
+  const finalFullText = el.value.substring(0, lineStart) + newLineContent + el.value.substring(lineEnd)
+  const newCursorPos = lineStart + newLineContent.length
+  updateTextarea(finalFullText, newCursorPos)
 }
 
-// ============== 生命周期与 Watchers ==============
-onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleViewportChange)
-    window.visualViewport.addEventListener('scroll', handleViewportChange)
-  }
-  const ro = new ResizeObserver(applyDynamicMaxHeight)
-  if (editorFooterRef.value)
-    ro.observe(editorFooterRef.value)
-
-  ;(editorFooterRef as any)._ro = ro
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', handleViewportChange)
-    window.visualViewport.removeEventListener('scroll', handleViewportChange)
-  }
-  const ro = (editorFooterRef as any)._ro
-  if (ro && editorFooterRef.value)
-    ro.unobserve(editorFooterRef.value)
-})
-
+/* ============== Watchers（尽量精简） ============== */
 watch(() => props.modelValue, (newValue) => {
   if (newValue === '') {
     nextTick(() => {
       triggerResize()
-      applyDynamicMaxHeight()
     })
   }
 })
 
-// ============== 标签菜单 ==============
-const { t } = useI18n()
-const allTagsRef = computed(() => props.allTags)
-
-function handleSelectFromMenu(tag: string) {
-  selectTag(tag)
-}
-
-const {
-  mainMenuVisible: tagMenuVisible,
-  tagMenuChildren,
-} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
-
-type Opt = any
-function injectClickHandlers(opts: Opt[]): Opt[] {
-  return opts.map((o) => {
-    if (!o)
-      return o
-    if (o.type === 'group' && Array.isArray(o.children))
-      return { ...o, children: injectClickHandlers(o.children) }
-    if (o.type === 'render')
-      return o
-    if (typeof o.key === 'string' && o.key.startsWith('#')) {
-      const click = (_e: MouseEvent) => {
-        handleSelectFromMenu(o.key)
-        tagMenuVisible.value = false
-      }
-      const mergedProps = { ...(o.props || {}), onClick: click }
-      const wrappedLabel = typeof o.label === 'function' ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()]) : o.label
-      return { ...o, props: mergedProps, label: wrappedLabel }
-    }
-    return o
-  })
-}
-
-function openTagMenu() {
-  suppressNextBlur.value = true
-  tagMenuVisible.value = true
-}
-
-const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
-
-defineExpose({ reset: triggerResize })
+// 高度变化 -> 通知父组件重新布局
+watch(textarea, (newTextarea) => {
+  if (newTextarea) {
+    const observer = new MutationObserver(() => {
+      emit('heightChange')
+    })
+    observer.observe(newTextarea, {
+      attributes: true,
+      attributeFilter: ['style'],
+    })
+  }
+})
 </script>
 
 <template>
-  <div class="note-editor-reborn">
+  <div class="note-editor-reborn" :style="{ paddingBottom: `${footerPadPx}px` }">
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
@@ -435,11 +542,10 @@ defineExpose({ reset: triggerResize })
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
         @focus="handleFocus"
-        @blur="onBlur"
-        @click="handleClick"
-        @keydown.enter="handleEnterKey"
-        @compositionstart="isComposing = true"
-        @compositionend="isComposing = false"
+        @blur="handleBlur"
+        @keydown="handleEnterKey"
+        @compositionstart="onCompositionStart"
+        @compositionend="onCompositionEnd"
         @input="handleInput"
       />
       <div
@@ -459,7 +565,8 @@ defineExpose({ reset: triggerResize })
       </div>
     </div>
 
-    <div ref="editorFooterRef" class="editor-footer">
+    <!-- 桌面端：普通版工具条（组件内） -->
+    <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
           <NDropdown
@@ -470,93 +577,155 @@ defineExpose({ reset: triggerResize })
             :show-arrow="false"
             :width="260"
             :scrollable="true"
-            max-height="320"
+            :max-height="dropdownMaxHeight"
           >
             <span class="toolbar-trigger">
-              <button
-                type="button"
-                class="toolbar-btn"
-                title="添加标签"
-                @click.stop="openTagMenu"
-              >
-                #
-              </button>
+              <button type="button" class="toolbar-btn" title="添加标签" @click.stop="openTagMenu">#</button>
             </span>
           </NDropdown>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="待办事项"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="待办事项"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
+            @keydown.enter.prevent="runToolbarAction(addTodo)"
+            @keydown.space.prevent="runToolbarAction(addTodo)"
           >
             ✓
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="加粗"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="加粗"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addBold)"
+            @keydown.enter.prevent="runToolbarAction(addBold)"
+            @keydown.space.prevent="runToolbarAction(addBold)"
           >
             B
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="数字列表"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="数字列表"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addOrderedList)"
+            @keydown.enter.prevent="runToolbarAction(addOrderedList)"
+            @keydown.space.prevent="runToolbarAction(addOrderedList)"
           >
             1.
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="添加标题"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="添加标题"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addHeading)"
+            @keydown.enter.prevent="runToolbarAction(addHeading)"
+            @keydown.space.prevent="runToolbarAction(addHeading)"
           >
             H
           </button>
 
           <button
-            type="button"
-            class="toolbar-btn"
-            title="斜体"
-            @mousedown.prevent
-            @touchstart.prevent
+            type="button" class="toolbar-btn" title="斜体"
+            @mousedown.prevent @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addItalic)"
+            @keydown.enter.prevent="runToolbarAction(addItalic)"
+            @keydown.space.prevent="runToolbarAction(addItalic)"
           >
             I
           </button>
         </div>
-        <span class="char-counter">
-          {{ charCount }}/{{ maxNoteLength }}
-        </span>
+        <span class="char-counter">{{ charCount }}/{{ maxNoteLength }}</span>
       </div>
       <div class="actions">
-        <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">
-          取消
-        </button>
-        <button
-          type="button"
-          class="btn-primary"
-          :disabled="isLoading || !contentModel"
-          @click="emit('save', contentModel)"
-        >
-          保存
-        </button>
+        <button v-if="isEditing" type="button" class="btn-secondary" @click="handleCancel">取消</button>
+        <button type="button" class="btn-primary" :disabled="isLoading || !contentModel" @click="handleSave">保存</button>
       </div>
     </div>
+
+    <!-- 移动端/任意环境：聚焦即显示的浮动工具条（Teleport 到 body） -->
+    <teleport to="body">
+      <div
+        v-show="showFloating"
+        class="editor-footer floating"
+        role="toolbar"
+        aria-label="编辑工具"
+      >
+        <div class="footer-left">
+          <div class="editor-toolbar">
+            <NDropdown
+              v-model:show="tagMenuVisible"
+              trigger="manual"
+              placement="top-start"
+              :options="tagDropdownOptions"
+              :show-arrow="false"
+              :width="260"
+              :scrollable="true"
+              :max-height="dropdownMaxHeight"
+            >
+              <span class="toolbar-trigger">
+                <button type="button" class="toolbar-btn" title="添加标签" @click.stop="openTagMenu">#</button>
+              </span>
+            </NDropdown>
+
+            <button
+              type="button" class="toolbar-btn" title="待办事项"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addTodo)"
+              @keydown.enter.prevent="runToolbarAction(addTodo)"
+              @keydown.space.prevent="runToolbarAction(addTodo)"
+            >
+              ✓
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="加粗"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addBold)"
+              @keydown.enter.prevent="runToolbarAction(addBold)"
+              @keydown.space.prevent="runToolbarAction(addBold)"
+            >
+              B
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="数字列表"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addOrderedList)"
+              @keydown.enter.prevent="runToolbarAction(addOrderedList)"
+              @keydown.space.prevent="runToolbarAction(addOrderedList)"
+            >
+              1.
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="添加标题"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addHeading)"
+              @keydown.enter.prevent="runToolbarAction(addHeading)"
+              @keydown.space.prevent="runToolbarAction(addHeading)"
+            >
+              H
+            </button>
+
+            <button
+              type="button" class="toolbar-btn" title="斜体"
+              @mousedown.prevent @touchstart.prevent
+              @pointerdown.prevent="runToolbarAction(addItalic)"
+              @keydown.enter.prevent="runToolbarAction(addItalic)"
+              @keydown.space.prevent="runToolbarAction(addItalic)"
+            >
+              I
+            </button>
+          </div>
+          <span class="char-counter">{{ charCount }}/{{ maxNoteLength }}</span>
+        </div>
+
+        <div class="actions">
+          <button v-if="isEditing" type="button" class="btn-secondary" @click="handleCancel">取消</button>
+          <button type="button" class="btn-primary" :disabled="isLoading || !contentModel" @click="handleSave">保存</button>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -591,7 +760,6 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 运行时由 JS 动态设置像素 max-height 覆盖它 */
   max-height: 50vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
@@ -612,10 +780,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-.char-counter {
-  font-size: 12px;
-  color: #6b7280;
-}
+.char-counter { font-size: 12px; color: #6b7280; }
 .dark .char-counter { color: #9ca3af; }
 
 .actions {
@@ -654,6 +819,7 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
+/* 提示浮层（输入 # 的联想） */
 .tag-suggestions {
   position: absolute;
   background-color: #fff;
@@ -671,6 +837,7 @@ defineExpose({ reset: triggerResize })
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
+/* --- Toolbar / Footer（普通版） --- */
 .editor-footer {
   display: flex;
   align-items: center;
@@ -679,6 +846,7 @@ defineExpose({ reset: triggerResize })
   border-top: none;
   background-color: transparent;
 }
+.dark .editor-footer { background-color: transparent; border-top: none; }
 
 .footer-left {
   display: flex;
@@ -714,11 +882,13 @@ defineExpose({ reset: triggerResize })
 .dark .toolbar-btn { color: #9ca3af; }
 .dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 
+/* 触发器包裹，确保 NDropdown 默认插槽只有一个子节点 */
 .toolbar-trigger {
   display: inline-flex;
   align-items: center;
 }
 
+/* 这里不要再强行设定高度，交给 props 控制；滚动增强 */
 :global(.n-dropdown-menu) {
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -726,6 +896,38 @@ defineExpose({ reset: triggerResize })
 }
 </style>
 
+<!-- 浮动工具条样式（非 scoped，确保 Teleport 到 body 也能命中） -->
+<style>
+.editor-footer.floating {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 2147483647;
+  margin: 0 12px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  backdrop-filter: saturate(180%) blur(10px);
+  background-color: rgba(250, 250, 250, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.dark .editor-footer.floating {
+  background-color: rgba(44, 44, 46, 0.92);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.editor-footer.floating .btn-primary,
+.editor-footer.floating .btn-secondary {
+  padding: 6px 10px;
+  font-size: 14px;
+}
+.editor-footer.floating .char-counter {
+  font-size: 12px;
+}
+</style>
+
+<!-- 只针对“可滚动”的 Naive UI 下拉，恢复高度与滚动（不会影响主页一级菜单） -->
 <style>
 .n-dropdown-menu.n-dropdown-menu--scrollable {
   max-height: min(60vh, 360px) !important;
