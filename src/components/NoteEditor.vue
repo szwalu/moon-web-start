@@ -44,20 +44,15 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// ============== 键盘稳定调度器 ==============
+// ============== 键盘稳定调度器 (所有布局的核心入口) ==============
 let keyboardStableTimer: number | null = null
-function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = 300) {
+function scheduleLayoutUpdate() {
   if (keyboardStableTimer !== null)
     window.clearTimeout(keyboardStableTimer)
-  keyboardStableTimer = window.setTimeout(() => {
-    try {
-      fn()
-    }
-    catch { /* ignore */ }
-  }, fallbackMs)
+  keyboardStableTimer = window.setTimeout(updateLayout, 350)
 }
 
-// ============== 视口与高度计算 ==============
+// ============== 布局与滚动计算 ==============
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
   let el: HTMLElement | null = node?.parentElement || null
   while (el) {
@@ -139,6 +134,7 @@ function ensureCaretVisible() {
     const deltaDown = (caretAbsBottom - visibleBottom) + padding
     if (scrollable)
       scrollable.scrollTop += deltaDown
+
     else
       window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
   }
@@ -146,21 +142,27 @@ function ensureCaretVisible() {
     const deltaUp = (visibleTop - caretAbsTop) + padding
     if (scrollable)
       scrollable.scrollTop -= deltaUp
+
     else
       window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
   }
 }
 
+// ============== 布局总管 (The One Ring) ==============
+function updateLayout() {
+  applyDynamicMaxHeight()
+  nextTick(() => {
+    triggerResize()
+    nextTick(() => {
+      ensureCaretVisible()
+    })
+  })
+}
+
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
-  scheduleAfterKeyboardStable(() => {
-    applyDynamicMaxHeight()
-    nextTick(() => {
-      triggerResize()
-      nextTick(ensureCaretVisible)
-    })
-  })
+  scheduleLayoutUpdate()
 }
 
 function onBlur() {
@@ -175,25 +177,11 @@ function onBlur() {
 }
 
 function handleViewportChange() {
-  scheduleAfterKeyboardStable(() => {
-    applyDynamicMaxHeight()
-    nextTick(() => {
-      triggerResize()
-      nextTick(ensureCaretVisible)
-    })
-  })
+  scheduleLayoutUpdate()
 }
 
 function handleTap() {
-  applyDynamicMaxHeight()
-  nextTick(() => {
-    triggerResize()
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        ensureCaretVisible()
-      })
-    })
-  })
+  scheduleLayoutUpdate()
 }
 
 function handleInput(event: Event) {
@@ -356,7 +344,7 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
-  const ro = new ResizeObserver(applyDynamicMaxHeight)
+  const ro = new ResizeObserver(scheduleLayoutUpdate)
   if (editorFooterRef.value)
     ro.observe(editorFooterRef.value)
 
