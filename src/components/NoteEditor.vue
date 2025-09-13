@@ -41,7 +41,7 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// [新功能] “虚拟折叠”滚动逻辑
+// [最终修正] “虚拟折叠”滚动逻辑
 function keepCaretAboveFold() {
   const el = textarea.value
   if (!el)
@@ -63,11 +63,19 @@ function keepCaretAboveFold() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const caretAbsoluteY = el.getBoundingClientRect().top + caretTopInTextarea - el.scrollTop
+  const textareaTop = el.getBoundingClientRect().top
+  const caretAbsoluteY = textareaTop + caretTopInTextarea - el.scrollTop
 
+  // 只有当光标的绝对位置低于“折叠线”时，才进行干预
   if (caretAbsoluteY > foldY) {
-    const scrollAmount = caretAbsoluteY - foldY
-    el.scrollTop += scrollAmount
+    // 我们希望光标最终停在 foldY 的位置。
+    // 所以，我们希望 (textareaTop + caretTopInTextarea - newScrollTop) = foldY
+    // 解方程可得：
+    const newScrollTop = textareaTop + caretTopInTextarea - foldY
+
+    // 确保只向上滚动内容
+    if (newScrollTop > el.scrollTop)
+      el.scrollTop = newScrollTop
   }
 }
 
@@ -79,7 +87,6 @@ function handleFocus() {
 
 function onBlur() {
   emit('blur')
-  // [新功能] 收起键盘时，重置滚动条到顶部
   if (textarea.value)
     textarea.value.scrollTop = 0
 
@@ -97,7 +104,6 @@ function handleClick() {
 }
 
 function handleInput(event: Event) {
-  // 业务逻辑照旧
   const el = event.target as HTMLTextAreaElement
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
@@ -133,7 +139,6 @@ function handleInput(event: Event) {
     }
   }
 
-  // [新功能] 每次输入后，都检查一次光标位置
   if (!isComposing.value)
     nextTick(keepCaretAboveFold)
 }
