@@ -141,7 +141,7 @@ function onCompositionStart() {
 function onCompositionEnd() {
   isComposing.value = false
   nextTick(() => {
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -168,8 +168,22 @@ function getSafeViewportBottom(): number {
   return window.innerHeight - SAFE_PADDING
 }
 
-/* ============== 确保光标可见（textarea + 外层可滚容器 + 键盘遮挡） ============== */
-function ensureCaretVisible() {
+/* ============== 自由滚动窗口 + 护航光标 ============== */
+// 自由滚动窗口：用户主动滚动后的一小段时间，不自动改 scrollTop
+let freeScrollUntil = 0
+function inFreeScrollWindow() {
+  return Date.now() < freeScrollUntil
+}
+/** 开启自由滚动窗口（毫秒） */
+function startFreeScrollWindow(ms = 1200) {
+  freeScrollUntil = Date.now() + ms
+}
+
+/** 当真的需要时可强制确保光标可见：ensureCaretVisible(true) */
+function ensureCaretVisible(force = false) {
+  if (!force && inFreeScrollWindow())
+    return
+
   const el = textarea.value
   if (!el)
     return
@@ -205,6 +219,7 @@ function ensureCaretVisible() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
+  // 只有当光标确实超出可见区，才去改 scrollTop（减少轻微抖动）
   if (caretDesiredBottom > viewBottom) {
     const newTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
     el.scrollTop = newTop
@@ -212,13 +227,18 @@ function ensureCaretVisible() {
   else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
   }
+  else if (!force) {
+    // 光标本就可见，且不是强制模式：不做任何事，尊重用户当前阅读位置
+    return
+  }
 
   // 再保证外层滚动容器可见（考虑键盘占用）
   const scrollable = getScrollableAncestor(el)
+  const safeBottom = getSafeViewportBottom()
   if (scrollable) {
     const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
     const ancRect = scrollable.getBoundingClientRect()
-    const visibleBottom = Math.min(ancRect.bottom, getSafeViewportBottom())
+    const visibleBottom = Math.min(ancRect.bottom, safeBottom)
     const visibleTop = ancRect.top
     const padding = 8
 
@@ -231,10 +251,9 @@ function ensureCaretVisible() {
       scrollable.scrollTop -= deltaUp
     }
   }
-  // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
-  if (!scrollable) {
+  else {
+    // —— 兜底：如果没可滚祖先，尝试滚动窗口（某些布局/浏览器下仍有效）
     const caretAbsTop2 = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-    const safeBottom = getSafeViewportBottom()
     const delta = (caretAbsTop2 + lineHeight * 1.8) - safeBottom
     if (delta > 0)
       window.scrollBy({ top: delta + 8, left: 0, behavior: 'smooth' })
@@ -245,10 +264,42 @@ function ensureCaretVisible() {
 function handleViewportChange() {
   requestAnimationFrame(() => {
     nextTick(() => {
-      ensureCaretVisible()
+      ensureCaretVisible(false) // 尊重自由滚动窗口
       calcDropdownMaxHeight()
     })
   })
+}
+
+/* ===== 用户交互：滚动/点击/方向键/选区变化，协同自由窗口与锚点切换 ===== */
+function onUserScroll() {
+  const el = textarea.value
+  if (!el)
+    return
+  startFreeScrollWindow(1200)
+}
+function onUserWheel() {
+  startFreeScrollWindow(1200)
+}
+function onUserTouchStart() {
+  startFreeScrollWindow(1200)
+}
+function onCaretClick() {
+  // 结束自由滚动窗口，光标既然被点到上面了，就让它成为新的锚点
+  startFreeScrollWindow(0)
+  requestAnimationFrame(() => ensureCaretVisible(true))
+}
+function onArrowKey(e: KeyboardEvent) {
+  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+    startFreeScrollWindow(0)
+    requestAnimationFrame(() => ensureCaretVisible(true))
+  }
+}
+function onSelectionChange() {
+  const el = textarea.value
+  if (el && document.activeElement === el) {
+    startFreeScrollWindow(0)
+    requestAnimationFrame(() => ensureCaretVisible(true))
+  }
 }
 
 onMounted(() => {
@@ -259,13 +310,36 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
+
+  const el = textarea.value
+  if (el) {
+    el.addEventListener('scroll', onUserScroll, { passive: true })
+    el.addEventListener('wheel', onUserWheel, { passive: true })
+    el.addEventListener('touchstart', onUserTouchStart, { passive: true })
+    el.addEventListener('click', onCaretClick, { passive: true })
+    el.addEventListener('keyup', onArrowKey)
+  }
+
+  document.addEventListener('selectionchange', onSelectionChange)
 })
+
 onUnmounted(() => {
   window.removeEventListener('resize', calcDropdownMaxHeight)
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', handleViewportChange)
     window.visualViewport.removeEventListener('scroll', handleViewportChange)
   }
+
+  const el = textarea.value
+  if (el) {
+    el.removeEventListener('scroll', onUserScroll)
+    el.removeEventListener('wheel', onUserWheel)
+    el.removeEventListener('touchstart', onUserTouchStart)
+    el.removeEventListener('click', onCaretClick)
+    el.removeEventListener('keyup', onArrowKey)
+  }
+
+  document.removeEventListener('selectionchange', onSelectionChange)
 })
 
 // 打开下拉瞬间再算一次，确保精准
@@ -286,7 +360,7 @@ function updateTextarea(newText: string, newCursorPos: number) {
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
     el.scrollTop = Math.min(originalScrollTop, el.scrollHeight - el.clientHeight)
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -356,7 +430,7 @@ function handleInput(event: Event) {
 
   if (!isComposing.value) {
     nextTick(() => {
-      ensureCaretVisible()
+      ensureCaretVisible(true)
     })
   }
 }
@@ -379,7 +453,7 @@ function selectTag(tag: string) {
     const newCursorPos = lastHashIndex + tag.length + 1
     el.focus()
     el.setSelectionRange(newCursorPos, newCursorPos)
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -415,7 +489,7 @@ function _addTag() {
     if (el)
       el.dispatchEvent(new Event('input'))
 
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -423,7 +497,7 @@ function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
     textarea.value?.focus()
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -493,7 +567,7 @@ function handleEnterKey(event: KeyboardEvent) {
       el.focus()
       const pos = currentLineStart - 1
       el.setSelectionRange(pos, pos)
-      ensureCaretVisible()
+      ensureCaretVisible(true)
     })
     return
   }
@@ -510,7 +584,7 @@ function handleEnterKey(event: KeyboardEvent) {
     el.focus()
     const newCursorPos = start + nextPrefix.length
     el.setSelectionRange(newCursorPos, newCursorPos)
-    ensureCaretVisible()
+    ensureCaretVisible(true)
   })
 }
 
@@ -735,6 +809,11 @@ onUnmounted(() => {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+
+  /* 移动端滚动增强 */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
