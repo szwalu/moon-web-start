@@ -139,8 +139,6 @@ async function executeSearch() {
 
   const key = makeCacheKey(props.user.id, query)
 
-  emit('searchStarted')
-
   // 1) 先查缓存
   const cached = getFromCache(key)
   if (cached) {
@@ -148,7 +146,8 @@ async function executeSearch() {
     return
   }
 
-  // 2) 无缓存，走远端
+  // 2) 无缓存，准备走远端，此时才显示加载
+  emit('searchStarted')
   try {
     const { data, error } = await supabase.rpc('search_notes_with_highlight', {
       p_user_id: props.user.id,
