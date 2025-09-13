@@ -154,12 +154,11 @@ function gentleRevealIfOccludedAtEnd() {
   const desiredBottom = safeBottom - padding
   const need = desiredBottom - caretAbsBottom
   if (need > 1) {
-    if (scrollable) {
+    if (scrollable)
       scrollable.scrollTop += need
-    }
-    else {
+
+    else
       window.scrollBy({ top: need, left: 0, behavior: 'auto' })
-    }
   }
 }
 
@@ -328,7 +327,6 @@ function handleEnterKey(event: KeyboardEvent) {
   updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
 
-
 // ============== 生命周期与 Watchers ==============
 onMounted(() => {
   if (window.visualViewport) {
@@ -361,7 +359,7 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 
-// ============== 标签菜单 ==============
+// ============== 标签菜单。 ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
