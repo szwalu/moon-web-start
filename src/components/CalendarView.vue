@@ -269,3 +269,13 @@ defineExpose({
   gap: 1.5rem;
 }
 </style>
+
+<style>
+/* 让 Naive UI 的弹窗/遮罩在日历之上 */
+.n-dialog, .n-modal, .n-message-container, .n-notification-container, .n-popover {
+  z-index: 6002 !important;
+}
+.n-dialog__mask, .n-modal-mask {
+  z-index: 6001 !important;
+}
+</style>
