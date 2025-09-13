@@ -41,7 +41,7 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// [终极修正] “虚拟折叠”滚动逻辑 - 采用相对定位法
+// [最终修正] 采用相对定位法的“虚拟折叠”滚动逻辑
 function keepCaretAboveFold() {
   const el = textarea.value
   if (!el)
@@ -67,17 +67,25 @@ function keepCaretAboveFold() {
   const caretRelativeY = caretTopInTextarea - el.scrollTop
 
   if (caretRelativeY > foldInTextarea) {
-    // 直接计算出能让光标停在折叠线上的 scrollTop 目标值
     const newScrollTop = caretTopInTextarea - foldInTextarea
     if (newScrollTop > el.scrollTop)
       el.scrollTop = newScrollTop
   }
 }
 
+// [最终修正] 创建一个统一的、时序绝对安全的调度函数
+function scheduleCaretCheck() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      keepCaretAboveFold()
+    })
+  })
+}
+
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
-  requestAnimationFrame(keepCaretAboveFold)
+  scheduleCaretCheck()
 }
 
 function onBlur() {
@@ -95,7 +103,7 @@ function onBlur() {
 }
 
 function handleClick() {
-  requestAnimationFrame(keepCaretAboveFold)
+  scheduleCaretCheck()
 }
 
 function handleInput(event: Event) {
@@ -135,7 +143,7 @@ function handleInput(event: Event) {
   }
 
   if (!isComposing.value)
-    nextTick(keepCaretAboveFold)
+    scheduleCaretCheck()
 }
 
 // ============== 文本与工具栏操作 ==============
@@ -147,7 +155,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
-      keepCaretAboveFold()
+      scheduleCaretCheck()
     }
   })
 }
