@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, ref } from 'vue'
+import { computed, defineExpose, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -26,11 +26,10 @@ const props = defineProps({
     default: '',
   },
   user: {
-    type: Object,
+    type: Object as () => { id?: string },
     required: true,
   },
 })
-
 const emit = defineEmits([
   'update:modelValue',
   'export',
@@ -38,10 +37,79 @@ const emit = defineEmits([
   'searchCompleted',
   'searchCleared',
 ])
+const searchInputRef = ref<HTMLInputElement | null>(null)
+// ====== 缓存配置（可按需调整）======
+const CACHE_MAX_ENTRIES = 500
+const CACHE_TTL_MS = 10 * 60 * 1000 // 10分钟
+
+interface SearchPayload {
+  data: any[]
+  error: null
+  ts: number // 缓存写入时间
+}
+
+// 用 Map 做简单 LRU：命中就“删除再 set”移到末尾表示最新
+const searchCache = ref<Map<string, SearchPayload>>(new Map())
+
+onMounted(() => {
+  searchInputRef.value?.focus()
+})
+
+function normalizeQuery(q: string) {
+  return q.trim().toLowerCase()
+}
+
+function makeCacheKey(userId: string, q: string) {
+  return `${userId}::${normalizeQuery(q)}`
+}
+
+function getFromCache(key: string): SearchPayload | null {
+  const hit = searchCache.value.get(key)
+  if (!hit)
+    return null
+  const isExpired = Date.now() - hit.ts > CACHE_TTL_MS
+  if (isExpired) {
+    searchCache.value.delete(key)
+    return null
+  }
+  // LRU：移动到末尾
+  searchCache.value.delete(key)
+  searchCache.value.set(key, hit)
+  return hit
+}
+
+function putToCache(key: string, payload: Omit<SearchPayload, 'ts'>) {
+  // 容量控制
+  while (searchCache.value.size >= CACHE_MAX_ENTRIES) {
+    const oldestKey = searchCache.value.keys().next().value
+    if (oldestKey)
+      searchCache.value.delete(oldestKey)
+    else break
+  }
+  searchCache.value.set(key, { ...payload, ts: Date.now() })
+}
+
+function invalidateCache(query?: string) {
+  if (!query) {
+    searchCache.value.clear()
+    return
+  }
+  // 只失效与此 query 匹配（忽略大小写和空格）的条目（不同 userId 的也会被清理）
+  const normalized = normalizeQuery(query)
+  for (const key of searchCache.value.keys()) {
+    const [, q] = key.split('::')
+    if (q === normalized)
+      searchCache.value.delete(key)
+  }
+}
+
+function hasCacheFor(userId: string, query: string) {
+  const key = makeCacheKey(userId, query)
+  return !!getFromCache(key) // 注意：这会“触发一次 LRU 移动”，仅用于调试时请知悉
+}
 
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
-const searchInputRef = ref<HTMLInputElement | null>(null)
 const showSearchTagSuggestions = ref(false)
 const searchTagSuggestions = ref<string[]>([])
 const highlightedSearchIndex = ref(-1)
@@ -54,9 +122,12 @@ const searchModel = computed({
   },
 })
 
-// --- 搜索执行函数 ---
+// --- 搜索执行函数（带缓存） ---
 async function executeSearch() {
-  if (!searchModel.value.trim()) {
+  const raw = searchModel.value
+  const query = raw.trim()
+
+  if (!query) {
     emit('searchCleared')
     return
   }
@@ -66,22 +137,35 @@ async function executeSearch() {
     return
   }
 
+  const key = makeCacheKey(props.user.id, query)
+
   emit('searchStarted')
 
+  // 1) 先查缓存
+  const cached = getFromCache(key)
+  if (cached) {
+    emit('searchCompleted', { data: cached.data, error: null, fromCache: true })
+    return
+  }
+
+  // 2) 无缓存，走远端
   try {
     const { data, error } = await supabase.rpc('search_notes_with_highlight', {
       p_user_id: props.user.id,
-      search_term: searchModel.value.trim(),
+      search_term: query,
     })
 
     if (error)
       throw error
 
-    emit('searchCompleted', { data, error: null })
+    // 写缓存
+    putToCache(key, { data, error: null })
+
+    emit('searchCompleted', { data, error: null, fromCache: false })
   }
   catch (err: any) {
     console.error('搜索 API 请求失败:', err)
-    emit('searchCompleted', { data: [], error: err })
+    emit('searchCompleted', { data: [], error: err, fromCache: false })
   }
 }
 
@@ -121,15 +205,16 @@ function selectSearchTag(tag: string) {
 }
 
 function moveSearchSelection(offset: number) {
-  if (showSearchTagSuggestions.value && searchTagSuggestions.value.length > 0)
-    highlightedSearchIndex.value = (highlightedSearchIndex.value + offset + searchTagSuggestions.value.length) % searchTagSuggestions.value.length
+  if (showSearchTagSuggestions.value && searchTagSuggestions.value.length > 0) {
+    const len = searchTagSuggestions.value.length
+    highlightedSearchIndex.value = (highlightedSearchIndex.value + offset + len) % len
+  }
 }
 
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
     selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
-
   else
     executeSearch()
 }
@@ -144,6 +229,8 @@ function clearSearch() {
 // --- 暴露方法给父组件 ---
 defineExpose({
   executeSearch,
+  invalidateCache, // 可传入具体关键词或不传清空所有
+  hasCacheFor, // 可选：调试用
 })
 </script>
 
@@ -170,7 +257,10 @@ defineExpose({
       >
         ×
       </button>
-      <div v-if="showSearchTagSuggestions && searchTagSuggestions.length" class="tag-suggestions search-suggestions">
+      <div
+        v-if="showSearchTagSuggestions && searchTagSuggestions.length"
+        class="tag-suggestions search-suggestions"
+      >
         <ul>
           <li
             v-for="(tag, index) in searchTagSuggestions"

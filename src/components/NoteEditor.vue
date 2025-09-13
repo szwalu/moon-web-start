@@ -700,4 +700,37 @@ defineExpose({ reset: triggerResize })
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+.n-dropdown-menu .tag-row {
+  display: flex;
+  align-items: center;
+}
+
+/* 统一命中所有 Naive 下拉菜单（不依赖 --scrollable 修饰） */
+.n-dropdown-menu .tag-row {
+  display: flex;
+  align-items: center;
+  width: 100%;         /* 关键：让这一行占满，右侧才能被自动推开 */
+  min-width: 0;        /* 防止文本撑爆 */
+}
+
+/* 标签文本可选：允许截断，避免挤压星标 */
+.n-dropdown-menu .tag-row .tag-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 星标推到最右，并加点内边距提升点击手感 */
+.n-dropdown-menu .tag-row .pin-btn {
+  margin-left: auto;   /* 关键：自动把星标推到最右 */
+  padding-left: 12px;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
 </style>

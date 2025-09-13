@@ -91,6 +91,9 @@ const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
 const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
 const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
+// ++ 新增：那年今日持久化键
+const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
+const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 
 watch(searchQuery, (newValue) => {
   if (newValue && newValue.trim()) {
@@ -192,6 +195,9 @@ onMounted(() => {
           const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
           const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
           const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
+          // ++ 新增：那年今日缓存
+          const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
+          const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
 
           // 2. 根据缓存情况决定执行路径
           if (savedSearchQuery && savedSearchResults) {
@@ -222,6 +228,34 @@ onMounted(() => {
           else if (savedTagFilter) {
             // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
             await fetchNotesByTag(savedTagFilter)
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          // ++ 路径E：那年今日
+          else if (savedAnnivActive) {
+            // 与搜索/标签互斥：确保只呈现那年今日
+            isShowingSearchResults.value = false
+            activeTagFilter.value = null
+            showSearchBar.value = false // 恢复时关闭搜索栏较合理
+
+            if (savedAnnivResults) {
+              try {
+                const parsed = JSON.parse(savedAnnivResults)
+                anniversaryNotes.value = parsed
+                isAnniversaryViewActive.value = true
+                hasMoreNotes.value = false
+              }
+              catch {
+                // 解析失败则让 Banner 重新加载
+                anniversaryBannerRef.value?.loadAnniversaryNotes()
+              }
+            }
+            else {
+              // 没存下具体结果：重新计算
+              anniversaryBannerRef.value?.loadAnniversaryNotes()
+            }
+
+            // 附带拉取标签等
             fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
@@ -403,6 +437,10 @@ function restoreHomepageFromCache(): boolean {
 }
 
 function handleSearchStarted() {
+  // ++ 新增：进入搜索时清理“那年今日”持久化，保证互斥
+  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
@@ -818,15 +856,27 @@ function handleAnniversaryToggle(data: any[] | null) {
     // 进入“那年今日”视图
     anniversaryNotes.value = data
     isAnniversaryViewActive.value = true
-    // 【关键新增】告诉列表，在这个视图下没有更多笔记了
     hasMoreNotes.value = false
+
+    // ++ 新增：持久化“那年今日”状态与结果
+    sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
+    try {
+      sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+    }
+    catch {
+      // 若超出容量，仅保留激活标记
+      sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+    }
   }
   else {
-    // 退出“那年今日”视图，返回主列表
+    // 退出“那年今日”视图
     anniversaryNotes.value = null
     isAnniversaryViewActive.value = false
-    // 【关键新增】根据主列表的实际情况，恢复“是否有更多”的状态
     hasMoreNotes.value = notes.value.length < totalNotes.value
+
+    // ++ 新增：清理持久化
+    sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+    sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   }
 }
 
@@ -998,6 +1048,9 @@ async function fetchNotesByTag(tag: string) {
   isShowingSearchResults.value = false
   showSearchBar.value = false // 关闭搜索栏，避免“看起来没变化”
   searchQuery.value = '' // 清空搜索关键字
+  // 进入标签筛选，清理“那年今日”持久化（互斥）
+  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   if (!user.value)
     return
 
