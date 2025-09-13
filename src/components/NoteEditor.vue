@@ -2,6 +2,7 @@
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { useTagMenu } from '@/composables/useTagMenu'
 
@@ -43,32 +44,39 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// ============== 键盘稳定调度器 ==============
+// ============== 平台探测 & 键盘稳定调度器 ==============
+const ua = navigator.userAgent.toLowerCase()
+const isAndroid = /android/.test(ua)
+const isChromeLike = ((/chrome|crios/.test(ua) && !/edge|edg\//.test(ua)) || /samsungbrowser/.test(ua))
+const isAndroidChrome = isAndroid && isChromeLike
+
 let keyboardStableTimer: number | null = null
-function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = 300) {
+function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrome ? 500 : 300) {
   if (keyboardStableTimer !== null)
     window.clearTimeout(keyboardStableTimer)
+
   keyboardStableTimer = window.setTimeout(() => {
     try {
       fn()
     }
-    catch { /* ignore */ }
+    catch {
+      // ignore
+    }
   }, fallbackMs)
 }
 
-// ============== 视口与高度计算 ==============
+// ============== 视口与高度计算（仅用于动态 max-height） ==============
 function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
   const vv = window.visualViewport
   if (vv)
     return vv.offsetTop + vv.height - SAFE_PADDING
+
   return window.innerHeight - SAFE_PADDING
 }
-
 function getFooterHeight(): number {
   return editorFooterRef.value?.offsetHeight || 0
 }
-
 function applyDynamicMaxHeight() {
   const el = textarea.value
   if (!el)
@@ -83,11 +91,28 @@ function applyDynamicMaxHeight() {
   el.style.maxHeight = `${maxPx}px`
 }
 
+// ============== 关键修复：末尾光标可见性（用 textarea 内部滚动） ==============
+function ensureCaretVisibleAtEnd() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
+  if (!atEnd)
+    return
+
+  const lh = Number.parseFloat(getComputedStyle(el).lineHeight || '20') || 20
+  const targetScrollTop = Math.max(0, el.scrollHeight - el.clientHeight + 8)
+  if (Math.abs(el.scrollTop - targetScrollTop) > lh / 2)
+    el.scrollTop = targetScrollTop
+}
+
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
+    ensureCaretVisibleAtEnd()
   })
 }
 
@@ -105,13 +130,16 @@ function onBlur() {
 function handleViewportChange() {
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-  })
+    ensureCaretVisibleAtEnd()
+  }, 150)
 }
 
-function handleTap() {
-  // 简单点击时，只调整高度，把滚动交给浏览器
+function handleTapAlignIfAtEnd() {
   requestAnimationFrame(() => {
-    applyDynamicMaxHeight()
+    nextTick(() => {
+      applyDynamicMaxHeight()
+      ensureCaretVisibleAtEnd()
+    })
   })
 }
 
@@ -126,9 +154,9 @@ function handleInput(event: Event) {
   }
   else {
     const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
-    tagSuggestions.value = props.allTags.filter(tag =>
-      tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
-    )
+    tagSuggestions.value = props.allTags.filter((tag) => {
+      return tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`)
+    })
     if (tagSuggestions.value.length > 0) {
       const textLines = textBeforeCursor.split('\n')
       const currentLine = textLines.length - 1
@@ -137,9 +165,13 @@ function handleInput(event: Event) {
       const measure = document.createElement('span')
       measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
       measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-      el.parentNode?.appendChild(measure)
+      if (el.parentNode)
+        el.parentNode.appendChild(measure)
+
       const leftOffset = measure.offsetWidth
-      el.parentNode?.removeChild(measure)
+      if (measure.parentNode)
+        measure.parentNode.removeChild(measure)
+
       suggestionsStyle.value = {
         top: `${el.offsetTop + topOffset + lineHeight}px`,
         left: `${el.offsetLeft + leftOffset}px`,
@@ -150,6 +182,8 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
+
+  ensureCaretVisibleAtEnd()
 }
 
 // ============== 文本与工具栏操作 ==============
@@ -161,6 +195,8 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
+
+      ensureCaretVisibleAtEnd()
     }
   })
 }
@@ -169,6 +205,7 @@ function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
     return
+
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
@@ -183,6 +220,7 @@ function insertText(prefix: string, suffix = '') {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const end = el.selectionEnd
   const selectedText = el.value.substring(start, end)
@@ -199,18 +237,20 @@ function insertText(prefix: string, suffix = '') {
 function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
-    textarea.value?.focus()
+    const el = textarea.value
+    if (el)
+      el.focus()
+
+    ensureCaretVisibleAtEnd()
   })
 }
 
 function addHeading() {
   insertText('## ', '')
 }
-
 function addBold() {
   insertText('**', '**')
 }
-
 function addItalic() {
   insertText('*', '*')
 }
@@ -219,6 +259,7 @@ function addTodo() {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '- [ ] '
@@ -231,6 +272,7 @@ function addOrderedList() {
   const el = textarea.value
   if (!el)
     return
+
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '1. '
@@ -242,6 +284,7 @@ function addOrderedList() {
 function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
+
   const el = textarea.value
   if (!el)
     return
@@ -277,7 +320,10 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', handleViewportChange)
     window.visualViewport.addEventListener('scroll', handleViewportChange)
   }
-  const ro = new ResizeObserver(applyDynamicMaxHeight)
+  const ro = new ResizeObserver(() => {
+    applyDynamicMaxHeight()
+    ensureCaretVisibleAtEnd()
+  })
   if (editorFooterRef.value)
     ro.observe(editorFooterRef.value)
 
@@ -299,11 +345,12 @@ watch(() => props.modelValue, (newValue) => {
     nextTick(() => {
       triggerResize()
       applyDynamicMaxHeight()
+      ensureCaretVisibleAtEnd()
     })
   }
 })
 
-// ============== 标签菜单 ==============
+// ============== 标签菜单。 ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
 
@@ -322,17 +369,22 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
     if (!o)
       return o
+
     if (o.type === 'group' && Array.isArray(o.children))
       return { ...o, children: injectClickHandlers(o.children) }
+
     if (o.type === 'render')
       return o
+
     if (typeof o.key === 'string' && o.key.startsWith('#')) {
       const click = (_e: MouseEvent) => {
         handleSelectFromMenu(o.key)
         tagMenuVisible.value = false
       }
       const mergedProps = { ...(o.props || {}), onClick: click }
-      const wrappedLabel = typeof o.label === 'function' ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()]) : o.label
+      const wrappedLabel = typeof o.label === 'function'
+        ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()])
+        : o.label
       return { ...o, props: mergedProps, label: wrappedLabel }
     }
     return o
@@ -344,7 +396,9 @@ function openTagMenu() {
   tagMenuVisible.value = true
 }
 
-const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
+const tagDropdownOptions = computed(() => {
+  return injectClickHandlers(tagMenuChildren.value)
+})
 
 defineExpose({ reset: triggerResize })
 </script>
@@ -361,7 +415,8 @@ defineExpose({ reset: triggerResize })
         :maxlength="maxNoteLength"
         @focus="handleFocus"
         @blur="onBlur"
-        @click="handleTap"
+        @click="handleTapAlignIfAtEnd"
+        @pointerup="handleTapAlignIfAtEnd"
         @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
@@ -499,14 +554,8 @@ defineExpose({ reset: triggerResize })
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
 }
-.dark .note-editor-reborn {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-.dark .note-editor-reborn:focus-within {
-  border-color: #00b386;
-  box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
-}
+.dark .note-editor-reborn { background-color: #2c2c2e; border-color: #48484a; }
+.dark .note-editor-reborn:focus-within { border-color: #00b386; box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2); }
 
 .editor-wrapper {
   position: relative;
@@ -530,6 +579,7 @@ defineExpose({ reset: triggerResize })
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -537,10 +587,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea.font-size-large { font-size: 20px; }
 .editor-textarea.font-size-extra-large { font-size: 22px; }
 
-.char-counter {
-  font-size: 12px;
-  color: #6b7280;
-}
+.char-counter { font-size: 12px; color: #6b7280; }
 .dark .char-counter { color: #9ca3af; }
 
 .actions {
@@ -605,11 +652,7 @@ defineExpose({ reset: triggerResize })
   background-color: transparent;
 }
 
-.footer-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.footer-left { display: flex; align-items: center; gap: 8px; }
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -639,10 +682,7 @@ defineExpose({ reset: triggerResize })
 .dark .toolbar-btn { color: #9ca3af; }
 .dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 
-.toolbar-trigger {
-  display: inline-flex;
-  align-items: center;
-}
+.toolbar-trigger { display: inline-flex; align-items: center; }
 
 :global(.n-dropdown-menu) {
   overflow-y: auto;
