@@ -310,7 +310,7 @@ notes:
   copy_error: 复制失败
   word_count: 字数： {count}
   anniversary_found: 📅 那年今日，您记录了 {count} 条笔记
-  anniversary_total: 共 {count} 条笔记 (点击返回)
+  anniversary_total: 那年今日共有 {count} 条笔记 (点击返回)
   created_at: 创建于： {time}
   updated2_at: 编辑于： {time}
   export_all: 导出笔记

@@ -244,6 +244,9 @@ onMounted(() => {
                 anniversaryNotes.value = parsed
                 isAnniversaryViewActive.value = true
                 hasMoreNotes.value = false
+                nextTick(() => {
+                  anniversaryBannerRef.value?.setView(true)
+                })
               }
               catch {
                 // 解析失败则让 Banner 重新加载
