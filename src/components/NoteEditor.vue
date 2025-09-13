@@ -36,11 +36,14 @@ const charCount = computed(() => contentModel.value.length)
 // ============== Refs ==============
 const editorFooterRef = ref<HTMLElement | null>(null)
 
-// ============== 状态与抑制标志 ==============
+// ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
 let suppressWindowScrollUntil = 0
+const showTagSuggestions = ref(false)
+const tagSuggestions = ref<string[]>([])
+const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
 // ============== 平台探测 & 键盘稳定调度器 ==============
 const ua = navigator.userAgent.toLowerCase()
@@ -62,7 +65,7 @@ function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrom
   }, fallbackMs)
 }
 
-// ============== 视口与键盘高度计算 (核心功能恢复) ==============
+// ============== 视口与键盘高度计算 ==============
 function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
   let el: HTMLElement | null = node?.parentElement || null
   while (el) {
@@ -272,7 +275,6 @@ function runToolbarAction(fn: () => void) {
   })
 }
 
-// [修正] 修复 max-statements-per-line 错误
 function addHeading() {
   insertText('## ', '')
 }
@@ -375,6 +377,11 @@ watch(() => props.modelValue, (newValue) => {
 // ============== 标签菜单 ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
+
+function handleSelectFromMenu(tag: string) {
+  selectTag(tag)
+}
+
 const {
   mainMenuVisible: tagMenuVisible,
   tagMenuChildren,
