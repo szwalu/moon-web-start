@@ -40,7 +40,6 @@ const editorFooterRef = ref<HTMLElement | null>(null)
 const isComposing = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
-let suppressWindowScrollUntil = 0
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
@@ -65,6 +64,18 @@ function scheduleAfterKeyboardStable(fn: () => void, fallbackMs = isAndroidChrom
 }
 
 // ============== 视口与键盘高度计算 ==============
+function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = node?.parentElement || null
+  while (el) {
+    const style = getComputedStyle(el)
+    const canScroll = /(auto|scroll)/.test(style.overflowY)
+    if (canScroll && el.clientHeight < el.scrollHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
 function getSafeViewportBottom(): number {
   const SAFE_PADDING = 10
   const vv = window.visualViewport
@@ -91,78 +102,11 @@ function applyDynamicMaxHeight() {
   el.style.maxHeight = `${maxPx}px`
 }
 
-function ensureCaretVisibleOnPage() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
-  const visibleBottom = getSafeViewportBottom()
-  const visibleTop = 0
-  const padding = 8
-  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
-
-  if (caretAbsBottom > visibleBottom) {
-    const deltaDown = (caretAbsBottom - visibleBottom) + padding
-    if (Date.now() > suppressWindowScrollUntil)
-      window.scrollBy({ top: deltaDown, left: 0, behavior: 'auto' })
-  }
-  else if (caretAbsTop < visibleTop) {
-    const deltaUp = (visibleTop - caretAbsTop) + padding
-    if (Date.now() > suppressWindowScrollUntil)
-      window.scrollBy({ top: -deltaUp, left: 0, behavior: 'auto' })
-  }
-}
-
-function gentleScrollTextareaToShowCaret() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
-}
-
 // ============== 事件处理 ==============
 function handleFocus() {
   emit('focus')
-  const now = Date.now()
-  suppressWindowScrollUntil = now + (isAndroidChrome ? 650 : 400)
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-    gentleScrollTextareaToShowCaret()
-    ensureCaretVisibleOnPage()
   })
 }
 
@@ -180,14 +124,50 @@ function onBlur() {
 function handleViewportChange() {
   scheduleAfterKeyboardStable(() => {
     applyDynamicMaxHeight()
-    gentleScrollTextareaToShowCaret()
-    ensureCaretVisibleOnPage()
   }, 150)
 }
 
-function handleClick() {
+function gentleRevealIfOccludedAtEnd() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const atEnd = el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length
+  if (!atEnd)
+    return
+
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  document.body.appendChild(mirror)
+  const before = el.value.slice(0, el.selectionEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const scrollable = getScrollableAncestor(el)
+  const caretAbsTop = el.getBoundingClientRect().top + (caretTopInTextarea - el.scrollTop)
+  const caretAbsBottom = caretAbsTop + lineHeight * 1.2
+  const safeBottom = getSafeViewportBottom()
+  const padding = 8
+  const desiredBottom = safeBottom - padding
+  const need = desiredBottom - caretAbsBottom
+  if (need > 1) {
+    if (scrollable)
+      scrollable.scrollTop += need
+
+    else
+      window.scrollBy({ top: need, left: 0, behavior: 'auto' })
+  }
+}
+
+function handleTapAlignIfAtEnd() {
   requestAnimationFrame(() => {
-    gentleScrollTextareaToShowCaret()
+    nextTick(() => {
+      applyDynamicMaxHeight()
+      gentleRevealIfOccludedAtEnd()
+    })
   })
 }
 
@@ -392,6 +372,7 @@ const {
   tagMenuChildren,
 } = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 
+const dropdownMaxHeight = ref(320)
 type Opt = any
 function injectClickHandlers(opts: Opt[]): Opt[] {
   return opts.map((o) => {
@@ -436,7 +417,8 @@ defineExpose({ reset: triggerResize })
         :maxlength="maxNoteLength"
         @focus="handleFocus"
         @blur="onBlur"
-        @click="handleClick"
+        @click="handleTapAlignIfAtEnd"
+        @pointerup="handleTapAlignIfAtEnd"
         @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
@@ -470,7 +452,7 @@ defineExpose({ reset: triggerResize })
             :show-arrow="false"
             :width="260"
             :scrollable="true"
-            max-height="320"
+            :max-height="dropdownMaxHeight"
           >
             <span class="toolbar-trigger">
               <button
