@@ -14,6 +14,7 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 5000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
+  initialHeightPx: { type: Number, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
@@ -395,10 +396,13 @@ defineExpose({ reset: triggerResize })
       <textarea
         ref="textarea"
         v-model="input"
-        class="editor-textarea"
-        :class="`font-size-${settingsStore.noteFontSize}`"
+        class="editor-textarea" :class="[
+          `font-size-${settingsStore.noteFontSize}`,
+          props.initialHeightPx ? 'fixed-height' : '',
+        ]"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
+        :style="props.initialHeightPx ? { '--fixed-h': `${props.initialHeightPx}px` } : undefined"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
@@ -732,5 +736,13 @@ defineExpose({ reset: triggerResize })
   background: none;
   border: 0;
   cursor: pointer;
+}
+
+/* 固定编辑高度：当 NoteList 传入 initialHeightPx 时生效 */
+.editor-textarea.fixed-height {
+  height: var(--fixed-h) !important;
+  min-height: var(--fixed-h) !important;
+  max-height: var(--fixed-h) !important;
+  overflow-y: auto; /* 内容超出时内部滚动 */
 }
 </style>

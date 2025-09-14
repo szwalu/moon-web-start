@@ -48,6 +48,7 @@ const expandedNote = ref<string | null>(null)
 const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
 const isUpdating = ref(false)
+const browseHeights = ref<Record<string, number>>({})
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
@@ -163,6 +164,17 @@ onUnmounted(() => {
 function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
+    // —— 进入编辑前：测一次“当前浏览态的可见高度” —— //
+  const card = noteContainers.value[note.id] as HTMLElement | undefined
+  let h = 0
+  if (card) {
+  // 展开态与收起态都包含 .prose（收起态还带 .line-clamp-3）
+    const prose = card.querySelector('.prose') as HTMLElement | null
+    if (prose)
+      h = prose.clientHeight
+  }
+  // 兜底：给个最小高度，避免 0（比如很短内容）
+  browseHeights.value[note.id] = Math.max(h, 40)
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
   expandedNote.value = null
@@ -471,6 +483,7 @@ defineExpose({
                 :max-note-length="maxNoteLength"
                 :placeholder="$t('notes.update_note')"
                 :all-tags="allTags"
+                :initial-height-px="browseHeights[item.id] ?? null"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
                 @focus="handleEditorFocus(noteContainers[item.id])"
