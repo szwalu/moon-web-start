@@ -16,6 +16,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 5000 },
   searchQuery: { type: String, default: '' },
+  bottomGuardPx: { type: Number, default: 110 },
 })
 
 const emit = defineEmits([
@@ -100,7 +101,8 @@ const handleScroll = throttle(() => {
 
   // 触底加载
   if (!props.isLoading && props.hasMore) {
-    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300
+    const guard = Math.max(0, props.bottomGuardPx)
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - (300 + guard)
     if (nearBottom)
       emit('loadMore')
   }
@@ -435,6 +437,7 @@ defineExpose({
       :items="notes"
       :min-item-size="120"
       class="scroller"
+      :style="{ '--bottom-guard': `${props.bottomGuardPx}px` }"
       key-field="id"
     >
       <template #default="{ item, index, active }">
@@ -471,6 +474,7 @@ defineExpose({
                 :max-note-length="maxNoteLength"
                 :placeholder="$t('notes.update_note')"
                 :all-tags="allTags"
+                :bottom-guard-px="props.bottomGuardPx"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
                 @focus="handleEditorFocus(noteContainers[item.id])"
@@ -539,6 +543,7 @@ defineExpose({
   /* 新增：为滚动区域设置背景色 */
   background-color: #f9fafb;
   padding: 0.5rem; /* 给卡片和列表边缘留出一些空间 */
+  padding-bottom: var(--bottom-guard, 0px);
 }
 .dark .scroller {
   background-color: #111827; /* 深色模式下的深灰色背景 */

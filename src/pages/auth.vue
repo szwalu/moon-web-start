@@ -97,6 +97,8 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 
+const BOTTOM_GUARD = 110 // 与之前留白一致
+
 watch(searchQuery, (newValue) => {
   if (newValue && newValue.trim()) {
     sessionStorage.setItem(SESSION_SEARCH_QUERY_KEY, newValue)
@@ -1205,6 +1207,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
             v-model="searchQuery"
             class="search-actions-wrapper"
             :all-tags="allTags"
+            :bottom-guard-px="BOTTOM_GUARD"
             :is-exporting="isExporting"
             :search-query="searchQuery"
             :user="user"
@@ -1277,6 +1280,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :all-tags="allTags"
           :max-note-length="maxNoteLength"
           :search-query="searchQuery"
+          :bottom-guard-px="BOTTOM_GUARD"
           @load-more="nextPage"
           @update-note="handleUpdateNote"
           @delete-note="triggerDeleteConfirmation"
@@ -1287,6 +1291,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @date-updated="fetchNotes"
         />
       </div>
+      <div class="bottom-spacer" aria-hidden="true" />
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
@@ -1616,5 +1621,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70vh !important;
   }
+}
+
+.bottom-spacer {
+  height: calc(110px + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
 }
 </style>
