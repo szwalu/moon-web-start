@@ -61,6 +61,30 @@ function setNoteContainer(el: Element | null, id: string) {
   noteContainers.value[id] = $el
 }
 
+function measureExpandedProseHeight(card: HTMLElement): number {
+  const prose = card.querySelector('.prose') as HTMLElement | null
+  if (!prose)
+    return 0
+
+  // 基于当前宽度复制一份副本，移除 line-clamp-3，放到屏幕外测量“展开后的真实高度”
+  const rect = prose.getBoundingClientRect()
+  const clone = prose.cloneNode(true) as HTMLElement
+  clone.classList.remove('line-clamp-3') // 关键：去掉 3 行裁切
+  clone.style.position = 'absolute'
+  clone.style.left = '-99999px'
+  clone.style.top = '0'
+  clone.style.height = 'auto'
+  clone.style.maxHeight = 'none'
+  clone.style.overflow = 'visible'
+  clone.style.display = 'block'
+  clone.style.width = `${rect.width}px`
+
+  document.body.appendChild(clone)
+  const h = clone.clientHeight
+  document.body.removeChild(clone)
+  return h
+}
+
 // ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
 const isUserScrolling = ref(false)
 let scrollHideTimer: number | null = null
@@ -164,17 +188,15 @@ onUnmounted(() => {
 function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
-    // —— 进入编辑前：测一次“当前浏览态的可见高度” —— //
+
   const card = noteContainers.value[note.id] as HTMLElement | undefined
   let h = 0
-  if (card) {
-  // 展开态与收起态都包含 .prose（收起态还带 .line-clamp-3）
-    const prose = card.querySelector('.prose') as HTMLElement | null
-    if (prose)
-      h = prose.clientHeight
-  }
-  // 兜底：给个最小高度，避免 0（比如很短内容）
+  if (card)
+    h = measureExpandedProseHeight(card)
+
+  // 兜底，避免 0（极短内容或异常时）
   browseHeights.value[note.id] = Math.max(h, 40)
+
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
   expandedNote.value = null
