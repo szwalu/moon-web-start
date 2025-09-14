@@ -14,7 +14,6 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 5000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
-  bottomGuardPx: { type: Number, default: 110 },
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
@@ -76,15 +75,10 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  const guard = Math.max(0, props.bottomGuardPx)
-  const effectiveBottom = viewBottom - guard
-  if (caretDesiredBottom > effectiveBottom) {
-    const delta = caretDesiredBottom - effectiveBottom
-    el.scrollTop = Math.min(viewTop + delta, el.scrollHeight - el.clientHeight)
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 // ============== 基础事件 ==============
@@ -565,7 +559,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 60vh;
+  max-height: 48vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
