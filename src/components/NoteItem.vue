@@ -10,18 +10,18 @@ import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
 
-/* ---------------- Props & Emits ---------------- */
 const props = defineProps({
   note: { type: Object, required: true },
   isExpanded: { type: Boolean, default: false },
   isSelectionModeActive: { type: Boolean, default: false },
   searchQuery: { type: String, default: '' },
   dropdownInPlace: { type: Boolean, default: false },
+  // 关键新增：添加开关prop，与您最开始的文件保持一致
+  showInternalCollapseButton: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated'])
+const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated', 'setDate'])
 
-/* ---------------- 状态 ---------------- */
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
@@ -40,29 +40,21 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// --- 使用这个新函数，替换旧的 renderMarkdown ---
 function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  // 第1步：先用 markdown-it 将原始内容安全地转为 HTML
   let html = md.render(content)
-
-  // 第2步：在生成的 HTML 上进行“标签高亮”的再加工
   html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
-
-  // 第3步：在已经处理过的 HTML 上，进行“搜索词高亮”
   const query = props.searchQuery.trim()
   if (query) {
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(escapedQuery, 'gi')
     html = html.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
   }
-
   return html
 }
 
-/* ---------------- 溢出检测 ---------------- */
 function checkIfNoteOverflows() {
   const el = contentRef.value as HTMLElement | null
   if (el)
@@ -76,36 +68,33 @@ onMounted(() => {
       checkIfNoteOverflows()
     })
     observer.observe(contentRef.value)
+    // 确保初始状态正确
+    nextTick(() => checkIfNoteOverflows())
   }
 })
 onUnmounted(() => {
   if (observer)
     observer.disconnect()
 })
+
+// 当笔记内容变化时，重新检查
 watch(() => props.note.content, () => {
   nextTick(() => {
     checkIfNoteOverflows()
   })
 })
 
-/* ---------------- 下拉菜单 ---------------- */
+// 关键新增：当展开/收起状态变化时，也重新检查
+watch(() => props.isExpanded, () => {
+  nextTick(() => {
+    checkIfNoteOverflows()
+  })
+})
+
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
+  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   return [
     { label: t('notes.edit'), key: 'edit' },
     { label: t('notes.copy'), key: 'copy' },
@@ -118,24 +107,12 @@ function getDropdownOptions(note: any) {
       type: 'render',
       render: () => {
         const textColor = isDark.value ? '#aaa' : '#666'
-        const pStyle = {
-          margin: '0',
-          padding: '0',
-          lineHeight: '1.8',
-          whiteSpace: 'nowrap',
-          fontSize: '13px',
-          color: textColor,
-        } as const
-
-        return h(
-          'div',
-          { style: { padding: '4px 12px', cursor: 'default' } },
-          [
-            h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
-            h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),
-            h('p', { style: pStyle }, t('notes.updated2_at', { time: updatedTime })),
-          ],
-        )
+        const pStyle = { margin: '0', padding: '0', lineHeight: '1.8', whiteSpace: 'nowrap', fontSize: '13px', color: textColor } as const
+        return h('div', { style: { padding: '4px 12px', cursor: 'default' } }, [
+          h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
+          h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),
+          h('p', { style: pStyle }, t('notes.updated2_at', { time: updatedTime })),
+        ])
       },
     },
   ]
@@ -161,9 +138,7 @@ function handleDropdownSelect(key: string) {
         content: t('dialog.delete_note_content'),
         positiveText: t('dialog.confirm_button'),
         negativeText: t('dialog.cancel_button'),
-        onPositiveClick: () => {
-          emit('delete', props.note.id)
-        },
+        onPositiveClick: () => { emit('delete', props.note.id) },
       })
       break
     default:
@@ -171,7 +146,6 @@ function handleDropdownSelect(key: string) {
   }
 }
 
-/* ---------------- 任务项点击 ---------------- */
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
@@ -186,7 +160,6 @@ function handleNoteContentClick(event: MouseEvent) {
     emit('taskToggle', { noteId: props.note.id, itemIndex })
 }
 
-/* ---------------- 日期更新 ---------------- */
 async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
@@ -194,11 +167,7 @@ async function handleDateUpdate(newDate: Date) {
 
   try {
     const newTimestamp = newDate.toISOString()
-    const { error } = await supabase
-      .from('notes')
-      .update({ created_at: newTimestamp })
-      .eq('id', props.note.id)
-
+    const { error } = await supabase.from('notes').update({ created_at: newTimestamp }).eq('id', props.note.id)
     if (error)
       throw error
 
@@ -245,17 +214,23 @@ async function handleDateUpdate(newDate: Date) {
     </div>
 
     <div class="flex-1 min-w-0">
-      <!-- 展开态：外包一层成为滚动容器 -->
       <div v-if="isExpanded">
         <div
           class="prose dark:prose-invert max-w-none"
           :class="fontSizeClass"
           v-html="renderMarkdown(note.content)"
         />
-        <!-- 注意：展开态不再显示“收起”按钮；交给 NoteList.vue 的全局悬浮按钮来处理 -->
+        <div
+          v-if="showInternalCollapseButton"
+          class="toggle-button-row"
+          @click.stop="emit('toggleExpand', note.id)"
+        >
+          <button class="toggle-button">
+            {{ $t('notes.collapse', '收起') }}
+          </button>
+        </div>
       </div>
 
-      <!-- 收起态 -->
       <div v-else>
         <div
           ref="contentRef"
