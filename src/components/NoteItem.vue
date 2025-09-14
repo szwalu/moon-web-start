@@ -281,7 +281,7 @@ async function handleDateUpdate(newDate: Date) {
       v-if="showDatePicker"
       :show="showDatePicker"
       :initial-date="new Date(note.created_at)"
-      :style="{ zIndex: 100 }"
+      :style="{ zIndex: dropdownInPlace ? 6000 : 100 }"
       @close="showDatePicker = false"
       @confirm="handleDateUpdate"
     />

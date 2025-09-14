@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
-
-// ✨ 修改：导入共享的缓存键
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
 
-const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete'])
+const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate'])
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -21,7 +19,34 @@ const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
+const scrollBodyRef = ref<HTMLElement | null>(null)
 
+// --- 事件处理器 (已修复 max-statements-per-line 错误) ---
+function handleEdit(note: any) {
+  emit('editNote', note)
+}
+function handleCopy(content: string) {
+  emit('copy', content)
+}
+function handlePin(note: any) {
+  emit('pin', note)
+}
+function handleDelete(noteId: string) {
+  selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
+  emit('delete', noteId)
+}
+function handleDateUpdated() {
+  refreshData()
+}
+function handleHeaderClick() {
+  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function toggleExpandInCalendar(noteId: string) {
+  expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
+}
+
+// --- 数据获取 ---
 const attributes = computed(() => {
   return Array.from(datesWithNotes.value).map(dateStr => ({
     key: dateStr,
@@ -33,110 +58,62 @@ const attributes = computed(() => {
 async function fetchAllNoteDates() {
   if (!user.value)
     return
-
-  // ✨ 修改：使用共享的缓存键
   const cachedData = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (cachedData) {
     datesWithNotes.value = new Set(JSON.parse(cachedData))
     return
   }
-
   try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('created_at')
-      .eq('user_id', user.value.id)
-
+    const { data, error } = await supabase.from('notes').select('created_at').eq('user_id', user.value.id)
     if (error)
       throw error
     if (data) {
       const dateStrings = data.map(note => new Date(note.created_at).toDateString())
       datesWithNotes.value = new Set(dateStrings)
-      // ✨ 修改：使用共享的缓存键
       localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(dateStrings))
     }
   }
-  catch (err) {
-    console.error('获取所有笔记日期失败:', err)
-  }
+  catch (err) { console.error('获取所有笔记日期失败:', err) }
 }
 
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
-
   selectedDate.value = date
-
-  // ✨ 修改：使用共享的缓存键生成函数
+  expandedNoteId.value = null
   const cacheKey = getCalendarDateCacheKey(date)
   const cachedData = localStorage.getItem(cacheKey)
-
   if (cachedData) {
     selectedDateNotes.value = JSON.parse(cachedData)
     return
   }
-
   isLoadingNotes.value = true
   selectedDateNotes.value = []
-
   try {
     const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
     const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
-
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at', { ascending: false })
-
+    const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.value.id).gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString()).order('created_at', { ascending: false })
     if (error)
       throw error
     selectedDateNotes.value = data || []
     localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
   }
-  catch (err: any) {
-    console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
-  }
-  finally {
-    isLoadingNotes.value = false
-  }
+  catch (err: any) { console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err) }
+  finally { isLoadingNotes.value = false }
 }
 
-const scrollBodyRef = ref<HTMLElement | null>(null)
-function handleHeaderClick() {
-  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+function refreshData() {
+  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
+  localStorage.removeItem(getCalendarDateCacheKey(selectedDate.value))
+  fetchAllNoteDates()
+  fetchNotesForDate(selectedDate.value)
 }
 
-async function toggleExpandInCalendar(noteId: string) {
-  const isCollapsing = expandedNoteId.value === noteId
-
-  if (isCollapsing) {
-    expandedNoteId.value = null
-    await nextTick()
-    const noteElement = scrollBodyRef.value?.querySelector(`[data-note-id="${noteId}"]`)
-    if (noteElement)
-      noteElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }
-  else {
-    expandedNoteId.value = noteId
-  }
-}
-
+// --- 生命周期钩子 ---
 onMounted(() => {
   fetchAllNoteDates()
   fetchNotesForDate(new Date())
 })
-
-function refreshData() {
-  // ✨ 修改：使用共享的缓存键
-  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
-  localStorage.removeItem(getCalendarDateCacheKey(selectedDate.value))
-
-  fetchAllNoteDates()
-  fetchNotesForDate(selectedDate.value)
-}
 
 defineExpose({
   refreshData,
@@ -154,29 +131,39 @@ defineExpose({
         <Calendar
           is-expanded
           :attributes="attributes"
-          :is-dark="isDark" @dayclick="day => fetchNotesForDate(day.date)"
+          :is-dark="isDark"
+          @dayclick="day => fetchNotesForDate(day.date)"
         />
       </div>
       <div class="notes-for-day-container">
         <div class="selected-date-header">
           {{ selectedDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) }}
         </div>
+
         <div v-if="isLoadingNotes" class="loading-text">加载中...</div>
+
         <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
-          <NoteItem
+          <div
             v-for="note in selectedDateNotes"
             :key="note.id"
-            :note="note"
-            :data-note-id="note.id"
-            :is-expanded="expandedNoteId === note.id"
-            :dropdown-in-place="true"
-            @toggle-expand="toggleExpandInCalendar"
-            @edit="noteToEdit => emit('editNote', noteToEdit)"
-            @copy="content => emit('copy', content)"
-            @pin="noteToPin => emit('pin', noteToPin)"
-            @delete="noteId => emit('delete', noteId)"
-          />
+          >
+            <NoteItem
+              :note="note"
+              :is-expanded="expandedNoteId === note.id"
+              :dropdown-in-place="true"
+              :show-internal-collapse-button="true"
+              @toggle-expand="toggleExpandInCalendar"
+              @edit="handleEdit"
+              @copy="handleCopy"
+              @pin="handlePin"
+              @delete="handleDelete"
+              @dblclick="handleEdit(note)"
+              @date-updated="handleDateUpdated"
+              @set-date="(note) => emit('setDate', note)"
+            />
+          </div>
         </div>
+
         <div v-else class="no-notes-text">
           这一天没有笔记。
         </div>
@@ -186,7 +173,7 @@ defineExpose({
 </template>
 
 <style scoped>
-/* 样式部分没有改动 */
+/* 样式部分保持不变 */
 .calendar-view {
   position: fixed;
   top: 0;
@@ -231,6 +218,7 @@ defineExpose({
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  position: relative;
 }
 .calendar-container {
   padding: 1rem;
@@ -266,16 +254,41 @@ defineExpose({
 .notes-list {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+}
+.notes-list > div {
+  margin-bottom: 1.5rem;
+}
+.notes-list > div:last-child {
+  margin-bottom: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
 
 <style>
-/* 让 Naive UI 的弹窗/遮罩在日历之上 */
-.n-dialog, .n-modal, .n-message-container, .n-notification-container, .n-popover {
+.n-dialog__mask,
+.n-modal-mask {
   z-index: 6002 !important;
 }
-.n-dialog__mask, .n-modal-mask {
-  z-index: 6001 !important;
+
+.n-dialog,
+.n-dialog__container,
+.n-modal,
+.n-modal-container {
+  z-index: 6003 !important;
+}
+
+.n-message-container,
+.n-notification-container,
+.n-popover, .n-dropdown {
+  z-index: 6004 !important;
 }
 </style>

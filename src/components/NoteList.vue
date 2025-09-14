@@ -184,9 +184,12 @@ async function handleUpdateNote() {
     'updateNote',
     { id: editingNoteId.value, content: editingNoteContent.value },
     (success: boolean) => {
-      if (success)
-        cancelEdit()
+      // ✨ 将 isUpdating 的设置移到回调函数内部的最开始
       isUpdating.value = false
+      if (success) {
+        // ✨ 现在父组件已经处理完了返回逻辑，我们再安全地取消本地的编辑状态
+        cancelEdit()
+      }
     },
   )
 }
@@ -386,12 +389,34 @@ function updateCollapsePos() {
   collapseVisible.value = true
 }
 
+// ✨ 新增：供父组件调用的方法，用于从外部触发笔记编辑
+async function focusAndEditNote(noteId: string) {
+  // 1. 在笔记数组中找到目标笔记的“索引位置”(index)
+  const index = props.notes.findIndex(n => n.id === noteId)
+
+  // 如果在当前列表里找到了这个笔记 (index !== -1)
+  if (index !== -1) {
+    const noteToEdit = props.notes[index]
+
+    // 2. 先设置编辑状态，让 NoteEditor 准备好被渲染
+    editingNoteId.value = noteId
+    editingNoteContent.value = noteToEdit.content
+
+    // 3. 等待 Vue 完成 DOM 更新
+    await nextTick()
+
+    // 4. ✨ 使用官方的、更可靠的 scrollToItem 方法，并让其滚动到中心位置
+    scrollerRef.value?.scrollToItem(index, { align: 'center', behavior: 'smooth' })
+  }
+}
+
 function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
 defineExpose({
   scrollToTop,
+  focusAndEditNote, // ✨ 新增暴露的方法
 })
 </script>
 

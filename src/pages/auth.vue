@@ -1037,9 +1037,42 @@ function handleMainMenuSelect(rawKey: string) {
   }
 }
 
-function handleEditFromCalendar(_note: any) {
+async function handleEditFromCalendar(noteToFind: any) {
+  // 1. 关闭日历视图
   showCalendarView.value = false
-  messageHook.info('笔记编辑功能已移至主列表，请在主列表找到并编辑该笔记。')
+
+  // 2. 清理所有筛选状态，回到主列表
+  if (isAnniversaryViewActive.value)
+    handleAnniversaryToggle(null)
+
+  if (activeTagFilter.value)
+    clearTagFilter()
+
+  if (searchQuery.value || isShowingSearchResults.value)
+    handleCancelSearch()
+
+  // 3. 等待UI和数据状态更新
+  await nextTick()
+
+  // 4. 检查笔记是否已在当前加载的列表中。如果不在，则临时将其置顶。
+  //    这是关键一步，能确保 NoteList 组件的 props.notes 数组中包含目标笔记，
+  //    这样它内部的 findIndex 才能找到对应的索引。
+  const noteExists = notes.value.some(n => n.id === noteToFind.id)
+  if (!noteExists)
+    notes.value.unshift(noteToFind)
+
+  // 5. 再次等待 nextTick，确保 unshift 操作已经传递给 NoteList 组件
+  await nextTick()
+
+  // 6. 调用 NoteList 组件中已经写好的、暴露出来的 focusAndEditNote 方法
+  if (noteListRef.value) {
+    // @ts-expect-error: 'focusAndEditNote' is exposed via defineExpose
+    (noteListRef.value as any).focusAndEditNote(noteToFind.id)
+  }
+  else {
+    // 极端情况下的错误提示
+    messageHook.error('无法与笔记列表通信，请重试。')
+  }
 }
 
 async function fetchNotesByTag(tag: string) {
