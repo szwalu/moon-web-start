@@ -3,7 +3,7 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
-import { NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, useMessage } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
@@ -25,7 +25,6 @@ const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'task
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
-const dialog = useDialog()
 
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
@@ -133,13 +132,7 @@ function handleDropdownSelect(key: string) {
       showDatePicker.value = true
       break
     case 'delete':
-      dialog.warning({
-        title: t('dialog.delete_note_title'),
-        content: t('dialog.delete_note_content'),
-        positiveText: t('dialog.confirm_button'),
-        negativeText: t('dialog.cancel_button'),
-        onPositiveClick: () => { emit('delete', props.note.id) },
-      })
+      emit('delete', props.note.id)
       break
     default:
       break

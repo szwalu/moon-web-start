@@ -32,7 +32,6 @@ function handlePin(note: any) {
   emit('pin', note)
 }
 function handleDelete(noteId: string) {
-  selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
   emit('delete', noteId)
 }
 function handleDateUpdated() {

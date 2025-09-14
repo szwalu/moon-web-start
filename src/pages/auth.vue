@@ -697,7 +697,15 @@ async function handlePinToggle(note: any) {
       throw error
 
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+
+    // 刷新主页列表
     await fetchNotes()
+
+    // 如果日历视图是打开的，则调用它的刷新方法
+    if (showCalendarView.value && calendarViewRef.value) {
+      // @ts-expect-error: 'refreshData' is exposed via defineExpose
+      (calendarViewRef.value as any).refreshData()
+    }
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
@@ -759,44 +767,58 @@ async function triggerDeleteConfirmation(id: string) {
     return
 
   const noteToDelete = notes.value.find(note => note.id === id)
+  // 第一次确认
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
-    onPositiveClick: async () => {
-      try {
-        const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
-        if (error)
-          throw new Error(error.message)
+    onPositiveClick: () => {
+      // 第二次确认 (更强烈的警告)
+      dialog.warning({
+        title: t('notes.delete_confirm_title'),
+        content: () =>
+          h('div', { style: 'line-height:1.6' }, [
+            h('p', t('notes.delete_second_confirm_tip', { count: 1 })),
+            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
+          ]),
+        positiveText: t('notes.confirm_delete'),
+        negativeText: t('notes.cancel'),
+        onPositiveClick: async () => {
+          try {
+            const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
+            if (error)
+              throw new Error(error.message)
 
-        const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
-        if (homeCacheRaw) {
-          const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
-          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
-        }
-        totalNotes.value -= 1
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-        if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-          notes.value = notes.value.filter(note => note.id !== id)
-        }
-        else {
-          notes.value = notes.value.filter(note => note.id !== id)
-        }
-        messageHook.success(t('notes.delete_success'))
-        if (noteToDelete)
-          invalidateCachesOnDataChange(noteToDelete)
+            const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+            if (homeCacheRaw) {
+              const homeCache = JSON.parse(homeCacheRaw)
+              const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
+              localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
+            }
+            totalNotes.value -= 1
+            localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+            if (activeTagFilter.value) {
+              mainNotesCache = mainNotesCache.filter(note => note.id !== id)
+              notes.value = notes.value.filter(note => note.id !== id)
+            }
+            else {
+              notes.value = notes.value.filter(note => note.id !== id)
+            }
+            messageHook.success(t('notes.delete_success'))
+            if (noteToDelete)
+              invalidateCachesOnDataChange(noteToDelete)
 
-        if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-          ;(calendarViewRef.value as any).refreshData?.()
-        }
-      }
-      catch (err: any) {
-        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
-      }
+            if (showCalendarView.value && calendarViewRef.value) {
+              // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+              ;(calendarViewRef.value as any).refreshData?.()
+            }
+          }
+          catch (err: any) {
+            messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+          }
+        },
+      })
     },
   })
 }
