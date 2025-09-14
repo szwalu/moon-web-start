@@ -772,19 +772,21 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* 编辑态容器 = 70% 屏高 */
+/* 编辑态容器 = 70% 整屏（不随键盘收缩） */
 .note-editor-reborn.editing-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
+  height: 70vh;
+  min-height: 70vh;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
 }
-@supports not (height: 1dvh) {
+
+/* 现代浏览器优先用 lvh（Large Viewport Height）：忽略地址栏/键盘收缩 */
+@supports (height: 1lvh) {
   .note-editor-reborn.editing-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
+    height: 70lvh;
+    min-height: 70lvh;
+    max-height: 70lvh;
   }
 }
 
