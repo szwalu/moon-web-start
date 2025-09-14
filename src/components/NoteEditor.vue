@@ -14,7 +14,6 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 5000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
-  initialHeightPx: { type: Number, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
@@ -391,18 +390,18 @@ defineExpose({ reset: triggerResize })
 </script>
 
 <template>
-  <div ref="rootRef" class="note-editor-reborn">
+  <div
+    ref="rootRef"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+  >
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
         v-model="input"
-        class="editor-textarea" :class="[
-          `font-size-${settingsStore.noteFontSize}`,
-          props.initialHeightPx ? 'fixed-height' : '',
-        ]"
+        class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         :maxlength="maxNoteLength"
-        :style="props.initialHeightPx ? { '--fixed-h': `${props.initialHeightPx}px` } : undefined"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
@@ -738,11 +737,28 @@ defineExpose({ reset: triggerResize })
   cursor: pointer;
 }
 
-/* 固定编辑高度：当 NoteList 传入 initialHeightPx 时生效 */
-.editor-textarea.fixed-height {
-  height: var(--fixed-h) !important;
-  min-height: var(--fixed-h) !important;
-  max-height: var(--fixed-h) !important;
-  overflow-y: auto; /* 内容超出时内部滚动 */
+/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
+.note-editor-reborn.editing-viewport {
+  /* 优先使用移动端更准确的 dvh，回退到 vh */
+  height: 80dvh;
+  min-height: 80dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
 }
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
+  }
+}
+
+/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
+}
+
+/* 保持你原有 textarea 高度策略，不做任何变更 */
 </style>
