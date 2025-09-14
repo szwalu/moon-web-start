@@ -718,19 +718,19 @@ defineExpose({ reset: triggerResize })
   overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
 }
 
-/* 让编辑态时，内容区把 80% 屏高容器填满 */
+/* 让编辑态时，内容区把 70% 屏高容器填满 */
 .note-editor-reborn.editing-viewport {
-  height: 80dvh;
-  min-height: 80dvh;
-  max-height: 80dvh;
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
   display: flex;
   flex-direction: column;
 }
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 80vh;
-    min-height: 80vh;
-    max-height: 80vh;
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
   }
 }
 
