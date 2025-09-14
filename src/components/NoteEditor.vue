@@ -50,6 +50,14 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
+// === 键盘模式下把“底部”固定在 48vh ===
+const TYPING_BOTTOM_VH = 48 // 你想改别的值也可以
+const isTypingViewport = ref(false) // NEW
+
+function getVhPx(vh: number) { // NEW
+  return Math.round(window.innerHeight * (vh / 100))
+}
+
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
@@ -71,32 +79,54 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
+
+  // ★ 关键：打字（聚焦）时，视窗底部按 min(实际高度, 48vh) 计算
+  const typingLimitPx = isTypingViewport.value ? getVhPx(TYPING_BOTTOM_VH) : el.clientHeight
+  const effectiveViewportHeight = Math.min(el.clientHeight, typingLimitPx)
+  const viewBottom = viewTop + effectiveViewportHeight
+
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+  if (caretDesiredBottom > viewBottom) {
+    el.scrollTop = Math.min(
+      caretDesiredBottom - effectiveViewportHeight,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
 }
 
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
+  isTypingViewport.value = true // NEW：进入“打字视窗”模式
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function onBlur() {
   emit('blur')
+  isTypingViewport.value = false // NEW：退出“打字视窗”模式
+
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
   }
+  // 原有的 tag 建议关闭逻辑…
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
+
+  // NEW：键盘收起后自动把内容下拉（展示 70% 视口下剩余内容）
+  const el = textarea.value
+  if (el) {
+    requestAnimationFrame(() => {
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+    })
+  }
 }
 
 function handleClick() {
@@ -379,11 +409,31 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', handleGlobalPointerDown, true)
   window.addEventListener('keydown', handleGlobalKeydown)
+
+  // NEW：iOS/Android 键盘弹出会触发 visualViewport.resize
+  const vv = (window as any).visualViewport
+  if (vv) {
+    const onVV = () => {
+      if (isTypingViewport.value)
+        requestAnimationFrame(ensureCaretVisibleInTextarea)
+    }
+    vv.addEventListener('resize', onVV)
+    vv.addEventListener('scroll', onVV)
+    // 存一下，卸载时移除
+    ;(onMounted as any)._vvOff = () => {
+      vv.removeEventListener('resize', onVV)
+      vv.removeEventListener('scroll', onVV)
+    }
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
   window.removeEventListener('keydown', handleGlobalKeydown)
+
+  const off = (onMounted as any)._vvOff
+  if (off)
+    off()
 })
 
 defineExpose({ reset: triggerResize })
