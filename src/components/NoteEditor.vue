@@ -612,7 +612,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  max-height: none;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -800,6 +800,11 @@ defineExpose({ reset: triggerResize })
   height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
   max-height: none !important;/* 覆盖 48vh 上限 */
   overflow-y: auto;           /* 内容超出时内部滚动 */
+}
+
+/* 仅非编辑态保留 48vh 上限（主页新建笔记那块） */
+.note-editor-reborn:not(.editing-viewport) .editor-textarea {
+  max-height: 48vh;
 }
 </style>
 
