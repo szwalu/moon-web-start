@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDatePicker, NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
@@ -32,8 +32,10 @@ const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsMo
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
+const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
+
 // 避免 ESLint 误报这些异步组件“未使用”
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView]
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker]
 
 useDark()
 const messageHook = useMessage()
@@ -547,14 +549,10 @@ async function handleBatchExport() {
   const dialogDateRange = ref<[number, number] | null>(null)
   dialog.info({
     title: t('notes.export_confirm_title'),
-    content: () => h(NDatePicker, {
-      'value': dialogDateRange.value,
-      'type': 'daterange',
-      'clearable': true,
-      'placeholder': t('notes.select_date_range_placeholder'),
-      'class': 'dialog-date-picker',
-      'onUpdate:value': (newValue) => {
-        dialogDateRange.value = newValue
+    content: () => h(MobileDateRangePicker, {
+      'modelValue': dialogDateRange.value,
+      'onUpdate:modelValue': (v: [number, number] | null) => {
+        dialogDateRange.value = v
       },
     }),
     positiveText: t('notes.confirm_export'),

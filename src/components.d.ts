@@ -19,6 +19,7 @@ declare module 'vue' {
     Blank: typeof import('./components/Blank.vue')['default']
     CalendarView: typeof import('./components/CalendarView.vue')['default']
     DateTimePickerModal: typeof import('./components/DateTimePickerModal.vue')['default']
+    MobileDateRangePicker: typeof import('./components/MobileDateRangePicker.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCollapse: typeof import('naive-ui')['NCollapse']
     NCollapseItem: typeof import('naive-ui')['NCollapseItem']
