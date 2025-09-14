@@ -464,6 +464,27 @@ onUnmounted(() => {
     off()
 })
 
+// === 固定不随键盘变化的 1vh（基于物理屏高） ===
+function setStableVh() {
+  // 用屏幕物理高度 / DPR 作为稳定视口高度
+  const stableH = (window.screen?.height || window.innerHeight) / (window.devicePixelRatio || 1)
+  // 存成“1vh”的像素值
+  document.documentElement.style.setProperty('--stable-vh', `${stableH / 100}px`)
+}
+
+onMounted(() => {
+  setStableVh()
+
+  // 横竖屏切换/恢复页面时重算一次
+  window.addEventListener('orientationchange', setStableVh, { passive: true } as any)
+  window.addEventListener('pageshow', setStableVh, { passive: true } as any)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('orientationchange', setStableVh as any)
+  window.removeEventListener('pageshow', setStableVh as any)
+})
+
 defineExpose({ reset: triggerResize })
 </script>
 
@@ -773,10 +794,11 @@ defineExpose({ reset: triggerResize })
 }
 
 /* 编辑态容器 = 70% 整屏（不随键盘收缩） */
+/* 编辑态容器 = 固定 70% 整屏（不随键盘） */
 .note-editor-reborn.editing-viewport {
-  height: 70vh;
-  min-height: 70vh;
-  max-height: 70vh;
+  height: calc(var(--stable-vh, 1vh) * 70);
+  min-height: calc(var(--stable-vh, 1vh) * 70);
+  max-height: calc(var(--stable-vh, 1vh) * 70);
   display: flex;
   flex-direction: column;
 }
