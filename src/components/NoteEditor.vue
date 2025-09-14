@@ -99,10 +99,20 @@ function ensureCaretVisibleInTextarea() {
   }
 }
 
+function forceEditingTextareaFullHeight() {
+  const el = textarea.value
+  if (!el)
+    return
+  // 最高优先级：内联 + !important（第三个参数）
+  el.style.setProperty('height', '100%', 'important')
+  el.style.setProperty('max-height', 'none', 'important')
+}
+
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
   isTypingViewport.value = true // NEW：进入“打字视窗”模式
+  forceEditingTextareaFullHeight()
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
@@ -425,6 +435,13 @@ onMounted(() => {
       vv.removeEventListener('scroll', onVV)
     }
   }
+  if (props.isEditing)
+    nextTick(() => forceEditingTextareaFullHeight())
+})
+
+watch(() => props.isEditing, (v) => {
+  if (v)
+    nextTick(() => forceEditingTextareaFullHeight())
 })
 
 onUnmounted(() => {
