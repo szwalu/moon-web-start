@@ -111,8 +111,10 @@ function forceEditingTextareaFullHeight() {
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
-  isTypingViewport.value = true // NEW：进入“打字视窗”模式
-  forceEditingTextareaFullHeight()
+  isTypingViewport.value = true
+  if (props.isEditing)
+    forceEditingTextareaFullHeight() // 仅编辑旧笔记时才强制 100%
+
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
@@ -440,8 +442,17 @@ onMounted(() => {
 })
 
 watch(() => props.isEditing, (v) => {
-  if (v)
+  const el = textarea.value
+  if (!el)
+    return
+  if (v) {
     nextTick(() => forceEditingTextareaFullHeight())
+  }
+  else {
+    // 退出编辑态：把我们加的内联覆盖去掉，恢复新建区域的 48vh 规则
+    el.style.removeProperty('height')
+    el.style.removeProperty('max-height')
+  }
 })
 
 onUnmounted(() => {
