@@ -50,14 +50,6 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
-// === 键盘模式下把“底部”固定在 48vh ===
-const TYPING_BOTTOM_VH = 48 // 你想改别的值也可以
-const isTypingViewport = ref(false) // NEW
-
-function getVhPx(vh: number) { // NEW
-  return Math.round(window.innerHeight * (vh / 100))
-}
-
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
@@ -79,66 +71,32 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-
-  // ★ 关键：打字（聚焦）时，视窗底部按 min(实际高度, 48vh) 计算
-  const typingLimitPx = isTypingViewport.value ? getVhPx(TYPING_BOTTOM_VH) : el.clientHeight
-  const effectiveViewportHeight = Math.min(el.clientHeight, typingLimitPx)
-  const viewBottom = viewTop + effectiveViewportHeight
-
+  const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
-    el.scrollTop = Math.min(
-      caretDesiredBottom - effectiveViewportHeight,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
-}
-
-function forceEditingTextareaFullHeight() {
-  const el = textarea.value
-  if (!el)
-    return
-  // 最高优先级：内联 + !important（第三个参数）
-  el.style.setProperty('height', '100%', 'important')
-  el.style.setProperty('max-height', 'none', 'important')
 }
 
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
-  isTypingViewport.value = true
-  if (props.isEditing)
-    forceEditingTextareaFullHeight() // 仅编辑旧笔记时才强制 100%
-
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function onBlur() {
   emit('blur')
-  isTypingViewport.value = false // NEW：退出“打字视窗”模式
-
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
   }
-  // 原有的 tag 建议关闭逻辑…
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
-
-  // NEW：键盘收起后自动把内容下拉（展示 70% 视口下剩余内容）
-  const el = textarea.value
-  if (el) {
-    requestAnimationFrame(() => {
-      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-    })
-  }
 }
 
 function handleClick() {
@@ -421,68 +379,11 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', handleGlobalPointerDown, true)
   window.addEventListener('keydown', handleGlobalKeydown)
-
-  // NEW：iOS/Android 键盘弹出会触发 visualViewport.resize
-  const vv = (window as any).visualViewport
-  if (vv) {
-    const onVV = () => {
-      if (isTypingViewport.value)
-        requestAnimationFrame(ensureCaretVisibleInTextarea)
-    }
-    vv.addEventListener('resize', onVV)
-    vv.addEventListener('scroll', onVV)
-    // 存一下，卸载时移除
-    ;(onMounted as any)._vvOff = () => {
-      vv.removeEventListener('resize', onVV)
-      vv.removeEventListener('scroll', onVV)
-    }
-  }
-  if (props.isEditing)
-    nextTick(() => forceEditingTextareaFullHeight())
-})
-
-watch(() => props.isEditing, (v) => {
-  const el = textarea.value
-  if (!el)
-    return
-  if (v) {
-    nextTick(() => forceEditingTextareaFullHeight())
-  }
-  else {
-    // 退出编辑态：把我们加的内联覆盖去掉，恢复新建区域的 48vh 规则
-    el.style.removeProperty('height')
-    el.style.removeProperty('max-height')
-  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
   window.removeEventListener('keydown', handleGlobalKeydown)
-
-  const off = (onMounted as any)._vvOff
-  if (off)
-    off()
-})
-
-// === 固定不随键盘变化的 1vh（基于物理屏高） ===
-function setStableVh() {
-  // 用屏幕物理高度 / DPR 作为稳定视口高度
-  const stableH = (window.screen?.height || window.innerHeight) / (window.devicePixelRatio || 1)
-  // 存成“1vh”的像素值
-  document.documentElement.style.setProperty('--stable-vh', `${stableH / 100}px`)
-}
-
-onMounted(() => {
-  setStableVh()
-
-  // 横竖屏切换/恢复页面时重算一次
-  window.addEventListener('orientationchange', setStableVh, { passive: true } as any)
-  window.addEventListener('pageshow', setStableVh, { passive: true } as any)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('orientationchange', setStableVh as any)
-  window.removeEventListener('pageshow', setStableVh as any)
 })
 
 defineExpose({ reset: triggerResize })
@@ -661,6 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
+  max-height: 48vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -793,41 +695,61 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* 编辑态容器 = 70% 整屏（不随键盘收缩） */
-/* 编辑态容器 = 固定 70% 整屏（不随键盘） */
+/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
 .note-editor-reborn.editing-viewport {
-  height: calc(var(--stable-vh, 1vh) * 70);
-  min-height: calc(var(--stable-vh, 1vh) * 70);
-  max-height: calc(var(--stable-vh, 1vh) * 70);
+  /* 优先使用移动端更准确的 dvh，回退到 vh */
+  height: 80dvh;
+  min-height: 80dvh;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
 }
-
-/* 现代浏览器优先用 lvh（Large Viewport Height）：忽略地址栏/键盘收缩 */
-@supports (height: 1lvh) {
+@supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 70lvh;
-    min-height: 70lvh;
-    max-height: 70lvh;
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
   }
 }
 
-/* 编辑态内容区填满容器 */
+/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
 }
 
-/* 🔥 关键覆盖：无论有无内联高度，编辑态 textarea 一定拉满 70vh */
+/* 让编辑态时，内容区把 70% 屏高容器填满 */
+.note-editor-reborn.editing-viewport {
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
+  }
+}
+
+/* 关键：内容包裹层占满剩余空间 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;              /* 避免子元素高度被挤压 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+}
+
+/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;     /* 盖掉 autosize 写入的内联高度 */
-  max-height: none !important; /* 盖掉任何残余上限（包括别处的 48vh） */
-  overflow-y: auto;
+  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
+  max-height: none !important;/* 覆盖 48vh 上限 */
+  overflow-y: auto;           /* 内容超出时内部滚动 */
 }
 </style>
 

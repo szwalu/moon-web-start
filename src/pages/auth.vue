@@ -1583,11 +1583,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
 }
-
-/* 主页顶部的新建笔记编辑器才需要 48vh 上限 */
-.new-note-editor-container :deep(.editor-textarea) {
-  max-height: 48vh;
-}
 </style>
 
 <style>
