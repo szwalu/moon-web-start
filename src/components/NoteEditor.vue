@@ -612,7 +612,6 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: none;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -625,6 +624,10 @@ defineExpose({ reset: triggerResize })
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+}
+/* 仅非编辑态保留 48vh 上限（主页新建笔记那块） */
+.note-editor-reborn:not(.editing-viewport) .editor-textarea {
+  max-height: 48vh;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -745,30 +748,7 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
-.note-editor-reborn.editing-viewport {
-  /* 优先使用移动端更准确的 dvh，回退到 vh */
-  height: 80dvh;
-  min-height: 80dvh;
-  max-height: 80dvh;
-  display: flex;
-  flex-direction: column;
-}
-@supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport {
-    height: 80vh;
-    min-height: 80vh;
-    max-height: 80vh;
-  }
-}
-
-/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
-}
-
-/* 让编辑态时，内容区把 70% 屏高容器填满 */
+/* 编辑态容器 = 70% 屏高 */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -784,27 +764,22 @@ defineExpose({ reset: triggerResize })
   }
 }
 
-/* 关键：内容包裹层占满剩余空间 */
+/* 编辑态内容区填满容器 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;              /* 避免子元素高度被挤压 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+  overflow: hidden;
 }
 
-/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
+/* 🔥 关键覆盖：无论有无内联高度，编辑态 textarea 一定拉满 70vh */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
-  max-height: none !important;/* 覆盖 48vh 上限 */
-  overflow-y: auto;           /* 内容超出时内部滚动 */
-}
-
-/* 仅非编辑态保留 48vh 上限（主页新建笔记那块） */
-.note-editor-reborn:not(.editing-viewport) .editor-textarea {
-  max-height: 48vh;
+  height: 100% !important;     /* 盖掉 autosize 写入的内联高度 */
+  max-height: none !important; /* 盖掉任何残余上限（包括别处的 48vh） */
+  overflow-y: auto;
 }
 </style>
 
