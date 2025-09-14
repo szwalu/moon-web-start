@@ -625,10 +625,6 @@ defineExpose({ reset: triggerResize })
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 }
-/* 仅非编辑态保留 48vh 上限（主页新建笔记那块） */
-.note-editor-reborn:not(.editing-viewport) .editor-textarea {
-  max-height: 48vh;
-}
 
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
