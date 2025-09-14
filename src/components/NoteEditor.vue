@@ -694,6 +694,63 @@ defineExpose({ reset: triggerResize })
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
+.note-editor-reborn.editing-viewport {
+  /* 优先使用移动端更准确的 dvh，回退到 vh */
+  height: 80dvh;
+  min-height: 80dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
+  }
+}
+
+/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
+}
+
+/* 让编辑态时，内容区把 80% 屏高容器填满 */
+.note-editor-reborn.editing-viewport {
+  height: 80dvh;
+  min-height: 80dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
+  }
+}
+
+/* 关键：内容包裹层占满剩余空间 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;              /* 避免子元素高度被挤压 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+}
+
+/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
+  max-height: none !important;/* 覆盖 48vh 上限 */
+  overflow-y: auto;           /* 内容超出时内部滚动 */
+}
 </style>
 
 <style>
@@ -736,29 +793,4 @@ defineExpose({ reset: triggerResize })
   border: 0;
   cursor: pointer;
 }
-
-/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
-.note-editor-reborn.editing-viewport {
-  /* 优先使用移动端更准确的 dvh，回退到 vh */
-  height: 80dvh;
-  min-height: 80dvh;
-  max-height: 80dvh;
-  display: flex;
-  flex-direction: column;
-}
-@supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport {
-    height: 80vh;
-    min-height: 80vh;
-    max-height: 80vh;
-  }
-}
-
-/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
-}
-
-/* 保持你原有 textarea 高度策略，不做任何变更 */
 </style>
