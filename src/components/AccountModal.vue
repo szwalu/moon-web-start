@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
+import { useDialog } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 
 // 定义该组件可以从父组件接收的数据 (props)
@@ -29,6 +30,7 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()
+const dialog = useDialog()
 
 // 在组件内部创建自己的状态
 const journalingDays = ref(0)
@@ -37,7 +39,6 @@ const journalingRemainderDays = ref(0)
 const firstNoteDateText = ref<string | null>(null)
 
 const hasFetched = ref(false) // 查询标记，确保只在第一次打开时查询
-const isConfirmOpen = ref(false) // 退出确认框
 
 // 本组件内实时查询的“笔记总数”
 const totalCount = ref<number | null>(null)
@@ -145,14 +146,26 @@ watch(() => props.show, (visible) => {
   }
 })
 
-// ===== 登出确认 & 执行 =====
+// ===== 退出确认（Naive UI 对话框） & 执行 =====
+function openLogoutConfirm() {
+  dialog.warning({
+    title: '确定要登出系统吗？',
+    content: '登出后需用密码重新登陆',
+    negativeText: '取消',
+    positiveText: '确定',
+    async onPositiveClick() {
+      await doSignOut()
+    },
+  })
+}
+
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
     // 直接跳转首页（不依赖父组件）
     window.location.assign('/')
   }
-  catch (e) {
+  catch {
     // 即便失败也尝试刷新到首页
     window.location.assign('/')
   }
@@ -200,19 +213,7 @@ async function doSignOut() {
 
         <div class="modal-footer">
           <button class="btn-secondary wide" @click="emit('close')">返回</button>
-          <button class="wide btn-danger" @click="isConfirmOpen = true">登出</button>
-        </div>
-
-        <!-- 退出确认框 -->
-        <div v-if="isConfirmOpen" class="confirm-overlay" @click.self="isConfirmOpen = false">
-          <div class="confirm-dialog">
-            <div class="confirm-title">确定要退出系统吗？</div>
-            <div class="confirm-subtitle">登陆后要有密码重新登陆</div>
-            <div class="confirm-actions">
-              <button class="btn-secondary" @click="isConfirmOpen = false">取消</button>
-              <button class="btn-danger" @click="doSignOut">确定</button>
-            </div>
-          </div>
+          <button class="wide btn-danger" @click="openLogoutConfirm">登出</button>
         </div>
       </div>
     </div>
@@ -354,43 +355,12 @@ async function doSignOut() {
 }
 .btn-danger:hover { filter: brightness(0.95); }
 
-/* 确认框 */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
 }
-.confirm-dialog {
-  background: #fff;
-  color: #111;
-  border-radius: 10px;
-  width: 88%;
-  max-width: 360px;
-  padding: 1rem 1rem 0.85rem;
-  box-shadow: 0 8px 24px rgba(0,0,0,.25);
-}
-.dark .confirm-dialog {
-  background: #2a2a2a;
-  color: #e0e0e0;
-}
-.confirm-title {
-  font-size: 18px;
-  font-weight: 600;
-}
-.confirm-subtitle {
-  margin-top: 6px;
-  font-size: 14px;
-  color: #6b7280;
-}
-.dark .confirm-subtitle { color: #a3a3a3; }
-.confirm-actions {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
