@@ -695,20 +695,41 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
-.note-editor-reborn.editing-viewport {
-  /* 优先使用移动端更准确的 dvh，回退到 vh */
-  height: 80dvh;
-  min-height: 80dvh;
-  max-height: 80dvh;
-  display: flex;
-  flex-direction: column;
-}
-@supports not (height: 1dvh) {
+/* ✅ 移动端专属：编辑旧笔记时，把容器拉到 70vh，并让 textarea 填满容器。
+   在 PC 端，这段不会触发，仍保持 textarea 的 max-height: 48vh。*/
+@media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
   .note-editor-reborn.editing-viewport {
-    height: 80vh;
-    min-height: 80vh;
-    max-height: 80vh;
+    /* 优先使用更准确的 dvh；不支持时回退到 vh（见下方 @supports） */
+    height: 70dvh;
+    min-height: 70dvh;
+    max-height: 70dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  @supports not (height: 1dvh) {
+    .note-editor-reborn.editing-viewport {
+      height: 70vh;
+      min-height: 70vh;
+      max-height: 70vh;
+    }
+  }
+
+  /* 内容区占满剩余空间（外层容器滚动交给 textarea 自己） */
+  .note-editor-reborn.editing-viewport .editor-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 外层不滚动 */
+  }
+
+  /* 覆盖 autosize/48vh 限制：编辑旧笔记时在移动端让 textarea 吃满 */
+  .note-editor-reborn.editing-viewport .editor-textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100% !important;     /* 覆盖 JS 行内高度 */
+    max-height: none !important; /* 覆盖 48vh 上限 */
+    overflow-y: auto;
   }
 }
 
