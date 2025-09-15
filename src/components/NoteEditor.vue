@@ -10,6 +10,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
+  isActive: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
   maxNoteLength: { type: Number, default: 5000 },
   placeholder: { type: String, default: '写点什么...' },
@@ -392,7 +393,11 @@ defineExpose({ reset: triggerResize })
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn"
+    :class="{
+      'editing-viewport': isEditing,
+      'active-viewport': isActive,
+    }"
   >
     <div class="editor-wrapper">
       <textarea
@@ -753,14 +758,16 @@ defineExpose({ reset: triggerResize })
 }
 
 /* =================================================================== */
-/* ============== 世纪难题的解决方案 (请将此块代码添加到样式表) ============== */
+/* ============ 最终解决方案 (添加此代码到 NoteEditor.vue) ============ */
 /* =================================================================== */
 
-/* 当编辑器处于激活状态时 (即 .editing-viewport 类存在时)，
-  我们将整个编辑器组件的高度撑满你想要的 70% 动态视口高度。
-  我们优先使用 dvh 单位，它能更准确地处理移动端浏览器 UI (如地址栏) 的显隐。
+/*
+  当编辑器被聚焦时 (`isActive` prop 为 true), .active-viewport 类会生效。
+  这个类和旧的 .editing-viewport 类将共享大部分增高和滚动的逻辑。
+  我们使用组合选择器 `,` 来同时为它们应用样式。
 */
-.note-editor-reborn.editing-viewport {
+.note-editor-reborn.editing-viewport,
+.note-editor-reborn.active-viewport {
   height: 70dvh;
   min-height: 70dvh;
   max-height: 70dvh;
@@ -768,56 +775,28 @@ defineExpose({ reset: triggerResize })
   flex-direction: column;
 }
 
-/* 针对不支持 dvh 单位的旧浏览器的回退方案 */
 @supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport {
+  .note-editor-reborn.editing-viewport,
+  .note-editor-reborn.active-viewport {
     height: 70vh;
     min-height: 70vh;
     max-height: 70vh;
   }
 }
 
-/* 关键步骤 1:
-  让 .editor-wrapper 填满父容器的剩余空间，并成为真正的滚动容器。
-*/
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto; /* 占据所有可用垂直空间 */
-  overflow-y: auto; /* ★ 让这个容器负责滚动 */
-  -webkit-overflow-scrolling: touch; /* 在 iOS 上启用平滑滚动 */
-
-  /* 关键步骤 2: THE MAGIC BULLET!
-    设置一个滚动“内边距”。当浏览器需要将光标滚动到视图中时，
-    它会确保光标距离容器底部至少有 25dvh 的距离。
-    这个值应该足够高，以确保光标始终在软键盘的上方。
-    你可以根据实际测试微调这个值。
-  */
+.note-editor-reborn.editing-viewport .editor-wrapper,
+.note-editor-reborn.active-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   scroll-padding-bottom: 25dvh;
 }
 
-/* 关键步骤 3:
-  解放 textarea，让它自由地随内容增长，不再自己滚动。
-*/
-.note-editor-reborn.editing-viewport .editor-textarea {
-  /* 覆盖掉原有的 max-height: 48vh 限制 */
+.note-editor-reborn.editing-viewport .editor-textarea,
+.note-editor-reborn.active-viewport .editor-textarea {
   max-height: none !important;
-
-  /* ★ 禁止 textarea 自己滚动，将滚动权交给父容器 */
   overflow-y: hidden;
-
-  /* useTextareaAutosize 会动态设置 textarea 的 height。
-    我们不再需要 min-height 或 height: 100%，因为 textarea 的高度
-    就是其内容的高度，父容器 .editor-wrapper 会处理溢出的滚动。
-  */
 }
-
-/* 可选优化：当用户正在输入时，auth.vue 会给容器添加 .is-typing 类，
-   我们可以利用它来移除新笔记编辑器的顶部间距，让编辑区更大。
-   找到 auth.vue 的 style scoped，修改或添加：
-   .auth-container.is-typing .new-note-editor-container {
-     padding-top: 0.25rem;
-   }
-   (你提供的 auth.vue 代码里已经有这个了，这是对的！)
-*/
 </style>
 
 <style>

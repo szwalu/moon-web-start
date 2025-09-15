@@ -1340,7 +1340,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           ref="newNoteEditorRef"
           v-model="newNoteContent"
           :is-editing="false"
-          :is-loading="isCreating"
+          :is-active="isEditorActive" :is-loading="isCreating"
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
