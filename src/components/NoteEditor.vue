@@ -562,7 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  /* 移除硬上限：max-height: 48vh; */
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -709,7 +709,7 @@ defineExpose({ reset: triggerResize })
 
 /* 未聚焦：给足视野（大视口高度） */
 .note-editor-reborn.editing-viewport {
-  --editor-cap: 80lvh; /* 你可调成 70lvh */
+  --editor-cap: 80lvh; /* 可调为 70lvh/75lvh */
   display: flex;
   flex-direction: column;
   height: var(--editor-cap);
@@ -749,11 +749,10 @@ defineExpose({ reset: triggerResize })
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;     /* 覆盖 autosize 的内联高度 */
-  max-height: none !important; /* 不再受 48vh 限制，由容器 cap 控制 */
+  height: 100% !important;
+  max-height: none !important;
   overflow-y: auto;
 
-  /* 护栏：当容器比 48vh 高时，预留 (cap - 48vh) 的底部空间，防止光标贴底被遮挡 */
   padding-bottom: max(
     16px,
     calc(16px + env(safe-area-inset-bottom, 0px) + (var(--editor-cap) - 48vh))
