@@ -562,8 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* ⚠️ 去掉旧的 48vh 上限，避免锁死高度 */
-  /* max-height: 48vh; */
+  max-height: 48vh;                 /* 默认：限制在 48vh，避免初始过高与无限增高 */
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -576,14 +575,6 @@ defineExpose({ reset: triggerResize })
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-
-  /* 基础缓冲，未聚焦时也尽量避免贴底 */
-  padding-bottom: calc(
-    16px + env(safe-area-inset-bottom, 0px)
-  );
-  scroll-padding-bottom: calc(
-    16px + env(safe-area-inset-bottom, 0px)
-  );
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -704,71 +695,28 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ===================== 仅在移动端启用 ===================== */
-@media (max-width: 768px) {
-  /* 1) 统一为两种视图都设置“高度上限变量” */
-  .note-editor-reborn {
-    --editor-cap: 72lvh; /* 你可改为 70~80lvh */
-  }
-  .note-editor-reborn:focus-within {
-    --editor-cap: 72svh; /* 聚焦时扣除键盘后的可用高度 */
-  }
-  @supports not (height: 1svh) {
-    .note-editor-reborn,
-    .note-editor-reborn:focus-within {
-      --editor-cap: 72dvh;
-    }
-  }
-  @supports not (height: 1dvh) {
-    .note-editor-reborn,
-    .note-editor-reborn:focus-within {
-      --editor-cap: 72vh;
-    }
-  }
+/* ===================== 仅在聚焦时提升“可视高度”且不被键盘遮挡 ===================== */
 
-  /* 2) 容器按上限变量定高；底部 footer 占去的空间由 flex 分配 */
-  .note-editor-reborn {
-    display: flex;
-    flex-direction: column;
-    height: var(--editor-cap);
-    min-height: var(--editor-cap);
-    max-height: var(--editor-cap);
-  }
-
-  /* 3) 让内容区占满剩余空间；外层不滚动，滚动交给 textarea */
-  .note-editor-reborn .editor-wrapper {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  /* 4) 🚫 阻止 autosize 继续增高；固定 textarea 可视高度到容器内 */
-  .note-editor-reborn .editor-textarea {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100% !important;          /* 填满 editor-wrapper 的高度 */
-    max-height: 100% !important;      /* 严格不超过容器 */
-    overflow-y: auto;
-    overscroll-behavior: contain;
-
-    /* 5) ✨ 护栏：键盘弹出时为底部留出可滚动缓冲，光标不会被挡 */
-    padding-bottom: calc(
-      16px
-      + env(safe-area-inset-bottom, 0px)
-      + env(keyboard-inset-height, 0px)
-      + 12px
-    );
-    scroll-padding-bottom: calc(
-      16px
-      + env(safe-area-inset-bottom, 0px)
-      + env(keyboard-inset-height, 0px)
-      + 12px
-    );
-  }
+/* 目标上限：默认用 72dvh；支持 svh 时用 72svh；必要时可调为 70/75/80 */
+.note-editor-reborn:focus-within { --editor-cap: 72dvh; }
+@supports (height: 1svh) {
+  .note-editor-reborn:focus-within { --editor-cap: 72svh; }
 }
-/* =================== /仅在移动端启用 =================== */
+
+/* 聚焦时：锁定 textarea 的高度到 [48vh, (cap - 键盘), cap]，并强制覆盖 autosize */
+.note-editor-reborn:focus-within .editor-textarea {
+  height: clamp(48vh, calc(var(--editor-cap, 72dvh) - env(keyboard-inset-height, 0px)), var(--editor-cap, 72dvh)) !important;
+  max-height: clamp(48vh, calc(var(--editor-cap, 72dvh) - env(keyboard-inset-height, 0px)), var(--editor-cap, 72dvh)) !important;
+  min-height: 48vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 轻量缓冲，避免贴底感；不会扩大元素视觉底部 */
+  scroll-padding-bottom: 12px;
+}
+@supports not (height: 1dvh) {
+  /* 老浏览器回退：仍按 72vh 计算上限 */
+  .note-editor-reborn:focus-within { --editor-cap: 72vh; }
+}
 </style>
 
 <style>
