@@ -562,7 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 删除硬上限：max-height: 48vh; */
+  max-height: 48vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -576,16 +576,14 @@ defineExpose({ reset: triggerResize })
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 
-  /* 关键：为软键盘/安全区预留底部空间，避免光标被遮挡 */
-  padding-bottom: calc(
-    16px
-    + env(keyboard-inset-height, 0px)
-    + env(safe-area-inset-bottom, 0px)
+  /* 为软键盘/安全区预留底部空间，避免光标被遮挡 */
+  padding-bottom: max(
+    16px,
+    calc(16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))
   );
-  scroll-padding-bottom: calc(
-    16px
-    + env(keyboard-inset-height, 0px)
-    + env(safe-area-inset-bottom, 0px)
+  scroll-padding-bottom: max(
+    16px,
+    calc(16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))
   );
 }
 
@@ -707,11 +705,11 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ===== 编辑态：用视口单位自适应，不落到键盘下面 ===== */
+/* ===== 编辑态：用视口单位自适应，并设置“护栏”让光标不上贴底 ===== */
 
-/* 默认未聚焦：给足视野（大视口高度） */
+/* 未聚焦：给足视野（大视口高度） */
 .note-editor-reborn.editing-viewport {
-  --editor-cap: 80lvh;
+  --editor-cap: 80lvh; /* 你可调成 70lvh */
   display: flex;
   flex-direction: column;
   height: var(--editor-cap);
@@ -719,12 +717,12 @@ defineExpose({ reset: triggerResize })
   max-height: var(--editor-cap);
 }
 
-/* 聚焦输入时：切换为小视口高度（扣除键盘后可用高度） */
+/* 聚焦输入时：切为小视口高度（扣除键盘后的可用高度） */
 .note-editor-reborn.editing-viewport:focus-within {
   --editor-cap: 80svh;
 }
 
-/* 兼容后备：无 svh/lvh 时退到 dvh，再退到 vh */
+/* 兼容：无 svh/lvh 时退到 dvh；再退到 vh */
 @supports not (height: 1svh) {
   .note-editor-reborn.editing-viewport,
   .note-editor-reborn.editing-viewport:focus-within {
@@ -738,7 +736,7 @@ defineExpose({ reset: triggerResize })
   }
 }
 
-/* 内容包裹层占满剩余空间，外层不滚动，滚动交给 textarea 自己 */
+/* 关键：内容包裹层占满剩余空间（外层不滚，滚动交给 textarea） */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
   min-height: 0;
@@ -747,13 +745,23 @@ defineExpose({ reset: triggerResize })
   overflow: hidden;
 }
 
-/* 覆盖 autosize/旧上限：textarea 填满可用空间并内部滚动 */
+/* 关键：textarea 填满容器且内部滚动；加入“护栏”= (容器高度 - 48vh) */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;
-  max-height: none !important;
+  height: 100% !important;     /* 覆盖 autosize 的内联高度 */
+  max-height: none !important; /* 不再受 48vh 限制，由容器 cap 控制 */
   overflow-y: auto;
+
+  /* 护栏：当容器比 48vh 高时，预留 (cap - 48vh) 的底部空间，防止光标贴底被遮挡 */
+  padding-bottom: max(
+    16px,
+    calc(16px + env(safe-area-inset-bottom, 0px) + (var(--editor-cap) - 48vh))
+  );
+  scroll-padding-bottom: max(
+    16px,
+    calc(16px + env(safe-area-inset-bottom, 0px) + (var(--editor-cap) - 48vh))
+  );
 }
 </style>
 
