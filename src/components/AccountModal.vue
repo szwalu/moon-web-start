@@ -29,9 +29,18 @@ const emit = defineEmits(['close'])
 
 const { t } = useI18n()
 
-// 在组件内部创建自己的状态，用于存储记录天数
+// 在组件内部创建自己的状态，用于存储记录天数 & 最早笔记日期
 const journalingDays = ref(0)
+const journalingDisplay = ref('') // 用于展示的格式化文字
+const firstNoteDateStr = ref('') // “第一条笔记创建于”显示用
 const hasFetched = ref(false) // 查询标记，确保只查询一次
+
+function formatDateCN(date: Date) {
+  const y = date.getFullYear()
+  const m = date.getMonth() + 1
+  const d = date.getDate()
+  return `${y}年${m}月${d}日`
+}
 
 // 获取最早笔记并计算天数的函数
 async function fetchFirstNoteDate() {
@@ -51,12 +60,30 @@ async function fetchFirstNoteDate() {
 
     if (data && data.created_at) {
       const firstNoteDate = new Date(data.created_at)
+      firstNoteDateStr.value = formatDateCN(firstNoteDate)
+
       const today = new Date()
       firstNoteDate.setHours(0, 0, 0, 0)
       today.setHours(0, 0, 0, 0)
       const diffTime = Math.abs(today.getTime() - firstNoteDate.getTime())
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       journalingDays.value = diffDays + 1
+
+      // === 新增：格式化成 年 + 天 ===
+      if (journalingDays.value >= 365) {
+        const years = Math.floor(journalingDays.value / 365)
+        const days = journalingDays.value % 365
+        journalingDisplay.value = days > 0 ? `${years} 年 ${days} 天` : `${years} 年`
+      }
+      else {
+        journalingDisplay.value = `${journalingDays.value} 天`
+      }
+    }
+    else {
+      // 没有任何笔记时，清空显示
+      firstNoteDateStr.value = ''
+      journalingDays.value = 0
+      journalingDisplay.value = ''
     }
   }
   catch (err) {
@@ -66,10 +93,9 @@ async function fetchFirstNoteDate() {
 
 // 使用 watch 监听弹窗的显示状态
 watch(() => props.show, (newValue) => {
-  // 当弹窗第一次变为可见 (show=true)，并且之前从未获取过数据时，执行查询
   if (newValue && !hasFetched.value) {
     fetchFirstNoteDate()
-    hasFetched.value = true // 将标记设置为 true，防止重复查询
+    hasFetched.value = true
   }
 })
 </script>
@@ -96,9 +122,17 @@ watch(() => props.show, (newValue) => {
             <span class="info-label">{{ t('notes.total_notes') }}</span>
             <span class="info-value">{{ totalNotes }}</span>
           </div>
-          <div v-if="journalingDays > 0" class="info-item">
+
+          <!-- 新增：第一条笔记创建日期 -->
+          <div v-if="firstNoteDateStr" class="info-item">
+            <span class="info-label">第一条笔记创建于</span>
+            <span class="info-value">{{ firstNoteDateStr }}</span>
+          </div>
+
+          <!-- 修改：天数改为 年+天 格式 -->
+          <div v-if="journalingDisplay" class="info-item">
             <span class="info-label">{{ t('notes.journaling_days_label') }}</span>
-            <span class="info-value">{{ t('notes.journaling_days_value', { count: journalingDays }) }}</span>
+            <span class="info-value">{{ journalingDisplay }}</span>
           </div>
         </div>
       </div>
@@ -122,7 +156,7 @@ watch(() => props.show, (newValue) => {
 
 .modal-content {
   background: white;
-  padding: 2rem; /* 增大整体内边距 */
+  padding: 2rem;
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   width: 90%;
@@ -167,7 +201,7 @@ watch(() => props.show, (newValue) => {
 .modal-body {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem; /* 增大各项之间的垂直间距 */
+  gap: 1.25rem;
 }
 
 .info-item {
@@ -189,7 +223,7 @@ watch(() => props.show, (newValue) => {
   color: #111;
   font-weight: 500;
   background-color: #f0f0f0;
-  padding: 0.35rem 0.75rem; /* 增大值的内边距 */
+  padding: 0.35rem 0.75rem;
   border-radius: 6px;
   font-size: 16px;
   text-align: right;
