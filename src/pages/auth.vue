@@ -8,14 +8,13 @@ import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
 import NoteList from '@/components/NoteList.vue'
+import NoteEditor from '@/components/NoteEditor.vue'
 import Authentication from '@/components/Authentication.vue'
 import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
-import EditingOverlay from '@/components/EditingOverlay.vue'
 
-const isEditingOverlayVisible = ref(false)
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
 // ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
@@ -46,6 +45,8 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const noteListRef = ref(null)
+const newNoteEditorContainerRef = ref(null)
+const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
 const showSettingsModal = ref(false)
@@ -338,18 +339,15 @@ function invalidateCachesOnDataChange(note: any) {
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
 }
 
-function openNewNoteEditor() {
-  isEditingOverlayVisible.value = true
-}
-
-// 4. 修改 handleCreateNote 来关闭浮层
 async function handleCreateNote(content: string) {
   isCreating.value = true
   const saved = await saveNote(content, null, { showMessage: true })
   if (saved) {
     localStorage.removeItem(LOCAL_CONTENT_KEY)
     newNoteContent.value = ''
-    isEditingOverlayVisible.value = false // <-- 这是新版本的标志
+    nextTick(() => {
+      (newNoteEditorRef.value as any)?.reset?.()
+    })
   }
   isCreating.value = false
 }
@@ -515,6 +513,31 @@ async function handleVisibilityChange() {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
+}
+
+function handleEditorFocus(containerEl: HTMLElement) {
+  compactWhileTyping.value = true // 新增：隐藏页眉
+  setTimeout(() => {
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
+      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, 0)
+}
+
+let editorHideTimer: number | null = null
+function onEditorFocus() {
+  if (editorHideTimer) {
+    clearTimeout(editorHideTimer)
+    editorHideTimer = null
+  }
+  isEditorActive.value = true
+}
+function onEditorBlur() {
+  // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
+  editorHideTimer = window.setTimeout(() => {
+    isEditorActive.value = false
+    // 关键：失焦后恢复横幅
+    compactWhileTyping.value = false
+  }, 120)
 }
 
 function handleExportTrigger() {
@@ -1218,10 +1241,12 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <RouterLink to="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</RouterLink>
+          <!-- [PATCH-X] 退出改为纯导航，避免 JS/状态导致的无响应 -->
+          <a href="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</a>
         </div>
       </div>
 
+      <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
       <Transition name="slide-fade">
         <div
           v-if="isSelectionModeActive"
@@ -1309,10 +1334,20 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </div>
 
-      <div v-show="!isSelectionModeActive" class="new-note-trigger-container">
-        <div class="fake-editor" @click="openNewNoteEditor">
-          <span class="placeholder">{{ newNoteContent || $t('notes.content_placeholder') }}</span>
-        </div>
+      <!-- 主页输入框：选择模式时隐藏 -->
+      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
+        <NoteEditor
+          ref="newNoteEditorRef"
+          v-model="newNoteContent"
+          :is-editing="false"
+          :is-loading="isCreating"
+          :max-note-length="maxNoteLength"
+          :placeholder="$t('notes.content_placeholder')"
+          :all-tags="allTags"
+          @save="handleCreateNote"
+          @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
+          @blur="onEditorBlur"
+        />
       </div>
 
       <div v-if="showNotesList" class="notes-list-container">
@@ -1345,6 +1380,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         @restored="handleTrashRestored"
         @purged="handleTrashPurged"
       />
+
+      <!-- （原底部 selection-actions-popup 已移除） -->
+
       <Transition name="slide-up-fade">
         <CalendarView
           v-if="showCalendarView" ref="calendarViewRef"
@@ -1355,16 +1393,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @delete="triggerDeleteConfirmation"
         />
       </Transition>
-
-      <EditingOverlay
-        v-if="isEditingOverlayVisible"
-        v-model="newNoteContent"
-        :all-tags="allTags"
-        :max-note-length="maxNoteLength"
-        :is-creating="isCreating"
-        @save="handleCreateNote"
-        @close="isEditingOverlayVisible = false"
-      />
     </template>
     <template v-else>
       <Authentication />
@@ -1695,37 +1723,38 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
 }
-/* auth.vue -> <style scoped> */
+</style>
 
-.new-note-trigger-container {
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-  flex-shrink: 0;
-}
+<style>
+/* === 全局样式（非 scoped）=== */
 
-.fake-editor {
-  width: 100%;
-  min-height: 48px;
-  padding: 14px 16px;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  background-color: #f9f9f9;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-.dark .fake-editor {
-  background-color: #2c2c2e;
-  border-color: #48484a;
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
+.n-dropdown-menu {
+  max-height: min(70vh, 520px) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
-.fake-editor .placeholder {
-  color: #8e8e93;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
+.n-dropdown-menu .n-dropdown-menu {
+  max-height: min(60vh, 420px) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
-.dark .fake-editor .placeholder {
-  color: #8d8d92;
+
+/* 子菜单里的每一项更紧凑些，显示更多可见项 */
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
+  line-height: 1.2;
+}
+
+/* 移动端：给子菜单更多可视空间 */
+@media (max-width: 768px) {
+  .n-dropdown-menu .n-dropdown-menu {
+    max-height: 70vh !important;
+  }
 }
 </style>
