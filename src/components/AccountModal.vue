@@ -2,7 +2,6 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
-import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabaseClient'
 
 // 定义该组件可以从父组件接收的数据 (props)
@@ -15,6 +14,7 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  // 父组件传进来的总数保留，但不再作为唯一来源；我们会在本组件内自行查询更准确的 count
   totalNotes: {
     type: Number,
     default: 0,
@@ -29,27 +29,29 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()
-const router = useRouter()
 
-// 在组件内部创建自己的状态，用于存储记录天数 & 最早笔记日期
+// 在组件内部创建自己的状态
 const journalingDays = ref(0)
-const journalingDisplay = ref('') // 用于展示的格式化文字（X 年 Y 天 或 X 天）
-const firstNoteDateStr = ref('') // “第一条笔记创建于”显示用
-const hasFetched = ref(false) // 查询标记，确保只查询一次
+const journalingYears = ref(0)
+const journalingRemainderDays = ref(0)
+const firstNoteDateText = ref<string | null>(null)
 
-// 登出相关
-const confirmVisible = ref(false)
-const loggingOut = ref(false)
+const hasFetched = ref(false) // 查询标记，确保只在第一次打开时查询
+const isConfirmOpen = ref(false) // 退出确认框
 
-function formatDateCN(date: Date) {
-  const y = date.getFullYear()
-  const m = date.getMonth() + 1
-  const d = date.getDate()
-  return `${y}年${m}月${d}日`
+// 本组件内实时查询的“笔记总数”
+const totalCount = ref<number | null>(null)
+
+// ===== 工具：格式化日期（中文：YYYY年M月D日）=====
+function formatDateZH(d: Date) {
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}年${m}月${day}日`
 }
 
-// 获取最早笔记并计算天数的函数
-async function fetchFirstNoteDate() {
+// ===== 查询：最早笔记 & 坚持年天 =====
+async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
   try {
@@ -64,32 +66,46 @@ async function fetchFirstNoteDate() {
     if (error)
       throw error
 
-    if (data && data.created_at) {
-      const firstNoteDate = new Date(data.created_at)
-      firstNoteDateStr.value = formatDateCN(firstNoteDate)
+    if (data?.created_at) {
+      const first = new Date(data.created_at)
+      firstNoteDateText.value = formatDateZH(first)
 
+      // 计算坚持年+天
       const today = new Date()
-      firstNoteDate.setHours(0, 0, 0, 0)
+      // 去掉时间部分，按自然日计算
+      first.setHours(0, 0, 0, 0)
       today.setHours(0, 0, 0, 0)
-      const diffTime = Math.abs(today.getTime() - firstNoteDate.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-      journalingDays.value = diffDays + 1
 
-      // 按“年 + 天”格式化：满一年显示“X 年 Y 天”，否则显示“X 天”
-      if (journalingDays.value >= 365) {
-        const years = Math.floor(journalingDays.value / 365)
-        const days = journalingDays.value % 365
-        journalingDisplay.value = days > 0 ? `${years} 年 ${days} 天` : `${years} 年`
+      // 先算满年的数量
+      let years = today.getFullYear() - first.getFullYear()
+      let anniversaryThisYear = new Date(first)
+      anniversaryThisYear.setFullYear(first.getFullYear() + years)
+
+      if (anniversaryThisYear > today) {
+        years -= 1
+        anniversaryThisYear = new Date(first)
+        anniversaryThisYear.setFullYear(first.getFullYear() + years)
       }
-      else {
-        journalingDisplay.value = `${journalingDays.value} 天`
+
+      // 计算“剩余的天数”
+      const diffMs = today.getTime() - anniversaryThisYear.getTime()
+      const remainDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+      journalingYears.value = Math.max(0, years)
+      journalingRemainderDays.value = Math.max(0, remainDays)
+
+      // 如果不足 1 年，journalingDays 作为兼容（旧显示）
+      if (journalingYears.value === 0) {
+        const diffTime = Math.abs(today.getTime() - first.getTime())
+        journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
       }
     }
     else {
-      // 没有任何笔记时，清空显示
-      firstNoteDateStr.value = ''
+      // 没有任何笔记
+      firstNoteDateText.value = null
+      journalingYears.value = 0
+      journalingRemainderDays.value = 0
       journalingDays.value = 0
-      journalingDisplay.value = ''
     }
   }
   catch (err) {
@@ -97,45 +113,49 @@ async function fetchFirstNoteDate() {
   }
 }
 
-// 监听弹窗首次打开时拉取数据
-watch(() => props.show, (newValue) => {
-  if (newValue && !hasFetched.value) {
-    fetchFirstNoteDate()
+// ===== 查询：笔记总数（使用 head+count 更快）=====
+async function fetchNotesCount() {
+  if (!props.user) {
+    totalCount.value = 0
+    return
+  }
+  try {
+    const { count, error } = await supabase
+      .from('notes')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', props.user.id)
+
+    if (error)
+      throw error
+
+    totalCount.value = typeof count === 'number' ? count : 0
+  }
+  catch (err) {
+    console.error('获取笔记总数失败:', err)
+    totalCount.value = props.totalNotes ?? 0 // 兜底使用父组件传值
+  }
+}
+
+// 打开时执行一次查询（只在第一次打开时查）
+watch(() => props.show, (visible) => {
+  if (visible && !hasFetched.value) {
+    fetchFirstNoteAndStreak()
+    fetchNotesCount()
     hasFetched.value = true
   }
 })
 
-// —— 按钮：返回（等同右上角关闭）——
-function handleBack() {
-  emit('close')
-}
-
-// —— 按钮：登出（先弹确认框）——
-function requestLogout() {
-  confirmVisible.value = true
-}
-
-async function confirmLogout() {
-  if (loggingOut.value)
-    return
-  loggingOut.value = true
+// ===== 登出确认 & 执行 =====
+async function doSignOut() {
   try {
     await supabase.auth.signOut()
+    // 直接跳转首页（不依赖父组件）
+    window.location.assign('/')
   }
-  finally {
-    // 无论 signOut 成功与否，都尽量回首页
-    try {
-      await router.replace('/')
-    }
-    catch {
-      window.location.assign('/')
-    }
-    loggingOut.value = false
+  catch (e) {
+    // 即便失败也尝试刷新到首页
+    window.location.assign('/')
   }
-}
-
-function cancelLogout() {
-  confirmVisible.value = false
 }
 </script>
 
@@ -157,64 +177,49 @@ function cancelLogout() {
             <span class="info-label">{{ t('auth.account_email_label') }}</span>
             <span class="info-value">{{ email }}</span>
           </div>
+
           <div class="info-item">
             <span class="info-label">{{ t('notes.total_notes') }}</span>
-            <span class="info-value">{{ totalNotes }}</span>
+            <span class="info-value">{{ totalCount ?? '—' }}</span>
           </div>
 
-          <!-- 第一条笔记创建日期 -->
-          <div v-if="firstNoteDateStr" class="info-item">
+          <div class="info-item">
             <span class="info-label">第一条笔记创建于</span>
-            <span class="info-value">{{ firstNoteDateStr }}</span>
+            <span class="info-value">{{ firstNoteDateText ?? '—' }}</span>
           </div>
 
-          <!-- 坚持天数（年+天 或 天） -->
-          <div v-if="journalingDisplay" class="info-item">
-            <span class="info-label">{{ t('notes.journaling_days_label') }}</span>
-            <span class="info-value">{{ journalingDisplay }}</span>
+          <div v-if="journalingYears > 0" class="info-item">
+            <span class="info-label">您已坚持记录</span>
+            <span class="info-value">{{ journalingYears }} 年 {{ journalingRemainderDays }} 天</span>
+          </div>
+          <div v-else class="info-item">
+            <span class="info-label">您已坚持记录</span>
+            <span class="info-value">{{ journalingDays }} 天</span>
           </div>
         </div>
 
-        <!-- 新增：底部按钮区 -->
         <div class="modal-footer">
-          <button type="button" class="btn-outline btn" @click="handleBack">返回</button>
-          <button
-            type="button"
-            class="btn-primary-danger btn"
-            :disabled="loggingOut"
-            @click="requestLogout"
-          >
-            {{ loggingOut ? '正在登出…' : '登出' }}
-          </button>
+          <button class="btn-secondary wide" @click="emit('close')">返回</button>
+          <button class="wide btn-danger" @click="isConfirmOpen = true">登出</button>
         </div>
-      </div>
 
-      <!-- 确认登出弹窗（本组件内部实现） -->
-      <Transition name="fade">
-        <div v-if="confirmVisible" class="confirm-overlay" @click.self="cancelLogout">
-          <div class="confirm-card" role="dialog" aria-modal="true">
-            <div class="confirm-title">确定要登出系统吗？</div>
-            <div class="confirm-text">登出后需用密码重新登陆</div>
+        <!-- 退出确认框 -->
+        <div v-if="isConfirmOpen" class="confirm-overlay" @click.self="isConfirmOpen = false">
+          <div class="confirm-dialog">
+            <div class="confirm-title">确定要退出系统吗？</div>
+            <div class="confirm-subtitle">登陆后要有密码重新登陆</div>
             <div class="confirm-actions">
-              <button type="button" class="btn-outline btn" @click="cancelLogout">取消</button>
-              <button
-                type="button"
-                class="btn-primary-danger btn"
-                :disabled="loggingOut"
-                @click="confirmLogout"
-              >
-                确定
-              </button>
+              <button class="btn-secondary" @click="isConfirmOpen = false">取消</button>
+              <button class="btn-danger" @click="doSignOut">确定</button>
             </div>
           </div>
         </div>
-      </Transition>
+      </div>
     </div>
   </Transition>
 </template>
 
 <style scoped>
-/* 主弹窗 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -234,7 +239,8 @@ function cancelLogout() {
   border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   width: 90%;
-  max-width: 400px;
+  max-width: 420px;
+  position: relative;
 }
 .dark .modal-content {
   background: #2a2a2a;
@@ -308,94 +314,83 @@ function cancelLogout() {
   color: #f0f0f0;
 }
 
-/* 底部按钮 */
 .modal-footer {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.9rem;
   margin-top: 1.25rem;
 }
 
-.btn {
+.wide { width: 100%; }
+
+.btn-secondary,
+.btn-danger {
   display: inline-block;
   text-align: center;
-  padding: 0.7rem 0.9rem;
-  border-radius: 8px;
-  font-size: 15px;
+  padding: 0.8rem;
+  border-radius: 6px;
   cursor: pointer;
-  border: none;
+  font-size: 15px;
+  border: 1px solid transparent;
 }
 
-.btn-outline {
-  background: transparent;
-  border: 1px solid #d1d5db;
-  color: #374151;
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  border-color: #ccc;
 }
-.btn-outline:hover { background: #f3f4f6; }
-.dark .btn-outline {
-  border-color: #4b5563;
-  color: #e5e7eb;
+.btn-secondary:hover { background-color: #e5e5e5; }
+.dark .btn-secondary {
+  background-color: #3a3a3c;
+  color: #e0e0e0;
+  border-color: #555;
 }
-.dark .btn-outline:hover { background: #374151; }
+.dark .btn-secondary:hover { background-color: #444; }
 
-.btn-primary-danger {
-  background: #ef4444;
+.btn-danger {
+  background-color: #ef4444;
   color: #fff;
+  border-color: #ef4444;
 }
-.btn-primary-danger:hover { background: #dc2626; }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-danger:hover { filter: brightness(0.95); }
 
-/* 二次确认弹窗 */
+/* 确认框 */
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
-  z-index: 1100;
+  background: rgba(0,0,0,.45);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1100;
 }
-
-.confirm-card {
-  width: 86%;
-  max-width: 360px;
+.confirm-dialog {
   background: #fff;
   color: #111;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-  padding: 16px 16px 14px;
+  border-radius: 10px;
+  width: 88%;
+  max-width: 360px;
+  padding: 1rem 1rem 0.85rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
 }
-.dark .confirm-card {
+.dark .confirm-dialog {
   background: #2a2a2a;
-  color: #e5e7eb;
+  color: #e0e0e0;
 }
-
 .confirm-title {
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 6px;
 }
-.confirm-text {
+.confirm-subtitle {
+  margin-top: 6px;
   font-size: 14px;
   color: #6b7280;
 }
-.dark .confirm-text { color: #9ca3af; }
-
+.dark .confirm-subtitle { color: #a3a3a3; }
 .confirm-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
   margin-top: 14px;
-}
-</style>
-
-<style>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

@@ -34,6 +34,14 @@ const supportsDate = computed(() => {
   return okType && okValue
 })
 
+/** 仅移动端显示“假占位符”的判断 */
+const isMobile = computed(() => {
+  const ua = navigator.userAgent || ''
+  const byUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+  const byMQ = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  return byUA || byMQ
+})
+
 const startStr = ref<string>('')
 const endStr = ref<string>('')
 const startEl = ref<HTMLInputElement | null>(null)
@@ -157,9 +165,9 @@ function clearRange() {
           @blur="normalizeText('start')"
         >
         <span
-          v-if="!startStr && supportsDate"
+          v-if="!startStr && supportsDate && isMobile"
           class="fake-placeholder"
-        >YYYY-MM-DD</span>
+        >年/月/日</span>
       </div>
     </div>
 
@@ -187,15 +195,15 @@ function clearRange() {
           v-model="endStr"
           class="date-input"
           type="text"
-          placeholder="YYYY-MM-DD"
+          placeholder="年/月/日"
           inputmode="numeric"
           pattern="\\d{4}-\\d{2}-\\d{2}"
           @blur="normalizeText('end')"
         >
         <span
-          v-if="!endStr && supportsDate"
+          v-if="!endStr && supportsDate && isMobile"
           class="fake-placeholder"
-        >YYYY-MM-DD</span>
+        >年/月/日</span>
       </div>
     </div>
 

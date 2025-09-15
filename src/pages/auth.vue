@@ -35,7 +35,9 @@ const CalendarView = defineAsyncComponent(() => import('@/components/CalendarVie
 const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
 
 // 避免 ESLint 误报这些异步组件“未使用”
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker]
+const TrashModal = defineAsyncComponent(() => import('@/components/TrashModal.vue'))
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal] // 把 TrashModal 追加进去
+const showTrashModal = ref(false)
 
 useDark()
 const messageHook = useMessage()
@@ -127,6 +129,7 @@ const mainMenuOptions = computed(() => [
   { label: t('settings.font_title'), key: 'settings' },
   { label: t('notes.export_all'), key: 'export' },
   { label: t('auth.account_title'), key: 'account' },
+  { label: '回收站', key: 'trash' },
 
   // —— 分界线 ——
   { type: 'divider', key: 'div-tags' },
@@ -759,6 +762,19 @@ async function fetchNotes() {
   }
 }
 
+async function handleTrashRestored() {
+  // 刷新主页列表缓存/数据
+  currentPage.value = 1
+  await fetchNotes()
+  // 如果在“那年今日/搜索/标签筛选”里，也不强制切换视图，仅刷新数据源
+}
+
+async function handleTrashPurged() {
+  // 可选：不用刷新主页，但你如果想同步总数，可轻量刷新一次元数据
+  // 例如保持当前页不动，只更新 totalNotes：
+  await fetchNotes()
+}
+
 function handleHeaderClick() {
   (noteListRef.value as any)?.scrollToTop?.()
 }
@@ -776,58 +792,56 @@ async function triggerDeleteConfirmation(id: string) {
     return
 
   const noteToDelete = notes.value.find(note => note.id === id)
-  // 第一次确认
+
+  // 单次确认
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
     positiveText: t('notes.confirm_delete'),
     negativeText: t('notes.cancel'),
-    onPositiveClick: () => {
-      // 第二次确认 (更强烈的警告)
-      dialog.warning({
-        title: t('notes.delete_confirm_title'),
-        content: () =>
-          h('div', { style: 'line-height:1.6' }, [
-            h('p', t('notes.delete_second_confirm_tip', { count: 1 })),
-            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
-          ]),
-        positiveText: t('notes.confirm_delete'),
-        negativeText: t('notes.cancel'),
-        onPositiveClick: async () => {
-          try {
-            const { error } = await supabase.from('notes').delete().eq('id', id).eq('user_id', user.value!.id)
-            if (error)
-              throw new Error(error.message)
+    onPositiveClick: async () => {
+      try {
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.value!.id)
 
-            const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
-            if (homeCacheRaw) {
-              const homeCache = JSON.parse(homeCacheRaw)
-              const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
-              localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
-            }
-            totalNotes.value -= 1
-            localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-            if (activeTagFilter.value) {
-              mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-              notes.value = notes.value.filter(note => note.id !== id)
-            }
-            else {
-              notes.value = notes.value.filter(note => note.id !== id)
-            }
-            messageHook.success(t('notes.delete_success'))
-            if (noteToDelete)
-              invalidateCachesOnDataChange(noteToDelete)
+        if (error)
+          throw new Error(error.message)
 
-            if (showCalendarView.value && calendarViewRef.value) {
-              // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-              ;(calendarViewRef.value as any).refreshData?.()
-            }
-          }
-          catch (err: any) {
-            messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
-          }
-        },
-      })
+        // 更新本地缓存与 UI（保持原有逻辑）
+        const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+        if (homeCacheRaw) {
+          const homeCache = JSON.parse(homeCacheRaw)
+          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
+          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
+        }
+
+        totalNotes.value -= 1
+        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+        if (activeTagFilter.value) {
+          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
+          notes.value = notes.value.filter(note => note.id !== id)
+        }
+        else {
+          notes.value = notes.value.filter(note => note.id !== id)
+        }
+
+        messageHook.success(t('notes.delete_success'))
+
+        if (noteToDelete)
+          invalidateCachesOnDataChange(noteToDelete)
+
+        if (showCalendarView.value && calendarViewRef.value) {
+          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+          ;(calendarViewRef.value as any).refreshData?.()
+        }
+      }
+      catch (err: any) {
+        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
+      }
     },
   })
 }
@@ -1074,8 +1088,12 @@ function handleMainMenuSelect(rawKey: string) {
     case 'account':
       showAccountModal.value = true
       break
-    // 支持 “标签” 这个一级项本身点了没事；仅子项（真正的标签）触发
     case 'tags':
+      // “标签”一级项点了不触发；仅子项（真正的标签）触发
+      break
+    case 'trash':
+      showTrashModal.value = true
+      break
     default:
       break
   }
@@ -1350,6 +1368,12 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+      <TrashModal
+        :show="showTrashModal"
+        @close="showTrashModal = false"
+        @restored="handleTrashRestored"
+        @purged="handleTrashPurged"
+      />
 
       <!-- （原底部 selection-actions-popup 已移除） -->
 

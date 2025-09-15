@@ -20,6 +20,7 @@ declare module 'vue' {
     CalendarView: typeof import('./components/CalendarView.vue')['default']
     DateTimePickerModal: typeof import('./components/DateTimePickerModal.vue')['default']
     MobileDateRangePicker: typeof import('./components/MobileDateRangePicker.vue')['default']
+    'MobileDateRangePicker_副本': typeof import('./components/MobileDateRangePicker_副本.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCollapse: typeof import('naive-ui')['NCollapse']
     NCollapseItem: typeof import('naive-ui')['NCollapseItem']
@@ -46,6 +47,7 @@ declare module 'vue' {
     TestEditor: typeof import('./components/TestEditor.vue')['default']
     TheDoc: typeof import('./components/TheDoc.vue')['default']
     TheFooter: typeof import('./components/TheFooter/index.vue')['default']
+    TrashModal: typeof import('./components/TrashModal.vue')['default']
     WeatherTest: typeof import('./components/WeatherTest.vue')['default']
   }
 }
