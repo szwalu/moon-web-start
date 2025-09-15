@@ -562,7 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 移除硬上限：max-height: 48vh; */
+  max-height: 48vh;
   overflow-y: auto;
   padding: 16px 16px 8px 16px;
   border: none;
@@ -575,14 +575,6 @@ defineExpose({ reset: triggerResize })
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-
-  /* 基础缓冲，未进入编辑态时也尽量避免贴底 */
-  padding-bottom: calc(
-    16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)
-  );
-  scroll-padding-bottom: calc(
-    16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)
-  );
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -703,72 +695,129 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ===== 编辑态：锁定容器上限，并强制 textarea 固定高度（不再随内容增长） ===== */
-
-/* 未聚焦：给足视野（大视口高度） */
+/* 旧笔记编辑态：容器高度固定为屏幕高度的 4/5；textarea 不改动 */
 .note-editor-reborn.editing-viewport {
-  --editor-cap: 80lvh; /* 可改 70lvh/75lvh */
+  /* 优先使用移动端更准确的 dvh，回退到 vh */
+  height: 80dvh;
+  min-height: 80dvh;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
-  height: var(--editor-cap);
-  min-height: var(--editor-cap);
-  max-height: var(--editor-cap);
-}
-
-/* 聚焦输入：使用小视口高度，避开键盘占位 */
-.note-editor-reborn.editing-viewport:focus-within {
-  --editor-cap: 80svh;
-}
-
-/* 兼容后备 */
-@supports not (height: 1svh) {
-  .note-editor-reborn.editing-viewport,
-  .note-editor-reborn.editing-viewport:focus-within {
-    --editor-cap: 80dvh;
-  }
 }
 @supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport,
-  .note-editor-reborn.editing-viewport:focus-within {
-    --editor-cap: 80vh;
+  .note-editor-reborn.editing-viewport {
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
   }
 }
 
-/* 外层不滚动，滚动交给 textarea */
+/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
 }
 
-/* ✅ 关键：textarea 固定为容器高度，不再随内容增高；并为光标留“护栏” */
+/* 让编辑态时，内容区把 70% 屏高容器填满 */
+.note-editor-reborn.editing-viewport {
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
+  }
+}
+
+/* 关键：内容包裹层占满剩余空间 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;              /* 避免子元素高度被挤压 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+}
+
+/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-
-  /* 三重保险：强制固定高度为上限（覆盖 autosize 内联样式） */
-  height: var(--editor-cap) !important;
-  max-height: var(--editor-cap) !important;
-  min-height: 48vh; /* 仍保证至少有 48vh 的可见区 */
-
-  overflow-y: auto;
-
-  /* 护栏：当 cap > 48vh 时，额外加 (cap - 48vh) 的底部缓冲，避免光标贴底被键盘挡住 */
-  padding-bottom: calc(
-    16px
-    + env(safe-area-inset-bottom, 0px)
-    + env(keyboard-inset-height, 0px)
-    + max(0px, (var(--editor-cap) - 48vh))
-  );
-  scroll-padding-bottom: calc(
-    16px
-    + env(safe-area-inset-bottom, 0px)
-    + env(keyboard-inset-height, 0px)
-    + max(0px, (var(--editor-cap) - 48vh))
-  );
+  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
+  max-height: none !important;/* 覆盖 48vh 上限 */
+  overflow-y: auto;           /* 内容超出时内部滚动 */
 }
+
+/* =================================================================== */
+/* ============== 世纪难题的解决方案 (请将此块代码添加到样式表) ============== */
+/* =================================================================== */
+
+/* 当编辑器处于激活状态时 (即 .editing-viewport 类存在时)，
+  我们将整个编辑器组件的高度撑满你想要的 70% 动态视口高度。
+  我们优先使用 dvh 单位，它能更准确地处理移动端浏览器 UI (如地址栏) 的显隐。
+*/
+.note-editor-reborn.editing-viewport {
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 针对不支持 dvh 单位的旧浏览器的回退方案 */
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
+  }
+}
+
+/* 关键步骤 1:
+  让 .editor-wrapper 填满父容器的剩余空间，并成为真正的滚动容器。
+*/
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto; /* 占据所有可用垂直空间 */
+  overflow-y: auto; /* ★ 让这个容器负责滚动 */
+  -webkit-overflow-scrolling: touch; /* 在 iOS 上启用平滑滚动 */
+
+  /* 关键步骤 2: THE MAGIC BULLET!
+    设置一个滚动“内边距”。当浏览器需要将光标滚动到视图中时，
+    它会确保光标距离容器底部至少有 25dvh 的距离。
+    这个值应该足够高，以确保光标始终在软键盘的上方。
+    你可以根据实际测试微调这个值。
+  */
+  scroll-padding-bottom: 25dvh;
+}
+
+/* 关键步骤 3:
+  解放 textarea，让它自由地随内容增长，不再自己滚动。
+*/
+.note-editor-reborn.editing-viewport .editor-textarea {
+  /* 覆盖掉原有的 max-height: 48vh 限制 */
+  max-height: none !important;
+
+  /* ★ 禁止 textarea 自己滚动，将滚动权交给父容器 */
+  overflow-y: hidden;
+
+  /* useTextareaAutosize 会动态设置 textarea 的 height。
+    我们不再需要 min-height 或 height: 100%，因为 textarea 的高度
+    就是其内容的高度，父容器 .editor-wrapper 会处理溢出的滚动。
+  */
+}
+
+/* 可选优化：当用户正在输入时，auth.vue 会给容器添加 .is-typing 类，
+   我们可以利用它来移除新笔记编辑器的顶部间距，让编辑区更大。
+   找到 auth.vue 的 style scoped，修改或添加：
+   .auth-container.is-typing .new-note-editor-container {
+     padding-top: 0.25rem;
+   }
+   (你提供的 auth.vue 代码里已经有这个了，这是对的！)
+*/
 </style>
 
 <style>
