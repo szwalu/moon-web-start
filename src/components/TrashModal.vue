@@ -157,6 +157,16 @@ async function confirmPurge() {
   }
 }
 
+/** 只取前三行内容，超过则在末尾补省略号 */
+function previewContent(text: string): string {
+  if (!text)
+    return ''
+  const lines = text.split('\n')
+  if (lines.length <= 3)
+    return text
+  return `${lines.slice(0, 3).join('\n')}\n…`
+}
+
 watch(() => props.show, (v) => {
   if (v)
     fetchTrash()
@@ -212,7 +222,8 @@ onMounted(() => {
             </label>
 
             <div class="item-main">
-              <div class="content">{{ n.content }}</div>
+              <!-- 改为仅显示前三行 -->
+              <div class="content">{{ previewContent(n.content) }}</div>
               <div class="meta">
                 <span>创建于：{{ new Date(n.created_at).toLocaleString('zh-CN') }}</span>
                 <span>删除于：{{ new Date(n.deleted_at).toLocaleString('zh-CN') }}</span>
@@ -309,7 +320,10 @@ onMounted(() => {
 .dark .trash-item { background: #1f2937; border-color: #374151; }
 .item-check { display: flex; align-items: start; padding-top: .2rem; }
 .item-main .content {
-  white-space: pre-wrap; word-break: break-word; color: inherit; font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  font-size: 14px;
 }
 .item-main .meta {
   margin-top: .35rem;
