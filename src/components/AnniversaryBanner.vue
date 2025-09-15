@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-// 1. 引入 useI18n
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits(['toggleView'])
-
-const { t } = useI18n() // 2. 初始化 t 函数
+const { t } = useI18n()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 
@@ -17,57 +13,135 @@ const anniversaryNotes = ref<any[]>([])
 const isLoading = ref(true)
 const isAnniversaryViewActive = ref(false)
 
-const CACHE_KEY_PREFIX = 'anniversary_notes_'
+let midnightTimer: number | null = null // 零点刷新定时器
 
-// 这是唯一需要修改的部分
+// ===== localStorage 持久化 =====
+function todayStr() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+function stateKey(uid: string) {
+  return `anniv_state_${uid}`
+}
+function resultKey(uid: string, ymd: string) {
+  return `anniv_results_${uid}_${ymd}`
+}
 
-async function loadAnniversaryNotes() {
-  isLoading.value = true
-
-  // 沿用您旧代码的缓存 Key 生成方式
-  const todayForCache = new Date()
-  const todayString = `${todayForCache.getFullYear()}-${String(todayForCache.getMonth() + 1).padStart(2, '0')}-${String(todayForCache.getDate()).padStart(2, '0')}`
-  const cacheKey = `${CACHE_KEY_PREFIX}${user.value!.id}_${todayString}`
-
+function readState(uid: string): { active: boolean; forDate?: string } | null {
   try {
-    const cachedData = localStorage.getItem(cacheKey)
-    if (cachedData) {
-      anniversaryNotes.value = JSON.parse(cachedData)
-    }
-    else {
-      // --- 这里是修改的核心 ---
-      // 不再获取所有笔记，而是直接调用数据库函数
+    const raw = localStorage.getItem(stateKey(uid))
+    if (!raw)
+      return null
+    return JSON.parse(raw)
+  }
+  catch {
+    return null
+  }
+}
+function writeState(uid: string, data: { active: boolean; forDate?: string }) {
+  try {
+    localStorage.setItem(stateKey(uid), JSON.stringify(data))
+  }
+  catch {}
+}
+function writeResults(uid: string, ymd: string, arr: any[]) {
+  try {
+    localStorage.setItem(resultKey(uid, ymd), JSON.stringify(arr))
+  }
+  catch {}
+}
+function readResults(uid: string, ymd: string): any[] | null {
+  try {
+    const raw = localStorage.getItem(resultKey(uid, ymd))
+    if (!raw)
+      return null
+    return JSON.parse(raw)
+  }
+  catch {
+    return null
+  }
+}
+function sweepOldResults(uid: string, keepYmd: string) {
+  const prefix = `anniv_results_${uid}_`
+  Object.keys(localStorage).forEach((k) => {
+    if (k.startsWith(prefix) && !k.endsWith(keepYmd))
+      localStorage.removeItem(k)
+  })
+}
 
-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = String(today.getMonth() + 1).padStart(2, '0')
-      const day = String(today.getDate()).padStart(2, '0')
-      const clientDateString = `${year}-${month}-${day}`
+// ===== 年份统计 =====
+interface YearStat { year: number; count: number }
+const yearStats = computed<YearStat[]>(() => {
+  const map = new Map<number, number>()
+  for (const n of anniversaryNotes.value) {
+    const y = new Date(n.created_at).getFullYear()
+    map.set(y, (map.get(y) || 0) + 1)
+  }
+  return Array.from(map.entries())
+    .map(([year, count]) => ({ year, count }))
+    .sort((a, b) => b.year - a.year)
+})
+function hueForYear(y: number) {
+  let x = (y * 2654435761) % 360
+  if (x < 0)
+    x += 360
+  return x
+}
 
-      const { data, error } = await supabase.rpc('get_anniversary_notes_for_date', {
-        p_user_id: user.value!.id,
-        p_client_date: clientDateString,
-        p_timezone: userTimezone,
+// ===== 主逻辑 =====
+function setView(isActive: boolean) {
+  if (!user.value)
+    return
+  isAnniversaryViewActive.value = isActive
+  writeState(user.value.id, { active: isActive, forDate: todayStr() })
+  if (isActive && anniversaryNotes.value.length === 0) {
+    // 不等待返回，按需加载
+    loadAnniversaryNotes(true)
+  }
+}
+
+async function loadAnniversaryNotes(forceRefresh = false) {
+  if (!user.value)
+    return
+  const uid = user.value.id
+  const ymd = todayStr()
+  isLoading.value = true
+  try {
+    let data: any[] | null = null
+    if (!forceRefresh)
+      data = readResults(uid, ymd)
+
+    if (!data) {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const { data: rows, error } = await supabase.rpc('get_anniversary_notes_for_date', {
+        p_user_id: uid,
+        p_client_date: ymd,
+        p_timezone: tz,
       })
-
       if (error)
         throw error
-
-      // 直接使用数据库返回并排序好的数据
-      anniversaryNotes.value = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-      // 将结果存入缓存
-      localStorage.setItem(cacheKey, JSON.stringify(anniversaryNotes.value))
-
-      // 沿用您旧代码的清理缓存逻辑
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith(CACHE_KEY_PREFIX) && key !== cacheKey)
-          localStorage.removeItem(key)
+      const sorted = (rows || []).sort((a: any, b: any) => {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       })
+      data = sorted
+      writeResults(uid, ymd, data)
+      sweepOldResults(uid, ymd)
+    }
+    anniversaryNotes.value = data
+    const st = readState(uid)
+    const shouldEmit = isAnniversaryViewActive.value || (!!st && st.active)
+    if (shouldEmit) {
+      if (anniversaryNotes.value.length > 0)
+        emit('toggleView', anniversaryNotes.value)
+      else
+        emit('toggleView', null)
     }
   }
   catch (err) {
+    // 保底：失败时不改变父视图，只输出日志
     console.error('获取那年今日笔记失败:', err)
   }
   finally {
@@ -78,19 +152,76 @@ async function loadAnniversaryNotes() {
 function handleBannerClick() {
   if (anniversaryNotes.value.length === 0)
     return
+  if (!user.value)
+    return
+
+  const uid = user.value.id
+  const ymd = todayStr()
 
   isAnniversaryViewActive.value = !isAnniversaryViewActive.value
+  writeState(uid, { active: isAnniversaryViewActive.value, forDate: ymd })
+
   if (isAnniversaryViewActive.value)
     emit('toggleView', anniversaryNotes.value)
   else
     emit('toggleView', null)
 }
 
-function setView(isActive: boolean) {
-  isAnniversaryViewActive.value = isActive
+// ===== 零点自动刷新 =====
+function scheduleMidnightRefresh() {
+  if (midnightTimer) {
+    clearTimeout(midnightTimer)
+    midnightTimer = null
+  }
+  const now = new Date()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(now.getDate() + 1)
+  tomorrow.setHours(0, 0, 0, 0)
+  const msUntilMidnight = tomorrow.getTime() - now.getTime()
+  midnightTimer = window.setTimeout(async () => {
+    await loadAnniversaryNotes(true)
+    if (user.value)
+      writeState(user.value.id, { active: isAnniversaryViewActive.value, forDate: todayStr() })
+
+    scheduleMidnightRefresh()
+  }, msUntilMidnight)
 }
 
-// 将 setView 和 loadAnniversaryNotes 方法都暴露给父组件
+// ===== 生命周期 =====
+onMounted(async () => {
+  if (!user.value)
+    return
+
+  const uid = user.value.id
+  const st = readState(uid)
+  const ymd = todayStr()
+  const needRefresh = !st || st.forDate !== ymd
+
+  if (needRefresh) {
+    if (st?.active)
+      isAnniversaryViewActive.value = true
+    await loadAnniversaryNotes(true)
+    writeState(uid, { active: !!st?.active, forDate: ymd })
+  }
+  else {
+    isAnniversaryViewActive.value = !!st?.active
+    await loadAnniversaryNotes(false)
+  }
+
+  if (!isAnniversaryViewActive.value)
+    emit('toggleView', null)
+
+  scheduleMidnightRefresh()
+})
+
+onUnmounted(() => {
+  if (midnightTimer) {
+    clearTimeout(midnightTimer)
+    midnightTimer = null
+  }
+})
+
+// 暴露方法
 defineExpose({
   setView,
   loadAnniversaryNotes,
@@ -98,13 +229,34 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="!isLoading && anniversaryNotes.length > 0" class="anniversary-banner" @click="handleBannerClick">
-    <span v-if="isAnniversaryViewActive">
-      {{ t('notes.anniversary_total', { count: anniversaryNotes.length }) }}
-    </span>
-    <span v-else>
-      {{ t('notes.anniversary_found', { count: anniversaryNotes.length }) }}
-    </span>
+  <div
+    v-if="!isLoading && anniversaryNotes.length > 0"
+    class="anniversary-banner"
+    @click="handleBannerClick"
+  >
+    <div class="banner-line">
+      <span v-if="isAnniversaryViewActive">
+        {{ t('notes.anniversary_total', { count: anniversaryNotes.length }) }}
+      </span>
+      <span v-else>
+        {{ t('notes.anniversary_found', { count: anniversaryNotes.length }) }}
+      </span>
+    </div>
+
+    <!-- 只有在“那年今日视图”时显示年份徽章 -->
+    <div v-if="isAnniversaryViewActive" class="year-chips">
+      <span
+        v-for="ys in yearStats"
+        :key="ys.year"
+        class="chip"
+        :style="{ '--chip-h': hueForYear(ys.year) }"
+      >
+        <!-- 例：2019(2) -->
+        <span class="chip-year">
+          {{ ys.year }}<span v-if="ys.count > 1">({{ ys.count }})</span>
+        </span>
+      </span>
+    </div>
   </div>
 </template>
 
@@ -114,10 +266,7 @@ defineExpose({
   color: #4338ca;
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  text-align: center;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   margin-bottom: 1rem;
   transition: all 0.2s ease-in-out;
 }
@@ -131,5 +280,46 @@ defineExpose({
 }
 .dark .anniversary-banner:hover {
   background-color: #3730a3;
+}
+
+.banner-line {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* 年份徽章区 */
+.year-chips {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.chip {
+  --chip-h: 210;
+  --chip-s: 70%;
+  --chip-l: 92%;
+  --chip-border-l: 78%;
+  background: hsl(var(--chip-h), var(--chip-s), var(--chip-l));
+  color: #1f2937;
+  border: 1px solid hsl(var(--chip-h), 35%, var(--chip-border-l));
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+.dark .chip {
+  --chip-l: 28%;
+  --chip-border-l: 42%;
+  color: #e5e7eb;
+}
+.chip-year {
+  font-weight: 700;
+  letter-spacing: 0.3px;
 }
 </style>
