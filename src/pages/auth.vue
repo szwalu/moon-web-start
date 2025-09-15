@@ -1242,7 +1242,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <!-- [PATCH-X] 退出改为纯导航，避免 JS/状态导致的无响应 -->
-          <RouterLink to="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</RouterLink>
+          <a href="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</a>
         </div>
       </div>
 
