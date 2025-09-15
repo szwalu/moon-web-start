@@ -1138,6 +1138,12 @@ async function handleEditFromCalendar(noteToFind: any) {
 }
 
 async function fetchNotesByTag(tag: string) {
+// —— 进入标签筛选时，若正在“那年今日”视图，先退出它（与搜索互斥的同样逻辑）——
+  if (isAnniversaryViewActive.value) {
+    anniversaryBannerRef.value?.setView(false) // 通知条幅切换回“未激活”外观
+    isAnniversaryViewActive.value = false
+    anniversaryNotes.value = null
+  }
   // 统一为 "#xxx"
   if (!tag)
     return

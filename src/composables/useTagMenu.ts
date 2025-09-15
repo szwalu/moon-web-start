@@ -15,13 +15,8 @@ export function useTagMenu(
   onSelectTag: (tag: string) => void,
   t: (key: string, arg?: any) => string,
 ) {
-  // 一级菜单显示控制（用于选完标签后自动收起一级菜单）
   const mainMenuVisible = ref(false)
-
-  // 搜索关键字（仅作用于标签子菜单）
   const tagSearch = ref('')
-
-  // 星标（常用）标签
   const pinnedTags = ref<string[]>([])
 
   onMounted(() => {
@@ -46,13 +41,13 @@ export function useTagMenu(
     const i = pinnedTags.value.indexOf(tag)
     if (i >= 0)
       pinnedTags.value.splice(i, 1)
-    else pinnedTags.value.push(tag)
+    else
+      pinnedTags.value.push(tag)
     savePinned()
   }
 
   function selectTag(tag: string) {
     onSelectTag(tag)
-    // 选完标签后，自动收起一级菜单
     mainMenuVisible.value = false
   }
 
@@ -60,25 +55,23 @@ export function useTagMenu(
     return tag.startsWith('#') ? tag.slice(1) : tag
   }
 
-  /** 过滤：按关键字过滤（忽略大小写） */
   const filteredTags = computed(() => {
     const q = tagSearch.value.trim().toLowerCase()
     if (!q)
       return allTags.value
-    return allTags.value.filter(t => t.toLowerCase().includes(q))
+    return allTags.value.filter(tt => tt.toLowerCase().includes(q))
   })
 
-  /** 按首字母分组（A-Z / #） */
   const groupedTags = computed(() => {
     const groups: Record<string, string[]> = {}
-    for (const t of filteredTags.value) {
-      if (isPinned(t))
-        continue // 星标单独分组
-      const name = tagKeyName(t)
+    for (const tt of filteredTags.value) {
+      if (isPinned(tt))
+        continue
+      const name = tagKeyName(tt)
       const letter = /^[A-Za-z]/.test(name) ? name[0].toUpperCase() : '#'
       if (!groups[letter])
         groups[letter] = []
-      groups[letter].push(t)
+      groups[letter].push(tt)
     }
     Object.keys(groups).forEach((k) => {
       groups[k].sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
@@ -93,9 +86,12 @@ export function useTagMenu(
     return letters.map(letter => ({ letter, tags: groups[letter] }))
   })
 
-  /** 生成“子菜单 children”（给 NDropdown 的 `options[标签].children` 用） */
   const tagMenuChildren = computed(() => {
-    // 顶部搜索框（render option，不可选）
+    const total = allTags.value.length
+    if (total === 0)
+      return [] as any[]
+
+    const placeholderText = `从 ${total} 条标签中搜索`
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
@@ -104,23 +100,22 @@ export function useTagMenu(
           h(NInput, {
             'value': tagSearch.value,
             'onUpdate:value': (v: string) => { tagSearch.value = v },
-            'placeholder': t('notes.search_tags') || '搜索标签…',
+            'placeholder': placeholderText,
             'clearable': true,
             'autofocus': true,
             'size': 'small',
-            'style': 'font-size:16px;',
-            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(), // 防止方向键影响菜单聚焦
+            // 改为接近一级菜单宽度，略窄，居中
+            'style': 'font-size:14px;width:calc(100% - 20px);margin:0 auto;display:block;',
+            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
           }),
         ]),
     }
 
-    // 常用（星标）分组
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
       .map(tag => ({
         key: tag,
-        // 用 label 函数渲染整行（包含星标）
         label: () =>
           h('div', { class: 'tag-row' }, [
             h('span', { class: 'tag-text' }, tag),
@@ -137,6 +132,7 @@ export function useTagMenu(
               '★',
             ),
           ]),
+        props: { onClick: () => selectTag(tag) },
       }))
 
     const pinnedGroup
@@ -149,7 +145,6 @@ export function useTagMenu(
           }]
         : []
 
-    // 字母分组（跳过空分组）
     const letterGroups = groupedTags.value
       .filter(({ tags }) => tags.length > 0)
       .map(({ letter, tags }) => ({
@@ -158,7 +153,6 @@ export function useTagMenu(
         label: letter,
         children: tags.map(tag => ({
           key: tag,
-          // 用 label 函数渲染整行（包含星标）
           label: () =>
             h('div', { class: 'tag-row' }, [
               h('span', { class: 'tag-text' }, tag),
@@ -175,6 +169,7 @@ export function useTagMenu(
                 isPinned(tag) ? '★' : '☆',
               ),
             ]),
+          props: { onClick: () => selectTag(tag) },
         })),
       }))
 
@@ -182,17 +177,12 @@ export function useTagMenu(
   })
 
   return {
-    // 状态
     mainMenuVisible,
     tagSearch,
     pinnedTags,
-
-    // 读写
     isPinned,
     togglePin,
     selectTag,
-
-    // 给 NDropdown 用的 children
     tagMenuChildren,
   }
 }
