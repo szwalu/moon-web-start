@@ -117,7 +117,6 @@ watch(showSearchBar, (newValue) => {
 watch(activeTagFilter, (newValue) => {
   if (newValue)
     sessionStorage.setItem(SESSION_TAG_FILTER_KEY, newValue)
-
   else
     sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
 })
@@ -150,13 +149,17 @@ const showAnniversaryBanner = computed(() => {
   if (searchQuery.value && searchQuery.value.trim() !== '')
     return false
 
+  // ++ 新增：选择模式下隐藏“那年今日”
+  if (isSelectionModeActive.value)
+    return false
+
   // 满足所有条件，才显示
   return true
 })
 
 onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
-  (async () => {
+  ;(async () => {
     try {
       const { data, error } = await supabase.auth.getSession()
       if (!error) {
@@ -310,7 +313,6 @@ watch(newNoteContent, (val) => {
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
-
     else
       localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
@@ -368,7 +370,12 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
   let savedNote
   try {
     if (noteIdToUpdate) {
-      const { data: updatedData, error: updateError } = await supabase.from('notes').update(noteData).eq('id', noteIdToUpdate).eq('user_id', user.value.id).select()
+      const { data: updatedData, error: updateError } = await supabase
+        .from('notes')
+        .update(noteData)
+        .eq('id', noteIdToUpdate)
+        .eq('user_id', user.value.id)
+        .select()
       if (updateError || !updatedData?.length)
         throw new Error(t('auth.update_failed'))
 
@@ -379,7 +386,10 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
     }
     else {
       const newId = uuidv4()
-      const { data: insertedData, error: insertError } = await supabase.from('notes').insert({ ...noteData, id: newId }).select()
+      const { data: insertedData, error: insertError } = await supabase
+        .from('notes')
+        .insert({ ...noteData, id: newId })
+        .select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
 
@@ -529,12 +539,13 @@ function onEditorBlur() {
 
 function handleExportTrigger() {
   // ++ 修改逻辑：如果正在显示搜索结果或标签筛选结果，则导出当前列表
-  if (isShowingSearchResults.value || activeTagFilter.value)
+  if (isShowingSearchResults.value || activeTagFilter.value) {
     handleExportResults()
-
-  // 否则，执行包含所有笔记的批量导出
-  else
+  }
+  else {
+    // 否则，执行包含所有笔记的批量导出
     handleBatchExport()
+  }
 }
 
 async function handleBatchExport() {
@@ -904,12 +915,26 @@ function handleAnniversaryToggle(data: any[] | null) {
   }
 }
 
+// === 选择模式：仅修改选择相关逻辑 ===
 function toggleSelectionMode() {
-  isSelectionModeActive.value = !isSelectionModeActive.value
-  if (!isSelectionModeActive.value)
+  const willEnable = !isSelectionModeActive.value
+  isSelectionModeActive.value = willEnable
+
+  if (willEnable) {
+    // 进入选择模式：立刻隐藏搜索条（条幅将显示）
+    showSearchBar.value = false
+  }
+  else {
+    // 退出选择模式：清空选择
     selectedNoteIds.value = []
+  }
 
   showDropdown.value = false
+}
+
+function finishSelectionMode() {
+  isSelectionModeActive.value = false
+  selectedNoteIds.value = []
 }
 
 function handleToggleSelect(noteId: string) {
@@ -919,7 +944,6 @@ function handleToggleSelect(noteId: string) {
   const index = selectedNoteIds.value.indexOf(noteId)
   if (index > -1)
     selectedNoteIds.value.splice(index, 1)
-
   else
     selectedNoteIds.value.push(noteId)
 }
@@ -1198,8 +1222,43 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </div>
 
+      <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
       <Transition name="slide-fade">
-        <div v-if="showSearchBar" v-show="!isEditorActive" class="search-bar-container">
+        <div
+          v-if="isSelectionModeActive"
+          class="selection-actions-banner"
+          role="region"
+          aria-live="polite"
+        >
+          <div class="banner-left">
+            <strong>{{ $t('notes.select_notes') }}</strong>
+            <span class="sep">·</span>
+            <span>{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</span>
+          </div>
+          <div class="banner-right">
+            <button
+              class="action-btn copy-btn"
+              :disabled="selectedNoteIds.length === 0"
+              @click="handleCopySelected"
+            >
+              {{ $t('notes.copy') }}
+            </button>
+            <button
+              class="action-btn delete-btn"
+              :disabled="selectedNoteIds.length === 0"
+              @click="handleDeleteSelected"
+            >
+              {{ $t('notes.delete') }}
+            </button>
+            <button class="finish-btn" @click="finishSelectionMode">
+              {{ $t('notes.cancel') || '完成' }}
+            </button>
+          </div>
+        </div>
+      </Transition>
+
+      <Transition name="slide-fade">
+        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
           <NoteActions
             ref="noteActionsRef"
             v-model="searchQuery"
@@ -1220,7 +1279,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
       <AnniversaryBanner v-show="showAnniversaryBanner" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
-      <div v-if="activeTagFilter" v-show="!isEditorActive" class="active-filter-bar">
+      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             正在筛选标签：<strong>{{ activeTagFilter }}</strong>
@@ -1235,7 +1294,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </div>
 
-      <div v-if="isShowingSearchResults" v-show="!isEditorActive" class="active-filter-bar search-results-bar">
+      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             搜索“<strong>{{ searchQuery }}</strong>”的结果
@@ -1251,7 +1310,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </div>
 
-      <div ref="newNoteEditorContainerRef" class="new-note-editor-container">
+      <!-- 主页输入框：选择模式时隐藏 -->
+      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
@@ -1291,15 +1351,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
 
-      <Transition name="slide-up-fade">
-        <div v-if="selectedNoteIds.length > 0" class="selection-actions-popup">
-          <div class="selection-info">{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</div>
-          <div class="selection-buttons">
-            <button class="action-btn copy-btn" @click="handleCopySelected">{{ $t('notes.copy') }}</button>
-            <button class="action-btn delete-btn" @click="handleDeleteSelected">{{ $t('notes.delete') }}</button>
-          </div>
-        </div>
-      </Transition>
+      <!-- （原底部 selection-actions-popup 已移除） -->
 
       <Transition name="slide-up-fade">
         <CalendarView
@@ -1410,45 +1462,103 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   line-height: 1;
   font-weight: 300;
 }
-.selection-actions-popup {
-  position: fixed;
-  bottom: 1.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 3rem);
-  max-width: 432px;
-  background-color: #333;
-  color: white;
-  border-radius: 8px;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+
+/* 顶部选择模式条幅 */
+/* 顶部选择模式条幅 —— 统一为与搜索结果横幅一致的风格 */
+.selection-actions-banner {
+  position: sticky;
+  top: 44px;
+  z-index: 2500;
+
+  /* 与 .active-filter-bar 一致的底色与布局 */
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
-  z-index: 15;
-}
-.dark .selection-actions-popup {
-  background-color: #444;
-}
-.selection-info {
+  justify-content: space-between;
+  gap: 0.75rem;
+
+  background-color: #eef2ff;   /* 浅靛蓝底色 */
+  color: #4338ca;              /* 文字主色 */
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 8px 0 10px 0;
   font-size: 14px;
 }
-.selection-buttons {
+
+.dark .selection-actions-banner {
+  background-color: #312e81;   /* 深色模式下与搜索横幅一致 */
+  color: #c7d2fe;
+}
+
+.selection-actions-banner .banner-left {
   display: flex;
-  gap: 3rem;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.action-btn {
+
+.selection-actions-banner .sep {
+  opacity: 0.6;
+}
+
+.selection-actions-banner .banner-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* 右侧按钮：采用与“导出”按钮一致的描边样式 */
+.selection-actions-banner .action-btn,
+.selection-actions-banner .finish-btn {
   background: none;
-  border: none;
-  color: white;
-  font-size: 14px;
+  border: 1px solid #6366f1;   /* 与导出按钮一致的描边色 */
+  color: #4338ca;              /* 与横幅主色一致 */
+  padding: 4px 12px;
+  border-radius: 6px;
   cursor: pointer;
+  font-size: 13px;
   font-weight: 500;
-  padding: 0.25rem;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
-.action-btn.delete-btn {
-  color: #ff5252;
+
+.selection-actions-banner .action-btn:disabled,
+.selection-actions-banner .finish-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
+
+/* hover 与搜索“导出”按钮一致 */
+.selection-actions-banner .action-btn:hover,
+.selection-actions-banner .finish-btn:hover {
+  background-color: #4338ca;
+  color: #fff;
+}
+
+.dark .selection-actions-banner .action-btn,
+.dark .selection-actions-banner .finish-btn {
+  border-color: #a5b4fc;
+  color: #c7d2fe;
+}
+
+.dark .selection-actions-banner .action-btn:hover,
+.dark .selection-actions-banner .finish-btn:hover {
+  background-color: #a5b4fc;
+  color: #312e81;
+}
+
+/* 如果你仍希望“删除”有弱危险提示，可保留细微差异：红色描边，但 hover 依然按统一规则 */
+.selection-actions-banner .delete-btn {
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+.dark .selection-actions-banner .delete-btn {
+  border-color: #fca5a5;
+  color: #fecaca;
+}
+
 .slide-up-fade-enter-active,
 .slide-up-fade-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
