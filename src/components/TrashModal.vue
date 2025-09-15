@@ -157,16 +157,6 @@ async function confirmPurge() {
   }
 }
 
-/** 只取前三行内容，超过则在末尾补省略号 */
-function previewContent(text: string): string {
-  if (!text)
-    return ''
-  const lines = text.split('\n')
-  if (lines.length <= 3)
-    return text
-  return `${lines.slice(0, 3).join('\n')}\n…`
-}
-
 watch(() => props.show, (v) => {
   if (v)
     fetchTrash()
@@ -222,8 +212,8 @@ onMounted(() => {
             </label>
 
             <div class="item-main">
-              <!-- 改为仅显示前三行 -->
-              <div class="content">{{ previewContent(n.content) }}</div>
+              <!-- 使用 CSS line-clamp 限制为 3 行 -->
+              <div class="content">{{ n.content }}</div>
               <div class="meta">
                 <span>创建于：{{ new Date(n.created_at).toLocaleString('zh-CN') }}</span>
                 <span>删除于：{{ new Date(n.deleted_at).toLocaleString('zh-CN') }}</span>
@@ -319,12 +309,20 @@ onMounted(() => {
 }
 .dark .trash-item { background: #1f2937; border-color: #374151; }
 .item-check { display: flex; align-items: start; padding-top: .2rem; }
+
+/* 仅显示前三行：line-clamp 方案（兼容主流移动端与桌面） */
 .item-main .content {
-  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;     /* 关键：限制为 3 行 */
+  overflow: hidden;
   word-break: break-word;
+  white-space: normal;        /* 允许换行（即便原文没有 \n 也会自动换行） */
   color: inherit;
   font-size: 14px;
+  line-height: 1.6;
 }
+
 .item-main .meta {
   margin-top: .35rem;
   display: flex;
