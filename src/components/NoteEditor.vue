@@ -576,14 +576,12 @@ defineExpose({ reset: triggerResize })
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 
-  /* 为软键盘/安全区预留底部空间，避免光标被遮挡 */
-  padding-bottom: max(
-    16px,
-    calc(16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))
+  /* 基础缓冲，未进入编辑态时也尽量避免贴底 */
+  padding-bottom: calc(
+    16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)
   );
-  scroll-padding-bottom: max(
-    16px,
-    calc(16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px))
+  scroll-padding-bottom: calc(
+    16px + env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)
   );
 }
 
@@ -705,11 +703,11 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ===== 编辑态：用视口单位自适应，并设置“护栏”让光标不上贴底 ===== */
+/* ===== 编辑态：锁定容器上限，并强制 textarea 固定高度（不再随内容增长） ===== */
 
 /* 未聚焦：给足视野（大视口高度） */
 .note-editor-reborn.editing-viewport {
-  --editor-cap: 80lvh; /* 可调为 70lvh/75lvh */
+  --editor-cap: 80lvh; /* 可改 70lvh/75lvh */
   display: flex;
   flex-direction: column;
   height: var(--editor-cap);
@@ -717,12 +715,12 @@ defineExpose({ reset: triggerResize })
   max-height: var(--editor-cap);
 }
 
-/* 聚焦输入时：切为小视口高度（扣除键盘后的可用高度） */
+/* 聚焦输入：使用小视口高度，避开键盘占位 */
 .note-editor-reborn.editing-viewport:focus-within {
   --editor-cap: 80svh;
 }
 
-/* 兼容：无 svh/lvh 时退到 dvh；再退到 vh */
+/* 兼容后备 */
 @supports not (height: 1svh) {
   .note-editor-reborn.editing-viewport,
   .note-editor-reborn.editing-viewport:focus-within {
@@ -736,7 +734,7 @@ defineExpose({ reset: triggerResize })
   }
 }
 
-/* 关键：内容包裹层占满剩余空间（外层不滚，滚动交给 textarea） */
+/* 外层不滚动，滚动交给 textarea */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
   min-height: 0;
@@ -745,21 +743,30 @@ defineExpose({ reset: triggerResize })
   overflow: hidden;
 }
 
-/* 关键：textarea 填满容器且内部滚动；加入“护栏”= (容器高度 - 48vh) */
+/* ✅ 关键：textarea 固定为容器高度，不再随内容增高；并为光标留“护栏” */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;
-  max-height: none !important;
+
+  /* 三重保险：强制固定高度为上限（覆盖 autosize 内联样式） */
+  height: var(--editor-cap) !important;
+  max-height: var(--editor-cap) !important;
+  min-height: 48vh; /* 仍保证至少有 48vh 的可见区 */
+
   overflow-y: auto;
 
-  padding-bottom: max(
-    16px,
-    calc(16px + env(safe-area-inset-bottom, 0px) + (var(--editor-cap) - 48vh))
+  /* 护栏：当 cap > 48vh 时，额外加 (cap - 48vh) 的底部缓冲，避免光标贴底被键盘挡住 */
+  padding-bottom: calc(
+    16px
+    + env(safe-area-inset-bottom, 0px)
+    + env(keyboard-inset-height, 0px)
+    + max(0px, (var(--editor-cap) - 48vh))
   );
-  scroll-padding-bottom: max(
-    16px,
-    calc(16px + env(safe-area-inset-bottom, 0px) + (var(--editor-cap) - 48vh))
+  scroll-padding-bottom: calc(
+    16px
+    + env(safe-area-inset-bottom, 0px)
+    + env(keyboard-inset-height, 0px)
+    + max(0px, (var(--editor-cap) - 48vh))
   );
 }
 </style>
