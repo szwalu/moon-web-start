@@ -758,44 +758,58 @@ defineExpose({ reset: triggerResize })
 }
 
 /* =================================================================== */
-/* ============ 最终解决方案 (添加此代码到 NoteEditor.vue) ============ */
+/* ============ 最终解决方案 V3 (请替换旧代码) ============ */
 /* =================================================================== */
 
-/*
-  当编辑器被聚焦时 (`isActive` prop 为 true), .active-viewport 类会生效。
-  这个类和旧的 .editing-viewport 类将共享大部分增高和滚动的逻辑。
-  我们使用组合选择器 `,` 来同时为它们应用样式。
-*/
+/* 步骤 1: 当激活时，让整个编辑器组件变高。这部分和之前一样。 */
 .note-editor-reborn.editing-viewport,
 .note-editor-reborn.active-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
+  height: 80dvh; /* 直接提到你期望的 80dvh */
+  min-height: 80dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport,
+  .note-editor-reborn.active-viewport {
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
+  }
+}
+
+/* 步骤 2: 让 .editor-wrapper 成为一个 flex 容器，为 textarea 的伸展做准备。 */
+.note-editor-reborn.editing-viewport .editor-wrapper,
+.note-editor-reborn.active-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0; /* 这是 flex 布局中的关键，防止子元素溢出 */
   display: flex;
   flex-direction: column;
 }
 
-@supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport,
-  .note-editor-reborn.active-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
-  }
-}
-
-.note-editor-reborn.editing-viewport .editor-wrapper,
-.note-editor-reborn.active-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-padding-bottom: 25dvh;
-}
-
+/* 步骤 3: ★★★ 决定性的一步 ★★★
+   我们命令 textarea 彻底占满它的父容器，并自己负责滚动。
+   这次，我们用 !important 来终结与 useTextareaAutosize 的斗争。
+*/
 .note-editor-reborn.editing-viewport .editor-textarea,
 .note-editor-reborn.active-viewport .editor-textarea {
+  flex: 1 1 auto; /* 作为 flex 子元素，填满剩余空间 */
+  min-height: 0;
+
+  /* 关键: 强行覆盖 JS 设置的行内 height，让 textarea 充满父容器 */
+  height: 100% !important;
+
+  /* 关键: 覆盖掉原有的 48vh 限制 */
   max-height: none !important;
-  overflow-y: hidden;
+
+  /* 关键: 让 textarea 自己来滚动内容 */
+  overflow-y: auto;
+
+  /* 关键: 在 textarea (即滚动容器) 自身上设置安全区，
+     给一个较大的值，确保光标永远舒适可见。
+  */
+  scroll-padding-bottom: 40vh;
 }
 </style>
 
