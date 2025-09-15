@@ -26,6 +26,9 @@ importers:
       '@milkdown/vue':
         specifier: ^7.15.5
         version: 7.15.5(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.1)(prosemirror-model@1.25.3)(prosemirror-state@1.4.3)(prosemirror-view@1.40.1)(typescript@5.6.3)(vue@3.5.12(typescript@5.6.3))
+      '@popperjs/core':
+        specifier: ^2.11.8
+        version: 2.11.8
       '@supabase/supabase-js':
         specifier: ^2.50.0
         version: 2.50.0
