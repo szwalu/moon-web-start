@@ -105,7 +105,7 @@ export function useTagMenu(
             'autofocus': true,
             'size': 'small',
             // 改为接近一级菜单宽度，略窄，居中
-            'style': 'font-size:14px;width:calc(100% - 20px);margin:0 auto;display:block;',
+            'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
           }),
         ]),
