@@ -1335,12 +1335,16 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
-      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
+      <div
+        ref="newNoteEditorContainerRef"
+        class="new-note-editor-container"
+        :class="{ 'editor-is-active': isEditorActive }"
+      >
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
           :is-editing="false"
-          :is-active="isEditorActive" :is-loading="isCreating"
+          :is-loading="isCreating"
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
@@ -1722,6 +1726,63 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
+}
+
+/* auth.vue -> <style scoped> (请添加以下两个规则块) */
+
+/* 规则块 1:
+   当处于输入状态时 (.is-typing)，我们直接隐藏笔记列表，
+   为“跳出来”的编辑器提供干净的舞台。
+*/
+.auth-container.is-typing .notes-list-container {
+  display: none;
+}
+
+/* 规则块 2:
+   这是“世纪难题”的最终答案。
+   当 .editor-is-active 生效时，我们把整个编辑器容器“拎出来”，
+   用 position: fixed 定位在屏幕底部，赋予它期望的高度，并让它内部的
+   NoteEditor 组件和 textarea 完美填充。
+*/
+.new-note-editor-container.editor-is-active {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 4000; /* 确保在最上层 */
+
+  /* 我们可以使用环境变量来处理输入法软键盘的高度，但这需要原生App配合。
+     在Web中，一个可靠的vh值是最佳实践。
+     70vh 是一个很好的开始值。
+  */
+  height: 70vh;
+
+  /* 过渡效果，让弹出更平滑 */
+  transition: transform 0.2s ease-out;
+  transform: translateY(0);
+}
+
+/* 使用 :deep() 选择器来穿透到子组件 NoteEditor 的内部样式 */
+.new-note-editor-container.editor-is-active :deep(.note-editor-reborn) {
+  height: 100%; /* 占满它的新容器 (70vh) */
+  border-radius: 12px 12px 0 0; /* 底部是直角，更贴合屏幕边缘 */
+  border-width: 1px 1px 0 1px;
+}
+
+.new-note-editor-container.editor-is-active :deep(.editor-wrapper) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.new-note-editor-container.editor-is-active :deep(.editor-textarea) {
+  flex: 1 1 auto;
+  height: 100% !important; /* 强制占满 */
+  max-height: none !important; /* 移除所有高度限制 */
+  overflow-y: auto; /* 内部滚动 */
+
+  /* 在 textarea 自己身上设置安全区，保证光标永不被遮挡 */
+  scroll-padding-bottom: 20vh;
 }
 </style>
 
