@@ -791,13 +791,20 @@ async function fetchNotes() {
 
 async function handleTrashRestored() {
   // 步骤 1: 全局性地让所有筛选视图的缓存失效
-  invalidateAllSearchCaches() // 清空所有搜索缓存
-  invalidateAllTagCaches() // 清空所有标签缓存
-  invalidateAllCalendarCaches()// 清空所有日历缓存
+  invalidateAllSearchCaches()
+  invalidateAllTagCaches()
+  invalidateAllCalendarCaches()
 
-  // 步骤 2: 刷新主页列表缓存/数据 (保持原有逻辑)
+  // 步骤 2: 刷新主页列表缓存/数据
   currentPage.value = 1
   await fetchNotes()
+
+  // ✨ 步骤 3: 主动命令日历组件刷新其内部状态
+  // 检查 calendarViewRef 是否存在 (确保日历组件至少被渲染过一次)
+  if (calendarViewRef.value) {
+    // @ts-expect-error: 'refreshData' is exposed via defineExpose
+    (calendarViewRef.value as any).refreshData()
+  }
 }
 
 async function handleTrashPurged() {
