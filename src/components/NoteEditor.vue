@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
@@ -29,8 +28,8 @@ const contentModel = computed({
   },
 })
 
-// ============== Autosize ==============
-const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+// ============== Textarea 引用 & 计数 ==============
+const textarea = ref<HTMLTextAreaElement | null>(null)
 const charCount = computed(() => contentModel.value.length)
 
 // ============== 状态与响应式变量 ==============
@@ -50,18 +49,56 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
-// ============== 滚动校准 ==============
+// ============== 有上限的 autosize + 冻结 ==============
+const FROZEN_RATIO = 0.70 // 70vh 上限
+const SOFT_RATIO = 0.45 // 45vh 软底边
+const isFrozen = ref(false)
+
+function getViewportPx() {
+  return Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0)
+}
+
+/** 有上限的 autosize：高度随内容增长，但不超过 70vh；一旦到顶即“冻结”并不再改高度 */
+function autosizeClamp() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const maxPx = Math.round(getViewportPx() * FROZEN_RATIO)
+
+  if (isFrozen.value) {
+    if (el.style.height !== `${maxPx}px`)
+      el.style.height = `${maxPx}px`
+    el.style.overflowY = 'auto'
+    return
+  }
+
+  // 未冻结：按内容自增，但 clamp 到 70vh
+  el.style.height = 'auto'
+  const next = Math.min(el.scrollHeight, maxPx)
+  el.style.height = `${next}px`
+  el.style.overflowY = 'auto'
+
+  if (next >= maxPx - 1) {
+    isFrozen.value = true
+    el.style.height = `${maxPx}px`
+  }
+}
+
+// ============== 滚动校准（仅冻结后启用软底边，避免增高与滚动打架） ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 1) 计算软视口：45vh（像素），但不超过实际可见高度，避免内容不够高时过度滚动
-  const viewportH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
-  const SOFT_VIEWPORT_PX = Math.round(viewportH * 0.45) // 45vh
+  // 软底边仅在冻结后启用；未冻结阶段交给浏览器默认行为，更平滑
+  if (!isFrozen.value)
+    return
+
+  const viewportH = getViewportPx()
+  const SOFT_VIEWPORT_PX = Math.round(viewportH * SOFT_RATIO) // 45vh
   const softViewport = Math.min(el.clientHeight, SOFT_VIEWPORT_PX)
 
-  // 2) 计算光标在 textarea 内的像素位置（沿用你原本的镜像测量逻辑）
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -80,7 +117,6 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 3) 按“软底边”与顶部进行滚动校准
   const viewTop = el.scrollTop
   const softBottom = viewTop + softViewport
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
@@ -96,7 +132,10 @@ function ensureCaretVisibleInTextarea() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(() => {
+    autosizeClamp()
+    ensureCaretVisibleInTextarea()
+  })
 }
 
 function onBlur() {
@@ -112,7 +151,10 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(() => {
+    autosizeClamp()
+    ensureCaretVisibleInTextarea()
+  })
 }
 
 function handleInput(event: Event) {
@@ -152,12 +194,16 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+
+  requestAnimationFrame(() => {
+    autosizeClamp()
+    ensureCaretVisibleInTextarea()
+  })
 }
 
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
-  input.value = newText
+  contentModel.value = newText
   nextTick(() => {
     const el = textarea.value
     if (el) {
@@ -165,6 +211,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
 
+      autosizeClamp()
       captureCaret()
       ensureCaretVisibleInTextarea()
     }
@@ -391,14 +438,20 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', handleGlobalPointerDown, true)
   window.addEventListener('keydown', handleGlobalKeydown)
+
+  // 初始计算一次高度；视口变化时重算上限
+  autosizeClamp()
+  window.addEventListener('resize', autosizeClamp, { passive: true })
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('resize', autosizeClamp)
 })
 
-defineExpose({ reset: triggerResize })
+// 暴露 reset 接口，便于父组件需要时手动重算高度
+defineExpose({ reset: autosizeClamp })
 </script>
 
 <template>
@@ -409,7 +462,7 @@ defineExpose({ reset: triggerResize })
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
-        v-model="input"
+        v-model="contentModel"
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
@@ -574,7 +627,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 52vh;
+  max-height: 70vh; /* 样式宣示；真正的 70vh 上限由 JS 冻结保证 */
   overflow-y: auto;
   padding: 16px 8px 8px 16px;
   border: none;
@@ -707,11 +760,9 @@ defineExpose({ reset: triggerResize })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ✅ 移动端专属：编辑旧笔记时，把容器拉到 70vh，并让 textarea 填满容器。
-   在 PC 端，这段不会触发，仍保持 textarea 的 max-height: 48vh。*/
+/* ✅ 移动端容器高度：与旧行为一致（容器 70vh），不再强行把 textarea 设为 100% */
 @media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
   .note-editor-reborn.editing-viewport {
-    /* 优先使用更准确的 dvh；不支持时回退到 vh（见下方 @supports） */
     height: 70dvh;
     min-height: 70dvh;
     max-height: 70dvh;
@@ -726,32 +777,22 @@ defineExpose({ reset: triggerResize })
     }
   }
 
-  /* 内容区占满剩余空间（外层容器滚动交给 textarea 自己） */
   .note-editor-reborn.editing-viewport .editor-wrapper {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* 外层不滚动 */
+    overflow: hidden;
   }
 
-  /* 保留可滚动，不破坏上限 */
-.note-editor-reborn.editing-viewport .editor-textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-  /* 不设置 height，不用 !important */
-  /* 也不要改 max-height，让基础样式的 70vh 生效 */
-  overflow-y: auto;
-}
+  .note-editor-reborn.editing-viewport .editor-textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
-/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
-}
-
-/* 让编辑态时，内容区把 70% 屏高容器填满 */
+/* 桌面端容器布局：不影响 textarea 的 JS 限高逻辑 */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -766,21 +807,17 @@ defineExpose({ reset: triggerResize })
     max-height: 70vh;
   }
 }
-
-/* 关键：内容包裹层占满剩余空间 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;              /* 避免子元素高度被挤压 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+  overflow: hidden;
 }
-
-/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;           /* 内容超出时内部滚动 */
+  overflow-y: auto;
 }
 </style>
 
@@ -801,8 +838,8 @@ defineExpose({ reset: triggerResize })
 .n-dropdown-menu .tag-row {
   display: flex;
   align-items: center;
-  width: 100%;         /* 关键：让这一行占满，右侧才能被自动推开 */
-  min-width: 0;        /* 防止文本撑爆 */
+  width: 100%;
+  min-width: 0;
 }
 
 /* 标签文本可选：允许截断，避免挤压星标 */
@@ -816,7 +853,7 @@ defineExpose({ reset: triggerResize })
 
 /* 星标推到最右，并加点内边距提升点击手感 */
 .n-dropdown-menu .tag-row .pin-btn {
-  margin-left: auto;   /* 关键：自动把星标推到最右 */
+  margin-left: auto;
   padding-left: 12px;
   display: inline-flex;
   align-items: center;
