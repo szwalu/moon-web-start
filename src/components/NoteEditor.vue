@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { useTextareaAutosize } from '@vueuse/core'
 import { NDropdown } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
@@ -28,8 +29,8 @@ const contentModel = computed({
   },
 })
 
-// ============== Textarea 引用 & 计数 ==============
-const textarea = ref<HTMLTextAreaElement | null>(null)
+// ============== Autosize ==============
+const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
 // ============== 状态与响应式变量 ==============
@@ -43,64 +44,19 @@ const suggestionsStyle = ref({ top: '0px', left: '0px' })
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
-
-// ====== 冻结与阈值 ======
-const FROZEN_RATIO = 0.70 // 70vh 上限
-const SOFT_RATIO = 0.45 // 45vh 软底边
-const isFrozen = ref(false)
-
-function getViewportPx() {
-  return Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0)
-}
-
-/** 有上限的 autosize：高度随内容增长，但不超过 70vh；一旦到顶即“冻结”并不再改高度 */
-function autosizeClamp() {
+function captureCaret() {
   const el = textarea.value
-  if (!el)
-    return
-
-  const maxPx = Math.round(getViewportPx() * FROZEN_RATIO)
-
-  // 内容减少时尝试解冻
-  if (isFrozen.value) {
-    if (el.scrollHeight < maxPx - 10) {
-      isFrozen.value = false
-      el.style.height = 'auto'
-    }
-  }
-
-  if (isFrozen.value) {
-    if (el.style.height !== `${maxPx}px`)
-      el.style.height = `${maxPx}px`
-
-    el.style.overflowY = 'auto'
-    return
-  }
-
-  // 未冻结：按内容自增，但 clamp 到 70vh
-  el.style.height = 'auto'
-  const next = Math.min(el.scrollHeight, maxPx)
-  el.style.height = `${next}px`
-  el.style.overflowY = 'auto'
-
-  if (next >= maxPx - 1) {
-    isFrozen.value = true
-    el.style.height = `${maxPx}px`
-  }
+  if (el && typeof el.selectionStart === 'number')
+    lastSelectionStart.value = el.selectionStart
 }
 
-/** 软底边滚动：让光标不下潜到 45vh 以下（无论是否冻结都生效） */
+// ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 计算软可视高度：min(当前可视高度, 45vh)
-  const viewportH = getViewportPx()
-  const SOFT_VIEWPORT_PX = Math.round(viewportH * SOFT_RATIO) // 45vh
-  const softViewport = Math.min(el.clientHeight, SOFT_VIEWPORT_PX)
-
-  // —— 用镜像测量光标像素位置（与之前一致）——
+  // 1) 测量光标在整个文本内容中的像素位置 (逻辑不变)
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -119,41 +75,37 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 将“可见窗口底边”定义为 scrollTop + softViewport
+  // 2) ✅【修正后的滚动逻辑】
   const viewTop = el.scrollTop
-  const softBottom = viewTop + softViewport
+  const viewBottom = el.scrollTop + el.clientHeight
 
-  // 让光标保持在 softViewport 内部（上下各留半行/1.5行余量）
+  // 定义光标的顶部和底部
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > softBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - softViewport, el.scrollHeight - el.clientHeight)
+  // 定义一个缓冲区，比如输入框可见高度的 20%
+  const SCROLL_BUFFER = el.clientHeight * 0.20
 
-  else if (caretDesiredTop < viewTop)
+  // 如果光标进入了底部的缓冲区
+  if (caretDesiredBottom > viewBottom - SCROLL_BUFFER) {
+    // 计算需要滚动的量，目标是让光标回到缓冲区的边界上
+    const scrollAmount = caretDesiredBottom - (viewBottom - SCROLL_BUFFER)
+    el.scrollTop = Math.min(
+      el.scrollTop + scrollAmount,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  // 如果光标移动到了可视区域的上方 (这个逻辑保持不变)
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
-}
-
-// —— 捕获光标 & 轻量校准（含方向键/翻页键导航）——
-function captureCaret() {
-  const el = textarea.value
-  if (el && typeof el.selectionStart === 'number')
-    lastSelectionStart.value = el.selectionStart
-
-  // 无论是否冻结，都保持软底边
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-  })
+  }
 }
 
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
   captureCaret()
-  requestAnimationFrame(() => {
-    autosizeClamp()
-    ensureCaretVisibleInTextarea()
-  })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function onBlur() {
@@ -169,10 +121,7 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(() => {
-    autosizeClamp()
-    ensureCaretVisibleInTextarea()
-  })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function handleInput(event: Event) {
@@ -199,13 +148,9 @@ function handleInput(event: Event) {
       const measure = document.createElement('span')
       measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
       measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-      if (el.parentNode)
-        el.parentNode.appendChild(measure)
-
+      el.parentNode?.appendChild(measure)
       const leftOffset = measure.offsetWidth
-      if (el.parentNode)
-        el.parentNode.removeChild(measure)
-
+      el.parentNode?.removeChild(measure)
       suggestionsStyle.value = {
         top: `${el.offsetTop + topOffset + lineHeight}px`,
         left: `${el.offsetLeft + leftOffset}px`,
@@ -216,16 +161,12 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
-
-  requestAnimationFrame(() => {
-    autosizeClamp()
-    ensureCaretVisibleInTextarea()
-  })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
-  contentModel.value = newText
+  input.value = newText
   nextTick(() => {
     const el = textarea.value
     if (el) {
@@ -233,7 +174,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
 
-      autosizeClamp()
       captureCaret()
       ensureCaretVisibleInTextarea()
     }
@@ -341,13 +281,21 @@ function handleEnterKey(event: KeyboardEvent) {
 // ============== 标签菜单（顺序很关键） ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
+
+// 先声明（函数声明可提升），用于传入 useTagMenu
 function handleSelectFromMenu(tag: string) {
   selectTag(tag)
 }
-const { mainMenuVisible: tagMenuVisible, tagMenuChildren }
-  = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+
+// 先解构，避免 “used before it was defined”
+const {
+  mainMenuVisible: tagMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
+
 const dropdownMaxHeight = ref(320)
 
+// 选择标签：使用 lastSelectionStart，稳定替换“#片段”
 function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
@@ -407,7 +355,6 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
         : o.label
       return { ...o, props: mergedProps, label: wrappedLabel }
     }
-
     return o
   })
 }
@@ -417,6 +364,7 @@ function openTagMenu() {
   suppressNextBlur.value = true
   tagMenuVisible.value = true
 }
+
 const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 // ===== 全局：点外/ESC 关闭（适配 trigger="manual"） =====
@@ -452,20 +400,14 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', handleGlobalPointerDown, true)
   window.addEventListener('keydown', handleGlobalKeydown)
-
-  // 初始计算一次高度；视口变化时重算上限
-  autosizeClamp()
-  window.addEventListener('resize', autosizeClamp, { passive: true })
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
   window.removeEventListener('keydown', handleGlobalKeydown)
-  window.removeEventListener('resize', autosizeClamp)
 })
 
-// 暴露 reset 接口，便于父组件需要时手动重算高度
-defineExpose({ reset: autosizeClamp })
+defineExpose({ reset: triggerResize })
 </script>
 
 <template>
@@ -476,7 +418,7 @@ defineExpose({ reset: autosizeClamp })
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
-        v-model="contentModel"
+        v-model="input"
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
@@ -641,7 +583,7 @@ defineExpose({ reset: autosizeClamp })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 70vh; /* 最高 70vh，由 JS 冻结补强 */
+  max-height: 50vh;
   overflow-y: auto;
   padding: 16px 8px 8px 16px;
   border: none;
@@ -774,9 +716,11 @@ defineExpose({ reset: autosizeClamp })
   -webkit-overflow-scrolling: touch;
 }
 
-/* 移动端容器布局（不强制 textarea 100% 高度） */
+/* ✅ 移动端专属：编辑旧笔记时，把容器拉到 70vh，并让 textarea 填满容器。
+   在 PC 端，这段不会触发，仍保持 textarea 的 max-height: 48vh。*/
 @media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
   .note-editor-reborn.editing-viewport {
+    /* 优先使用更准确的 dvh；不支持时回退到 vh（见下方 @supports） */
     height: 70dvh;
     min-height: 70dvh;
     max-height: 70dvh;
@@ -791,22 +735,32 @@ defineExpose({ reset: autosizeClamp })
     }
   }
 
+  /* 内容区占满剩余空间（外层容器滚动交给 textarea 自己） */
   .note-editor-reborn.editing-viewport .editor-wrapper {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden; /* 外层不滚动 */
   }
 
-  .note-editor-reborn.editing-viewport .editor-textarea {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
+  /* 保留可滚动，不破坏上限 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 不设置 height，不用 !important */
+  /* 也不要改 max-height，让基础样式的 70vh 生效 */
+  overflow-y: auto;
+}
 }
 
-/* 桌面端容器布局 */
+/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
+}
+
+/* 让编辑态时，内容区把 70% 屏高容器填满 */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -821,17 +775,21 @@ defineExpose({ reset: autosizeClamp })
     max-height: 70vh;
   }
 }
+
+/* 关键：内容包裹层占满剩余空间 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 0;              /* 避免子元素高度被挤压 */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
 }
+
+/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: auto;           /* 内容超出时内部滚动 */
 }
 </style>
 
@@ -842,12 +800,37 @@ defineExpose({ reset: autosizeClamp })
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-.n-dropdown-menu .tag-row { display: flex; align-items: center; }
-.n-dropdown-menu .tag-row { display: flex; align-items: center; width: 100%; min-width: 0; }
-.n-dropdown-menu .tag-row .tag-text {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+
+.n-dropdown-menu .tag-row {
+  display: flex;
+  align-items: center;
 }
+
+/* 统一命中所有 Naive 下拉菜单（不依赖 --scrollable 修饰） */
+.n-dropdown-menu .tag-row {
+  display: flex;
+  align-items: center;
+  width: 100%;         /* 关键：让这一行占满，右侧才能被自动推开 */
+  min-width: 0;        /* 防止文本撑爆 */
+}
+
+/* 标签文本可选：允许截断，避免挤压星标 */
+.n-dropdown-menu .tag-row .tag-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 星标推到最右，并加点内边距提升点击手感 */
 .n-dropdown-menu .tag-row .pin-btn {
-  margin-left: auto; padding-left: 12px; display: inline-flex; align-items: center; background: none; border: 0; cursor: pointer;
+  margin-left: auto;   /* 关键：自动把星标推到最右 */
+  padding-left: 12px;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
 }
 </style>
