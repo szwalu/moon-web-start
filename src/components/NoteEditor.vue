@@ -56,9 +56,19 @@ function ensureCaretVisibleInTextarea() {
   if (!el)
     return
 
+  // 计算 45vh 对应的像素，并与真实可见高度取最小，避免内容本来不够高时过度滚动
+  const viewportH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+  const SOFT_VIEWPORT_PX = Math.round(viewportH * 0.45) // 45vh
+  const softViewport = Math.min(el.clientHeight, SOFT_VIEWPORT_PX)
+
+  // —— 以下用于计算光标相对 textarea 的像素位置（与你现有逻辑一致）——
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText
+    = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;top:0;left:-9999px;`
+    + `width:${el.clientWidth}px;font:${style.font};line-height:${style.lineHeight};`
+    + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+    + `border:solid transparent;border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
@@ -70,15 +80,20 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  // 我们把“可见窗口”的底部固定在 scrollTop + softViewport（而不是 clientHeight）
   const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
+  const softBottom = viewTop + softViewport
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+  if (caretDesiredBottom > softBottom) {
+    // 超过 45vh：向下滚，使光标回到软底边内
+    el.scrollTop = Math.min(caretDesiredBottom - softViewport, el.scrollHeight - el.clientHeight)
+  }
+  else if (caretDesiredTop < viewTop) {
+    // 光标在顶部以上：向上滚
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
 }
 
 // ============== 基础事件 ==============
@@ -141,6 +156,7 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 // ============== 文本与工具栏 ==============
@@ -562,7 +578,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  max-height: 45vh;
   overflow-y: auto;
   padding: 16px 8px 8px 16px;
   border: none;
