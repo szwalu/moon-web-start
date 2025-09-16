@@ -51,12 +51,13 @@ function captureCaret() {
 }
 
 // ============== 滚动校准 ==============
+// ✅ 请将旧函数替换为这个【新的】函数
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 1) 测量光标在整个文本内容中的像素位置 (逻辑不变)
+  // 1) 测量光标在整个文本内容中的像素位置
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -75,27 +76,22 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 2) ✅【修正后的滚动逻辑】
+  // 2) 修正后的滚动逻辑
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
 
-  // 定义光标的顶部和底部
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // 定义一个缓冲区，比如输入框可见高度的 20%
-  const SCROLL_BUFFER = el.clientHeight * 0.20
+  const SCROLL_BUFFER = el.clientHeight * 0.20 // 底部保留 20% 的缓冲区
 
-  // 如果光标进入了底部的缓冲区
   if (caretDesiredBottom > viewBottom - SCROLL_BUFFER) {
-    // 计算需要滚动的量，目标是让光标回到缓冲区的边界上
     const scrollAmount = caretDesiredBottom - (viewBottom - SCROLL_BUFFER)
     el.scrollTop = Math.min(
       el.scrollTop + scrollAmount,
       el.scrollHeight - el.clientHeight,
     )
   }
-  // 如果光标移动到了可视区域的上方 (这个逻辑保持不变)
   else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
   }
@@ -161,7 +157,6 @@ function handleInput(event: Event) {
       showTagSuggestions.value = false
     }
   }
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 // ============== 文本与工具栏 ==============
@@ -744,14 +739,14 @@ defineExpose({ reset: triggerResize })
     overflow: hidden; /* 外层不滚动 */
   }
 
-  /* 保留可滚动，不破坏上限 */
-.note-editor-reborn.editing-viewport .editor-textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-  /* 不设置 height，不用 !important */
-  /* 也不要改 max-height，让基础样式的 70vh 生效 */
-  overflow-y: auto;
-}
+  /* 覆盖 autosize/48vh 限制：编辑旧笔记时在移动端让 textarea 吃满 */
+  .note-editor-reborn.editing-viewport .editor-textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100% !important;     /* 覆盖 JS 行内高度 */
+    max-height: none !important; /* 覆盖 48vh 上限 */
+    overflow-y: auto;
+  }
 }
 
 /* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
@@ -789,6 +784,8 @@ defineExpose({ reset: triggerResize })
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
+  max-height: none !important;/* 覆盖 48vh 上限 */
   overflow-y: auto;           /* 内容超出时内部滚动 */
 }
 </style>
