@@ -321,6 +321,17 @@ watch(newNoteContent, (val) => {
   }
 })
 
+// ✨ 2. 添加一个新的函数，用于遍历并清除所有 localStorage 中的搜索缓存
+function invalidateAllSearchCaches() {
+  const searchPrefix = CACHE_KEYS.SEARCH_PREFIX
+  // 从后往前遍历以安全地删除项目
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith(searchPrefix))
+      localStorage.removeItem(key)
+  }
+}
+
 function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
@@ -337,6 +348,22 @@ function invalidateCachesOnDataChange(note: any) {
   const noteDate = new Date(note.created_at)
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
+
+  // 调用新的 localStorage 清理函数
+  invalidateAllSearchCaches()
+}
+
+/**
+ * 遍历并清除所有 localStorage 中的标签缓存
+ */
+function invalidateAllTagCaches() {
+  const tagPrefix = CACHE_KEYS.TAG_PREFIX
+  // 从后往前遍历以安全地在循环中删除项目
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith(tagPrefix))
+      localStorage.removeItem(key)
+  }
 }
 
 async function handleCreateNote(content: string) {
@@ -763,10 +790,14 @@ async function fetchNotes() {
 }
 
 async function handleTrashRestored() {
-  // 刷新主页列表缓存/数据
+  // 步骤 1: 全局性地让所有筛选视图的缓存失效
+  invalidateAllSearchCaches() // 清空所有搜索缓存
+  invalidateAllTagCaches() // 清空所有标签缓存
+  invalidateAllCalendarCaches()// 清空所有日历缓存
+
+  // 步骤 2: 刷新主页列表缓存/数据 (保持原有逻辑)
   currentPage.value = 1
   await fetchNotes()
-  // 如果在“那年今日/搜索/标签筛选”里，也不强制切换视图，仅刷新数据源
 }
 
 async function handleTrashPurged() {
@@ -995,12 +1026,15 @@ async function handleDeleteSelected() {
         loading.value = true
         const idsToDelete = [...selectedNoteIds.value]
 
+        // 步骤 1: 循环处理每个笔记的【精确】缓存（标签和日历）
+        // 通过传入 true，我们告诉函数暂时不要处理搜索缓存。
         idsToDelete.forEach((id) => {
           const noteToDelete = notes.value.find(n => n.id === id)
           if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete)
+            invalidateCachesOnDataChange(noteToDelete, true) // Pass true to skip search invalidation
         })
 
+        // 步骤 2: 执行数据库批量删除操作
         const { error } = await supabase
           .from('notes')
           .delete()
@@ -1010,6 +1044,10 @@ async function handleDeleteSelected() {
         if (error)
           throw new Error(error.message)
 
+        // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
+        invalidateAllSearchCaches()
+
+        // 步骤 4: 更新本地UI状态 (这部分逻辑保持不变)
         notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
         cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
 

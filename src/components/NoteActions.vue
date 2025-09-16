@@ -2,6 +2,7 @@
 import { computed, defineExpose, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
+import { getSearchCacheKey } from '@/utils/cacheKeys'
 
 // --- Props and Emits ---
 const props = defineProps({
@@ -38,75 +39,12 @@ const emit = defineEmits([
   'searchCleared',
 ])
 const searchInputRef = ref<HTMLInputElement | null>(null)
-// ====== 缓存配置（可按需调整）======
-const CACHE_MAX_ENTRIES = 500
-const CACHE_TTL_MS = 10 * 60 * 1000 // 10分钟
 
-interface SearchPayload {
-  data: any[]
-  error: null
-  ts: number // 缓存写入时间
-}
-
-// 用 Map 做简单 LRU：命中就“删除再 set”移到末尾表示最新
-const searchCache = ref<Map<string, SearchPayload>>(new Map())
+// 移除所有内存缓存（Map）相关的定义和函数
 
 onMounted(() => {
   searchInputRef.value?.focus()
 })
-
-function normalizeQuery(q: string) {
-  return q.trim().toLowerCase()
-}
-
-function makeCacheKey(userId: string, q: string) {
-  return `${userId}::${normalizeQuery(q)}`
-}
-
-function getFromCache(key: string): SearchPayload | null {
-  const hit = searchCache.value.get(key)
-  if (!hit)
-    return null
-  const isExpired = Date.now() - hit.ts > CACHE_TTL_MS
-  if (isExpired) {
-    searchCache.value.delete(key)
-    return null
-  }
-  // LRU：移动到末尾
-  searchCache.value.delete(key)
-  searchCache.value.set(key, hit)
-  return hit
-}
-
-function putToCache(key: string, payload: Omit<SearchPayload, 'ts'>) {
-  // 容量控制
-  while (searchCache.value.size >= CACHE_MAX_ENTRIES) {
-    const oldestKey = searchCache.value.keys().next().value
-    if (oldestKey)
-      searchCache.value.delete(oldestKey)
-    else break
-  }
-  searchCache.value.set(key, { ...payload, ts: Date.now() })
-}
-
-function invalidateCache(query?: string) {
-  if (!query) {
-    searchCache.value.clear()
-    return
-  }
-  // 只失效与此 query 匹配（忽略大小写和空格）的条目（不同 userId 的也会被清理）
-  const normalized = normalizeQuery(query)
-  for (const key of searchCache.value.keys()) {
-    const [, q] = key.split('::')
-    if (q === normalized)
-      searchCache.value.delete(key)
-  }
-}
-
-function hasCacheFor(userId: string, query: string) {
-  const key = makeCacheKey(userId, query)
-  return !!getFromCache(key) // 注意：这会“触发一次 LRU 移动”，仅用于调试时请知悉
-}
 
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
@@ -122,7 +60,7 @@ const searchModel = computed({
   },
 })
 
-// --- 搜索执行函数（带缓存） ---
+// --- 搜索执行函数（修改为 localStorage 缓存） ---
 async function executeSearch() {
   const raw = searchModel.value
   const query = raw.trim()
@@ -137,13 +75,19 @@ async function executeSearch() {
     return
   }
 
-  const key = makeCacheKey(props.user.id, query)
+  const cacheKey = getSearchCacheKey(query)
 
-  // 1) 先查缓存
-  const cached = getFromCache(key)
-  if (cached) {
-    emit('searchCompleted', { data: cached.data, error: null, fromCache: true })
-    return
+  // 1) 先查 localStorage 缓存
+  const cachedRaw = localStorage.getItem(cacheKey)
+  if (cachedRaw) {
+    try {
+      const data = JSON.parse(cachedRaw)
+      emit('searchCompleted', { data, error: null, fromCache: true })
+      return
+    }
+    catch (e) {
+      localStorage.removeItem(cacheKey) // 解析失败，删除损坏的缓存
+    }
   }
 
   // 2) 无缓存，准备走远端，此时才显示加载
@@ -157,8 +101,9 @@ async function executeSearch() {
     if (error)
       throw error
 
-    // 写缓存
-    putToCache(key, { data, error: null })
+    // 写缓存到 localStorage
+    if (data)
+      localStorage.setItem(cacheKey, JSON.stringify(data))
 
     emit('searchCompleted', { data, error: null, fromCache: false })
   }
@@ -228,8 +173,6 @@ function clearSearch() {
 // --- 暴露方法给父组件 ---
 defineExpose({
   executeSearch,
-  invalidateCache, // 可传入具体关键词或不传清空所有
-  hasCacheFor, // 可选：调试用
 })
 </script>
 

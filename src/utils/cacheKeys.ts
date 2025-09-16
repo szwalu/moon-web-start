@@ -11,6 +11,9 @@ export const CACHE_KEYS = {
   // 标签缓存
   TAG_PREFIX: 'cached_notes_tag_',
 
+  // 搜索缓存
+  SEARCH_PREFIX: 'cached_notes_search_',
+
   // 日历缓存
   CALENDAR_PREFIX: 'cached_notes_calendar_date_',
   CALENDAR_ALL_DATES: 'cached_notes_calendar_all_dates',
@@ -21,6 +24,15 @@ export const CACHE_KEYS = {
  * @param tag 标签名, e.g., '#work'
  */
 export const getTagCacheKey = (tag: string) => `${CACHE_KEYS.TAG_PREFIX}${tag}`
+
+/**
+ * 获取搜索缓存的键名
+ * @param query 搜索关键词
+ */
+export function getSearchCacheKey(query: string): string {
+  const normalizedQuery = query.trim().toLowerCase()
+  return `${CACHE_KEYS.SEARCH_PREFIX}${encodeURIComponent(normalizedQuery)}`
+}
 
 /**
  * 获取日历某一天笔记的缓存键名

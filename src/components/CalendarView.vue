@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -264,6 +264,15 @@ async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpda
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
 
+/**
+ * 当页面从后台切回前台时，主动触发一次增量刷新检查。
+ * 这解决了在外部（如主页）删除了笔记后，回到日历视图数据不更新的问题。
+ */
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible')
+    checkAndRefreshIncremental()
+}
+
 /* ===================== 生命周期（先缓存再校验） ===================== */
 onMounted(async () => {
   const hadCache = loadAllDatesFromCache()
@@ -278,6 +287,14 @@ onMounted(async () => {
 
   await fetchNotesForDate(new Date())
   checkAndRefreshIncremental()
+
+  // 在组件挂载时，添加可见性变化的事件监听器
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+// 在组件卸载时，清理事件监听器，防止内存泄漏
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 /* ===================== 暴露方法：供父组件在主页修改后主动刷新 ===================== */
