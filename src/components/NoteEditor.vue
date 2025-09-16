@@ -780,8 +780,6 @@ defineExpose({ reset: triggerResize })
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
-  max-height: none !important;/* 覆盖 48vh 上限 */
   overflow-y: auto;           /* 内容超出时内部滚动 */
 }
 </style>
