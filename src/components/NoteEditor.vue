@@ -51,20 +51,14 @@ function captureCaret() {
 }
 
 // ============== 滚动校准 ==============
-// ✅ 请将旧函数替换为这个【新的】函数
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 1) 测量光标在整个文本内容中的像素位置
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText
-    = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;top:0;left:-9999px;`
-    + `width:${el.clientWidth}px;font:${style.font};line-height:${style.lineHeight};`
-    + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-    + `border:solid transparent;border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
@@ -76,25 +70,15 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 2) 修正后的滚动逻辑
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  const SCROLL_BUFFER = el.clientHeight * 0.20 // 底部保留 20% 的缓冲区
-
-  if (caretDesiredBottom > viewBottom - SCROLL_BUFFER) {
-    const scrollAmount = caretDesiredBottom - (viewBottom - SCROLL_BUFFER)
-    el.scrollTop = Math.min(
-      el.scrollTop + scrollAmount,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 // ============== 基础事件 ==============
@@ -578,7 +562,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 50vh;
+  max-height: 48vh;
   overflow-y: auto;
   padding: 16px 8px 8px 16px;
   border: none;
