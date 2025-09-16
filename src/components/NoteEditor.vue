@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
-import { NDropdown } from 'naive-ui'
+import { NDropdown, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { useTagMenu } from '@/composables/useTagMenu'
@@ -11,7 +11,7 @@ const props = defineProps({
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
-  maxNoteLength: { type: Number, default: 5000 },
+  maxNoteLength: { type: Number, default: 20000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
@@ -32,6 +32,28 @@ const contentModel = computed({
 // ============== Autosize ==============
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
+
+// ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
+const dialog = useDialog()
+const overLimitWarned = ref(false)
+
+watch([charCount, () => props.maxNoteLength], ([len, max]) => {
+  if (len > max && !overLimitWarned.value) {
+    overLimitWarned.value = true
+    dialog.warning({
+      title: '字数超出限制',
+      content: `单条笔记不能超过 ${max} 字，请删减后再保存。`,
+      positiveText: '确定',
+      onAfterLeave: () => {
+        // 用户点确定后关闭对话框即可；当字数回到上限内时可再次弹出
+      },
+    })
+  }
+  else if (len <= max && overLimitWarned.value) {
+    // 回到安全范围，允许将来再次提示
+    overLimitWarned.value = false
+  }
+})
 
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
@@ -401,7 +423,6 @@ defineExpose({ reset: triggerResize })
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
-        :maxlength="maxNoteLength"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
@@ -511,7 +532,7 @@ defineExpose({ reset: triggerResize })
           </button>
         </div>
         <span class="char-counter">
-          {{ charCount }}/{{ maxNoteLength }}
+          {{ charCount }}
         </span>
       </div>
       <div class="actions">

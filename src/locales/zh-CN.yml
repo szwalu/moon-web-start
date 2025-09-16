@@ -332,6 +332,7 @@ notes:
   favorites: 常用
   unpin_favorites: 取消常用
   pin_favorites: 设为常用
+  max_length_exceeded: '字数已超过上限（最多 {max} 字）'
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？'
