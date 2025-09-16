@@ -43,13 +43,8 @@ const suggestionsStyle = ref({ top: '0px', left: '0px' })
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
-function captureCaret() {
-  const el = textarea.value
-  if (el && typeof el.selectionStart === 'number')
-    lastSelectionStart.value = el.selectionStart
-}
 
-// ============== 有上限的 autosize + 冻结 ==============
+// ====== 冻结与阈值 ======
 const FROZEN_RATIO = 0.70 // 70vh 上限
 const SOFT_RATIO = 0.45 // 45vh 软底边
 const isFrozen = ref(false)
@@ -66,9 +61,18 @@ function autosizeClamp() {
 
   const maxPx = Math.round(getViewportPx() * FROZEN_RATIO)
 
+  // 内容减少时尝试解冻
+  if (isFrozen.value) {
+    if (el.scrollHeight < maxPx - 10) {
+      isFrozen.value = false
+      el.style.height = 'auto'
+    }
+  }
+
   if (isFrozen.value) {
     if (el.style.height !== `${maxPx}px`)
       el.style.height = `${maxPx}px`
+
     el.style.overflowY = 'auto'
     return
   }
@@ -85,20 +89,18 @@ function autosizeClamp() {
   }
 }
 
-// ============== 滚动校准（仅冻结后启用软底边，避免增高与滚动打架） ==============
+/** 软底边滚动：让光标不下潜到 45vh 以下（无论是否冻结都生效） */
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 软底边仅在冻结后启用；未冻结阶段交给浏览器默认行为，更平滑
-  if (!isFrozen.value)
-    return
-
+  // 计算软可视高度：min(当前可视高度, 45vh)
   const viewportH = getViewportPx()
   const SOFT_VIEWPORT_PX = Math.round(viewportH * SOFT_RATIO) // 45vh
   const softViewport = Math.min(el.clientHeight, SOFT_VIEWPORT_PX)
 
+  // —— 用镜像测量光标像素位置（与之前一致）——
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -117,15 +119,31 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  // 将“可见窗口底边”定义为 scrollTop + softViewport
   const viewTop = el.scrollTop
   const softBottom = viewTop + softViewport
+
+  // 让光标保持在 softViewport 内部（上下各留半行/1.5行余量）
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
   if (caretDesiredBottom > softBottom)
     el.scrollTop = Math.min(caretDesiredBottom - softViewport, el.scrollHeight - el.clientHeight)
+
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
+}
+
+// —— 捕获光标 & 轻量校准（含方向键/翻页键导航）——
+function captureCaret() {
+  const el = textarea.value
+  if (el && typeof el.selectionStart === 'number')
+    lastSelectionStart.value = el.selectionStart
+
+  // 无论是否冻结，都保持软底边
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
 }
 
 // ============== 基础事件 ==============
@@ -181,9 +199,13 @@ function handleInput(event: Event) {
       const measure = document.createElement('span')
       measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
       measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-      el.parentNode?.appendChild(measure)
+      if (el.parentNode)
+        el.parentNode.appendChild(measure)
+
       const leftOffset = measure.offsetWidth
-      el.parentNode?.removeChild(measure)
+      if (el.parentNode)
+        el.parentNode.removeChild(measure)
+
       suggestionsStyle.value = {
         top: `${el.offsetTop + topOffset + lineHeight}px`,
         left: `${el.offsetLeft + leftOffset}px`,
@@ -319,21 +341,13 @@ function handleEnterKey(event: KeyboardEvent) {
 // ============== 标签菜单（顺序很关键） ==============
 const { t } = useI18n()
 const allTagsRef = computed(() => props.allTags)
-
-// 先声明（函数声明可提升），用于传入 useTagMenu
 function handleSelectFromMenu(tag: string) {
   selectTag(tag)
 }
-
-// 先解构，避免 “used before it was defined”
-const {
-  mainMenuVisible: tagMenuVisible,
-  tagMenuChildren,
-} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
-
+const { mainMenuVisible: tagMenuVisible, tagMenuChildren }
+  = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
 const dropdownMaxHeight = ref(320)
 
-// 选择标签：使用 lastSelectionStart，稳定替换“#片段”
 function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
@@ -393,6 +407,7 @@ function injectClickHandlers(opts: Opt[]): Opt[] {
         : o.label
       return { ...o, props: mergedProps, label: wrappedLabel }
     }
+
     return o
   })
 }
@@ -402,7 +417,6 @@ function openTagMenu() {
   suppressNextBlur.value = true
   tagMenuVisible.value = true
 }
-
 const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
 
 // ===== 全局：点外/ESC 关闭（适配 trigger="manual"） =====
@@ -627,7 +641,7 @@ defineExpose({ reset: autosizeClamp })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 70vh; /* 样式宣示；真正的 70vh 上限由 JS 冻结保证 */
+  max-height: 70vh; /* 最高 70vh，由 JS 冻结补强 */
   overflow-y: auto;
   padding: 16px 8px 8px 16px;
   border: none;
@@ -760,7 +774,7 @@ defineExpose({ reset: autosizeClamp })
   -webkit-overflow-scrolling: touch;
 }
 
-/* ✅ 移动端容器高度：与旧行为一致（容器 70vh），不再强行把 textarea 设为 100% */
+/* 移动端容器布局（不强制 textarea 100% 高度） */
 @media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
   .note-editor-reborn.editing-viewport {
     height: 70dvh;
@@ -792,7 +806,7 @@ defineExpose({ reset: autosizeClamp })
   }
 }
 
-/* 桌面端容器布局：不影响 textarea 的 JS 限高逻辑 */
+/* 桌面端容器布局 */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -828,37 +842,12 @@ defineExpose({ reset: autosizeClamp })
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-
-.n-dropdown-menu .tag-row {
-  display: flex;
-  align-items: center;
-}
-
-/* 统一命中所有 Naive 下拉菜单（不依赖 --scrollable 修饰） */
-.n-dropdown-menu .tag-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
-
-/* 标签文本可选：允许截断，避免挤压星标 */
+.n-dropdown-menu .tag-row { display: flex; align-items: center; }
+.n-dropdown-menu .tag-row { display: flex; align-items: center; width: 100%; min-width: 0; }
 .n-dropdown-menu .tag-row .tag-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
-/* 星标推到最右，并加点内边距提升点击手感 */
 .n-dropdown-menu .tag-row .pin-btn {
-  margin-left: auto;
-  padding-left: 12px;
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: 0;
-  cursor: pointer;
+  margin-left: auto; padding-left: 12px; display: inline-flex; align-items: center; background: none; border: 0; cursor: pointer;
 }
 </style>
