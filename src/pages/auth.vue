@@ -1169,7 +1169,7 @@ async function fetchNotesByTag(tag: string) {
     notes.value = cachedNotes
     filteredNotesCount.value = cachedNotes.length
     hasMoreNotes.value = false
-    noteListKey.value++ // 强制刷新 NoteList
+    // noteListKey.value++ // 强制刷新 NoteList <-- 删除此行
     return
   }
 
@@ -1191,7 +1191,7 @@ async function fetchNotesByTag(tag: string) {
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
     hasMoreNotes.value = false
-    noteListKey.value++ // 强制刷新 NoteList
+    // noteListKey.value++ // 强制刷新 NoteList
   }
   catch (err: any) {
     messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)

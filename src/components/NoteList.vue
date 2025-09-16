@@ -210,27 +210,44 @@ function _ensureCardVisible(noteId: string) {
     card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
 }
 
-// 展开：记录锚点 → 展开 → 等布局 → 把卡片顶部对齐到容器顶部
-// 收起：按“展开瞬间的锚点”恢复位置（你之前的逻辑保持不变）
+// 请将此函数完整复制并替换您代码中旧的 toggleExpand 函数
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-  const card = noteContainers.value[noteId] as HTMLElement | undefined
-  const isExpanding = expandedNote.value !== noteId
+  const isCurrentlyExpanded = expandedNote.value === noteId
+  const isSwitching = expandedNote.value !== null && !isCurrentlyExpanded
 
   if (!scroller)
     return
 
-  if (isExpanding) {
-    // —— 展开：先记录锚点（用于日后收起时恢复“展开前”的位置）——
+  // --- ✨ 核心修复逻辑：处理笔记切换的场景 ---
+  // 如果用户正在从一个已展开的笔记切换到另一个，
+  // 我们需要先将当前的笔记收起，等待DOM稳定，然后再展开新的。
+  if (isSwitching) {
+    // 1. 先平稳地收起当前已展开的笔记 (不进行滚动位置补偿)
+    expandedNote.value = null
+    // 2. 等待 Vue 完成 DOM 更新，让虚拟列表处理完收缩
+    await nextTick()
+    // 3. (推荐) 再等待一帧，确保浏览器完成布局渲染
+    await new Promise(r => requestAnimationFrame(r))
+    // 此时，旧笔记已收起，滚动环境已稳定，可以安全地继续执行展开操作
+  }
+
+  // --- 接下来的逻辑分为“展开”和“收起”两种情况 ---
+
+  // Case 1: 展开一个新的笔记 (包括刚才处理完切换后，现在需要展开的笔记)
+  if (!isCurrentlyExpanded) {
+    const card = noteContainers.value[noteId] as HTMLElement | undefined
+
+    // 记录锚点，用于未来收起时恢复位置
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
       expandAnchor.value = {
         noteId,
-        topOffset: cardRect.top - scRect.top, // 展开瞬间卡片顶部在容器内的相对位置
+        topOffset: cardRect.top - scRect.top,
         scrollTop: scroller.scrollTop,
       }
     }
@@ -241,56 +258,50 @@ async function toggleExpand(noteId: string) {
     // 真正展开
     expandedNote.value = noteId
 
-    // 等虚拟列表完成布局
+    // 等待虚拟列表完成布局
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    // —— 新增：把“展开后的卡片顶部”对齐到容器顶部（留一点上边距更舒服）——
+    // 将展开后的卡片滚动到视图顶部
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      scroller.style.overflowAnchor = 'none' // 防止浏览器滚动锚定干扰
+      scroller.style.overflowAnchor = 'none'
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
-
-      // 想留 8~12px 余白可改成 8 或 12
       const topPadding = 0
       const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
+  }
+  // Case 2: 收起当前已展开的笔记 (isCurrentlyExpanded 为 true)
+  else {
+    expandedNote.value = null
+    scroller.style.overflowAnchor = 'none'
 
-    updateCollapsePos()
-    return
+    await nextTick()
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+    const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
+    if (cardAfter) {
+      const scRectAfter = scroller.getBoundingClientRect()
+      const cardRectAfter = cardAfter.getBoundingClientRect()
+
+      const anchor = expandAnchor.value
+      const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
+      const currentTopOffset = cardRectAfter.top - scRectAfter.top
+      const delta = currentTopOffset - wantTopOffset
+
+      let target = scroller.scrollTop + delta
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      target = Math.min(Math.max(0, target), maxScrollTop)
+
+      await stableSetScrollTop(scroller, target, 6, 0.5)
+    }
+    expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
 
-  // —— 收起：用“展开瞬间记录的锚点”恢复（你的现有收起逻辑保持不变）——
-  expandedNote.value = null
-  scroller.style.overflowAnchor = 'none'
-
-  await nextTick()
-  await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-
-  const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
-  if (!cardAfter) {
-    updateCollapsePos()
-    return
-  }
-
-  const scRectAfter = scroller.getBoundingClientRect()
-  const cardRectAfter = cardAfter.getBoundingClientRect()
-
-  const anchor = expandAnchor.value
-  const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
-  const currentTopOffset = cardRectAfter.top - scRectAfter.top
-  const delta = currentTopOffset - wantTopOffset
-
-  let target = scroller.scrollTop + delta
-  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-  target = Math.min(Math.max(0, target), maxScrollTop)
-
-  await stableSetScrollTop(scroller, target, 6, 0.5)
-  expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
-
+  // 统一在操作结束后更新收起按钮的位置
   updateCollapsePos()
 }
 
