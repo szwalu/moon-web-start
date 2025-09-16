@@ -56,12 +56,12 @@ function ensureCaretVisibleInTextarea() {
   if (!el)
     return
 
-  // 计算 45vh 对应的像素，并与真实可见高度取最小，避免内容本来不够高时过度滚动
+  // 1) 计算软视口：45vh（像素），但不超过实际可见高度，避免内容不够高时过度滚动
   const viewportH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
   const SOFT_VIEWPORT_PX = Math.round(viewportH * 0.45) // 45vh
   const softViewport = Math.min(el.clientHeight, SOFT_VIEWPORT_PX)
 
-  // —— 以下用于计算光标相对 textarea 的像素位置（与你现有逻辑一致）——
+  // 2) 计算光标在 textarea 内的像素位置（沿用你原本的镜像测量逻辑）
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -80,20 +80,16 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 我们把“可见窗口”的底部固定在 scrollTop + softViewport（而不是 clientHeight）
+  // 3) 按“软底边”与顶部进行滚动校准
   const viewTop = el.scrollTop
   const softBottom = viewTop + softViewport
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > softBottom) {
-    // 超过 45vh：向下滚，使光标回到软底边内
+  if (caretDesiredBottom > softBottom)
     el.scrollTop = Math.min(caretDesiredBottom - softViewport, el.scrollHeight - el.clientHeight)
-  }
-  else if (caretDesiredTop < viewTop) {
-    // 光标在顶部以上：向上滚
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 // ============== 基础事件 ==============
@@ -739,14 +735,14 @@ defineExpose({ reset: triggerResize })
     overflow: hidden; /* 外层不滚动 */
   }
 
-  /* 覆盖 autosize/48vh 限制：编辑旧笔记时在移动端让 textarea 吃满 */
-  .note-editor-reborn.editing-viewport .editor-textarea {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100% !important;     /* 覆盖 JS 行内高度 */
-    max-height: none !important; /* 覆盖 48vh 上限 */
-    overflow-y: auto;
-  }
+  /* 保留可滚动，不破坏上限 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 不设置 height，不用 !important */
+  /* 也不要改 max-height，让基础样式的 70vh 生效 */
+  overflow-y: auto;
+}
 }
 
 /* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
