@@ -988,61 +988,57 @@ async function handleDeleteSelected() {
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
-    positiveText: t('dialog.confirm_button'),
-    negativeText: t('dialog.cancel_button'),
-    onPositiveClick: () => {
-      dialog.warning({
-        title: t('dialog.delete_note_title'),
-        content: () =>
-          h('div', { style: 'line-height:1.6' }, [
-            h('p', t('notes.delete_second_confirm_tip', { count: selectedNoteIds.value.length })),
-            h('p', { style: 'margin-top:8px;font-weight:600' }, t('notes.delete_second_confirm_hint')),
-          ]),
-        positiveText: t('notes.confirm_delete'),
-        negativeText: t('notes.cancel'),
-        onPositiveClick: async () => {
-          try {
-            loading.value = true
-            const idsToDelete = [...selectedNoteIds.value]
-            idsToDelete.forEach((id) => {
-              const noteToDelete = notes.value.find(n => n.id === id)
-              if (noteToDelete)
-                invalidateCachesOnDataChange(noteToDelete)
-            })
-            const { error } = await supabase
-              .from('notes')
-              .delete()
-              .in('id', idsToDelete)
-              .eq('user_id', user.value!.id)
-            if (error)
-              throw new Error(error.message)
+    positiveText: t('notes.confirm_delete'),
+    negativeText: t('notes.cancel'),
+    onPositiveClick: async () => {
+      try {
+        loading.value = true
+        const idsToDelete = [...selectedNoteIds.value]
 
-            notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
-            cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
-            if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
-              newNoteContent.value = ''
-              lastSavedId.value = null
-              editingNote.value = null
-              localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-              localStorage.removeItem(LOCAL_CONTENT_KEY)
-            }
-            totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
-            hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-            hasPreviousNotes.value = currentPage.value > 1
-            localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-            localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-            isSelectionModeActive.value = false
-            selectedNoteIds.value = []
-            messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
-          }
-          catch (err: any) {
-            messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
-          }
-          finally {
-            loading.value = false
-          }
-        },
-      })
+        idsToDelete.forEach((id) => {
+          const noteToDelete = notes.value.find(n => n.id === id)
+          if (noteToDelete)
+            invalidateCachesOnDataChange(noteToDelete)
+        })
+
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .in('id', idsToDelete)
+          .eq('user_id', user.value!.id)
+
+        if (error)
+          throw new Error(error.message)
+
+        notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
+        cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
+
+        if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+          newNoteContent.value = ''
+          lastSavedId.value = null
+          editingNote.value = null
+          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+          localStorage.removeItem(LOCAL_CONTENT_KEY)
+        }
+
+        totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
+        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+        hasPreviousNotes.value = currentPage.value > 1
+
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+        isSelectionModeActive.value = false
+        selectedNoteIds.value = []
+
+        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+      }
+      catch (err: any) {
+        messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
+      }
+      finally {
+        loading.value = false
+      }
     },
   })
 }
