@@ -39,21 +39,23 @@ export function useTagMenu(
   const pinnedTags = ref<string[]>([])
   const message = useMessage()
   const dialog = useDialog()
-  const isBusy = ref(false) // 避免并发重复提交
+  const isBusy = ref(false)
 
-  // —— 标签计数（内存）与服务器签名 —— //
+  // —— 标签计数（内存）与缓存有效位 —— //
   const tagCounts = ref<Record<string, number>>({})
-  const tagCountsSig = ref<string | null>(null) // 服务端返回的 last_updated（ISO 字符串）
+  const tagCountsSig = ref<string | null>(null) // 仅用于持久化记录
   const isLoadingCounts = ref(false)
+  const countsCacheValid = ref(true) // ✅ 命中本地缓存且 valid=true 则绝不打 RPC
 
-  // ===== Realtime：监听 notes 的 INSERT/DELETE，失效标签计数缓存（下次展开菜单再拉取） =====
+  // ===== Realtime：监听 notes 的 INSERT/DELETE/UPDATE，失效计数缓存（下次展开菜单再拉取） =====
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
   let invalidateTimer: number | null = null
   function scheduleInvalidateCounts() {
     if (invalidateTimer)
       window.clearTimeout(invalidateTimer)
+
     invalidateTimer = window.setTimeout(() => {
-      invalidateTagCountCache()
+      invalidateTagCountCache().catch(() => {})
       invalidateTimer = null
     }, 500)
   }
@@ -67,7 +69,7 @@ export function useTagMenu(
       pinnedTags.value = []
     }
 
-    // 订阅当前用户 notes 的新增/删除（恢复通常是 INSERT；彻底删除是 DELETE）
+    // 订阅当前用户 notes 的新增/删除/更新（恢复/回收站常用 UPDATE）
     const uid = await getUserId()
     if (uid) {
       tagCountsChannel = supabase
@@ -86,14 +88,13 @@ export function useTagMenu(
             scheduleInvalidateCounts()
           },
         )
-        // 如需编辑内容（UPDATE）也联动计数，请取消下行注释：
-        // .on(
-        //   'postgres_changes',
-        //   { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-        //   () => {
-        //     scheduleInvalidateCounts()
-        //   },
-        // )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
+          () => {
+            scheduleInvalidateCounts()
+          },
+        )
         .subscribe()
     }
   })
@@ -168,7 +169,6 @@ export function useTagMenu(
   })
 
   /** —— 缓存失效工具 —— */
-
   function invalidateOneTagCache(tag: string) {
     const k = getTagCacheKey(tag)
     localStorage.removeItem(k)
@@ -200,6 +200,7 @@ export function useTagMenu(
     localStorage.removeItem(TAG_COUNT_CACHE_KEY_PREFIX + uid)
     tagCounts.value = {}
     tagCountsSig.value = null
+    countsCacheValid.value = false // ✅ 标记缓存无效：下一次展开菜单会触发 RPC
   }
 
   /** —— 加载标签计数（首开菜单或缓存过期时） —— */
@@ -212,9 +213,9 @@ export function useTagMenu(
 
     const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
 
-    // 1) 先用本地缓存（若有）=> 命中则直接返回，不打 RPC
+    // 1) 先用本地缓存（若有且有效）=> 直接返回，不打 RPC
     const cachedRaw = localStorage.getItem(cacheKey)
-    if (cachedRaw) {
+    if (cachedRaw && countsCacheValid.value) {
       try {
         const cached = JSON.parse(cachedRaw) as {
           sig: string | null
@@ -234,12 +235,10 @@ export function useTagMenu(
       }
     }
 
-    // 2) 本地无缓存或缓存损坏 => 走 RPC 拉全量并写入缓存
+    // 2) 本地无缓存、缓存损坏，或缓存被置为无效 => 走 RPC 拉全量并写入缓存
     try {
       isLoadingCounts.value = true
-      const { data, error } = await supabase.rpc('get_tag_counts', {
-        p_user_id: uid,
-      })
+      const { data, error } = await supabase.rpc('get_tag_counts', { p_user_id: uid })
       if (error)
         throw error
 
@@ -255,6 +254,7 @@ export function useTagMenu(
         }
         tagCounts.value = map
         tagCountsSig.value = serverSig || null
+        countsCacheValid.value = true
 
         localStorage.setItem(cacheKey, JSON.stringify({
           sig: tagCountsSig.value,
@@ -266,11 +266,12 @@ export function useTagMenu(
         // 服务器无标签：清空并清理缓存
         tagCounts.value = {}
         tagCountsSig.value = null
+        countsCacheValid.value = true
         localStorage.removeItem(cacheKey)
       }
     }
     catch {
-      // 静默失败，沿用已有缓存/空值
+      // 静默失败，沿用已有缓存/空值，不修改 countsCacheValid
     }
     finally {
       isLoadingCounts.value = false
@@ -280,11 +281,10 @@ export function useTagMenu(
   // 菜单弹出时尝试加载计数（不阻塞 UI）
   watch(mainMenuVisible, (show) => {
     if (show)
-      loadTagCountsIfNeeded()
+      loadTagCountsIfNeeded().catch(() => {})
   })
 
   /** —— 行内操作：置顶/重命名/移除（供下拉菜单使用） —— */
-
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove') {
     if (action === 'pin') {
       togglePin(tag)
@@ -317,7 +317,6 @@ export function useTagMenu(
   }
 
   /** —— RPC 版：重命名/移除 —— */
-
   async function renameTag(oldRaw: string) {
     if (isBusy.value)
       return
@@ -364,7 +363,6 @@ export function useTagMenu(
           if (!uid)
             throw new Error(t('auth.session_expired') || '登录已过期')
 
-          // 调用 RPC：重命名标签
           const { data, error } = await supabase.rpc('rename_tag', {
             p_user_id: uid,
             p_old: oldTag,
@@ -388,13 +386,12 @@ export function useTagMenu(
             savePinned()
           }
 
-          // 失效缓存（老/新标签 + 所有搜索缓存 + 计数缓存）
+          // 失效：标签缓存、搜索缓存、计数缓存
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
           await invalidateTagCountCache()
 
-          // data 为受影响行数（可能为 null），仅用于提示
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
@@ -418,7 +415,6 @@ export function useTagMenu(
     const tag = normalizeTag(raw)
 
     dialog.warning({
-      // ✅ 使用专属的“删除标签”弹窗
       title: t('tags.delete_tag_title') || '删除标签',
       content:
         t('tags.delete_tag_content', { tag })
@@ -445,7 +441,6 @@ export function useTagMenu(
           if (i >= 0)
             allTags.value.splice(i, 1)
 
-          // 取消置顶
           const pIdx = pinnedTags.value.indexOf(tag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1)
@@ -475,7 +470,6 @@ export function useTagMenu(
   }
 
   /** —— 菜单渲染（显示计数 + 「⋯」行内菜单） —— */
-
   const tagMenuChildren = computed(() => {
     const total = allTags.value.length
     if (total === 0)
