@@ -153,42 +153,49 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   }
 
   const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
-  // 先筛选
-  const filtered = props.allTags.filter(tag =>
-    tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
-  )
-  // 再排序：常用优先；同组内按标签名（去#、不区分大小写）排序
-  filtered.sort((a, b) => {
-    const ap = isPinned(a) ? 0 : 1
-    const bp = isPinned(b) ? 0 : 1
-    if (ap !== bp)
-      return ap - bp
-    const an = a.slice(1).toLowerCase()
-    const bn = b.slice(1).toLowerCase()
-    return an.localeCompare(bn)
-  })
-  tagSuggestions.value = filtered
+  const filtered = props.allTags
+    .filter(tag => tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`))
+    .sort((a, b) => {
+      const ap = isPinned(a) ? 0 : 1
+      const bp = isPinned(b) ? 0 : 1
+      if (ap !== bp)
+        return ap - bp
+      return a.slice(1).toLowerCase().localeCompare(b.slice(1).toLowerCase())
+    })
 
-  if (tagSuggestions.value.length > 0) {
-    const textLines = textBeforeCursor.split('\n')
-    const currentLine = textLines.length - 1
-    const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
-    const topOffset = currentLine * lineHeight
-    const measure = document.createElement('span')
-    measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
-    measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-    el.parentNode?.appendChild(measure)
-    const leftOffset = measure.offsetWidth
-    el.parentNode?.removeChild(measure)
-    suggestionsStyle.value = {
-      top: `${el.offsetTop + topOffset + lineHeight}px`,
-      left: `${el.offsetLeft + leftOffset}px`,
-    }
-    showTagSuggestions.value = true
-  }
-  else {
+  tagSuggestions.value = filtered
+  if (!tagSuggestions.value.length) {
     showTagSuggestions.value = false
+    return
   }
+
+  // —— 关键：按“光标前这一行的子串”精确测宽，并扣除滚动
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+
+  // 当前行起始下标与“光标在本行中的列”：
+  const lineStartIdx = textBeforeCursor.lastIndexOf('\n') + 1
+  const currentLineTextBeforeCaret = textBeforeCursor.slice(lineStartIdx) // 本行从开头到光标
+  const currentLineIndex = (textBeforeCursor.match(/\n/g)?.length ?? 0) // 第几行（0-based）
+
+  // 隐形测量节点（挂到 wrapper 里，继承字体）
+  const measure = document.createElement('span')
+  measure.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre; font:${style.font};
+    letter-spacing:${style.letterSpacing}; line-height:${style.lineHeight};
+  `
+  measure.textContent = currentLineTextBeforeCaret
+  el.parentElement?.appendChild(measure)
+  const leftOffset = measure.offsetWidth
+  measure.remove()
+
+  // 位置：相对 editor-wrapper（父容器 position: relative）
+  // 扣除 textarea 的 scrollTop/scrollLeft，避免滚动后错位
+  const topPx = (el.offsetTop - el.scrollTop) + (currentLineIndex + 1) * lineHeight
+  const leftPx = (el.offsetLeft - el.scrollLeft) + leftOffset
+
+  suggestionsStyle.value = { top: `${topPx}px`, left: `${leftPx}px` }
+  showTagSuggestions.value = true
 }
 
 function handleInput(event: Event) {
@@ -693,13 +700,13 @@ defineExpose({ reset: triggerResize })
   }
 
   /* 内容区占满剩余空间（外层容器滚动交给 textarea 自己） */
-  .note-editor-reborn.editing-viewport .editor-wrapper {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* 外层不滚动 */
-  }
+note-editor-reborn.editing-viewport .editor-wrapper {
+ flex: 1 1 auto;
+ min-height: 0;
+ display: flex;
+  flex-direction: column;
+  overflow: visible; /* 允许标签面板溢出显示 */
+}
 
   /* 覆盖 autosize/48vh 限制：编辑旧笔记时在移动端让 textarea 吃满 */
   .note-editor-reborn.editing-viewport .editor-textarea {
@@ -736,10 +743,10 @@ defineExpose({ reset: triggerResize })
 /* 关键：内容包裹层占满剩余空间 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  min-height: 0;              /* 避免子元素高度被挤压 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;           /* 外层不滚动，交给 textarea 自己滚动 */
+  overflow: visible;           /* 避免被裁剪 */
 }
 
 /* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
