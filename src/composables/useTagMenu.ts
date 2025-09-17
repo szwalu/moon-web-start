@@ -276,6 +276,7 @@ export function useTagMenu(
             defaultValue: initial,
             autofocus: true,
             placeholder: t('tags.input_new_tag') || '输入新标签名',
+            style: 'font-size:16px;',
             onVnodeMounted: (vnode: any) => {
               const el = vnode?.el?.querySelector('input') as HTMLInputElement | null
               if (el) {
