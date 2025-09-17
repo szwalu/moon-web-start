@@ -439,7 +439,16 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
 }
 
 const displayedNotes = computed(() => {
-  return isAnniversaryViewActive.value ? anniversaryNotes.value : notes.value
+  // 1. 最高优先级：如果正在显示搜索结果，则必须返回 notes 数组（它此刻装着搜索结果）
+  if (isShowingSearchResults.value)
+    return notes.value
+
+  // 2. 第二优先级：如果不在搜索模式，但在“那年今日”视图，则返回那年今日的笔记
+  if (isAnniversaryViewActive.value)
+    return anniversaryNotes.value
+
+  // 3. 默认情况：返回主列表的笔记
+  return notes.value
 })
 
 function closeDropdownOnClickOutside(event: MouseEvent) {
@@ -789,21 +798,34 @@ async function fetchNotes() {
   }
 }
 
-async function handleTrashRestored() {
-  // 步骤 1: 全局性地让所有筛选视图的缓存失效
-  invalidateAllSearchCaches()
-  invalidateAllTagCaches()
-  invalidateAllCalendarCaches()
+async function handleTrashRestored(restoredNotes?: any[]) {
+  // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
+  const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
 
-  // 步骤 2: 刷新主页列表缓存/数据
-  currentPage.value = 1
-  await fetchNotes()
+  if (Array.isArray(restoredNotes) && restoredNotes.length > 0 && !inFilteredView) {
+    // 主页列表：把恢复的笔记插到最前，去重后按置顶/时间重新排
+    const existIds = new Set(notes.value.map(n => n.id))
+    const toInsert = restoredNotes.filter(n => n && !existIds.has(n.id))
 
-  // ✨ 步骤 3: 主动命令日历组件刷新其内部状态
-  // 检查 calendarViewRef 是否存在 (确保日历组件至少被渲染过一次)
-  if (calendarViewRef.value) {
-    // @ts-expect-error: 'refreshData' is exposed via defineExpose
-    (calendarViewRef.value as any).refreshData()
+    if (toInsert.length > 0) {
+      notes.value = [...toInsert, ...notes.value]
+      // 与现有排序规则保持一致：先 is_pinned，再 created_at desc
+      notes.value.sort(
+        (a, b) =>
+          (b.is_pinned - a.is_pinned)
+          || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+      )
+      // 元数据与缓存
+      totalNotes.value = (totalNotes.value || 0) + toInsert.length
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    }
+  }
+  else {
+    // 其他情况（例如当前是搜索/标签/那年今日/或没拿到 restoredNotes）：
+    // 保持原有行为：轻量刷新主页数据，但不强制切视图
+    currentPage.value = 1
+    await fetchNotes()
   }
 }
 
@@ -1418,8 +1440,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="handleTrashRestored"
-        @purged="handleTrashPurged"
+        @restored="invalidateAllTagCaches(); handleTrashRestored()"
+        @purged="invalidateAllTagCaches(); handleTrashPurged()"
       />
 
       <!-- （原底部 selection-actions-popup 已移除） -->

@@ -10,6 +10,8 @@ import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
   note: { type: Object, required: true },
   isExpanded: { type: Boolean, default: false },
@@ -20,7 +22,16 @@ const props = defineProps({
   showInternalCollapseButton: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle', 'dateUpdated', 'setDate'])
+// 例：按你当前模板里用到的事件补齐即可
+const emit = defineEmits([
+  'edit',
+  'toggleExpand',
+  'copy',
+  'pin',
+  'delete',
+  'date-updated',
+  'set-date',
+])
 
 const { t } = useI18n()
 const isDark = useDark()
@@ -38,6 +49,8 @@ const md = new MarkdownIt({
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+
+// 可选：自己掌控 attrs
 
 function renderMarkdown(content: string) {
   if (!content)
@@ -174,86 +187,93 @@ async function handleDateUpdate(newDate: Date) {
 </script>
 
 <template>
+  <!-- ✅ 新增的包裹根：承接父级传入的原生事件，并把双击转成 edit 事件 -->
   <div
-    :data-note-id="note.id"
-    class="note-card"
-    :class="{ 'is-expanded': isExpanded }"
-    @click="handleNoteContentClick"
+    class="note-item"
     @dblclick="emit('edit', note)"
+    v-on="$attrs"
   >
-    <div class="note-card-top-bar">
-      <div class="note-meta-left">
-        <p class="note-date">
-          {{ new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
-        </p>
-        <span v-if="note.is_pinned" class="pinned-indicator">
-          {{ $t('notes.pin') }}
-        </span>
+    <!-- 原先的根节点移到里面；去掉它自己的 @dblclick -->
+    <div
+      :data-note-id="note.id"
+      class="note-card"
+      :class="{ 'is-expanded': isExpanded }"
+      @click="handleNoteContentClick"
+    >
+      <div class="note-card-top-bar">
+        <div class="note-meta-left">
+          <p class="note-date">
+            {{ new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+          </p>
+          <span v-if="note.is_pinned" class="pinned-indicator">
+            {{ $t('notes.pin') }}
+          </span>
+        </div>
+
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="getDropdownOptions(note)"
+          :style="{ minWidth: '220px' }"
+          :to="props.dropdownInPlace ? false : undefined"
+          :z-index="props.dropdownInPlace ? 6001 : undefined"
+          @select="handleDropdownSelect"
+        >
+          <div class="kebab-menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+          </div>
+        </NDropdown>
       </div>
 
-      <NDropdown
-        trigger="click"
-        placement="bottom-end"
-        :options="getDropdownOptions(note)"
-        :style="{ minWidth: '220px' }"
-        :to="props.dropdownInPlace ? false : undefined"
-        :z-index="props.dropdownInPlace ? 6001 : undefined"
-        @select="handleDropdownSelect"
-      >
-        <div class="kebab-menu">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+      <div class="flex-1 min-w-0">
+        <div v-if="isExpanded">
+          <div
+            class="prose dark:prose-invert max-w-none"
+            :class="fontSizeClass"
+            v-html="renderMarkdown(note.content)"
+          />
+          <div
+            v-if="showInternalCollapseButton"
+            class="toggle-button-row"
+            @click.stop="emit('toggleExpand', note.id)"
+          >
+            <button class="toggle-button">
+              {{ $t('notes.collapse', '收起') }}
+            </button>
+          </div>
         </div>
-      </NDropdown>
+
+        <div v-else>
+          <div
+            ref="contentRef"
+            class="prose dark:prose-invert line-clamp-3 max-w-none"
+            :class="fontSizeClass"
+            v-html="renderMarkdown(note.content)"
+          />
+          <div
+            v-if="noteOverflowStatus"
+            class="toggle-button-row"
+            @click.stop="emit('toggleExpand', note.id)"
+          >
+            <button class="toggle-button">
+              {{ $t('notes.expand') }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="flex-1 min-w-0">
-      <div v-if="isExpanded">
-        <div
-          class="prose dark:prose-invert max-w-none"
-          :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
-        />
-        <div
-          v-if="showInternalCollapseButton"
-          class="toggle-button-row"
-          @click.stop="emit('toggleExpand', note.id)"
-        >
-          <button class="toggle-button">
-            {{ $t('notes.collapse', '收起') }}
-          </button>
-        </div>
-      </div>
-
-      <div v-else>
-        <div
-          ref="contentRef"
-          class="prose dark:prose-invert line-clamp-3 max-w-none"
-          :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
-        />
-        <div
-          v-if="noteOverflowStatus"
-          class="toggle-button-row"
-          @click.stop="emit('toggleExpand', note.id)"
-        >
-          <button class="toggle-button">
-            {{ $t('notes.expand') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Teleport to="body">
+      <DateTimePickerModal
+        v-if="showDatePicker"
+        :show="showDatePicker"
+        :initial-date="new Date(note.created_at)"
+        :style="{ zIndex: dropdownInPlace ? 6000 : 100 }"
+        @close="showDatePicker = false"
+        @confirm="handleDateUpdate"
+      />
+    </Teleport>
   </div>
-
-  <Teleport to="body">
-    <DateTimePickerModal
-      v-if="showDatePicker"
-      :show="showDatePicker"
-      :initial-date="new Date(note.created_at)"
-      :style="{ zIndex: dropdownInPlace ? 6000 : 100 }"
-      @close="showDatePicker = false"
-      @confirm="handleDateUpdate"
-    />
-  </Teleport>
 </template>
 
 <style scoped>

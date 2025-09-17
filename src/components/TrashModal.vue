@@ -33,24 +33,89 @@ const loading = ref(false)
 const list = ref<TrashNote[]>([])
 const selected = ref<string[]>([])
 
-const allChecked = computed({
-  get: () => list.value.length > 0 && selected.value.length === list.value.length,
-  set: (val: boolean) => {
-    if (val)
-      selected.value = list.value.map(n => n.id)
-    else selected.value = []
-  },
-})
-
-function daysLeft(n: TrashNote): number {
-  const del = new Date(n.deleted_at).getTime()
-  const now = Date.now()
-  const passed = Math.floor((now - del) / (1000 * 60 * 60 * 24))
-  const left = 30 - passed
-  return left > 0 ? left : 0
+/** ===== 缓存相关 ===== */
+function cacheKeyFor(uid: string) {
+  return `trash_cache_${uid}`
+}
+interface TrashCache {
+  items: TrashNote[]
+  latestDeletedAt: string | null
+  updatedAt: number // 本地缓存保存时间戳
+}
+function loadCache(uid: string): TrashCache | null {
+  try {
+    const raw = localStorage.getItem(cacheKeyFor(uid))
+    if (!raw)
+      return null
+    const parsed = JSON.parse(raw) as TrashCache
+    if (!parsed || !Array.isArray(parsed.items))
+      return null
+    return parsed
+  }
+  catch {
+    return null
+  }
+}
+function saveCache(uid: string, items: TrashNote[]) {
+  const latest = items.length > 0
+    ? items.reduce((acc, cur) => (new Date(cur.deleted_at) > new Date(acc) ? cur.deleted_at : acc), items[0].deleted_at)
+    : null
+  const payload: TrashCache = {
+    items,
+    latestDeletedAt: latest,
+    updatedAt: Date.now(),
+  }
+  localStorage.setItem(cacheKeyFor(uid), JSON.stringify(payload))
 }
 
-async function fetchTrash() {
+/** 先用缓存显示，如有需要再刷新 */
+async function initFromCacheThenMaybeRefresh() {
+  if (!user.value)
+    return
+  const uid = user.value.id
+  selected.value = []
+
+  // 1) 优先加载缓存
+  const cached = loadCache(uid)
+  if (cached)
+    list.value = cached.items
+
+  else
+    list.value = []
+
+  // 2) 轻量探测服务器是否有更新（只取最新一条的 deleted_at）
+  try {
+    const { data, error } = await supabase
+      .from('notes_trash')
+      .select('deleted_at')
+      .eq('user_id', uid)
+      .order('deleted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      // 探测失败不影响已有缓存显示
+      return
+    }
+
+    const latestOnServer: string | null = data?.deleted_at ?? null
+    const latestInCache: string | null = cached?.latestDeletedAt ?? null
+
+    // 条件：服务器最新 > 本地最新  -> 才拉全量
+    const needFullFetch
+      = !cached
+      || (latestOnServer && (!latestInCache || new Date(latestOnServer) > new Date(latestInCache)))
+
+    if (needFullFetch)
+      await fetchTrashFromServerAndCache()
+  }
+  catch {
+    // 忽略探测异常，不打断 UI
+  }
+}
+
+/** 真正向服务器拉全量并写缓存 */
+async function fetchTrashFromServerAndCache() {
   if (!user.value)
     return
   loading.value = true
@@ -63,7 +128,10 @@ async function fetchTrash() {
       .order('deleted_at', { ascending: false })
     if (error)
       throw error
-    list.value = (data || []) as TrashNote[]
+
+    const arr = (data || []) as TrashNote[]
+    list.value = arr
+    saveCache(user.value.id, arr)
   }
   catch (err: any) {
     console.error(err)
@@ -74,6 +142,24 @@ async function fetchTrash() {
   }
 }
 
+const allChecked = computed({
+  get: () => list.value.length > 0 && selected.value.length === list.value.length,
+  set: (val: boolean) => {
+    if (val)
+      selected.value = list.value.map(n => n.id)
+    else
+      selected.value = []
+  },
+})
+
+function daysLeft(n: TrashNote): number {
+  const del = new Date(n.deleted_at).getTime()
+  const now = Date.now()
+  const passed = Math.floor((now - del) / (1000 * 60 * 60 * 24))
+  const left = 30 - passed
+  return left > 0 ? left : 0
+}
+
 async function restoreOne(id: string) {
   try {
     const { error } = await supabase.rpc('restore_note', { p_note_id: id })
@@ -82,6 +168,8 @@ async function restoreOne(id: string) {
     list.value = list.value.filter(n => n.id !== id)
     selected.value = selected.value.filter(s => s !== id)
     message.success('已恢复 1 条笔记')
+
+    // ✅ 这里调用
     emit('restored')
   }
   catch (err: any) {
@@ -103,8 +191,17 @@ async function restoreSelected() {
     }
     list.value = list.value.filter(n => !ids.includes(n.id))
     selected.value = []
+    if (user.value)
+      saveCache(user.value.id, list.value)
+
+    // 关键：一次性查出这些恢复后的笔记
+    const { data: restoredRows } = await supabase
+      .from('notes')
+      .select('*')
+      .in('id', ids)
+
     message.success(`已恢复 ${ids.length} 条笔记`)
-    emit('restored')
+    emit('restored', Array.isArray(restoredRows) ? restoredRows : [])
   }
   catch (err: any) {
     console.error(err)
@@ -130,6 +227,7 @@ function openPurgeConfirm() {
   })
 }
 
+/** 批量彻底删除：本地列表 + 缓存同步 */
 async function confirmPurge() {
   if (selected.value.length === 0 || !user.value)
     return
@@ -143,8 +241,13 @@ async function confirmPurge() {
       .eq('user_id', user.value.id)
     if (error)
       throw error
+
     list.value = list.value.filter(n => !ids.includes(n.id))
     selected.value = []
+
+    // 更新缓存
+    saveCache(user.value.id, list.value)
+
     message.success(`已彻底删除 ${ids.length} 条笔记`)
     emit('purged')
   }
@@ -157,13 +260,17 @@ async function confirmPurge() {
   }
 }
 
-watch(() => props.show, (v) => {
-  if (v)
-    fetchTrash()
-})
+/** 打开弹窗时：先用缓存展示，再做轻量探测，有更新再全量拉取 */
+watch(
+  () => props.show,
+  (v) => {
+    if (v)
+      initFromCacheThenMaybeRefresh()
+  },
+)
 onMounted(() => {
   if (props.show)
-    fetchTrash()
+    initFromCacheThenMaybeRefresh()
 })
 </script>
 
@@ -190,7 +297,7 @@ onMounted(() => {
           <button class="btn-danger" :disabled="selected.length === 0 || loading" @click="openPurgeConfirm">彻底删除</button>
         </div>
 
-        <div v-if="loading" class="loading">加载中...</div>
+        <div v-if="loading && list.length === 0" class="loading">加载中...</div>
         <div v-else-if="list.length === 0" class="empty">回收站为空</div>
 
         <div v-else class="trash-list">
@@ -212,7 +319,7 @@ onMounted(() => {
             </label>
 
             <div class="item-main">
-              <!-- 使用 CSS line-clamp 限制为 3 行 -->
+              <!-- 仅显示前三行 -->
               <div class="content">{{ n.content }}</div>
               <div class="meta">
                 <span>创建于：{{ new Date(n.created_at).toLocaleString('zh-CN') }}</span>
@@ -310,14 +417,14 @@ onMounted(() => {
 .dark .trash-item { background: #1f2937; border-color: #374151; }
 .item-check { display: flex; align-items: start; padding-top: .2rem; }
 
-/* 仅显示前三行：line-clamp 方案（兼容主流移动端与桌面） */
+/* 仅显示前三行：line-clamp 方案 */
 .item-main .content {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;     /* 关键：限制为 3 行 */
+  -webkit-line-clamp: 3;
   overflow: hidden;
   word-break: break-word;
-  white-space: normal;        /* 允许换行（即便原文没有 \n 也会自动换行） */
+  white-space: normal;
   color: inherit;
   font-size: 14px;
   line-height: 1.6;
