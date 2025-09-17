@@ -50,7 +50,19 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// 可选：自己掌控 attrs
+// ✅ 新增：日期+星期格式化函数
+function formatDateWithWeekday(dateStr: string) {
+  const d = new Date(dateStr)
+  const dateText = d.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const weekday = d.toLocaleDateString('zh-CN', { weekday: 'long' })
+  return `${dateText} ${weekday}`
+}
 
 function renderMarkdown(content: string) {
   if (!content)
@@ -202,8 +214,9 @@ async function handleDateUpdate(newDate: Date) {
     >
       <div class="note-card-top-bar">
         <div class="note-meta-left">
+          <!-- ✅ 替换日期显示 -->
           <p class="note-date">
-            {{ new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+            {{ formatDateWithWeekday(note.created_at) }}
           </p>
           <span v-if="note.is_pinned" class="pinned-indicator">
             {{ $t('notes.pin') }}
