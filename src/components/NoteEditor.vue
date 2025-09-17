@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
-import { NDropdown, useDialog } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
+import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
-import { useTagMenu } from '@/composables/useTagMenu'
 
 // ============== Props & Emits ==============
 const props = defineProps({
@@ -15,8 +13,22 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
+// —— 常用标签（与 useTagMenu 保持同一存储键）——
+const PINNED_TAGS_KEY = 'pinned_tags_v1'
+const pinnedTags = ref<string[]>([])
+function isPinned(tag: string) {
+  return pinnedTags.value.includes(tag)
+}
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(PINNED_TAGS_KEY)
+    pinnedTags.value = raw ? JSON.parse(raw) : []
+  }
+  catch {
+    pinnedTags.value = []
+  }
+})
 
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -126,43 +138,60 @@ function handleClick() {
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
-function handleInput(event: Event) {
-  const el = event.target as HTMLTextAreaElement
-  captureCaret()
-
+// —— 抽出：计算并展示“# 标签联想面板”（键入#或点击#按钮共用）
+function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
 
   if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
+    return
+  }
+
+  const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
+  // 先筛选
+  const filtered = props.allTags.filter(tag =>
+    tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
+  )
+  // 再排序：常用优先；同组内按标签名（去#、不区分大小写）排序
+  filtered.sort((a, b) => {
+    const ap = isPinned(a) ? 0 : 1
+    const bp = isPinned(b) ? 0 : 1
+    if (ap !== bp)
+      return ap - bp
+    const an = a.slice(1).toLowerCase()
+    const bn = b.slice(1).toLowerCase()
+    return an.localeCompare(bn)
+  })
+  tagSuggestions.value = filtered
+
+  if (tagSuggestions.value.length > 0) {
+    const textLines = textBeforeCursor.split('\n')
+    const currentLine = textLines.length - 1
+    const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
+    const topOffset = currentLine * lineHeight
+    const measure = document.createElement('span')
+    measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
+    measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
+    el.parentNode?.appendChild(measure)
+    const leftOffset = measure.offsetWidth
+    el.parentNode?.removeChild(measure)
+    suggestionsStyle.value = {
+      top: `${el.offsetTop + topOffset + lineHeight}px`,
+      left: `${el.offsetLeft + leftOffset}px`,
+    }
+    showTagSuggestions.value = true
   }
   else {
-    const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
-    tagSuggestions.value = props.allTags.filter(tag =>
-      tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`),
-    )
-    if (tagSuggestions.value.length > 0) {
-      const textLines = textBeforeCursor.split('\n')
-      const currentLine = textLines.length - 1
-      const lineHeight = Number.parseFloat(getComputedStyle(el).lineHeight)
-      const topOffset = currentLine * lineHeight
-      const measure = document.createElement('span')
-      measure.style.cssText = 'position: absolute; visibility: hidden; font: inherit; white-space: pre;'
-      measure.textContent = textLines[currentLine].substring(0, textLines[currentLine].length)
-      el.parentNode?.appendChild(measure)
-      const leftOffset = measure.offsetWidth
-      el.parentNode?.removeChild(measure)
-      suggestionsStyle.value = {
-        top: `${el.offsetTop + topOffset + lineHeight}px`,
-        left: `${el.offsetLeft + leftOffset}px`,
-      }
-      showTagSuggestions.value = true
-    }
-    else {
-      showTagSuggestions.value = false
-    }
+    showTagSuggestions.value = false
   }
+}
+
+function handleInput(event: Event) {
+  const el = event.target as HTMLTextAreaElement
+  captureCaret()
+  computeAndShowTagSuggestions(el)
 }
 
 // ============== 文本与工具栏 ==============
@@ -279,24 +308,7 @@ function handleEnterKey(event: KeyboardEvent) {
   updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
 }
 
-// ============== 标签菜单（顺序很关键） ==============
-const { t } = useI18n()
-const allTagsRef = computed(() => props.allTags)
-
-// 先声明（函数声明可提升），用于传入 useTagMenu
-function handleSelectFromMenu(tag: string) {
-  selectTag(tag)
-}
-
-// 先解构，避免 “used before it was defined”
-const {
-  mainMenuVisible: tagMenuVisible,
-  tagMenuChildren,
-} = useTagMenu(allTagsRef as unknown as any, handleSelectFromMenu, t)
-
-const dropdownMaxHeight = ref(320)
-
-// 选择标签：使用 lastSelectionStart，稳定替换“#片段”
+// —— 选择标签：使用 lastSelectionStart，稳定替换“#片段”
 function selectTag(tag: string) {
   const el = textarea.value
   if (!el)
@@ -330,83 +342,23 @@ function selectTag(tag: string) {
   }
 
   updateTextarea(newText, newCursorPos)
-  tagMenuVisible.value = false
 }
 
-type Opt = any
-function injectClickHandlers(opts: Opt[]): Opt[] {
-  return opts.map((o) => {
-    if (!o)
-      return o
-
-    if (o.type === 'group' && Array.isArray(o.children))
-      return { ...o, children: injectClickHandlers(o.children) }
-
-    if (o.type === 'render')
-      return o
-
-    if (typeof o.key === 'string' && o.key.startsWith('#')) {
-      const click = (_e: MouseEvent) => {
-        handleSelectFromMenu(o.key)
-        tagMenuVisible.value = false
-      }
-      const mergedProps = { ...(o.props || {}), onClick: click }
-      const wrappedLabel = typeof o.label === 'function'
-        ? () => h('div', { class: 'tag-row', onClick: click }, [o.label()])
-        : o.label
-      return { ...o, props: mergedProps, label: wrappedLabel }
+// —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
+function openTagMenu() {
+  suppressNextBlur.value = true
+  runToolbarAction(() => insertText('#', ''))
+  nextTick(() => {
+    const el = textarea.value
+    if (el) {
+      computeAndShowTagSuggestions(el)
+      // ✅ 只对这次点击按钮的 blur 进行“短暂抑制”，随后恢复
+      setTimeout(() => {
+        suppressNextBlur.value = false
+      }, 0)
     }
-    return o
   })
 }
-
-function openTagMenu() {
-  captureCaret()
-  suppressNextBlur.value = true
-  tagMenuVisible.value = true
-}
-
-const tagDropdownOptions = computed(() => injectClickHandlers(tagMenuChildren.value))
-
-// ===== 全局：点外/ESC 关闭（适配 trigger="manual"） =====
-function shouldKeepOpenByTarget(target: EventTarget | null): boolean {
-  const node = target as HTMLElement | null
-  if (!node)
-    return false
-
-  if (node.closest('.n-dropdown'))
-    return true
-
-  if (rootRef.value && node.closest('.toolbar-trigger') && rootRef.value.contains(node))
-    return true
-
-  return false
-}
-
-function handleGlobalPointerDown(e: PointerEvent) {
-  if (!tagMenuVisible.value)
-    return
-
-  if (shouldKeepOpenByTarget(e.target))
-    return
-
-  tagMenuVisible.value = false
-}
-
-function handleGlobalKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && tagMenuVisible.value)
-    tagMenuVisible.value = false
-}
-
-onMounted(() => {
-  document.addEventListener('pointerdown', handleGlobalPointerDown, true)
-  window.addEventListener('keydown', handleGlobalKeydown)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
-  window.removeEventListener('keydown', handleGlobalKeydown)
-})
 
 defineExpose({ reset: triggerResize })
 </script>
@@ -445,7 +397,8 @@ defineExpose({ reset: triggerResize })
             :key="tag"
             @mousedown.prevent="selectTag(tag)"
           >
-            {{ tag }}
+            <span class="tag-text">{{ tag }}</span>
+            <span v-if="isPinned(tag)" class="tag-star">★</span>
           </li>
         </ul>
       </div>
@@ -454,27 +407,14 @@ defineExpose({ reset: triggerResize })
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <NDropdown
-            v-model:show="tagMenuVisible"
-            trigger="manual"
-            placement="top-start"
-            :options="tagDropdownOptions"
-            :show-arrow="false"
-            :width="260"
-            :scrollable="true"
-            :max-height="dropdownMaxHeight"
+          <button
+            type="button"
+            class="toolbar-btn"
+            title="添加标签"
+            @click.stop="openTagMenu"
           >
-            <span class="toolbar-trigger">
-              <button
-                type="button"
-                class="toolbar-btn"
-                title="添加标签"
-                @click.stop="openTagMenu"
-              >
-                #
-              </button>
-            </span>
-          </NDropdown>
+            #
+          </button>
 
           <button
             type="button"
@@ -710,12 +650,6 @@ defineExpose({ reset: triggerResize })
   align-items: center;
 }
 
-:global(.n-dropdown-menu) {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
 /* ✅ 移动端专属：编辑旧笔记时，把容器拉到 70vh，并让 textarea 填满容器。
    在 PC 端，这段不会触发，仍保持 textarea 的 max-height: 48vh。*/
 @media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
@@ -793,46 +727,27 @@ defineExpose({ reset: triggerResize })
   max-height: none !important;/* 覆盖 48vh 上限 */
   overflow-y: auto;           /* 内容超出时内部滚动 */
 }
-</style>
 
-<style>
-.n-dropdown-menu.n-dropdown-menu--scrollable {
-  max-height: min(60vh, 360px) !important;
-  overflow-y: auto !important;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.n-dropdown-menu .tag-row {
+.tag-suggestions li {
   display: flex;
   align-items: center;
+  justify-content: space-between; /* 左右分布 */
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
 }
 
-/* 统一命中所有 Naive 下拉菜单（不依赖 --scrollable 修饰） */
-.n-dropdown-menu .tag-row {
-  display: flex;
-  align-items: center;
-  width: 100%;         /* 关键：让这一行占满，右侧才能被自动推开 */
-  min-width: 0;        /* 防止文本撑爆 */
-}
-
-/* 标签文本可选：允许截断，避免挤压星标 */
-.n-dropdown-menu .tag-row .tag-text {
-  flex: 1 1 auto;
-  min-width: 0;
+.tag-suggestions .tag-text {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 星标推到最右，并加点内边距提升点击手感 */
-.n-dropdown-menu .tag-row .pin-btn {
-  margin-left: auto;   /* 关键：自动把星标推到最右 */
-  padding-left: 12px;
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: 0;
-  cursor: pointer;
+.tag-suggestions .tag-star {
+  opacity: 0.7;
+  margin-left: 8px;   /* 左边留点间距 */
+  font-size: 12px;
+  color: #999;
 }
 </style>

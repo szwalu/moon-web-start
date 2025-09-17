@@ -117,12 +117,19 @@ export function useTagMenu(
       .map(tag => ({
         key: tag,
         label: () =>
-          h('div', { class: 'tag-row' }, [
-            h('span', { class: 'tag-text' }, tag),
+          h('div', {
+            class: 'tag-row',
+            style: 'display:flex;align-items:center;justify-content:space-between;width:100%;',
+          }, [
+            h('span', {
+              class: 'tag-text',
+              style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            }, tag),
             h(
               'button',
               {
                 class: 'pin-btn pinned',
+                style: 'margin-left:auto;background:none;border:none;cursor:pointer;padding-left:8px;font-size:14px;opacity:0.7;',
                 onClick: (e: MouseEvent) => {
                   e.stopPropagation()
                   togglePin(tag)
@@ -154,12 +161,19 @@ export function useTagMenu(
         children: tags.map(tag => ({
           key: tag,
           label: () =>
-            h('div', { class: 'tag-row' }, [
-              h('span', { class: 'tag-text' }, tag),
+            h('div', {
+              class: 'tag-row',
+              style: 'display:flex;align-items:center;justify-content:space-between;width:100%;',
+            }, [
+              h('span', {
+                class: 'tag-text',
+                style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+              }, tag),
               h(
                 'button',
                 {
                   class: 'pin-btn',
+                  style: 'margin-left:auto;background:none;border:none;cursor:pointer;padding-left:8px;font-size:14px;opacity:0.7;',
                   onClick: (e: MouseEvent) => {
                     e.stopPropagation()
                     togglePin(tag)
