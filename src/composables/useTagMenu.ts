@@ -246,11 +246,11 @@ export function useTagMenu(
         key: 'pin',
       },
       {
-        label: t('notes.rename_tag') || '重命名',
+        label: t('tags.rename_tag') || '重命名',
         key: 'rename',
       },
       {
-        label: t('notes.remove_tag') || '移除',
+        label: t('tags.remove_tag') || '移除',
         key: 'remove',
       },
     ]
