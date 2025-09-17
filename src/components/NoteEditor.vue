@@ -169,33 +169,86 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     return
   }
 
-  // —— 关键：按“光标前这一行的子串”精确测宽，并扣除滚动
+  // === 关键：用“镜像 + 探针”得到光标像素坐标（相对 editor-wrapper） ===
+  const wrapper = el.parentElement as HTMLElement // .editor-wrapper (position: relative)
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const GAP = 6 // 与光标的间距
 
-  // 当前行起始下标与“光标在本行中的列”：
-  const lineStartIdx = textBeforeCursor.lastIndexOf('\n') + 1
-  const currentLineTextBeforeCaret = textBeforeCursor.slice(lineStartIdx) // 本行从开头到光标
-  const currentLineIndex = (textBeforeCursor.match(/\n/g)?.length ?? 0) // 第几行（0-based）
-
-  // 隐形测量节点（挂到 wrapper 里，继承字体）
-  const measure = document.createElement('span')
-  measure.style.cssText = `
-    position:absolute; visibility:hidden; white-space:pre; font:${style.font};
-    letter-spacing:${style.letterSpacing}; line-height:${style.lineHeight};
+  // 构造镜像容器，复制 textarea 的排版特性（宽度用 clientWidth，避免滚动条影响）
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
+    box-sizing:border-box; top:0; left:0; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight}; letter-spacing:${style.letterSpacing};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
+    border-style:solid;
   `
-  measure.textContent = currentLineTextBeforeCaret
-  el.parentElement?.appendChild(measure)
-  const leftOffset = measure.offsetWidth
-  measure.remove()
+  wrapper.appendChild(mirror)
 
-  // 位置：相对 editor-wrapper（父容器 position: relative）
-  // 扣除 textarea 的 scrollTop/scrollLeft，避免滚动后错位
-  const topPx = (el.offsetTop - el.scrollTop) + (currentLineIndex + 1) * lineHeight
-  const leftPx = (el.offsetLeft - el.scrollLeft) + leftOffset
+  // 把光标前文本放入镜像，并在末尾插入“探针”字符
+  const selEnd = el.selectionEnd ?? el.value.length
+  const before = el.value.slice(0, selEnd)
+    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
+    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
+  const probe = document.createElement('span')
+  probe.textContent = '\u200B' // 零宽字符当“光标点”
+  mirror.textContent = before
+  mirror.appendChild(probe)
 
-  suggestionsStyle.value = { top: `${topPx}px`, left: `${leftPx}px` }
+  // 计算相对 wrapper 的光标坐标，再扣除 textarea 的滚动量
+  const probeRect = probe.getBoundingClientRect()
+  const wrapperRect = wrapper.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+
+  const caretX = (probeRect.left - wrapperRect.left) - (el.scrollLeft || 0)
+  const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
+  const caretH = lineHeight
+
+  // textArea 可视区（相对 wrapper）
+  const textAreaBox = {
+    top: elRect.top - wrapperRect.top,
+    left: elRect.left - wrapperRect.left,
+    right: elRect.right - wrapperRect.left,
+    bottom: elRect.bottom - wrapperRect.top,
+    width: el.clientWidth,
+    height: el.clientHeight,
+  }
+
+  // 清理镜像
+  mirror.remove()
+
+  // 先把面板放在“光标正下方、左对齐”
+  let top = caretY + caretH + GAP
+  let left = caretX
+
+  suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   showTagSuggestions.value = true
+
+  // 下一帧拿到面板真实尺寸后做边界修正（右侧收口 / 底部上翻 / 顶部兜底）
+  nextTick(() => {
+    const panel = (wrapper.querySelector('.tag-suggestions') as HTMLElement | null)
+    if (!panel)
+      return
+
+    const panelW = panel.offsetWidth
+    const panelH = panel.offsetHeight
+
+    // 右侧超界 -> 向左收口（不越过 textarea 左边）
+    if (left + panelW > textAreaBox.left + textAreaBox.width)
+      left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
+
+    // 底部超界 -> 翻到“光标上方”
+    if (top + panelH > textAreaBox.bottom) {
+      top = caretY - panelH - GAP
+      // 上翻后若顶到 textarea 顶部，再兜底贴顶
+      if (top < textAreaBox.top)
+        top = textAreaBox.top
+    }
+
+    suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
+  })
 }
 
 function handleInput(event: Event) {
@@ -779,5 +832,10 @@ note-editor-reborn.editing-viewport .editor-wrapper {
   margin-left: 8px;   /* 左边留点间距 */
   font-size: 12px;
   color: #999;
+}
+
+.tag-suggestions {
+  z-index: 1000;      /* 原来是 10，提高一档更保险 */
+  will-change: top, left;
 }
 </style>
