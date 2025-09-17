@@ -1,6 +1,6 @@
 // src/composables/useTagMenu.ts
 import { type Ref, computed, h, onMounted, ref, watch } from 'vue'
-import { NInput, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
@@ -41,7 +41,7 @@ export function useTagMenu(
   const dialog = useDialog()
   const isBusy = ref(false) // 避免并发重复提交
 
-  // —— 新增：标签计数（内存）与服务器签名 —— //
+  // —— 标签计数（内存）与服务器签名 —— //
   const tagCounts = ref<Record<string, number>>({})
   const tagCountsSig = ref<string | null>(null) // 服务端返回的 last_updated（ISO 字符串）
 
@@ -67,8 +67,10 @@ export function useTagMenu(
     const i = pinnedTags.value.indexOf(tag)
     if (i >= 0)
       pinnedTags.value.splice(i, 1)
+
     else
       pinnedTags.value.push(tag)
+
     savePinned()
   }
 
@@ -133,7 +135,7 @@ export function useTagMenu(
     }
   }
 
-  /** —— 新增：计数缓存失效 —— */
+  /** —— 计数缓存失效 —— */
   async function invalidateTagCountCache() {
     const uid = await getUserId()
     if (!uid)
@@ -143,7 +145,7 @@ export function useTagMenu(
     tagCountsSig.value = null
   }
 
-  /** —— 新增：加载标签计数（首开菜单或缓存过期时） —— */
+  /** —— 加载标签计数（首开菜单或缓存过期时） —— */
   async function loadTagCountsIfNeeded() {
     const uid = await getUserId()
     if (!uid)
@@ -220,6 +222,39 @@ export function useTagMenu(
     if (show)
       loadTagCountsIfNeeded()
   })
+
+  /** —— 行内操作：置顶/重命名/移除（供下拉菜单使用） —— */
+
+  function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove') {
+    if (action === 'pin') {
+      togglePin(tag)
+      return
+    }
+    if (action === 'rename') {
+      renameTag(tag)
+      return
+    }
+    if (action === 'remove')
+      removeTagCompletely(tag)
+  }
+
+  function getRowMenuOptions(tag: string) {
+    const pinned = isPinned(tag)
+    return [
+      {
+        label: pinned ? (t('notes.unpin_favorites') || '取消置顶') : (t('notes.pin_favorites') || '置顶'),
+        key: 'pin',
+      },
+      {
+        label: t('notes.rename_tag') || '重命名',
+        key: 'rename',
+      },
+      {
+        label: t('notes.remove_tag') || '移除',
+        key: 'remove',
+      },
+    ]
+  }
 
   /** —— RPC 版：重命名/移除 —— */
 
@@ -320,11 +355,11 @@ export function useTagMenu(
     const tag = normalizeTag(raw)
 
     dialog.warning({
-    // ✅ 使用专属的“删除标签”弹窗
+      // ✅ 使用专属的“删除标签”弹窗
       title: t('tags.delete_tag_title') || '删除标签',
       content:
-      t('tags.delete_tag_content', { tag })
-      || `这将从你的所有笔记中删除标签 ${tag}（仅删除标签文本，不会删除任何笔记）。此操作不可撤销。`,
+        t('tags.delete_tag_content', { tag })
+        || `这将从你的所有笔记中删除标签 ${tag}（仅删除标签文本，不会删除任何笔记）。此操作不可撤销。`,
       positiveText: t('tags.delete_tag_confirm') || '删除标签',
       negativeText: t('notes.cancel') || '取消',
       maskClosable: false,
@@ -375,7 +410,7 @@ export function useTagMenu(
     })
   }
 
-  /** —— 菜单渲染（附带 ✎/🗑 操作按钮 + 显示计数） —— */
+  /** —— 菜单渲染（显示计数 + 「⋯」行内菜单） —— */
 
   const tagMenuChildren = computed(() => {
     const total = allTags.value.length
@@ -390,7 +425,9 @@ export function useTagMenu(
         h('div', { class: 'tag-search-row' }, [
           h(NInput, {
             'value': tagSearch.value,
-            'onUpdate:value': (v: string) => { tagSearch.value = v },
+            'onUpdate:value': (v: string) => {
+              tagSearch.value = v
+            },
             'placeholder': placeholderText,
             'clearable': true,
             'autofocus': true,
@@ -404,7 +441,7 @@ export function useTagMenu(
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-      .map(tag => makeTagRow(tag, true))
+      .map(tag => makeTagRow(tag))
 
     const pinnedGroup
       = pinnedChildren.length > 0
@@ -422,13 +459,13 @@ export function useTagMenu(
         type: 'group' as const,
         key: `grp-${letter}`,
         label: letter,
-        children: tags.map(tag => makeTagRow(tag, false)),
+        children: tags.map(tag => makeTagRow(tag)),
       }))
 
     return [searchOption, ...pinnedGroup, ...letterGroups]
   })
 
-  function makeTagRow(tag: string, pinned: boolean) {
+  function makeTagRow(tag: string) {
     const count = tagCounts.value[tag] ?? 0
     const display = count > 0 ? `${tag}（${count}）` : tag
 
@@ -437,61 +474,39 @@ export function useTagMenu(
       label: () =>
         h('div', {
           class: 'tag-row',
-          // 间距调大：gap 从 6px -> 12px
           style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;',
         }, [
+          // 左侧文本
           h('span', {
             class: 'tag-text',
             style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             title: display,
           }, display),
 
-          // 置顶/取消置顶
-          h(
-            'button',
-            {
-              class: pinned ? 'pin-btn pinned' : 'pin-btn',
-              style: 'background:none;border:none;cursor:pointer;padding-left:6px;font-size:14px;opacity:0.8;',
-              onClick: (e: MouseEvent) => {
-                e.stopPropagation()
-                togglePin(tag)
-              },
-              title: pinned
-                ? (t('notes.unpin_favorites') || '取消常用')
-                : (t('notes.pin_favorites') || '设为常用'),
+          // 右侧「三个小黑点」下拉菜单
+          h(NDropdown, {
+            options: getRowMenuOptions(tag),
+            trigger: 'click',
+            showArrow: false,
+            size: 'small',
+            placement: 'bottom-end',
+            onSelect: (key: 'pin' | 'rename' | 'remove') => {
+              handleRowMenuSelect(tag, key)
             },
-            pinned ? '★' : '☆',
-          ),
-
-          // 重命名
-          h(
-            'button',
-            {
-              class: 'rename-btn',
-              style: 'background:none;border:none;cursor:pointer;padding-left:4px;font-size:14px;opacity:0.8;',
-              onClick: (e: MouseEvent) => {
-                e.stopPropagation()
-                renameTag(tag)
-              },
-              title: t('tags.rename_tag') || '重命名',
+            onClickoutside: () => {
+              /* 不打断父级下拉的显示 */
             },
-            '✎',
-          ),
-
-          // 移除
-          h(
-            'button',
-            {
-              class: 'remove-btn',
-              style: 'background:none;border:none;cursor:pointer;padding-left:4px;font-size:14px;opacity:0.8;',
-              onClick: (e: MouseEvent) => {
-                e.stopPropagation()
-                removeTagCompletely(tag)
-              },
-              title: t('tags.remove_tag') || '移除标签',
-            },
-            '🗑',
-          ),
+          }, {
+            default: () =>
+              h('button', {
+                'class': 'more-btn',
+                'aria-label': t('common.more_actions') || '更多操作',
+                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
+                'onClick': (e: MouseEvent) => {
+                  e.stopPropagation()
+                },
+              }, '⋯'),
+          }),
         ]),
       props: { onClick: () => selectTag(tag) },
     }
