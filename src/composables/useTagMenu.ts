@@ -1,11 +1,12 @@
 // src/composables/useTagMenu.ts
-import { type Ref, computed, h, onMounted, ref } from 'vue'
+import { type Ref, computed, h, onMounted, ref, watch } from 'vue'
 import { NInput, useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
 /** 本地存储 Key，避免和你已有缓存冲突 */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
+const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:' // 会拼接 userId
 
 /** 将标签标准化为 "#xxx" 形式 */
 function normalizeTag(tag: string) {
@@ -39,6 +40,10 @@ export function useTagMenu(
   const message = useMessage()
   const dialog = useDialog()
   const isBusy = ref(false) // 避免并发重复提交
+
+  // —— 新增：标签计数（内存）与服务器签名 —— //
+  const tagCounts = ref<Record<string, number>>({})
+  const tagCountsSig = ref<string | null>(null) // 服务端返回的 last_updated（ISO 字符串）
 
   onMounted(() => {
     try {
@@ -128,6 +133,94 @@ export function useTagMenu(
     }
   }
 
+  /** —— 新增：计数缓存失效 —— */
+  async function invalidateTagCountCache() {
+    const uid = await getUserId()
+    if (!uid)
+      return
+    localStorage.removeItem(TAG_COUNT_CACHE_KEY_PREFIX + uid)
+    tagCounts.value = {}
+    tagCountsSig.value = null
+  }
+
+  /** —— 新增：加载标签计数（首开菜单或缓存过期时） —— */
+  async function loadTagCountsIfNeeded() {
+    const uid = await getUserId()
+    if (!uid)
+      return
+
+    const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
+
+    // 1) 先用本地缓存（若有）
+    const cachedRaw = localStorage.getItem(cacheKey)
+    if (cachedRaw) {
+      try {
+        const cached = JSON.parse(cachedRaw) as {
+          sig: string | null
+          items: Array<{ tag: string; cnt: number }>
+          savedAt: number
+        }
+        tagCountsSig.value = cached.sig
+        const map: Record<string, number> = {}
+        for (const it of cached.items)
+          map[it.tag] = it.cnt
+
+        tagCounts.value = map
+      }
+      catch {
+        // 解析失败忽略，稍后走服务器
+      }
+    }
+
+    // 2) 轻量 RPC：若服务器签名不同，再更新缓存
+    try {
+      const { data, error } = await supabase.rpc('get_tag_counts', {
+        p_user_id: uid,
+      })
+      if (error)
+        throw error
+
+      if (Array.isArray(data) && data.length > 0) {
+        const serverSig: string | null = data[0].last_updated
+        const sameSig = !!serverSig && tagCountsSig.value === serverSig
+
+        if (!sameSig) {
+          const map: Record<string, number> = {}
+          const items: Array<{ tag: string; cnt: number }> = []
+          for (const row of data) {
+            const tg = String(row.tag)
+            const cnt = Number(row.cnt ?? 0)
+            map[tg] = cnt
+            items.push({ tag: tg, cnt })
+          }
+          tagCounts.value = map
+          tagCountsSig.value = serverSig || null
+
+          localStorage.setItem(cacheKey, JSON.stringify({
+            sig: tagCountsSig.value,
+            items,
+            savedAt: Date.now(),
+          }))
+        }
+      }
+      else {
+        // 服务器无标签：清空
+        tagCounts.value = {}
+        tagCountsSig.value = null
+        localStorage.removeItem(cacheKey)
+      }
+    }
+    catch {
+      // 静默失败，沿用已有缓存/空值
+    }
+  }
+
+  // 菜单弹出时尝试加载计数（不阻塞 UI）
+  watch(mainMenuVisible, (show) => {
+    if (show)
+      loadTagCountsIfNeeded()
+  })
+
   /** —— RPC 版：重命名/移除 —— */
 
   async function renameTag(oldRaw: string) {
@@ -192,17 +285,17 @@ export function useTagMenu(
             allTags.value.push(newTag)
 
           // 迁移置顶状态
-          // 迁移置顶状态
           const pIdx = pinnedTags.value.indexOf(oldTag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1, newTag)
             savePinned()
           }
 
-          // 失效缓存（老/新标签 + 所有搜索缓存）
+          // 失效缓存（老/新标签 + 所有搜索缓存 + 计数缓存）
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
+          await invalidateTagCountCache()
 
           // data 为受影响行数（可能为 null），仅用于提示
           const count = typeof data === 'number' ? data : undefined
@@ -264,6 +357,7 @@ export function useTagMenu(
           invalidateOneTagCache(tag)
           invalidateAllTagCaches()
           invalidateAllSearchCaches()
+          await invalidateTagCountCache()
 
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
@@ -281,7 +375,7 @@ export function useTagMenu(
     })
   }
 
-  /** —— 菜单渲染（附带 ✎/🗑 操作按钮） —— */
+  /** —— 菜单渲染（附带 ✎/🗑 操作按钮 + 显示计数） —— */
 
   const tagMenuChildren = computed(() => {
     const total = allTags.value.length
@@ -335,6 +429,9 @@ export function useTagMenu(
   })
 
   function makeTagRow(tag: string, pinned: boolean) {
+    const count = tagCounts.value[tag] ?? 0
+    const display = count > 0 ? `${tag}（${count}）` : tag
+
     return {
       key: tag,
       label: () =>
@@ -346,8 +443,8 @@ export function useTagMenu(
           h('span', {
             class: 'tag-text',
             style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-            title: tag,
-          }, tag),
+            title: display,
+          }, display),
 
           // 置顶/取消置顶
           h(
@@ -376,7 +473,7 @@ export function useTagMenu(
                 e.stopPropagation()
                 renameTag(tag)
               },
-              title: t('notes.rename_tag') || '重命名',
+              title: t('tags.rename_tag') || '重命名',
             },
             '✎',
           ),
@@ -391,7 +488,7 @@ export function useTagMenu(
                 e.stopPropagation()
                 removeTagCompletely(tag)
               },
-              title: t('notes.remove_tag') || '移除标签',
+              title: t('tags.remove_tag') || '移除标签',
             },
             '🗑',
           ),
