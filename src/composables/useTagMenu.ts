@@ -1,5 +1,5 @@
 // src/composables/useTagMenu.ts
-import { type Ref, computed, h, onMounted, ref, watch } from 'vue'
+import { type Ref, computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -44,14 +44,71 @@ export function useTagMenu(
   // —— 标签计数（内存）与服务器签名 —— //
   const tagCounts = ref<Record<string, number>>({})
   const tagCountsSig = ref<string | null>(null) // 服务端返回的 last_updated（ISO 字符串）
+  const isLoadingCounts = ref(false)
 
-  onMounted(() => {
+  // ===== Realtime：监听 notes 的 INSERT/DELETE，失效标签计数缓存（下次展开菜单再拉取） =====
+  let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
+  let invalidateTimer: number | null = null
+  function scheduleInvalidateCounts() {
+    if (invalidateTimer)
+      window.clearTimeout(invalidateTimer)
+    invalidateTimer = window.setTimeout(() => {
+      invalidateTagCountCache()
+      invalidateTimer = null
+    }, 500)
+  }
+
+  onMounted(async () => {
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
     }
     catch {
       pinnedTags.value = []
+    }
+
+    // 订阅当前用户 notes 的新增/删除（恢复通常是 INSERT；彻底删除是 DELETE）
+    const uid = await getUserId()
+    if (uid) {
+      tagCountsChannel = supabase
+        .channel(`tag-counts-${uid}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
+          () => {
+            scheduleInvalidateCounts()
+          },
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
+          () => {
+            scheduleInvalidateCounts()
+          },
+        )
+        // 如需编辑内容（UPDATE）也联动计数，请取消下行注释：
+        // .on(
+        //   'postgres_changes',
+        //   { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
+        //   () => {
+        //     scheduleInvalidateCounts()
+        //   },
+        // )
+        .subscribe()
+    }
+  })
+
+  onBeforeUnmount(() => {
+    if (tagCountsChannel) {
+      try {
+        tagCountsChannel.unsubscribe()
+      }
+      catch {}
+      tagCountsChannel = null
+    }
+    if (invalidateTimer) {
+      window.clearTimeout(invalidateTimer)
+      invalidateTimer = null
     }
   })
 
@@ -147,13 +204,15 @@ export function useTagMenu(
 
   /** —— 加载标签计数（首开菜单或缓存过期时） —— */
   async function loadTagCountsIfNeeded() {
+    if (isLoadingCounts.value)
+      return
     const uid = await getUserId()
     if (!uid)
       return
 
     const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
 
-    // 1) 先用本地缓存（若有）
+    // 1) 先用本地缓存（若有）=> 命中则直接返回，不打 RPC
     const cachedRaw = localStorage.getItem(cacheKey)
     if (cachedRaw) {
       try {
@@ -168,14 +227,16 @@ export function useTagMenu(
           map[it.tag] = it.cnt
 
         tagCounts.value = map
+        return
       }
       catch {
-        // 解析失败忽略，稍后走服务器
+        // 解析失败则继续走服务器
       }
     }
 
-    // 2) 轻量 RPC：若服务器签名不同，再更新缓存
+    // 2) 本地无缓存或缓存损坏 => 走 RPC 拉全量并写入缓存
     try {
+      isLoadingCounts.value = true
       const { data, error } = await supabase.rpc('get_tag_counts', {
         p_user_id: uid,
       })
@@ -184,29 +245,25 @@ export function useTagMenu(
 
       if (Array.isArray(data) && data.length > 0) {
         const serverSig: string | null = data[0].last_updated
-        const sameSig = !!serverSig && tagCountsSig.value === serverSig
-
-        if (!sameSig) {
-          const map: Record<string, number> = {}
-          const items: Array<{ tag: string; cnt: number }> = []
-          for (const row of data) {
-            const tg = String(row.tag)
-            const cnt = Number(row.cnt ?? 0)
-            map[tg] = cnt
-            items.push({ tag: tg, cnt })
-          }
-          tagCounts.value = map
-          tagCountsSig.value = serverSig || null
-
-          localStorage.setItem(cacheKey, JSON.stringify({
-            sig: tagCountsSig.value,
-            items,
-            savedAt: Date.now(),
-          }))
+        const map: Record<string, number> = {}
+        const items: Array<{ tag: string; cnt: number }> = []
+        for (const row of data) {
+          const tg = String(row.tag)
+          const cnt = Number(row.cnt ?? 0)
+          map[tg] = cnt
+          items.push({ tag: tg, cnt })
         }
+        tagCounts.value = map
+        tagCountsSig.value = serverSig || null
+
+        localStorage.setItem(cacheKey, JSON.stringify({
+          sig: tagCountsSig.value,
+          items,
+          savedAt: Date.now(),
+        }))
       }
       else {
-        // 服务器无标签：清空
+        // 服务器无标签：清空并清理缓存
         tagCounts.value = {}
         tagCountsSig.value = null
         localStorage.removeItem(cacheKey)
@@ -214,6 +271,9 @@ export function useTagMenu(
     }
     catch {
       // 静默失败，沿用已有缓存/空值
+    }
+    finally {
+      isLoadingCounts.value = false
     }
   }
 
@@ -276,7 +336,7 @@ export function useTagMenu(
             defaultValue: initial,
             autofocus: true,
             placeholder: t('tags.input_new_tag') || '输入新标签名',
-            style: 'font-size:16px;',
+            style: 'font-size:16px;', // iOS 防放大
             onVnodeMounted: (vnode: any) => {
               const el = vnode?.el?.querySelector('input') as HTMLInputElement | null
               if (el) {
@@ -317,6 +377,7 @@ export function useTagMenu(
           const idx = allTags.value.indexOf(oldTag)
           if (idx >= 0)
             allTags.value.splice(idx, 1, newTag)
+
           else if (!allTags.value.includes(newTag))
             allTags.value.push(newTag)
 
@@ -337,6 +398,7 @@ export function useTagMenu(
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
+
           else
             message.success(t('notes.update_success') || '重命名成功')
         }
@@ -398,6 +460,7 @@ export function useTagMenu(
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
+
           else
             message.success(t('tags.delete_tag_success') || '已删除标签')
         }
