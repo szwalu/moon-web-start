@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, onMounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
@@ -128,6 +128,9 @@ function onBlur() {
     suppressNextBlur.value = false
     return
   }
+  if (blurTimeoutId)
+    clearTimeout(blurTimeoutId)
+
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
@@ -328,35 +331,52 @@ function selectTag(tag: string) {
       replaceFrom = hashIndex
   }
 
+  const textAfterCursor = value.slice(cursorPos)
   let newText = ''
   let newCursorPos = 0
-  const textAfterCursor = value.slice(cursorPos)
 
   if (replaceFrom >= 0) {
-    newText = `${value.slice(0, replaceFrom) + tag} ${textAfterCursor}`
+    newText = `${value.slice(0, replaceFrom)}${tag} ${textAfterCursor}`
     newCursorPos = replaceFrom + tag.length + 1
   }
   else {
-    newText = `${value.slice(0, cursorPos) + tag} ${value.slice(cursorPos)}`
+    newText = `${value.slice(0, cursorPos)}${tag} ${value.slice(cursorPos)}`
     newCursorPos = cursorPos + tag.length + 1
   }
 
+  // 先更新文本与光标
   updateTextarea(newText, newCursorPos)
+
+  // 立刻收起面板并保持焦点（无需等待后续输入）
+  showTagSuggestions.value = false
+  nextTick(() => {
+    const el2 = textarea.value
+    if (el2) {
+      el2.focus()
+      el2.setSelectionRange(newCursorPos, newCursorPos)
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+    }
+  })
 }
 
 // —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
 function openTagMenu() {
   suppressNextBlur.value = true
   runToolbarAction(() => insertText('#', ''))
-  nextTick(() => {
-    const el = textarea.value
-    if (el) {
-      computeAndShowTagSuggestions(el)
-      // ✅ 只对这次点击按钮的 blur 进行“短暂抑制”，随后恢复
-      setTimeout(() => {
-        suppressNextBlur.value = false
-      }, 0)
-    }
+
+  // 等待 v-model 把 # 写回 textarea，再计算联想（双 rAF 比单次 nextTick 更稳）
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = textarea.value
+      if (el) {
+        // 把光标位置缓存成 “#” 后的位置，便于 selectTag 稳定替换
+        captureCaret()
+        computeAndShowTagSuggestions(el)
+      }
+      // 只抑制这一次 blur
+      suppressNextBlur.value = false
+    })
   })
 }
 
@@ -407,11 +427,14 @@ defineExpose({ reset: triggerResize })
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
+          <!-- 原来只有 @click.stop，现在改成三件套，先于 blur 触发并阻止默认行为 -->
           <button
             type="button"
             class="toolbar-btn"
             title="添加标签"
-            @click.stop="openTagMenu"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="openTagMenu"
           >
             #
           </button>
