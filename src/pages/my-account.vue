@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { supabase } from '@/utils/supabaseClient'
@@ -8,7 +7,6 @@ import { useAuthStore } from '@/stores/auth'
 
 // --- 初始化 & 状态定义 ---
 useDark()
-const router = useRouter()
 const { t } = useI18n()
 const authStore = useAuthStore()
 
@@ -75,13 +73,8 @@ async function handleLogout() {
     await supabase.auth.signOut()
   }
   finally {
-    try {
-      await router.replace('/')
-    }
-    catch {
-      window.location.assign('/')
-    }
-    loading.value = false
+    // 强制刷新到首页，避免留在当前组件
+    window.location.assign('/')
   }
 }
 </script>
@@ -162,7 +155,7 @@ async function handleLogout() {
 /* 按钮区 */
 .button-group {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 5fr 1fr;
   gap: 1rem;
   margin-top: 2rem;
 }

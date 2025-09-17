@@ -212,8 +212,8 @@ async function doSignOut() {
         </div>
 
         <div class="modal-footer">
-          <button class="btn-secondary wide" @click="emit('close')">返回</button>
-          <button class="wide btn-danger" @click="openLogoutConfirm">登出</button>
+          <a href="/" class="btn-green">前往网址站</a>
+          <button class="btn-grey" @click="openLogoutConfirm">登出</button>
         </div>
       </div>
     </div>
@@ -317,36 +317,51 @@ async function doSignOut() {
 
 .modal-footer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 5fr 1fr; /* 按 5:1 比例分配 */
   gap: 0.9rem;
   margin-top: 1.25rem;
 }
 
-.wide { width: 100%; }
-
-.btn-secondary,
-.btn-danger {
-  display: inline-block;
-  text-align: center;
-  padding: 0.8rem;
+.btn-green {
+  display: inline-block;    /* 让 a 标签表现得像按钮 */
+  text-decoration: none;    /* 去掉默认下划线 */
+  text-align: center;       /* 文字居中 */
+  width: 100%;              /* 在 5:1 的网格下占满所在列 */
+  background-color: #00b386;
+  color: #fff;
   border-radius: 6px;
-  cursor: pointer;
+  padding: 0.8rem;
   font-size: 15px;
-  border: 1px solid transparent;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.btn-green:hover {
+  background-color: #009a74;
 }
 
-.btn-secondary {
-  background-color: #f0f0f0;
+.btn-grey {
+  background-color: #f0f0f0; /* 灰色次级 */
   color: #333;
-  border-color: #ccc;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 0.8rem;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
-.btn-secondary:hover { background-color: #e5e5e5; }
-.dark .btn-secondary {
+.btn-grey:hover {
+  background-color: #e5e5e5;
+}
+.dark .btn-grey {
   background-color: #3a3a3c;
   color: #e0e0e0;
   border-color: #555;
 }
-.dark .btn-secondary:hover { background-color: #444; }
+.dark .btn-grey:hover {
+  background-color: #444;
+}
 
 .btn-danger {
   background-color: #ef4444;

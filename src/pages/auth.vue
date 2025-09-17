@@ -1304,8 +1304,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <!-- [PATCH-X] 退出改为纯导航，避免 JS/状态导致的无响应 -->
-          <a href="/" class="header-action-btn close-page-btn" role="button" aria-label="Close">×</a>
         </div>
       </div>
 
@@ -1549,11 +1547,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 }
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
-}
-.close-page-btn {
-  font-size: 28px;
-  line-height: 1;
-  font-weight: 300;
 }
 
 /* 顶部选择模式条幅 */
