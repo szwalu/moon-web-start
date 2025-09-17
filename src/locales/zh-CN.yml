@@ -339,3 +339,12 @@ dialog:
   delete_note_content: 您确定要删除这篇笔记吗？
   confirm_button: 确认
   cancel_button: 取消
+tags:
+  delete_tag_title: 删除标签
+  delete_tag_content: 这将从你的所有笔记中删除标签 {tag}（仅删除标签文本，不会删除任何笔记）。此操作不可撤销
+  delete_tag_confirm: 删除标签
+  delete_tag_success: '已删除标签 {count}'
+  search_from_count: '从 {count} 条标签中搜索'
+  rename_tag: 重命名
+  input_new_tag: 输入新标签名
+  remove_tag: 移除

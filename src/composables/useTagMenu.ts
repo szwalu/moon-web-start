@@ -1,15 +1,33 @@
 // src/composables/useTagMenu.ts
 import { type Ref, computed, h, onMounted, ref } from 'vue'
-import { NInput } from 'naive-ui'
+import { NInput, useDialog, useMessage } from 'naive-ui'
+import { supabase } from '@/utils/supabaseClient'
+import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
 /** 本地存储 Key，避免和你已有缓存冲突 */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 
-/**
- * allTags: 传入你的所有标签（如 #work、#生活）
- * onSelectTag: 选中标签时回调（比如调用 fetchNotesByTag(tag)）
- * t: 传入 i18n 的 t 函数（仅用于占位文案）
- */
+/** 将标签标准化为 "#xxx" 形式 */
+function normalizeTag(tag: string) {
+  const v = (tag || '').trim()
+  if (!v)
+    return ''
+  return v.startsWith('#') ? v : `#${v}`
+}
+
+/** 去掉开头的 #，便于展示 */
+function tagKeyName(tag: string) {
+  return tag.startsWith('#') ? tag.slice(1) : tag
+}
+
+/** 读取当前用户 ID（不依赖父组件） */
+async function getUserId(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error)
+    return null
+  return data?.user?.id ?? null
+}
+
 export function useTagMenu(
   allTags: Ref<string[]>,
   onSelectTag: (tag: string) => void,
@@ -18,6 +36,9 @@ export function useTagMenu(
   const mainMenuVisible = ref(false)
   const tagSearch = ref('')
   const pinnedTags = ref<string[]>([])
+  const message = useMessage()
+  const dialog = useDialog()
+  const isBusy = ref(false) // 避免并发重复提交
 
   onMounted(() => {
     try {
@@ -51,10 +72,6 @@ export function useTagMenu(
     mainMenuVisible.value = false
   }
 
-  function tagKeyName(tag: string) {
-    return tag.startsWith('#') ? tag.slice(1) : tag
-  }
-
   const filteredTags = computed(() => {
     const q = tagSearch.value.trim().toLowerCase()
     if (!q)
@@ -86,12 +103,192 @@ export function useTagMenu(
     return letters.map(letter => ({ letter, tags: groups[letter] }))
   })
 
+  /** —— 缓存失效工具 —— */
+
+  function invalidateOneTagCache(tag: string) {
+    const k = getTagCacheKey(tag)
+    localStorage.removeItem(k)
+  }
+
+  function invalidateAllTagCaches() {
+    const prefix = CACHE_KEYS.TAG_PREFIX
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix))
+        localStorage.removeItem(key)
+    }
+  }
+
+  function invalidateAllSearchCaches() {
+    const prefix = CACHE_KEYS.SEARCH_PREFIX
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix))
+        localStorage.removeItem(key)
+    }
+  }
+
+  /** —— RPC 版：重命名/移除 —— */
+
+  async function renameTag(oldRaw: string) {
+    if (isBusy.value)
+      return
+    const oldTag = normalizeTag(oldRaw)
+    const initial = tagKeyName(oldTag)
+
+    // 弹窗输入新名字
+    const renameState = { next: initial }
+    dialog.create({
+      type: 'info',
+      title: t('tags.rename_tag') || '重命名标签',
+      content: () =>
+        h('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+          h('span', null, '#'),
+          h(NInput, {
+            defaultValue: initial,
+            autofocus: true,
+            placeholder: t('tags.input_new_tag') || '输入新标签名',
+            onVnodeMounted: (vnode: any) => {
+              const el = vnode?.el?.querySelector('input') as HTMLInputElement | null
+              if (el) {
+                el.focus()
+                el.select()
+              }
+            },
+            onUpdateValue: (v: string) => {
+              renameState.next = (v || '').trim()
+            },
+          }),
+        ]),
+      positiveText: t('auth.confirm') || '确定',
+      negativeText: t('auth.cancel') || '取消',
+      maskClosable: false,
+      onPositiveClick: async () => {
+        const nextName = renameState.next || ''
+        const newTag = normalizeTag(nextName)
+        if (!newTag || newTag === oldTag)
+          return
+
+        isBusy.value = true
+        try {
+          const uid = await getUserId()
+          if (!uid)
+            throw new Error(t('auth.session_expired') || '登录已过期')
+
+          // 调用 RPC：重命名标签
+          const { data, error } = await supabase.rpc('rename_tag', {
+            p_user_id: uid,
+            p_old: oldTag,
+            p_new: newTag,
+          })
+          if (error)
+            throw error
+
+          // 本地 allTags 更新
+          const idx = allTags.value.indexOf(oldTag)
+          if (idx >= 0)
+            allTags.value.splice(idx, 1, newTag)
+          else if (!allTags.value.includes(newTag))
+            allTags.value.push(newTag)
+
+          // 迁移置顶状态
+          // 迁移置顶状态
+          const pIdx = pinnedTags.value.indexOf(oldTag)
+          if (pIdx >= 0) {
+            pinnedTags.value.splice(pIdx, 1, newTag)
+            savePinned()
+          }
+
+          // 失效缓存（老/新标签 + 所有搜索缓存）
+          invalidateOneTagCache(oldTag)
+          invalidateOneTagCache(newTag)
+          invalidateAllSearchCaches()
+
+          // data 为受影响行数（可能为 null），仅用于提示
+          const count = typeof data === 'number' ? data : undefined
+          if (typeof count === 'number')
+            message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
+          else
+            message.success(t('notes.update_success') || '重命名成功')
+        }
+        catch (e: any) {
+          message.error(`${t('notes.operation_error') || '操作失败'}: ${e?.message || e}`)
+        }
+        finally {
+          isBusy.value = false
+        }
+      },
+    })
+  }
+
+  async function removeTagCompletely(raw: string) {
+    if (isBusy.value)
+      return
+    const tag = normalizeTag(raw)
+
+    dialog.warning({
+    // ✅ 使用专属的“删除标签”弹窗
+      title: t('tags.delete_tag_title') || '删除标签',
+      content:
+      t('tags.delete_tag_content', { tag })
+      || `这将从你的所有笔记中删除标签 ${tag}（仅删除标签文本，不会删除任何笔记）。此操作不可撤销。`,
+      positiveText: t('tags.delete_tag_confirm') || '删除标签',
+      negativeText: t('notes.cancel') || '取消',
+      maskClosable: false,
+      onPositiveClick: async () => {
+        isBusy.value = true
+        try {
+          const uid = await getUserId()
+          if (!uid)
+            throw new Error(t('auth.session_expired') || '登录已过期')
+
+          const { data, error } = await supabase.rpc('remove_tag', {
+            p_user_id: uid,
+            p_tag: tag,
+          })
+          if (error)
+            throw error
+
+          // 本地状态与缓存清理
+          const i = allTags.value.indexOf(tag)
+          if (i >= 0)
+            allTags.value.splice(i, 1)
+
+          // 取消置顶
+          const pIdx = pinnedTags.value.indexOf(tag)
+          if (pIdx >= 0) {
+            pinnedTags.value.splice(pIdx, 1)
+            savePinned()
+          }
+
+          invalidateOneTagCache(tag)
+          invalidateAllTagCaches()
+          invalidateAllSearchCaches()
+
+          const count = typeof data === 'number' ? data : undefined
+          if (typeof count === 'number')
+            message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
+          else
+            message.success(t('tags.delete_tag_success') || '已删除标签')
+        }
+        catch (e: any) {
+          message.error(`${t('notes.operation_error') || '操作失败'}: ${e?.message || e}`)
+        }
+        finally {
+          isBusy.value = false
+        }
+      },
+    })
+  }
+
+  /** —— 菜单渲染（附带 ✎/🗑 操作按钮） —— */
+
   const tagMenuChildren = computed(() => {
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
 
-    const placeholderText = `从 ${total} 条标签中搜索`
+    const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
@@ -104,7 +301,6 @@ export function useTagMenu(
             'clearable': true,
             'autofocus': true,
             'size': 'small',
-            // 改为接近一级菜单宽度，略窄，居中
             'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
           }),
@@ -114,33 +310,7 @@ export function useTagMenu(
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-      .map(tag => ({
-        key: tag,
-        label: () =>
-          h('div', {
-            class: 'tag-row',
-            style: 'display:flex;align-items:center;justify-content:space-between;width:100%;',
-          }, [
-            h('span', {
-              class: 'tag-text',
-              style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-            }, tag),
-            h(
-              'button',
-              {
-                class: 'pin-btn pinned',
-                style: 'margin-left:auto;background:none;border:none;cursor:pointer;padding-left:8px;font-size:14px;opacity:0.7;',
-                onClick: (e: MouseEvent) => {
-                  e.stopPropagation()
-                  togglePin(tag)
-                },
-                title: t('notes.unpin_favorites') || '取消常用',
-              },
-              '★',
-            ),
-          ]),
-        props: { onClick: () => selectTag(tag) },
-      }))
+      .map(tag => makeTagRow(tag, true))
 
     const pinnedGroup
       = pinnedChildren.length > 0
@@ -158,37 +328,77 @@ export function useTagMenu(
         type: 'group' as const,
         key: `grp-${letter}`,
         label: letter,
-        children: tags.map(tag => ({
-          key: tag,
-          label: () =>
-            h('div', {
-              class: 'tag-row',
-              style: 'display:flex;align-items:center;justify-content:space-between;width:100%;',
-            }, [
-              h('span', {
-                class: 'tag-text',
-                style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-              }, tag),
-              h(
-                'button',
-                {
-                  class: 'pin-btn',
-                  style: 'margin-left:auto;background:none;border:none;cursor:pointer;padding-left:8px;font-size:14px;opacity:0.7;',
-                  onClick: (e: MouseEvent) => {
-                    e.stopPropagation()
-                    togglePin(tag)
-                  },
-                  title: t('notes.pin_favorites') || '设为常用',
-                },
-                isPinned(tag) ? '★' : '☆',
-              ),
-            ]),
-          props: { onClick: () => selectTag(tag) },
-        })),
+        children: tags.map(tag => makeTagRow(tag, false)),
       }))
 
     return [searchOption, ...pinnedGroup, ...letterGroups]
   })
+
+  function makeTagRow(tag: string, pinned: boolean) {
+    return {
+      key: tag,
+      label: () =>
+        h('div', {
+          class: 'tag-row',
+          // 间距调大：gap 从 6px -> 12px
+          style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;',
+        }, [
+          h('span', {
+            class: 'tag-text',
+            style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            title: tag,
+          }, tag),
+
+          // 置顶/取消置顶
+          h(
+            'button',
+            {
+              class: pinned ? 'pin-btn pinned' : 'pin-btn',
+              style: 'background:none;border:none;cursor:pointer;padding-left:6px;font-size:14px;opacity:0.8;',
+              onClick: (e: MouseEvent) => {
+                e.stopPropagation()
+                togglePin(tag)
+              },
+              title: pinned
+                ? (t('notes.unpin_favorites') || '取消常用')
+                : (t('notes.pin_favorites') || '设为常用'),
+            },
+            pinned ? '★' : '☆',
+          ),
+
+          // 重命名
+          h(
+            'button',
+            {
+              class: 'rename-btn',
+              style: 'background:none;border:none;cursor:pointer;padding-left:4px;font-size:14px;opacity:0.8;',
+              onClick: (e: MouseEvent) => {
+                e.stopPropagation()
+                renameTag(tag)
+              },
+              title: t('notes.rename_tag') || '重命名',
+            },
+            '✎',
+          ),
+
+          // 移除
+          h(
+            'button',
+            {
+              class: 'remove-btn',
+              style: 'background:none;border:none;cursor:pointer;padding-left:4px;font-size:14px;opacity:0.8;',
+              onClick: (e: MouseEvent) => {
+                e.stopPropagation()
+                removeTagCompletely(tag)
+              },
+              title: t('notes.remove_tag') || '移除标签',
+            },
+            '🗑',
+          ),
+        ]),
+      props: { onClick: () => selectTag(tag) },
+    }
+  }
 
   return {
     mainMenuVisible,
