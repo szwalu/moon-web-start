@@ -144,12 +144,13 @@ function handleClick() {
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
-// —— 抽出：计算并展示“# 标签联想面板”（键入#或点击#按钮共用）
+// —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
 
+  // 不在“#片段”内就隐藏
   if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
     return
@@ -172,11 +173,13 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     return
   }
 
-  const wrapper = el.parentElement as HTMLElement
+  // === 计算光标像素位置（相对 .editor-wrapper） ===
+  const wrapper = el.parentElement as HTMLElement // .editor-wrapper（position: relative）
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const GAP = 6
+  const GAP = 6 // 面板与光标之间的额外间距
 
+  // 用镜像元素拿到光标（选区末端）位置
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
@@ -190,10 +193,10 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   const selEnd = el.selectionEnd ?? el.value.length
   const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ')
-    .replace(/ /g, '\u00A0')
+    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
+    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
   const probe = document.createElement('span')
-  probe.textContent = '\u200B'
+  probe.textContent = '\u200B' // 零宽探针当作光标点
   mirror.textContent = before
   mirror.appendChild(probe)
 
@@ -203,8 +206,9 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   const caretX = (probeRect.left - wrapperRect.left) - (el.scrollLeft || 0)
   const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
-  const caretH = lineHeight
+  mirror.remove()
 
+  // textarea 可视框（相对 wrapper）
   const textAreaBox = {
     top: elRect.top - wrapperRect.top,
     left: elRect.left - wrapperRect.left,
@@ -214,29 +218,39 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     height: el.clientHeight,
   }
 
-  mirror.remove()
-
-  let top = caretY + caretH + GAP
+  // === 核心：面板放在“光标下一行” ===
+  // 在手机端加一行高，避免遮住当前行光标
+  const top = caretY + lineHeight + GAP
   let left = caretX
 
+  // 先设置初值并显示
   suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   showTagSuggestions.value = true
 
+  // 下一帧拿到面板尺寸后再做边界与滚动处理
   nextTick(() => {
-    const panel = (wrapper.querySelector('.tag-suggestions') as HTMLElement | null)
+    const panel = wrapper.querySelector('.tag-suggestions') as HTMLElement | null
     if (!panel)
       return
 
     const panelW = panel.offsetWidth
     const panelH = panel.offsetHeight
 
+    // 右侧溢出 -> 向左收口（不越过 textarea 左边）
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
-    if (top + panelH > textAreaBox.bottom) {
-      top = caretY - panelH - GAP
-      if (top < textAreaBox.top)
-        top = textAreaBox.top
+    // 底部不够显示：优先滚动 textarea 给空间（避免翻到上方再挡住光标）
+    const overflow = (top + panelH) - textAreaBox.bottom
+    if (overflow > 0) {
+      const need = overflow + 8 // 额外 buffer
+      const newScrollTop = Math.min(el.scrollTop + need, el.scrollHeight - el.clientHeight)
+      if (newScrollTop !== el.scrollTop) {
+        el.scrollTop = newScrollTop
+        // 滚动后重新定位一次，确保仍处于“下一行”
+        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
+        return
+      }
     }
 
     suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
