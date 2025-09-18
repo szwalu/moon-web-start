@@ -39,6 +39,8 @@
     "ky": "^1.7.2",
     "lodash-es": "^4.17.21",
     "markdown-it": "^14.1.0",
+    "markdown-it-link-attributes": "^4.0.1",
+    "markdown-it-mark": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "marked": "^16.2.1",
     "node-fetch": "^3.3.2",

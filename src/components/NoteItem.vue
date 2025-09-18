@@ -6,9 +6,13 @@ import taskLists from 'markdown-it-task-lists'
 import { NDropdown, useMessage } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 
+import mark from 'markdown-it-mark'
+import linkAttrs from 'markdown-it-link-attributes'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
+
+// ✅ 新增：高亮与外链属性插件
 
 defineOptions({ inheritAttrs: false })
 
@@ -31,6 +35,9 @@ const emit = defineEmits([
   'delete',
   'date-updated',
   'set-date',
+  // ✅ 新增声明以消除 eslint 警告
+  'taskToggle',
+  'dateUpdated',
 ])
 
 const { t } = useI18n()
@@ -45,7 +52,17 @@ const md = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
-}).use(taskLists, { enabled: true, label: true })
+})
+  .use(taskLists, { enabled: true, label: true })
+  // ✅ 新增：支持 ==高亮== 渲染为 <mark>
+  .use(mark)
+  // ✅ 新增：所有链接统一新开页（适配你从编辑器插入的 [图片](url)）
+  .use(linkAttrs, {
+    attrs: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  })
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
-import { useDialog } from 'naive-ui'
+import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
 // ============== Props & Emits ==============
@@ -56,13 +56,10 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
       title: '字数超出限制',
       content: `单条笔记不能超过 ${max} 字，请删减后再保存。`,
       positiveText: '确定',
-      onAfterLeave: () => {
-        // 用户点确定后关闭对话框即可；当字数回到上限内时可再次弹出
-      },
+      onAfterLeave: () => {},
     })
   }
   else if (len <= max && overLimitWarned.value) {
-    // 回到安全范围，允许将来再次提示
     overLimitWarned.value = false
   }
 })
@@ -74,6 +71,12 @@ let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
+
+// —— 格式弹层（B / 1. / H / I / • / 🖊️）
+const showFormatPalette = ref(false)
+const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+const formatBtnRef = ref<HTMLElement | null>(null)
+const formatPaletteRef = ref<HTMLElement | null>(null)
 
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
@@ -169,13 +172,11 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     return
   }
 
-  // === 关键：用“镜像 + 探针”得到光标像素坐标（相对 editor-wrapper） ===
-  const wrapper = el.parentElement as HTMLElement // .editor-wrapper (position: relative)
+  const wrapper = el.parentElement as HTMLElement
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const GAP = 6 // 与光标的间距
+  const GAP = 6
 
-  // 构造镜像容器，复制 textarea 的排版特性（宽度用 clientWidth，避免滚动条影响）
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
@@ -187,17 +188,15 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   `
   wrapper.appendChild(mirror)
 
-  // 把光标前文本放入镜像，并在末尾插入“探针”字符
   const selEnd = el.selectionEnd ?? el.value.length
   const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
-    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
+    .replace(/\n$/u, '\n ')
+    .replace(/ /g, '\u00A0')
   const probe = document.createElement('span')
-  probe.textContent = '\u200B' // 零宽字符当“光标点”
+  probe.textContent = '\u200B'
   mirror.textContent = before
   mirror.appendChild(probe)
 
-  // 计算相对 wrapper 的光标坐标，再扣除 textarea 的滚动量
   const probeRect = probe.getBoundingClientRect()
   const wrapperRect = wrapper.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()
@@ -206,7 +205,6 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
   const caretH = lineHeight
 
-  // textArea 可视区（相对 wrapper）
   const textAreaBox = {
     top: elRect.top - wrapperRect.top,
     left: elRect.left - wrapperRect.left,
@@ -216,17 +214,14 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     height: el.clientHeight,
   }
 
-  // 清理镜像
   mirror.remove()
 
-  // 先把面板放在“光标正下方、左对齐”
   let top = caretY + caretH + GAP
   let left = caretX
 
   suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   showTagSuggestions.value = true
 
-  // 下一帧拿到面板真实尺寸后做边界修正（右侧收口 / 底部上翻 / 顶部兜底）
   nextTick(() => {
     const panel = (wrapper.querySelector('.tag-suggestions') as HTMLElement | null)
     if (!panel)
@@ -235,14 +230,11 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     const panelW = panel.offsetWidth
     const panelH = panel.offsetHeight
 
-    // 右侧超界 -> 向左收口（不越过 textarea 左边）
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
-    // 底部超界 -> 翻到“光标上方”
     if (top + panelH > textAreaBox.bottom) {
       top = caretY - panelH - GAP
-      // 上翻后若顶到 textarea 顶部，再兜底贴顶
       if (top < textAreaBox.top)
         top = textAreaBox.top
     }
@@ -266,7 +258,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
-
       captureCaret()
       ensureCaretVisibleInTextarea()
     }
@@ -297,7 +288,6 @@ function runToolbarAction(fn: () => void) {
     const el = textarea.value
     if (el)
       el.focus()
-
     captureCaret()
   })
 }
@@ -310,6 +300,21 @@ function addBold() {
 }
 function addItalic() {
   insertText('*', '*')
+}
+function addBulletList() {
+  const el = textarea.value
+  if (!el)
+    return
+  const start = el.selectionStart
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const textToInsert = '- '
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
+  const newCursorPos = start + textToInsert.length
+  updateTextarea(finalFullText, newCursorPos)
+}
+function addMarkHighlight() {
+  // 用 == 包裹选中内容（需要渲染端启用 markdown-it-mark 才会显示黄色背景）
+  insertText('==', '==')
 }
 
 function addTodo() {
@@ -350,25 +355,61 @@ function handleEnterKey(event: KeyboardEvent) {
   const end = el.selectionEnd
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const currentLine = el.value.substring(currentLineStart, start)
-  const listRegex = /^(\d+)\.\s+/
-  const match = currentLine.match(listRegex)
-  if (!match)
+
+  // 1) 有序列表续行
+  const orderedRe = /^(\d+)\.\s+/
+  const orderedMatch = currentLine.match(orderedRe)
+
+  // 2) 无序/待办续行
+  const todoRe = /^-\s\[\s?\]\s+/
+  const bulletRe = /^(-|\*|\+)\s+/
+  const todoMatch = currentLine.match(todoRe)
+  const bulletMatch = currentLine.match(bulletRe)
+
+  if (!orderedMatch && !todoMatch && !bulletMatch)
     return
 
-  if (currentLine.trim() === match[0].trim()) {
-    event.preventDefault()
+  event.preventDefault()
+
+  // 如果只有前缀本身 => 结束该列表（删除本行）
+  const onlyPrefix
+    = (orderedMatch && currentLine.trim() === orderedMatch[0].trim())
+    || (todoMatch && currentLine.trim() === todoMatch[0].trim())
+    || (bulletMatch && currentLine.trim() === bulletMatch[0].trim())
+
+  if (onlyPrefix) {
     const before = el.value.substring(0, currentLineStart - 1)
     const after = el.value.substring(end)
     updateTextarea(before + after, currentLineStart - 1)
     return
   }
 
-  event.preventDefault()
-  const currentNumber = Number.parseInt(match[1], 10)
-  const nextPrefix = `\n${currentNumber + 1}. `
-  const before2 = el.value.substring(0, start)
-  const after2 = el.value.substring(end)
-  updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+  // 正常续行逻辑
+  if (orderedMatch) {
+    const currentNumber = Number.parseInt(orderedMatch[1], 10)
+    const nextPrefix = `\n${currentNumber + 1}. `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+    return
+  }
+
+  // 待办优先于普通无序
+  if (todoMatch) {
+    const nextPrefix = `\n- [ ] `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+    return
+  }
+
+  if (bulletMatch) {
+    const symbol = bulletMatch[1] || '-'
+    const nextPrefix = `\n${symbol} `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+  }
 }
 
 // —— 选择标签：使用 lastSelectionStart，稳定替换“#片段”
@@ -404,10 +445,8 @@ function selectTag(tag: string) {
     newCursorPos = cursorPos + tag.length + 1
   }
 
-  // 先更新文本与光标
   updateTextarea(newText, newCursorPos)
 
-  // 立刻收起面板并保持焦点（无需等待后续输入）
   showTagSuggestions.value = false
   nextTick(() => {
     const el2 = textarea.value
@@ -424,19 +463,169 @@ function selectTag(tag: string) {
 function openTagMenu() {
   suppressNextBlur.value = true
   runToolbarAction(() => insertText('#', ''))
-
-  // 等待 v-model 把 # 写回 textarea，再计算联想（双 rAF 比单次 nextTick 更稳）
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const el = textarea.value
       if (el) {
-        // 把光标位置缓存成 “#” 后的位置，便于 selectTag 稳定替换
         captureCaret()
         computeAndShowTagSuggestions(el)
       }
-      // 只抑制这一次 blur
       suppressNextBlur.value = false
     })
+  })
+}
+
+// —— 样式弹层定位（固定在 Aa 按钮上方）
+function placeFormatPalette() {
+  const btn = formatBtnRef.value
+  const root = rootRef.value
+  const panel = formatPaletteRef.value
+  if (!btn || !root || !panel)
+    return
+  const btnRect = btn.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const gap = 8
+  const panelH = panel.offsetHeight || 0
+  const top = (btnRect.top - rootRect.top) - panelH - gap
+  const left = (btnRect.left - rootRect.left) + btnRect.width / 2
+  formatPalettePos.value = { top: `${Math.max(top, 0)}px`, left: `${left}px` }
+}
+
+function openFormatPalette() {
+  showFormatPalette.value = true
+  nextTick(() => {
+    placeFormatPalette()
+  })
+}
+function closeFormatPalette() {
+  showFormatPalette.value = false
+}
+function toggleFormatPalette() {
+  if (showFormatPalette.value)
+    closeFormatPalette()
+  else openFormatPalette()
+}
+
+// ✅ 统一处理样式按钮点击（修复 eslint: max-statements-per-line）
+function handleFormat(fn: () => void) {
+  runToolbarAction(fn)
+  closeFormatPalette()
+}
+
+// —— 监听滚动/尺寸变化，保持面板跟随 Aa
+function onWindowScrollOrResize() {
+  if (showFormatPalette.value)
+    placeFormatPalette()
+}
+onMounted(() => {
+  window.addEventListener('scroll', onWindowScrollOrResize, true)
+  window.addEventListener('resize', onWindowScrollOrResize)
+})
+onUnmounted(() => {
+  window.removeEventListener('scroll', onWindowScrollOrResize, true)
+  window.removeEventListener('resize', onWindowScrollOrResize)
+})
+
+// —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
+function onGlobalPointerDown(e: Event) {
+  if (!showFormatPalette.value)
+    return
+  const btn = formatBtnRef.value
+  const panel = formatPaletteRef.value
+  if (!btn || !panel)
+    return
+  const target = e.target as Node
+  if (btn.contains(target) || panel.contains(target))
+    return
+  closeFormatPalette()
+}
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showFormatPalette.value)
+    closeFormatPalette()
+}
+onMounted(() => {
+  window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
+
+// —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
+const LAST_IMAGE_URL_PREFIX_KEY = 'note_image_url_prefix_v1'
+function getLastPrefix() {
+  try {
+    const v = localStorage.getItem(LAST_IMAGE_URL_PREFIX_KEY)
+    return v || 'https://'
+  }
+  catch {
+    return 'https://'
+  }
+}
+function looksLikeImage(urlText: string) {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(urlText)
+}
+function savePrefix(urlText: string) {
+  try {
+    const u = new URL(urlText)
+    let prefix = ''
+    if (looksLikeImage(urlText)) {
+      // 直链图片：记“目录”（去掉文件名）
+      const dir = u.pathname.replace(/[^/]+$/u, '')
+      prefix = `${u.origin}${dir}`
+    }
+    else {
+      // 非直链：记“完整路径”，去掉查询/哈希，并确保以 / 结尾
+      const path = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`
+      prefix = `${u.origin}${path}`
+    }
+    localStorage.setItem(LAST_IMAGE_URL_PREFIX_KEY, prefix)
+  }
+  catch {
+    // 不是合法 URL 就不记忆
+  }
+}
+function insertImageLink() {
+  const valRef = ref(getLastPrefix())
+  const errorRef = ref<string | null>(null)
+  dialog.create({
+    title: '插入图片链接',
+    positiveText: '插入',
+    negativeText: '取消',
+    content: () =>
+      h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+        h(NInput, {
+          value: valRef.value,
+          placeholder: 'https://example.com/image.jpg 或微云分享链接',
+          onUpdateValue: (v: string) => {
+            valRef.value = v
+            errorRef.value = null
+          },
+          autofocus: true,
+          clearable: true,
+        }),
+        errorRef.value
+          ? h('div', { style: 'color:#dc2626;font-size:12px;' }, errorRef.value)
+          : null,
+      ]),
+    onPositiveClick: () => {
+      const raw = (valRef.value || '').trim()
+      if (!raw) {
+        errorRef.value = '请输入链接'
+        return false
+      }
+      if (!/^https?:\/\//i.test(raw)) {
+        errorRef.value = '必须以 http:// 或 https:// 开头'
+        return false
+      }
+      // 记忆前缀（增强规则）
+      savePrefix(raw)
+      // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
+      const text = looksLikeImage(raw) ? '图片（直链）' : '图片'
+      insertText(`[${text}](${raw})`)
+      return true
+    },
   })
 }
 
@@ -487,7 +676,7 @@ defineExpose({ reset: triggerResize })
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <!-- 原来只有 @click.stop，现在改成三件套，先于 blur 触发并阻止默认行为 -->
+          <!-- # 标签 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -499,6 +688,7 @@ defineExpose({ reset: triggerResize })
             #
           </button>
 
+          <!-- 待办 ✓ -->
           <button
             type="button"
             class="toolbar-btn"
@@ -510,49 +700,32 @@ defineExpose({ reset: triggerResize })
             ✓
           </button>
 
+          <!-- 样式(Aa)汇总按钮 -->
           <button
+            ref="formatBtnRef"
             type="button"
-            class="toolbar-btn"
-            title="加粗"
+            class="toolbar-btn toolbar-btn-aa"
+            title="样式"
             @mousedown.prevent
             @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addBold)"
+            @pointerdown.prevent="toggleFormatPalette"
           >
-            B
+            Aa
           </button>
 
+          <!-- 插入图片链接（Naive UI 对话框） -->
           <button
             type="button"
             class="toolbar-btn"
-            title="数字列表"
+            title="插入图片链接"
             @mousedown.prevent
             @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addOrderedList)"
+            @pointerdown.prevent="insertImageLink"
           >
-            1.
+            <span class="icon-image">🖼️</span>
           </button>
 
-          <button
-            type="button"
-            class="toolbar-btn"
-            title="添加标题"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addHeading)"
-          >
-            H
-          </button>
-
-          <button
-            type="button"
-            class="toolbar-btn"
-            title="斜体"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addItalic)"
-          >
-            I
-          </button>
+          <span class="toolbar-sep" aria-hidden="true" />
         </div>
         <span class="char-counter">
           {{ charCount }}
@@ -571,6 +744,25 @@ defineExpose({ reset: triggerResize })
           保存
         </button>
       </div>
+    </div>
+
+    <!-- 样式弹层（更小、更贴合 Aa） -->
+    <div
+      v-if="showFormatPalette"
+      ref="formatPaletteRef"
+      class="format-palette"
+      :style="{ top: formatPalettePos.top, left: formatPalettePos.left }"
+      @mousedown.prevent
+    >
+      <div class="format-row">
+        <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
+        <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">1.</button>
+        <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
+        <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
+        <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">•</button>
+        <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">🖊️</button>
+      </div>
+      <div class="format-caret" />
     </div>
   </div>
 </template>
@@ -668,23 +860,6 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
-.tag-suggestions {
-  position: absolute;
-  background-color: #fff;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10;
-  max-height: 150px;
-  overflow-y: auto;
-  min-width: 120px;
-}
-.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
-.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
-.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
-.tag-suggestions li:hover { background-color: #f0f0f0; }
-.dark .tag-suggestions li:hover { background-color: #404040; }
-
 .editor-footer {
   display: flex;
   align-items: center;
@@ -699,14 +874,17 @@ defineExpose({ reset: triggerResize })
   align-items: center;
   gap: 8px;
 }
+
+/* 工具栏按钮间距（维持你之前已加大的 8px） */
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 8px;
   border: none;
   background: none;
   padding: 0;
 }
+
 .toolbar-btn {
   background: none;
   border: none;
@@ -717,8 +895,8 @@ defineExpose({ reset: triggerResize })
   border-radius: 4px;
   font-weight: bold;
   font-size: 18px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -728,56 +906,101 @@ defineExpose({ reset: triggerResize })
 .dark .toolbar-btn { color: #9ca3af; }
 .dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 
-.toolbar-trigger {
+.toolbar-btn-aa {
+  font-size: 16px;
+  font-weight: 600;
+  width: 26px;
+}
+
+.icon-image {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin-left: 6px;
+  background-color: rgba(0,0,0,0.08);
+}
+.dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
+
+/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
+.format-palette {
+  position: absolute;
+  z-index: 1100;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  padding: 4px 6px;          /* 缩小内边距 */
+}
+.dark .format-palette {
+  background: #2c2c2e;
+  border-color: #3f3f46;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;                  /* 缩小内部间距 */
+}
+.format-btn {
+  width: 24px;               /* 缩小按钮 */
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.format-btn:hover { background: rgba(0,0,0,0.06); }
+.dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
+
+/* 小三角：指向 Aa 按钮 */
+.format-caret {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 6px) rotate(45deg);
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-left: 1px solid inherit;
+  border-bottom: 1px solid inherit;
 }
 
-/* ✅ 移动端专属：编辑旧笔记时，把容器拉到 70vh，并让 textarea 填满容器。
-   在 PC 端，这段不会触发，仍保持 textarea 的 max-height: 48vh。*/
-@media (hover: none) and (pointer: coarse), screen and (max-width: 900px) {
-  .note-editor-reborn.editing-viewport {
-    /* 优先使用更准确的 dvh；不支持时回退到 vh（见下方 @supports） */
-    height: 70dvh;
-    min-height: 70dvh;
-    max-height: 70dvh;
-    display: flex;
-    flex-direction: column;
-  }
-  @supports not (height: 1dvh) {
-    .note-editor-reborn.editing-viewport {
-      height: 70vh;
-      min-height: 70vh;
-      max-height: 70vh;
-    }
-  }
-
-  /* 内容区占满剩余空间（外层容器滚动交给 textarea 自己） */
-note-editor-reborn.editing-viewport .editor-wrapper {
- flex: 1 1 auto;
- min-height: 0;
- display: flex;
-  flex-direction: column;
-  overflow: visible; /* 允许标签面板溢出显示 */
+/* 标签联想 */
+.tag-suggestions {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 150px;
+  overflow-y: auto;
+  min-width: 120px;
 }
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
+.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.tag-suggestions li:hover { background-color: #f0f0f0; }
+.dark .tag-suggestions li:hover { background-color: #404040; }
 
-  /* 覆盖 autosize/48vh 限制：编辑旧笔记时在移动端让 textarea 吃满 */
-  .note-editor-reborn.editing-viewport .editor-textarea {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100% !important;     /* 覆盖 JS 行内高度 */
-    max-height: none !important; /* 覆盖 48vh 上限 */
-    overflow-y: auto;
-  }
-}
-
-/* 让正文区域占据多余空间，底部工具栏固定在下方；不改变 textarea 自身的自适应逻辑 */
+/* 编辑态占位高度策略（保持原有） */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
-  overflow: auto; /* 内容很多时由容器滚动；textarea 仍维持原有高度策略 */
+  overflow: auto;
 }
-
-/* 让编辑态时，内容区把 70% 屏高容器填满 */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -792,50 +1015,40 @@ note-editor-reborn.editing-viewport .editor-wrapper {
     max-height: 70vh;
   }
 }
-
-/* 关键：内容包裹层占满剩余空间 */
 .note-editor-reborn.editing-viewport .editor-wrapper {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: visible;           /* 避免被裁剪 */
+  overflow: visible;
 }
-
-/* 关键：覆盖 autosize / 48vh 限制，让 textarea 吃满 editor-wrapper */
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;    /* 覆盖 JS 设置的行内高度 */
-  max-height: none !important;/* 覆盖 48vh 上限 */
-  overflow-y: auto;           /* 内容超出时内部滚动 */
+  height: 100% !important;
+  max-height: none !important;
+  overflow-y: auto;
 }
 
+/* tag 面板样式增强 */
 .tag-suggestions li {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* 左右分布 */
+  justify-content: space-between;
   padding: 6px 12px;
   cursor: pointer;
   font-size: 14px;
 }
-
 .tag-suggestions .tag-text {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .tag-suggestions .tag-star {
   opacity: 0.7;
-  margin-left: 8px;   /* 左边留点间距 */
+  margin-left: 8px;
   font-size: 12px;
   color: #999;
-}
-
-.tag-suggestions {
-  z-index: 1000;      /* 原来是 10，提高一档更保险 */
-  will-change: top, left;
 }
 </style>
