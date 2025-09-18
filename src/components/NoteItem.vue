@@ -67,7 +67,7 @@ const md = new MarkdownIt({
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// ✅ 新增：日期+星期格式化函数
+// ✅ 改动1：日期+「周几」格式化（从“星期x”改成“周x”）
 function formatDateWithWeekday(dateStr: string) {
   const d = new Date(dateStr)
   const dateText = d.toLocaleString('zh-CN', {
@@ -77,9 +77,16 @@ function formatDateWithWeekday(dateStr: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
-  const weekday = d.toLocaleDateString('zh-CN', { weekday: 'long' })
+  const weekdayMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const weekday = weekdayMap[d.getDay()]
   return `${dateText} ${weekday}`
 }
+
+// ✅ 改动2：直接使用 note.weather（只展示地点/温度/图标）
+const weatherDisplay = computed(() => {
+  const w = String(props.note?.weather ?? '').trim()
+  return w || ''
+})
 
 function renderMarkdown(content: string) {
   if (!content)
@@ -231,13 +238,16 @@ async function handleDateUpdate(newDate: Date) {
     >
       <div class="note-card-top-bar">
         <div class="note-meta-left">
-          <!-- ✅ 替换日期显示 -->
-          <p class="note-date">
-            {{ formatDateWithWeekday(note.created_at) }}
-          </p>
+          <!-- ✅ 改动3：置顶徽标移到最前面 -->
           <span v-if="note.is_pinned" class="pinned-indicator">
             {{ $t('notes.pin') }}
           </span>
+
+          <!-- ✅ 日期 + 周几 + 天气（天气来自 note.weather） -->
+          <p class="note-date">
+            {{ formatDateWithWeekday(note.created_at) }}
+            <span v-if="weatherDisplay" class="weather-inline"> · {{ weatherDisplay }}</span>
+          </p>
         </div>
 
         <NDropdown
@@ -342,16 +352,23 @@ async function handleDateUpdate(newDate: Date) {
   gap: 0.5rem;
 }
 
+.weather-inline {
+  margin-left: 2px;
+}
+
+/* 置顶标记与日期颜色一致 */
 .pinned-indicator {
   font-size: 13px;
-  font-weight: bold;
-  color: #c2410c;
-  background-color: #ffedd5;
-  padding: 2px 6px;
-  border-radius: 9999px;
+  font-weight: 600;
+  color: #888;              /* 和 .note-date 一样 */
+  background-color: transparent; /* 去掉橙色底 */
+  padding: 2px 6px;               /* 不需要胶囊底色时可去掉内边距 */
   line-height: 1;
 }
-.dark .pinned-indicator { color: #fde68a; background-color: #78350f; }
+.dark .pinned-indicator {
+  color: #aaa;              /* 深色模式跟随 .note-date */
+  background-color: transparent;
+}
 
 .kebab-menu {
   cursor: pointer;

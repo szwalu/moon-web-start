@@ -366,17 +366,33 @@ function invalidateAllTagCaches() {
   }
 }
 
-async function handleCreateNote(content: string) {
+async function _reloadNotes() {
+  const { data, error } = await supabase
+    .from('notes')
+    .select('id, content, weather, created_at, updated_at, is_pinned') // 👈 包含 weather
+    .order('created_at', { ascending: false })
+  if (error)
+    throw error
+  notes.value = data ?? []
+}
+
+// 接收 NoteEditor.vue 发来的 { content, weather }
+
+async function handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
-  const saved = await saveNote(content, null, { showMessage: true })
-  if (saved) {
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
-    newNoteContent.value = ''
-    nextTick(() => {
-      (newNoteEditorRef.value as any)?.reset?.()
-    })
+  try {
+    const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
+    if (saved) {
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+      newNoteContent.value = ''
+      nextTick(() => {
+        (newNoteEditorRef.value as any)?.reset?.()
+      })
+    }
   }
-  isCreating.value = false
+  finally {
+    isCreating.value = false
+  }
 }
 
 async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
@@ -385,21 +401,31 @@ async function handleUpdateNote({ id, content }: { id: string; content: string }
     callback(!!saved)
 }
 
-async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { showMessage = false } = {}) {
+async function saveNote(
+  contentToSave: string,
+  noteIdToUpdate: string | null,
+  { showMessage = false, weather = null }: { showMessage?: boolean; weather?: string | null } = {},
+) {
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (contentToSave.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
   }
-  const noteData = { content: contentToSave.trim(), updated_at: new Date().toISOString(), user_id: user.value.id }
+
+  const noteData = {
+    content: contentToSave.trim(),
+    updated_at: new Date().toISOString(),
+    user_id: user.value.id,
+  }
+
   let savedNote
   try {
     if (noteIdToUpdate) {
+      // ===== 编辑：不更新 weather =====
       const { data: updatedData, error: updateError } = await supabase
         .from('notes')
         .update(noteData)
@@ -415,10 +441,15 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
         messageHook.success(t('notes.update_success'))
     }
     else {
+      // ===== 新建：把 weather 一并写入 =====
       const newId = uuidv4()
+      const insertPayload: any = { ...noteData, id: newId }
+      // 只有在新建时写入天气（允许为 null）
+      insertPayload.weather = weather ?? null
+
       const { data: insertedData, error: insertError } = await supabase
         .from('notes')
-        .insert({ ...noteData, id: newId })
+        .insert(insertPayload)
         .select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
@@ -428,6 +459,7 @@ async function saveNote(contentToSave: string, noteIdToUpdate: string | null, { 
       if (showMessage)
         messageHook.success(t('notes.auto_saved'))
     }
+
     invalidateCachesOnDataChange(savedNote)
     await fetchAllTags()
     return savedNote
@@ -777,7 +809,13 @@ async function fetchNotes() {
   try {
     const from = (currentPage.value - 1) * notesPerPage
     const to = from + notesPerPage - 1
-    const { data, error, count } = await supabase.from('notes').select('*', { count: 'exact' }).eq('user_id', user.value.id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).range(from, to)
+    const { data, error, count } = await supabase
+      .from('notes')
+      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+      .eq('user_id', user.value.id)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(from, to)
     if (error)
       throw error
 

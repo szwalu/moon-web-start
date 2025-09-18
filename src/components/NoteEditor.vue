@@ -4,6 +4,9 @@ import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
+// —— 天气映射（用于城市名映射与图标）——
+import { cityMap, weatherMap } from '@/utils/weatherMap'
+
 // ============== Props & Emits ==============
 const props = defineProps({
   modelValue: { type: String, required: true },
@@ -116,6 +119,80 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
+}
+
+// ========= 新建时写入天气：工具函数 =========
+function getMappedCityName(enCity: string) {
+  if (!enCity)
+    return '未知地点'
+  const lower = enCity.trim().toLowerCase()
+  for (const [k, v] of Object.entries(cityMap)) {
+    const kk = k.toLowerCase()
+    if (lower === kk || lower.startsWith(kk))
+      return v as string
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+function getWeatherIcon(code: number) {
+  const item = (weatherMap as any)[code] || { icon: '❓' }
+  return item.icon
+}
+async function fetchWeatherLine(): Promise<string | null> {
+  try {
+    // 定位：优先 ipapi.co，失败回退 ip-api.com
+    let loc: { city: string; lat: number; lon: number }
+    try {
+      const r = await fetch('https://ipapi.co/json/')
+      if (!r.ok)
+        throw new Error(String(r.status))
+      const d = await r.json()
+      if (d?.error)
+        throw new Error(d?.reason || 'ipapi error')
+      loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+    }
+    catch {
+      const r2 = await fetch('https://ip-api.com/json/')
+      if (!r2.ok)
+        throw new Error(String(r2.status))
+      const d2 = await r2.json()
+      if (d2?.status === 'fail')
+        throw new Error(d2?.message || 'ip-api error')
+      loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+    }
+
+    if (!loc?.lat || !loc?.lon)
+      throw new Error('定位失败')
+
+    const city = getMappedCityName(loc.city)
+
+    // 天气
+    const w = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
+    )
+    if (!w.ok)
+      throw new Error(String(w.status))
+    const d = await w.json()
+    const tempC = d?.current?.temperature_2m
+    const icon = getWeatherIcon(d?.current?.weathercode)
+
+    // 只保留：城市 温度°C 图标（无文字）
+    return `${city} ${tempC}°C ${icon}`
+  }
+  catch {
+    return null
+  }
+}
+
+// ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
+async function handleSave() {
+  const content = contentModel.value || ''
+  let weather: string | null | undefined
+
+  if (!props.isEditing)
+    weather = await fetchWeatherLine()
+
+  // 向后兼容：父组件若只接收第一个参数（content）也不会报错
+  emit('save', content, weather)
 }
 
 // ============== 基础事件 ==============
@@ -505,14 +582,34 @@ function placeFormatPalette() {
   formatPalettePos.value = { top: `${Math.max(top, 0)}px`, left: `${left}px` }
 }
 
+let paletteFollowRaf: number | null = null
+function startPaletteFollowLoop() {
+  stopPaletteFollowLoop()
+  const loop = () => {
+    if (showFormatPalette.value) {
+      placeFormatPalette()
+      paletteFollowRaf = requestAnimationFrame(loop)
+    }
+  }
+  paletteFollowRaf = requestAnimationFrame(loop)
+}
+function stopPaletteFollowLoop() {
+  if (paletteFollowRaf != null) {
+    cancelAnimationFrame(paletteFollowRaf)
+    paletteFollowRaf = null
+  }
+}
+
 function openFormatPalette() {
   showFormatPalette.value = true
   nextTick(() => {
     placeFormatPalette()
+    startPaletteFollowLoop()
   })
 }
 function closeFormatPalette() {
   showFormatPalette.value = false
+  stopPaletteFollowLoop()
 }
 function toggleFormatPalette() {
   if (showFormatPalette.value)
@@ -712,7 +809,20 @@ defineExpose({ reset: triggerResize })
             @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
           >
-            ✓
+            <svg
+              class="icon-20" viewBox="0 0 24 24" fill="none"
+              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            >
+              <rect
+                x="3" y="3" width="18" height="18" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <path
+                d="M7 12l4 4 6-8"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
+            </svg>
           </button>
 
           <!-- 样式(Aa)汇总按钮 -->
@@ -760,7 +870,7 @@ defineExpose({ reset: triggerResize })
           type="button"
           class="btn-primary"
           :disabled="isLoading || !contentModel"
-          @click="emit('save', contentModel)"
+          @click="handleSave"
         >
           保存
         </button>
@@ -777,11 +887,36 @@ defineExpose({ reset: triggerResize })
     >
       <div class="format-row">
         <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
-        <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">1.</button>
+        <!-- 有序列表图标 -->
+        <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
+            <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
+            <text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">3</text>
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
         <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
-        <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">•</button>
-        <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">🖊️</button>
+        <!-- 无序列表图标 -->
+        <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="6" cy="7" r="2" fill="currentColor" />
+            <circle cx="6" cy="12" r="2" fill="currentColor" />
+            <circle cx="6" cy="17" r="2" fill="currentColor" />
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+            <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
+          </svg>
+        </button>
       </div>
       <div class="format-caret" />
     </div>
@@ -956,7 +1091,7 @@ defineExpose({ reset: triggerResize })
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  padding: 4px 6px;          /* 缩小内边距 */
+  padding: 2px 4px;          /* 缩小内边距 */
 }
 .dark .format-palette {
   background: #2c2c2e;
@@ -986,14 +1121,14 @@ defineExpose({ reset: triggerResize })
 .format-btn:hover { background: rgba(0,0,0,0.06); }
 .dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
-/* 小三角：指向 Aa 按钮 */
+/* 小三角：指向 Aa 按钮（大幅缩小） */
 .format-caret {
   position: absolute;
   left: 50%;
-  transform: translate(-50%, 6px) rotate(45deg);
-  bottom: -5px;
-  width: 10px;
-  height: 10px;
+  transform: translate(-50%, 3px) rotate(45deg);
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
   background: inherit;
   border-left: 1px solid inherit;
   border-bottom: 1px solid inherit;
@@ -1078,14 +1213,16 @@ defineExpose({ reset: triggerResize })
   height: 20px;
   display: block;
 }
-.icon-18 {
-  width: 18px;
-  height: 18px;
+
+/* 允许图标溢出按钮盒，不改变按钮盒尺寸 */
+.format-btn { overflow: visible; }
+
+/* 让 Aa 面板里的图标“视觉放大”，但按钮仍旧是 24×24 */
+.format-btn .icon-bleed {
+  width: 40px !important;    /* 图标比按钮大一些 */
+  height: 40px !important;
   display: block;
-}
-.icon-22 {
-  width: 22px;
-  height: 22px;
-  display: block;
+  margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
+  pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
 }
 </style>

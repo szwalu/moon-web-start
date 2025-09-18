@@ -230,12 +230,20 @@ async function checkAndRefreshIncremental() {
         throw error
 
       const affectedDateKeys = new Set<string>()
+      let added = false // ✅ 新增：记录是否真的往集合里加了新日期
 
       for (const row of (data || [])) {
         const key = toDateKeyStrFromISO(row.created_at)
         affectedDateKeys.add(key)
-        datesWithNotes.value.add(key) // 新增会增加圆点；编辑不影响
+        if (!datesWithNotes.value.has(key)) {
+          datesWithNotes.value.add(key)
+          added = true
+        }
       }
+
+      // ✅ 关键：替换成一个新的 Set 实例，触发 Vue 响应
+      if (added)
+        datesWithNotes.value = new Set(datesWithNotes.value)
 
       // 清理这些日期的日缓存
       affectedDateKeys.forEach((keyStr) => {
