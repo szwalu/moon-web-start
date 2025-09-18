@@ -596,14 +596,15 @@ function insertImageLink() {
     content: () =>
       h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
         h(NInput, {
-          value: valRef.value,
-          placeholder: 'https://example.com/image.jpg 或微云分享链接',
-          onUpdateValue: (v: string) => {
+          'value': valRef.value,
+          'placeholder': 'https://example.com/image.jpg 或微云分享链接',
+          'onUpdate:value': (v: string) => {
             valRef.value = v
             errorRef.value = null
           },
-          autofocus: true,
-          clearable: true,
+          'autofocus': true,
+          'clearable': true,
+          'inputProps': { style: 'font-size:16px;' }, // ✅ iOS 防止放大（末尾不要逗号）
         }),
         errorRef.value
           ? h('div', { style: 'color:#dc2626;font-size:12px;' }, errorRef.value)
@@ -622,7 +623,7 @@ function insertImageLink() {
       // 记忆前缀（增强规则）
       savePrefix(raw)
       // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
-      const text = looksLikeImage(raw) ? '图片（直链）' : '图片'
+      const text = looksLikeImage(raw) ? '图片（直链）' : '（点击查看图片）'
       insertText(`[${text}](${raw})`)
       return true
     },
@@ -722,7 +723,13 @@ defineExpose({ reset: triggerResize })
             @touchstart.prevent
             @pointerdown.prevent="insertImageLink"
           >
-            <span class="icon-image">🖼️</span>
+            <!-- Image icon -->
+            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+              <circle cx="9" cy="9" r="1.6" fill="currentColor" />
+              <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
 
           <span class="toolbar-sep" aria-hidden="true" />
@@ -1050,5 +1057,21 @@ defineExpose({ reset: triggerResize })
   margin-left: 8px;
   font-size: 12px;
   color: #999;
+}
+
+.icon-20 {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+.icon-18 {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.icon-22 {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 </style>
