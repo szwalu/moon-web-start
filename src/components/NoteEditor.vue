@@ -956,7 +956,7 @@ defineExpose({ reset: triggerResize })
   min-height: 40px;
   max-height: 48vh;
   overflow-y: auto;
-  padding: 16px 8px 2px 16px;
+  padding: 8px 8px 1px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1158,17 +1158,17 @@ defineExpose({ reset: triggerResize })
   overflow: auto;
 }
 .note-editor-reborn.editing-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
+  height: 68dvh;
+  min-height: 68dvh;
+  max-height: 68dvh;
   display: flex;
   flex-direction: column;
 }
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
+    height: 68vh;
+    min-height: 68vh;
+    max-height: 68vh;
   }
 }
 .note-editor-reborn.editing-viewport .editor-wrapper {
