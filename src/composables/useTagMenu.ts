@@ -4,7 +4,7 @@ import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
-/** 本地存储 Key，避免和你已有缓存冲突 */
+/** 本地存储 Key */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:' // 会拼接 userId
 
@@ -19,6 +19,13 @@ function normalizeTag(tag: string) {
 /** 去掉开头的 #，便于展示 */
 function tagKeyName(tag: string) {
   return tag.startsWith('#') ? tag.slice(1) : tag
+}
+
+/** 笔记内容里是否包含至少一个 #tag（与后端统计同源正则） */
+function contentHasAnyTag(content: string | null | undefined) {
+  if (!content)
+    return false
+  return /#([^\s#.,?!;:"'()\[\]{}]+)/u.test(content)
 }
 
 /** 读取当前用户 ID（不依赖父组件） */
@@ -41,23 +48,109 @@ export function useTagMenu(
   const dialog = useDialog()
   const isBusy = ref(false)
 
-  // —— 标签计数（内存）与缓存有效位 —— //
+  // —— 标签计数（内存）与本地缓存 —— //
   const tagCounts = ref<Record<string, number>>({})
   const tagCountsSig = ref<string | null>(null) // 仅用于持久化记录
   const isLoadingCounts = ref(false)
-  const countsCacheValid = ref(true) // ✅ 命中本地缓存且 valid=true 则绝不打 RPC
+  const currentUserId = ref<string | null>(null)
 
-  // ===== Realtime：监听 notes 的 INSERT/DELETE/UPDATE，失效计数缓存（下次展开菜单再拉取） =====
+  // Realtime（可用则加速，但不依赖）
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
-  let invalidateTimer: number | null = null
-  function scheduleInvalidateCounts() {
-    if (invalidateTimer)
-      window.clearTimeout(invalidateTimer)
+  let lastFetchAt = 0 // 防抖（毫秒时间戳）
 
-    invalidateTimer = window.setTimeout(() => {
-      invalidateTagCountCache().catch(() => {})
-      invalidateTimer = null
-    }, 500)
+  /** 写入本地缓存 */
+  function saveCountsCacheToLocal() {
+    const uid = currentUserId.value
+    if (!uid)
+      return
+    const items = Object.entries(tagCounts.value).map(([tag, cnt]) => ({ tag, cnt }))
+    localStorage.setItem(
+      TAG_COUNT_CACHE_KEY_PREFIX + uid,
+      JSON.stringify({
+        sig: tagCountsSig.value,
+        items,
+        savedAt: Date.now(),
+      }),
+    )
+  }
+
+  /** 读取本地缓存（若有）并填充内存；返回 savedAt */
+  function hydrateCountsFromLocal(uid: string): number | null {
+    const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
+    const cachedRaw = localStorage.getItem(cacheKey)
+    if (!cachedRaw)
+      return null
+    try {
+      const cached = JSON.parse(cachedRaw) as {
+        sig: string | null
+        items: Array<{ tag: string; cnt: number }>
+        savedAt: number
+      }
+      tagCountsSig.value = cached.sig
+      const map: Record<string, number> = {}
+      for (const it of cached.items)
+        map[it.tag] = it.cnt
+      tagCounts.value = map
+      return cached.savedAt ?? null
+    }
+    catch {
+      return null
+    }
+  }
+
+  /** 覆盖式拉取：从服务端取最新统计，更新内存与本地缓存（防抖 700ms；始终直连服务器） */
+  async function refreshTagCountsFromServer(force = false) {
+    const now = Date.now()
+    if (!force && now - lastFetchAt < 700)
+      return
+    lastFetchAt = now
+
+    if (isLoadingCounts.value)
+      return
+
+    const uid = await getUserId()
+    if (!uid)
+      return
+    currentUserId.value = uid
+
+    try {
+      isLoadingCounts.value = true
+      const { data, error } = await supabase.rpc('get_tag_counts', { p_user_id: uid })
+      if (error)
+        throw error
+
+      const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
+      if (Array.isArray(data) && data.length > 0) {
+        const serverSig: string | null = data[0].last_updated
+        const map: Record<string, number> = {}
+        const items: Array<{ tag: string; cnt: number }> = []
+        for (const row of data) {
+          const tg = String(row.tag)
+          const cnt = Number(row.cnt ?? 0)
+          map[tg] = cnt
+          items.push({ tag: tg, cnt })
+        }
+        tagCounts.value = map
+        tagCountsSig.value = serverSig || null
+        saveCountsCacheToLocal()
+        localStorage.setItem(cacheKey, JSON.stringify({
+          sig: tagCountsSig.value,
+          items,
+          savedAt: Date.now(),
+        }))
+      }
+      else {
+        tagCounts.value = {}
+        tagCountsSig.value = null
+        localStorage.removeItem(cacheKey)
+      }
+    }
+    catch {
+      // 静默失败：保留旧值
+    }
+    finally {
+      isLoadingCounts.value = false
+    }
   }
 
   onMounted(async () => {
@@ -69,30 +162,42 @@ export function useTagMenu(
       pinnedTags.value = []
     }
 
-    // 订阅当前用户 notes 的新增/删除/更新（恢复/回收站常用 UPDATE）
-    const uid = await getUserId()
+    currentUserId.value = await getUserId()
+    const uid = currentUserId.value
     if (uid) {
+      // 先用缓存即时填充
+      hydrateCountsFromLocal(uid)
+
+      // Realtime（仅作加速；拿不到 content 时也保守刷新）
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          () => {
-            scheduleInvalidateCounts()
+          (payload: any) => {
+            const content = payload?.new?.content as string | undefined
+            if (content === undefined || contentHasAnyTag(content))
+              refreshTagCountsFromServer(true).catch(() => {})
           },
         )
         .on(
           'postgres_changes',
           { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          () => {
-            scheduleInvalidateCounts()
+          (payload: any) => {
+            const oldContent = payload?.old?.content as string | undefined
+            if (oldContent === undefined || contentHasAnyTag(oldContent))
+              refreshTagCountsFromServer(true).catch(() => {})
           },
         )
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          () => {
-            scheduleInvalidateCounts()
+          (payload: any) => {
+            const beforeContent = payload?.old?.content as string | undefined
+            const afterContent = payload?.new?.content as string | undefined
+            const unsure = beforeContent === undefined && afterContent === undefined
+            if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
+              refreshTagCountsFromServer(true).catch(() => {})
           },
         )
         .subscribe()
@@ -106,10 +211,6 @@ export function useTagMenu(
       }
       catch {}
       tagCountsChannel = null
-    }
-    if (invalidateTimer) {
-      window.clearTimeout(invalidateTimer)
-      invalidateTimer = null
     }
   })
 
@@ -125,10 +226,8 @@ export function useTagMenu(
     const i = pinnedTags.value.indexOf(tag)
     if (i >= 0)
       pinnedTags.value.splice(i, 1)
-
     else
       pinnedTags.value.push(tag)
-
     savePinned()
   }
 
@@ -168,7 +267,7 @@ export function useTagMenu(
     return letters.map(letter => ({ letter, tags: groups[letter] }))
   })
 
-  /** —— 缓存失效工具 —— */
+  /** —— 缓存失效工具（标签/搜索） —— */
   function invalidateOneTagCache(tag: string) {
     const k = getTagCacheKey(tag)
     localStorage.removeItem(k)
@@ -192,96 +291,18 @@ export function useTagMenu(
     }
   }
 
-  /** —— 计数缓存失效 —— */
-  async function invalidateTagCountCache() {
+  /** —— 打开菜单：先用缓存、再强制直连服务器刷新一次 —— */
+  async function onMainMenuOpen() {
     const uid = await getUserId()
     if (!uid)
       return
-    localStorage.removeItem(TAG_COUNT_CACHE_KEY_PREFIX + uid)
-    tagCounts.value = {}
-    tagCountsSig.value = null
-    countsCacheValid.value = false // ✅ 标记缓存无效：下一次展开菜单会触发 RPC
+    hydrateCountsFromLocal(uid) // 先即时呈现
+    refreshTagCountsFromServer(true).catch(() => {}) // 再拉权威数据覆盖
   }
 
-  /** —— 加载标签计数（首开菜单或缓存过期时） —— */
-  async function loadTagCountsIfNeeded() {
-    if (isLoadingCounts.value)
-      return
-    const uid = await getUserId()
-    if (!uid)
-      return
-
-    const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
-
-    // 1) 先用本地缓存（若有且有效）=> 直接返回，不打 RPC
-    const cachedRaw = localStorage.getItem(cacheKey)
-    if (cachedRaw && countsCacheValid.value) {
-      try {
-        const cached = JSON.parse(cachedRaw) as {
-          sig: string | null
-          items: Array<{ tag: string; cnt: number }>
-          savedAt: number
-        }
-        tagCountsSig.value = cached.sig
-        const map: Record<string, number> = {}
-        for (const it of cached.items)
-          map[it.tag] = it.cnt
-
-        tagCounts.value = map
-        return
-      }
-      catch {
-        // 解析失败则继续走服务器
-      }
-    }
-
-    // 2) 本地无缓存、缓存损坏，或缓存被置为无效 => 走 RPC 拉全量并写入缓存
-    try {
-      isLoadingCounts.value = true
-      const { data, error } = await supabase.rpc('get_tag_counts', { p_user_id: uid })
-      if (error)
-        throw error
-
-      if (Array.isArray(data) && data.length > 0) {
-        const serverSig: string | null = data[0].last_updated
-        const map: Record<string, number> = {}
-        const items: Array<{ tag: string; cnt: number }> = []
-        for (const row of data) {
-          const tg = String(row.tag)
-          const cnt = Number(row.cnt ?? 0)
-          map[tg] = cnt
-          items.push({ tag: tg, cnt })
-        }
-        tagCounts.value = map
-        tagCountsSig.value = serverSig || null
-        countsCacheValid.value = true
-
-        localStorage.setItem(cacheKey, JSON.stringify({
-          sig: tagCountsSig.value,
-          items,
-          savedAt: Date.now(),
-        }))
-      }
-      else {
-        // 服务器无标签：清空并清理缓存
-        tagCounts.value = {}
-        tagCountsSig.value = null
-        countsCacheValid.value = true
-        localStorage.removeItem(cacheKey)
-      }
-    }
-    catch {
-      // 静默失败，沿用已有缓存/空值，不修改 countsCacheValid
-    }
-    finally {
-      isLoadingCounts.value = false
-    }
-  }
-
-  // 菜单弹出时尝试加载计数（不阻塞 UI）
   watch(mainMenuVisible, (show) => {
     if (show)
-      loadTagCountsIfNeeded().catch(() => {})
+      onMainMenuOpen().catch(() => {})
   })
 
   /** —— 行内操作：置顶/重命名/移除（供下拉菜单使用） —— */
@@ -375,7 +396,6 @@ export function useTagMenu(
           const idx = allTags.value.indexOf(oldTag)
           if (idx >= 0)
             allTags.value.splice(idx, 1, newTag)
-
           else if (!allTags.value.includes(newTag))
             allTags.value.push(newTag)
 
@@ -386,16 +406,17 @@ export function useTagMenu(
             savePinned()
           }
 
-          // 失效：标签缓存、搜索缓存、计数缓存
+          // 失效：标签缓存、搜索缓存
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
-          await invalidateTagCountCache()
+
+          // 强制刷新一次计数（重命名会影响计数分布）——直连服务器
+          await refreshTagCountsFromServer(true)
 
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
-
           else
             message.success(t('notes.update_success') || '重命名成功')
         }
@@ -450,12 +471,13 @@ export function useTagMenu(
           invalidateOneTagCache(tag)
           invalidateAllTagCaches()
           invalidateAllSearchCaches()
-          await invalidateTagCountCache()
+
+          // 强制刷新一次计数——直连服务器
+          await refreshTagCountsFromServer(true)
 
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
-
           else
             message.success(t('tags.delete_tag_success') || '已删除标签')
         }
@@ -552,7 +574,7 @@ export function useTagMenu(
               handleRowMenuSelect(tag, key)
             },
             onClickoutside: () => {
-              /* 不打断父级下拉的显示 */
+              // 不打断父级下拉的显示
             },
           }, {
             default: () =>
