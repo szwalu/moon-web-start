@@ -389,8 +389,11 @@ function addHeading() {
 function addBold() {
   insertText('**', '**')
 }
-function addItalic() {
+function _addItalic() {
   insertText('*', '*')
+}
+function addUnderline() {
+  insertText('++', '++')
 }
 function addBulletList() {
   const el = textarea.value
@@ -899,7 +902,7 @@ defineExpose({ reset: triggerResize })
           </svg>
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
+        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
         <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">

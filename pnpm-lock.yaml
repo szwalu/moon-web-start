@@ -89,6 +89,9 @@ importers:
       markdown-it:
         specifier: ^14.1.0
         version: 14.1.0
+      markdown-it-ins:
+        specifier: ^4.0.0
+        version: 4.0.0
       markdown-it-link-attributes:
         specifier: ^4.0.1
         version: 4.0.1
@@ -3298,6 +3301,9 @@ packages:
 
   make-synchronized@0.2.9:
     resolution: {integrity: sha512-4wczOs8SLuEdpEvp3vGo83wh8rjJ78UsIk7DIX5fxdfmfMJGog4bQzxfvOwq7Q3yCHLC4jp1urPHIxRS/A93gA==}
+
+  markdown-it-ins@4.0.0:
+    resolution: {integrity: sha512-sWbjK2DprrkINE4oYDhHdCijGT+MIDhEupjSHLXe5UXeVr5qmVxs/nTUVtgi0Oh/qtF+QKV0tNWDhQBEPxiMew==}
 
   markdown-it-link-attributes@4.0.1:
     resolution: {integrity: sha512-pg5OK0jPLg62H4k7M9mRJLT61gUp9nvG0XveKYHMOOluASo9OEF13WlXrpAp2aj35LbedAy3QOCgQCw0tkLKAQ==}
@@ -8496,6 +8502,8 @@ snapshots:
   make-error@1.3.6: {}
 
   make-synchronized@0.2.9: {}
+
+  markdown-it-ins@4.0.0: {}
 
   markdown-it-link-attributes@4.0.1: {}
 

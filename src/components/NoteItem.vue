@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
 import { NDropdown, useMessage } from 'naive-ui'
+import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 
 import mark from 'markdown-it-mark'
@@ -50,6 +51,7 @@ const md = new MarkdownIt({
 })
   .use(taskLists, { enabled: true, label: true })
   .use(mark)
+  .use(ins)
   .use(linkAttrs, {
     attrs: {
       target: '_blank',
@@ -513,5 +515,10 @@ async function handleDateUpdate(newDate: Date) {
 .dark :deep(.search-highlight) {
   background-color: #8f7400;
   color: #f0e6c5;
+}
+
+:deep(ins) {
+  text-decoration: underline;
+  text-underline-offset: 2px; /* 可选：下划线与文字距离 */
 }
 </style>
