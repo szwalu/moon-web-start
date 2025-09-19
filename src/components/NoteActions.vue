@@ -93,18 +93,35 @@ async function executeSearch() {
   // 2) 无缓存，准备走远端，此时才显示加载
   emit('searchStarted')
   try {
-    const { data, error } = await supabase.rpc('search_notes_with_highlight', {
+    let { data, error } = await supabase.rpc('search_notes_with_highlight', {
       p_user_id: props.user.id,
       search_term: query,
     })
-
     if (error)
       throw error
 
-    // 写缓存到 localStorage
+    // —— 补全天气 ——（与上面 auth.vue 类似）
+    const results = Array.isArray(data) ? data : []
+    const missingIds = results.filter(n => !('weather' in n)).map(n => n.id).filter(Boolean)
+
+    if (missingIds.length) {
+      const { data: weatherRows, error: wErr } = await supabase
+        .from('notes')
+        .select('id, weather')
+        .in('id', missingIds)
+
+      if (!wErr && weatherRows?.length) {
+        const wMap = new Map(weatherRows.map(r => [r.id, r.weather ?? null]))
+        data = results.map(n => ('weather' in n) ? n : ({ ...n, weather: wMap.get(n.id) ?? null }))
+      }
+      else {
+        data = results
+      }
+    }
+
+    // 缓存“已补全”的数据
     if (data)
       localStorage.setItem(cacheKey, JSON.stringify(data))
-
     emit('searchCompleted', { data, error: null, fromCache: false })
   }
   catch (err: any) {

@@ -307,7 +307,7 @@ declare global {
   const useSupabaseTokenRefresh: typeof import('./composables/useSupabaseTokenRefresh')['useSupabaseTokenRefresh']
   const useSupported: typeof import('@vueuse/core')['useSupported']
   const useSwipe: typeof import('@vueuse/core')['useSwipe']
-  const useTagMenu: typeof import('./composables/useTagMenu_副本')['useTagMenu']
+  const useTagMenu: typeof import('./composables/useTagMenu')['useTagMenu']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
   const useTemplateRefsList: typeof import('@vueuse/core')['useTemplateRefsList']
   const useTextDirection: typeof import('@vueuse/core')['useTextDirection']
@@ -650,7 +650,7 @@ declare module 'vue' {
     readonly useSupabaseTokenRefresh: UnwrapRef<typeof import('./composables/useSupabaseTokenRefresh')['useSupabaseTokenRefresh']>
     readonly useSupported: UnwrapRef<typeof import('@vueuse/core')['useSupported']>
     readonly useSwipe: UnwrapRef<typeof import('@vueuse/core')['useSwipe']>
-    readonly useTagMenu: UnwrapRef<typeof import('./composables/useTagMenu_副本')['useTagMenu']>
+    readonly useTagMenu: UnwrapRef<typeof import('./composables/useTagMenu')['useTagMenu']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>
     readonly useTemplateRefsList: UnwrapRef<typeof import('@vueuse/core')['useTemplateRefsList']>
     readonly useTextDirection: UnwrapRef<typeof import('@vueuse/core')['useTextDirection']>
