@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
@@ -51,7 +51,7 @@ const isUpdating = ref(false)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// ---- 新增：供 :ref 使用的辅助函数，避免模板里出现多语句 ----
+// ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
   if (!el)
     return
@@ -60,11 +60,237 @@ function setNoteContainer(el: Element | null, id: string) {
   noteContainers.value[id] = $el
 }
 
-// ---- 新增：滚动状态（快速滚动时先隐藏按钮，停止后再恢复） ----
+// ==============================
+// 月份头部（虚拟项）+ 悬浮月份条 逻辑（最小侵入）
+// ==============================
+
+interface MonthHeaderItem {
+  type: 'month-header'
+  id: string
+  monthKey: string // "YYYY-MM"
+  label: string // "YYYY年M月"
+}
+type MixedNoteItem = any & { type: 'note' }
+type MixedItem = MonthHeaderItem | MixedNoteItem
+
+function getMonthKeyAndLabel(note: any): { key: string; label: string } {
+  const raw = note?.date || note?.created_at || note?.updated_at
+  const d = raw ? new Date(raw) : new Date()
+  const yyyy = d.getFullYear()
+  const mm = d.getMonth() + 1
+  const key = `${yyyy}-${String(mm).padStart(2, '0')}`
+  const label = `${yyyy}年${mm}月`
+  return { key, label }
+}
+
+/** 置顶判断（自适配常见字段） */
+function _isPinned(n: any) {
+  return !!(n?.pinned || n?.is_pinned || n?.pinned_at)
+}
+
+/** 跳过置顶段，从第一条非置顶开始插入月份头 */
+const mixedItems = computed<MixedItem[]>(() => {
+  const out: MixedItem[] = []
+  let lastKey = ''
+  let inPinned = true
+  for (const n of props.notes) {
+    if (inPinned && !_isPinned(n)) {
+      inPinned = false
+      const { key, label } = getMonthKeyAndLabel(n)
+      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
+      lastKey = key
+      out.push({ ...n, type: 'note' })
+      continue
+    }
+    if (inPinned) {
+      out.push({ ...n, type: 'note' })
+      continue
+    }
+    const { key, label } = getMonthKeyAndLabel(n)
+    if (key !== lastKey) {
+      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
+      lastKey = key
+    }
+    out.push({ ...n, type: 'note' })
+  }
+  return out
+})
+
+/** noteId -> 混合列表 index（滚动定位用） */
+const noteIdToMixedIndex = computed<Record<string, number>>(() => {
+  const map: Record<string, number> = {}
+  mixedItems.value.forEach((it, idx) => {
+    if (it.type === 'note' && it.id)
+      map[it.id] = idx
+  })
+  return map
+})
+
+/** 新增：id -> 原始笔记（向上滚兜底需要） */
+const noteById = computed<Record<string, any>>(() => {
+  const m: Record<string, any> = {}
+  for (const n of props.notes) m[n.id] = n
+  return m
+})
+
+const HEADER_HEIGHT = 32 // 与样式一致
+const headerEls = ref<Record<string, HTMLElement>>({})
+let headersIO: IntersectionObserver | null = null
+
+/** 卸载时清理，避免“幽灵 header” */
+function setHeaderEl(el: Element | null, monthKey: string) {
+  if (!el) {
+    if (headerEls.value[monthKey])
+      delete headerEls.value[monthKey]
+    return
+  }
+  headerEls.value[monthKey] = el as HTMLElement
+  if (headersIO)
+    headersIO.observe(el)
+}
+
+const currentMonthKey = ref<string>('')
+const currentMonthLabel = computed(() => {
+  if (!currentMonthKey.value)
+    return ''
+  const [y, m] = currentMonthKey.value.split('-')
+  return `${Number(y)}年${Number(m)}月`
+})
+const pushOffset = ref(0)
+
+/** 新增：滚动方向（仅在向上滚时做月份兜底纠正） */
+let lastScrollTop = 0
+const scrollDir = ref<'up' | 'down' | 'none'>('none')
+
+/** 基线：你的“向下滚正确”的逻辑（不改），仅在末尾对向上滚做兜底修正 */
+function recomputeStickyState() {
+  const root = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!root) {
+    pushOffset.value = 0
+    return
+  }
+  const rootTop = root.getBoundingClientRect().top
+  const EPS = 1 // 抖动容差
+
+  // 当前在 DOM 的 header，按几何位置排序
+  const entries = Object.entries(headerEls.value)
+    .map(([k, el]) => (el && el.isConnected) ? { key: k, top: el.getBoundingClientRect().top } : null)
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.top - b.top) as Array<{ key: string; top: number }>
+
+  if (entries.length === 0) {
+    // header 被虚拟化回收：向上滚时用可见卡片兜底，避免整月显示成上个月
+    if (scrollDir.value === 'up')
+      setCurrentByTopVisibleNote(root)
+
+    pushOffset.value = 0
+    return
+  }
+
+  // 找“最后一个已越过顶部（top <= rootTop+EPS）的 header”
+  let idxPrev = -1
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].top <= rootTop + EPS)
+      idxPrev = i
+    else
+      break
+  }
+
+  if (idxPrev >= 0) {
+    // 有 header 真越过顶部：当前月 = 该 header.key
+    if (currentMonthKey.value !== entries[idxPrev].key)
+      currentMonthKey.value = entries[idxPrev].key
+
+    // 计算被“下一月”顶起的偏移
+    const next = entries[idxPrev + 1]
+    if (next) {
+      const dist = next.top - rootTop
+      const overlap = Math.max(0, HEADER_HEIGHT - dist)
+      pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
+    }
+    else {
+      pushOffset.value = 0
+    }
+  }
+  else {
+    // 顶部之上没有任何 header：位于列表开头区域
+    // 若未初始化，设为第一个 header；已有值则保持（迟滞，不提前切月）
+    if (!currentMonthKey.value)
+      currentMonthKey.value = entries[0].key
+
+    const first = entries[0]
+    const dist = first.top - rootTop
+    const overlap = Math.max(0, HEADER_HEIGHT - dist)
+    pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
+  }
+
+  // ✅ 仅当“向上滚”且 header 判断可能滞后时，用真实可见笔记做兜底修正（不改 pushOffset）
+  if (scrollDir.value === 'up')
+    setCurrentByTopVisibleNote(root)
+}
+
+// 让 .sticky-month 和 .month-header 宽度对齐（不遮住滚动条）
+function syncStickyGutters() {
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  const wrap = wrapperRef.value as HTMLElement | null
+  if (!sc || !wrap)
+    return
+
+  // 读取 .scroller 的左右 padding
+  const cs = getComputedStyle(sc)
+  const pl = Number.parseFloat(cs.paddingLeft) || 0
+  const pr = Number.parseFloat(cs.paddingRight) || 0
+
+  // 计算原生滚动条宽度（Windows 下通常 > 0，macOS overlay 通常为 0）
+  const scrollbarW = sc.offsetWidth - sc.clientWidth
+
+  // 和 .month-header 的 margin 左右 4px 对齐
+  wrap.style.setProperty('--sticky-left', `${pl + 4}px`)
+  wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
+}
+
+/** 新增：用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚调用） */
+function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
+  const scRect = rootEl.getBoundingClientRect()
+
+  let topId: string | null = null
+  let topY = Number.POSITIVE_INFINITY
+  for (const [id, el] of Object.entries(noteContainers.value)) {
+    if (!el || !el.isConnected)
+      continue
+
+    // 防止虚拟列表复用导致错位
+    const dataId = el.getAttribute('data-note-id')
+    if (dataId !== id)
+      continue
+
+    const n = noteById.value[id]
+    if (!n || _isPinned(n))
+      continue
+
+    const r = el.getBoundingClientRect()
+    const visible = !(r.bottom <= scRect.top || r.top >= scRect.bottom)
+    if (!visible)
+      continue
+
+    if (r.top < topY) {
+      topY = r.top
+      topId = id
+    }
+  }
+
+  if (topId) {
+    const n = noteById.value[topId]
+    const { key } = getMonthKeyAndLabel(n)
+    if (key && currentMonthKey.value !== key)
+      currentMonthKey.value = key
+  }
+}
+
+// ---- 滚动状态（快速滚动先隐藏按钮，停止后恢复） ----
 const isUserScrolling = ref(false)
 let scrollHideTimer: number | null = null
 
-// ---- 新增：位置恢复轻量重试（最多 12 帧） ----
 let collapseRetryId: number | null = null
 let collapseRetryCount = 0
 function scheduleCollapseRetry() {
@@ -73,7 +299,6 @@ function scheduleCollapseRetry() {
   collapseRetryCount = 0
   const step = () => {
     collapseRetryId = requestAnimationFrame(() => {
-      // 如果用户又开始滚动，停止重试
       if (isUserScrolling.value) {
         cancelAnimationFrame(collapseRetryId!)
         collapseRetryId = null
@@ -98,6 +323,15 @@ const handleScroll = throttle(() => {
     return
   }
 
+  // ✅ 新增：判定滚动方向（不改变原逻辑）
+  const curTop = el.scrollTop
+  if (curTop > lastScrollTop)
+    scrollDir.value = 'down'
+  else if (curTop < lastScrollTop)
+    scrollDir.value = 'up'
+
+  lastScrollTop = curTop
+
   // 触底加载
   if (!props.isLoading && props.hasMore) {
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300
@@ -105,7 +339,7 @@ const handleScroll = throttle(() => {
       emit('loadMore')
   }
 
-  // —— 新增：滚动中先隐藏按钮，等停止 120ms 再恢复定位 —— //
+  // 滚动中隐藏按钮，停止 120ms 恢复
   isUserScrolling.value = true
   collapseVisible.value = false
   if (scrollHideTimer !== null) {
@@ -115,11 +349,14 @@ const handleScroll = throttle(() => {
   scrollHideTimer = window.setTimeout(() => {
     isUserScrolling.value = false
     updateCollapsePos()
-    // 停止后再安排一次轻量重试，确保复用中的节点就位后能恢复按钮
     scheduleCollapseRetry()
   }, 120)
 
+  // 同步悬浮月份条
+  recomputeStickyState()
+
   updateCollapsePos()
+  syncStickyGutters() // 同步左右留白，避免覆盖滚动条
 }, 16)
 
 function rebindScrollListener() {
@@ -134,35 +371,61 @@ watch(() => props.notes, () => {
   nextTick(() => {
     rebindScrollListener()
     updateCollapsePos()
+    syncStickyGutters()
+    requestAnimationFrame(() => {
+      recomputeStickyState()
+    })
   })
 }, { deep: false })
 
 watch(scrollerRef, (newScroller, oldScroller) => {
   if (oldScroller?.$el)
     oldScroller.$el.removeEventListener('scroll', handleScroll)
+
   if (newScroller?.$el) {
     rebindScrollListener()
     nextTick(() => {
       updateCollapsePos()
+      syncStickyGutters()
+      requestAnimationFrame(() => {
+        recomputeStickyState()
+      })
     })
   }
 })
 
+function handleWindowResize() {
+  syncStickyGutters()
+  updateCollapsePos()
+}
+
 onMounted(() => {
-  window.addEventListener('resize', updateCollapsePos, { passive: true })
+  window.addEventListener('resize', handleWindowResize, { passive: true })
+  syncStickyGutters()
+  const root = scrollerRef.value?.$el as HTMLElement | undefined
+  if (root) {
+    headersIO = new IntersectionObserver(() => {
+      recomputeStickyState()
+    }, { root })
+  }
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', updateCollapsePos)
+  window.removeEventListener('resize', handleWindowResize)
   handleScroll.cancel()
   if (collapseRetryId !== null) {
     cancelAnimationFrame(collapseRetryId)
     collapseRetryId = null
+  }
+  if (headersIO) {
+    headersIO.disconnect()
+    headersIO = null
   }
 })
 
 function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
+
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
   expandedNote.value = null
@@ -180,18 +443,11 @@ async function handleUpdateNote() {
   if (!editingNoteId.value)
     return
   isUpdating.value = true
-  emit(
-    'updateNote',
-    { id: editingNoteId.value, content: editingNoteContent.value },
-    (success: boolean) => {
-      // ✨ 将 isUpdating 的设置移到回调函数内部的最开始
-      isUpdating.value = false
-      if (success) {
-        // ✨ 现在父组件已经处理完了返回逻辑，我们再安全地取消本地的编辑状态
-        cancelEdit()
-      }
-    },
-  )
+  emit('updateNote', { id: editingNoteId.value, content: editingNoteContent.value }, (success: boolean) => {
+    isUpdating.value = false
+    if (success)
+      cancelEdit()
+  })
 }
 
 function _ensureCardVisible(noteId: string) {
@@ -210,7 +466,6 @@ function _ensureCardVisible(noteId: string) {
     card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
 }
 
-// 请将此函数完整复制并替换您代码中旧的 toggleExpand 函数
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
@@ -218,51 +473,30 @@ async function toggleExpand(noteId: string) {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   const isCurrentlyExpanded = expandedNote.value === noteId
   const isSwitching = expandedNote.value !== null && !isCurrentlyExpanded
-
   if (!scroller)
     return
 
-  // --- ✨ 核心修复逻辑：处理笔记切换的场景 ---
-  // 如果用户正在从一个已展开的笔记切换到另一个，
-  // 我们需要先将当前的笔记收起，等待DOM稳定，然后再展开新的。
   if (isSwitching) {
-    // 1. 先平稳地收起当前已展开的笔记 (不进行滚动位置补偿)
     expandedNote.value = null
-    // 2. 等待 Vue 完成 DOM 更新，让虚拟列表处理完收缩
     await nextTick()
-    // 3. (推荐) 再等待一帧，确保浏览器完成布局渲染
     await new Promise(r => requestAnimationFrame(r))
-    // 此时，旧笔记已收起，滚动环境已稳定，可以安全地继续执行展开操作
   }
 
-  // --- 接下来的逻辑分为“展开”和“收起”两种情况 ---
-
-  // Case 1: 展开一个新的笔记 (包括刚才处理完切换后，现在需要展开的笔记)
   if (!isCurrentlyExpanded) {
     const card = noteContainers.value[noteId] as HTMLElement | undefined
-
-    // 记录锚点，用于未来收起时恢复位置
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
-      expandAnchor.value = {
-        noteId,
-        topOffset: cardRect.top - scRect.top,
-        scrollTop: scroller.scrollTop,
-      }
+      expandAnchor.value = { noteId, topOffset: cardRect.top - scRect.top, scrollTop: scroller.scrollTop }
     }
     else {
       expandAnchor.value = { noteId, topOffset: 0, scrollTop: scroller.scrollTop }
     }
 
-    // 真正展开
     expandedNote.value = noteId
-
-    // 等待虚拟列表完成布局
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    // 将展开后的卡片滚动到视图顶部
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
       scroller.style.overflowAnchor = 'none'
@@ -274,7 +508,6 @@ async function toggleExpand(noteId: string) {
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
   }
-  // Case 2: 收起当前已展开的笔记 (isCurrentlyExpanded 为 true)
   else {
     expandedNote.value = null
     scroller.style.overflowAnchor = 'none'
@@ -286,7 +519,6 @@ async function toggleExpand(noteId: string) {
     if (cardAfter) {
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
-
       const anchor = expandAnchor.value
       const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
       const currentTopOffset = cardRectAfter.top - scRectAfter.top
@@ -301,19 +533,11 @@ async function toggleExpand(noteId: string) {
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
 
-  // 统一在操作结束后更新收起按钮的位置
   updateCollapsePos()
 }
 
-// 在多帧内反复设定 scrollTop，直到稳定（解决虚拟列表/浏览器锚定回拉）
-async function stableSetScrollTop(
-  el: HTMLElement,
-  target: number,
-  tries = 5, // 最多纠正 5 帧
-  epsilon = 0.5, // 允许的误差
-) {
+async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, epsilon = 0.5) {
   target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
-
   return new Promise<void>((resolve) => {
     let count = 0
     const tick = () => {
@@ -321,13 +545,14 @@ async function stableSetScrollTop(
       if (diff > epsilon)
         el.scrollTop = target
 
-      if (++count >= tries || Math.abs(el.scrollTop - target) <= epsilon) {
+      count += 1
+      const reached = Math.abs(el.scrollTop - target) <= epsilon
+      if (count >= tries || reached) {
         resolve()
         return
       }
       requestAnimationFrame(tick)
     }
-    // 先设一次，再进入多帧校正
     el.scrollTop = target
     requestAnimationFrame(tick)
   })
@@ -347,26 +572,23 @@ watch(expandedNote, () => {
 })
 
 function updateCollapsePos() {
-  // 滚动过程中先隐藏，停止后由 handleScroll 延时恢复
   if (isUserScrolling.value) {
     collapseVisible.value = false
     return
   }
-
   if (!expandedNote.value) {
     collapseVisible.value = false
     return
   }
+
   const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined
   const wrapperEl = wrapperRef.value as HTMLElement | null
   const cardEl = noteContainers.value[expandedNote.value]
   if (!scrollerEl || !wrapperEl || !cardEl || !cardEl.isConnected) {
     collapseVisible.value = false
-    // 组件在复用/挂载的边缘态，安排轻量重试
     scheduleCollapseRetry()
     return
   }
-  // —— 强校验该元素仍属于当前展开的笔记（防止虚拟列表复用导致错位） —— //
   const dataId = (cardEl as HTMLElement).getAttribute('data-note-id')
   if (dataId !== expandedNote.value) {
     collapseVisible.value = false
@@ -380,7 +602,6 @@ function updateCollapsePos() {
   const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
   if (outOfView) {
     collapseVisible.value = false
-    // 已回到卡片附近时，下一两帧就会入视口，安排轻量重试
     scheduleCollapseRetry()
     return
   }
@@ -392,32 +613,22 @@ function updateCollapsePos() {
   let topPx = visibleBottom - btnH
   if (topPx < visibleTop)
     topPx = visibleTop
+
   const leftPx = cardRect.left - wrapperRect.left + 0
-  collapseStyle.value = {
-    left: `${leftPx}px`,
-    top: `${topPx - wrapperRect.top}px`,
-  }
+  collapseStyle.value = { left: `${leftPx}px`, top: `${topPx - wrapperRect.top}px` }
   collapseVisible.value = true
 }
 
-// ✨ 新增：供父组件调用的方法，用于从外部触发笔记编辑
 async function focusAndEditNote(noteId: string) {
-  // 1. 在笔记数组中找到目标笔记的“索引位置”(index)
-  const index = props.notes.findIndex(n => n.id === noteId)
-
-  // 如果在当前列表里找到了这个笔记 (index !== -1)
-  if (index !== -1) {
-    const noteToEdit = props.notes[index]
-
-    // 2. 先设置编辑状态，让 NoteEditor 准备好被渲染
-    editingNoteId.value = noteId
-    editingNoteContent.value = noteToEdit.content
-
-    // 3. 等待 Vue 完成 DOM 更新
-    await nextTick()
-
-    // 4. ✨ 使用官方的、更可靠的 scrollToItem 方法，并让其滚动到中心位置
-    scrollerRef.value?.scrollToItem(index, { align: 'center', behavior: 'smooth' })
+  const idx = noteIdToMixedIndex.value[noteId]
+  if (idx !== undefined) {
+    const original = props.notes.find(n => n.id === noteId)
+    if (original) {
+      editingNoteId.value = noteId
+      editingNoteContent.value = original.content
+      await nextTick()
+      scrollerRef.value?.scrollToItem(idx, { align: 'center', behavior: 'smooth' })
+    }
   }
 }
 
@@ -425,14 +636,20 @@ function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
-defineExpose({
-  scrollToTop,
-  focusAndEditNote, // ✨ 新增暴露的方法
-})
+defineExpose({ scrollToTop, focusAndEditNote })
 </script>
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
+    <!-- 悬浮月份条：不影响“收起”按钮（z-index 更低，且 pointer-events:none） -->
+    <div
+      v-if="currentMonthLabel"
+      class="sticky-month"
+      :style="{ transform: `translateY(${-pushOffset}px)` }"
+    >
+      {{ currentMonthLabel }}
+    </div>
+
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.loading') }}
     </div>
@@ -443,7 +660,7 @@ defineExpose({
     <DynamicScroller
       v-else
       ref="scrollerRef"
-      :items="notes"
+      :items="mixedItems"
       :min-item-size="120"
       class="scroller"
       key-field="id"
@@ -454,14 +671,26 @@ defineExpose({
           :active="active"
           :data-index="index"
           :size-dependencies="[
-            item.content,
-            expandedNote === item.id,
-            editingNoteId === item.id,
+            item.type === 'note'
+              ? (item.content, expandedNote === item.id, editingNoteId === item.id)
+              : item.label,
           ]"
           class="note-item-container"
           @resize="updateCollapsePos"
         >
+          <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div
+            v-if="item.type === 'month-header'"
+            :ref="(el) => setHeaderEl(el, item.monthKey)"
+            class="month-header"
+            :data-month="item.monthKey"
+          >
+            {{ item.label }}
+          </div>
+
+          <!-- 笔记项：保持原有逻辑与结构 -->
+          <div
+            v-else
             :ref="(el) => setNoteContainer(el, item.id)"
             class="note-selection-wrapper"
             :class="{ 'selection-mode': isSelectionModeActive }"
@@ -519,7 +748,7 @@ defineExpose({
         type="button"
         class="collapse-button"
         :style="collapseStyle"
-        @click.stop.prevent="toggleExpand(expandedNote!, $event)"
+        @click.stop.prevent="toggleExpand(expandedNote!)"
       >
         收起
       </button>
@@ -528,151 +757,103 @@ defineExpose({
 </template>
 
 <style scoped>
-.notes-list-wrapper {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-.scroller {
-  height: 100%;
-  overflow-y: auto;
-  overflow-anchor: none; /* 关闭浏览器自身的锚定，避免与手动补偿冲突 */
-  scroll-behavior: auto;
-}
-/* --- 全新的卡片化样式 --- */
-
-/* 1. 给列表的背景一个非常浅的灰色，以衬托卡片 */
-.scroller {
-  height: 100%;
-  overflow-y: auto;
-  /* 新增：为滚动区域设置背景色 */
-  background-color: #f9fafb;
-  padding: 0.5rem; /* 给卡片和列表边缘留出一些空间 */
-}
-.dark .scroller {
-  background-color: #111827; /* 深色模式下的深灰色背景 */
-}
-
-/* 2. 定义每个笔记卡片的基础样式 */
+.notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
+/* 背景 */
+.scroller { background-color: #f9fafb; padding: 0.5rem; }
+.dark .scroller { background-color: #111827; }
+/* 卡片 */
 .note-content-wrapper {
-  background-color: #ffffff; /* 卡片使用纯白色背景 */
-  border-radius: 12px; /* 更圆润的卡片圆角 */
-  padding: 1rem; /* 卡片内部的文字留白 */
-  /* 关键：添加漂亮的阴影 */
+  background-color: #ffffff; border-radius: 12px; padding: 1rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s ease-in-out;
 }
-.note-content-wrapper:hover {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
-}
-
-/* 3. 为深色模式定义卡片样式 */
+.note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07); }
 .dark .note-content-wrapper {
-  background-color: #1f2937; /* 深色卡片背景 */
-  border: 1px solid #374151; /* 在深色模式下加一个细边框，轮廓更清晰 */
+  background-color: #1f2937; border: 1px solid #374151;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
-.dark .note-content-wrapper:hover {
-   box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15);
-}
-
-/* 4. 调整外部容器的间距 */
-.note-item-container {
-  padding-bottom: 1rem; /* 设置卡片之间的垂直间距 */
-}
-.note-item-container:last-child {
-  padding-bottom: 0.5rem; /* 最后一个卡片的间距可以小一点 */
-}
-.note-item-container {
-  padding-bottom: 1.5rem;
-}
-.note-item-container:last-child {
-  padding-bottom: 0;
-}
-.note-selection-wrapper {
-  display: flex;
-  gap: 0.75rem;
-  transition: background-color 0.2s;
-}
+.dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
+/* 间距与选择 */
+.note-item-container { padding-bottom: 1.5rem; }
+.note-item-container:last-child { padding-bottom: 0; }
+.note-selection-wrapper { display: flex; gap: 0.75rem; transition: background-color 0.2s; }
 .note-selection-wrapper.selection-mode {
-  cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem;
-  border-radius: 8px;
+  cursor: pointer; padding: 0.5rem;
+  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem; border-radius: 8px;
 }
-.note-selection-wrapper.selection-mode:hover {
-  background-color: rgba(0, 0, 0, 0.03);
-}
-.dark .note-selection-wrapper.selection-mode:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-.note-content-wrapper {
-  flex: 1;
-  min-width: 0;
-}
-.selection-indicator {
-  padding-top: 0.75rem;
-}
-.selection-circle {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid #ccc;
-  transition: all 0.2s ease;
-}
-.dark .selection-circle {
-  border-color: #555;
-}
-.selection-circle.selected {
-  background-color: #00b386;
-  border-color: #00b386;
-  position: relative;
-}
+.note-selection-wrapper.selection-mode:hover { background-color: rgba(0, 0, 0, 0.03); }
+.dark .note-selection-wrapper.selection-mode:hover { background-color: rgba(255, 255, 255, 0.05); }
+.note-content-wrapper { flex: 1; min-width: 0; }
+/* 选择态圆点 */
+.selection-indicator { padding-top: 0.75rem; }
+.selection-circle { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #ccc; transition: all 0.2s ease; }
+.dark .selection-circle { border-color: #555; }
+.selection-circle.selected { background-color: #00b386; border-color: #00b386; position: relative; }
 .selection-circle.selected::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  content: ''; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
+  border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
-.text-gray-500 {
-  color: #6b7280;
-}
-.dark .text-gray-500 {
-  color: #9ca3af;
-}
+/* 文案颜色 */
+.text-gray-500 { color: #6b7280; }
+.dark .text-gray-500 { color: #9ca3af; }
+/* 收起按钮 */
 .collapse-button {
-  position: absolute;
-  z-index: 10;
-  background-color: #ffffff; /* 改为白色 */
-  color: #007bff;            /* 改为一个漂亮的蓝色，您也可以直接用 'blue' */
-  border: 1px solid #e0e0e0;  /* (推荐) 增加一个浅灰色边框，使其更清晰 */
-  border-radius: 15px;
-  padding: 3px 8px;
-  font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* 阴影可以调浅一些 */
-  transition: opacity 0.2s, transform 0.2s;
-  opacity: 0.9; /* 可以让它稍微不那么透明 */
-  font-weight: normal;
+  position: absolute; z-index: 10;
+  background-color: #ffffff; color: #007bff; border: 1px solid #e0e0e0;
+  border-radius: 15px; padding: 3px 8px; font-size: 14px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); transition: opacity 0.2s, transform 0.2s;
+  opacity: 0.9; font-weight: normal;
   font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
 }
-.collapse-button:hover {
-  opacity: 1;
-  transform: scale(1.05);
+.collapse-button:hover { opacity: 1; transform: scale(1.05); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ===== 月份头部项（虚拟项） ===== */
+.month-header {
+  height: 32px;              /* 或你需要的高度 */
+  padding: 0 8px;
+  margin: 8px 4px 6px 4px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #374151;
+  background: #eef2ff;
+  border: 1px solid #e5e7eb;
+
+  display: flex;             /* 垂直居中关键 */
+  align-items: center;       /* 垂直居中关键 */
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
+.dark .month-header {
+  color: #e5e7eb;
+  background: #1f2937;
+  border: 1px solid #374151;
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+
+/* ===== 悬浮月份条（不参与虚拟化） ===== */
+.sticky-month {
+  position: absolute;
+  top: 0;
+  left: var(--sticky-left, 4px);      /* 与 .month-header 的左右间距保持一致 */
+  right: var(--sticky-right, 4px);    /* 右侧同时为滚动条预留空间 */
+  z-index: 9;
+  height: 32px;              /* 要与 .month-header 保持一致 */
+  padding: 0 8px;            /* 与 .month-header 一致，确保文字左对齐 */
+  pointer-events: none;
+  background: rgba(249, 250, 251, 0.9);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 700;
+  color: #111827;
+
+  display: flex;             /* 垂直居中关键 */
+  align-items: center;       /* 垂直居中关键 */
+}
+.dark .sticky-month {
+  background: rgba(17, 24, 39, 0.9);
+  border-bottom: 1px solid #374151;
+  color: #f9fafb;
 }
 </style>
