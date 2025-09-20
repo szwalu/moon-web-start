@@ -580,7 +580,7 @@ export function useTagMenu(
             default: () =>
               h('button', {
                 'class': 'more-btn',
-                'aria-label': t('common.more_actions') || '更多操作',
+                'aria-label': t('tags.more_actions') || '更多操作',
                 'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
