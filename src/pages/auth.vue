@@ -1,1469 +1,1251 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useDark } from '@vueuse/core'
-import { NDropdown, useDialog, useMessage } from 'naive-ui'
-import { v4 as uuidv4 } from 'uuid'
-import { supabase } from '@/utils/supabaseClient'
-import { useAuthStore } from '@/stores/auth'
-import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
-import NoteList from '@/components/NoteList.vue'
-import NoteEditor from '@/components/NoteEditor.vue'
-import Authentication from '@/components/Authentication.vue'
-import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
-import NoteActions from '@/components/NoteActions.vue'
-import 'easymde/dist/easymde.min.css'
-import { useTagMenu } from '@/composables/useTagMenu'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useTextareaAutosize } from '@vueuse/core'
+import { NInput, useDialog } from 'naive-ui'
+import { useSettingStore } from '@/stores/setting'
 
-const { t } = useI18n()
-const allTags = ref<string[]>([])
-const onSelectTag = (tag: string) => fetchNotesByTag(tag)
+// —— 天气映射（用于城市名映射与图标）——
+import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-const { mainMenuVisible, tagMenuChildren } = useTagMenu(allTags, onSelectTag, t)
-
-const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
-const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
-const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
-const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
-const TrashModal = defineAsyncComponent(() => import('@/components/TrashModal.vue'))
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal]
-
-useDark()
-const messageHook = useMessage()
-const dialog = useDialog()
-const authStore = useAuthStore()
-
-const noteListRef = ref<InstanceType<typeof NoteList> | null>(null)
-const composerPad = ref(0)
-function handleRequestStickTop(payload?: { paddingBottom?: number }) {
-  // 预留底部空白，避免工具栏/联想面板被挡
-  const pad = (payload && Number.isFinite(payload.paddingBottom))
-    ? (payload!.paddingBottom as number)
-    : 96
-  composerPad.value = pad
-
-  // 把列表滚动到最顶，让 composer（输入框）整块贴到视口顶部
-  nextTick(() => {
-    noteListRef.value?.scrollToTop()
-  })
+// ============== Props & Emits ==============
+const props = defineProps({
+  modelValue: { type: String, required: true },
+  isEditing: { type: Boolean, default: false },
+  isLoading: { type: Boolean, default: false },
+  maxNoteLength: { type: Number, default: 20000 },
+  placeholder: { type: String, default: '写点什么...' },
+  allTags: { type: Array as () => string[], default: () => [] },
+})
+// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestStickTop'])
+// —— 常用标签（与 useTagMenu 保持同一存储键）——
+const PINNED_TAGS_KEY = 'pinned_tags_v1'
+const pinnedTags = ref<string[]>([])
+function isPinned(tag: string) {
+  return pinnedTags.value.includes(tag)
 }
-const newNoteEditorContainerRef = ref<HTMLElement | null>(null)
-const newNoteEditorRef = ref(null)
-const noteActionsRef = ref<any>(null)
-const showCalendarView = ref(false)
-const showSettingsModal = ref(false)
-const showTrashModal = ref(false)
-const showAccountModal = ref(false)
-const showDropdown = ref(false)
-const showSearchBar = ref(false)
-const compactWhileTyping = ref(false)
-const dropdownContainerRef = ref(null)
-const user = computed(() => authStore.user)
-const isCreating = ref(false)
-const notes = ref<any[]>([])
-const newNoteContent = ref('')
-const isLoadingNotes = ref(false)
-const showNotesList = ref(true)
-const currentPage = ref(1)
-const notesPerPage = 30
-const totalNotes = ref(0)
-const hasMoreNotes = ref(true)
-const hasPreviousNotes = ref(false)
-const maxNoteLength = 20000
-const searchQuery = ref('')
-const isExporting = ref(false)
-const isReady = ref(false)
-const isEditorActive = ref(false)
-const isSelectionModeActive = ref(false)
-const selectedNoteIds = ref<string[]>([])
-const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
-const anniversaryNotes = ref<any[] | null>(null)
-const isAnniversaryViewActive = ref(false)
-const loading = ref(false)
-const lastSavedId = ref<string | null>(null)
-const editingNote = ref<any | null>(null)
-const cachedNotes = ref<any[]>([])
-const calendarViewRef = ref(null)
-const activeTagFilter = ref<string | null>(null)
-const filteredNotesCount = ref(0)
-const isShowingSearchResults = ref(false)
-let mainNotesCache: any[] = []
-const LOCAL_CONTENT_KEY = 'new_note_content_draft'
-const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
-let authListener: any = null
-const noteListKey = ref(0)
-
-const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
-const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
-const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
-const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
-const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
-const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
-
-watch(searchQuery, (newValue) => {
-  if (newValue && newValue.trim()) {
-    sessionStorage.setItem(SESSION_SEARCH_QUERY_KEY, newValue)
-  }
-  else {
-    sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
-    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-  }
-})
-watch(showSearchBar, (newValue) => {
-  sessionStorage.setItem(SESSION_SHOW_SEARCH_BAR_KEY, String(newValue))
-})
-watch(activeTagFilter, (newValue) => {
-  if (newValue)
-    sessionStorage.setItem(SESSION_TAG_FILTER_KEY, newValue)
-  else
-    sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
-})
-
-const mainMenuOptions = computed(() => [
-  { label: '日历', key: 'calendar' },
-  { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
-  { label: t('settings.font_title'), key: 'settings' },
-  { label: t('notes.export_all'), key: 'export' },
-  { label: t('auth.account_title'), key: 'account' },
-  { label: '回收站', key: 'trash' },
-  { type: 'divider', key: 'div-tags' },
-  ...tagMenuChildren.value,
-])
-
-const showAnniversaryBanner = computed(() => {
-  if (compactWhileTyping.value)
-    return false
-  if (activeTagFilter.value)
-    return false
-  if (searchQuery.value && searchQuery.value.trim() !== '')
-    return false
-  if (isSelectionModeActive.value)
-    return false
-  return true
-})
-
 onMounted(() => {
-  (async () => {
-    try {
-      const { data } = await supabase.auth.getSession()
-      const currentUser = data?.session?.user ?? null
-      if (authStore.user?.id !== currentUser?.id)
-        authStore.user = currentUser
-    }
-    catch (e) {
-      // no-op
-    }
-  })()
-
-  const loadCache = async () => {
-    try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
-      if (cachedData)
-        notes.value = JSON.parse(cachedData)
-    }
-    catch (e) {
-      console.error('Failed to load notes from cache', e)
-      localStorage.removeItem(CACHE_KEYS.HOME)
-    }
-  }
-  setTimeout(() => {
-    loadCache()
-  }, 0)
-
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  const result = supabase.auth.onAuthStateChange((event, session) => {
-    const currentUser = session?.user ?? null
-    if (authStore.user?.id !== currentUser?.id)
-      authStore.user = currentUser
-
-    if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-      nextTick(async () => {
-        const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
-        const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
-        const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
-        const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
-        const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
-
-        if (savedSearchQuery && savedSearchResults) {
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          try {
-            notes.value = JSON.parse(savedSearchResults)
-          }
-          catch (e) {
-            sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-          }
-          isLoadingNotes.value = false
-          hasMoreNotes.value = false
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedSearchQuery) {
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          noteActionsRef.value?.executeSearch()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedTagFilter) {
-          await fetchNotesByTag(savedTagFilter)
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedAnnivActive) {
-          isShowingSearchResults.value = false
-          activeTagFilter.value = null
-          showSearchBar.value = false
-          if (savedAnnivResults) {
-            try {
-              const parsed = JSON.parse(savedAnnivResults)
-              anniversaryNotes.value = parsed
-              isAnniversaryViewActive.value = true
-              hasMoreNotes.value = false
-              nextTick(() => {
-                anniversaryBannerRef.value?.setView(true)
-              })
-            }
-            catch (e) {
-              anniversaryBannerRef.value?.loadAnniversaryNotes()
-            }
-          }
-          else {
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
-          }
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else {
-          isLoadingNotes.value = true
-          await fetchNotes()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-      })
-    }
-    else if (event === 'SIGNED_OUT') {
-      notes.value = []
-      allTags.value = []
-      newNoteContent.value = ''
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('cached_notes_'))
-          localStorage.removeItem(key)
-      })
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
-    else {
-      authStore.user = session?.user ?? null
-    }
-  })
-  authListener = result.data.subscription
-
-  const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
-  if (savedContent)
-    newNoteContent.value = savedContent
-
-  isReady.value = true
-})
-
-onUnmounted(() => {
-  if (authListener)
-    authListener.unsubscribe()
-
-  document.removeEventListener('click', closeDropdownOnClickOutside)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
-
-watch(newNoteContent, (val) => {
-  if (!isReady.value)
-    return
-  if (val)
-    localStorage.setItem(LOCAL_CONTENT_KEY, val)
-  else
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
-})
-
-function invalidateAllSearchCaches() {
-  const searchPrefix = CACHE_KEYS.SEARCH_PREFIX
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i)
-    if (key && key.startsWith(searchPrefix))
-      localStorage.removeItem(key)
-  }
-}
-
-function invalidateCachesOnDataChange(note: any) {
-  if (!note || !note.content)
-    return
-  const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
-  let match
-  // eslint-disable-next-line no-cond-assign
-  while ((match = tagRegex.exec(note.content)) !== null) {
-    if (match[1]) {
-      const tag = `#${match[1]}`
-      localStorage.removeItem(getTagCacheKey(tag))
-    }
-  }
-  const noteDate = new Date(note.created_at)
-  localStorage.removeItem(getCalendarDateCacheKey(noteDate))
-  localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
-  invalidateAllSearchCaches()
-}
-
-function invalidateAllTagCaches() {
-  const tagPrefix = CACHE_KEYS.TAG_PREFIX
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i)
-    if (key && key.startsWith(tagPrefix))
-      localStorage.removeItem(key)
-  }
-}
-
-async function _reloadNotes() {
-  const { data, error } = await supabase
-    .from('notes')
-    .select('id, content, weather, created_at, updated_at, is_pinned')
-    .order('created_at', { ascending: false })
-  if (error)
-    throw error
-  notes.value = data ?? []
-}
-
-// —— 接收 NoteEditor.vue 发来的 { content, weather }（旧输入框使用）
-async function handleCreateNote(content: string, weather?: string | null) {
-  isCreating.value = true
   try {
-    const saved = await saveNote(content, null, { showMessage: true, weather })
-    if (saved) {
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-      newNoteContent.value = ''
-      nextTick(() => {
-        const editorRefAny = newNoteEditorRef.value as any
-        editorRefAny?.reset?.()
-      })
-    }
-  }
-  finally {
-    isCreating.value = false
-  }
-}
-
-async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
-  const saved = await saveNote(content, id, { showMessage: true })
-  if (callback)
-    callback(!!saved)
-}
-
-async function saveNote(
-  contentToSave: string,
-  noteIdToUpdate: string | null,
-  { showMessage = false, weather = null }: { showMessage?: boolean; weather?: string | null } = {},
-) {
-  if (!contentToSave.trim() || !user.value?.id) {
-    if (!user.value?.id)
-      messageHook.error(t('auth.session_expired'))
-
-    return null
-  }
-  if (contentToSave.length > maxNoteLength) {
-    messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
-    return null
-  }
-
-  const noteData = {
-    content: contentToSave.trim(),
-    updated_at: new Date().toISOString(),
-    user_id: user.value.id,
-  }
-
-  let savedNote
-  try {
-    if (noteIdToUpdate) {
-      const { data: updatedData, error: updateError } = await supabase
-        .from('notes')
-        .update(noteData)
-        .eq('id', noteIdToUpdate)
-        .eq('user_id', user.value.id)
-        .select()
-      if (updateError || !updatedData?.length)
-        throw new Error(t('auth.update_failed'))
-      savedNote = updatedData[0]
-      updateNoteInList(savedNote)
-      if (showMessage)
-        messageHook.success(t('notes.update_success'))
-    }
-    else {
-      const newId = uuidv4()
-      const insertPayload: any = { ...noteData, id: newId }
-      insertPayload.weather = weather ?? null
-      const { data: insertedData, error: insertError } = await supabase
-        .from('notes')
-        .insert(insertPayload)
-        .select()
-      if (insertError || !insertedData?.length)
-        throw new Error(t('auth.insert_failed_create_note'))
-      savedNote = insertedData[0]
-      addNoteToList(savedNote)
-      if (showMessage)
-        messageHook.success(t('notes.auto_saved'))
-    }
-
-    invalidateCachesOnDataChange(savedNote)
-    await fetchAllTags()
-    return savedNote
-  }
-  catch (error: any) {
-    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
-    return null
-  }
-}
-
-const displayedNotes = computed(() => {
-  if (isShowingSearchResults.value)
-    return notes.value
-  if (isAnniversaryViewActive.value)
-    return anniversaryNotes.value
-  return notes.value
-})
-
-function closeDropdownOnClickOutside(event: MouseEvent) {
-  if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
-    showDropdown.value = false
-}
-
-async function fetchAllTags() {
-  if (!user.value?.id) {
-    console.warn('fetchAllTags was called before user ID was available.')
-    return
-  }
-  try {
-    const { data, error } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
-    if (error)
-      throw error
-    allTags.value = data || []
-  }
-  catch (err: any) {
-    console.error('Error fetching tags via RPC:', err)
-    messageHook.error(`获取标签失败: ${err.message}`)
-  }
-}
-
-function restoreHomepageFromCache(): boolean {
-  const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
-  const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
-  if (cachedNotesData && cachedMetaData) {
-    const cachedNotes = JSON.parse(cachedNotesData)
-    const meta = JSON.parse(cachedMetaData)
-    notes.value = cachedNotes
-    totalNotes.value = meta.totalNotes
-    currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
-    hasMoreNotes.value = cachedNotes.length < meta.totalNotes
-    return true
-  }
-  return false
-}
-
-function handleSearchStarted() {
-  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
-  if (isAnniversaryViewActive.value) {
-    anniversaryBannerRef.value?.setView(false)
-    isAnniversaryViewActive.value = false
-    anniversaryNotes.value = null
-  }
-  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-  isLoadingNotes.value = true
-  notes.value = []
-  isShowingSearchResults.value = false
-}
-
-function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
-  if (error) {
-    messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
-    notes.value = []
-    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-    isShowingSearchResults.value = false
-  }
-  else {
-    notes.value = data || []
-    sessionStorage.setItem(SESSION_SEARCH_RESULTS_KEY, JSON.stringify(notes.value))
-    isShowingSearchResults.value = true
-  }
-  hasMoreNotes.value = false
-  hasPreviousNotes.value = false
-  isLoadingNotes.value = false
-}
-
-function handleSearchCleared() {
-  isShowingSearchResults.value = false
-  if (!restoreHomepageFromCache()) {
-    currentPage.value = 1
-    fetchNotes()
-  }
-}
-
-async function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    const { data, error } = await supabase.auth.getSession()
-    if ((!data.session || error) && authStore.user) {
-      messageHook.warning(t('auth.session_expired_relogin'))
-      authStore.user = null
-      notes.value = []
-      allTags.value = []
-      newNoteContent.value = ''
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('cached_notes_'))
-          localStorage.removeItem(key)
-      })
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
-  }
-}
-
-function handleEditorFocus(containerEl: HTMLElement | null) {
-  compactWhileTyping.value = true
-  setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 0)
-}
-
-let editorHideTimer: number | null = null
-function onEditorFocus() {
-  if (editorHideTimer) {
-    clearTimeout(editorHideTimer)
-    editorHideTimer = null
-  }
-  isEditorActive.value = true
-}
-function onEditorBlur() {
-  editorHideTimer = window.setTimeout(() => {
-    isEditorActive.value = false
-    compactWhileTyping.value = false
-  }, 120)
-}
-
-function handleExportTrigger() {
-  if (isShowingSearchResults.value || activeTagFilter.value)
-    handleExportResults()
-  else
-    handleBatchExport()
-}
-
-async function handleBatchExport() {
-  if (isExporting.value)
-    return
-  if (!user.value?.id) {
-    messageHook.error(t('auth.session_expired'))
-    return
-  }
-  const dialogDateRange = ref<[number, number] | null>(null)
-  dialog.info({
-    title: t('notes.export_confirm_title'),
-    content: () => h(MobileDateRangePicker, {
-      'modelValue': dialogDateRange.value,
-      'onUpdate:modelValue': (v: [number, number] | null) => {
-        dialogDateRange.value = v
-      },
-    }),
-    positiveText: t('notes.confirm_export'),
-    negativeText: t('notes.cancel'),
-    onPositiveClick: async () => {
-      isExporting.value = true
-      messageHook.info(t('notes.export_preparing'), { duration: 5000 })
-      try {
-        const [startDate, endDate] = dialogDateRange.value || [null, null]
-        const BATCH_SIZE = 100
-        let allNotes: any[] = []
-        let page = 0
-        let hasMore = true
-        while (hasMore) {
-          let query = supabase
-            .from('notes')
-            .select('content, created_at')
-            .eq('user_id', user.value!.id)
-            .order('created_at', { ascending: false })
-            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
-
-          if (startDate)
-            query = query.gte('created_at', new Date(startDate).toISOString())
-
-          if (endDate) {
-            const endOfDay = new Date(endDate)
-            endOfDay.setHours(23, 59, 59, 999)
-            query = query.lte('created_at', endOfDay.toISOString())
-          }
-
-          const { data, error } = await query
-          if (error)
-            throw error
-
-          if (data && data.length > 0) {
-            allNotes = allNotes.concat(data)
-            page++
-          }
-          else {
-            hasMore = false
-          }
-          if (data && data.length < BATCH_SIZE)
-            hasMore = false
-        }
-
-        if (allNotes.length === 0) {
-          messageHook.warning(t('notes.no_notes_to_export_in_range'))
-          return
-        }
-
-        const textContent = allNotes.map((note) => {
-          const separator = '----------------------------------------'
-          const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-        }).join('')
-
-        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        const datePart = startDate && endDate
-          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
-          : 'all'
-        const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-        a.download = `notes_export_${datePart}_${timestamp}.txt`
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => {
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }, 100)
-        messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
-      }
-      catch (error: any) {
-        messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
-      }
-      finally {
-        isExporting.value = false
-      }
-    },
-  })
-}
-
-function handleExportResults() {
-  if (isExporting.value)
-    return
-  isExporting.value = true
-  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
-  try {
-    const notesToExport = displayedNotes.value
-    if (!notesToExport || notesToExport.length === 0) {
-      messageHook.warning('没有可导出的搜索结果。')
-      return
-    }
-    const textContent = notesToExport.map((note: any) => {
-      const separator = '----------------------------------------'
-      const date = new Date(note.created_at).toLocaleString('zh-CN')
-      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-    }).join('')
-    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-    a.download = `notes_search_results_${timestamp}.txt`
-    document.body.appendChild(a)
-    a.click()
-    setTimeout(() => {
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }, 100)
-    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
-  }
-  catch (error: any) {
-    messageHook.error(`导出失败: ${error.message}`)
-  }
-  finally {
-    isExporting.value = false
-  }
-}
-
-function addNoteToList(newNote: any) {
-  if (!notes.value.some(note => note.id === newNote.id)) {
-    notes.value.unshift(newNote)
-    totalNotes.value += 1
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-  }
-}
-
-async function handlePinToggle(note: any) {
-  if (!note || !user.value)
-    return
-  const newPinStatus = !note.is_pinned
-  try {
-    const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
-    if (error)
-      throw error
-    messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
-    await fetchNotes()
-    if (showCalendarView.value && calendarViewRef.value) {
-      // @ts-expect-error exposed by defineExpose
-      (calendarViewRef.value as any).refreshData()
-    }
-  }
-  catch (err: any) {
-    messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
-  }
-}
-
-function updateNoteInList(updatedNote: any) {
-  const index = notes.value.findIndex(n => n.id === updatedNote.id)
-  if (index !== -1) {
-    notes.value[index] = { ...updatedNote }
-    notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-  }
-}
-
-async function fetchNotes() {
-  if (!user.value)
-    return
-  isLoadingNotes.value = true
-  try {
-    const from = (currentPage.value - 1) * notesPerPage
-    const to = from + notesPerPage - 1
-    const { data, error, count } = await supabase
-      .from('notes')
-      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
-      .eq('user_id', user.value.id)
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(from, to)
-    if (error)
-      throw error
-    const newNotes = data || []
-    totalNotes.value = count || 0
-    notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
-    if (newNotes.length > 0) {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
-    }
-    hasMoreNotes.value = to + 1 < totalNotes.value
+    const raw = localStorage.getItem(PINNED_TAGS_KEY)
+    pinnedTags.value = raw ? JSON.parse(raw) : []
   }
   catch {
-    messageHook.error(t('notes.fetch_error'))
+    pinnedTags.value = []
   }
-  finally {
-    isLoadingNotes.value = false
-  }
-}
+})
 
-async function handleTrashRestored(restoredNotes?: any[]) {
-  const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
-  if (Array.isArray(restoredNotes) && restoredNotes.length > 0 && !inFilteredView) {
-    const existIds = new Set(notes.value.map(n => n.id))
-    const toInsert = restoredNotes.filter(n => n && !existIds.has(n.id))
-    if (toInsert.length > 0) {
-      notes.value = [...toInsert, ...notes.value]
-      notes.value.sort(
-        (a, b) =>
-          (b.is_pinned - a.is_pinned)
-          || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-      )
-      totalNotes.value = (totalNotes.value || 0) + toInsert.length
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-    }
-  }
-  else {
-    currentPage.value = 1
-    await fetchNotes()
-  }
-}
+// ============== Store ==============
+const settingsStore = useSettingStore()
 
-async function handleTrashPurged() {
-  await fetchNotes()
-}
+// ============== v-model ==============
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
+})
 
-function handleHeaderClick() {
-  (noteListRef.value as any)?.scrollToTop?.()
-}
+// ============== Autosize ==============
+const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+const charCount = computed(() => contentModel.value.length)
 
-async function nextPage() {
-  if (isLoadingNotes.value || !hasMoreNotes.value)
-    return
-  currentPage.value++
-  await fetchNotes()
-}
+// ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
+const dialog = useDialog()
+const overLimitWarned = ref(false)
 
-async function triggerDeleteConfirmation(id: string) {
-  if (!id || !user.value?.id)
-    return
-  const noteToDelete = notes.value.find(note => note.id === id)
-  dialog.warning({
-    title: t('notes.delete_confirm_title'),
-    content: t('notes.delete_confirm_content'),
-    positiveText: t('notes.confirm_delete'),
-    negativeText: t('notes.cancel'),
-    onPositiveClick: async () => {
-      try {
-        const { error } = await supabase
-          .from('notes')
-          .delete()
-          .eq('id', id)
-          .eq('user_id', user.value!.id)
-        if (error)
-          throw new Error(error.message)
-
-        const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
-        if (homeCacheRaw) {
-          const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
-          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
-        }
-
-        totalNotes.value -= 1
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-        if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-          notes.value = notes.value.filter(note => note.id !== id)
-        }
-        else {
-          notes.value = notes.value.filter(note => note.id !== id)
-        }
-
-        messageHook.success(t('notes.delete_success'))
-        if (noteToDelete)
-          invalidateCachesOnDataChange(noteToDelete)
-
-        if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error defineExpose
-          (calendarViewRef.value as any).refreshData?.()
-        }
-      }
-      catch (err: any) {
-        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
-      }
-    },
-  })
-}
-
-async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; itemIndex: number }) {
-  const noteToUpdate = notes.value.find(n => n.id === noteId)
-  if (!noteToUpdate)
-    return
-  const originalContent = noteToUpdate.content
-  try {
-    const lines = originalContent.split('\n')
-    const taskLineIndexes: number[] = []
-    lines.forEach((line, index) => {
-      if (line.trim().match(/^\-\s\[( |x)\]/))
-        taskLineIndexes.push(index)
+watch([charCount, () => props.maxNoteLength], ([len, max]) => {
+  if (len > max && !overLimitWarned.value) {
+    overLimitWarned.value = true
+    dialog.warning({
+      title: '字数超出限制',
+      content: `单条笔记不能超过 ${max} 字，请删减后再保存。`,
+      positiveText: '确定',
+      onAfterLeave: () => {},
     })
-    if (itemIndex < taskLineIndexes.length) {
-      const lineIndexToChange = taskLineIndexes[itemIndex]
-      const lineContent = lines[lineIndexToChange]
-      lines[lineIndexToChange] = lineContent.includes('[ ]') ? lineContent.replace('[ ]', '[x]') : lineContent.replace('[x]', '[ ]')
-      const newContent = lines.join('\n')
-      noteToUpdate.content = newContent
-      await supabase.from('notes').update({ content: newContent, updated_at: new Date().toISOString() }).eq('id', noteId).eq('user_id', user.value!.id)
+  }
+  else if (len <= max && overLimitWarned.value) {
+    overLimitWarned.value = false
+  }
+})
+
+// ============== 状态与响应式变量 ==============
+const isComposing = ref(false)
+const suppressNextBlur = ref(false)
+let blurTimeoutId: number | null = null
+const showTagSuggestions = ref(false)
+const tagSuggestions = ref<string[]>([])
+const suggestionsStyle = ref({ top: '0px', left: '0px' })
+
+// —— 格式弹层（B / 1. / H / I / • / 🖊️）
+const showFormatPalette = ref(false)
+const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+const formatBtnRef = ref<HTMLElement | null>(null)
+const formatPaletteRef = ref<HTMLElement | null>(null)
+
+// 根节点 + 光标缓存
+const rootRef = ref<HTMLElement | null>(null)
+const lastSelectionStart = ref<number>(0)
+function captureCaret() {
+  const el = textarea.value
+  if (el && typeof el.selectionStart === 'number')
+    lastSelectionStart.value = el.selectionStart
+}
+
+// ============== 滚动校准 ==============
+function ensureCaretVisibleInTextarea() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+
+  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
+  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
+  if (!props.isEditing) {
+    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
+    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
+
+    // 简单节流，避免频繁触发
+    if (atBottom && nearBottom) {
+      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
+        (ensureCaretVisibleInTextarea as any)._stickLock = true
+        // camelCase 事件名（修复 custom-event-name-casing）
+        emit('requestStickTop', { paddingBottom: 96 })
+        setTimeout(() => {
+          (ensureCaretVisibleInTextarea as any)._stickLock = false
+        }, 120)
+      }
     }
   }
-  catch (err: any) {
-    noteToUpdate.content = originalContent
-    messageHook.error(`更新失败: ${err.message}`)
-  }
+
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-async function handleCopy(noteContent: string) {
-  if (!noteContent)
-    return
+// ========= 新建时写入天气：工具函数 =========
+function getMappedCityName(enCity: string) {
+  if (!enCity)
+    return '未知地点'
+  const lower = enCity.trim().toLowerCase()
+  for (const [k, v] of Object.entries(cityMap)) {
+    const kk = k.toLowerCase()
+    if (lower === kk || lower.startsWith(kk))
+      return v as string
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+function getWeatherIcon(code: number) {
+  const item = (weatherMap as any)[code] || { icon: '❓' }
+  return item.icon
+}
+async function fetchWeatherLine(): Promise<string | null> {
   try {
-    await navigator.clipboard.writeText(noteContent)
-    messageHook.success(t('notes.copy_success'))
-  }
-  catch {
-    messageHook.error(t('notes.copy_error'))
-  }
-}
-
-function toggleSearchBar() {
-  showSearchBar.value = !showSearchBar.value
-  showDropdown.value = false
-}
-
-function handleCancelSearch() {
-  searchQuery.value = ''
-  showSearchBar.value = false
-  handleSearchCleared()
-}
-
-function handleAnniversaryToggle(data: any[] | null) {
-  if (data) {
-    anniversaryNotes.value = data
-    isAnniversaryViewActive.value = true
-    hasMoreNotes.value = false
-    sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
+    // 定位：优先 ipapi.co，失败回退 ip-api.com
+    let loc: { city: string; lat: number; lon: number }
     try {
-      sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+      const r = await fetch('https://ipapi.co/json/')
+      if (!r.ok)
+        throw new Error(String(r.status))
+      const d = await r.json()
+      if (d?.error)
+        throw new Error(d?.reason || 'ipapi error')
+      loc = { city: d.city, lat: d.latitude, lon: d.longitude }
     }
     catch {
-      sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+      const r2 = await fetch('https://ip-api.com/json/')
+      if (!r2.ok)
+        throw new Error(String(r2.status))
+      const d2 = await r2.json()
+      if (d2?.status === 'fail')
+        throw new Error(d2?.message || 'ip-api error')
+      loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
     }
-  }
-  else {
-    anniversaryNotes.value = null
-    isAnniversaryViewActive.value = false
-    hasMoreNotes.value = notes.value.length < totalNotes.value
-    sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-    sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
-  }
-}
 
-function toggleSelectionMode() {
-  const willEnable = !isSelectionModeActive.value
-  isSelectionModeActive.value = willEnable
-  if (willEnable)
-    showSearchBar.value = false
-  else
-    selectedNoteIds.value = []
+    if (!loc?.lat || !loc?.lon)
+      throw new Error('定位失败')
 
-  showDropdown.value = false
-}
+    const city = getMappedCityName(loc.city)
 
-function finishSelectionMode() {
-  isSelectionModeActive.value = false
-  selectedNoteIds.value = []
-}
+    // 天气
+    const w = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
+    )
+    if (!w.ok)
+      throw new Error(String(w.status))
+    const d = await w.json()
+    const tempC = d?.current?.temperature_2m
+    const icon = getWeatherIcon(d?.current?.weathercode)
 
-function handleToggleSelect(noteId: string) {
-  if (!isSelectionModeActive.value)
-    return
-  const index = selectedNoteIds.value.indexOf(noteId)
-  if (index > -1)
-    selectedNoteIds.value.splice(index, 1)
-  else
-    selectedNoteIds.value.push(noteId)
-}
-
-async function handleCopySelected() {
-  if (selectedNoteIds.value.length === 0)
-    return
-  const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
-  const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
-  try {
-    await navigator.clipboard.writeText(textContent)
-    messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
+    // 只保留：城市 温度°C 图标（无文字）
+    return `${city} ${tempC}°C ${icon}`
   }
   catch {
-    messageHook.error(t('notes.copy_error'))
-  }
-  finally {
-    isSelectionModeActive.value = false
-    selectedNoteIds.value = []
+    return null
   }
 }
 
-async function handleDeleteSelected() {
-  if (selectedNoteIds.value.length === 0)
+// ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
+async function handleSave() {
+  const content = contentModel.value || ''
+  let weather: string | null | undefined
+
+  if (!props.isEditing)
+    weather = await fetchWeatherLine()
+
+  // 向后兼容：父组件若只接收第一个参数（content）也不会报错
+  emit('save', content, weather)
+}
+
+// ============== 基础事件 ==============
+function handleFocus() {
+  emit('focus')
+  captureCaret()
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
+}
+
+function onBlur() {
+  emit('blur')
+  if (suppressNextBlur.value) {
+    suppressNextBlur.value = false
     return
-  dialog.warning({
-    title: t('dialog.delete_note_title'),
-    content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
-    positiveText: t('notes.confirm_delete'),
-    negativeText: t('notes.cancel'),
-    onPositiveClick: async () => {
-      try {
-        loading.value = true
-        const idsToDelete = [...selectedNoteIds.value]
+  }
+  if (blurTimeoutId)
+    clearTimeout(blurTimeoutId)
 
-        idsToDelete.forEach((id) => {
-          const noteToDelete = notes.value.find(n => n.id === id)
-          if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete)
-        })
+  blurTimeoutId = window.setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200)
+}
 
-        const { error } = await supabase
-          .from('notes')
-          .delete()
-          .in('id', idsToDelete)
-          .eq('user_id', user.value!.id)
-        if (error)
-          throw new Error(error.message)
+function handleClick() {
+  captureCaret()
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
+}
 
-        invalidateAllSearchCaches()
+// —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
+function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
+  const cursorPos = el.selectionStart
+  const textBeforeCursor = el.value.substring(0, cursorPos)
+  const lastHashIndex = textBeforeCursor.lastIndexOf('#')
 
-        notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
-        cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
+  // 不在“#片段”内就隐藏
+  if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
+    showTagSuggestions.value = false
+    return
+  }
 
-        if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
-          newNoteContent.value = ''
-          lastSavedId.value = null
-          editingNote.value = null
-          localStorage.removeItem(LOCAL_NOTE_ID_KEY)
-          localStorage.removeItem(LOCAL_CONTENT_KEY)
-        }
+  const searchTerm = textBeforeCursor.substring(lastHashIndex + 1)
+  const filtered = props.allTags
+    .filter(tag => tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`))
+    .sort((a, b) => {
+      const ap = isPinned(a) ? 0 : 1
+      const bp = isPinned(b) ? 0 : 1
+      if (ap !== bp)
+        return ap - bp
+      return a.slice(1).toLowerCase().localeCompare(b.slice(1).toLowerCase())
+    })
 
-        totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
-        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-        hasPreviousNotes.value = currentPage.value > 1
+  tagSuggestions.value = filtered
+  if (!tagSuggestions.value.length) {
+    showTagSuggestions.value = false
+    return
+  }
 
-        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+  // === 计算光标像素位置（相对 .editor-wrapper） ===
+  const wrapper = el.parentElement as HTMLElement // .editor-wrapper（position: relative）
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const GAP = 6 // 面板与光标之间的额外间距
 
-        isSelectionModeActive.value = false
-        selectedNoteIds.value = []
+  // 用镜像元素拿到光标（选区末端）位置
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
+    box-sizing:border-box; top:0; left:0; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight}; letter-spacing:${style.letterSpacing};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
+    border-style:solid;
+  `
+  wrapper.appendChild(mirror)
 
-        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+  const selEnd = el.selectionEnd ?? el.value.length
+  const before = el.value.slice(0, selEnd)
+    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
+    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
+  const probe = document.createElement('span')
+  probe.textContent = '\u200B' // 零宽探针当作光标点
+  mirror.textContent = before
+  mirror.appendChild(probe)
+
+  const probeRect = probe.getBoundingClientRect()
+  const wrapperRect = wrapper.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+
+  const caretX = (probeRect.left - wrapperRect.left) - (el.scrollLeft || 0)
+  const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
+  mirror.remove()
+
+  // textarea 可视框（相对 wrapper）
+  const textAreaBox = {
+    top: elRect.top - wrapperRect.top,
+    left: elRect.left - wrapperRect.left,
+    right: elRect.right - wrapperRect.left,
+    bottom: elRect.bottom - wrapperRect.top,
+    width: el.clientWidth,
+    height: el.clientHeight,
+  }
+
+  // === 核心：面板放在“光标下一行” ===
+  // 在手机端加一行高，避免遮住当前行光标
+  const top = caretY + lineHeight + GAP
+  let left = caretX
+
+  // 先设置初值并显示
+  suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
+  showTagSuggestions.value = true
+
+  // 下一帧拿到面板尺寸后再做边界与滚动处理
+  nextTick(() => {
+    const panel = wrapper.querySelector('.tag-suggestions') as HTMLElement | null
+    if (!panel)
+      return
+
+    const panelW = panel.offsetWidth
+    const panelH = panel.offsetHeight
+
+    // 右侧溢出 -> 向左收口（不越过 textarea 左边）
+    if (left + panelW > textAreaBox.left + textAreaBox.width)
+      left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
+
+    // 底部不够显示：优先滚动 textarea 给空间（避免翻到上方再挡住光标）
+    const overflow = (top + panelH) - textAreaBox.bottom
+    if (overflow > 0) {
+      const need = overflow + 8 // 额外 buffer
+      const newScrollTop = Math.min(el.scrollTop + need, el.scrollHeight - el.clientHeight)
+      if (newScrollTop !== el.scrollTop) {
+        el.scrollTop = newScrollTop
+        // 滚动后重新定位一次，确保仍处于“下一行”
+        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
+        return
       }
-      catch (err: any) {
-        messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)
+    }
+
+    suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
+  })
+}
+
+function handleInput(event: Event) {
+  const el = event.target as HTMLTextAreaElement
+  captureCaret()
+  computeAndShowTagSuggestions(el)
+}
+
+// ============== 文本与工具栏 ==============
+function updateTextarea(newText: string, newCursorPos?: number) {
+  input.value = newText
+  nextTick(() => {
+    const el = textarea.value
+    if (el) {
+      el.focus()
+      if (newCursorPos !== undefined)
+        el.setSelectionRange(newCursorPos, newCursorPos)
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+    }
+  })
+}
+
+function insertText(prefix: string, suffix = '') {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  const selectedText = el.value.substring(start, end)
+  const newTextFragment = `${prefix}${selectedText}${suffix}`
+  const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
+  const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
+  if (blurTimeoutId) {
+    clearTimeout(blurTimeoutId)
+    blurTimeoutId = null
+  }
+  updateTextarea(finalFullText, newCursorPos)
+}
+
+function runToolbarAction(fn: () => void) {
+  fn()
+  nextTick(() => {
+    const el = textarea.value
+    if (el)
+      el.focus()
+    captureCaret()
+  })
+}
+
+function addHeading() {
+  insertText('## ', '')
+}
+function addBold() {
+  insertText('**', '**')
+}
+function _addItalic() {
+  insertText('*', '*')
+}
+function addUnderline() {
+  insertText('++', '++')
+}
+function addBulletList() {
+  const el = textarea.value
+  if (!el)
+    return
+  const start = el.selectionStart
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const textToInsert = '- '
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
+  const newCursorPos = start + textToInsert.length
+  updateTextarea(finalFullText, newCursorPos)
+}
+function addMarkHighlight() {
+  // 用 == 包裹选中内容（需要渲染端启用 markdown-it-mark 才会显示黄色背景）
+  insertText('==', '==')
+}
+
+function addTodo() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const textToInsert = '- [ ] '
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
+  const newCursorPos = start + textToInsert.length
+  updateTextarea(finalFullText, newCursorPos)
+}
+
+function addOrderedList() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const textToInsert = '1. '
+  const finalFullText = el.value.substring(0, currentLineStart) + textToInsert + el.value.substring(currentLineStart)
+  const newCursorPos = start + textToInsert.length
+  updateTextarea(finalFullText, newCursorPos)
+}
+
+function handleEnterKey(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || isComposing.value)
+    return
+
+  const el = textarea.value
+  if (!el)
+    return
+
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
+  const currentLine = el.value.substring(currentLineStart, start)
+
+  // 1) 有序列表续行
+  const orderedRe = /^(\d+)\.\s+/
+  const orderedMatch = currentLine.match(orderedRe)
+
+  // 2) 无序/待办续行
+  const todoRe = /^-\s\[\s?\]\s+/
+  const bulletRe = /^(-|\*|\+)\s+/
+  const todoMatch = currentLine.match(todoRe)
+  const bulletMatch = currentLine.match(bulletRe)
+
+  if (!orderedMatch && !todoMatch && !bulletMatch)
+    return
+
+  event.preventDefault()
+
+  // 如果只有前缀本身 => 结束该列表（删除本行）
+  const onlyPrefix
+    = (orderedMatch && currentLine.trim() === orderedMatch[0].trim())
+    || (todoMatch && currentLine.trim() === todoMatch[0].trim())
+    || (bulletMatch && currentLine.trim() === bulletMatch[0].trim())
+
+  if (onlyPrefix) {
+    const before = el.value.substring(0, currentLineStart - 1)
+    const after = el.value.substring(end)
+    updateTextarea(before + after, currentLineStart - 1)
+    return
+  }
+
+  // 正常续行逻辑
+  if (orderedMatch) {
+    const currentNumber = Number.parseInt(orderedMatch[1], 10)
+    const nextPrefix = `\n${currentNumber + 1}. `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+    return
+  }
+
+  // 待办优先于普通无序
+  if (todoMatch) {
+    const nextPrefix = `\n- [ ] `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+    return
+  }
+
+  if (bulletMatch) {
+    const symbol = bulletMatch[1] || '-'
+    const nextPrefix = `\n${symbol} `
+    const before2 = el.value.substring(0, start)
+    const after2 = el.value.substring(end)
+    updateTextarea(before2 + nextPrefix + after2, start + nextPrefix.length)
+  }
+}
+
+// —— 选择标签：使用 lastSelectionStart，稳定替换“#片段”
+function selectTag(tag: string) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const value = el.value
+  const cursorPos = Number.isFinite(lastSelectionStart.value)
+    ? Math.min(Math.max(lastSelectionStart.value, 0), value.length)
+    : value.length
+
+  const hashIndex = value.lastIndexOf('#', Math.max(cursorPos - 1, 0))
+
+  let replaceFrom = -1
+  if (hashIndex >= 0) {
+    const between = value.slice(hashIndex + 1, cursorPos)
+    if (!/\s/.test(between))
+      replaceFrom = hashIndex
+  }
+
+  const textAfterCursor = value.slice(cursorPos)
+  let newText = ''
+  let newCursorPos = 0
+
+  if (replaceFrom >= 0) {
+    newText = `${value.slice(0, replaceFrom)}${tag} ${textAfterCursor}`
+    newCursorPos = replaceFrom + tag.length + 1
+  }
+  else {
+    newText = `${value.slice(0, cursorPos)}${tag} ${value.slice(cursorPos)}`
+    newCursorPos = cursorPos + tag.length + 1
+  }
+
+  updateTextarea(newText, newCursorPos)
+
+  showTagSuggestions.value = false
+  nextTick(() => {
+    const el2 = textarea.value
+    if (el2) {
+      el2.focus()
+      el2.setSelectionRange(newCursorPos, newCursorPos)
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+    }
+  })
+}
+
+// —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
+function openTagMenu() {
+  suppressNextBlur.value = true
+  runToolbarAction(() => insertText('#', ''))
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = textarea.value
+      if (el) {
+        captureCaret()
+        computeAndShowTagSuggestions(el)
       }
-      finally {
-        loading.value = false
+      suppressNextBlur.value = false
+    })
+  })
+}
+
+// —— 样式弹层定位（固定在 Aa 按钮上方）
+function placeFormatPalette() {
+  const btn = formatBtnRef.value
+  const root = rootRef.value
+  const panel = formatPaletteRef.value
+  if (!btn || !root || !panel)
+    return
+  const btnRect = btn.getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const gap = 8
+  const panelH = panel.offsetHeight || 0
+  const top = (btnRect.top - rootRect.top) - panelH - gap
+  const left = (btnRect.left - rootRect.left) + btnRect.width / 2
+  formatPalettePos.value = { top: `${Math.max(top, 0)}px`, left: `${left}px` }
+}
+
+let paletteFollowRaf: number | null = null
+function startPaletteFollowLoop() {
+  stopPaletteFollowLoop()
+  const loop = () => {
+    if (showFormatPalette.value) {
+      placeFormatPalette()
+      paletteFollowRaf = requestAnimationFrame(loop)
+    }
+  }
+  paletteFollowRaf = requestAnimationFrame(loop)
+}
+function stopPaletteFollowLoop() {
+  if (paletteFollowRaf != null) {
+    cancelAnimationFrame(paletteFollowRaf)
+    paletteFollowRaf = null
+  }
+}
+
+function openFormatPalette() {
+  showFormatPalette.value = true
+  nextTick(() => {
+    placeFormatPalette()
+    startPaletteFollowLoop()
+  })
+}
+function closeFormatPalette() {
+  showFormatPalette.value = false
+  stopPaletteFollowLoop()
+}
+function toggleFormatPalette() {
+  if (showFormatPalette.value)
+    closeFormatPalette()
+  else openFormatPalette()
+}
+
+// ✅ 统一处理样式按钮点击（修复 eslint: max-statements-per-line）
+function handleFormat(fn: () => void) {
+  runToolbarAction(fn)
+  closeFormatPalette()
+}
+
+// —— 监听滚动/尺寸变化，保持面板跟随 Aa
+function onWindowScrollOrResize() {
+  if (showFormatPalette.value)
+    placeFormatPalette()
+}
+onMounted(() => {
+  window.addEventListener('scroll', onWindowScrollOrResize, true)
+  window.addEventListener('resize', onWindowScrollOrResize)
+})
+onUnmounted(() => {
+  window.removeEventListener('scroll', onWindowScrollOrResize, true)
+  window.removeEventListener('resize', onWindowScrollOrResize)
+})
+
+// —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
+function onGlobalPointerDown(e: Event) {
+  if (!showFormatPalette.value)
+    return
+  const btn = formatBtnRef.value
+  const panel = formatPaletteRef.value
+  if (!btn || !panel)
+    return
+  const target = e.target as Node
+  if (btn.contains(target) || panel.contains(target))
+    return
+  closeFormatPalette()
+}
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showFormatPalette.value)
+    closeFormatPalette()
+}
+onMounted(() => {
+  window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
+
+// —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
+const LAST_IMAGE_URL_PREFIX_KEY = 'note_image_url_prefix_v1'
+function getLastPrefix() {
+  try {
+    const v = localStorage.getItem(LAST_IMAGE_URL_PREFIX_KEY)
+    return v || 'https://'
+  }
+  catch {
+    return 'https://'
+  }
+}
+function looksLikeImage(urlText: string) {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(urlText)
+}
+function savePrefix(urlText: string) {
+  try {
+    const u = new URL(urlText)
+    let prefix = ''
+    if (looksLikeImage(urlText)) {
+      // 直链图片：记“目录”（去掉文件名）
+      const dir = u.pathname.replace(/[^/]+$/u, '')
+      prefix = `${u.origin}${dir}`
+    }
+    else {
+      // 非直链：记“完整路径”，去掉查询/哈希，并确保以 / 结尾
+      const path = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`
+      prefix = `${u.origin}${path}`
+    }
+    localStorage.setItem(LAST_IMAGE_URL_PREFIX_KEY, prefix)
+  }
+  catch {
+    // 不是合法 URL 就不记忆
+  }
+}
+function insertImageLink() {
+  const valRef = ref(getLastPrefix())
+  const errorRef = ref<string | null>(null)
+  dialog.create({
+    title: '插入图片链接',
+    positiveText: '插入',
+    negativeText: '取消',
+    content: () =>
+      h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+        h(NInput, {
+          'value': valRef.value,
+          'placeholder': 'https://example.com/image.jpg 或微云分享链接',
+          'onUpdate:value': (v: string) => {
+            valRef.value = v
+            errorRef.value = null
+          },
+          'autofocus': true,
+          'clearable': true,
+          'inputProps': { style: 'font-size:16px;' }, // ✅ iOS 防止放大（末尾不要逗号）
+        }),
+        errorRef.value
+          ? h('div', { style: 'color:#dc2626;font-size:12px;' }, errorRef.value)
+          : null,
+      ]),
+    onPositiveClick: () => {
+      const raw = (valRef.value || '').trim()
+      if (!raw) {
+        errorRef.value = '请输入链接'
+        return false
       }
+      if (!/^https?:\/\//i.test(raw)) {
+        errorRef.value = '必须以 http:// 或 https:// 开头'
+        return false
+      }
+      // 记忆前缀（增强规则）
+      savePrefix(raw)
+      // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
+      const text = looksLikeImage(raw) ? '图片（直链）' : '（点击查看图片）'
+      insertText(`[${text}](${raw})`)
+      return true
     },
   })
 }
 
-function handleMainMenuSelect(rawKey: string) {
-  const toHashTag = (k: string) => {
-    let kk = k || ''
-    if (kk.startsWith('tag:'))
-      kk = kk.slice(4)
-    kk = kk.trim()
-    if (!kk)
-      return ''
-    if (!kk.startsWith('#'))
-      kk = `#${kk}`
-    return kk
-  }
-
-  if (rawKey.startsWith('tag:') || rawKey.startsWith('#')) {
-    const tag = toHashTag(rawKey)
-    if (tag) {
-      fetchNotesByTag(tag)
-      mainMenuVisible.value = false
-    }
-    return
-  }
-
-  switch (rawKey) {
-    case 'calendar':
-      showCalendarView.value = true
-      break
-    case 'toggleSelection':
-      toggleSelectionMode()
-      break
-    case 'settings':
-      showSettingsModal.value = true
-      break
-    case 'export':
-      handleBatchExport()
-      break
-    case 'account':
-      showAccountModal.value = true
-      break
-    case 'tags':
-      break
-    case 'trash':
-      showTrashModal.value = true
-      mainMenuVisible.value = false
-      break
-    default:
-      break
-  }
-}
-
-async function handleEditFromCalendar(noteToFind: any) {
-  showCalendarView.value = false
-  if (isAnniversaryViewActive.value)
-    handleAnniversaryToggle(null)
-  if (activeTagFilter.value)
-    clearTagFilter()
-  if (searchQuery.value || isShowingSearchResults.value)
-    handleCancelSearch()
-  await nextTick()
-
-  const noteExists = notes.value.some(n => n.id === noteToFind.id)
-  if (!noteExists)
-    notes.value.unshift(noteToFind)
-
-  await nextTick()
-
-  if (noteListRef.value)
-    (noteListRef.value as any).focusAndEditNote(noteToFind.id)
-  else
-    messageHook.error('无法与笔记列表通信，请重试。')
-}
-
-async function fetchNotesByTag(tag: string) {
-  if (isAnniversaryViewActive.value) {
-    anniversaryBannerRef.value?.setView(false)
-    isAnniversaryViewActive.value = false
-    anniversaryNotes.value = null
-  }
-  if (!tag)
-    return
-  const normalize = (k: string) => (k.startsWith('#') ? k : `#${k}`)
-  const hashTag = normalize(tag)
-
-  isShowingSearchResults.value = false
-  showSearchBar.value = false
-  searchQuery.value = ''
-  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
-  if (!user.value)
-    return
-
-  if (!activeTagFilter.value)
-    mainNotesCache = [...notes.value]
-
-  const cacheKey = getTagCacheKey(hashTag)
-  activeTagFilter.value = hashTag
-
-  const cachedData = localStorage.getItem(cacheKey)
-  if (cachedData) {
-    const cachedNotes0 = JSON.parse(cachedData)
-    notes.value = cachedNotes0
-    filteredNotesCount.value = cachedNotes0.length
-    hasMoreNotes.value = false
-    return
-  }
-
-  isLoadingNotes.value = true
-  notes.value = []
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .ilike('content', `%${hashTag}%`)
-      .order('created_at', { ascending: false })
-    if (error)
-      throw error
-    notes.value = data || []
-    filteredNotesCount.value = notes.value.length
-    localStorage.setItem(cacheKey, JSON.stringify(notes.value))
-    hasMoreNotes.value = false
-  }
-  catch (err: any) {
-    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
-  }
-  finally {
-    isLoadingNotes.value = false
-  }
-}
-
-function clearTagFilter() {
-  activeTagFilter.value = null
-  notes.value = mainNotesCache
-  mainNotesCache = []
-  hasMoreNotes.value = notes.value.length < totalNotes.value
-  noteListKey.value++
-}
-
-const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
-
-// 包装：模板里避免多语句
-function onTrashRestoredWrapper() {
-  invalidateAllTagCaches()
-  handleTrashRestored()
-}
-function onTrashPurgedWrapper() {
-  invalidateAllTagCaches()
-  handleTrashPurged()
-}
+defineExpose({ reset: triggerResize })
 </script>
 
 <template>
-  <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }" :aria-busy="!isReady">
-    <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
-        <div class="dropdown-menu-container">
-          <NDropdown
-            v-model:show="mainMenuVisible"
-            trigger="click"
-            placement="bottom-start"
-            :options="mainMenuOptions"
-            :show-arrow="false"
-            :width="240"
-            @select="handleMainMenuSelect"
-          >
-            <button class="header-action-btn" @click.stop>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
-              </svg>
-            </button>
-          </NDropdown>
-        </div>
-        <h1 class="page-title">{{ $t('notes.notes') }}</h1>
-        <div class="header-actions">
-          <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-        </div>
-      </div>
-
-      <Transition name="slide-fade">
-        <div
-          v-if="isSelectionModeActive"
-          class="selection-actions-banner"
-          role="region"
-          aria-live="polite"
-        >
-          <div class="banner-left">
-            <strong>{{ $t('notes.select_notes') }}</strong>
-            <span class="sep">·</span>
-            <span>{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</span>
-          </div>
-          <div class="banner-right">
-            <button
-              class="action-btn copy-btn"
-              :disabled="selectedNoteIds.length === 0"
-              @click="handleCopySelected"
-            >
-              {{ $t('notes.copy') }}
-            </button>
-            <button
-              class="action-btn delete-btn"
-              :disabled="selectedNoteIds.length === 0"
-              @click="handleDeleteSelected"
-            >
-              {{ $t('notes.delete') }}
-            </button>
-            <button class="finish-btn" @click="finishSelectionMode">
-              {{ $t('notes.cancel') || '完成' }}
-            </button>
-          </div>
-        </div>
-      </Transition>
-
-      <Transition name="slide-fade">
-        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
-          <NoteActions
-            ref="noteActionsRef"
-            v-model="searchQuery"
-            class="search-actions-wrapper"
-            :all-tags="allTags"
-            :is-exporting="isExporting"
-            :search-query="searchQuery"
-            :user="user"
-            :show-export-button="!isShowingSearchResults"
-            @export="handleExportTrigger"
-            @search-started="handleSearchStarted"
-            @search-completed="handleSearchCompleted"
-            @search-cleared="handleSearchCleared"
-          />
-          <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
-        </div>
-      </Transition>
-
-      <AnniversaryBanner v-show="showAnniversaryBanner" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
-
-      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
-        <span class="banner-info">
-          <span class="banner-text-main">
-            正在筛选标签：<strong>{{ activeTagFilter }}</strong>
-          </span>
-          <span class="banner-text-count">
-            共 {{ filteredNotesCount }} 条笔记
-          </span>
-        </span>
-        <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">导出</button>
-          <button class="clear-filter-btn" @click="clearTagFilter">×</button>
-        </div>
-      </div>
-
-      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
-        <span class="banner-info">
-          <span class="banner-text-main">
-            搜索“<strong>{{ searchQuery }}</strong>”的结果
-          </span>
-          <span class="banner-text-count">
-            共 {{ notes.length }} 条笔记
-          </span>
-        </span>
-        <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">
-            导出
-          </button>
-        </div>
-      </div>
-
-      <!-- ⚠️ 已移除：顶部独立的新输入框（不再放在列表外） -->
-
-      <div v-if="showNotesList" class="notes-list-container">
-        <NoteList
-          ref="noteListRef" :key="noteListKey"
-          :notes="displayedNotes"
-          :is-loading="isLoadingNotes"
-          :has-more="hasMoreNotes"
-          :is-selection-mode-active="isSelectionModeActive"
-          :selected-note-ids="selectedNoteIds"
-          :all-tags="allTags"
-          :max-note-length="maxNoteLength"
-          :search-query="searchQuery"
-          @load-more="nextPage"
-          @update-note="handleUpdateNote"
-          @delete-note="triggerDeleteConfirmation"
-          @pin-note="handlePinToggle"
-          @copy-note="handleCopy"
-          @task-toggle="handleNoteContentClick"
-          @toggle-select="handleToggleSelect"
-          @date-updated="fetchNotes"
-        >
-          <!-- ✅ 将“新建输入框”插入到列表滚动容器顶部 -->
-          <template #composer>
-            <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
-              <NoteEditor
-                ref="newNoteEditorRef"
-                v-model="newNoteContent"
-                :is-editing="false"
-                :is-loading="isCreating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.content_placeholder')"
-                :all-tags="allTags"
-                @save="handleCreateNote"
-                @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
-                @blur="onEditorBlur"
-                @request-stick-top="handleRequestStickTop"
-              />
-              <div :style="{ height: `${composerPad}px` }" />
-            </div>
-          </template>
-        </NoteList>
-      </div>
-
-      <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
-      <TrashModal
-        v-if="showTrashModal"
-        :show="showTrashModal"
-        @close="showTrashModal = false"
-        @restored="onTrashRestoredWrapper"
-        @purged="onTrashPurgedWrapper"
+  <div
+    ref="rootRef"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+  >
+    <div class="editor-wrapper">
+      <textarea
+        ref="textarea"
+        v-model="input"
+        class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
+        :placeholder="placeholder"
+        @focus="handleFocus"
+        @blur="onBlur"
+        @click="handleClick"
+        @keydown="captureCaret"
+        @keyup="captureCaret"
+        @mouseup="captureCaret"
+        @keydown.enter="handleEnterKey"
+        @compositionstart="isComposing = true"
+        @compositionend="isComposing = false"
+        @input="handleInput"
       />
+      <div
+        v-if="showTagSuggestions && tagSuggestions.length"
+        class="tag-suggestions"
+        :style="suggestionsStyle"
+      >
+        <ul>
+          <li
+            v-for="tag in tagSuggestions"
+            :key="tag"
+            @mousedown.prevent="selectTag(tag)"
+          >
+            <span class="tag-text">{{ tag }}</span>
+            <span v-if="isPinned(tag)" class="tag-star">★</span>
+          </li>
+        </ul>
+      </div>
+    </div>
 
-      <Transition name="slide-up-fade">
-        <CalendarView
-          v-if="showCalendarView" ref="calendarViewRef"
-          @close="showCalendarView = false"
-          @edit-note="handleEditFromCalendar"
-          @copy="handleCopy"
-          @pin="handlePinToggle"
-          @delete="triggerDeleteConfirmation"
-        />
-      </Transition>
-    </template>
-    <template v-else>
-      <Authentication />
-    </template>
+    <div class="editor-footer">
+      <div class="footer-left">
+        <div class="editor-toolbar">
+          <!-- # 标签 -->
+          <button
+            type="button"
+            class="toolbar-btn"
+            title="添加标签"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="openTagMenu"
+          >
+            #
+          </button>
+
+          <!-- 待办 ✓ -->
+          <button
+            type="button"
+            class="toolbar-btn"
+            title="待办事项"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addTodo)"
+          >
+            <svg
+              class="icon-20" viewBox="0 0 24 24" fill="none"
+              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            >
+              <rect
+                x="3" y="3" width="18" height="18" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <path
+                d="M7 12l4 4 6-8"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+
+          <!-- 样式(Aa)汇总按钮 -->
+          <button
+            ref="formatBtnRef"
+            type="button"
+            class="toolbar-btn toolbar-btn-aa"
+            title="样式"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="toggleFormatPalette"
+          >
+            Aa
+          </button>
+
+          <!-- 插入图片链接（Naive UI 对话框） -->
+          <button
+            type="button"
+            class="toolbar-btn"
+            title="插入图片链接"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="insertImageLink"
+          >
+            <!-- Image icon -->
+            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+              <circle cx="9" cy="9" r="1.6" fill="currentColor" />
+              <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+
+          <span class="toolbar-sep" aria-hidden="true" />
+        </div>
+        <span class="char-counter">
+          {{ charCount }}
+        </span>
+      </div>
+      <div class="actions">
+        <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">
+          取消
+        </button>
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="isLoading || !contentModel"
+          @click="handleSave"
+        >
+          保存
+        </button>
+      </div>
+    </div>
+
+    <!-- 样式弹层（更小、更贴合 Aa） -->
+    <div
+      v-if="showFormatPalette"
+      ref="formatPaletteRef"
+      class="format-palette"
+      :style="{ top: formatPalettePos.top, left: formatPalettePos.left }"
+      @mousedown.prevent
+    >
+      <div class="format-row">
+        <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
+        <!-- 有序列表图标 -->
+        <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
+            <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
+            <text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">3</text>
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
+        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
+        <!-- 无序列表图标 -->
+        <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="6" cy="7" r="2" fill="currentColor" />
+            <circle cx="6" cy="12" r="2" fill="currentColor" />
+            <circle cx="6" cy="17" r="2" fill="currentColor" />
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+            <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
+          </svg>
+        </button>
+      </div>
+      <div class="format-caret" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.auth-container {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 0 1.5rem 0.75rem 1.5rem;
-  background: white;
+.note-editor-reborn {
+  position: relative;
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-  font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.note-editor-reborn:focus-within {
+  border-color: #00b386;
+  box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
+}
+.dark .note-editor-reborn {
+  background-color: #2c2c2e;
+  border-color: #48484a;
+}
+.dark .note-editor-reborn:focus-within {
+  border-color: #00b386;
+  box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
+}
+
+.editor-wrapper {
   position: relative;
-}
-.dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
-
-.notes-list-container {
-  flex-grow: 1;
-  flex-shrink: 1;
-  flex-basis: 0;
-  overflow-y: hidden;
-  position: relative;
+  overflow-anchor: none;
 }
 
-/* 旧输入框复用原样式；现在它通过插槽位于 NoteList 的滚动容器顶部，会跟随滚动 */
-.new-note-editor-container {
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-  flex-shrink: 0;
+.editor-textarea {
+  width: 100%;
+  min-height: 40px;
+  max-height: 48vh;
+  overflow-y: auto;
+  padding: 8px 8px 1px 16px;
+  border: none;
+  background-color: transparent;
+  color: inherit;
+  line-height: 1.6;
+  resize: none;
+  outline: 0;
+  box-sizing: border-box;
+  font-family: inherit;
+  caret-color: currentColor;
+  scrollbar-gutter: stable both-edges;
 }
 
-.page-header {
-  flex-shrink: 0;
+.editor-textarea.font-size-small { font-size: 14px; }
+.editor-textarea.font-size-medium { font-size: 16px; }
+.editor-textarea.font-size-large { font-size: 20px; }
+.editor-textarea.font-size-extra-large { font-size: 22px; }
+
+.char-counter {
+  font-size: 12px;
+  color: #6b7280;
+}
+.dark .char-counter { color: #9ca3af; }
+
+.actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: 3000;
-  background: white;
-  height: 44px;
-  padding-top: 0.75rem;
+  gap: 8px;
+  white-space: nowrap;
 }
-.dark .page-header { background: #1e1e1e; }
-.page-title {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  font-size: 22px; font-weight: 600; margin: 0;
+
+.btn-primary {
+  background-color: #00b386;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
-.dark .page-title { color: #f0f0f0; }
-.header-actions { display: flex; align-items: center; gap: 0.5rem; }
-.header-action-btn {
-  font-size: 16px; background: none; border: none; padding: 4px; cursor: pointer; color: #555;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s ease;
+.btn-primary:hover { background-color: #009a74; }
+.btn-primary:disabled { background-color: #a5a5a5; cursor: not-allowed; opacity: 0.7; }
+
+.btn-secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
-.header-action-btn:hover { background-color: rgba(0,0,0,0.05); }
-.dark .header-action-btn { color: #bbb; }
-.dark .header-action-btn:hover { background-color: rgba(255,255,255,0.1); }
+.btn-secondary:hover { background-color: #e0e0e0; }
+.dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
+.dark .btn-secondary:hover { background-color: #5a6676; }
 
-/* 选择模式横幅、搜索条、过滤条等样式保持不变（略）… */
-.selection-actions-banner { position: sticky; top: 44px; z-index: 2500; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background-color: #eef2ff; color: #4338ca; padding: 8px 12px; border-radius: 8px; margin: 8px 0 10px 0; font-size: 14px; }
-.dark .selection-actions-banner { background-color: #312e81; color: #c7d2fe; }
-.selection-actions-banner .banner-left { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.selection-actions-banner .sep { opacity: 0.6; }
-.selection-actions-banner .banner-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.selection-actions-banner .action-btn, .selection-actions-banner .finish-btn { background: none; border: 1px solid #6366f1; color: #4338ca; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
-.selection-actions-banner .action-btn:disabled, .selection-actions-banner .finish-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.selection-actions-banner .action-btn:hover, .selection-actions-banner .finish-btn:hover { background-color: #4338ca; color: #fff; }
-.dark .selection-actions-banner .action-btn, .dark .selection-actions-banner .finish-btn { border-color: #a5b4fc; color: #c7d2fe; }
-.dark .selection-actions-banner .action-btn:hover, .dark .selection-actions-banner .finish-btn:hover { background-color: #a5b4fc; color: #312e81; }
-.selection-actions-banner .delete-btn { border-color: #ef4444; color: #b91c1c; }
-.dark .selection-actions-banner .delete-btn { border-color: #fca5a5; color: #fecaca; }
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-top: none;
+  background-color: transparent;
+}
 
-.slide-up-fade-enter-active,.slide-up-fade-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
-.slide-up-fade-enter-from,.slide-up-fade-leave-to { opacity: 0; transform: translate(-50%, 20px); }
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-.search-bar-container { position: -webkit-sticky; position: sticky; top: 44px; z-index: 9; background: white; padding-top: 0.5rem; padding-bottom: 0.5rem; display: flex; gap: 0.5rem; align-items: center; }
-.dark .search-bar-container { background: #1e1e1e; }
-.search-actions-wrapper { flex: 1; min-width: 0; }
-@media (max-width: 768px) { .cancel-search-btn { font-size: 14px; padding: 0.6rem 1rem; } }
+/* 工具栏按钮间距（维持你之前已加大的 8px） */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  padding: 0;
+}
 
-.clear-filter-btn { background: none; border: none; font-size: 20px; font-weight: bold; cursor: pointer; color: inherit; opacity: 0.7; transition: opacity 0.2s; }
-.clear-filter-btn:hover { opacity: 1; }
+.toolbar-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: #6b7280;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 18px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+.toolbar-btn:hover { background-color: #f0f0f0; color: #333; }
+.dark .toolbar-btn { color: #9ca3af; }
+.dark .toolbar-btn:hover { background-color: #404040; color: #f0f0f0; }
 
-.active-filter-bar .export-results-btn { background: none; border: 1px solid #6366f1; color: #4338ca; padding: 4px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
-.search-results-bar .export-results-btn:hover { background-color: #4338ca; color: white; }
-.dark .search-results-bar .export-results-btn { border-color: #a5b4fc; color: #c7d2fe; }
-.dark .search-results-bar .export-results-btn:hover { background-color: #a5b4fc; color: #312e81; }
+.toolbar-btn-aa {
+  font-size: 16px;
+  font-weight: 600;
+  width: 26px;
+}
 
-.active-filter-bar { display: flex; align-items: center; gap: 1rem; background-color: #eef2ff; color: #4338ca; padding: 8px 12px; border-radius: 8px; margin-bottom: 1rem; font-size: 14px; }
-.banner-info { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: space-between; }
-.banner-text-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.banner-text-count { flex-shrink: 0; margin-left: 1rem; color: #6c757d; }
-.dark .banner-text-count { color: #adb5bd; }
-.banner-actions { flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem; }
+.icon-image {
+  font-size: 16px;
+  line-height: 1;
+}
 
-.dark .active-filter-bar { background-color: #312e81; color: #c7d2fe; }
+.toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin-left: 6px;
+  background-color: rgba(0,0,0,0.08);
+}
+.dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
-.auth-container.is-typing .new-note-editor-container { padding-top: 0.25rem; }
-</style>
+/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
+.format-palette {
+  position: absolute;
+  z-index: 1100;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  padding: 2px 4px;          /* 缩小内边距 */
+}
+.dark .format-palette {
+  background: #2c2c2e;
+  border-color: #3f3f46;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
 
-<style>
-/* 下拉菜单全局样式（保留） */
-.n-dropdown-menu { max-height: min(70vh, 520px) !important; overflow: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.n-dropdown-menu .n-dropdown-menu { max-height: min(60vh, 420px) !important; overflow: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-right: 4px; }
-.n-dropdown-menu .n-dropdown-menu .n-dropdown-option { line-height: 1.2; }
-@media (max-width: 768px) { .n-dropdown-menu .n-dropdown-menu { max-height: 70vh !important; } }
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;                  /* 缩小内部间距 */
+}
+.format-btn {
+  width: 24px;               /* 缩小按钮 */
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.format-btn:hover { background: rgba(0,0,0,0.06); }
+.dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
+
+/* 小三角：指向 Aa 按钮（大幅缩小） */
+.format-caret {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 3px) rotate(45deg);
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  background: inherit;
+  border-left: 1px solid inherit;
+  border-bottom: 1px solid inherit;
+}
+
+/* 标签联想 */
+.tag-suggestions {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 150px;
+  overflow-y: auto;
+  min-width: 120px;
+}
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
+.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
+.tag-suggestions li:hover { background-color: #f0f0f0; }
+.dark .tag-suggestions li:hover { background-color: #404040; }
+
+/* 编辑态占位高度策略（保持原有） */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+.note-editor-reborn.editing-viewport {
+  height: 68dvh;
+  min-height: 68dvh;
+  max-height: 68dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 68vh;
+  min-height: 68vh;
+  max-height: 68vh;
+  }
+}
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+.note-editor-reborn.editing-viewport .editor-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
+  max-height: none !important;
+  overflow-y: auto;
+}
+
+/* tag 面板样式增强 */
+.tag-suggestions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.tag-suggestions .tag-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-suggestions .tag-star {
+  opacity: 0.7;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+.icon-20 {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* 允许图标溢出按钮盒，不改变按钮盒尺寸 */
+.format-btn { overflow: visible; }
+
+/* 让 Aa 面板里的图标“视觉放大”，但按钮仍旧是 24×24 */
+.format-btn .icon-bleed {
+  width: 40px !important;    /* 图标比按钮大一些 */
+  height: 40px !important;
+  display: block;
+  margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
+  pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
 </style>
