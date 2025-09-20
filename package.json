@@ -1,7 +1,6 @@
 {
   "name": "moon-web-start",
   "type": "module",
-  "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "vite",

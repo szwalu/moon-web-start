@@ -33,7 +33,20 @@ const messageHook = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
 
-const noteListRef = ref(null)
+const noteListRef = ref<InstanceType<typeof NoteList> | null>(null)
+const composerPad = ref(0)
+function handleRequestStickTop(payload?: { paddingBottom?: number }) {
+  // 预留底部空白，避免工具栏/联想面板被挡
+  const pad = (payload && Number.isFinite(payload.paddingBottom))
+    ? (payload!.paddingBottom as number)
+    : 96
+  composerPad.value = pad
+
+  // 把列表滚动到最顶，让 composer（输入框）整块贴到视口顶部
+  nextTick(() => {
+    noteListRef.value?.scrollToTop()
+  })
+}
 const newNoteEditorContainerRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
@@ -1158,43 +1171,6 @@ function onTrashPurgedWrapper() {
   invalidateAllTagCaches()
   handleTrashPurged()
 }
-
-/** 计算顶部 sticky 总高度（页眉 + 可能出现的搜索栏/选择条幅等），并加上额外留白 */
-function computeStickyOffset(extra = 0) {
-  let sum = 0
-  const header = document.querySelector('.page-header') as HTMLElement | null
-  if (header)
-    sum += header.offsetHeight || 0
-
-  // 搜索条
-  const search = document.querySelector('.search-bar-container') as HTMLElement | null
-  if (search && showSearchBar.value)
-    sum += search.offsetHeight || 0
-
-  // 选择模式条幅
-  const selectBanner = document.querySelector('.selection-actions-banner') as HTMLElement | null
-  if (selectBanner && isSelectionModeActive.value)
-    sum += selectBanner.offsetHeight || 0
-
-  // 其他横幅（如标签筛选/搜索结果），一般新建模式用不到；如需可按需加：
-  // const activeBar = document.querySelector('.active-filter-bar') as HTMLElement | null
-  // if (activeBar) sum += activeBar.offsetHeight || 0
-
-  return sum + extra
-}
-
-/** 供 NoteEditor 请求：把输入框滚到列表顶部并保证底部完全露出 */
-function onRequestStickTop(payload?: { paddingBottom?: number }) {
-  const pad = Math.max(0, Number(payload?.paddingBottom ?? 80))
-  const offset = computeStickyOffset(pad)
-
-  // 两帧后滚动，避开软键盘/布局动画
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      noteListRef.value?.scrollComposerIntoView(offset)
-    })
-  })
-}
 </script>
 
 <template>
@@ -1347,8 +1323,9 @@ function onRequestStickTop(payload?: { paddingBottom?: number }) {
                 @save="handleCreateNote"
                 @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
                 @blur="onEditorBlur"
-                @request-stick-top="onRequestStickTop"
+                @request-stick-top="handleRequestStickTop"
               />
+              <div :style="{ height: `${composerPad}px` }" />
             </div>
           </template>
         </NoteList>
