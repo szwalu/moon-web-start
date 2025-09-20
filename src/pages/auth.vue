@@ -529,12 +529,6 @@ function onEditorBlur() {
   }, 120)
 }
 
-// 包装：模板 @focus 不再写多条语句
-function onComposerFocus() {
-  onEditorFocus()
-  handleEditorFocus(newNoteEditorContainerRef.value)
-}
-
 function handleExportTrigger() {
   if (isShowingSearchResults.value || activeTagFilter.value)
     handleExportResults()
@@ -1164,6 +1158,43 @@ function onTrashPurgedWrapper() {
   invalidateAllTagCaches()
   handleTrashPurged()
 }
+
+/** 计算顶部 sticky 总高度（页眉 + 可能出现的搜索栏/选择条幅等），并加上额外留白 */
+function computeStickyOffset(extra = 0) {
+  let sum = 0
+  const header = document.querySelector('.page-header') as HTMLElement | null
+  if (header)
+    sum += header.offsetHeight || 0
+
+  // 搜索条
+  const search = document.querySelector('.search-bar-container') as HTMLElement | null
+  if (search && showSearchBar.value)
+    sum += search.offsetHeight || 0
+
+  // 选择模式条幅
+  const selectBanner = document.querySelector('.selection-actions-banner') as HTMLElement | null
+  if (selectBanner && isSelectionModeActive.value)
+    sum += selectBanner.offsetHeight || 0
+
+  // 其他横幅（如标签筛选/搜索结果），一般新建模式用不到；如需可按需加：
+  // const activeBar = document.querySelector('.active-filter-bar') as HTMLElement | null
+  // if (activeBar) sum += activeBar.offsetHeight || 0
+
+  return sum + extra
+}
+
+/** 供 NoteEditor 请求：把输入框滚到列表顶部并保证底部完全露出 */
+function onRequestStickTop(payload?: { paddingBottom?: number }) {
+  const pad = Math.max(0, Number(payload?.paddingBottom ?? 80))
+  const offset = computeStickyOffset(pad)
+
+  // 两帧后滚动，避开软键盘/布局动画
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      noteListRef.value?.scrollComposerIntoView(offset)
+    })
+  })
+}
 </script>
 
 <template>
@@ -1302,7 +1333,7 @@ function onTrashPurgedWrapper() {
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
         >
-          <!-- 🔌 通过插槽把“旧的输入框”插进 NoteList 的滚动容器顶部 -->
+          <!-- ✅ 将“新建输入框”插入到列表滚动容器顶部 -->
           <template #composer>
             <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
               <NoteEditor
@@ -1314,8 +1345,9 @@ function onTrashPurgedWrapper() {
                 :placeholder="$t('notes.content_placeholder')"
                 :all-tags="allTags"
                 @save="handleCreateNote"
-                @focus="onComposerFocus"
+                @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
                 @blur="onEditorBlur"
+                @request-stick-top="onRequestStickTop"
               />
             </div>
           </template>

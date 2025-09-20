@@ -16,7 +16,8 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
+// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestStickTop'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -114,6 +115,25 @@ function ensureCaretVisibleInTextarea() {
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+
+  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
+  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
+  if (!props.isEditing) {
+    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
+    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
+
+    // 简单节流，避免频繁触发
+    if (atBottom && nearBottom) {
+      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
+        (ensureCaretVisibleInTextarea as any)._stickLock = true
+        // camelCase 事件名（修复 custom-event-name-casing）
+        emit('requestStickTop', { paddingBottom: 96 })
+        setTimeout(() => {
+          (ensureCaretVisibleInTextarea as any)._stickLock = false
+        }, 120)
+      }
+    }
+  }
 
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -1170,8 +1190,8 @@ defineExpose({ reset: triggerResize })
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
     height: 68vh;
-    min-height: 68vh;
-    max-height: 68vh;
+  min-height: 68vh;
+  max-height: 68vh;
   }
 }
 .note-editor-reborn.editing-viewport .editor-wrapper {

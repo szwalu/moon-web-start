@@ -32,6 +32,7 @@ const { t } = useI18n()
 // ====== DOM refs ======
 const wrapperRef = ref<HTMLElement | null>(null)
 const scrollerRef = ref<HTMLElement | null>(null)
+const composerSlotRef = ref<HTMLElement | null>(null)
 
 // ====== UI state ======
 const expandedNote = ref<string | null>(null)
@@ -443,6 +444,17 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
+/** 将顶部 composer 区域滚到可视区顶部（考虑 sticky 顶部偏移与额外留白） */
+async function scrollComposerIntoView(offset = 0) {
+  const root = scrollerRef.value
+  const el = composerSlotRef.value
+  if (!root || !el)
+    return
+  // 目标位置 = 插槽相对滚动容器的 offsetTop - 需要空出来的顶部偏移
+  const target = Math.max(0, el.offsetTop - offset)
+  await stableSetScrollTop(root, target, 6, 0.5)
+}
+
 /** 对外暴露：回到顶部、滚到并编辑某条 */
 async function focusAndEditNote(noteId: string) {
   const idx = noteIdToMixedIndex.value[noteId]
@@ -468,7 +480,7 @@ function scrollToTop() {
   if (root)
     root.scrollTop = 0
 }
-defineExpose({ scrollToTop, focusAndEditNote })
+defineExpose({ scrollToTop, focusAndEditNote, scrollComposerIntoView })
 
 // ====== 响应 notes 变化：校准悬浮条 ======
 watch(() => props.notes, () => {
@@ -507,7 +519,10 @@ watch(() => props.notes, () => {
       @scroll.passive="onPlainScroll"
     >
       <!-- 🔌 插槽：让父组件把“旧的输入框”插入到滚动容器顶部 -->
-      <slot name="composer" />
+      <!-- 顶部输入框插槽：加一层容器以便滚动对齐 -->
+      <div ref="composerSlotRef">
+        <slot name="composer" />
+      </div>
 
       <template v-for="item in mixedItems" :key="item.id">
         <!-- 月份头部条幅 -->
