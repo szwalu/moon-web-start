@@ -20,6 +20,7 @@
     "@milkdown/vue": "^7.15.5",
     "@popperjs/core": "^2.11.8",
     "@supabase/supabase-js": "^2.50.0",
+    "@tanstack/vue-virtual": "^3.13.12",
     "@tiptap/extension-character-count": "^3.3.0",
     "@tiptap/extension-focus": "^3.3.0",
     "@tiptap/extension-placeholder": "^3.3.0",
