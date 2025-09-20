@@ -3,6 +3,7 @@ import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } 
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import NoteItem from '@/components/NoteItem.vue'
+import NoteEditor from '@/components/NoteEditor.vue'
 
 const props = defineProps({
   notes: { type: Array as () => any[], required: true },
@@ -552,17 +553,18 @@ watch(() => props.notes, () => {
                 @date-updated="() => emit('dateUpdated')"
               />
               <template v-else>
-                <!-- 如果你需要在列表内直接编辑，可改回 NoteEditor；此处保留原有逻辑 -->
-                <textarea
+                <NoteEditor
                   v-model="editingNoteContent"
-                  class="w-full"
-                  rows="6"
-                  @keydown.stop
+                  :is-editing="true"
+                  :is-loading="isUpdating"
+                  :max-note-length="maxNoteLength"
+                  :all-tags="allTags"
+                  :placeholder="$t('notes.content_placeholder')"
+                  @save="() => handleUpdateNote()"
+                  @cancel="cancelEdit"
+                  @focus.stop
+                  @blur.stop
                 />
-                <div style="display:flex; gap:8px; margin-top:8px;">
-                  <button :disabled="isUpdating" @click="handleUpdateNote">{{ t('notes.save') }}</button>
-                  <button :disabled="isUpdating" @click="cancelEdit">{{ t('notes.cancel') }}</button>
-                </div>
               </template>
             </div>
           </div>
