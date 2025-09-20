@@ -31,4 +31,4 @@ coverage
 
 # .gitignore 文件
 .env.local
-.env.*.local
+.env.*.localpackage-lock.json
