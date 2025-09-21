@@ -69,8 +69,9 @@ interface MonthHeaderItem {
   id: string
   monthKey: string // "YYYY-MM"
   label: string // "YYYY年M月"
+  vid: string // 新增：供虚拟列表使用的复合 key
 }
-type MixedNoteItem = any & { type: 'note' }
+type MixedNoteItem = any & { type: 'note'; vid: string }
 type MixedItem = MonthHeaderItem | MixedNoteItem
 
 function getMonthKeyAndLabel(note: any): { key: string; label: string } {
@@ -88,30 +89,67 @@ function _isPinned(n: any) {
   return !!(n?.pinned || n?.is_pinned || n?.pinned_at)
 }
 
+/* ========= 新增：统一去重 + 稳定排序的入口 normalizedNotes ========= */
+function _ts(n: any) {
+  const raw = n?.date || n?.created_at || n?.updated_at
+  return raw ? new Date(raw).getTime() : 0
+}
+
+/** 统一入口：去重（按 id）、稳定排序（置顶优先，其次时间倒序） */
+const normalizedNotes = computed<any[]>(() => {
+  const seen = new Set<string>()
+  const buf: any[] = []
+  for (const n of props.notes) {
+    if (!n || n.id == null)
+      continue
+    const id = String(n.id)
+    if (!seen.has(id)) {
+      seen.add(id)
+      buf.push(n)
+    }
+    else {
+      // 如出现重复 id（常见于乐观插入 + 服务端回流），保留“时间更新较新的那条”
+      const idx = buf.findIndex(x => String(x.id) === id)
+      if (idx >= 0 && _ts(n) >= _ts(buf[idx]))
+        buf[idx] = n
+    }
+  }
+  // 稳定排序：置顶优先；同组内按时间倒序
+  return buf.sort((a, b) => {
+    const pa = _isPinned(a) ? 0 : 1
+    const pb = _isPinned(b) ? 0 : 1
+    if (pa !== pb)
+      return pa - pb
+    return _ts(b) - _ts(a)
+  })
+})
+/* ========================== 结束新增 ========================== */
+
 /** 跳过置顶段，从第一条非置顶开始插入月份头 */
 const mixedItems = computed<MixedItem[]>(() => {
   const out: MixedItem[] = []
   let lastKey = ''
   let inPinned = true
-  for (const n of props.notes) {
+
+  for (const n of normalizedNotes.value) {
     if (inPinned && !_isPinned(n)) {
       inPinned = false
       const { key, label } = getMonthKeyAndLabel(n)
-      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
+      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label, vid: `h:${key}` })
       lastKey = key
-      out.push({ ...n, type: 'note' })
+      out.push({ ...n, type: 'note', vid: `n:${n.id}` } as MixedNoteItem)
       continue
     }
     if (inPinned) {
-      out.push({ ...n, type: 'note' })
+      out.push({ ...n, type: 'note', vid: `n:${n.id}` } as MixedNoteItem)
       continue
     }
     const { key, label } = getMonthKeyAndLabel(n)
     if (key !== lastKey) {
-      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
+      out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label, vid: `h:${key}` })
       lastKey = key
     }
-    out.push({ ...n, type: 'note' })
+    out.push({ ...n, type: 'note', vid: `n:${n.id}` } as MixedNoteItem)
   }
   return out
 })
@@ -126,10 +164,10 @@ const noteIdToMixedIndex = computed<Record<string, number>>(() => {
   return map
 })
 
-/** 新增：id -> 原始笔记（向上滚兜底需要） */
+/** 新增：id -> 原始笔记（向上滚兜底需要），用 normalizedNotes 更一致 */
 const noteById = computed<Record<string, any>>(() => {
   const m: Record<string, any> = {}
-  for (const n of props.notes) m[n.id] = n
+  for (const n of normalizedNotes.value) m[n.id] = n
   return m
 })
 
@@ -622,7 +660,7 @@ function updateCollapsePos() {
 async function focusAndEditNote(noteId: string) {
   const idx = noteIdToMixedIndex.value[noteId]
   if (idx !== undefined) {
-    const original = props.notes.find(n => n.id === noteId)
+    const original = normalizedNotes.value.find(n => n.id === noteId)
     if (original) {
       editingNoteId.value = noteId
       editingNoteContent.value = original.content
@@ -663,18 +701,16 @@ defineExpose({ scrollToTop, focusAndEditNote })
       :items="mixedItems"
       :min-item-size="120"
       class="scroller"
-      key-field="id"
+      key-field="vid"
     >
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
           :item="item"
           :active="active"
           :data-index="index"
-          :size-dependencies="[
-            item.type === 'note'
-              ? (item.content, expandedNote === item.id, editingNoteId === item.id)
-              : item.label,
-          ]"
+          :size-dependencies="item.type === 'note'
+            ? [item.content, expandedNote === item.id, editingNoteId === item.id, item.updated_at, item.vid]
+            : [item.label, item.vid]"
           class="note-item-container"
           @resize="updateCollapsePos"
         >
