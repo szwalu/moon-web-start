@@ -305,6 +305,21 @@ function scheduleCollapseRetry() {
   step()
 }
 
+// 放在 handleScroll 之前
+let rafPending = false
+function scheduleScrollWork() {
+  if (rafPending)
+    return
+  rafPending = true
+  requestAnimationFrame(() => {
+    rafPending = false
+    // 这些原来在 handleScroll 里“每次滚动都跑”的重活，改到 rAF 里做
+    recomputeStickyState()
+    updateCollapsePos()
+    syncStickyGutters()
+  })
+}
+
 const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
   if (!el) {
@@ -339,10 +354,7 @@ const handleScroll = throttle(() => {
     scheduleCollapseRetry()
   }, 120)
 
-  // 同步悬浮月份条与布局
-  recomputeStickyState()
-  updateCollapsePos()
-  syncStickyGutters()
+  scheduleScrollWork()
 }, 16)
 
 function rebindScrollListener() {
@@ -782,7 +794,8 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;}
 
 /* 背景 */
 .scroller { background-color: #f9fafb; padding: 0.5rem; }
