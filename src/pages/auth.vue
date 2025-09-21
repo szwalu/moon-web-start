@@ -907,12 +907,19 @@ function handleAnniversaryToggle(data: any[] | null) {
     isAnniversaryViewActive.value = true
     hasMoreNotes.value = false
     sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
-    try {
-      sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+
+    // ↓↓↓ 关键改动：把大对象序列化/写入挪到空闲时，避免阻塞点击响应帧
+    const payload = () => {
+      try {
+        sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+      }
+      catch {
+        sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+      }
     }
-    catch {
-      sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
-    }
+    ;(window as any).requestIdleCallback
+      ? (window as any).requestIdleCallback(payload, { timeout: 1500 })
+      : setTimeout(payload, 0)
   }
   else {
     anniversaryNotes.value = null
@@ -1382,7 +1389,7 @@ function handleRequestScroll() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  min-height: 110dvh; /* 改为 min-height，允许容器被内容撑开 */
+  min-height: 100dvh; /* 改为 min-height，允许容器被内容撑开 */
   position: relative;
 }
 .dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
