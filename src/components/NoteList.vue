@@ -49,22 +49,19 @@ const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
 const isUpdating = ref(false)
 
-// 记录每条笔记的容器 DOM，用于定位与可见性判断
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
-// ---- :ref 助手（注意：要处理卸载 null，避免“幽灵节点”）----
+// ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
-  if (!el) {
-    delete noteContainers.value[id]
+  if (!el)
     return
-  }
   const $el = el as HTMLElement
   $el.setAttribute('data-note-id', id)
   noteContainers.value[id] = $el
 }
 
 // ==============================
-// 月份头部（虚拟项）+ 悬浮月份条
+// 月份头部（虚拟项）+ 悬浮月份条 逻辑（最小侵入）
 // ==============================
 
 interface MonthHeaderItem {
@@ -129,7 +126,7 @@ const noteIdToMixedIndex = computed<Record<string, number>>(() => {
   return map
 })
 
-/** id -> 原始笔记（向上滚兜底需要） */
+/** 新增：id -> 原始笔记（向上滚兜底需要） */
 const noteById = computed<Record<string, any>>(() => {
   const m: Record<string, any> = {}
   for (const n of props.notes) m[n.id] = n
@@ -161,11 +158,11 @@ const currentMonthLabel = computed(() => {
 })
 const pushOffset = ref(0)
 
-/** 滚动方向（仅在向上滚时做月份兜底纠正） */
+/** 新增：滚动方向（仅在向上滚时做月份兜底纠正） */
 let lastScrollTop = 0
 const scrollDir = ref<'up' | 'down' | 'none'>('none')
 
-/** 向下滚逻辑 + 向上滚兜底（用可见 note 修正月份） */
+/** 基线：你的“向下滚正确”的逻辑（不改），仅在末尾对向上滚做兜底修正 */
 function recomputeStickyState() {
   const root = scrollerRef.value?.$el as HTMLElement | undefined
   if (!root) {
@@ -173,20 +170,24 @@ function recomputeStickyState() {
     return
   }
   const rootTop = root.getBoundingClientRect().top
-  const EPS = 1
+  const EPS = 1 // 抖动容差
 
+  // 当前在 DOM 的 header，按几何位置排序
   const entries = Object.entries(headerEls.value)
     .map(([k, el]) => (el && el.isConnected) ? { key: k, top: el.getBoundingClientRect().top } : null)
     .filter(Boolean)
     .sort((a: any, b: any) => a.top - b.top) as Array<{ key: string; top: number }>
 
   if (entries.length === 0) {
+    // header 被虚拟化回收：向上滚时用可见卡片兜底，避免整月显示成上个月
     if (scrollDir.value === 'up')
       setCurrentByTopVisibleNote(root)
+
     pushOffset.value = 0
     return
   }
 
+  // 找“最后一个已越过顶部（top <= rootTop+EPS）的 header”
   let idxPrev = -1
   for (let i = 0; i < entries.length; i++) {
     if (entries[i].top <= rootTop + EPS)
@@ -196,9 +197,11 @@ function recomputeStickyState() {
   }
 
   if (idxPrev >= 0) {
+    // 有 header 真越过顶部：当前月 = 该 header.key
     if (currentMonthKey.value !== entries[idxPrev].key)
       currentMonthKey.value = entries[idxPrev].key
 
+    // 计算被“下一月”顶起的偏移
     const next = entries[idxPrev + 1]
     if (next) {
       const dist = next.top - rootTop
@@ -210,6 +213,8 @@ function recomputeStickyState() {
     }
   }
   else {
+    // 顶部之上没有任何 header：位于列表开头区域
+    // 若未初始化，设为第一个 header；已有值则保持（迟滞，不提前切月）
     if (!currentMonthKey.value)
       currentMonthKey.value = entries[0].key
 
@@ -219,6 +224,7 @@ function recomputeStickyState() {
     pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
   }
 
+  // ✅ 仅当“向上滚”且 header 判断可能滞后时，用真实可见笔记做兜底修正（不改 pushOffset）
   if (scrollDir.value === 'up')
     setCurrentByTopVisibleNote(root)
 }
@@ -230,16 +236,20 @@ function syncStickyGutters() {
   if (!sc || !wrap)
     return
 
+  // 读取 .scroller 的左右 padding
   const cs = getComputedStyle(sc)
   const pl = Number.parseFloat(cs.paddingLeft) || 0
   const pr = Number.parseFloat(cs.paddingRight) || 0
+
+  // 计算原生滚动条宽度（Windows 下通常 > 0，macOS overlay 通常为 0）
   const scrollbarW = sc.offsetWidth - sc.clientWidth
 
+  // 和 .month-header 的 margin 左右 4px 对齐
   wrap.style.setProperty('--sticky-left', `${pl + 4}px`)
   wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
 }
 
-/** 用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚） */
+/** 新增：用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚调用） */
 function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
   const scRect = rootEl.getBoundingClientRect()
 
@@ -249,6 +259,7 @@ function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
     if (!el || !el.isConnected)
       continue
 
+    // 防止虚拟列表复用导致错位
     const dataId = el.getAttribute('data-note-id')
     if (dataId !== id)
       continue
@@ -305,21 +316,6 @@ function scheduleCollapseRetry() {
   step()
 }
 
-// 放在 handleScroll 之前
-let rafPending = false
-function scheduleScrollWork() {
-  if (rafPending)
-    return
-  rafPending = true
-  requestAnimationFrame(() => {
-    rafPending = false
-    // 这些原来在 handleScroll 里“每次滚动都跑”的重活，改到 rAF 里做
-    recomputeStickyState()
-    updateCollapsePos()
-    syncStickyGutters()
-  })
-}
-
 const handleScroll = throttle(() => {
   const el = scrollerRef.value?.$el as HTMLElement | undefined
   if (!el) {
@@ -327,11 +323,13 @@ const handleScroll = throttle(() => {
     return
   }
 
+  // ✅ 新增：判定滚动方向（不改变原逻辑）
   const curTop = el.scrollTop
   if (curTop > lastScrollTop)
     scrollDir.value = 'down'
   else if (curTop < lastScrollTop)
     scrollDir.value = 'up'
+
   lastScrollTop = curTop
 
   // 触底加载
@@ -354,30 +352,19 @@ const handleScroll = throttle(() => {
     scheduleCollapseRetry()
   }, 120)
 
-  scheduleScrollWork()
+  // 同步悬浮月份条
+  recomputeStickyState()
+
+  updateCollapsePos()
+  syncStickyGutters() // 同步左右留白，避免覆盖滚动条
 }, 16)
 
 function rebindScrollListener() {
   const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
   if (!scrollerElement)
     return
-
   scrollerElement.removeEventListener('scroll', handleScroll)
   scrollerElement.addEventListener('scroll', handleScroll, { passive: true } as any)
-}
-
-// ====== 强制刷新虚拟列表高度 ======
-function forceVListRemeasure() {
-  const sc = scrollerRef.value
-  if (!sc)
-    return
-
-  try {
-    sc.forceUpdate?.()
-  }
-  catch {
-    // no-op
-  }
 }
 
 watch(() => props.notes, () => {
@@ -388,7 +375,6 @@ watch(() => props.notes, () => {
     requestAnimationFrame(() => {
       recomputeStickyState()
     })
-    forceVListRemeasure()
   })
 }, { deep: false })
 
@@ -404,22 +390,13 @@ watch(scrollerRef, (newScroller, oldScroller) => {
       requestAnimationFrame(() => {
         recomputeStickyState()
       })
-      forceVListRemeasure()
     })
   }
-})
-
-watch([expandedNote, editingNoteId], () => {
-  nextTick(() => {
-    updateCollapsePos()
-    forceVListRemeasure()
-  })
 })
 
 function handleWindowResize() {
   syncStickyGutters()
   updateCollapsePos()
-  forceVListRemeasure()
 }
 
 onMounted(() => {
@@ -454,14 +431,12 @@ function startEdit(note: any) {
   expandedNote.value = null
   nextTick(() => {
     updateCollapsePos()
-    forceVListRemeasure()
   })
 }
 
 function cancelEdit() {
   editingNoteId.value = null
   editingNoteContent.value = ''
-  nextTick(forceVListRemeasure)
 }
 
 async function handleUpdateNote() {
@@ -559,7 +534,6 @@ async function toggleExpand(noteId: string) {
   }
 
   updateCollapsePos()
-  forceVListRemeasure()
 }
 
 async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, epsilon = 0.5) {
@@ -594,7 +568,6 @@ function handleEditorFocus(containerEl: HTMLElement) {
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
-    forceVListRemeasure()
   })
 })
 
@@ -668,7 +641,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
-    <!-- 悬浮月份条 -->
+    <!-- 悬浮月份条：不影响“收起”按钮（z-index 更低，且 pointer-events:none） -->
     <div
       v-if="currentMonthLabel"
       class="sticky-month"
@@ -688,33 +661,24 @@ defineExpose({ scrollToTop, focusAndEditNote })
       v-else
       ref="scrollerRef"
       :items="mixedItems"
-      key-field="id"
-      :min-item-size="140"
-      :buffer="900"
-      :prerender="12"
+      :min-item-size="120"
       class="scroller"
+      key-field="id"
     >
-      <template #before>
-        <div v-if="currentMonthLabel" class="sticky-top-spacer" />
-      </template>
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
-          :key="item.id"
           :item="item"
           :active="active"
           :data-index="index"
-          :size-dependencies="item.type === 'note'
-            ? [
-              item.id,
-              (item.content || '').length,
-              expandedNote === item.id,
-              editingNoteId === item.id,
-            ]
-            : [item.id, item.label]"
+          :size-dependencies="[
+            item.type === 'note'
+              ? (item.content, expandedNote === item.id, editingNoteId === item.id)
+              : item.label,
+          ]"
           class="note-item-container"
-          @resize="() => { updateCollapsePos(); forceVListRemeasure() }"
+          @resize="updateCollapsePos"
         >
-          <!-- 月份头部条幅（虚拟项） -->
+          <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div
             v-if="item.type === 'month-header'"
             :ref="(el) => setHeaderEl(el, item.monthKey)"
@@ -724,7 +688,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
             {{ item.label }}
           </div>
 
-          <!-- 笔记项 -->
+          <!-- 笔记项：保持原有逻辑与结构 -->
           <div
             v-else
             :ref="(el) => setNoteContainer(el, item.id)"
@@ -771,7 +735,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
       </template>
 
       <template #after>
-        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
+        <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
           {{ t('notes.loading') }}
         </div>
       </template>
@@ -794,13 +758,10 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;}
-
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
 .scroller { background-color: #f9fafb; padding: 0.5rem; }
 .dark .scroller { background-color: #111827; }
-
 /* 卡片 */
 .note-content-wrapper {
   background-color: #ffffff; border-radius: 12px; padding: 1rem;
@@ -813,7 +774,6 @@ defineExpose({ scrollToTop, focusAndEditNote })
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
-
 /* 间距与选择 */
 .note-item-container { padding-bottom: 1.5rem; }
 .note-item-container:last-child { padding-bottom: 0; }
@@ -825,7 +785,6 @@ defineExpose({ scrollToTop, focusAndEditNote })
 .note-selection-wrapper.selection-mode:hover { background-color: rgba(0, 0, 0, 0.03); }
 .dark .note-selection-wrapper.selection-mode:hover { background-color: rgba(255, 255, 255, 0.05); }
 .note-content-wrapper { flex: 1; min-width: 0; }
-
 /* 选择态圆点 */
 .selection-indicator { padding-top: 0.75rem; }
 .selection-circle { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #ccc; transition: all 0.2s ease; }
@@ -835,11 +794,9 @@ defineExpose({ scrollToTop, focusAndEditNote })
   content: ''; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
   border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
-
 /* 文案颜色 */
 .text-gray-500 { color: #6b7280; }
 .dark .text-gray-500 { color: #9ca3af; }
-
 /* 收起按钮 */
 .collapse-button {
   position: absolute; z-index: 10;
@@ -855,7 +812,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 /* ===== 月份头部项（虚拟项） ===== */
 .month-header {
-  height: 32px;
+  height: 32px;              /* 或你需要的高度 */
   padding: 0 8px;
   margin: 8px 4px 6px 4px;
   border-radius: 8px;
@@ -865,8 +822,8 @@ defineExpose({ scrollToTop, focusAndEditNote })
   background: #eef2ff;
   border: 1px solid #e5e7eb;
 
-  display: flex;
-  align-items: center;
+  display: flex;             /* 垂直居中关键 */
+  align-items: center;       /* 垂直居中关键 */
 }
 .dark .month-header {
   color: #e5e7eb;
@@ -878,11 +835,11 @@ defineExpose({ scrollToTop, focusAndEditNote })
 .sticky-month {
   position: absolute;
   top: 0;
-  left: var(--sticky-left, 4px);
-  right: var(--sticky-right, 4px);
+  left: var(--sticky-left, 4px);      /* 与 .month-header 的左右间距保持一致 */
+  right: var(--sticky-right, 4px);    /* 右侧同时为滚动条预留空间 */
   z-index: 9;
-  height: 32px;
-  padding: 0 8px;
+  height: 32px;              /* 要与 .month-header 保持一致 */
+  padding: 0 8px;            /* 与 .month-header 一致，确保文字左对齐 */
   pointer-events: none;
   background: rgba(249, 250, 251, 0.9);
   -webkit-backdrop-filter: blur(2px);
@@ -891,17 +848,12 @@ defineExpose({ scrollToTop, focusAndEditNote })
   font-weight: 700;
   color: #111827;
 
-  display: flex;
-  align-items: center;
+  display: flex;             /* 垂直居中关键 */
+  align-items: center;       /* 垂直居中关键 */
 }
 .dark .sticky-month {
   background: rgba(17, 24, 39, 0.9);
   border-bottom: 1px solid #374151;
   color: #f9fafb;
-}
-
-/* 悬浮月份条本身是 32px */
-.sticky-top-spacer {
-  height: 32px;
 }
 </style>
