@@ -40,6 +40,25 @@ const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
 const isUpdating = ref(false)
 
+// —— 键盘安全区：用 visualViewport 估算键盘遮挡高度，并加到底部 padding
+const keyboardInset = ref(0)
+
+function updateKeyboardInset() {
+  const vv: any = (window as any).visualViewport
+  if (!vv) {
+    keyboardInset.value = 0
+  }
+  else {
+    const obscured = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
+    keyboardInset.value = obscured
+  }
+  const sc = scrollerRef.value
+  if (sc) {
+    // +16px 缓冲，给底部留一点安全距离，避免刚好贴边继续抖动
+    sc.style.paddingBottom = `${keyboardInset.value + 16}px`
+  }
+}
+
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -292,7 +311,13 @@ onMounted(() => {
       recomputeStickyState()
     }, { root })
   }
-
+  // —— 监听 visualViewport，随键盘高度变化调整底部安全区
+  const vv: any = (window as any).visualViewport
+  if (vv) {
+    vv.addEventListener('resize', updateKeyboardInset)
+    vv.addEventListener('scroll', updateKeyboardInset) // iOS 上键盘弹出也会触发 scroll
+    updateKeyboardInset()
+  }
   if (loadMoreSentinel.value) {
     loadIO = new IntersectionObserver((entries) => {
       const entry = entries[0]
@@ -316,6 +341,11 @@ onUnmounted(() => {
   if (loadIO) {
     loadIO.disconnect()
     loadIO = null
+  }
+  const vv: any = (window as any).visualViewport
+  if (vv) {
+    vv.removeEventListener('resize', updateKeyboardInset)
+    vv.removeEventListener('scroll', updateKeyboardInset)
   }
 })
 
@@ -444,49 +474,41 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
-/** 将顶部 composer 区域滚到可视区，优先保证“底部完全可见”；否则小幅上推一行的距离 */
+/** 将顶部 composer 区域滚到可视区，优先保证“底部完全可见”（考虑键盘高度），避免反复细微推挤造成抖动 */
 async function scrollComposerIntoView(offsetTop = 40) {
   const root = scrollerRef.value
   const el = composerSlotRef.value
   if (!root || !el)
     return
 
-  // 估算被键盘遮住的底部高度（iOS/Android 下 visualViewport 有效）
-  const keyboardObscured = (() => {
-    const vv = (window as any).visualViewport
-    if (vv) {
-      // 可视高度缩减 + 竖向偏移（iOS 上 offsetTop > 0）
-      const obscured = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
-      return obscured
-    }
-    return 0
-  })()
-
-  const buffer = 12 // 让底部留一点安全距离
-  const nudge = 48 // 不到触底也轻推约一行高度（体验同 Memos）
+  const buffer = 12
 
   const viewTop = root.scrollTop
   const viewBottom = viewTop + root.clientHeight
-  const effectiveBottom = viewBottom - keyboardObscured
+  const effectiveBottom = viewBottom - keyboardInset.value // 键盘占位后真实的可视底
 
   const elTop = el.offsetTop
   const elBottom = elTop + el.offsetHeight
 
-  // 1) 若 composer 底部已经“压到”可视底（考虑键盘），优先把“底部”拉进来
+  // 底部被遮挡（<= effectiveBottom）时，直接一次性把底部拉进来 + buffer，不做“每行一点点”的 nudging
   if (elBottom > effectiveBottom - buffer) {
-    const target = elBottom - (root.clientHeight - keyboardObscured) + buffer
-    await stableSetScrollTop(root, Math.max(0, target), 6, 0.5)
+    const target = elBottom - (root.clientHeight - keyboardInset.value) + buffer
+    const maxTop = Math.max(0, root.scrollHeight - root.clientHeight)
+    const clamped = Math.min(Math.max(0, target), maxTop)
+    // 只有在差距明显时才滚，避免小幅度反复抖动
+    if (Math.abs(root.scrollTop - clamped) > 1)
+      await stableSetScrollTop(root, clamped, 6, 0.5)
+
     return
   }
 
-  // 2) 否则小幅上推，给光标下一行留空间（模拟 Memos 的“边打边上顶”）
-  const target = Math.min(root.scrollTop + nudge, Math.max(0, root.scrollHeight - root.clientHeight))
-  await stableSetScrollTop(root, target, 3, 0.5)
-
-  // 3) 极端场景：顶部超出视口（基本不会发生），再对齐到 sticky 下方
+  // 极端情况：如果顶部在 sticky bar 上方，也对齐一下（通常很少发生）
   const wantTop = elTop - offsetTop
-  if (elTop < viewTop + offsetTop)
-    await stableSetScrollTop(root, Math.max(0, wantTop), 6, 0.5)
+  if (elTop < viewTop + offsetTop) {
+    const clamped = Math.max(0, wantTop)
+    if (Math.abs(root.scrollTop - clamped) > 1)
+      await stableSetScrollTop(root, clamped, 6, 0.5)
+  }
 }
 /** 对外暴露：回到顶部、滚到并编辑某条 */
 async function focusAndEditNote(noteId: string) {

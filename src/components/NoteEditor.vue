@@ -175,8 +175,6 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  // 聚焦时先上推一点，避免一开始就被键盘压住
-  emit('requestScrollIntoView')
 }
 
 function onBlur() {
@@ -317,21 +315,36 @@ function handleInput(event: Event) {
   maybeEnsureBottomVisible(el)
 }
 
-// 仅在移动端判断；当 textarea 内部滚动已接近底部时，通知父级把编辑器整体上推
+// 在移动端：仅当 ① 光标接近文本尾部，且 ② textarea 内部滚动几乎触底 时，才请求父级上推；并做 400ms 冷却
+let _ensureCooldownUntil = 0
 function maybeEnsureBottomVisible(el: HTMLTextAreaElement) {
-  const isMobile
-    = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches)
-
+  const uaMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  const coarse = (window.matchMedia && window.matchMedia('(pointer:coarse)').matches)
+  const isMobile = uaMobile || coarse
   if (!isMobile)
     return
 
-  // 触底判定：可视底 + 滚动量 ≥ 内容高度 - 8px
-  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
-  if (nearBottom) {
-    // ✅ 这里改为 camelCase 事件名
-    emit('requestScrollIntoView')
+  // 只有在“基本是在末尾输入”时才考虑上推，避免编辑中段也频繁触发
+  const END_TOLERANCE = 3
+  if (typeof el.selectionEnd === 'number') {
+    const tail = el.value.length - el.selectionEnd
+    if (tail > END_TOLERANCE)
+      return
   }
+
+  // 接近内部底部（textarea 自己的滚动）
+  const NEAR_PX = 6
+  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_PX
+  if (!nearBottom)
+    return
+
+  // 冷却：避免一行一跳
+  const now = performance.now()
+  if (now < _ensureCooldownUntil)
+    return
+  _ensureCooldownUntil = now + 400
+
+  emit('requestScrollIntoView') // camelCase 事件名（auth.vue 已绑定）
 }
 
 // ============== 文本与工具栏 ==============
