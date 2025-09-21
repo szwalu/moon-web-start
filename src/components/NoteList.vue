@@ -45,20 +45,69 @@ const keyboardInset = ref(0)
 
 function updateKeyboardInset() {
   const vv: any = (window as any).visualViewport
-  if (!vv) {
-    keyboardInset.value = 0
-  }
-  else {
+  if (vv) {
     const obscured = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
     keyboardInset.value = obscured
   }
+  else {
+    keyboardInset.value = 0
+  }
   const sc = scrollerRef.value
   if (sc) {
-    // +16px 缓冲，给底部留一点安全距离，避免刚好贴边继续抖动
+    // +16px 缓冲，给底部留一点安全距离
     sc.style.paddingBottom = `${keyboardInset.value + 16}px`
   }
 }
 
+// —— 保持“输入框底部对齐可视底部”的钉住模式
+const composerPinned = ref(false)
+let composerRO: ResizeObserver | null = null
+
+function alignComposerBottom(buffer = 12) {
+  const root = scrollerRef.value
+  const el = composerSlotRef.value
+  if (!root || !el)
+    return
+
+  // 有了 keyboardInset（见此前代码），可视底要扣掉键盘高度
+  const effectiveClientHeight = root.clientHeight - keyboardInset.value
+  const elTop = el.offsetTop
+  const elBottom = elTop + el.offsetHeight
+
+  // 目标：让 elBottom 位于 “可视底 - buffer”
+  const target = elBottom - effectiveClientHeight + buffer
+
+  const maxTop = Math.max(0, root.scrollHeight - root.clientHeight)
+  const clamped = Math.min(Math.max(0, target), maxTop)
+
+  // 差距足够大再滚，避免微抖
+  if (Math.abs(root.scrollTop - clamped) > 1) {
+    // 用你已有的稳定滚动函数
+    stableSetScrollTop(root, clamped, 6, 0.5)
+  }
+}
+
+function startObserveComposer() {
+  if (composerRO || !composerSlotRef.value)
+    return
+  composerRO = new ResizeObserver(() => {
+    if (composerPinned.value)
+      alignComposerBottom()
+  })
+  composerRO.observe(composerSlotRef.value)
+}
+
+function stopObserveComposer() {
+  if (composerRO) {
+    try {
+      composerRO.disconnect()
+    }
+    catch {
+      // no-op
+    }
+    composerRO = null
+  }
+}
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -315,8 +364,13 @@ onMounted(() => {
   const vv: any = (window as any).visualViewport
   if (vv) {
     vv.addEventListener('resize', updateKeyboardInset)
-    vv.addEventListener('scroll', updateKeyboardInset) // iOS 上键盘弹出也会触发 scroll
+    vv.addEventListener('scroll', updateKeyboardInset)
     updateKeyboardInset()
+    // 键盘高度变化时，若已处于 Pinned 模式，立刻重新对齐
+    requestAnimationFrame(() => {
+      if (composerPinned.value)
+        alignComposerBottom()
+    })
   }
   if (loadMoreSentinel.value) {
     loadIO = new IntersectionObserver((entries) => {
@@ -328,6 +382,23 @@ onMounted(() => {
         emit('loadMore')
     }, { root, rootMargin: '400px 0px', threshold: 0 })
     loadIO.observe(loadMoreSentinel.value)
+  }
+  const composerEl = composerSlotRef.value
+  if (composerEl) {
+    composerEl.addEventListener('focusin', () => {
+      // 聚焦不强制滚动，是否对齐由 NoteEditor 在真正触底时发事件决定
+      // 但如果用户手动点回来了且已是 Pinned，就再对齐一下以防环境变化
+      if (composerPinned.value)
+        alignComposerBottom()
+    })
+    composerEl.addEventListener('focusout', () => {
+      // 失焦后退出 Pinned，停止持续对齐
+      // 设个微小延迟，防止 focus 在内部元素间切换造成抖动
+      setTimeout(() => {
+        composerPinned.value = false
+        stopObserveComposer()
+      }, 120)
+    })
   }
 })
 
@@ -347,6 +418,7 @@ onUnmounted(() => {
     vv.removeEventListener('resize', updateKeyboardInset)
     vv.removeEventListener('scroll', updateKeyboardInset)
   }
+  stopObserveComposer()
 })
 
 function handleWindowResize() {
@@ -474,40 +546,25 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
-/** 将顶部 composer 区域滚到可视区，优先保证“底部完全可见”（考虑键盘高度），避免反复细微推挤造成抖动 */
+/** 进入“Pinned”模式：把 composer 底部对齐到可视底之上，并在高度变化时持续保持 */
 async function scrollComposerIntoView(offsetTop = 40) {
+  // offsetTop 只在顶部越界时兜底使用；Pinned 主逻辑走 alignComposerBottom
+  composerPinned.value = true
+  startObserveComposer()
+  // 立刻对齐一次（考虑当前键盘高度）
+  alignComposerBottom()
+
+  // 兜底：若输入框当前在 sticky 顶部之上，也顺手把顶部拉到 sticky 下方
   const root = scrollerRef.value
   const el = composerSlotRef.value
   if (!root || !el)
     return
-
-  const buffer = 12
-
-  const viewTop = root.scrollTop
-  const viewBottom = viewTop + root.clientHeight
-  const effectiveBottom = viewBottom - keyboardInset.value // 键盘占位后真实的可视底
-
   const elTop = el.offsetTop
-  const elBottom = elTop + el.offsetHeight
-
-  // 底部被遮挡（<= effectiveBottom）时，直接一次性把底部拉进来 + buffer，不做“每行一点点”的 nudging
-  if (elBottom > effectiveBottom - buffer) {
-    const target = elBottom - (root.clientHeight - keyboardInset.value) + buffer
-    const maxTop = Math.max(0, root.scrollHeight - root.clientHeight)
-    const clamped = Math.min(Math.max(0, target), maxTop)
-    // 只有在差距明显时才滚，避免小幅度反复抖动
-    if (Math.abs(root.scrollTop - clamped) > 1)
-      await stableSetScrollTop(root, clamped, 6, 0.5)
-
-    return
-  }
-
-  // 极端情况：如果顶部在 sticky bar 上方，也对齐一下（通常很少发生）
-  const wantTop = elTop - offsetTop
+  const viewTop = root.scrollTop
   if (elTop < viewTop + offsetTop) {
-    const clamped = Math.max(0, wantTop)
-    if (Math.abs(root.scrollTop - clamped) > 1)
-      await stableSetScrollTop(root, clamped, 6, 0.5)
+    const wantTop = Math.max(0, elTop - offsetTop)
+    if (Math.abs(root.scrollTop - wantTop) > 1)
+      await stableSetScrollTop(root, wantTop, 6, 0.5)
   }
 }
 /** 对外暴露：回到顶部、滚到并编辑某条 */
