@@ -15,18 +15,29 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
+// ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
+// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
 const allTags = ref<string[]>([])
+
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
 
-const { mainMenuVisible, tagMenuChildren } = useTagMenu(allTags, onSelectTag, t)
+// 组合式：放在 t / allTags 之后
+const {
+  mainMenuVisible,
+  tagMenuChildren,
+} = useTagMenu(allTags, onSelectTag, t)
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
+
 const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
+
+// 避免 ESLint 误报这些异步组件“未使用”
 const TrashModal = defineAsyncComponent(() => import('@/components/TrashModal.vue'))
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal]
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal] // 把 TrashModal 追加进去
+const showTrashModal = ref(false)
 
 useDark()
 const messageHook = useMessage()
@@ -34,12 +45,11 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const noteListRef = ref(null)
-const newNoteEditorContainerRef = ref<HTMLElement | null>(null)
+const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
 const showSettingsModal = ref(false)
-const showTrashModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
@@ -73,17 +83,19 @@ const cachedNotes = ref<any[]>([])
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
-const isShowingSearchResults = ref(false)
+const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
 let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 
+// ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
 const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
 const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
+// ++ 新增：那年今日持久化键
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 
@@ -93,12 +105,17 @@ watch(searchQuery, (newValue) => {
   }
   else {
     sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+    // ++ 新增：当关键词被清除时，必须同时清除对应的结果缓存
     sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
   }
 })
+
+// ++ 新增：监听搜索栏显示状态变化，并存入sessionStorage
 watch(showSearchBar, (newValue) => {
   sessionStorage.setItem(SESSION_SHOW_SEARCH_BAR_KEY, String(newValue))
 })
+
+// ++ 新增：监听标签筛选变化，并存入sessionStorage
 watch(activeTagFilter, (newValue) => {
   if (newValue)
     sessionStorage.setItem(SESSION_TAG_FILTER_KEY, newValue)
@@ -113,61 +130,52 @@ const mainMenuOptions = computed(() => [
   { label: t('notes.export_all'), key: 'export' },
   { label: t('auth.account_title'), key: 'account' },
   { label: '回收站', key: 'trash' },
+
+  // —— 分界线 ——
   { type: 'divider', key: 'div-tags' },
+
+  // —— 直接把标签分组“平铺”到根菜单中（包含常用分组、A-Z 分组、以及顶部搜索框 render） ——
   ...tagMenuChildren.value,
 ])
 
+// ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
+  // 如果正在编辑新笔记，则隐藏
   if (compactWhileTyping.value)
     return false
+
+  // 如果激活了标签筛选，则隐藏
   if (activeTagFilter.value)
     return false
+
+  // 如果搜索框内有文字，则隐藏
   if (searchQuery.value && searchQuery.value.trim() !== '')
     return false
+
+  // ++ 新增：选择模式下隐藏“那年今日”
   if (isSelectionModeActive.value)
     return false
+
+  // 满足所有条件，才显示
   return true
 })
 
-// ====== NEW: 轻量化缓存写入（避免主线程卡顿） ======
-function toLightNotes(arr: any[]) {
-  return arr.map(n => ({
-    id: n.id,
-    content: n.content,
-    created_at: n.created_at,
-    is_pinned: !!(n.is_pinned || n.pinned),
-    weather: n.weather ?? null,
-  }))
-}
-function writeHomeCacheAsync(notesArr: any[], total = totalNotes.value) {
-  const light = toLightNotes(notesArr)
-  const payload = () => {
-    try {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(light))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: total }))
-    }
-    catch {
-      // 容量不足等错误不阻塞主线程
-    }
-  }
-  ;(window as any).requestIdleCallback
-    ? (window as any).requestIdleCallback(payload, { timeout: 1500 })
-    : setTimeout(payload, 0)
-}
-
 onMounted(() => {
-  (async () => {
+  // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
+  ;(async () => {
     try {
-      const { data } = await supabase.auth.getSession()
-      const currentUser = data?.session?.user ?? null
-      if (authStore.user?.id !== currentUser?.id)
-        authStore.user = currentUser
+      const { data, error } = await supabase.auth.getSession()
+      if (!error) {
+        const currentUser = data?.session?.user ?? null
+        if (authStore.user?.id !== currentUser?.id)
+          authStore.user = currentUser
+      }
     }
-    catch (e) {
-      // no-op
-    }
+    catch {}
   })()
+  // === [PATCH-3 END] ===
 
+  // isLoadingNotes.value = true
   const loadCache = async () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
@@ -182,95 +190,113 @@ onMounted(() => {
   setTimeout(() => {
     loadCache()
   }, 0)
-
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  const result = supabase.auth.onAuthStateChange((event, session) => {
-    const currentUser = session?.user ?? null
-    if (authStore.user?.id !== currentUser?.id)
-      authStore.user = currentUser
+  const result = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      const currentUser = session?.user ?? null
+      if (authStore.user?.id !== currentUser?.id)
+        authStore.user = currentUser
 
-    if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-      nextTick(async () => {
-        const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
-        const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
-        const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
-        const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
-        const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
+      if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
+        nextTick(async () => {
+          // --- 重构后的逻辑 ---
+          // 1. 优先检查所有可能的缓存状态
+          const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
+          const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
+          const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
+          // ++ 新增：那年今日缓存
+          const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
+          const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
 
-        if (savedSearchQuery && savedSearchResults) {
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          try {
-            notes.value = JSON.parse(savedSearchResults)
-          }
-          catch (e) {
-            sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-          }
-          isLoadingNotes.value = false
-          hasMoreNotes.value = false
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedSearchQuery) {
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          noteActionsRef.value?.executeSearch()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedTagFilter) {
-          await fetchNotesByTag(savedTagFilter)
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedAnnivActive) {
-          isShowingSearchResults.value = false
-          activeTagFilter.value = null
-          showSearchBar.value = false
-          if (savedAnnivResults) {
+          // 2. 根据缓存情况决定执行路径
+          if (savedSearchQuery && savedSearchResults) {
+            // 路径A：有完整的搜索缓存，直接恢复，不请求网络
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
             try {
-              const parsed = JSON.parse(savedAnnivResults)
-              anniversaryNotes.value = parsed
-              isAnniversaryViewActive.value = true
-              hasMoreNotes.value = false
-              nextTick(() => {
-                anniversaryBannerRef.value?.setView(true)
-              })
+              notes.value = JSON.parse(savedSearchResults)
             }
             catch (e) {
-              anniversaryBannerRef.value?.loadAnniversaryNotes()
+              console.error('Failed to parse cached search results:', e)
+              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
             }
-          }
-          else {
+            isLoadingNotes.value = false // 确保没有加载动画
+            hasMoreNotes.value = false
+            // 恢复后，再去获取标签等次要信息
+            fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else {
-          isLoadingNotes.value = true
-          await fetchNotes()
-          fetchAllTags()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-      })
-    }
-    else if (event === 'SIGNED_OUT') {
-      notes.value = []
-      allTags.value = []
-      newNoteContent.value = ''
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('cached_notes_'))
-          localStorage.removeItem(key)
-      })
-      localStorage.removeItem(LOCAL_CONTENT_KEY)
-    }
-    else {
-      authStore.user = session?.user ?? null
-    }
-  })
-  authListener = result.data.subscription
+          else if (savedSearchQuery) {
+            // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            noteActionsRef.value?.executeSearch()
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          else if (savedTagFilter) {
+            // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
+            await fetchNotesByTag(savedTagFilter)
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          // ++ 路径E：那年今日
+          else if (savedAnnivActive) {
+            // 与搜索/标签互斥：确保只呈现那年今日
+            isShowingSearchResults.value = false
+            activeTagFilter.value = null
+            showSearchBar.value = false // 恢复时关闭搜索栏较合理
 
+            if (savedAnnivResults) {
+              try {
+                const parsed = JSON.parse(savedAnnivResults)
+                anniversaryNotes.value = parsed
+                isAnniversaryViewActive.value = true
+                hasMoreNotes.value = false
+                nextTick(() => {
+                  anniversaryBannerRef.value?.setView(true)
+                })
+              }
+              catch {
+                // 解析失败则让 Banner 重新加载
+                anniversaryBannerRef.value?.loadAnniversaryNotes()
+              }
+            }
+            else {
+              // 没存下具体结果：重新计算
+              anniversaryBannerRef.value?.loadAnniversaryNotes()
+            }
+
+            // 附带拉取标签等
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          else {
+            // 路径D：没有任何缓存，正常首次加载主页
+            isLoadingNotes.value = true // 只有在这里才需要设置加载状态
+            await fetchNotes() // fetchNotes内部会把加载状态设为false
+            fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+        })
+      }
+      else if (event === 'SIGNED_OUT') {
+        notes.value = []
+        allTags.value = []
+        newNoteContent.value = ''
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('cached_notes_'))
+            localStorage.removeItem(key)
+        })
+        localStorage.removeItem(LOCAL_CONTENT_KEY)
+      }
+      else {
+        // [PATCH-4] 兜底：未知事件也同步一次 user，避免卡在未知态
+        authStore.user = session?.user ?? null
+      }
+    },
+  )
+  authListener = result.data.subscription
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
     newNoteContent.value = savedContent
@@ -287,16 +313,18 @@ onUnmounted(() => {
 })
 
 watch(newNoteContent, (val) => {
-  if (!isReady.value)
-    return
-  if (val)
-    localStorage.setItem(LOCAL_CONTENT_KEY, val)
-  else
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
+  if (isReady.value) {
+    if (val)
+      localStorage.setItem(LOCAL_CONTENT_KEY, val)
+    else
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+  }
 })
 
+// ✨ 2. 添加一个新的函数，用于遍历并清除所有 localStorage 中的搜索缓存
 function invalidateAllSearchCaches() {
   const searchPrefix = CACHE_KEYS.SEARCH_PREFIX
+  // 从后往前遍历以安全地删除项目
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i)
     if (key && key.startsWith(searchPrefix))
@@ -307,6 +335,7 @@ function invalidateAllSearchCaches() {
 function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
+
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
   let match
   // eslint-disable-next-line no-cond-assign
@@ -319,11 +348,17 @@ function invalidateCachesOnDataChange(note: any) {
   const noteDate = new Date(note.created_at)
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
+
+  // 调用新的 localStorage 清理函数
   invalidateAllSearchCaches()
 }
 
+/**
+ * 遍历并清除所有 localStorage 中的标签缓存
+ */
 function invalidateAllTagCaches() {
   const tagPrefix = CACHE_KEYS.TAG_PREFIX
+  // 从后往前遍历以安全地在循环中删除项目
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i)
     if (key && key.startsWith(tagPrefix))
@@ -334,24 +369,24 @@ function invalidateAllTagCaches() {
 async function _reloadNotes() {
   const { data, error } = await supabase
     .from('notes')
-    .select('id, content, weather, created_at, updated_at, is_pinned')
+    .select('id, content, weather, created_at, updated_at, is_pinned') // 👈 包含 weather
     .order('created_at', { ascending: false })
   if (error)
     throw error
   notes.value = data ?? []
 }
 
-// —— 接收 NoteEditor.vue 发来的 { content, weather }（旧输入框使用）
+// 接收 NoteEditor.vue 发来的 { content, weather }
+
 async function handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
   try {
-    const saved = await saveNote(content, null, { showMessage: true, weather })
+    const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
     if (saved) {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
       newNoteContent.value = ''
       nextTick(() => {
-        const editorRefAny = newNoteEditorRef.value as any
-        editorRefAny?.reset?.()
+        (newNoteEditorRef.value as any)?.reset?.()
       })
     }
   }
@@ -374,7 +409,6 @@ async function saveNote(
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (contentToSave.length > maxNoteLength) {
@@ -391,6 +425,7 @@ async function saveNote(
   let savedNote
   try {
     if (noteIdToUpdate) {
+      // ===== 编辑：不更新 weather =====
       const { data: updatedData, error: updateError } = await supabase
         .from('notes')
         .update(noteData)
@@ -399,21 +434,26 @@ async function saveNote(
         .select()
       if (updateError || !updatedData?.length)
         throw new Error(t('auth.update_failed'))
+
       savedNote = updatedData[0]
       updateNoteInList(savedNote)
       if (showMessage)
         messageHook.success(t('notes.update_success'))
     }
     else {
+      // ===== 新建：把 weather 一并写入 =====
       const newId = uuidv4()
       const insertPayload: any = { ...noteData, id: newId }
+      // 只有在新建时写入天气（允许为 null）
       insertPayload.weather = weather ?? null
+
       const { data: insertedData, error: insertError } = await supabase
         .from('notes')
         .insert(insertPayload)
         .select()
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
+
       savedNote = insertedData[0]
       addNoteToList(savedNote)
       if (showMessage)
@@ -431,10 +471,15 @@ async function saveNote(
 }
 
 const displayedNotes = computed(() => {
+  // 1. 最高优先级：如果正在显示搜索结果，则必须返回 notes 数组（它此刻装着搜索结果）
   if (isShowingSearchResults.value)
     return notes.value
+
+  // 2. 第二优先级：如果不在搜索模式，但在“那年今日”视图，则返回那年今日的笔记
   if (isAnniversaryViewActive.value)
     return anniversaryNotes.value
+
+  // 3. 默认情况：返回主列表的笔记
   return notes.value
 })
 
@@ -449,9 +494,12 @@ async function fetchAllTags() {
     return
   }
   try {
-    const { data, error } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
+    const { data, error } = await supabase.rpc('get_unique_tags', {
+      p_user_id: user.value.id,
+    })
     if (error)
       throw error
+
     allTags.value = data || []
   }
   catch (err: any) {
@@ -464,20 +512,22 @@ function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
   if (cachedNotesData && cachedMetaData) {
-    const cachedNotes0 = JSON.parse(cachedNotesData)
+    const cachedNotes = JSON.parse(cachedNotesData)
     const meta = JSON.parse(cachedMetaData)
-    notes.value = cachedNotes0
+    notes.value = cachedNotes
     totalNotes.value = meta.totalNotes
-    currentPage.value = Math.max(1, Math.ceil(cachedNotes.value.length / notesPerPage))
-    hasMoreNotes.value = cachedNotes0.length < meta.totalNotes
+    currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
+    hasMoreNotes.value = cachedNotes.length < meta.totalNotes
     return true
   }
   return false
 }
 
 function handleSearchStarted() {
+  // ++ 新增：进入搜索时清理“那年今日”持久化，保证互斥
   sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
   sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
@@ -486,18 +536,19 @@ function handleSearchStarted() {
   sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
   isLoadingNotes.value = true
   notes.value = []
-  isShowingSearchResults.value = false
+  isShowingSearchResults.value = false // ++ 新增
 }
 
 function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
   if (error) {
     messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
     notes.value = []
-    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY) // ++ 搜索失败，清除缓存
     isShowingSearchResults.value = false
   }
   else {
     notes.value = data || []
+    // ++ 搜索成功，将结果存入 sessionStorage
     sessionStorage.setItem(SESSION_SEARCH_RESULTS_KEY, JSON.stringify(notes.value))
     isShowingSearchResults.value = true
   }
@@ -532,25 +583,12 @@ async function handleVisibilityChange() {
   }
 }
 
-function handleEditorFocus(containerEl: HTMLElement | null) {
-  compactWhileTyping.value = true
-
-  // 等一小下，等键盘高度/布局稳定后再判断
+function handleEditorFocus(containerEl: HTMLElement) {
+  compactWhileTyping.value = true // 新增：隐藏页眉
   setTimeout(() => {
-    if (!containerEl)
-      return
-
-    const topOffset = containerEl.getBoundingClientRect().top
-    // 离顶部已经很近就别滚，避免“轻点就抖”
-    const TARGET = 10
-    if (topOffset > TARGET + 24) {
-      // 用非平滑滚动，和 textarea 内部滚动不会相互拉扯
-      window.scrollTo({
-        top: window.scrollY + topOffset - TARGET,
-        behavior: 'auto',
-      })
-    }
-  }, 80) // 80ms 比 300ms 更不容易和其它动画叠加
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
+      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, 0)
 }
 
 let editorHideTimer: number | null = null
@@ -562,28 +600,30 @@ function onEditorFocus() {
   isEditorActive.value = true
 }
 function onEditorBlur() {
+  // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
   editorHideTimer = window.setTimeout(() => {
     isEditorActive.value = false
+    // 关键：失焦后恢复横幅
     compactWhileTyping.value = false
   }, 120)
 }
 
-// 包装：模板 @focus 不再写多条语句
-function onComposerFocus() {
-  onEditorFocus()
-  handleEditorFocus(newNoteEditorContainerRef.value)
-}
-
 function handleExportTrigger() {
-  if (isShowingSearchResults.value || activeTagFilter.value)
+  // ++ 修改逻辑：如果正在显示搜索结果或标签筛选结果，则导出当前列表
+  if (isShowingSearchResults.value || activeTagFilter.value) {
     handleExportResults()
-  else
+  }
+  else {
+    // 否则，执行包含所有笔记的批量导出
     handleBatchExport()
+  }
 }
 
 async function handleBatchExport() {
+  showDropdown.value = false
   if (isExporting.value)
     return
+
   if (!user.value?.id) {
     messageHook.error(t('auth.session_expired'))
     return
@@ -681,6 +721,7 @@ async function handleBatchExport() {
 function handleExportResults() {
   if (isExporting.value)
     return
+
   isExporting.value = true
   messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
   try {
@@ -720,23 +761,29 @@ function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
     totalNotes.value += 1
-    // ★ 改为异步瘦身写入
-    writeHomeCacheAsync(notes.value, totalNotes.value)
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
   }
 }
 
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
+
   const newPinStatus = !note.is_pinned
   try {
     const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
+
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+
+    // 刷新主页列表
     await fetchNotes()
+
+    // 如果日历视图是打开的，则调用它的刷新方法
     if (showCalendarView.value && calendarViewRef.value) {
-      // @ts-expect-error exposed by defineExpose
+      // @ts-expect-error: 'refreshData' is exposed via defineExpose
       (calendarViewRef.value as any).refreshData()
     }
   }
@@ -750,14 +797,14 @@ function updateNoteInList(updatedNote: any) {
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-    // ★ 改为异步瘦身写入
-    writeHomeCacheAsync(notes.value, totalNotes.value)
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
 }
 
 async function fetchNotes() {
   if (!user.value)
     return
+
   isLoadingNotes.value = true
   try {
     const from = (currentPage.value - 1) * notesPerPage
@@ -771,16 +818,17 @@ async function fetchNotes() {
       .range(from, to)
     if (error)
       throw error
+
     const newNotes = data || []
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
     if (newNotes.length > 0) {
-      // ★ 改为异步瘦身写入
-      writeHomeCacheAsync(notes.value, count || 0)
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
     }
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
-  catch {
+  catch (err) {
     messageHook.error(t('notes.fetch_error'))
   }
   finally {
@@ -789,29 +837,39 @@ async function fetchNotes() {
 }
 
 async function handleTrashRestored(restoredNotes?: any[]) {
+  // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
   const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
+
   if (Array.isArray(restoredNotes) && restoredNotes.length > 0 && !inFilteredView) {
+    // 主页列表：把恢复的笔记插到最前，去重后按置顶/时间重新排
     const existIds = new Set(notes.value.map(n => n.id))
     const toInsert = restoredNotes.filter(n => n && !existIds.has(n.id))
+
     if (toInsert.length > 0) {
       notes.value = [...toInsert, ...notes.value]
+      // 与现有排序规则保持一致：先 is_pinned，再 created_at desc
       notes.value.sort(
         (a, b) =>
           (b.is_pinned - a.is_pinned)
           || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
       )
+      // 元数据与缓存
       totalNotes.value = (totalNotes.value || 0) + toInsert.length
-      // ★ 改为异步瘦身写入
-      writeHomeCacheAsync(notes.value, totalNotes.value)
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
     }
   }
   else {
+    // 其他情况（例如当前是搜索/标签/那年今日/或没拿到 restoredNotes）：
+    // 保持原有行为：轻量刷新主页数据，但不强制切视图
     currentPage.value = 1
     await fetchNotes()
   }
 }
 
 async function handleTrashPurged() {
+  // 可选：不用刷新主页，但你如果想同步总数，可轻量刷新一次元数据
+  // 例如保持当前页不动，只更新 totalNotes：
   await fetchNotes()
 }
 
@@ -822,6 +880,7 @@ function handleHeaderClick() {
 async function nextPage() {
   if (isLoadingNotes.value || !hasMoreNotes.value)
     return
+
   currentPage.value++
   await fetchNotes()
 }
@@ -829,7 +888,10 @@ async function nextPage() {
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
+
   const noteToDelete = notes.value.find(note => note.id === id)
+
+  // 单次确认
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -842,9 +904,11 @@ async function triggerDeleteConfirmation(id: string) {
           .delete()
           .eq('id', id)
           .eq('user_id', user.value!.id)
+
         if (error)
           throw new Error(error.message)
 
+        // 更新本地缓存与 UI（保持原有逻辑）
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
@@ -854,6 +918,7 @@ async function triggerDeleteConfirmation(id: string) {
 
         totalNotes.value -= 1
         localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
         if (activeTagFilter.value) {
           mainNotesCache = mainNotesCache.filter(note => note.id !== id)
           notes.value = notes.value.filter(note => note.id !== id)
@@ -863,12 +928,13 @@ async function triggerDeleteConfirmation(id: string) {
         }
 
         messageHook.success(t('notes.delete_success'))
+
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
 
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error defineExpose
-          (calendarViewRef.value as any).refreshData?.()
+          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+          ;(calendarViewRef.value as any).refreshData?.()
         }
       }
       catch (err: any) {
@@ -882,6 +948,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
   const noteToUpdate = notes.value.find(n => n.id === noteId)
   if (!noteToUpdate)
     return
+
   const originalContent = noteToUpdate.content
   try {
     const lines = originalContent.split('\n')
@@ -908,11 +975,12 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
 async function handleCopy(noteContent: string) {
   if (!noteContent)
     return
+
   try {
     await navigator.clipboard.writeText(noteContent)
     messageHook.success(t('notes.copy_success'))
   }
-  catch {
+  catch (err) {
     messageHook.error(t('notes.copy_error'))
   }
 }
@@ -928,48 +996,50 @@ function handleCancelSearch() {
   handleSearchCleared()
 }
 
+// 在 auth.vue 中找到这个函数
+
 function handleAnniversaryToggle(data: any[] | null) {
   if (data) {
+    // 进入“那年今日”视图
     anniversaryNotes.value = data
     isAnniversaryViewActive.value = true
     hasMoreNotes.value = false
-    sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
-    // ✅ 改这里：先生成轻量对象，再异步写入
-    const light = data.map(n => ({
-      id: n.id,
-      content: n.content,
-      created_at: n.created_at,
-    }))
 
-    // ↓↓↓ 关键改动：把大对象序列化/写入挪到空闲时，避免阻塞点击响应帧
-    const payload = () => {
-      try {
-        sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(light))
-      }
-      catch {
-        sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
-      }
+    // ++ 新增：持久化“那年今日”状态与结果
+    sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
+    try {
+      sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
     }
-    ;(window as any).requestIdleCallback
-      ? (window as any).requestIdleCallback(payload, { timeout: 1500 })
-      : setTimeout(payload, 0)
+    catch {
+      // 若超出容量，仅保留激活标记
+      sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+    }
   }
   else {
+    // 退出“那年今日”视图
     anniversaryNotes.value = null
     isAnniversaryViewActive.value = false
     hasMoreNotes.value = notes.value.length < totalNotes.value
+
+    // ++ 新增：清理持久化
     sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
     sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   }
 }
 
+// === 选择模式：仅修改选择相关逻辑 ===
 function toggleSelectionMode() {
   const willEnable = !isSelectionModeActive.value
   isSelectionModeActive.value = willEnable
-  if (willEnable)
+
+  if (willEnable) {
+    // 进入选择模式：立刻隐藏搜索条（条幅将显示）
     showSearchBar.value = false
-  else
+  }
+  else {
+    // 退出选择模式：清空选择
     selectedNoteIds.value = []
+  }
 
   showDropdown.value = false
 }
@@ -982,6 +1052,7 @@ function finishSelectionMode() {
 function handleToggleSelect(noteId: string) {
   if (!isSelectionModeActive.value)
     return
+
   const index = selectedNoteIds.value.indexOf(noteId)
   if (index > -1)
     selectedNoteIds.value.splice(index, 1)
@@ -992,13 +1063,14 @@ function handleToggleSelect(noteId: string) {
 async function handleCopySelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
   const notesToCopy = notes.value.filter(note => selectedNoteIds.value.includes(note.id))
   const textContent = notesToCopy.map(note => note.content).join('\n\n---\n\n')
   try {
     await navigator.clipboard.writeText(textContent)
     messageHook.success(t('notes.copy_success_multiple', { count: notesToCopy.length }))
   }
-  catch {
+  catch (err) {
     messageHook.error(t('notes.copy_error'))
   }
   finally {
@@ -1010,6 +1082,7 @@ async function handleCopySelected() {
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
+
   dialog.warning({
     title: t('dialog.delete_note_title'),
     content: t('dialog.delete_note_content2', { count: selectedNoteIds.value.length }),
@@ -1020,22 +1093,28 @@ async function handleDeleteSelected() {
         loading.value = true
         const idsToDelete = [...selectedNoteIds.value]
 
+        // 步骤 1: 循环处理每个笔记的【精确】缓存（标签和日历）
+        // 通过传入 true，我们告诉函数暂时不要处理搜索缓存。
         idsToDelete.forEach((id) => {
           const noteToDelete = notes.value.find(n => n.id === id)
           if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete)
+            invalidateCachesOnDataChange(noteToDelete, true) // Pass true to skip search invalidation
         })
 
+        // 步骤 2: 执行数据库批量删除操作
         const { error } = await supabase
           .from('notes')
           .delete()
           .in('id', idsToDelete)
           .eq('user_id', user.value!.id)
+
         if (error)
           throw new Error(error.message)
 
+        // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
         invalidateAllSearchCaches()
 
+        // 步骤 4: 更新本地UI状态 (这部分逻辑保持不变)
         notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
         cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
 
@@ -1051,8 +1130,8 @@ async function handleDeleteSelected() {
         hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
         hasPreviousNotes.value = currentPage.value > 1
 
-        // ★ 改为异步瘦身写入
-        writeHomeCacheAsync(notes.value, totalNotes.value)
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
         isSelectionModeActive.value = false
         selectedNoteIds.value = []
@@ -1070,18 +1149,20 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(rawKey: string) {
+  // 统一规范：最终交给 fetchNotesByTag 的格式一律 "#xxx"
   const toHashTag = (k: string) => {
     let kk = k || ''
     if (kk.startsWith('tag:'))
-      kk = kk.slice(4)
+      kk = kk.slice(4) // tag:work  -> work
     kk = kk.trim()
     if (!kk)
       return ''
     if (!kk.startsWith('#'))
-      kk = `#${kk}`
+      kk = `#${kk}` // work      -> #work
     return kk
   }
 
+  // 标签项（来自子菜单）
   if (rawKey.startsWith('tag:') || rawKey.startsWith('#')) {
     const tag = toHashTag(rawKey)
     if (tag) {
@@ -1091,6 +1172,7 @@ function handleMainMenuSelect(rawKey: string) {
     return
   }
 
+  // 其它一级菜单项
   switch (rawKey) {
     case 'calendar':
       showCalendarView.value = true
@@ -1108,10 +1190,10 @@ function handleMainMenuSelect(rawKey: string) {
       showAccountModal.value = true
       break
     case 'tags':
+      // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
     case 'trash':
       showTrashModal.value = true
-      mainMenuVisible.value = false
       break
     default:
       break
@@ -1119,61 +1201,84 @@ function handleMainMenuSelect(rawKey: string) {
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
+  // 1. 关闭日历视图
   showCalendarView.value = false
+
+  // 2. 清理所有筛选状态，回到主列表
   if (isAnniversaryViewActive.value)
     handleAnniversaryToggle(null)
+
   if (activeTagFilter.value)
     clearTagFilter()
+
   if (searchQuery.value || isShowingSearchResults.value)
     handleCancelSearch()
+
+  // 3. 等待UI和数据状态更新
   await nextTick()
 
+  // 4. 检查笔记是否已在当前加载的列表中。如果不在，则临时将其置顶。
+  //    这是关键一步，能确保 NoteList 组件的 props.notes 数组中包含目标笔记，
+  //    这样它内部的 findIndex 才能找到对应的索引。
   const noteExists = notes.value.some(n => n.id === noteToFind.id)
   if (!noteExists)
     notes.value.unshift(noteToFind)
 
+  // 5. 再次等待 nextTick，确保 unshift 操作已经传递给 NoteList 组件
   await nextTick()
 
-  if (noteListRef.value)
+  // 6. 调用 NoteList 组件中已经写好的、暴露出来的 focusAndEditNote 方法
+  if (noteListRef.value) {
+    // @ts-expect-error: 'focusAndEditNote' is exposed via defineExpose
     (noteListRef.value as any).focusAndEditNote(noteToFind.id)
-  else
+  }
+  else {
+    // 极端情况下的错误提示
     messageHook.error('无法与笔记列表通信，请重试。')
+  }
 }
 
 async function fetchNotesByTag(tag: string) {
+// —— 进入标签筛选时，若正在“那年今日”视图，先退出它（与搜索互斥的同样逻辑）——
   if (isAnniversaryViewActive.value) {
-    anniversaryBannerRef.value?.setView(false)
+    anniversaryBannerRef.value?.setView(false) // 通知条幅切换回“未激活”外观
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
+  // 统一为 "#xxx"
   if (!tag)
     return
   const normalize = (k: string) => (k.startsWith('#') ? k : `#${k}`)
   const hashTag = normalize(tag)
 
   isShowingSearchResults.value = false
-  showSearchBar.value = false
-  searchQuery.value = ''
+  showSearchBar.value = false // 关闭搜索栏，避免“看起来没变化”
+  searchQuery.value = '' // 清空搜索关键字
+  // 进入标签筛选，清理“那年今日”持久化（互斥）
   sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
   sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   if (!user.value)
     return
 
+  // 首次进入标签筛选时，缓存一下主列表，方便清除时还原
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
 
   const cacheKey = getTagCacheKey(hashTag)
   activeTagFilter.value = hashTag
 
+  // 先走本地缓存
   const cachedData = localStorage.getItem(cacheKey)
   if (cachedData) {
-    const cachedNotes0 = JSON.parse(cachedData)
-    notes.value = cachedNotes0
-    filteredNotesCount.value = cachedNotes0.length
+    const cachedNotes = JSON.parse(cachedData)
+    notes.value = cachedNotes
+    filteredNotesCount.value = cachedNotes.length
     hasMoreNotes.value = false
+    // noteListKey.value++ // 强制刷新 NoteList <-- 删除此行
     return
   }
 
+  // 无缓存，拉取
   isLoadingNotes.value = true
   notes.value = []
   try {
@@ -1183,12 +1288,15 @@ async function fetchNotesByTag(tag: string) {
       .eq('user_id', user.value.id)
       .ilike('content', `%${hashTag}%`)
       .order('created_at', { ascending: false })
+
     if (error)
       throw error
+
     notes.value = data || []
     filteredNotesCount.value = notes.value.length
     localStorage.setItem(cacheKey, JSON.stringify(notes.value))
     hasMoreNotes.value = false
+    // noteListKey.value++ // 强制刷新 NoteList
   }
   catch (err: any) {
     messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
@@ -1203,27 +1311,11 @@ function clearTagFilter() {
   notes.value = mainNotesCache
   mainNotesCache = []
   hasMoreNotes.value = notes.value.length < totalNotes.value
-  noteListKey.value++
+  noteListKey.value++ // 还原后也刷新列表
 }
 
+// 避免 ESLint 误报这些在模板中使用的函数“未使用”
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
-
-// 包装：模板里避免多语句
-function onTrashRestoredWrapper() {
-  invalidateAllTagCaches()
-  handleTrashRestored()
-}
-function onTrashPurgedWrapper() {
-  invalidateAllTagCaches()
-  handleTrashPurged()
-}
-function handleRequestScroll() {
-  if (noteListRef.value) {
-    // 调用 NoteList.vue 中已经存在的 scrollComposerIntoView 方法
-    // 传入 40 是为了对齐 .scroller 样式中的 padding-top: 40px，使输入框正好贴到悬浮月份条下方
-    noteListRef.value.scrollComposerIntoView(40)
-  }
-}
 </script>
 
 <template>
@@ -1253,6 +1345,7 @@ function handleRequestScroll() {
         </div>
       </div>
 
+      <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
       <Transition name="slide-fade">
         <div
           v-if="isSelectionModeActive"
@@ -1340,7 +1433,21 @@ function handleRequestScroll() {
         </div>
       </div>
 
-      <!-- ⚠️ 已移除：顶部独立的新输入框（不再放在列表外） -->
+      <!-- 主页输入框：选择模式时隐藏 -->
+      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
+        <NoteEditor
+          ref="newNoteEditorRef"
+          v-model="newNoteContent"
+          :is-editing="false"
+          :is-loading="isCreating"
+          :max-note-length="maxNoteLength"
+          :placeholder="$t('notes.content_placeholder')"
+          :all-tags="allTags"
+          @save="handleCreateNote"
+          @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
+          @blur="onEditorBlur"
+        />
+      </div>
 
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
@@ -1361,37 +1468,19 @@ function handleRequestScroll() {
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
-        >
-          <!-- 🔌 通过插槽把“旧的输入框”插进 NoteList 的滚动容器顶部 -->
-          <template #composer>
-            <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
-              <NoteEditor
-                ref="newNoteEditorRef"
-                v-model="newNoteContent"
-                :is-editing="false"
-                :is-loading="isCreating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.content_placeholder')"
-                :all-tags="allTags"
-                @save="handleCreateNote"
-                @focus="onComposerFocus"
-                @blur="onEditorBlur"
-                @request-scroll-into-view="handleRequestScroll"
-              />
-            </div>
-          </template>
-        </NoteList>
+        />
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
       <TrashModal
-        v-if="showTrashModal"
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="onTrashRestoredWrapper"
-        @purged="onTrashPurgedWrapper"
+        @restored="invalidateAllTagCaches(); handleTrashRestored()"
+        @purged="invalidateAllTagCaches(); handleTrashPurged()"
       />
+
+      <!-- （原底部 selection-actions-popup 已移除） -->
 
       <Transition name="slide-up-fade">
         <CalendarView
@@ -1411,7 +1500,6 @@ function handleRequestScroll() {
 </template>
 
 <style scoped>
-/* 修改后的代码 */
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
@@ -1422,11 +1510,15 @@ function handleRequestScroll() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh; /* 改为 min-height，允许容器被内容撑开 */
+  height: 100dvh;
+  overflow: hidden;
   position: relative;
 }
-.dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
-
+.dark .auth-container {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
 .notes-list-container {
   flex-grow: 1;
   flex-shrink: 1;
@@ -1434,14 +1526,11 @@ function handleRequestScroll() {
   overflow-y: hidden;
   position: relative;
 }
-
-/* 旧输入框复用原样式；现在它通过插槽位于 NoteList 的滚动容器顶部，会跟随滚动 */
 .new-note-editor-container {
-  padding-top: 0rem;
+  padding-top: 0.5rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
-
 .page-header {
   flex-shrink: 0;
   display: flex;
@@ -1450,72 +1539,316 @@ function handleRequestScroll() {
   position: -webkit-sticky;
   position: sticky;
   top: 0;
-  z-index: 3000;
+  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
   background: white;
   height: 44px;
   padding-top: 0.75rem;
 }
-.dark .page-header { background: #1e1e1e; }
+.dark .page-header {
+  background: #1e1e1e;
+}
 .page-title {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  font-size: 22px; font-weight: 600; margin: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
 }
-.dark .page-title { color: #f0f0f0; }
-.header-actions { display: flex; align-items: center; gap: 0.5rem; }
+.dark .page-title {
+    color: #f0f0f0;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .header-action-btn {
-  font-size: 16px; background: none; border: none; padding: 4px; cursor: pointer; color: #555;
-  border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s ease;
+  font-size: 16px;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #555;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
 }
-.header-action-btn:hover { background-color: rgba(0,0,0,0.05); }
-.dark .header-action-btn { color: #bbb; }
-.dark .header-action-btn:hover { background-color: rgba(255,255,255,0.1); }
+.header-action-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+.dark .header-action-btn {
+  color: #bbb;
+}
+.dark .header-action-btn:hover {
+  background-color: rgba(255,255,255,0.1);
+}
 
-/* 选择模式横幅、搜索条、过滤条等样式保持不变（略）… */
-.selection-actions-banner { position: sticky; top: 44px; z-index: 2500; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background-color: #eef2ff; color: #4338ca; padding: 8px 12px; border-radius: 8px; margin: 8px 0 10px 0; font-size: 14px; }
-.dark .selection-actions-banner { background-color: #312e81; color: #c7d2fe; }
-.selection-actions-banner .banner-left { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.selection-actions-banner .sep { opacity: 0.6; }
-.selection-actions-banner .banner-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.selection-actions-banner .action-btn, .selection-actions-banner .finish-btn { background: none; border: 1px solid #6366f1; color: #4338ca; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
-.selection-actions-banner .action-btn:disabled, .selection-actions-banner .finish-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.selection-actions-banner .action-btn:hover, .selection-actions-banner .finish-btn:hover { background-color: #4338ca; color: #fff; }
-.dark .selection-actions-banner .action-btn, .dark .selection-actions-banner .finish-btn { border-color: #a5b4fc; color: #c7d2fe; }
-.dark .selection-actions-banner .action-btn:hover, .dark .selection-actions-banner .finish-btn:hover { background-color: #a5b4fc; color: #312e81; }
-.selection-actions-banner .delete-btn { border-color: #ef4444; color: #b91c1c; }
-.dark .selection-actions-banner .delete-btn { border-color: #fca5a5; color: #fecaca; }
+/* 顶部选择模式条幅 */
+/* 顶部选择模式条幅 —— 统一为与搜索结果横幅一致的风格 */
+.selection-actions-banner {
+  position: sticky;
+  top: 44px;
+  z-index: 2500;
 
-.slide-up-fade-enter-active,.slide-up-fade-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
-.slide-up-fade-enter-from,.slide-up-fade-leave-to { opacity: 0; transform: translate(-50%, 20px); }
+  /* 与 .active-filter-bar 一致的底色与布局 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 
-.search-bar-container { position: -webkit-sticky; position: sticky; top: 44px; z-index: 9; background: white; padding-top: 0.5rem; padding-bottom: 0.5rem; display: flex; gap: 0.5rem; align-items: center; }
-.dark .search-bar-container { background: #1e1e1e; }
-.search-actions-wrapper { flex: 1; min-width: 0; }
-@media (max-width: 768px) { .cancel-search-btn { font-size: 14px; padding: 0.6rem 1rem; } }
+  background-color: #eef2ff;   /* 浅靛蓝底色 */
+  color: #4338ca;              /* 文字主色 */
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 8px 0 10px 0;
+  font-size: 14px;
+}
 
-.clear-filter-btn { background: none; border: none; font-size: 20px; font-weight: bold; cursor: pointer; color: inherit; opacity: 0.7; transition: opacity 0.2s; }
-.clear-filter-btn:hover { opacity: 1; }
+.dark .selection-actions-banner {
+  background-color: #312e81;   /* 深色模式下与搜索横幅一致 */
+  color: #c7d2fe;
+}
 
-.active-filter-bar .export-results-btn { background: none; border: 1px solid #6366f1; color: #4338ca; padding: 4px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; white-space: nowrap; }
-.search-results-bar .export-results-btn:hover { background-color: #4338ca; color: white; }
-.dark .search-results-bar .export-results-btn { border-color: #a5b4fc; color: #c7d2fe; }
-.dark .search-results-bar .export-results-btn:hover { background-color: #a5b4fc; color: #312e81; }
+.selection-actions-banner .banner-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.active-filter-bar { display: flex; align-items: center; gap: 1rem; background-color: #eef2ff; color: #4338ca; padding: 8px 12px; border-radius: 8px; margin-bottom: 1rem; font-size: 14px; }
-.banner-info { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: space-between; }
-.banner-text-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.banner-text-count { flex-shrink: 0; margin-left: 1rem; color: #6c757d; }
-.dark .banner-text-count { color: #adb5bd; }
-.banner-actions { flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem; }
+.selection-actions-banner .sep {
+  opacity: 0.6;
+}
 
-.dark .active-filter-bar { background-color: #312e81; color: #c7d2fe; }
+.selection-actions-banner .banner-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
 
-.auth-container.is-typing .new-note-editor-container { padding-top: 0rem; }
+/* 右侧按钮：采用与“导出”按钮一致的描边样式 */
+.selection-actions-banner .action-btn,
+.selection-actions-banner .finish-btn {
+  background: none;
+  border: 1px solid #6366f1;   /* 与导出按钮一致的描边色 */
+  color: #4338ca;              /* 与横幅主色一致 */
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.selection-actions-banner .action-btn:disabled,
+.selection-actions-banner .finish-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* hover 与搜索“导出”按钮一致 */
+.selection-actions-banner .action-btn:hover,
+.selection-actions-banner .finish-btn:hover {
+  background-color: #4338ca;
+  color: #fff;
+}
+
+.dark .selection-actions-banner .action-btn,
+.dark .selection-actions-banner .finish-btn {
+  border-color: #a5b4fc;
+  color: #c7d2fe;
+}
+
+.dark .selection-actions-banner .action-btn:hover,
+.dark .selection-actions-banner .finish-btn:hover {
+  background-color: #a5b4fc;
+  color: #312e81;
+}
+
+/* 如果你仍希望“删除”有弱危险提示，可保留细微差异：红色描边，但 hover 依然按统一规则 */
+.selection-actions-banner .delete-btn {
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+.dark .selection-actions-banner .delete-btn {
+  border-color: #fca5a5;
+  color: #fecaca;
+}
+
+.slide-up-fade-enter-active,
+.slide-up-fade-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.slide-up-fade-enter-from,
+.slide-up-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
+}
+.search-bar-container {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 44px;
+  z-index: 9;
+  background: white;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.dark .search-bar-container {
+  background: #1e1e1e;
+}
+.search-actions-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .cancel-search-btn {
+    font-size: 14px;
+    padding: 0.6rem 1rem;
+  }
+}
+
+.clear-filter-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.clear-filter-btn:hover {
+  opacity: 1;
+}
+
+/* ++ 修改：让导出按钮样式能应用于所有横幅 */
+.active-filter-bar .export-results-btn {
+  background: none;
+  border: 1px solid #6366f1;
+  color: #4338ca;
+  padding: 4px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.search-results-bar .export-results-btn:hover {
+  background-color: #4338ca;
+  color: white;
+}
+
+.dark .search-results-bar .export-results-btn {
+  border-color: #a5b4fc;
+  color: #c7d2fe;
+}
+
+.dark .search-results-bar .export-results-btn:hover {
+  background-color: #a5b4fc;
+  color: #312e81;
+}
+
+.active-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem; /* 在内容和按钮之间设置一个间距 */
+  background-color: #eef2ff;
+  color: #4338ca;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 14px;
+}
+
+/* 修改：让 .banner-info 成为一个 flex 容器来管理其内部元素 */
+.banner-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* 将主文本和数量推到两端 */
+}
+
+/* 新增：定义主文本区域的样式（这部分将负责收缩和显示省略号） */
+.banner-text-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 新增：定义笔记数量的样式（这部分将受到保护，不会被压缩） */
+.banner-text-count {
+  flex-shrink: 0; /* 禁止收缩 */
+  margin-left: 1rem; /* 与主文本保持一些距离 */
+  color: #6c757d; /* 稍微调整颜色以更好地区分 */
+}
+
+/* 新增：为暗黑模式下的数量文本适配颜色 */
+.dark .banner-text-count {
+  color: #adb5bd;
+}
+
+.banner-actions {
+  /* 按钮区域：保持固定宽度，绝不收缩 */
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dark .active-filter-bar {
+  background-color: #312e81;
+  color: #c7d2fe;
+}
+
+.auth-container.is-typing .new-note-editor-container {
+  padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
+}
 </style>
 
 <style>
-/* 下拉菜单全局样式（保留） */
-.n-dropdown-menu { max-height: min(70vh, 520px) !important; overflow: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.n-dropdown-menu .n-dropdown-menu { max-height: min(60vh, 420px) !important; overflow: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-right: 4px; }
-.n-dropdown-menu .n-dropdown-menu .n-dropdown-option { line-height: 1.2; }
-@media (max-width: 768px) { .n-dropdown-menu .n-dropdown-menu { max-height: 70vh !important; } }
+/* === 全局样式（非 scoped）=== */
+
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
+.n-dropdown-menu {
+  max-height: min(70vh, 520px) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
+.n-dropdown-menu .n-dropdown-menu {
+  max-height: min(60vh, 420px) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+/* 子菜单里的每一项更紧凑些，显示更多可见项 */
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
+  line-height: 1.2;
+}
+
+/* 移动端：给子菜单更多可视空间 */
+@media (max-width: 768px) {
+  .n-dropdown-menu .n-dropdown-menu {
+    max-height: 70vh !important;
+  }
+}
 </style>

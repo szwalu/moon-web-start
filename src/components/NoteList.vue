@@ -2,6 +2,8 @@
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 
@@ -27,83 +29,6 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
-const { t } = useI18n()
-
-// ====== DOM refs ======
-const wrapperRef = ref<HTMLElement | null>(null)
-const scrollerRef = ref<HTMLElement | null>(null)
-const composerSlotRef = ref<HTMLElement | null>(null)
-
-// ====== UI state ======
-const expandedNote = ref<string | null>(null)
-const editingNoteId = ref<string | null>(null)
-const editingNoteContent = ref('')
-const isUpdating = ref(false)
-
-// —— 键盘安全区（移动端）：用 visualViewport 估算键盘遮挡高度，给 scroller 底部加 padding
-const keyboardInset = ref(0)
-
-function updateKeyboardInset() {
-  const vv: any = (window as any).visualViewport
-  if (vv) {
-    const obscured = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
-    keyboardInset.value = obscured
-  }
-  else {
-    keyboardInset.value = 0
-  }
-  const sc = scrollerRef.value
-  if (sc)
-    sc.style.paddingBottom = `${keyboardInset.value + 16}px`
-}
-
-// —— “Pinned 底对齐”模式：当输入框真正触底时，固定让其底部贴在可视底上方
-const composerPinned = ref(false)
-let composerRO: ResizeObserver | null = null
-
-function alignComposerBottom(buffer = 12) {
-  const root = scrollerRef.value
-  const el = composerSlotRef.value
-  if (!root || !el)
-    return
-
-  // 可视高度需要扣掉键盘遮挡的高度（keyboardInset）
-  const effectiveClientHeight = root.clientHeight - keyboardInset.value
-  const elTop = el.offsetTop
-  const elBottom = elTop + el.offsetHeight
-
-  // 目标：让 elBottom 位于 “可视底 - buffer”
-  const target = elBottom - effectiveClientHeight + buffer
-  const maxTop = Math.max(0, root.scrollHeight - root.clientHeight)
-  const clamped = Math.min(Math.max(0, target), maxTop)
-
-  // 差距足够再滚，避免微抖
-  if (Math.abs(root.scrollTop - clamped) > 1)
-    stableSetScrollTop(root, clamped, 6, 0.5)
-}
-
-function startObserveComposer() {
-  if (composerRO || !composerSlotRef.value)
-    return
-  composerRO = new ResizeObserver(() => {
-    if (composerPinned.value)
-      alignComposerBottom()
-  })
-  composerRO.observe(composerSlotRef.value)
-}
-
-function stopObserveComposer() {
-  if (composerRO) {
-    try {
-      composerRO.disconnect()
-    }
-    catch {
-      // no-op
-    }
-    composerRO = null
-  }
-}
-
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -111,43 +36,37 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
   scrollTop: 0,
 })
 
-// 记录每个 Note 的容器元素
+const { t } = useI18n()
+
+const scrollerRef = ref<any>(null)
+const wrapperRef = ref<HTMLElement | null>(null)
+const collapseBtnRef = ref<HTMLElement | null>(null)
+const collapseVisible = ref(false)
+const collapseStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
+
+const expandedNote = ref<string | null>(null)
+const editingNoteId = ref<string | null>(null)
+const editingNoteContent = ref('')
+const isUpdating = ref(false)
+
+// 记录每条笔记的容器 DOM，用于定位与可见性判断
 const noteContainers = ref<Record<string, HTMLElement>>({})
+
+// ---- :ref 助手（注意：要处理卸载 null，避免“幽灵节点”）----
 function setNoteContainer(el: Element | null, id: string) {
-  if (!el)
+  if (!el) {
+    delete noteContainers.value[id]
     return
+  }
   const $el = el as HTMLElement
   $el.setAttribute('data-note-id', id)
   noteContainers.value[id] = $el
 }
 
-// ============== 渐进渲染（分批挂载） ==============
-const visibleCount = ref(24) // 先渲染 24 条
-const BATCH = 24
-const BATCH_DELAY = 16
+// ==============================
+// 月份头部（虚拟项）+ 悬浮月份条
+// ==============================
 
-function useIdle(cb: () => void) {
-  const ric = (window as any).requestIdleCallback
-  if (ric)
-    ric(cb, { timeout: 500 })
-  else setTimeout(cb, BATCH_DELAY)
-}
-
-function scheduleGrow() {
-  if (visibleCount.value >= props.notes.length)
-    return
-  useIdle(() => {
-    visibleCount.value = Math.min(visibleCount.value + BATCH, props.notes.length)
-    scheduleGrow()
-  })
-}
-
-watch(() => props.notes, () => {
-  visibleCount.value = Math.min(BATCH, props.notes.length)
-  nextTick(() => scheduleGrow())
-}, { immediate: true })
-
-// ============== 月份头 + 悬浮月份条 ==============
 interface MonthHeaderItem {
   type: 'month-header'
   id: string
@@ -157,9 +76,6 @@ interface MonthHeaderItem {
 type MixedNoteItem = any & { type: 'note' }
 type MixedItem = MonthHeaderItem | MixedNoteItem
 
-function _isPinned(n: any) {
-  return !!(n?.pinned || n?.is_pinned || n?.pinned_at)
-}
 function getMonthKeyAndLabel(note: any): { key: string; label: string } {
   const raw = note?.date || note?.created_at || note?.updated_at
   const d = raw ? new Date(raw) : new Date()
@@ -170,22 +86,27 @@ function getMonthKeyAndLabel(note: any): { key: string; label: string } {
   return { key, label }
 }
 
-// 生成混合列表：跳过置顶段，从第一条非置顶开始插入月份头
+/** 置顶判断（自适配常见字段） */
+function _isPinned(n: any) {
+  return !!(n?.pinned || n?.is_pinned || n?.pinned_at)
+}
+
+/** 跳过置顶段，从第一条非置顶开始插入月份头 */
 const mixedItems = computed<MixedItem[]>(() => {
   const out: MixedItem[] = []
   let lastKey = ''
   let inPinned = true
-  for (const n of props.notes.slice(0, visibleCount.value)) {
+  for (const n of props.notes) {
     if (inPinned && !_isPinned(n)) {
       inPinned = false
       const { key, label } = getMonthKeyAndLabel(n)
       out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
       lastKey = key
-      out.push(Object.assign({ type: 'note' }, n))
+      out.push({ ...n, type: 'note' })
       continue
     }
     if (inPinned) {
-      out.push(Object.assign({ type: 'note' }, n))
+      out.push({ ...n, type: 'note' })
       continue
     }
     const { key, label } = getMonthKeyAndLabel(n)
@@ -193,7 +114,7 @@ const mixedItems = computed<MixedItem[]>(() => {
       out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
       lastKey = key
     }
-    out.push(Object.assign({ type: 'note' }, n))
+    out.push({ ...n, type: 'note' })
   }
   return out
 })
@@ -215,11 +136,11 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ——— 悬浮条当前月份 —— //
-const HEADER_HEIGHT = 32
+const HEADER_HEIGHT = 32 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
 let headersIO: IntersectionObserver | null = null
 
+/** 卸载时清理，避免“幽灵 header” */
 function setHeaderEl(el: Element | null, monthKey: string) {
   if (!el) {
     if (headerEls.value[monthKey])
@@ -240,56 +161,13 @@ const currentMonthLabel = computed(() => {
 })
 const pushOffset = ref(0)
 
-// 向上滚兜底：用视口内最靠上的“非置顶笔记”的月份纠正 currentMonthKey
-function _setCurrentByTopVisibleNote(rootEl: HTMLElement) {
-  const scRect = rootEl.getBoundingClientRect()
-  let topId: string | null = null
-  let topY = Number.POSITIVE_INFINITY
-  for (const [id, el] of Object.entries(noteContainers.value)) {
-    if (!el || !el.isConnected)
-      continue
-    if (el.getAttribute('data-note-id') !== id)
-      continue
-    const n = noteById.value[id]
-    if (!n || _isPinned(n))
-      continue
-    const r = el.getBoundingClientRect()
-    const visible = !(r.bottom <= scRect.top || r.top >= scRect.bottom)
-    if (!visible)
-      continue
-    if (r.top < topY) {
-      topY = r.top
-      topId = id
-    }
-  }
-  if (topId) {
-    const n = noteById.value[topId]
-    const { key } = getMonthKeyAndLabel(n)
-    if (key && currentMonthKey.value !== key)
-      currentMonthKey.value = key
-  }
-}
-
-// 让 .sticky-month 和 .month-header 宽度对齐（不遮住滚动条）
-function syncStickyGutters() {
-  const sc = scrollerRef.value
-  const wrap = wrapperRef.value
-  if (!sc || !wrap)
-    return
-  const cs = getComputedStyle(sc)
-  const pl = Number.parseFloat(cs.paddingLeft) || 0
-  const pr = Number.parseFloat(cs.paddingRight) || 0
-  const scrollbarW = sc.offsetWidth - sc.clientWidth
-  wrap.style.setProperty('--sticky-left', `${pl + 4}px`)
-  wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
-}
-
-// 滚动方向，仅在向上滚时做兜底修正
+/** 滚动方向（仅在向上滚时做月份兜底纠正） */
 let lastScrollTop = 0
 const scrollDir = ref<'up' | 'down' | 'none'>('none')
 
+/** 向下滚逻辑 + 向上滚兜底（用可见 note 修正月份） */
 function recomputeStickyState() {
-  const root = scrollerRef.value as HTMLElement | null
+  const root = scrollerRef.value?.$el as HTMLElement | undefined
   if (!root) {
     pushOffset.value = 0
     return
@@ -303,8 +181,8 @@ function recomputeStickyState() {
     .sort((a: any, b: any) => a.top - b.top) as Array<{ key: string; top: number }>
 
   if (entries.length === 0) {
-    // —— 关掉逐卡片兜底以降低开销（如需打开，取消下一行注释）
-    // if (scrollDir.value === 'up') _setCurrentByTopVisibleNote(root)
+    if (scrollDir.value === 'up')
+      setCurrentByTopVisibleNote(root)
     pushOffset.value = 0
     return
   }
@@ -313,12 +191,14 @@ function recomputeStickyState() {
   for (let i = 0; i < entries.length; i++) {
     if (entries[i].top <= rootTop + EPS)
       idxPrev = i
-    else break
+    else
+      break
   }
 
   if (idxPrev >= 0) {
     if (currentMonthKey.value !== entries[idxPrev].key)
       currentMonthKey.value = entries[idxPrev].key
+
     const next = entries[idxPrev + 1]
     if (next) {
       const dist = next.top - rootTop
@@ -332,21 +212,105 @@ function recomputeStickyState() {
   else {
     if (!currentMonthKey.value)
       currentMonthKey.value = entries[0].key
+
     const first = entries[0]
     const dist = first.top - rootTop
     const overlap = Math.max(0, HEADER_HEIGHT - dist)
     pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
   }
 
-  // —— 关掉逐卡片兜底以降低开销（如需打开，取消下一行注释）
-  // if (scrollDir.value === 'up') _setCurrentByTopVisibleNote(root)
+  if (scrollDir.value === 'up')
+    setCurrentByTopVisibleNote(root)
 }
 
-// ====== 滚动、加载更多 ======
-const onPlainScroll = throttle(() => {
-  const el = scrollerRef.value
-  if (!el)
+// 让 .sticky-month 和 .month-header 宽度对齐（不遮住滚动条）
+function syncStickyGutters() {
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  const wrap = wrapperRef.value as HTMLElement | null
+  if (!sc || !wrap)
     return
+
+  const cs = getComputedStyle(sc)
+  const pl = Number.parseFloat(cs.paddingLeft) || 0
+  const pr = Number.parseFloat(cs.paddingRight) || 0
+  const scrollbarW = sc.offsetWidth - sc.clientWidth
+
+  wrap.style.setProperty('--sticky-left', `${pl + 4}px`)
+  wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
+}
+
+/** 用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚） */
+function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
+  const scRect = rootEl.getBoundingClientRect()
+
+  let topId: string | null = null
+  let topY = Number.POSITIVE_INFINITY
+  for (const [id, el] of Object.entries(noteContainers.value)) {
+    if (!el || !el.isConnected)
+      continue
+
+    const dataId = el.getAttribute('data-note-id')
+    if (dataId !== id)
+      continue
+
+    const n = noteById.value[id]
+    if (!n || _isPinned(n))
+      continue
+
+    const r = el.getBoundingClientRect()
+    const visible = !(r.bottom <= scRect.top || r.top >= scRect.bottom)
+    if (!visible)
+      continue
+
+    if (r.top < topY) {
+      topY = r.top
+      topId = id
+    }
+  }
+
+  if (topId) {
+    const n = noteById.value[topId]
+    const { key } = getMonthKeyAndLabel(n)
+    if (key && currentMonthKey.value !== key)
+      currentMonthKey.value = key
+  }
+}
+
+// ---- 滚动状态（快速滚动先隐藏按钮，停止后恢复） ----
+const isUserScrolling = ref(false)
+let scrollHideTimer: number | null = null
+
+let collapseRetryId: number | null = null
+let collapseRetryCount = 0
+function scheduleCollapseRetry() {
+  if (collapseRetryId !== null)
+    return
+  collapseRetryCount = 0
+  const step = () => {
+    collapseRetryId = requestAnimationFrame(() => {
+      if (isUserScrolling.value) {
+        cancelAnimationFrame(collapseRetryId!)
+        collapseRetryId = null
+        return
+      }
+      updateCollapsePos()
+      if (collapseVisible.value || ++collapseRetryCount >= 12) {
+        cancelAnimationFrame(collapseRetryId!)
+        collapseRetryId = null
+        return
+      }
+      step()
+    })
+  }
+  step()
+}
+
+const handleScroll = throttle(() => {
+  const el = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!el) {
+    updateCollapsePos()
+    return
+  }
 
   const curTop = el.scrollTop
   if (curTop > lastScrollTop)
@@ -362,101 +326,130 @@ const onPlainScroll = throttle(() => {
       emit('loadMore')
   }
 
+  // 滚动中隐藏按钮，停止 120ms 恢复
+  isUserScrolling.value = true
+  collapseVisible.value = false
+  if (scrollHideTimer !== null) {
+    window.clearTimeout(scrollHideTimer)
+    scrollHideTimer = null
+  }
+  scrollHideTimer = window.setTimeout(() => {
+    isUserScrolling.value = false
+    updateCollapsePos()
+    scheduleCollapseRetry()
+  }, 120)
+
   // 同步悬浮月份条与布局
   recomputeStickyState()
+  updateCollapsePos()
   syncStickyGutters()
-}, 32) // ← 轻微降频，进一步减压
+}, 16)
 
-// ====== 观察底部哨兵自动加载 ======
-const loadMoreSentinel = ref<HTMLElement | null>(null)
-let loadIO: IntersectionObserver | null = null
+function rebindScrollListener() {
+  const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!scrollerElement)
+    return
+
+  scrollerElement.removeEventListener('scroll', handleScroll)
+  scrollerElement.addEventListener('scroll', handleScroll, { passive: true } as any)
+}
+
+// ====== 强制刷新虚拟列表高度 ======
+function forceVListRemeasure() {
+  const sc = scrollerRef.value
+  if (!sc)
+    return
+
+  try {
+    sc.forceUpdate?.()
+  }
+  catch {
+    // no-op
+  }
+}
+
+watch(() => props.notes, () => {
+  nextTick(() => {
+    rebindScrollListener()
+    updateCollapsePos()
+    syncStickyGutters()
+    requestAnimationFrame(() => {
+      recomputeStickyState()
+    })
+    forceVListRemeasure()
+  })
+}, { deep: false })
+
+watch(scrollerRef, (newScroller, oldScroller) => {
+  if (oldScroller?.$el)
+    oldScroller.$el.removeEventListener('scroll', handleScroll)
+
+  if (newScroller?.$el) {
+    rebindScrollListener()
+    nextTick(() => {
+      updateCollapsePos()
+      syncStickyGutters()
+      requestAnimationFrame(() => {
+        recomputeStickyState()
+      })
+      forceVListRemeasure()
+    })
+  }
+})
+
+watch([expandedNote, editingNoteId], () => {
+  nextTick(() => {
+    updateCollapsePos()
+    forceVListRemeasure()
+  })
+})
+
+function handleWindowResize() {
+  syncStickyGutters()
+  updateCollapsePos()
+  forceVListRemeasure()
+}
 
 onMounted(() => {
-  // 窗口尺寸变更时校准
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
-
-  const root = scrollerRef.value
+  const root = scrollerRef.value?.$el as HTMLElement | undefined
   if (root) {
     headersIO = new IntersectionObserver(() => {
       recomputeStickyState()
     }, { root })
   }
-
-  if (loadMoreSentinel.value) {
-    loadIO = new IntersectionObserver((entries) => {
-      const entry = entries[0]
-      const rootEl = scrollerRef.value
-      if (!rootEl)
-        return
-      if (entry && entry.isIntersecting && !props.isLoading && props.hasMore)
-        emit('loadMore')
-    }, { root, rootMargin: '400px 0px', threshold: 0 })
-    loadIO.observe(loadMoreSentinel.value)
-  }
-
-  // —— 监听 visualViewport，随键盘高度变化自动调整底部安全区
-  const vv: any = (window as any).visualViewport
-  if (vv) {
-    vv.addEventListener('resize', updateKeyboardInset)
-    vv.addEventListener('scroll', updateKeyboardInset)
-    updateKeyboardInset()
-  }
-
-  // —— 监听输入区域的 focus/blur，控制 Pinned 模式
-  const composerEl = composerSlotRef.value
-  if (composerEl) {
-    composerEl.addEventListener('focusin', () => {
-      // 聚焦后启用 Pinned，并立刻把底部对齐到可视底
-      composerPinned.value = true
-      startObserveComposer()
-      alignComposerBottom()
-    })
-    composerEl.addEventListener('focusout', () => {
-      // 失焦稍后退出，避免内部元素切换造成抖动
-      setTimeout(() => {
-        composerPinned.value = false
-        stopObserveComposer()
-      }, 120)
-    })
-  }
 })
-
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
-  onPlainScroll.cancel()
+  handleScroll.cancel()
+  if (collapseRetryId !== null) {
+    cancelAnimationFrame(collapseRetryId)
+    collapseRetryId = null
+  }
   if (headersIO) {
     headersIO.disconnect()
     headersIO = null
   }
-  if (loadIO) {
-    loadIO.disconnect()
-    loadIO = null
-  }
-  // 清理 visualViewport 监听
-  const vv: any = (window as any).visualViewport
-  if (vv) {
-    vv.removeEventListener('resize', updateKeyboardInset)
-    vv.removeEventListener('scroll', updateKeyboardInset)
-  }
-  stopObserveComposer()
 })
 
-function handleWindowResize() {
-  syncStickyGutters()
-}
-
-// ====== 编辑/保存 ======
 function startEdit(note: any) {
   if (editingNoteId.value)
     cancelEdit()
+
   editingNoteId.value = note.id
   editingNoteContent.value = note.content
+  expandedNote.value = null
+  nextTick(() => {
+    updateCollapsePos()
+    forceVListRemeasure()
+  })
 }
 
 function cancelEdit() {
   editingNoteId.value = null
   editingNoteContent.value = ''
+  nextTick(forceVListRemeasure)
 }
 
 async function handleUpdateNote() {
@@ -470,12 +463,27 @@ async function handleUpdateNote() {
   })
 }
 
-// ====== 展开/收起（仍保留展开逻辑） ======
+function _ensureCardVisible(noteId: string) {
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  const card = noteContainers.value[noteId] as HTMLElement | undefined
+  if (!scroller || !card)
+    return
+
+  const scrollerRect = scroller.getBoundingClientRect()
+  const cardRect = card.getBoundingClientRect()
+  const padding = 12
+
+  if (cardRect.top < scrollerRect.top + padding)
+    card.scrollIntoView({ behavior: 'auto', block: 'start' })
+  else if (cardRect.bottom > scrollerRect.bottom)
+    card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+}
+
 async function toggleExpand(noteId: string) {
   if (editingNoteId.value === noteId)
     return
 
-  const scroller = scrollerRef.value
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   const isCurrentlyExpanded = expandedNote.value === noteId
   const isSwitching = expandedNote.value !== null && !isCurrentlyExpanded
   if (!scroller)
@@ -484,11 +492,11 @@ async function toggleExpand(noteId: string) {
   if (isSwitching) {
     expandedNote.value = null
     await nextTick()
-    await new Promise(r => requestAnimationFrame(r as any))
+    await new Promise(r => requestAnimationFrame(r))
   }
 
   if (!isCurrentlyExpanded) {
-    const card = noteContainers.value[noteId]
+    const card = noteContainers.value[noteId] as HTMLElement | undefined
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
@@ -502,7 +510,7 @@ async function toggleExpand(noteId: string) {
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    const cardAfter = noteContainers.value[noteId]
+    const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
       scroller.style.overflowAnchor = 'none'
       const scRectAfter = scroller.getBoundingClientRect()
@@ -520,40 +528,37 @@ async function toggleExpand(noteId: string) {
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    const cardAfter = noteContainers.value[noteId]
+    const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
       const anchor = expandAnchor.value
-      const wantTopOffset = anchor.noteId === noteId ? anchor.topOffset : 0
+      const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
       const currentTopOffset = cardRectAfter.top - scRectAfter.top
       const delta = currentTopOffset - wantTopOffset
 
       let target = scroller.scrollTop + delta
       const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-      if (target < 0)
-        target = 0
-      if (target > maxScrollTop)
-        target = maxScrollTop
+      target = Math.min(Math.max(0, target), maxScrollTop)
 
       await stableSetScrollTop(scroller, target, 6, 0.5)
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
+
+  updateCollapsePos()
+  forceVListRemeasure()
 }
 
 async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, epsilon = 0.5) {
-  const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-  if (target < 0)
-    target = 0
-  if (target > maxScroll)
-    target = maxScroll
+  target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
   return new Promise<void>((resolve) => {
     let count = 0
     const tick = () => {
       const diff = Math.abs(el.scrollTop - target)
       if (diff > epsilon)
         el.scrollTop = target
+
       count += 1
       const reached = Math.abs(el.scrollTop - target) <= epsilon
       if (count >= tries || reached) {
@@ -567,107 +572,150 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
-/** 将顶部 composer 区域滚到可视区顶部（考虑 sticky 顶部偏移与额外留白） */
-async function scrollComposerIntoView(offset = 0) {
-  const root = scrollerRef.value
-  const el = composerSlotRef.value
-  if (!root || !el)
-    return
-  // 目标位置 = 插槽相对滚动容器的 offsetTop - 需要空出来的顶部偏移
-  const target = Math.max(0, el.offsetTop - offset)
-  await stableSetScrollTop(root, target, 6, 0.5)
-
-  // 启用 Pinned 并对齐一次，之后由 resize/输入增长维持
-  composerPinned.value = true
-  startObserveComposer()
-  alignComposerBottom()
+function handleEditorFocus(containerEl: HTMLElement) {
+  setTimeout(() => {
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
+      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }, 300)
 }
 
-/** 对外暴露：回到顶部、滚到并编辑某条 */
+watch(expandedNote, () => {
+  nextTick(() => {
+    updateCollapsePos()
+    forceVListRemeasure()
+  })
+})
+
+function updateCollapsePos() {
+  if (isUserScrolling.value) {
+    collapseVisible.value = false
+    return
+  }
+  if (!expandedNote.value) {
+    collapseVisible.value = false
+    return
+  }
+
+  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined
+  const wrapperEl = wrapperRef.value as HTMLElement | null
+  const cardEl = noteContainers.value[expandedNote.value]
+  if (!scrollerEl || !wrapperEl || !cardEl || !cardEl.isConnected) {
+    collapseVisible.value = false
+    scheduleCollapseRetry()
+    return
+  }
+  const dataId = (cardEl as HTMLElement).getAttribute('data-note-id')
+  if (dataId !== expandedNote.value) {
+    collapseVisible.value = false
+    scheduleCollapseRetry()
+    return
+  }
+
+  const scrollerRect = scrollerEl.getBoundingClientRect()
+  const wrapperRect = wrapperEl.getBoundingClientRect()
+  const cardRect = (cardEl as HTMLElement).getBoundingClientRect()
+  const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
+  if (outOfView) {
+    collapseVisible.value = false
+    scheduleCollapseRetry()
+    return
+  }
+  const btnEl = collapseBtnRef.value
+  const btnH = btnEl ? btnEl.offsetHeight : 36
+  const margin = 10
+  const visibleBottom = Math.min(cardRect.bottom, scrollerRect.bottom - margin)
+  const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
+  let topPx = visibleBottom - btnH
+  if (topPx < visibleTop)
+    topPx = visibleTop
+
+  const leftPx = cardRect.left - wrapperRect.left + 0
+  collapseStyle.value = { left: `${leftPx}px`, top: `${topPx - wrapperRect.top}px` }
+  collapseVisible.value = true
+}
+
 async function focusAndEditNote(noteId: string) {
   const idx = noteIdToMixedIndex.value[noteId]
-  if (idx === undefined)
-    return
-  const original = props.notes.find(n => n.id === noteId)
-  if (!original)
-    return
-  editingNoteId.value = noteId
-  editingNoteContent.value = original.content
-  await nextTick()
-  const root = scrollerRef.value
-  const el = noteContainers.value[noteId]
-  if (root && el) {
-    const rootRect = root.getBoundingClientRect()
-    const cardRect = el.getBoundingClientRect()
-    const target = root.scrollTop + (cardRect.top - rootRect.top) - 40
-    await stableSetScrollTop(root, target, 6, 0.5)
+  if (idx !== undefined) {
+    const original = props.notes.find(n => n.id === noteId)
+    if (original) {
+      editingNoteId.value = noteId
+      editingNoteContent.value = original.content
+      await nextTick()
+      scrollerRef.value?.scrollToItem(idx, { align: 'center', behavior: 'smooth' })
+    }
   }
 }
-function scrollToTop() {
-  const root = scrollerRef.value
-  if (root)
-    root.scrollTop = 0
-}
-defineExpose({ scrollToTop, focusAndEditNote, scrollComposerIntoView })
 
-// ====== 响应 notes 变化：校准悬浮条 ======
-watch(() => props.notes, () => {
-  nextTick(() => {
-    syncStickyGutters()
-    requestAnimationFrame(() => {
-      recomputeStickyState()
-    })
-  })
-}, { deep: false })
+function scrollToTop() {
+  scrollerRef.value?.scrollToItem(0)
+}
+
+defineExpose({ scrollToTop, focusAndEditNote })
 </script>
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
+    <!-- 悬浮月份条 -->
+    <div
+      v-if="currentMonthLabel"
+      class="sticky-month"
+      :style="{ transform: `translateY(${-pushOffset}px)` }"
+    >
+      {{ currentMonthLabel }}
+    </div>
+
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.loading') }}
     </div>
-    <div v-else-if="notes.length === 0 && false" class="py-4 text-center text-gray-500">
+    <div v-else-if="notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.no_notes') }}
     </div>
 
-    <!-- 直滚容器（包含：外部传入的旧输入框 + 月份头 + 笔记项） -->
-    <div
+    <DynamicScroller
       v-else
       ref="scrollerRef"
+      :items="mixedItems"
+      key-field="id"
+      :min-item-size="140"
+      :buffer="900"
+      :prerender="12"
       class="scroller"
-      @scroll.passive="onPlainScroll"
     >
-      <!-- 🔌 插槽：让父组件把“旧的输入框”插入到滚动容器顶部 -->
-      <!-- 顶部输入框插槽：加一层容器以便滚动对齐 -->
-      <div ref="composerSlotRef">
-        <slot name="composer" />
-      </div>
-      <!-- 悬浮月份条（改为在输入框下面，跟随列表滚动；使用 sticky 顶部贴合） -->
-      <div
-        v-if="currentMonthLabel"
-        class="sticky-month"
-      >
-        {{ currentMonthLabel }}
-      </div>
-
-      <template v-for="item in mixedItems" :key="item.id">
-        <!-- 月份头部条幅 -->
-        <div
-          v-if="item.type === 'month-header'"
-          :ref="(el) => setHeaderEl(el, item.monthKey)"
-          class="month-header"
-          :data-month="item.monthKey"
-        >
-          {{ item.label }}
-        </div>
-
-        <!-- 笔记项 -->
-        <div
-          v-else
-          :ref="(el) => setNoteContainer(el, item.id)"
+      <template #before>
+        <div v-if="currentMonthLabel" class="sticky-top-spacer" />
+      </template>
+      <template #default="{ item, index, active }">
+        <DynamicScrollerItem
+          :key="item.id"
+          :item="item"
+          :active="active"
+          :data-index="index"
+          :size-dependencies="item.type === 'note'
+            ? [
+              item.id,
+              (item.content || '').length,
+              expandedNote === item.id,
+              editingNoteId === item.id,
+            ]
+            : [item.id, item.label]"
           class="note-item-container"
+          @resize="() => { updateCollapsePos(); forceVListRemeasure() }"
         >
+          <!-- 月份头部条幅（虚拟项） -->
           <div
+            v-if="item.type === 'month-header'"
+            :ref="(el) => setHeaderEl(el, item.monthKey)"
+            class="month-header"
+            :data-month="item.monthKey"
+          >
+            {{ item.label }}
+          </div>
+
+          <!-- 笔记项 -->
+          <div
+            v-else
+            :ref="(el) => setNoteContainer(el, item.id)"
             class="note-selection-wrapper"
             :class="{ 'selection-mode': isSelectionModeActive }"
             @click.stop="isSelectionModeActive && emit('toggleSelect', item.id)"
@@ -679,8 +727,20 @@ watch(() => props.notes, () => {
               />
             </div>
             <div class="note-content-wrapper">
+              <NoteEditor
+                v-if="editingNoteId === item.id"
+                v-model="editingNoteContent"
+                :is-editing="true"
+                :is-loading="isUpdating"
+                :max-note-length="maxNoteLength"
+                :placeholder="$t('notes.update_note')"
+                :all-tags="allTags"
+                @save="handleUpdateNote"
+                @cancel="cancelEdit"
+                @focus="handleEditorFocus(noteContainers[item.id])"
+              />
               <NoteItem
-                v-if="editingNoteId !== item.id"
+                v-else
                 :note="item"
                 :is-expanded="expandedNote === item.id"
                 :is-selection-mode-active="isSelectionModeActive"
@@ -693,78 +753,61 @@ watch(() => props.notes, () => {
                 @task-toggle="(payload) => emit('taskToggle', payload)"
                 @date-updated="() => emit('dateUpdated')"
               />
-              <template v-else>
-                <NoteEditor
-                  v-model="editingNoteContent"
-                  :is-editing="true"
-                  :is-loading="isUpdating"
-                  :max-note-length="maxNoteLength"
-                  :all-tags="allTags"
-                  :placeholder="$t('notes.content_placeholder')"
-                  @save="() => handleUpdateNote()"
-                  @cancel="cancelEdit"
-                  @focus.stop
-                  @blur.stop
-                />
-              </template>
             </div>
           </div>
-        </div>
+        </DynamicScrollerItem>
       </template>
 
-      <!-- 底部加载提示 -->
-      <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
-        {{ t('notes.loading') }}
-      </div>
+      <template #after>
+        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
+          {{ t('notes.loading') }}
+        </div>
+      </template>
+    </DynamicScroller>
 
-      <!-- 加载更多哨兵（可选） -->
-      <div ref="loadMoreSentinel" style="height: 1px" />
-    </div>
+    <Transition name="fade">
+      <button
+        v-if="collapseVisible"
+        ref="collapseBtnRef"
+        type="button"
+        class="collapse-button"
+        :style="collapseStyle"
+        @click.stop.prevent="toggleExpand(expandedNote!)"
+      >
+        收起
+      </button>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 
-/* 直滚容器：给顶部留出空间，不被 sticky bar 遮住 */
-.scroller {
-  height: 100%;
-  overflow-y: auto;
-  overflow-anchor: none;
-  scroll-behavior: auto;
-  background-color: #f9fafb;
-  padding: 0 0.5rem 0.5rem;
-}
+/* 背景 */
+.scroller { background-color: #f9fafb; padding: 0.5rem; }
 .dark .scroller { background-color: #111827; }
 
 /* 卡片 */
 .note-content-wrapper {
-  background-color: #ffffff;
-  border-radius: 12px;
-  padding: 1rem;
+  background-color: #ffffff; border-radius: 12px; padding: 1rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s ease-in-out;
-  /* ⚡ 关键优化：让视口外的元素跳过绘制与布局 */
-  content-visibility: auto;
-  contain-intrinsic-size: 400px;
 }
 .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07); }
 .dark .note-content-wrapper {
-  background-color: #1f2937;
-  border: 1px solid #374151;
+  background-color: #1f2937; border: 1px solid #374151;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
 
 /* 间距与选择 */
-.note-item-container { padding-bottom: 1.5rem; contain: layout paint style; } /* ⚡ 限制重排范围进一步提效 */
+.note-item-container { padding-bottom: 1.5rem; }
 .note-item-container:last-child { padding-bottom: 0; }
 .note-selection-wrapper { display: flex; gap: 0.75rem; transition: background-color 0.2s; }
 .note-selection-wrapper.selection-mode {
-  cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem;
-  border-radius: 8px;
+  cursor: pointer; padding: 0.5rem;
+  margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem; border-radius: 8px;
 }
 .note-selection-wrapper.selection-mode:hover { background-color: rgba(0, 0, 0, 0.03); }
 .dark .note-selection-wrapper.selection-mode:hover { background-color: rgba(255, 255, 255, 0.05); }
@@ -772,15 +815,11 @@ watch(() => props.notes, () => {
 
 /* 选择态圆点 */
 .selection-indicator { padding-top: 0.75rem; }
-.selection-circle {
-  width: 20px; height: 20px; border-radius: 50%;
-  border: 2px solid #ccc; transition: all 0.2s ease;
-}
+.selection-circle { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #ccc; transition: all 0.2s ease; }
 .dark .selection-circle { border-color: #555; }
 .selection-circle.selected { background-color: #00b386; border-color: #00b386; position: relative; }
 .selection-circle.selected::after {
-  content: '';
-  position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
+  content: ''; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
   border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
@@ -788,7 +827,20 @@ watch(() => props.notes, () => {
 .text-gray-500 { color: #6b7280; }
 .dark .text-gray-500 { color: #9ca3af; }
 
-/* ===== 月份头部项（直滚：所有 header 都在 DOM） ===== */
+/* 收起按钮 */
+.collapse-button {
+  position: absolute; z-index: 10;
+  background-color: #ffffff; color: #007bff; border: 1px solid #e0e0e0;
+  border-radius: 15px; padding: 3px 8px; font-size: 14px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); transition: opacity 0.2s, transform 0.2s;
+  opacity: 0.9; font-weight: normal;
+  font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
+}
+.collapse-button:hover { opacity: 1; transform: scale(1.05); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ===== 月份头部项（虚拟项） ===== */
 .month-header {
   height: 32px;
   padding: 0 8px;
@@ -799,6 +851,7 @@ watch(() => props.notes, () => {
   color: #374151;
   background: #eef2ff;
   border: 1px solid #e5e7eb;
+
   display: flex;
   align-items: center;
 }
@@ -808,10 +861,12 @@ watch(() => props.notes, () => {
   border: 1px solid #374151;
 }
 
-/* ===== 悬浮月份条（现在在输入框下面，放进 scroller 里） ===== */
+/* ===== 悬浮月份条（不参与虚拟化） ===== */
 .sticky-month {
-  position: sticky;
-  top: 0;              /* 贴住滚动容器的顶部 */
+  position: absolute;
+  top: 0;
+  left: var(--sticky-left, 4px);
+  right: var(--sticky-right, 4px);
   z-index: 9;
   height: 32px;
   padding: 0 8px;
@@ -822,14 +877,18 @@ watch(() => props.notes, () => {
   border-bottom: 1px solid #e5e7eb;
   font-weight: 700;
   color: #111827;
+
   display: flex;
   align-items: center;
-  /* 可选：让它左右与列表内边距对齐 */
-  margin: 0 4px;
 }
 .dark .sticky-month {
   background: rgba(17, 24, 39, 0.9);
   border-bottom: 1px solid #374151;
   color: #f9fafb;
+}
+
+/* 悬浮月份条本身是 32px */
+.sticky-top-spacer {
+  height: 32px;
 }
 </style>

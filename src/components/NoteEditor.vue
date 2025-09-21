@@ -4,9 +4,6 @@ import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
-// —— 天气映射（用于城市名映射与图标）——
-import { cityMap, weatherMap } from '@/utils/weatherMap'
-
 // ============== Props & Emits ==============
 const props = defineProps({
   modelValue: { type: String, required: true },
@@ -16,8 +13,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestScrollIntoView'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -92,27 +88,14 @@ function captureCaret() {
 }
 
 // ============== 滚动校准 ==============
-let caretScrollLock = false
-let lastCaretAdjustAt = 0
-
-function ensureCaretVisibleInTextarea(opts: { fromClick?: boolean } = {}) {
+function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
 
-  // 点击触发后的短暂冷却，避免 click/focus/resize 连环触发造成抖动
-  const now = performance.now()
-  if (opts.fromClick && now - lastCaretAdjustAt < 120)
-    return
-  if (caretScrollLock)
-    return
-
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText
-    = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-    + `font:${style.font};line-height:${style.lineHeight};padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-    + `border:solid transparent;border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
@@ -126,111 +109,13 @@ function ensureCaretVisibleInTextarea(opts: { fromClick?: boolean } = {}) {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-
-  // 给滚动判定加“迟滞区间”，避免在边缘附近来回抖
-  const HYSTERESIS = Math.max(8, lineHeight * 0.6) // 至少 8px
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  let nextScrollTop: number | null = null
-
-  if (caretDesiredBottom > viewBottom - HYSTERESIS) {
-    nextScrollTop = Math.min(
-      Math.max(0, caretDesiredBottom - el.clientHeight),
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop + HYSTERESIS) {
-    nextScrollTop = Math.max(0, caretDesiredTop)
-  }
-
-  if (nextScrollTop != null) {
-    // 如果改变量很小（< 4px），直接忽略，防止微颤
-    if (Math.abs(nextScrollTop - el.scrollTop) < 4)
-      return
-
-    caretScrollLock = true
-    el.scrollTop = Math.round(nextScrollTop)
-    // 一帧后解锁；保证一次点击只滚动一次
-    requestAnimationFrame(() => {
-      caretScrollLock = false
-      lastCaretAdjustAt = performance.now()
-    })
-  }
-}
-
-// ========= 新建时写入天气：工具函数 =========
-function getMappedCityName(enCity: string) {
-  if (!enCity)
-    return '未知地点'
-  const lower = enCity.trim().toLowerCase()
-  for (const [k, v] of Object.entries(cityMap)) {
-    const kk = k.toLowerCase()
-    if (lower === kk || lower.startsWith(kk))
-      return v as string
-  }
-  return lower.charAt(0).toUpperCase() + lower.slice(1)
-}
-function getWeatherIcon(code: number) {
-  const item = (weatherMap as any)[code] || { icon: '❓' }
-  return item.icon
-}
-async function fetchWeatherLine(): Promise<string | null> {
-  try {
-    // 定位：优先 ipapi.co，失败回退 ip-api.com
-    let loc: { city: string; lat: number; lon: number }
-    try {
-      const r = await fetch('https://ipapi.co/json/')
-      if (!r.ok)
-        throw new Error(String(r.status))
-      const d = await r.json()
-      if (d?.error)
-        throw new Error(d?.reason || 'ipapi error')
-      loc = { city: d.city, lat: d.latitude, lon: d.longitude }
-    }
-    catch {
-      const r2 = await fetch('https://ip-api.com/json/')
-      if (!r2.ok)
-        throw new Error(String(r2.status))
-      const d2 = await r2.json()
-      if (d2?.status === 'fail')
-        throw new Error(d2?.message || 'ip-api error')
-      loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
-    }
-
-    if (!loc?.lat || !loc?.lon)
-      throw new Error('定位失败')
-
-    const city = getMappedCityName(loc.city)
-
-    // 天气
-    const w = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
-    )
-    if (!w.ok)
-      throw new Error(String(w.status))
-    const d = await w.json()
-    const tempC = d?.current?.temperature_2m
-    const icon = getWeatherIcon(d?.current?.weathercode)
-
-    // 只保留：城市 温度°C 图标（无文字）
-    return `${city} ${tempC}°C ${icon}`
-  }
-  catch {
-    return null
-  }
-}
-
-// ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
-async function handleSave() {
-  const content = contentModel.value || ''
-  let weather: string | null | undefined
-
-  if (!props.isEditing)
-    weather = await fetchWeatherLine()
-
-  // 向后兼容：父组件若只接收第一个参数（content）也不会报错
-  emit('save', content, weather)
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
 // ============== 基础事件 ==============
@@ -256,7 +141,7 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  ensureCaretVisibleInTextarea({ fromClick: true })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
@@ -427,11 +312,8 @@ function addHeading() {
 function addBold() {
   insertText('**', '**')
 }
-function _addItalic() {
+function addItalic() {
   insertText('*', '*')
-}
-function addUnderline() {
-  insertText('++', '++')
 }
 function addBulletList() {
   const el = textarea.value
@@ -911,7 +793,7 @@ defineExpose({ reset: triggerResize })
           type="button"
           class="btn-primary"
           :disabled="isLoading || !contentModel"
-          @click="handleSave"
+          @click="emit('save', contentModel)"
         >
           保存
         </button>
@@ -940,7 +822,7 @@ defineExpose({ reset: triggerResize })
           </svg>
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
+        <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
         <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -995,9 +877,9 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 55vh;
+  max-height: 48vh;
   overflow-y: auto;
-  padding: 8px 8px 1px 16px;
+  padding: 16px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1199,17 +1081,17 @@ defineExpose({ reset: triggerResize })
   overflow: auto;
 }
 .note-editor-reborn.editing-viewport {
-  height: 68dvh;
-  min-height: 68dvh;
-  max-height: 68dvh;
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
   display: flex;
   flex-direction: column;
 }
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 68vh;
-  min-height: 68vh;
-  max-height: 68vh;
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
   }
 }
 .note-editor-reborn.editing-viewport .editor-wrapper {

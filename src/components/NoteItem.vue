@@ -21,7 +21,7 @@ const props = defineProps({
   isSelectionModeActive: { type: Boolean, default: false },
   searchQuery: { type: String, default: '' },
   dropdownInPlace: { type: Boolean, default: false },
-  showInternalCollapseButton: { type: Boolean, default: false }, // 兼容保留，不再使用
+  showInternalCollapseButton: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -260,25 +260,23 @@ async function handleDateUpdate(newDate: Date) {
       </div>
 
       <div class="flex-1 min-w-0">
-        <!-- 展开态 -->
-        <div v-if="isExpanded" class="expanded-content">
+        <div v-if="isExpanded">
           <div
             class="prose dark:prose-invert max-w-none"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
-          <!-- ✅ 浮动的收起按钮：卡片左下角，随滚动跟着走 -->
-          <div class="floating-collapse">
-            <button
-              class="collapse-fab"
-              @click.stop="emit('toggleExpand', note.id)"
-            >
+          <div
+            v-if="showInternalCollapseButton"
+            class="toggle-button-row"
+            @click.stop="emit('toggleExpand', note.id)"
+          >
+            <button class="toggle-button">
               {{ $t('notes.collapse', '收起') }}
             </button>
           </div>
         </div>
 
-        <!-- 收起态 -->
         <div v-else>
           <div
             ref="contentRef"
@@ -319,7 +317,6 @@ async function handleDateUpdate(newDate: Date) {
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
   padding: 1rem;
   margin-bottom: 0.75rem;
-  position: relative; /* 让内部 sticky 的参照语境更合理 */
 }
 .dark .note-card {
   background-color: #374151;
@@ -391,54 +388,13 @@ async function handleDateUpdate(newDate: Date) {
   background-color: rgba(255,255,255,0.1);
 }
 
-/* —— 展开态的浮动收起按钮 —— */
-.expanded-content {
-  position: relative;
-}
-
-/* sticky：相对滚动容器“视口”粘在底部，直到卡片结束为止 */
-.floating-collapse {
-  position: sticky;
-  bottom: 8px;
-  left: 0;
-  width: fit-content;
-  z-index: 2;
-  /* 为了不挡住文字，默认透明度略低，悬停更清晰 */
-}
-
-.collapse-fab {
-  background-color: #ffffff;
-  color: #007bff;
-  border: 1px solid #e0e0e0;
-  border-radius: 9999px;
-  padding: 4px 10px;
-  font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  opacity: 0.92;
-  transition: opacity .15s ease, transform .15s ease, box-shadow .15s ease;
-  font-weight: 500;
-  font-family: 'KaiTi','BiauKai','楷体','Apple LiSung',serif,sans-serif;
-}
-.collapse-fab:hover {
-  opacity: 1;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
-}
-.dark .collapse-fab {
-  background-color: #1f2937;
-  color: #38bdf8;
-  border-color: #374151;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
-
-/* —— 收起态的“展开”一行 —— */
 .toggle-button-row {
   width: 100%;
   cursor: pointer;
   padding: 4px 0;
   margin-top: 4px;
 }
+
 .toggle-button {
   pointer-events: none;
   background: none;
@@ -535,7 +491,17 @@ async function handleDateUpdate(newDate: Date) {
   background-color: #374151;
 }
 
-/* 下拉的一些微调 */
+.collapse-button {
+  background-color: white;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+.dark .collapse-button {
+  background-color: #374151;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
 :deep(.n-dropdown-divider) {
   margin: 2px 0 !important;
 }
@@ -551,9 +517,8 @@ async function handleDateUpdate(newDate: Date) {
   color: #f0e6c5;
 }
 
-/* Markdown 下划线（ins）样式 */
 :deep(ins) {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 2px; /* 可选：下划线与文字距离 */
 }
 </style>
