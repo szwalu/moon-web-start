@@ -4,6 +4,9 @@ import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
+// —— 天气映射（用于城市名映射与图标）——
+import { cityMap, weatherMap } from '@/utils/weatherMap'
+
 // ============== Props & Emits ==============
 const props = defineProps({
   modelValue: { type: String, required: true },
@@ -13,7 +16,8 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
+// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestStickTop'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -112,10 +116,103 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
+  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
+  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
+  if (!props.isEditing) {
+    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
+    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
+
+    // 简单节流，避免频繁触发
+    if (atBottom && nearBottom) {
+      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
+        (ensureCaretVisibleInTextarea as any)._stickLock = true
+        // camelCase 事件名（修复 custom-event-name-casing）
+        emit('requestStickTop', { paddingBottom: 96 })
+        setTimeout(() => {
+          (ensureCaretVisibleInTextarea as any)._stickLock = false
+        }, 120)
+      }
+    }
+  }
+
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
+}
+
+// ========= 新建时写入天气：工具函数 =========
+function getMappedCityName(enCity: string) {
+  if (!enCity)
+    return '未知地点'
+  const lower = enCity.trim().toLowerCase()
+  for (const [k, v] of Object.entries(cityMap)) {
+    const kk = k.toLowerCase()
+    if (lower === kk || lower.startsWith(kk))
+      return v as string
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+function getWeatherIcon(code: number) {
+  const item = (weatherMap as any)[code] || { icon: '❓' }
+  return item.icon
+}
+async function fetchWeatherLine(): Promise<string | null> {
+  try {
+    // 定位：优先 ipapi.co，失败回退 ip-api.com
+    let loc: { city: string; lat: number; lon: number }
+    try {
+      const r = await fetch('https://ipapi.co/json/')
+      if (!r.ok)
+        throw new Error(String(r.status))
+      const d = await r.json()
+      if (d?.error)
+        throw new Error(d?.reason || 'ipapi error')
+      loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+    }
+    catch {
+      const r2 = await fetch('https://ip-api.com/json/')
+      if (!r2.ok)
+        throw new Error(String(r2.status))
+      const d2 = await r2.json()
+      if (d2?.status === 'fail')
+        throw new Error(d2?.message || 'ip-api error')
+      loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+    }
+
+    if (!loc?.lat || !loc?.lon)
+      throw new Error('定位失败')
+
+    const city = getMappedCityName(loc.city)
+
+    // 天气
+    const w = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
+    )
+    if (!w.ok)
+      throw new Error(String(w.status))
+    const d = await w.json()
+    const tempC = d?.current?.temperature_2m
+    const icon = getWeatherIcon(d?.current?.weathercode)
+
+    // 只保留：城市 温度°C 图标（无文字）
+    return `${city} ${tempC}°C ${icon}`
+  }
+  catch {
+    return null
+  }
+}
+
+// ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
+async function handleSave() {
+  const content = contentModel.value || ''
+  let weather: string | null | undefined
+
+  if (!props.isEditing)
+    weather = await fetchWeatherLine()
+
+  // 向后兼容：父组件若只接收第一个参数（content）也不会报错
+  emit('save', content, weather)
 }
 
 // ============== 基础事件 ==============
@@ -312,8 +409,11 @@ function addHeading() {
 function addBold() {
   insertText('**', '**')
 }
-function addItalic() {
+function _addItalic() {
   insertText('*', '*')
+}
+function addUnderline() {
+  insertText('++', '++')
 }
 function addBulletList() {
   const el = textarea.value
@@ -793,7 +893,7 @@ defineExpose({ reset: triggerResize })
           type="button"
           class="btn-primary"
           :disabled="isLoading || !contentModel"
-          @click="emit('save', contentModel)"
+          @click="handleSave"
         >
           保存
         </button>
@@ -822,7 +922,7 @@ defineExpose({ reset: triggerResize })
           </svg>
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
+        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
         <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -879,7 +979,7 @@ defineExpose({ reset: triggerResize })
   min-height: 40px;
   max-height: 48vh;
   overflow-y: auto;
-  padding: 16px 8px 8px 16px;
+  padding: 8px 8px 1px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1081,17 +1181,17 @@ defineExpose({ reset: triggerResize })
   overflow: auto;
 }
 .note-editor-reborn.editing-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
+  height: 68dvh;
+  min-height: 68dvh;
+  max-height: 68dvh;
   display: flex;
   flex-direction: column;
 }
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
+    height: 68vh;
+  min-height: 68vh;
+  max-height: 68vh;
   }
 }
 .note-editor-reborn.editing-viewport .editor-wrapper {
