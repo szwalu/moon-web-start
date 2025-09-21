@@ -16,7 +16,14 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
+const emit = defineEmits([
+  'update:modelValue',
+  'save',
+  'cancel',
+  'focus',
+  'blur',
+  'requestScrollIntoView',
+])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -305,6 +312,24 @@ function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
+  maybeEnsureBottomVisible(el)
+}
+
+// 仅在移动端判断；当 textarea 内部滚动已接近底部时，通知父级把编辑器整体上推
+function maybeEnsureBottomVisible(el: HTMLTextAreaElement) {
+  const isMobile
+    = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (window.matchMedia && window.matchMedia('(pointer:coarse)').matches)
+
+  if (!isMobile)
+    return
+
+  // 触底判定：可视底 + 滚动量 ≥ 内容高度 - 8px
+  const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8
+  if (nearBottom) {
+    // ✅ 这里改为 camelCase 事件名
+    emit('requestScrollIntoView')
+  }
 }
 
 // ============== 文本与工具栏 ==============

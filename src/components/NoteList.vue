@@ -445,14 +445,30 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
 }
 
 /** 将顶部 composer 区域滚到可视区顶部（考虑 sticky 顶部偏移与额外留白） */
-async function scrollComposerIntoView(offset = 0) {
+/** 将顶部 composer 区域滚到可视区，保证“底部完全可见” */
+async function scrollComposerIntoView(offsetTop = 40) {
   const root = scrollerRef.value
   const el = composerSlotRef.value
   if (!root || !el)
     return
-  // 目标位置 = 插槽相对滚动容器的 offsetTop - 需要空出来的顶部偏移
-  const target = Math.max(0, el.offsetTop - offset)
-  await stableSetScrollTop(root, target, 6, 0.5)
+
+  const viewTop = root.scrollTop
+  const viewBottom = viewTop + root.clientHeight
+
+  const elTop = el.offsetTop // 输入框容器顶部（相对滚动容器）
+  const elBottom = elTop + el.offsetHeight
+
+  // 1) 若底部被遮挡（例如被键盘挡住）——优先把“底部”拉进来
+  if (elBottom > viewBottom - 12) {
+    const target = elBottom - root.clientHeight + 12 // 12px 缓冲
+    await stableSetScrollTop(root, Math.max(0, target), 6, 0.5)
+    return
+  }
+
+  // 2) 若顶部超出视口（极少见）——再对齐顶部到 sticky bar 下方
+  const wantTop = elTop - offsetTop // offsetTop≈sticky 的高度
+  if (elTop < viewTop + offsetTop)
+    await stableSetScrollTop(root, Math.max(0, wantTop), 6, 0.5)
 }
 
 /** 对外暴露：回到顶部、滚到并编辑某条 */
