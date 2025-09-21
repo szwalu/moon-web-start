@@ -1,136 +1,191 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+import { NDropdown, useMessage } from 'naive-ui'
+import ins from 'markdown-it-ins'
+import { useDark } from '@vueuse/core'
 
-// --- 新增：从 Naive UI 引入 useDialog ---
-import { useDialog } from 'naive-ui'
+import mark from 'markdown-it-mark'
+import linkAttrs from 'markdown-it-link-attributes'
+import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
+import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
 
-// --- Props and Emits ---
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
-  note: {
-    type: Object,
-    required: true,
-  },
-  isExpanded: {
-    type: Boolean,
-    default: false,
-  },
+  note: { type: Object, required: true },
+  isExpanded: { type: Boolean, default: false },
+  isSelectionModeActive: { type: Boolean, default: false },
+  searchQuery: { type: String, default: '' },
+  dropdownInPlace: { type: Boolean, default: false },
+  showInternalCollapseButton: { type: Boolean, default: false }, // 兼容保留，不再使用
 })
 
-const emit = defineEmits(['edit', 'copy', 'pin', 'delete', 'toggleExpand', 'taskToggle'])
+const emit = defineEmits([
+  'edit',
+  'toggleExpand',
+  'copy',
+  'pin',
+  'delete',
+  'date-updated',
+  'set-date',
+  'taskToggle',
+  'dateUpdated',
+])
 
-// --- 初始化 & 状态 ---
 const { t } = useI18n()
-// --- 新增：初始化 dialog ---
-const dialog = useDialog()
+const isDark = useDark()
+const messageHook = useMessage()
+
+const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
+
 const md = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
-}).use(taskLists, { enabled: true, label: true })
+})
+  .use(taskLists, { enabled: true, label: true })
+  .use(mark)
+  .use(ins)
+  .use(linkAttrs, {
+    attrs: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  })
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// --- Markdown 渲染 ---
+// ✅ 仅“几日”加粗，其余（时间/周几）常规
+function formatDateWithWeekday(dateStr: string) {
+  const d = new Date(dateStr)
+  const day = d.getDate()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const weekdayMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const weekday = weekdayMap[d.getDay()]
+  return `<span class="date-day">${day}日</span> ${hh}:${mm} ${weekday}`
+}
+
+const weatherDisplay = computed(() => {
+  const w = String(props.note?.weather ?? '').trim()
+  return w || ''
+})
+
 function renderMarkdown(content: string) {
   if (!content)
     return ''
-  const html = md.render(content)
-  return html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+
+  let html = md.render(content)
+  html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+  const query = props.searchQuery.trim()
+  if (query) {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escapedQuery, 'gi')
+    html = html.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
+  }
+  return html
 }
 
-// --- DOM 相关 ---
 function checkIfNoteOverflows() {
-  const el = contentRef.value
+  const el = contentRef.value as HTMLElement | null
   if (el)
     noteOverflowStatus.value = el.scrollHeight > el.clientHeight
 }
 
+let observer: ResizeObserver | null = null
 onMounted(() => {
-  nextTick(() => {
-    checkIfNoteOverflows()
-  })
+  if (contentRef.value) {
+    observer = new ResizeObserver(() => {
+      checkIfNoteOverflows()
+    })
+    observer.observe(contentRef.value)
+    // 确保初始状态正确
+    nextTick(() => {
+      checkIfNoteOverflows()
+    })
+  }
+})
+onUnmounted(() => {
+  if (observer)
+    observer.disconnect()
 })
 
+// 当笔记内容变化时，重新检查
 watch(() => props.note.content, () => {
   nextTick(() => {
     checkIfNoteOverflows()
   })
 })
 
-// --- 下拉菜单逻辑 ---
+// 展开/收起状态变化时，也重新检查
+watch(() => props.isExpanded, () => {
+  nextTick(() => {
+    checkIfNoteOverflows()
+  })
+})
+
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-
-  // 格式化创建时间
-  const creationDateObj = new Date(note.created_at)
-  const creationTime = !note.created_at || Number.isNaN(creationDateObj.getTime())
-    ? '未知'
-    : creationDateObj.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
-  // 格式化编辑时间
-  const updatedDateObj = new Date(note.updated_at)
-  const updatedTime = !note.updated_at || Number.isNaN(updatedDateObj.getTime())
-    ? '未知'
-    : updatedDateObj.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
+  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   return [
     { label: t('notes.edit'), key: 'edit' },
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
     { label: t('notes.delete'), key: 'delete' },
+    { label: '设定日期', key: 'set_date' },
     { key: 'divider-1', type: 'divider' },
-    { label: t('notes.word_count', { count: charCount }), key: 'char_count', disabled: true },
-    { label: t('notes.created_at', { time: creationTime }), key: 'creation_time', disabled: true },
-    { label: t('notes.updated2_at', { time: updatedTime }), key: 'updated2_time', disabled: true },
+    {
+      key: 'info-block',
+      type: 'render',
+      render: () => {
+        const textColor = isDark.value ? '#aaa' : '#666'
+        const pStyle = { margin: '0', padding: '0', lineHeight: '1.8', whiteSpace: 'nowrap', fontSize: '13px', color: textColor } as const
+        return h('div', { style: { padding: '4px 12px', cursor: 'default' } }, [
+          h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
+          h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),
+          h('p', { style: pStyle }, t('notes.updated2_at', { time: updatedTime })),
+        ])
+      },
+    },
   ]
 }
 
 function handleDropdownSelect(key: string) {
   switch (key) {
-    case 'edit':
+    case 'edit': {
       emit('edit', props.note)
       break
-    case 'copy':
+    }
+    case 'copy': {
       emit('copy', props.note.content)
       break
-    case 'pin':
+    }
+    case 'pin': {
       emit('pin', props.note)
       break
-    // --- 修改：删除操作 ---
-    case 'delete':
-      dialog.warning({
-        title: t('dialog.delete_note_title'),
-        content: t('dialog.delete_note_content'),
-        positiveText: t('dialog.confirm_button'),
-        negativeText: t('dialog.cancel_button'),
-        onPositiveClick: () => {
-          emit('delete', props.note.id)
-        },
-      })
+    }
+    case 'set_date': {
+      showDatePicker.value = true
       break
+    }
+    case 'delete': {
+      emit('delete', props.note.id)
+      break
+    }
+    default: {
+      break
+    }
   }
 }
 
-// --- 任务列表点击处理 ---
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
@@ -138,88 +193,136 @@ function handleNoteContentClick(event: MouseEvent) {
     return
 
   event.stopPropagation()
-
-  const noteCard = (event.currentTarget as HTMLElement)
+  const noteCard = event.currentTarget as HTMLElement
   const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
   const itemIndex = allListItems.indexOf(listItem)
-
   if (itemIndex !== -1)
     emit('taskToggle', { noteId: props.note.id, itemIndex })
+}
+
+async function handleDateUpdate(newDate: Date) {
+  showDatePicker.value = false
+  if (!props.note || !props.note.id)
+    return
+
+  try {
+    const newTimestamp = newDate.toISOString()
+    const { error } = await supabase
+      .from('notes')
+      .update({ created_at: newTimestamp })
+      .eq('id', props.note.id)
+    if (error)
+      throw error
+
+    messageHook.success('笔记日期更新成功！')
+    emit('dateUpdated')
+  }
+  catch (err: any) {
+    messageHook.error(`日期更新失败: ${err.message}`)
+  }
 }
 </script>
 
 <template>
-  <div
-    :data-note-id="note.id"
-    class="note-card"
-    :class="{ 'is-expanded': isExpanded }"
-    @click="handleNoteContentClick"
-    @dblclick="emit('edit', note)"
-  >
-    <div class="note-card-top-bar">
-      <div class="note-meta-left">
-        <p class="note-date">
-          {{ new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
-        </p>
-        <span v-if="note.is_pinned" class="pinned-indicator">
-          {{ $t('notes.pin') }}
-        </span>
-      </div>
-      <n-dropdown
-        trigger="click"
-        placement="bottom-end"
-        :options="getDropdownOptions(note)"
-        @select="handleDropdownSelect"
-      >
-        <div class="kebab-menu">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+  <div class="note-item" @dblclick="emit('edit', note)" v-on="$attrs">
+    <div
+      :data-note-id="note.id"
+      class="note-card"
+      :class="{ 'is-expanded': isExpanded }"
+      @click="handleNoteContentClick"
+    >
+      <div class="note-card-top-bar">
+        <div class="note-meta-left">
+          <span v-if="note.is_pinned" class="pinned-indicator">
+            {{ $t('notes.pin') }}
+          </span>
+
+          <!-- 日期（几日）加粗；时间/周几常规；天气同一行 -->
+          <p class="note-date" v-html="formatDateWithWeekday(note.created_at)" />
+          <span v-if="weatherDisplay" class="weather-inline">
+            · {{ weatherDisplay }}
+          </span>
         </div>
-      </n-dropdown>
+
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="getDropdownOptions(note)"
+          :style="{ minWidth: '220px' }"
+          :to="props.dropdownInPlace ? false : undefined"
+          :z-index="props.dropdownInPlace ? 6001 : undefined"
+          @select="handleDropdownSelect"
+        >
+          <div class="kebab-menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+          </div>
+        </NDropdown>
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <!-- 展开态 -->
+        <div v-if="isExpanded" class="expanded-content">
+          <div
+            class="prose dark:prose-invert max-w-none"
+            :class="fontSizeClass"
+            v-html="renderMarkdown(note.content)"
+          />
+          <!-- ✅ 浮动的收起按钮：卡片左下角，随滚动跟着走 -->
+          <div class="floating-collapse">
+            <button
+              class="collapse-fab"
+              @click.stop="emit('toggleExpand', note.id)"
+            >
+              {{ $t('notes.collapse', '收起') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 收起态 -->
+        <div v-else>
+          <div
+            ref="contentRef"
+            class="prose dark:prose-invert line-clamp-3 max-w-none"
+            :class="fontSizeClass"
+            v-html="renderMarkdown(note.content)"
+          />
+          <div
+            v-if="noteOverflowStatus"
+            class="toggle-button-row"
+            @click.stop="emit('toggleExpand', note.id)"
+          >
+            <button class="toggle-button">
+              {{ $t('notes.expand') }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="flex-1 min-w-0">
-      <div v-if="isExpanded">
-        <div
-          class="prose dark:prose-invert max-w-none"
-          :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
-        />
-        <div class="toggle-button-row" @click.stop="emit('toggleExpand', note.id)">
-          <button class="toggle-button collapse-button">
-            {{ $t('notes.collapse') }}
-          </button>
-        </div>
-      </div>
-      <div v-else>
-        <div
-          ref="contentRef"
-          class="prose dark:prose-invert line-clamp-3 max-w-none"
-          :class="fontSizeClass"
-          v-html="renderMarkdown(note.content)"
-        />
-        <div
-          v-if="noteOverflowStatus"
-          class="toggle-button-row"
-          @click.stop="emit('toggleExpand', note.id)"
-        >
-          <button class="toggle-button">
-            {{ $t('notes.expand') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Teleport to="body">
+      <DateTimePickerModal
+        v-if="showDatePicker"
+        :show="showDatePicker"
+        :initial-date="new Date(note.created_at)"
+        :style="{ zIndex: dropdownInPlace ? 6000 : 100 }"
+        @close="showDatePicker = false"
+        @confirm="handleDateUpdate"
+      />
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-/* 样式部分无需修改 */
-/* 为了方便，我直接使用 Tailwind 的 @apply 指令来整合基础样式 */
 .note-card {
-  @apply mb-3 block w-full rounded-lg bg-gray-100 shadow-md p-4;
+  border-radius: 0.5rem;
+  background-color: #f3f4f6;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  position: relative; /* 让内部 sticky 的参照语境更合理 */
 }
-
 .dark .note-card {
-  @apply bg-gray-700;
+  background-color: #374151;
 }
 
 .note-card-top-bar {
@@ -231,14 +334,20 @@ function handleNoteContentClick(event: MouseEvent) {
 }
 
 .note-date {
-  font-size: 13px;
-  color: #888;
+  font-size: 14px;
+  font-weight: 400; /* 整体常规字重 */
+  color: #333;
   margin: 0;
   padding: 0;
+  text-align: left;
+}
+.dark .note-date {
+  color: #f0f0f0;
 }
 
-.dark .note-date {
-  color: #aaa;
+/* v-html 注入的元素不带作用域，必须用 :deep 才能命中 */
+:deep(.date-day) {
+  font-weight: 700 !important; /* 仅“几日”加粗 */
 }
 
 .note-meta-left {
@@ -247,24 +356,26 @@ function handleNoteContentClick(event: MouseEvent) {
   gap: 0.5rem;
 }
 
-.pinned-indicator {
-  font-size: 13px;
-  font-weight: bold;
-  color: #c2410c;
-  background-color: #ffedd5;
-  padding: 2px 6px;
-  border-radius: 9999px;
-  line-height: 1;
+.weather-inline {
+  margin-left: 2px;
 }
 
+.pinned-indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  background-color: transparent;
+  padding: 2px 6px;
+  line-height: 1;
+}
 .dark .pinned-indicator {
-  color: #fde68a;
-  background-color: #78350f;
+  color: #aaa;
+  background-color: transparent;
 }
 
 .kebab-menu {
   cursor: pointer;
-  padding: 4px;
+  padding: 2px;
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -273,22 +384,61 @@ function handleNoteContentClick(event: MouseEvent) {
   justify-content: center;
   transition: background-color 0.2s;
 }
-
 .kebab-menu:hover {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(0,0,0,0.1);
 }
-
 .dark .kebab-menu:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255,255,255,0.1);
 }
 
+/* —— 展开态的浮动收起按钮 —— */
+.expanded-content {
+  position: relative;
+}
+
+/* sticky：相对滚动容器“视口”粘在底部，直到卡片结束为止 */
+.floating-collapse {
+  position: sticky;
+  bottom: 8px;
+  left: 0;
+  width: fit-content;
+  z-index: 2;
+  /* 为了不挡住文字，默认透明度略低，悬停更清晰 */
+}
+
+.collapse-fab {
+  background-color: #ffffff;
+  color: #007bff;
+  border: 1px solid #e0e0e0;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  opacity: 0.92;
+  transition: opacity .15s ease, transform .15s ease, box-shadow .15s ease;
+  font-weight: 500;
+  font-family: 'KaiTi','BiauKai','楷体','Apple LiSung',serif,sans-serif;
+}
+.collapse-fab:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+.dark .collapse-fab {
+  background-color: #1f2937;
+  color: #38bdf8;
+  border-color: #374151;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* —— 收起态的“展开”一行 —— */
 .toggle-button-row {
   width: 100%;
   cursor: pointer;
   padding: 4px 0;
   margin-top: 4px;
 }
-
 .toggle-button {
   pointer-events: none;
   background: none;
@@ -301,26 +451,21 @@ function handleNoteContentClick(event: MouseEvent) {
   color: #007bff !important;
   font-size: 14px;
   font-weight: normal;
-  font-family: 'KaiTi', 'BiauKai', '楷体', 'Apple LiSung', serif, sans-serif;
+  font-family: 'KaiTi','BiauKai','楷体','Apple LiSung',serif,sans-serif;
 }
-
 .dark .toggle-button {
   color: #38bdf8 !important;
 }
-
 .toggle-button:hover {
   text-decoration: underline;
 }
 
+/* 内容排版 */
 :deep(.prose) {
-  /*
-    注意：这里的 font-size 会被下面的动态类覆盖，
-    所以它的值是多少不重要了，但保留 line-height 是好的。
-  */
   font-size: 17px !important;
   line-height: 1.6;
+  overflow-wrap: break-word;
 }
-
 .line-clamp-3 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -329,6 +474,7 @@ function handleNoteContentClick(event: MouseEvent) {
   -webkit-box-orient: vertical;
 }
 
+/* 自定义 tag */
 :deep(.custom-tag) {
   background-color: #eef2ff;
   color: #4338ca;
@@ -338,7 +484,6 @@ function handleNoteContentClick(event: MouseEvent) {
   font-weight: 500;
   margin: 0 2px;
 }
-
 .dark :deep(.custom-tag) {
   background-color: #312e81;
   color: #c7d2fe;
@@ -347,83 +492,68 @@ function handleNoteContentClick(event: MouseEvent) {
 :deep(.prose > :first-child) {
   margin-top: 0 !important;
 }
-
 :deep(.prose > :last-child) {
   margin-bottom: 0 !important;
 }
 
-/* 关键改动3：为展开状态下的“收起”按钮行添加粘性定位 */
-.is-expanded .toggle-button-row {
-  position: -webkit-sticky;
-  position: sticky;
-  bottom: 0rem; /* 粘在卡片底部，-1rem是为了抵消卡片的 padding-bottom */
-  z-index: 5;
-
-  /* 为了遮挡下方滚动的内容，需要一个和卡片背景色一致的背景 */
-  background-color: #f3f4f6; /* 对应 .bg-gray-100 */
-
-  /* 增加一些视觉效果，让它看起来更像一个独立的栏 */
-  /* 使用负边距让背景铺满整个卡片宽度（抵消父元素的padding） */
-  margin-left: -1rem;  /* 1rem = 16px, 对应 p-4 */
-  margin-right: -1rem;
-  padding: 0.75rem 1rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.dark .is-expanded .toggle-button-row {
-  background-color: #374151; /* 对应 .dark .bg-gray-700 */
-  border-top-color: #4b5563;
-}
-
-/* 5. 新增：用于动态修改笔记字号的 CSS 规则 */
-/* 使用 :deep() 来确保样式能应用到 v-html 渲染出的 .prose 元素上 */
 :deep(.prose.font-size-small) {
   font-size: 14px !important;
 }
-
 :deep(.prose.font-size-medium) {
-  font-size: 17px !important; /* 这是原始的默认大小 */
+  font-size: 17px !important;
 }
-
 :deep(.prose.font-size-large) {
   font-size: 20px !important;
 }
-
 :deep(.prose.font-size-extra-large) {
   font-size: 22px !important;
 }
 
-/* In NoteItem.vue's <style scoped> section */
 :deep(table) {
   width: auto;
   border-collapse: collapse;
   margin-top: 1em;
   margin-bottom: 1em;
   border: 1px solid #dfe2e5;
-  display: table !important; /* Force display property */
+  display: table !important;
 }
-
 .dark :deep(table) {
   border-color: #4b5563;
 }
-
-:deep(th),
-:deep(td) {
+:deep(th), :deep(td) {
   padding: 8px 15px;
   border: 1px solid #dfe2e5;
 }
-
-.dark :deep(th),
-.dark :deep(td) {
-    border-color: #4b5563;
+.dark :deep(th), .dark :deep(td) {
+  border-color: #4b5563;
 }
-
 :deep(th) {
   font-weight: 600;
   background-color: #f6f8fa;
 }
-
 .dark :deep(th) {
-    background-color: #374151;
+  background-color: #374151;
+}
+
+/* 下拉的一些微调 */
+:deep(.n-dropdown-divider) {
+  margin: 2px 0 !important;
+}
+
+:deep(.search-highlight) {
+  background-color: #ffdd77;
+  color: #333;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.dark :deep(.search-highlight) {
+  background-color: #8f7400;
+  color: #f0e6c5;
+}
+
+/* Markdown 下划线（ins）样式 */
+:deep(ins) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 </style>
