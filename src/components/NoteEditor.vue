@@ -92,14 +92,27 @@ function captureCaret() {
 }
 
 // ============== 滚动校准 ==============
-function ensureCaretVisibleInTextarea() {
+let caretScrollLock = false
+let lastCaretAdjustAt = 0
+
+function ensureCaretVisibleInTextarea(opts: { fromClick?: boolean } = {}) {
   const el = textarea.value
   if (!el)
     return
 
+  // 点击触发后的短暂冷却，避免 click/focus/resize 连环触发造成抖动
+  const now = performance.now()
+  if (opts.fromClick && now - lastCaretAdjustAt < 120)
+    return
+  if (caretScrollLock)
+    return
+
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText
+    = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+    + `font:${style.font};line-height:${style.lineHeight};padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+    + `border:solid transparent;border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
@@ -113,32 +126,37 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
+
+  // 给滚动判定加“迟滞区间”，避免在边缘附近来回抖
+  const HYSTERESIS = Math.max(8, lineHeight * 0.6) // 至少 8px
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
-  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
-  if (!props.isEditing) {
-    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
-    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
+  let nextScrollTop: number | null = null
 
-    // 简单节流，避免频繁触发
-    if (atBottom && nearBottom) {
-      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
-        (ensureCaretVisibleInTextarea as any)._stickLock = true
-        // camelCase 事件名（修复 custom-event-name-casing）
-        emit('requestScrollIntoView')
-        setTimeout(() => {
-          (ensureCaretVisibleInTextarea as any)._stickLock = false
-        }, 120)
-      }
-    }
+  if (caretDesiredBottom > viewBottom - HYSTERESIS) {
+    nextScrollTop = Math.min(
+      Math.max(0, caretDesiredBottom - el.clientHeight),
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  else if (caretDesiredTop < viewTop + HYSTERESIS) {
+    nextScrollTop = Math.max(0, caretDesiredTop)
   }
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  if (nextScrollTop != null) {
+    // 如果改变量很小（< 4px），直接忽略，防止微颤
+    if (Math.abs(nextScrollTop - el.scrollTop) < 4)
+      return
+
+    caretScrollLock = true
+    el.scrollTop = Math.round(nextScrollTop)
+    // 一帧后解锁；保证一次点击只滚动一次
+    requestAnimationFrame(() => {
+      caretScrollLock = false
+      lastCaretAdjustAt = performance.now()
+    })
+  }
 }
 
 // ========= 新建时写入天气：工具函数 =========
@@ -238,7 +256,7 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  ensureCaretVisibleInTextarea({ fromClick: true })
 }
 
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）

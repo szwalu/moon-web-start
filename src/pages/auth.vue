@@ -506,23 +506,25 @@ async function handleVisibilityChange() {
   }
 }
 
-/* 修改后的代码 */
 function handleEditorFocus(containerEl: HTMLElement | null) {
   compactWhileTyping.value = true
-  // 延迟执行，等待浏览器因键盘弹出而调整好视图大小
-  setTimeout(() => {
-    if (containerEl) {
-      // 获取输入框容器相对于视口顶部的距离
-      const topOffset = containerEl.getBoundingClientRect().top
 
-      // 将整个窗口滚动，使得输入框容器距离视口顶部约 10px
-      // window.scrollY 是页面当前已经滚动的距离
+  // 等一小下，等键盘高度/布局稳定后再判断
+  setTimeout(() => {
+    if (!containerEl)
+      return
+
+    const topOffset = containerEl.getBoundingClientRect().top
+    // 离顶部已经很近就别滚，避免“轻点就抖”
+    const TARGET = 10
+    if (topOffset > TARGET + 24) {
+      // 用非平滑滚动，和 textarea 内部滚动不会相互拉扯
       window.scrollTo({
-        top: window.scrollY + topOffset - 10,
-        behavior: 'smooth',
+        top: window.scrollY + topOffset - TARGET,
+        behavior: 'auto',
       })
     }
-  }, 300) // 300ms 延迟通常足够应对移动端键盘弹出的动画
+  }, 80) // 80ms 比 300ms 更不容易和其它动画叠加
 }
 
 let editorHideTimer: number | null = null
