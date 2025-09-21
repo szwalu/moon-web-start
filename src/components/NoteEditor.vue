@@ -16,8 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestStickTop'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestScrollIntoView', 'requestStickTop'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -139,6 +138,44 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
+
+  // 【新增】在函数末尾，调用新的检查函数
+  checkAndRequestParentScroll()
+}
+
+/**
+ * 【新增】检查光标是否接近文本框底部，且自身已无法滚动
+ * 如果是，则发出事件通知父组件
+ */
+function checkAndRequestParentScroll() {
+  const el = textarea.value
+  // 此逻辑仅对新建笔记的编辑器生效(isEditing为false时)
+  if (!el || props.isEditing)
+    return
+
+  // 条件1: 文本框自身已滚动到底部 (允许1px误差)
+  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1
+  if (!isAtBottom)
+    return
+
+  // 条件2: 光标物理位置接近视口底部
+  // 沿用您代码中的镜像元素技术来获取光标位置
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.padding};`
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  mirror.textContent = val.slice(0, selEnd).replace(/\n$/, '\n ')
+
+  const caretTopRelativeToTextarea = mirror.scrollHeight
+  document.body.removeChild(mirror)
+
+  // 如果光标Y坐标已经超过文本框可见区域高度的 80%，就触发
+  // 这是一个适合移动端的阈值，可以按需调整
+  if (caretTopRelativeToTextarea > el.scrollTop + el.clientHeight * 0.8)
+    emit('requestScrollIntoView') // 同样修正为驼峰命名
 }
 
 // ========= 新建时写入天气：工具函数 =========

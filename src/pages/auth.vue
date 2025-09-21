@@ -1164,6 +1164,13 @@ function onTrashPurgedWrapper() {
   invalidateAllTagCaches()
   handleTrashPurged()
 }
+function handleRequestScroll() {
+  if (noteListRef.value) {
+    // 调用 NoteList.vue 中已经存在的 scrollComposerIntoView 方法
+    // 传入 40 是为了对齐 .scroller 样式中的 padding-top: 40px，使输入框正好贴到悬浮月份条下方
+    noteListRef.value.scrollComposerIntoView(40)
+  }
+}
 </script>
 
 <template>
@@ -1316,6 +1323,7 @@ function onTrashPurgedWrapper() {
                 @save="handleCreateNote"
                 @focus="onComposerFocus"
                 @blur="onEditorBlur"
+                @request-scroll-into-view="handleRequestScroll"
               />
             </div>
           </template>
