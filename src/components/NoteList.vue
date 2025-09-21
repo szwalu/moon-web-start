@@ -121,6 +121,32 @@ function setNoteContainer(el: Element | null, id: string) {
   noteContainers.value[id] = $el
 }
 
+// ============== 渐进渲染（分批挂载） ==============
+const visibleCount = ref(24) // 先渲染 24 条
+const BATCH = 24
+const BATCH_DELAY = 16
+
+function useIdle(cb: () => void) {
+  const ric = (window as any).requestIdleCallback
+  if (ric)
+    ric(cb, { timeout: 500 })
+  else setTimeout(cb, BATCH_DELAY)
+}
+
+function scheduleGrow() {
+  if (visibleCount.value >= props.notes.length)
+    return
+  useIdle(() => {
+    visibleCount.value = Math.min(visibleCount.value + BATCH, props.notes.length)
+    scheduleGrow()
+  })
+}
+
+watch(() => props.notes, () => {
+  visibleCount.value = Math.min(BATCH, props.notes.length)
+  nextTick(() => scheduleGrow())
+}, { immediate: true })
+
 // ============== 月份头 + 悬浮月份条 ==============
 interface MonthHeaderItem {
   type: 'month-header'
@@ -149,17 +175,17 @@ const mixedItems = computed<MixedItem[]>(() => {
   const out: MixedItem[] = []
   let lastKey = ''
   let inPinned = true
-  for (const n of props.notes) {
+  for (const n of props.notes.slice(0, visibleCount.value)) {
     if (inPinned && !_isPinned(n)) {
       inPinned = false
       const { key, label } = getMonthKeyAndLabel(n)
       out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
       lastKey = key
-      out.push({ ...n, type: 'note' })
+      out.push(Object.assign({ type: 'note' }, n))
       continue
     }
     if (inPinned) {
-      out.push({ ...n, type: 'note' })
+      out.push(Object.assign({ type: 'note' }, n))
       continue
     }
     const { key, label } = getMonthKeyAndLabel(n)
@@ -167,7 +193,7 @@ const mixedItems = computed<MixedItem[]>(() => {
       out.push({ type: 'month-header', id: `hdr-${key}`, monthKey: key, label })
       lastKey = key
     }
-    out.push({ ...n, type: 'note' })
+    out.push(Object.assign({ type: 'note' }, n))
   }
   return out
 })
@@ -215,7 +241,7 @@ const currentMonthLabel = computed(() => {
 const pushOffset = ref(0)
 
 // 向上滚兜底：用视口内最靠上的“非置顶笔记”的月份纠正 currentMonthKey
-function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
+function _setCurrentByTopVisibleNote(rootEl: HTMLElement) {
   const scRect = rootEl.getBoundingClientRect()
   let topId: string | null = null
   let topY = Number.POSITIVE_INFINITY
@@ -277,8 +303,8 @@ function recomputeStickyState() {
     .sort((a: any, b: any) => a.top - b.top) as Array<{ key: string; top: number }>
 
   if (entries.length === 0) {
-    if (scrollDir.value === 'up')
-      setCurrentByTopVisibleNote(root)
+    // —— 关掉逐卡片兜底以降低开销（如需打开，取消下一行注释）
+    // if (scrollDir.value === 'up') _setCurrentByTopVisibleNote(root)
     pushOffset.value = 0
     return
   }
@@ -312,8 +338,8 @@ function recomputeStickyState() {
     pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
   }
 
-  if (scrollDir.value === 'up')
-    setCurrentByTopVisibleNote(root)
+  // —— 关掉逐卡片兜底以降低开销（如需打开，取消下一行注释）
+  // if (scrollDir.value === 'up') _setCurrentByTopVisibleNote(root)
 }
 
 // ====== 滚动、加载更多 ======
@@ -339,7 +365,7 @@ const onPlainScroll = throttle(() => {
   // 同步悬浮月份条与布局
   recomputeStickyState()
   syncStickyGutters()
-}, 16)
+}, 32) // ← 轻微降频，进一步减压
 
 // ====== 观察底部哨兵自动加载 ======
 const loadMoreSentinel = ref<HTMLElement | null>(null)
@@ -718,6 +744,9 @@ watch(() => props.notes, () => {
   padding: 1rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s ease-in-out;
+  /* ⚡ 关键优化：让视口外的元素跳过绘制与布局 */
+  content-visibility: auto;
+  contain-intrinsic-size: 400px;
 }
 .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07); }
 .dark .note-content-wrapper {
@@ -728,7 +757,7 @@ watch(() => props.notes, () => {
 .dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
 
 /* 间距与选择 */
-.note-item-container { padding-bottom: 1.5rem; }
+.note-item-container { padding-bottom: 1.5rem; contain: layout paint style; } /* ⚡ 限制重排范围进一步提效 */
 .note-item-container:last-child { padding-bottom: 0; }
 .note-selection-wrapper { display: flex; gap: 0.75rem; transition: background-color 0.2s; }
 .note-selection-wrapper.selection-mode {

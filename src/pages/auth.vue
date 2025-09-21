@@ -129,6 +129,32 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
+// ====== NEW: 轻量化缓存写入（避免主线程卡顿） ======
+function toLightNotes(arr: any[]) {
+  return arr.map(n => ({
+    id: n.id,
+    content: n.content,
+    created_at: n.created_at,
+    is_pinned: !!(n.is_pinned || n.pinned),
+    weather: n.weather ?? null,
+  }))
+}
+function writeHomeCacheAsync(notesArr: any[], total = totalNotes.value) {
+  const light = toLightNotes(notesArr)
+  const payload = () => {
+    try {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(light))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: total }))
+    }
+    catch {
+      // 容量不足等错误不阻塞主线程
+    }
+  }
+  ;(window as any).requestIdleCallback
+    ? (window as any).requestIdleCallback(payload, { timeout: 1500 })
+    : setTimeout(payload, 0)
+}
+
 onMounted(() => {
   (async () => {
     try {
@@ -438,12 +464,12 @@ function restoreHomepageFromCache(): boolean {
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
   if (cachedNotesData && cachedMetaData) {
-    const cachedNotes = JSON.parse(cachedNotesData)
+    const cachedNotes0 = JSON.parse(cachedNotesData)
     const meta = JSON.parse(cachedMetaData)
-    notes.value = cachedNotes
+    notes.value = cachedNotes0
     totalNotes.value = meta.totalNotes
-    currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
-    hasMoreNotes.value = cachedNotes.length < meta.totalNotes
+    currentPage.value = Math.max(1, Math.ceil(cachedNotes.value.length / notesPerPage))
+    hasMoreNotes.value = cachedNotes0.length < meta.totalNotes
     return true
   }
   return false
@@ -694,8 +720,8 @@ function addNoteToList(newNote: any) {
   if (!notes.value.some(note => note.id === newNote.id)) {
     notes.value.unshift(newNote)
     totalNotes.value += 1
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    // ★ 改为异步瘦身写入
+    writeHomeCacheAsync(notes.value, totalNotes.value)
   }
 }
 
@@ -724,7 +750,8 @@ function updateNoteInList(updatedNote: any) {
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    // ★ 改为异步瘦身写入
+    writeHomeCacheAsync(notes.value, totalNotes.value)
   }
 }
 
@@ -748,8 +775,8 @@ async function fetchNotes() {
     totalNotes.value = count || 0
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
     if (newNotes.length > 0) {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
+      // ★ 改为异步瘦身写入
+      writeHomeCacheAsync(notes.value, count || 0)
     }
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
@@ -774,8 +801,8 @@ async function handleTrashRestored(restoredNotes?: any[]) {
           || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
       )
       totalNotes.value = (totalNotes.value || 0) + toInsert.length
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+      // ★ 改为异步瘦身写入
+      writeHomeCacheAsync(notes.value, totalNotes.value)
     }
   }
   else {
@@ -1024,8 +1051,8 @@ async function handleDeleteSelected() {
         hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
         hasPreviousNotes.value = currentPage.value > 1
 
-        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+        // ★ 改为异步瘦身写入
+        writeHomeCacheAsync(notes.value, totalNotes.value)
 
         isSelectionModeActive.value = false
         selectedNoteIds.value = []
