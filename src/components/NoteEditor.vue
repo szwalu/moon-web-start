@@ -16,8 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-// —— 使用 camelCase 事件名（修复 custom-event-name-casing）——
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestStickTop'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -116,32 +115,13 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
-  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
-  if (!props.isEditing) {
-    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
-    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
-
-    // 简单节流，避免频繁触发
-    if (atBottom && nearBottom) {
-      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
-        (ensureCaretVisibleInTextarea as any)._stickLock = true
-        // camelCase 事件名（修复 custom-event-name-casing）
-        emit('requestStickTop', { paddingBottom: 96 })
-        setTimeout(() => {
-          (ensureCaretVisibleInTextarea as any)._stickLock = false
-        }, 120)
-      }
-    }
-  }
-
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
   else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// ========= 新建时写入天气：工具函数 =========
+// ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
     return '未知地点'
@@ -211,7 +191,7 @@ async function handleSave() {
   if (!props.isEditing)
     weather = await fetchWeatherLine()
 
-  // 向后兼容：父组件若只接收第一个参数（content）也不会报错
+  // 父组件可按 (content, weather) 接收；旧笔记编辑不传天气
   emit('save', content, weather)
 }
 
@@ -409,11 +389,8 @@ function addHeading() {
 function addBold() {
   insertText('**', '**')
 }
-function _addItalic() {
+function addItalic() {
   insertText('*', '*')
-}
-function addUnderline() {
-  insertText('++', '++')
 }
 function addBulletList() {
   const el = textarea.value
@@ -922,7 +899,7 @@ defineExpose({ reset: triggerResize })
           </svg>
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
+        <button type="button" class="format-btn" title="斜体" @click="handleFormat(addItalic)">I</button>
         <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -979,7 +956,7 @@ defineExpose({ reset: triggerResize })
   min-height: 40px;
   max-height: 48vh;
   overflow-y: auto;
-  padding: 8px 8px 1px 16px;
+  padding: 16px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1181,17 +1158,17 @@ defineExpose({ reset: triggerResize })
   overflow: auto;
 }
 .note-editor-reborn.editing-viewport {
-  height: 68dvh;
-  min-height: 68dvh;
-  max-height: 68dvh;
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
   display: flex;
   flex-direction: column;
 }
 @supports not (height: 1dvh) {
   .note-editor-reborn.editing-viewport {
-    height: 68vh;
-  min-height: 68vh;
-  max-height: 68vh;
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
   }
 }
 .note-editor-reborn.editing-viewport .editor-wrapper {
