@@ -506,25 +506,6 @@ async function handleVisibilityChange() {
   }
 }
 
-/* 修改后的代码 */
-function handleEditorFocus(containerEl: HTMLElement | null) {
-  compactWhileTyping.value = true
-  // 延迟执行，等待浏览器因键盘弹出而调整好视图大小
-  setTimeout(() => {
-    if (containerEl) {
-      // 获取输入框容器相对于视口顶部的距离
-      const topOffset = containerEl.getBoundingClientRect().top
-
-      // 将整个窗口滚动，使得输入框容器距离视口顶部约 10px
-      // window.scrollY 是页面当前已经滚动的距离
-      window.scrollTo({
-        top: window.scrollY + topOffset - 10,
-        behavior: 'smooth',
-      })
-    }
-  }, 300) // 300ms 延迟通常足够应对移动端键盘弹出的动画
-}
-
 let editorHideTimer: number | null = null
 function onEditorFocus() {
   if (editorHideTimer) {
@@ -540,10 +521,22 @@ function onEditorBlur() {
   }, 120)
 }
 
-// 包装：模板 @focus 不再写多条语句
 function onComposerFocus() {
-  onEditorFocus()
-  handleEditorFocus(newNoteEditorContainerRef.value)
+  onEditorFocus() // 这个函数用来管理 isEditorActive 状态，需要保留
+
+  // 延迟执行，给移动端键盘弹出的动画留出足够的时间
+  setTimeout(() => {
+    const editorEl = newNoteEditorContainerRef.value
+    if (editorEl) {
+      // scrollIntoView 的标准方法
+      // block: 'end' 会将元素的底部边缘滚动到可视区域的底部。
+      // 这正是我们需要的，它能确保整个输入框（尤其是底部）都可见。
+      editorEl.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      })
+    }
+  }, 400) // 将延迟增加到 400ms，以确保键盘完全弹出
 }
 
 function handleExportTrigger() {
