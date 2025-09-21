@@ -175,6 +175,8 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
+  // 聚焦时先上推一点，避免一开始就被键盘压住
+  emit('requestScrollIntoView')
 }
 
 function onBlur() {

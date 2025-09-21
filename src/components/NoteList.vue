@@ -444,33 +444,50 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
-/** 将顶部 composer 区域滚到可视区顶部（考虑 sticky 顶部偏移与额外留白） */
-/** 将顶部 composer 区域滚到可视区，保证“底部完全可见” */
+/** 将顶部 composer 区域滚到可视区，优先保证“底部完全可见”；否则小幅上推一行的距离 */
 async function scrollComposerIntoView(offsetTop = 40) {
   const root = scrollerRef.value
   const el = composerSlotRef.value
   if (!root || !el)
     return
 
+  // 估算被键盘遮住的底部高度（iOS/Android 下 visualViewport 有效）
+  const keyboardObscured = (() => {
+    const vv = (window as any).visualViewport
+    if (vv) {
+      // 可视高度缩减 + 竖向偏移（iOS 上 offsetTop > 0）
+      const obscured = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0))
+      return obscured
+    }
+    return 0
+  })()
+
+  const buffer = 12 // 让底部留一点安全距离
+  const nudge = 48 // 不到触底也轻推约一行高度（体验同 Memos）
+
   const viewTop = root.scrollTop
   const viewBottom = viewTop + root.clientHeight
+  const effectiveBottom = viewBottom - keyboardObscured
 
-  const elTop = el.offsetTop // 输入框容器顶部（相对滚动容器）
+  const elTop = el.offsetTop
   const elBottom = elTop + el.offsetHeight
 
-  // 1) 若底部被遮挡（例如被键盘挡住）——优先把“底部”拉进来
-  if (elBottom > viewBottom - 12) {
-    const target = elBottom - root.clientHeight + 12 // 12px 缓冲
+  // 1) 若 composer 底部已经“压到”可视底（考虑键盘），优先把“底部”拉进来
+  if (elBottom > effectiveBottom - buffer) {
+    const target = elBottom - (root.clientHeight - keyboardObscured) + buffer
     await stableSetScrollTop(root, Math.max(0, target), 6, 0.5)
     return
   }
 
-  // 2) 若顶部超出视口（极少见）——再对齐顶部到 sticky bar 下方
-  const wantTop = elTop - offsetTop // offsetTop≈sticky 的高度
+  // 2) 否则小幅上推，给光标下一行留空间（模拟 Memos 的“边打边上顶”）
+  const target = Math.min(root.scrollTop + nudge, Math.max(0, root.scrollHeight - root.clientHeight))
+  await stableSetScrollTop(root, target, 3, 0.5)
+
+  // 3) 极端场景：顶部超出视口（基本不会发生），再对齐到 sticky 下方
+  const wantTop = elTop - offsetTop
   if (elTop < viewTop + offsetTop)
     await stableSetScrollTop(root, Math.max(0, wantTop), 6, 0.5)
 }
-
 /** 对外暴露：回到顶部、滚到并编辑某条 */
 async function focusAndEditNote(noteId: string) {
   const idx = noteIdToMixedIndex.value[noteId]
