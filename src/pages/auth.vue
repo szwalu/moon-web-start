@@ -907,11 +907,17 @@ function handleAnniversaryToggle(data: any[] | null) {
     isAnniversaryViewActive.value = true
     hasMoreNotes.value = false
     sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
+    // ✅ 改这里：先生成轻量对象，再异步写入
+    const light = data.map(n => ({
+      id: n.id,
+      content: n.content,
+      created_at: n.created_at,
+    }))
 
     // ↓↓↓ 关键改动：把大对象序列化/写入挪到空闲时，避免阻塞点击响应帧
     const payload = () => {
       try {
-        sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+        sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(light))
       }
       catch {
         sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
