@@ -1382,7 +1382,7 @@ function handleRequestScroll() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh; /* 改为 min-height，允许容器被内容撑开 */
+  min-height: 110dvh; /* 改为 min-height，允许容器被内容撑开 */
   position: relative;
 }
 .dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
