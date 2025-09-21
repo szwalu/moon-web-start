@@ -597,15 +597,6 @@ watch(() => props.notes, () => {
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
-    <!-- 悬浮月份条 -->
-    <div
-      v-if="currentMonthLabel"
-      class="sticky-month"
-      :style="{ transform: `translateY(${-pushOffset}px)` }"
-    >
-      {{ currentMonthLabel }}
-    </div>
-
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
       {{ t('notes.loading') }}
     </div>
@@ -624,6 +615,13 @@ watch(() => props.notes, () => {
       <!-- 顶部输入框插槽：加一层容器以便滚动对齐 -->
       <div ref="composerSlotRef">
         <slot name="composer" />
+      </div>
+      <!-- 悬浮月份条（改为在输入框下面，跟随列表滚动；使用 sticky 顶部贴合） -->
+      <div
+        v-if="currentMonthLabel"
+        class="sticky-month"
+      >
+        {{ currentMonthLabel }}
       </div>
 
       <template v-for="item in mixedItems" :key="item.id">
@@ -709,8 +707,7 @@ watch(() => props.notes, () => {
   overflow-anchor: none;
   scroll-behavior: auto;
   background-color: #f9fafb;
-  padding: 0.5rem;
-  padding-top: 40px; /* 32 高度 + 一点间距，避免第一条被遮住 */
+  padding: 0 0.5rem 0.5rem;
 }
 .dark .scroller { background-color: #111827; }
 
@@ -782,12 +779,10 @@ watch(() => props.notes, () => {
   border: 1px solid #374151;
 }
 
-/* ===== 悬浮月份条（不参与虚拟化） ===== */
+/* ===== 悬浮月份条（现在在输入框下面，放进 scroller 里） ===== */
 .sticky-month {
-  position: absolute;
-  top: 0;
-  left: var(--sticky-left, 4px);
-  right: var(--sticky-right, 4px);
+  position: sticky;
+  top: 0;              /* 贴住滚动容器的顶部 */
   z-index: 9;
   height: 32px;
   padding: 0 8px;
@@ -800,6 +795,8 @@ watch(() => props.notes, () => {
   color: #111827;
   display: flex;
   align-items: center;
+  /* 可选：让它左右与列表内边距对齐 */
+  margin: 0 4px;
 }
 .dark .sticky-month {
   background: rgba(17, 24, 39, 0.9);

@@ -1397,7 +1397,7 @@ function handleRequestScroll() {
 
 /* 旧输入框复用原样式；现在它通过插槽位于 NoteList 的滚动容器顶部，会跟随滚动 */
 .new-note-editor-container {
-  padding-top: 0.5rem;
+  padding-top: 0rem;
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
@@ -1469,7 +1469,7 @@ function handleRequestScroll() {
 
 .dark .active-filter-bar { background-color: #312e81; color: #c7d2fe; }
 
-.auth-container.is-typing .new-note-editor-container { padding-top: 0.25rem; }
+.auth-container.is-typing .new-note-editor-container { padding-top: 0rem; }
 </style>
 
 <style>
