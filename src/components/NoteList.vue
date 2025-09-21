@@ -703,6 +703,9 @@ defineExpose({ scrollToTop, focusAndEditNote })
       class="scroller"
       key-field="vid"
     >
+      <template #before>
+        <div :style="{ height: `${HEADER_HEIGHT}px` }" />
+      </template>
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
           :item="item"
