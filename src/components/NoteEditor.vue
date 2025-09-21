@@ -16,7 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'requestScrollIntoView', 'requestStickTop'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -88,44 +88,6 @@ function captureCaret() {
   const el = textarea.value
   if (el && typeof el.selectionStart === 'number')
     lastSelectionStart.value = el.selectionStart
-}
-
-// 请只使用下面这一个函数
-function adjustViewForCaret() {
-  const el = textarea.value
-
-  // 入口守卫：如果没有textarea元素，或者当前是“在列表中编辑”模式，则直接退出函数
-  if (!el || props.isEditing)
-    return
-
-  // --- 使用镜像元素计算光标的精确像素位置 ---
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.padding};`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  // 加一个空格确保能计算最后一行的高度
-  mirror.textContent = `${val.slice(0, selEnd).replace(/\n$/, '\n ')} `
-  const caretTopPosition = mirror.scrollHeight
-  document.body.removeChild(mirror)
-
-  const viewBottom = el.scrollTop + el.clientHeight
-
-  // --- 判断光标是否在可视区下方 ---
-  if (caretTopPosition > viewBottom) {
-    // --- 如果是，优先尝试滚动 textarea 自身 ---
-    el.scrollTop = el.scrollHeight // 直接滚到底
-
-    // --- 在下一帧检查滚动后，光标是否仍然不可见 ---
-    nextTick(() => {
-      // 如果输入框滚动到底后，光标的顶部位置仍然大于可视区底部
-      // 这就意味着内部滚动已经无法满足需求，必须请求外部容器滚动
-      if (caretTopPosition > el.scrollTop + el.clientHeight)
-        emit('requestScrollIntoView')
-    })
-  }
 }
 
 // ========= 新建时写入天气：工具函数 =========
@@ -206,7 +168,6 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  requestAnimationFrame(adjustViewForCaret)
 }
 
 function onBlur() {
@@ -225,7 +186,6 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(adjustViewForCaret)
 }
 
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
@@ -357,7 +317,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      adjustViewForCaret()
     }
   })
 }

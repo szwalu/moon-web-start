@@ -506,12 +506,23 @@ async function handleVisibilityChange() {
   }
 }
 
+/* 修改后的代码 */
 function handleEditorFocus(containerEl: HTMLElement | null) {
   compactWhileTyping.value = true
+  // 延迟执行，等待浏览器因键盘弹出而调整好视图大小
   setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 0)
+    if (containerEl) {
+      // 获取输入框容器相对于视口顶部的距离
+      const topOffset = containerEl.getBoundingClientRect().top
+
+      // 将整个窗口滚动，使得输入框容器距离视口顶部约 10px
+      // window.scrollY 是页面当前已经滚动的距离
+      window.scrollTo({
+        top: window.scrollY + topOffset - 10,
+        behavior: 'smooth',
+      })
+    }
+  }, 300) // 300ms 延迟通常足够应对移动端键盘弹出的动画
 }
 
 let editorHideTimer: number | null = null
@@ -1358,6 +1369,7 @@ function handleRequestScroll() {
 </template>
 
 <style scoped>
+/* 修改后的代码 */
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
@@ -1368,8 +1380,7 @@ function handleRequestScroll() {
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100dvh; /* 改为 min-height，允许容器被内容撑开 */
   position: relative;
 }
 .dark .auth-container { background: #1e1e1e; color: #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
