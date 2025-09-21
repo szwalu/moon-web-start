@@ -90,76 +90,15 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
-// ============== 滚动校准 ==============
-function ensureCaretVisibleInTextarea() {
+// 请只使用下面这一个函数
+function adjustViewForCaret() {
   const el = textarea.value
-  if (!el)
-    return
 
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-
-  // === 追加：当 textarea 已在底部，且光标已逼近底缘 —— 请求将整个输入框滚到页面最上面 ===
-  // 仅在“新建模式”触发（旧笔记编辑有独立视口高度）
-  if (!props.isEditing) {
-    const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 2)
-    const nearBottom = caretDesiredBottom > (el.clientHeight - lineHeight * 1.2)
-
-    // 简单节流，避免频繁触发
-    if (atBottom && nearBottom) {
-      if (!(ensureCaretVisibleInTextarea as any)._stickLock) {
-        (ensureCaretVisibleInTextarea as any)._stickLock = true
-        // camelCase 事件名（修复 custom-event-name-casing）
-        emit('requestStickTop', { paddingBottom: 96 })
-        setTimeout(() => {
-          (ensureCaretVisibleInTextarea as any)._stickLock = false
-        }, 120)
-      }
-    }
-  }
-
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
-
-  // 【新增】在函数末尾，调用新的检查函数
-  checkAndRequestParentScroll()
-}
-
-/**
- * 【新增】检查光标是否接近文本框底部，且自身已无法滚动
- * 如果是，则发出事件通知父组件
- */
-function checkAndRequestParentScroll() {
-  const el = textarea.value
-  // 此逻辑仅对新建笔记的编辑器生效(isEditing为false时)
+  // 入口守卫：如果没有textarea元素，或者当前是“在列表中编辑”模式，则直接退出函数
   if (!el || props.isEditing)
     return
 
-  // 条件1: 文本框自身已滚动到底部 (允许1px误差)
-  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1
-  if (!isAtBottom)
-    return
-
-  // 条件2: 光标物理位置接近视口底部
-  // 沿用您代码中的镜像元素技术来获取光标位置
+  // --- 使用镜像元素计算光标的精确像素位置 ---
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.padding};`
@@ -167,15 +106,26 @@ function checkAndRequestParentScroll() {
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  mirror.textContent = val.slice(0, selEnd).replace(/\n$/, '\n ')
-
-  const caretTopRelativeToTextarea = mirror.scrollHeight
+  // 加一个空格确保能计算最后一行的高度
+  mirror.textContent = `${val.slice(0, selEnd).replace(/\n$/, '\n ')} `
+  const caretTopPosition = mirror.scrollHeight
   document.body.removeChild(mirror)
 
-  // 如果光标Y坐标已经超过文本框可见区域高度的 80%，就触发
-  // 这是一个适合移动端的阈值，可以按需调整
-  if (caretTopRelativeToTextarea > el.scrollTop + el.clientHeight * 0.8)
-    emit('requestScrollIntoView') // 同样修正为驼峰命名
+  const viewBottom = el.scrollTop + el.clientHeight
+
+  // --- 判断光标是否在可视区下方 ---
+  if (caretTopPosition > viewBottom) {
+    // --- 如果是，优先尝试滚动 textarea 自身 ---
+    el.scrollTop = el.scrollHeight // 直接滚到底
+
+    // --- 在下一帧检查滚动后，光标是否仍然不可见 ---
+    nextTick(() => {
+      // 如果输入框滚动到底后，光标的顶部位置仍然大于可视区底部
+      // 这就意味着内部滚动已经无法满足需求，必须请求外部容器滚动
+      if (caretTopPosition > el.scrollTop + el.clientHeight)
+        emit('requestScrollIntoView')
+    })
+  }
 }
 
 // ========= 新建时写入天气：工具函数 =========
@@ -256,7 +206,7 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(adjustViewForCaret)
 }
 
 function onBlur() {
@@ -275,7 +225,7 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(ensureCaretVisibleInTextarea)
+  requestAnimationFrame(adjustViewForCaret)
 }
 
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
@@ -407,7 +357,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      ensureCaretVisibleInTextarea()
+      adjustViewForCaret()
     }
   })
 }
@@ -599,15 +549,6 @@ function selectTag(tag: string) {
   updateTextarea(newText, newCursorPos)
 
   showTagSuggestions.value = false
-  nextTick(() => {
-    const el2 = textarea.value
-    if (el2) {
-      el2.focus()
-      el2.setSelectionRange(newCursorPos, newCursorPos)
-      captureCaret()
-      ensureCaretVisibleInTextarea()
-    }
-  })
 }
 
 // —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
