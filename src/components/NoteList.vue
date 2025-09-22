@@ -171,7 +171,7 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-const HEADER_HEIGHT = 32 // 与样式一致
+const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
 let headersIO: IntersectionObserver | null = null
 
@@ -718,13 +718,14 @@ defineExpose({ scrollToTop, focusAndEditNote })
           @resize="updateCollapsePos"
         >
           <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
-          <div
-            v-if="item.type === 'month-header'"
-            :ref="(el) => setHeaderEl(el, item.monthKey)"
-            class="month-header"
-            :data-month="item.monthKey"
-          >
-            {{ item.label }}
+          <div v-if="item.type === 'month-header'" class="month-header-outer">
+            <div
+              :ref="(el) => setHeaderEl(el, item.monthKey)"
+              class="month-header"
+              :data-month="item.monthKey"
+            >
+              {{ item.label }}
+            </div>
           </div>
 
           <!-- 笔记项：保持原有逻辑与结构 -->
@@ -850,19 +851,19 @@ defineExpose({ scrollToTop, focusAndEditNote })
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* ===== 月份头部项（虚拟项） ===== */
+.month-header-outer { padding: 5px 4px 0px 4px; } /* 原先的外边距搬到这里 */
 .month-header {
-  height: 32px;              /* 或你需要的高度 */
+  height: 26px;
   padding: 0 8px;
-  margin: 8px 4px 6px 4px;
+  margin: 0;                  /* 关键：不要用 margin 了 */
   border-radius: 8px;
   font-weight: 600;
   font-size: 14px;
   color: #374151;
   background: #eef2ff;
   border: 1px solid #e5e7eb;
-
-  display: flex;             /* 垂直居中关键 */
-  align-items: center;       /* 垂直居中关键 */
+  display: flex;
+  align-items: center;
 }
 .dark .month-header {
   color: #e5e7eb;
@@ -870,29 +871,35 @@ defineExpose({ scrollToTop, focusAndEditNote })
   border: 1px solid #374151;
 }
 
-/* ===== 悬浮月份条（不参与虚拟化） ===== */
+/* 悬浮月份条：外观与 .month-header 保持一致 */
 .sticky-month {
   position: absolute;
   top: 0;
-  left: var(--sticky-left, 4px);      /* 与 .month-header 的左右间距保持一致 */
-  right: var(--sticky-right, 4px);    /* 右侧同时为滚动条预留空间 */
+  left: var(--sticky-left, 4px);
+  right: var(--sticky-right, 4px);
   z-index: 9;
-  height: 32px;              /* 要与 .month-header 保持一致 */
-  padding: 0 8px;            /* 与 .month-header 一致，确保文字左对齐 */
-  pointer-events: none;
-  background: rgba(249, 250, 251, 0.9);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
-  border-bottom: 1px solid #e5e7eb;
-  font-weight: 700;
-  color: #111827;
 
-  display: flex;             /* 垂直居中关键 */
-  align-items: center;       /* 垂直居中关键 */
+  height: 26px;           /* 与 HEADER_HEIGHT 与 .month-header 一致 */
+  padding: 0 8px;         /* 与 .month-header 一致 */
+  pointer-events: none;
+
+  /* ✅ 关键：与 .month-header 同样的圆角与描边/背景 */
+  border-radius: 8px;
+  background: #eef2ff;
+  border: 1px solid #e5e7eb;
+
+  /* 与 .month-header 一致的文字样式 */
+  font-weight: 600;
+  color: #374151;
+
+  display: flex;
+  align-items: center;
 }
+
+/* 暗色主题下保持一致 */
 .dark .sticky-month {
-  background: rgba(17, 24, 39, 0.9);
-  border-bottom: 1px solid #374151;
-  color: #f9fafb;
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #e5e7eb;
 }
 </style>
