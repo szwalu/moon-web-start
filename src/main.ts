@@ -17,15 +17,39 @@ import { setupI18n } from './utils'
 // ========== 全局兜底：懒加载分包失效时自动刷新 ==========
 (function installChunkFailGuard() {
   let reloading = false
+  const RELOAD_COOLDOWN_MS = 2 * 60 * 1000 // 2 分钟冷却，避免连环刷新
+  const LAST_RELOAD_KEY = '__last_forced_reload_ts__'
+
+  const now = () => Date.now()
+  const canReloadNow = () => {
+    const last = Number(localStorage.getItem(LAST_RELOAD_KEY) || 0)
+    return now() - last > RELOAD_COOLDOWN_MS
+  }
+
+  const markReload = () => localStorage.setItem(LAST_RELOAD_KEY, String(now()))
+
   const triggerReloadSafely = () => {
-    if (reloading)
+    if (reloading || !canReloadNow())
       return
+
+    // 如果离线，先别刷新，等线上线再刷新
+    if (typeof navigator !== 'undefined' && navigator && 'onLine' in navigator && navigator.onLine === false) {
+      const onBackOnline = () => {
+        window.removeEventListener('online', onBackOnline)
+        triggerReloadSafely()
+      }
+      window.addEventListener('online', onBackOnline)
+      return
+    }
+
     reloading = true
+    markReload()
+
     try {
-      // 尝试清理浏览器缓存
-      // @ts-expect-error: window.caches 在 DOM lib 中未完整定义
+      // 这些操作都包在 try 里，兼容 Safari/无 SW 场景
+      // @ts-expect-error caches 可能在 TS DOM 类型里缺失
       if (window.caches?.keys) {
-        // @ts-expect-error: caches API 在 TS DOM 类型里可能缺失
+        // @ts-expect-error same as above
         caches.keys().then(keys => keys.forEach(k => caches.delete(k)))
       }
       if (navigator.serviceWorker?.getRegistrations) {
@@ -34,39 +58,46 @@ import { setupI18n } from './utils'
         })
       }
     }
-    catch {
-      // 忽略非致命异常
-    }
+    catch {}
+
     location.reload()
   }
 
-  const isChunkLoadError = (msg: string) =>
-    msg.includes('Failed to fetch dynamically imported module')
-    || msg.includes('Importing a module script failed')
-    || msg.includes('Expected a JavaScript-or-Wasm module script')
+  const pickMsg = (x: any): string => {
+    if (!x)
+      return ''
+    if (typeof x === 'string')
+      return x
+    const m = (x && (x.message || x.reason?.message)) || ''
+    return String(m || x)
+  }
 
-  // 1) 捕捉浏览器层面的模块脚本加载失败
-  window.addEventListener(
-    'error',
-    (e: ErrorEvent) => {
-      const msg = String(e?.message || '')
-      if (isChunkLoadError(msg))
-        triggerReloadSafely()
-    },
-    true,
-  )
+  const isChunkLoadError = (raw: any): boolean => {
+    const msg = pickMsg(raw)
+    return (
+      msg.includes('Failed to fetch dynamically imported module') // 动态 import 失败（常见）
+      || msg.includes('Importing a module script failed') // FF/Safari 文案
+      || msg.includes('Expected a JavaScript-or-Wasm module script') // 你日志里出现过
+      || /Loading chunk \d+ failed/i.test(msg) // 通用正则
+      || /chunk.*failed/i.test(msg)
+    )
+  }
 
-  // 2) 捕捉未处理的 Promise 拒绝
+  // 1) 浏览器层 error（含模块脚本加载失败）
+  window.addEventListener('error', (e: ErrorEvent) => {
+    if (isChunkLoadError(e.error || e.message))
+      triggerReloadSafely()
+  }, true)
+
+  // 2) 未处理的 Promise 拒绝（动态 import 大多走这里）
   window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-    const reason = String((e && (e as any).reason) || '')
-    if (isChunkLoadError(reason))
+    if (isChunkLoadError(e.reason))
       triggerReloadSafely()
   })
 
-  // 3) Vue Router 级别兜底
+  // 3) 路由懒加载失败
   router.onError((err) => {
-    const msg = String((err && (err as any).message) || err || '')
-    if (isChunkLoadError(msg))
+    if (isChunkLoadError(err))
       triggerReloadSafely()
   })
 })()
