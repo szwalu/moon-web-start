@@ -27,6 +27,7 @@ const emit = defineEmits([
   'taskToggle',
   'toggleSelect',
   'dateUpdated',
+  'scrolled',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -363,7 +364,7 @@ const handleScroll = throttle(() => {
     return
   }
 
-  // ✅ 新增：判定滚动方向（不改变原逻辑）
+  // ✅ 判定滚动方向（不改变原逻辑）
   const curTop = el.scrollTop
   if (curTop > lastScrollTop)
     scrollDir.value = 'down'
@@ -397,6 +398,9 @@ const handleScroll = throttle(() => {
 
   updateCollapsePos()
   syncStickyGutters() // 同步左右留白，避免覆盖滚动条
+
+  // 🔔 新增：把当前滚动位置抛给父组件（方案A所需）
+  emit('scrolled', el.scrollTop)
 }, 16)
 
 function rebindScrollListener() {
