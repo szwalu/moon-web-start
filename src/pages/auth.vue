@@ -584,12 +584,38 @@ async function handleVisibilityChange() {
   }
 }
 
-function handleEditorFocus(containerEl: HTMLElement) {
-  compactWhileTyping.value = true // 新增：隐藏页眉
-  setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 0)
+function maybeScrollEditorIntoView(containerEl: HTMLElement) {
+  compactWhileTyping.value = true // 仍然隐藏页眉
+
+  // 延迟一帧，确保 textarea 渲染好了
+  requestAnimationFrame(() => {
+    const textarea = (newNoteEditorRef.value as any)?.textarea?.value as HTMLTextAreaElement | undefined
+    if (!textarea)
+      return
+
+    const caretPos = textarea.selectionEnd ?? textarea.value.length
+    const mirror = document.createElement('div')
+    const style = getComputedStyle(textarea)
+    mirror.style.cssText = `
+      position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word;
+      box-sizing:border-box; top:0; left:-9999px; width:${textarea.clientWidth}px;
+      font:${style.font}; line-height:${style.lineHeight}; padding:${style.padding};
+      border:${style.border};
+    `
+    document.body.appendChild(mirror)
+
+    mirror.textContent = textarea.value.slice(0, caretPos).replace(/\n$/u, '\n ')
+    const caretY = mirror.scrollHeight
+    document.body.removeChild(mirror)
+
+    // 判断光标是否接近底部（比如距离底部 < 3 行）
+    const lineHeight = Number.parseFloat(style.lineHeight || '20')
+    const distanceToBottom = textarea.scrollHeight - caretY
+    if (distanceToBottom < lineHeight * 3) {
+      if (containerEl && typeof containerEl.scrollIntoView === 'function')
+        containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  })
 }
 
 let editorHideTimer: number | null = null
@@ -1459,7 +1485,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
-          @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
+          @focus="() => { onEditorFocus(); maybeScrollEditorIntoView(newNoteEditorContainerRef) }"
           @blur="onEditorBlur"
         />
       </div>
