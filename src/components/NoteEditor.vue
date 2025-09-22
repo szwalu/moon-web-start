@@ -956,7 +956,7 @@ defineExpose({ reset: triggerResize })
   min-height: 40px;
   max-height: 48vh;
   overflow-y: auto;
-  padding: 16px 8px 8px 16px;
+  padding: 12px 8px 0px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
