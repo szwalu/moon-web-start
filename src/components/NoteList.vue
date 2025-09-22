@@ -154,6 +154,8 @@ const mixedItems = computed<MixedItem[]>(() => {
   return out
 })
 
+const hasLeadingMonthHeader = computed(() => mixedItems.value[0]?.type === 'month-header')
+
 /** noteId -> 混合列表 index（滚动定位用） */
 const noteIdToMixedIndex = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
@@ -704,7 +706,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
       key-field="vid"
     >
       <template #before>
-        <div :style="{ height: `${HEADER_HEIGHT}px` }" />
+        <div :style="{ height: hasLeadingMonthHeader ? '0px' : `${HEADER_HEIGHT}px` }" />
       </template>
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
@@ -852,6 +854,10 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 /* ===== 月份头部项（虚拟项） ===== */
 .month-header-outer { padding: 5px 4px 0px 4px; } /* 原先的外边距搬到这里 */
+/* 列表里“第一个可见 item”如果是月份卡片，则去掉上内边距，避免在悬浮条下方再留一条间隙 */
+.scroller .note-item-container:first-child .month-header-outer {
+  padding-top: 0;
+}
 .month-header {
   height: 26px;
   padding: 0 8px;
