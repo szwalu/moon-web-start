@@ -16,7 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -121,121 +121,6 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-function getScrollParent(node: HTMLElement | null): HTMLElement | null {
-  let el = node
-  while (el) {
-    const s = getComputedStyle(el)
-    const canScroll
-      = /(auto|scroll|overlay)/.test(s.overflowY)
-      || /(auto|scroll|overlay)/.test(s.overflow)
-    if (canScroll && el.scrollHeight > el.clientHeight)
-      return el
-    el = el.parentElement
-  }
-  return null
-}
-
-let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
-
-function recomputeBottomSafePadding() {
-  const el = textarea.value
-  if (!el)
-    emit('bottomSafeChange', 0)
-
-  const vv = window.visualViewport
-  // 1) 桌面或未弹键盘：不托
-  if (!vv) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  // 2) 判断键盘是否真的弹出
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (keyboardHeight < 60) { // 小于 60px 视为未弹出（可按机型调 48~80）
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  // 3) 计算“光标底部”在 **可视视口(visual viewport)** 内的坐标
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  // 光标在 textarea 内容内的 Y（相对内容顶部）
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + `border-style:solid;`
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  // textarea 盒子（相对 **可视视口** 的 rect）
-  const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
-
-  // 4) 需要露出的 UI 高度：保存 + 工具栏 + 安全区 + 冗余
-  const SAVE_AND_TOOLBAR = 56 + 44 // 按你的实际高度微调
-  const EXTRA = 12 // 冗余
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText
-        = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-  const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
-
-  // 5) 阈值：可视视口底边向上 SAFE
-  const threshold = vv.height - SAFE
-
-  // 需要托起的像素（>0 表示“会被挡住”）
-  const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  // —— 发给父级去显示“垫片” —— //
-  emit('bottomSafeChange', need)
-
-  // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      // 仅推必要差值的 70%（避免过冲），并限制最大 160px
-      const delta = Math.min(Math.ceil(need * 0.7), 160)
-      // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
-      // 优先滚动最近的滚动容器；没有的话再滚动页面
-      const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
-      if ('scrollBy' in scrollEl) {
-        // @ts-expect-error: HTMLElement 有 scrollBy
-        scrollEl.scrollBy(0, delta)
-      }
-      else {
-        // 极端兜底
-        (scrollEl as HTMLElement).scrollTop += delta
-      }
-      _hasPushedPage = true
-    }
-  }
-  else {
-    _hasPushedPage = false
-  }
-}
-
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
@@ -314,17 +199,11 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
 function onBlur() {
   emit('blur')
-  emit('bottomSafeChange', 0)
-  _hasPushedPage = false
-
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -339,11 +218,9 @@ function onBlur() {
 
 function handleClick() {
   captureCaret()
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  })
+  requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
+
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
@@ -461,8 +338,6 @@ function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  // 等文本高度/滚动位更新后再计算
-  requestAnimationFrame(() => recomputeBottomSafePadding())
 }
 
 // ============== 文本与工具栏 ==============
@@ -476,7 +351,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
       ensureCaretVisibleInTextarea()
-      requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
 }
@@ -761,21 +635,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('scroll', onWindowScrollOrResize, true)
   window.removeEventListener('resize', onWindowScrollOrResize)
-})
-
-onMounted(() => {
-  const vv = window.visualViewport
-  if (vv) {
-    vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
-  }
-})
-onUnmounted(() => {
-  const vv = window.visualViewport
-  if (vv) {
-    vv.removeEventListener('resize', recomputeBottomSafePadding)
-    vv.removeEventListener('scroll', recomputeBottomSafePadding)
-  }
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
@@ -1073,6 +932,9 @@ defineExpose({ reset: triggerResize })
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+
+  /* 🆕 固定底部工具栏用到的高度变量 */
+  --editor-footer-h: 44px;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -1095,9 +957,9 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  max-height: 48vh; /* 回退到稳定的 48vh 上限 */
   overflow-y: auto;
-  padding: 12px 8px 0px 16px;
+  padding: 12px 8px calc(var(--editor-footer-h) + max(8px, env(safe-area-inset-bottom))) 16px; /* 🆕 为底部工具栏预留空间 */
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1157,13 +1019,19 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
+/* 🆕 工具栏容器常驻在编辑器底部 */
 .editor-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: var(--editor-footer-h);
   padding: 4px 12px;
   border-top: none;
   background-color: transparent;
+  padding-bottom: max(4px, env(safe-area-inset-bottom)); /* iOS 安全区 */
 }
 
 .footer-left {
@@ -1223,7 +1091,7 @@ defineExpose({ reset: triggerResize })
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
-/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
+/* ======= 样式弹层（保持原有视觉） ======= */
 .format-palette {
   position: absolute;
   z-index: 1100;
@@ -1232,7 +1100,7 @@ defineExpose({ reset: triggerResize })
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  padding: 2px 4px;          /* 缩小内边距 */
+  padding: 2px 4px;
 }
 .dark .format-palette {
   background: #2c2c2e;
@@ -1243,10 +1111,10 @@ defineExpose({ reset: triggerResize })
 .format-row {
   display: flex;
   align-items: center;
-  gap: 6px;                  /* 缩小内部间距 */
+  gap: 6px;
 }
 .format-btn {
-  width: 24px;               /* 缩小按钮 */
+  width: 24px;
   height: 24px;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -1262,7 +1130,7 @@ defineExpose({ reset: triggerResize })
 .format-btn:hover { background: rgba(0,0,0,0.06); }
 .dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
-/* 小三角：指向 Aa 按钮（大幅缩小） */
+/* 小三角：指向 Aa 按钮 */
 .format-caret {
   position: absolute;
   left: 50%;
@@ -1327,7 +1195,7 @@ defineExpose({ reset: triggerResize })
   overflow-y: auto;
 }
 
-/* tag 面板样式增强 */
+/* tag 面板样式增强（保留） */
 .tag-suggestions li {
   display: flex;
   align-items: center;
@@ -1360,10 +1228,10 @@ defineExpose({ reset: triggerResize })
 
 /* 让 Aa 面板里的图标“视觉放大”，但按钮仍旧是 24×24 */
 .format-btn .icon-bleed {
-  width: 40px !important;    /* 图标比按钮大一些 */
+  width: 40px !important;
   height: 40px !important;
   display: block;
-  margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
-  pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+  margin: -5px !important;
+  pointer-events: none;
 }
 </style>
