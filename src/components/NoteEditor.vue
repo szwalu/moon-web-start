@@ -122,33 +122,37 @@ function ensureCaretVisibleInTextarea() {
 }
 
 // 仅当键盘弹出且光标将被挡住时，返回一个需要的“托起像素”，否则 0
+// 在文件顶层保留：emit 已含 bottomSafeChange
+// 在本文件任意位置定义（函数体完整替换）
+let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+
 function recomputeBottomSafePadding() {
   const el = textarea.value
-  if (!el) {
+  if (!el)
     emit('bottomSafeChange', 0)
-    return
-  }
 
   const vv = window.visualViewport
-  // 1) 没有 visualViewport（桌面端/未弹键盘）→ 不托
+  // 1) 桌面或未弹键盘：不托
   if (!vv) {
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
     return
   }
 
-  // 2) 估算键盘高度；若几乎为 0（未弹出）→ 不托
+  // 2) 判断键盘是否真的弹出
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (keyboardHeight < 60) { // 阈值 60px：避免误判
+  if (keyboardHeight < 60) { // 小于 60px 视为未弹出（可按机型调 48~80）
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
     return
   }
 
-  // 3) 计算“光标底部”在**视口坐标**中的位置
+  // 3) 计算“光标底部”在 **可视视口(visual viewport)** 内的坐标
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // 光标在 textarea 内容中的 Y（相对内容顶部）
-  const caretYInContent = (function getCaretYInTextarea() {
+  // 光标在 textarea 内容内的 Y（相对内容顶部）
+  const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
       = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
@@ -166,17 +170,19 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
-  // textarea 自己的盒子（视口坐标）
-  const r = el.getBoundingClientRect()
-  // 光标底部在视口里的 y（相对 visualViewport 顶部）
-  const caretBottomInViewport = (r.top + (caretYInContent - el.scrollTop)) + lineHeight * 0.8
+  // textarea 盒子（相对 **可视视口** 的 rect）
+  const rect = el.getBoundingClientRect()
+  // 光标底部在 **可视视口** 内的 y 坐标
+  const caretBottomInViewport = (rect.top + (caretYInContent - el.scrollTop)) + lineHeight * 0.8
 
-  // 4) 需要保证露出的 UI 总高度：保存按钮 + 工具栏 + 安全区 + 冗余
-  const SAVE_AND_TOOLBAR = 56 + 44 // 你可以按真实高度调整
+  // 4) 需要露出的 UI 高度：保存 + 工具栏 + 安全区 + 冗余
+  const SAVE_AND_TOOLBAR = 56 + 44 // 按你的实际高度微调
+  const EXTRA = 12 // 冗余
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      div.style.cssText
+        = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
       document.body.appendChild(div)
       const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
       document.body.removeChild(div)
@@ -184,16 +190,30 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const EXTRA = 12
   const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
 
-  // 5) 如果光标会被挡住，则需要垫的像素 = 光标底部 - (可视高度 - 安全区)
+  // 5) 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
+
+  // 需要托起的像素（>0 表示“会被挡住”）
   const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  if (need > 0)
-    emit('bottomSafeChange', need)
-  else emit('bottomSafeChange', 0)
+  // —— 发给父级去显示“垫片” —— //
+  emit('bottomSafeChange', need)
+
+  // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      // 仅推必要差值的 70%（避免过冲），并限制最大 160px
+      const delta = Math.min(Math.ceil(need * 0.7), 160)
+      // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
+      window.scrollBy(0, delta)
+      _hasPushedPage = true
+    }
+  }
+  else {
+    _hasPushedPage = false
+  }
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
@@ -282,7 +302,8 @@ function handleFocus() {
 
 function onBlur() {
   emit('blur')
-  emit('bottomSafeChange', 0) // 失焦立即收回底部填充
+  emit('bottomSafeChange', 0)
+  _hasPushedPage = false
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
