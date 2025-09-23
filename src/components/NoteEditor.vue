@@ -16,47 +16,22 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-const emit = defineEmits([
-  'update:modelValue',
-  'save',
-  'cancel',
-  'focus',
-  'blur',
-  // 新增：托底垫片像素变化
-  'bottomSafeChange',
-])
-
-// —— 保险丝：仅在 iOS 且支持 visualViewport 时启用键盘托底 ——
-// （如果希望安卓也启用，可去掉 iOS 判断）
-const isKeyboardAwareEnabled
-  = /iP(hone|ad|od)/.test(navigator.userAgent)
-  && typeof window !== 'undefined'
-  && !!window.visualViewport
-
-// 只在“第一次被遮挡”时轻推一次，避免抖动
-let _hasPushedPage = false
-// 记录上一次的 visualViewport.height，用于判断“键盘出现/消失”
-let _lastVvHeight = 0
-
-const emitBottomSafeChange = (px: number) => emit('bottomSafeChange', px)
-
-// iOS 输入法“附加工具条”（预测条/快捷条）大约 36~48px，取 44 做保守值
-const ACCESSORY_BAR = 44
-
-// 找到最近的可滚动祖先（滚对真正的滚动容器）
-function getScrollParent(node: HTMLElement | null): HTMLElement | null {
-  let el = node
-  while (el) {
-    const s = getComputedStyle(el)
-    const canScroll
-      = /(auto|scroll|overlay)/.test(s.overflowY)
-      || /(auto|scroll|overlay)/.test(s.overflow)
-    if (canScroll && el.scrollHeight > el.clientHeight)
-      return el
-    el = el.parentElement
-  }
-  return null
+const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+// —— 常用标签（与 useTagMenu 保持同一存储键）——
+const PINNED_TAGS_KEY = 'pinned_tags_v1'
+const pinnedTags = ref<string[]>([])
+function isPinned(tag: string) {
+  return pinnedTags.value.includes(tag)
 }
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(PINNED_TAGS_KEY)
+    pinnedTags.value = raw ? JSON.parse(raw) : []
+  }
+  catch {
+    pinnedTags.value = []
+  }
+})
 
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -115,7 +90,7 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
-// ============== 滚动校准（保持光标在 textarea 可视区内） ==============
+// ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
@@ -146,7 +121,122 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// ========= 新建时写入天气：工具函数 =========
+function getScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let el = node
+  while (el) {
+    const s = getComputedStyle(el)
+    const canScroll
+      = /(auto|scroll|overlay)/.test(s.overflowY)
+      || /(auto|scroll|overlay)/.test(s.overflow)
+    if (canScroll && el.scrollHeight > el.clientHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
+let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+
+function recomputeBottomSafePadding() {
+  const el = textarea.value
+  if (!el)
+    emit('bottomSafeChange', 0)
+
+  const vv = window.visualViewport
+  // 1) 桌面或未弹键盘：不托
+  if (!vv) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // 2) 判断键盘是否真的弹出
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (keyboardHeight < 60) { // 小于 60px 视为未弹出（可按机型调 48~80）
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // 3) 计算“光标底部”在 **可视视口(visual viewport)** 内的坐标
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  // 光标在 textarea 内容内的 Y（相对内容顶部）
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + `border-style:solid;`
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  // textarea 盒子（相对 **可视视口** 的 rect）
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+
+  // 4) 需要露出的 UI 高度：保存 + 工具栏 + 安全区 + 冗余
+  const SAVE_AND_TOOLBAR = 56 + 44 // 按你的实际高度微调
+  const EXTRA = 12 // 冗余
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText
+        = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
+
+  // 5) 阈值：可视视口底边向上 SAFE
+  const threshold = vv.height - SAFE
+
+  // 需要托起的像素（>0 表示“会被挡住”）
+  const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  // —— 发给父级去显示“垫片” —— //
+  emit('bottomSafeChange', need)
+
+  // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      // 仅推必要差值的 70%（避免过冲），并限制最大 160px
+      const delta = Math.min(Math.ceil(need * 0.7), 160)
+      // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
+      // 优先滚动最近的滚动容器；没有的话再滚动页面
+      const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+      if ('scrollBy' in scrollEl) {
+        // @ts-expect-error: HTMLElement 有 scrollBy
+        scrollEl.scrollBy(0, delta)
+      }
+      else {
+        // 极端兜底
+        (scrollEl as HTMLElement).scrollTop += delta
+      }
+      _hasPushedPage = true
+    }
+  }
+  else {
+    _hasPushedPage = false
+  }
+}
+
+// ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
     return '未知地点'
@@ -224,17 +314,15 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  _hasPushedPage = false // 焦点回到编辑器，允许新的“首次轻推”
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    requestAnimationFrame(recomputeBottomSafePadding)
+    recomputeBottomSafePadding()
   })
 }
 
 function onBlur() {
   emit('blur')
-  // 失焦立刻去掉垫片并复位“一次性轻推”状态
-  emitBottomSafeChange(0)
+  emit('bottomSafeChange', 0)
   _hasPushedPage = false
 
   if (suppressNextBlur.value) {
@@ -253,10 +341,9 @@ function handleClick() {
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    requestAnimationFrame(recomputeBottomSafePadding)
+    recomputeBottomSafePadding()
   })
 }
-
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
@@ -374,11 +461,8 @@ function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  // 先确保 textarea 内部把光标滚进来，再托底
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    requestAnimationFrame(recomputeBottomSafePadding)
-  })
+  // 等文本高度/滚动位更新后再计算
+  requestAnimationFrame(() => recomputeBottomSafePadding())
 }
 
 // ============== 文本与工具栏 ==============
@@ -392,7 +476,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
       ensureCaretVisibleInTextarea()
-      requestAnimationFrame(recomputeBottomSafePadding)
+      requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
 }
@@ -593,21 +677,6 @@ function selectTag(tag: string) {
 }
 
 // —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
-const PINNED_TAGS_KEY = 'pinned_tags_v1'
-const pinnedTags = ref<string[]>([])
-function isPinned(tag: string) {
-  return pinnedTags.value.includes(tag)
-}
-onMounted(() => {
-  try {
-    const raw = localStorage.getItem(PINNED_TAGS_KEY)
-    pinnedTags.value = raw ? JSON.parse(raw) : []
-  }
-  catch {
-    pinnedTags.value = []
-  }
-})
-
 function openTagMenu() {
   suppressNextBlur.value = true
   runToolbarAction(() => insertText('#', ''))
@@ -674,7 +743,7 @@ function toggleFormatPalette() {
   else openFormatPalette()
 }
 
-// ✅ 统一处理样式按钮点击
+// ✅ 统一处理样式按钮点击（修复 eslint: max-statements-per-line）
 function handleFormat(fn: () => void) {
   runToolbarAction(fn)
   closeFormatPalette()
@@ -688,66 +757,24 @@ function onWindowScrollOrResize() {
 onMounted(() => {
   window.addEventListener('scroll', onWindowScrollOrResize, true)
   window.addEventListener('resize', onWindowScrollOrResize)
-
-  // —— 键盘相关：可视视口变化时重算 —— //
-  if (typeof window !== 'undefined' && window.visualViewport) {
-    const vv = window.visualViewport
-    _lastVvHeight = vv.height // 记录初值
-
-    const onVvChange = () => {
-      const cur = vv.height
-      const prev = _lastVvHeight
-      _lastVvHeight = cur
-
-      // 设置一个微小的抖动阈值，避免误判
-      const SHRINK = cur < prev - 2 // 视口高度变小：键盘出现/升高
-      const GROW = cur > prev + 2 // 视口高度变大：键盘消失/降低
-
-      if (GROW) {
-      // 键盘收起：立刻清零垫片，并允许下次再“轻推”一次
-        emitBottomSafeChange(0)
-        _hasPushedPage = false
-        return
-      }
-
-      if (SHRINK) {
-      // 键盘刚出现：允许新的“第一次轻推”
-        _hasPushedPage = false
-        // 等动画结束一点点再测量，防止早测导致误差
-        requestAnimationFrame(() => {
-          ensureCaretVisibleInTextarea()
-          // 双 rAF + 微延时，覆盖 iOS 键盘弹出动画的多个阶段
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              recomputeBottomSafePadding()
-            }, 120)
-          })
-        })
-        return
-      }
-
-      // 其他微小波动：保持你原来的行为
-      requestAnimationFrame(recomputeBottomSafePadding)
-    }
-
-    vv.addEventListener('resize', onVvChange)
-    vv.addEventListener('scroll', onVvChange)
-    ;(rootRef as any)._vvOnChange = onVvChange
-  }
 })
 onUnmounted(() => {
   window.removeEventListener('scroll', onWindowScrollOrResize, true)
   window.removeEventListener('resize', onWindowScrollOrResize)
+})
 
-  // —— 清理 visualViewport 监听，避免泄漏 —— //
-  if (typeof window !== 'undefined' && window.visualViewport) {
-    const vv = window.visualViewport
-    const onVvChange = (rootRef as any)?._vvOnChange
-    if (onVvChange) {
-      vv.removeEventListener('resize', onVvChange)
-      vv.removeEventListener('scroll', onVvChange)
-      ;(rootRef as any)._vvOnChange = null
-    }
+onMounted(() => {
+  const vv = window.visualViewport
+  if (vv) {
+    vv.addEventListener('resize', recomputeBottomSafePadding)
+    vv.addEventListener('scroll', recomputeBottomSafePadding)
+  }
+})
+onUnmounted(() => {
+  const vv = window.visualViewport
+  if (vv) {
+    vv.removeEventListener('resize', recomputeBottomSafePadding)
+    vv.removeEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 
@@ -853,106 +880,6 @@ function insertImageLink() {
       return true
     },
   })
-}
-
-// —— 键盘托底：最终版（含保险丝、offsetTop 修正、滚对容器）
-function recomputeBottomSafePadding() {
-  const el = textarea.value
-  if (!el || !isKeyboardAwareEnabled) {
-    emitBottomSafeChange(0)
-    _hasPushedPage = false
-    return
-  }
-
-  const vv = window.visualViewport!
-  // 估算键盘高度；<60 视为未弹出（可按机型调 48~80）
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (keyboardHeight < 60) {
-    emitBottomSafeChange(0)
-    _hasPushedPage = false
-    return
-  }
-
-  // —— 计算“光标底部”相对【可视视口】的 Y —— //
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  // 光标在 textarea 内容内的 Y（相对内容顶部）
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + `border-style:solid;`
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  // textarea 的布局矩形（相对“布局视口”）
-  const rect = el.getBoundingClientRect()
-  // 关键修正：iOS 键盘时需要减去 vv.offsetTop，转换到“可视视口”坐标
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
-
-  // 需要露出的 UI 高度（保存 + 工具栏 + 安全区 + 冗余）
-  const SAVE_AND_TOOLBAR = 56 + 44
-  const EXTRA = 12
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText
-        = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-  const SAFE = SAVE_AND_TOOLBAR + ACCESSORY_BAR + safeInset + EXTRA
-
-  // 阈值：可视视口底边向上 SAFE
-  const threshold = vv.height - SAFE
-
-  // 需要托起的像素（>0 表示会被挡住）
-  const needRaw = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-  // —— 保险丝：设置最大上限，避免极端机型返回异常值 —— //
-  const need = Math.min(needRaw, 220)
-
-  emitBottomSafeChange(need)
-
-  // 仅在第一次需要时轻推一次，后续靠“垫片”维持，不再每次输入都滚动
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      const delta = Math.min(Math.ceil(need * 0.7), 160) // 轻推 70%，最多 160px
-      const scrollEl
-        = getScrollParent(rootRef.value)
-        || document.scrollingElement
-        || document.documentElement
-
-      // 优先滚动真正的容器
-      try {
-        // @ts-expect-error: HTMLElement 也有 scrollBy
-        scrollEl.scrollBy(0, delta)
-      }
-      catch {
-        (scrollEl as HTMLElement).scrollTop += delta
-      }
-
-      _hasPushedPage = true
-    }
-  }
-  else {
-    _hasPushedPage = false
-  }
 }
 
 defineExpose({ reset: triggerResize })
@@ -1168,7 +1095,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 56vh;
+  max-height: 48vh;
   overflow-y: auto;
   padding: 12px 8px 0px 16px;
   border: none;
