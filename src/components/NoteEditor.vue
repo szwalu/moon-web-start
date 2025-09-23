@@ -1266,7 +1266,7 @@ defineExpose({ reset: triggerResize })
   cursor: pointer;
 }
 .format-btn:hover { background: rgba(0,0,0,0.06); }
-.dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
+.dark .format-btn:hover { background: rgba(255,255,255,0.08); }
 
 /* 小三角：指向 Aa 按钮（大幅缩小） */
 .format-caret {
