@@ -80,7 +80,6 @@ const loading = ref(false)
 const lastSavedId = ref<string | null>(null)
 const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
-const headerCollapsed = ref(false)
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
@@ -618,38 +617,6 @@ function handleExportTrigger() {
     // 否则，执行包含所有笔记的批量导出
     handleBatchExport()
   }
-}
-
-const _lastTop = ref(0)
-let _idleTimer: number | null = null
-
-const DOWN_HIDE_AFTER = 96 // 向下滚动超过多少像素才允许隐藏（可按手感调 64~160）
-const UP_SHOW_BELOW = 12 // 回到顶部多近时恢复显示（小一点避免抖动）
-const IDLE_DELAY_MS = 120 // 停止滚动多久才真正切换（避免滚动过程频繁切换）
-
-function onListScroll(top: number) {
-  const goingDown = top > _lastTop.value
-  _lastTop.value = top
-
-  // 每次滚动都先取消上一个延迟切换
-  if (_idleTimer) {
-    clearTimeout(_idleTimer)
-    _idleTimer = null
-  }
-
-  // 向下：滚动距离足够大，且当前是展开状态 -> 停止滚动一会儿再折叠
-  if (goingDown && top > DOWN_HIDE_AFTER && !headerCollapsed.value) {
-    _idleTimer = window.setTimeout(() => {
-      headerCollapsed.value = true
-    }, IDLE_DELAY_MS)
-    return
-  }
-
-  // 向上：离顶部很近，且当前是折叠状态 -> 立即展开（无需等）
-  if (!goingDown && top < UP_SHOW_BELOW && headerCollapsed.value)
-    headerCollapsed.value = false
-
-  // 其他情况：不切换，避免抖动
 }
 
 async function handleBatchExport() {
@@ -1433,16 +1400,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </Transition>
 
-      <div
-        class="anniv-wrapper"
-        :class="{ collapsed: headerCollapsed && isAnniversaryViewActive }"
-      >
-        <AnniversaryBanner
-          v-show="isAnniversaryViewActive || (showAnniversaryBanner && !headerCollapsed)"
-          ref="anniversaryBannerRef"
-          @toggle-view="handleAnniversaryToggle"
-        />
-      </div>
+      <AnniversaryBanner v-show="showAnniversaryBanner" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
 
       <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
@@ -1476,12 +1434,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
-      <div
-        v-show="!isSelectionModeActive"
-        ref="newNoteEditorContainerRef"
-        class="new-note-editor-container"
-        :class="{ collapsed: headerCollapsed }"
-      >
+      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
@@ -1515,7 +1468,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
-          @scrolled="onListScroll"
         />
       </div>
 
@@ -1864,29 +1816,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
-}
-
-/* 折叠头部输入框：不改布局流、不影响虚拟列表 */
-.new-note-editor-container {
-  transition: height .18s ease, padding .18s ease, margin .18s ease;
-}
-.new-note-editor-container.collapsed {
-  height: 0 !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-  margin: 0 !important;
-  overflow: hidden;
-}
-
-/* 折叠“那年今日”即时条幅（与输入框折叠同思路，不改布局流） */
-.anniv-wrapper {
-  transition: height .18s ease, margin .18s ease, opacity .18s ease;
-}
-.anniv-wrapper.collapsed {
-  height: 0 !important;
-  margin: 0 !important;
-  opacity: 0;
-  overflow: hidden;
 }
 </style>
 
