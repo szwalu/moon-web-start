@@ -1322,7 +1322,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
     class="auth-container"
     :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
-    :style="{ paddingBottom: `${editorBottomPadding}px` }"
   >
     <template v-if="user">
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
@@ -1462,6 +1461,12 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
+      <div
+        v-show="editorBottomPadding > 0"
+        :style="{ height: `${editorBottomPadding}px` }"
+        style="flex:0 0 auto;"
+        aria-hidden="true"
+      />
 
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
@@ -1525,8 +1530,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+
+  min-height: 100dvh;     /* 从“固定高度”改为“最小高度” */
+  overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
   position: relative;
 }
 .dark .auth-container {

@@ -121,48 +121,7 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// ========= 仅在“光标接近底部”时请求外层垫高 =========
-const CARET_THRESHOLD_LINES = 3 // 距离底部小于 N 行才垫
-const SAVE_AND_TOOLBAR = 56 + 44 // “保存按钮行 + 工具栏行”高度（按你的实际微调）
-const EXTRA_BUFFER = 12 // 额外冗余，避免只露出半个按钮
-
-function getSafeAreaInsetBottom(): number {
-  // env(safe-area-inset-bottom) 在 JS 里不好直接拿，采用 CSS 变量回退思路
-  // 这里简化：给一个常用 iOS 安全区估值，也可固定为 0 后依靠 SAVE_AND_TOOLBAR 微调
-  try {
-    const div = document.createElement('div')
-    div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-    document.body.appendChild(div)
-    const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-    document.body.removeChild(div)
-    return Number.isFinite(px) ? px : 0
-  }
-  catch { return 0 }
-}
-
-// 获取 textarea 内“光标末端”的像素 Y（相对 textarea 内容顶部）
-function getCaretYInTextarea(el: HTMLTextAreaElement): number {
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText
-    = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
-    + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-    + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-    + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-    + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-    + `border-style:solid;`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const y = mirror.scrollHeight // 内容总高≈光标底部
-  document.body.removeChild(mirror)
-  return y
-}
-
+// 仅当键盘弹出且光标将被挡住时，返回一个需要的“托起像素”，否则 0
 function recomputeBottomSafePadding() {
   const el = textarea.value
   if (!el) {
@@ -170,32 +129,71 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  // 1) 计算光标到 textarea 内容底部的剩余距离
-  const caretY = getCaretYInTextarea(el)
-  const distanceToBottomContent = Math.max(0, el.scrollHeight - caretY)
-
-  // 2) 判断是否“接近底部”（小于 N 行）
-  const nearBottom = distanceToBottomContent < lineHeight * CARET_THRESHOLD_LINES
-
-  if (!nearBottom) {
+  const vv = window.visualViewport
+  // 1) 没有 visualViewport（桌面端/未弹键盘）→ 不托
+  if (!vv) {
     emit('bottomSafeChange', 0)
     return
   }
 
-  // 3) 估算当前键盘高度（visualViewport）
-  let keyboardHeight = 0
-  const vv = window.visualViewport
-  if (vv)
-    keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  // 2) 估算键盘高度；若几乎为 0（未弹出）→ 不托
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (keyboardHeight < 60) { // 阈值 60px：避免误判
+    emit('bottomSafeChange', 0)
+    return
+  }
 
-  // 4) 需要露出的 UI 高度（保存 + 工具栏 + 安全区 + buffer）
-  const safeInset = getSafeAreaInsetBottom()
-  const need = Math.max(0, keyboardHeight + safeInset + SAVE_AND_TOOLBAR + EXTRA_BUFFER)
+  // 3) 计算“光标底部”在**视口坐标**中的位置
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  emit('bottomSafeChange', need)
+  // 光标在 textarea 内容中的 Y（相对内容顶部）
+  const caretYInContent = (function getCaretYInTextarea() {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + `border-style:solid;`
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  // textarea 自己的盒子（视口坐标）
+  const r = el.getBoundingClientRect()
+  // 光标底部在视口里的 y（相对 visualViewport 顶部）
+  const caretBottomInViewport = (r.top + (caretYInContent - el.scrollTop)) + lineHeight * 0.8
+
+  // 4) 需要保证露出的 UI 总高度：保存按钮 + 工具栏 + 安全区 + 冗余
+  const SAVE_AND_TOOLBAR = 56 + 44 // 你可以按真实高度调整
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const EXTRA = 12
+  const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
+
+  // 5) 如果光标会被挡住，则需要垫的像素 = 光标底部 - (可视高度 - 安全区)
+  const threshold = vv.height - SAFE
+  const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  if (need > 0)
+    emit('bottomSafeChange', need)
+  else emit('bottomSafeChange', 0)
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
