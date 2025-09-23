@@ -933,7 +933,7 @@ defineExpose({ reset: triggerResize })
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 
-  /* 🆕 固定底部工具栏用到的高度变量 */
+  /* 工具栏高度变量，方便以后统一调 */
   --editor-footer-h: 44px;
 }
 .note-editor-reborn:focus-within {
@@ -949,17 +949,27 @@ defineExpose({ reset: triggerResize })
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
 }
 
+/* ✅ 现在由 wrapper 承担滚动；它才是 sticky 的参照滚动容器 */
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
+  /* 让“未进入编辑态”时的输入框高度稳定在 48vh 并可滚动 */
+  max-height: 48vh;
+  overflow: auto;
+
+  /* 为底部 sticky 工具栏预留空间，保证最后一行不被挡住 */
+  padding-bottom: calc(var(--editor-footer-h) + max(8px, env(safe-area-inset-bottom)));
 }
 
+/* ✅ textarea 不再滚动，滚动交给 .editor-wrapper */
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh; /* 回退到稳定的 48vh 上限 */
-  overflow-y: auto;
-  padding: 12px 8px calc(var(--editor-footer-h) + max(8px, env(safe-area-inset-bottom))) 16px; /* 🆕 为底部工具栏预留空间 */
+  /* 取消 textarea 自己的滚动与上限（让 wrapper 来滚） */
+  max-height: none;
+  overflow: visible;
+
+  padding: 12px 8px 0 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -969,7 +979,7 @@ defineExpose({ reset: triggerResize })
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable both-edges; /* 这条现在作用在 wrapper 上更明显 */
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -1019,7 +1029,7 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
-/* 🆕 工具栏容器常驻在编辑器底部 */
+/* ✅ 工具栏常驻编辑器容器底部（跟随 .editor-wrapper 的滚动） */
 .editor-footer {
   position: sticky;
   bottom: 0;
@@ -1030,7 +1040,7 @@ defineExpose({ reset: triggerResize })
   height: var(--editor-footer-h);
   padding: 4px 12px;
   border-top: none;
-  background-color: transparent;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.02)); /* 轻微分层感 */
   padding-bottom: max(4px, env(safe-area-inset-bottom)); /* iOS 安全区 */
 }
 
@@ -1040,7 +1050,7 @@ defineExpose({ reset: triggerResize })
   gap: 8px;
 }
 
-/* 工具栏按钮间距（维持你之前已加大的 8px） */
+/* 工具栏按钮维持原视觉 */
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -1091,7 +1101,7 @@ defineExpose({ reset: triggerResize })
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
-/* ======= 样式弹层（保持原有视觉） ======= */
+/* ======= 样式弹层（保留原外观） ======= */
 .format-palette {
   position: absolute;
   z-index: 1100;
@@ -1130,7 +1140,6 @@ defineExpose({ reset: triggerResize })
 .format-btn:hover { background: rgba(0,0,0,0.06); }
 .dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
-/* 小三角：指向 Aa 按钮 */
 .format-caret {
   position: absolute;
   left: 50%;
@@ -1161,11 +1170,7 @@ defineExpose({ reset: triggerResize })
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* 编辑态占位高度策略（保持原有） */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto;
-}
+/* —— 编辑态：组件内自给自足的滚动盒，sticky 同样生效 —— */
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -1185,14 +1190,12 @@ defineExpose({ reset: triggerResize })
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: auto;  /* 这里依然由 wrapper 滚动 */
+  max-height: none;
 }
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100% !important;
-  max-height: none !important;
-  overflow-y: auto;
 }
 
 /* tag 面板样式增强（保留） */
