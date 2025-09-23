@@ -932,9 +932,6 @@ defineExpose({ reset: triggerResize })
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
-
-  /* 工具栏高度变量，方便以后统一调 */
-  --editor-footer-h: 44px;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -949,27 +946,17 @@ defineExpose({ reset: triggerResize })
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
 }
 
-/* ✅ 现在由 wrapper 承担滚动；它才是 sticky 的参照滚动容器 */
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
-  /* 让“未进入编辑态”时的输入框高度稳定在 48vh 并可滚动 */
-  max-height: 48vh;
-  overflow: auto;
-
-  /* 为底部 sticky 工具栏预留空间，保证最后一行不被挡住 */
-  padding-bottom: calc(var(--editor-footer-h) + max(8px, env(safe-area-inset-bottom)));
 }
 
-/* ✅ textarea 不再滚动，滚动交给 .editor-wrapper */
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 取消 textarea 自己的滚动与上限（让 wrapper 来滚） */
-  max-height: none;
-  overflow: visible;
-
-  padding: 12px 8px 0 16px;
+  max-height: 48vh;
+  overflow-y: auto;
+  padding: 12px 8px 0px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -979,7 +966,7 @@ defineExpose({ reset: triggerResize })
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  scrollbar-gutter: stable both-edges; /* 这条现在作用在 wrapper 上更明显 */
+  scrollbar-gutter: stable both-edges;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -1029,19 +1016,13 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
-/* ✅ 工具栏常驻编辑器容器底部（跟随 .editor-wrapper 的滚动） */
 .editor-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--editor-footer-h);
   padding: 4px 12px;
   border-top: none;
-  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.02)); /* 轻微分层感 */
-  padding-bottom: max(4px, env(safe-area-inset-bottom)); /* iOS 安全区 */
+  background-color: transparent;
 }
 
 .footer-left {
@@ -1050,7 +1031,7 @@ defineExpose({ reset: triggerResize })
   gap: 8px;
 }
 
-/* 工具栏按钮维持原视觉 */
+/* 工具栏按钮间距（维持你之前已加大的 8px） */
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -1101,7 +1082,7 @@ defineExpose({ reset: triggerResize })
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
-/* ======= 样式弹层（保留原外观） ======= */
+/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
 .format-palette {
   position: absolute;
   z-index: 1100;
@@ -1110,7 +1091,7 @@ defineExpose({ reset: triggerResize })
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  padding: 2px 4px;
+  padding: 2px 4px;          /* 缩小内边距 */
 }
 .dark .format-palette {
   background: #2c2c2e;
@@ -1121,10 +1102,10 @@ defineExpose({ reset: triggerResize })
 .format-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 6px;                  /* 缩小内部间距 */
 }
 .format-btn {
-  width: 24px;
+  width: 24px;               /* 缩小按钮 */
   height: 24px;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -1140,6 +1121,7 @@ defineExpose({ reset: triggerResize })
 .format-btn:hover { background: rgba(0,0,0,0.06); }
 .dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
+/* 小三角：指向 Aa 按钮（大幅缩小） */
 .format-caret {
   position: absolute;
   left: 50%;
@@ -1170,7 +1152,11 @@ defineExpose({ reset: triggerResize })
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* —— 编辑态：组件内自给自足的滚动盒，sticky 同样生效 —— */
+/* 编辑态占位高度策略（保持原有） */
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  overflow: auto;
+}
 .note-editor-reborn.editing-viewport {
   height: 70dvh;
   min-height: 70dvh;
@@ -1190,15 +1176,17 @@ defineExpose({ reset: triggerResize })
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;  /* 这里依然由 wrapper 滚动 */
-  max-height: none;
+  overflow: visible;
 }
 .note-editor-reborn.editing-viewport .editor-textarea {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100% !important;
+  max-height: none !important;
+  overflow-y: auto;
 }
 
-/* tag 面板样式增强（保留） */
+/* tag 面板样式增强 */
 .tag-suggestions li {
   display: flex;
   align-items: center;
@@ -1231,10 +1219,10 @@ defineExpose({ reset: triggerResize })
 
 /* 让 Aa 面板里的图标“视觉放大”，但按钮仍旧是 24×24 */
 .format-btn .icon-bleed {
-  width: 40px !important;
+  width: 40px !important;    /* 图标比按钮大一些 */
   height: 40px !important;
   display: block;
-  margin: -5px !important;
-  pointer-events: none;
+  margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
+  pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
 }
 </style>
