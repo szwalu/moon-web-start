@@ -121,9 +121,20 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// 仅当键盘弹出且光标将被挡住时，返回一个需要的“托起像素”，否则 0
-// 在文件顶层保留：emit 已含 bottomSafeChange
-// 在本文件任意位置定义（函数体完整替换）
+function getScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let el = node
+  while (el) {
+    const s = getComputedStyle(el)
+    const canScroll
+      = /(auto|scroll|overlay)/.test(s.overflowY)
+      || /(auto|scroll|overlay)/.test(s.overflow)
+    if (canScroll && el.scrollHeight > el.clientHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
@@ -172,8 +183,8 @@ function recomputeBottomSafePadding() {
 
   // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
-  // 光标底部在 **可视视口** 内的 y 坐标
-  const caretBottomInViewport = (rect.top + (caretYInContent - el.scrollTop)) + lineHeight * 0.8
+  const caretBottomInViewport
+  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
 
   // 4) 需要露出的 UI 高度：保存 + 工具栏 + 安全区 + 冗余
   const SAVE_AND_TOOLBAR = 56 + 44 // 按你的实际高度微调
@@ -207,7 +218,16 @@ function recomputeBottomSafePadding() {
       // 仅推必要差值的 70%（避免过冲），并限制最大 160px
       const delta = Math.min(Math.ceil(need * 0.7), 160)
       // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
-      window.scrollBy(0, delta)
+      // 优先滚动最近的滚动容器；没有的话再滚动页面
+      const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+      if ('scrollBy' in scrollEl) {
+        // @ts-expect-error: HTMLElement 有 scrollBy
+        scrollEl.scrollBy(0, delta)
+      }
+      else {
+        // 极端兜底
+        (scrollEl as HTMLElement).scrollTop += delta
+      }
       _hasPushedPage = true
     }
   }
