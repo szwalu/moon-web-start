@@ -35,9 +35,13 @@ const isKeyboardAwareEnabled
 
 // 只在“第一次被遮挡”时轻推一次，避免抖动
 let _hasPushedPage = false
+// 记录上一次的 visualViewport.height，用于判断“键盘出现/消失”
+let _lastVvHeight = 0
 
-// 统一发事件，避免拼写误差
 const emitBottomSafeChange = (px: number) => emit('bottomSafeChange', px)
+
+// iOS 输入法“附加工具条”（预测条/快捷条）大约 36~48px，取 44 做保守值
+const ACCESSORY_BAR = 44
 
 // 找到最近的可滚动祖先（滚对真正的滚动容器）
 function getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -220,10 +224,9 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-  // 先确保 textarea 内部可见
+  _hasPushedPage = false // 焦点回到编辑器，允许新的“首次轻推”
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    // 再根据可视视口重算托底（iOS）
     requestAnimationFrame(recomputeBottomSafePadding)
   })
 }
@@ -371,8 +374,11 @@ function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  // 输入时也重算一次托底
-  requestAnimationFrame(recomputeBottomSafePadding)
+  // 先确保 textarea 内部把光标滚进来，再托底
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    requestAnimationFrame(recomputeBottomSafePadding)
+  })
 }
 
 // ============== 文本与工具栏 ==============
@@ -686,9 +692,44 @@ onMounted(() => {
   // —— 键盘相关：可视视口变化时重算 —— //
   if (typeof window !== 'undefined' && window.visualViewport) {
     const vv = window.visualViewport
+    _lastVvHeight = vv.height // 记录初值
+
     const onVvChange = () => {
+      const cur = vv.height
+      const prev = _lastVvHeight
+      _lastVvHeight = cur
+
+      // 设置一个微小的抖动阈值，避免误判
+      const SHRINK = cur < prev - 2 // 视口高度变小：键盘出现/升高
+      const GROW = cur > prev + 2 // 视口高度变大：键盘消失/降低
+
+      if (GROW) {
+      // 键盘收起：立刻清零垫片，并允许下次再“轻推”一次
+        emitBottomSafeChange(0)
+        _hasPushedPage = false
+        return
+      }
+
+      if (SHRINK) {
+      // 键盘刚出现：允许新的“第一次轻推”
+        _hasPushedPage = false
+        // 等动画结束一点点再测量，防止早测导致误差
+        requestAnimationFrame(() => {
+          ensureCaretVisibleInTextarea()
+          // 双 rAF + 微延时，覆盖 iOS 键盘弹出动画的多个阶段
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              recomputeBottomSafePadding()
+            }, 120)
+          })
+        })
+        return
+      }
+
+      // 其他微小波动：保持你原来的行为
       requestAnimationFrame(recomputeBottomSafePadding)
     }
+
     vv.addEventListener('resize', onVvChange)
     vv.addEventListener('scroll', onVvChange)
     ;(rootRef as any)._vvOnChange = onVvChange
@@ -876,7 +917,7 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
+  const SAFE = SAVE_AND_TOOLBAR + ACCESSORY_BAR + safeInset + EXTRA
 
   // 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
