@@ -141,8 +141,6 @@ function recomputeBottomSafePadding() {
   const el = textarea.value
   if (!el)
     emit('bottomSafeChange', 0)
-  _hasPushedPage = false
-  return
 
   const vv = window.visualViewport
   // 1) 桌面或未弹键盘：不托
@@ -631,17 +629,6 @@ function handleEnterKey(event: KeyboardEvent) {
   }
 }
 
-function afterEnterKey() {
-  // iOS 上：回车后键盘动画/visualViewport 变更会滞后一帧
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    // 再延后一帧，等键盘高度完全稳定再算托起量
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  })
-}
-
 // —— 选择标签：使用 lastSelectionStart，稳定替换“#片段”
 function selectTag(tag: string) {
   const el = textarea.value
@@ -917,7 +904,6 @@ defineExpose({ reset: triggerResize })
         @keyup="captureCaret"
         @mouseup="captureCaret"
         @keydown.enter="handleEnterKey"
-        @keyup.enter="afterEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
         @input="handleInput"
