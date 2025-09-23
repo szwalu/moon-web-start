@@ -1092,16 +1092,10 @@ defineExpose({ reset: triggerResize })
   overflow-anchor: none;
 }
 
-:root { --editor-max: 56dvh; }  /* 建议先从 56dvh 试起，体感通常最佳 */
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: var(--editor-max);
-  scroll-margin-bottom: 140px;
-}
-@supports not (height: 1dvh) {
-  :root { --editor-max: 56vh; }
-}
+  max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 0px 16px;
   border: none;
@@ -1266,7 +1260,7 @@ defineExpose({ reset: triggerResize })
   cursor: pointer;
 }
 .format-btn:hover { background: rgba(0,0,0,0.06); }
-.dark .format-btn:hover { background: rgba(255,255,255,0.08); }
+.dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
 /* 小三角：指向 Aa 按钮（大幅缩小） */
 .format-caret {
