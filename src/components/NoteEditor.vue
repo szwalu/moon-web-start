@@ -1092,10 +1092,16 @@ defineExpose({ reset: triggerResize })
   overflow-anchor: none;
 }
 
+:root { --editor-max: 56dvh; }  /* 建议先从 56dvh 试起，体感通常最佳 */
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  max-height: var(--editor-max);
+  scroll-margin-bottom: 140px;
+}
+@supports not (height: 1dvh) {
+  :root { --editor-max: 56vh; }
+}
   overflow-y: auto;
   padding: 12px 8px 0px 16px;
   border: none;
