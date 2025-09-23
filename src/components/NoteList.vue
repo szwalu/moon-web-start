@@ -16,6 +16,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 5000 },
   searchQuery: { type: String, default: '' },
+  bottomInset: { type: Number, default: 10 },
 })
 
 const emit = defineEmits([
@@ -27,6 +28,7 @@ const emit = defineEmits([
   'taskToggle',
   'toggleSelect',
   'dateUpdated',
+  'scrolled',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -397,6 +399,7 @@ const handleScroll = throttle(() => {
 
   updateCollapsePos()
   syncStickyGutters() // 同步左右留白，避免覆盖滚动条
+  emit('scrolled', el.scrollTop)
 }, 16)
 
 function rebindScrollListener() {
@@ -780,6 +783,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
         <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
           {{ t('notes.loading') }}
         </div>
+        <div class="list-bottom-spacer" :style="{ height: `${props.bottomInset}px` }" />
       </template>
     </DynamicScroller>
 
@@ -908,4 +912,5 @@ defineExpose({ scrollToTop, focusAndEditNote })
   border: 1px solid #374151;
   color: #e5e7eb;
 }
+.list-bottom-spacer { width: 100%; flex: 0 0 auto; }
 </style>

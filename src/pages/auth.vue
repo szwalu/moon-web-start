@@ -80,6 +80,7 @@ const loading = ref(false)
 const lastSavedId = ref<string | null>(null)
 const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
+const headerCollapsed = ref(false)
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
@@ -617,6 +618,11 @@ function handleExportTrigger() {
     // 否则，执行包含所有笔记的批量导出
     handleBatchExport()
   }
+}
+
+function onListScroll(top: number) {
+  // 下滑一点就折叠；你也可以改成 0 或 16，看手感
+  headerCollapsed.value = top > 8
 }
 
 async function handleBatchExport() {
@@ -1400,7 +1406,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         </div>
       </Transition>
 
-      <AnniversaryBanner v-show="showAnniversaryBanner" ref="anniversaryBannerRef" @toggle-view="handleAnniversaryToggle" />
+      <AnniversaryBanner
+        v-show="showAnniversaryBanner && !headerCollapsed"
+        ref="anniversaryBannerRef"
+        @toggle-view="handleAnniversaryToggle"
+      />
 
       <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
@@ -1434,7 +1444,12 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
-      <div v-show="!isSelectionModeActive" ref="newNoteEditorContainerRef" class="new-note-editor-container">
+      <div
+        v-show="!isSelectionModeActive"
+        ref="newNoteEditorContainerRef"
+        class="new-note-editor-container"
+        :class="{ collapsed: headerCollapsed }"
+      >
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
@@ -1468,6 +1483,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
+          @scrolled="onListScroll"
         />
       </div>
 
@@ -1816,6 +1832,18 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 .auth-container.is-typing .new-note-editor-container {
   padding-top: 0.25rem; /* 视需要再压一点顶部间距 */
+}
+
+/* 折叠头部输入框：不改布局流、不影响虚拟列表 */
+.new-note-editor-container {
+  transition: height .18s ease, padding .18s ease, margin .18s ease;
+}
+.new-note-editor-container.collapsed {
+  height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  overflow: hidden;
 }
 </style>
 

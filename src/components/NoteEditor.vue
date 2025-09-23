@@ -3,6 +3,8 @@ import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch
 import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
+
+// —— 天气映射（用于城市名映射与图标）——
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
 // ============== Props & Emits ==============
@@ -15,8 +17,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
-
-// —— 常用标签记忆（与 useTagMenu 保持同一存储键）——
+// —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
 function isPinned(tag: string) {
@@ -50,6 +51,7 @@ const charCount = computed(() => contentModel.value.length)
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
 const dialog = useDialog()
 const overLimitWarned = ref(false)
+
 watch([charCount, () => props.maxNoteLength], ([len, max]) => {
   if (len > max && !overLimitWarned.value) {
     overLimitWarned.value = true
@@ -57,6 +59,7 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
       title: '字数超出限制',
       content: `单条笔记不能超过 ${max} 字，请删减后再保存。`,
       positiveText: '确定',
+      onAfterLeave: () => {},
     })
   }
   else if (len <= max && overLimitWarned.value) {
@@ -64,7 +67,7 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
   }
 })
 
-// ============== 输入与联想标签 ==============
+// ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
@@ -72,7 +75,7 @@ const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
-// —— 样式弹层（B / 1. / H / I / • / 🖊️）
+// —— 格式弹层（B / 1. / H / I / • / 🖊️）
 const showFormatPalette = ref(false)
 const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 const formatBtnRef = ref<HTMLElement | null>(null)
@@ -87,48 +90,7 @@ function captureCaret() {
     lastSelectionStart.value = el.selectionStart
 }
 
-// ============== 让工具栏贴“键盘上沿”的极简逻辑 ==============
-const isImeOpen = ref(false)
-
-function applyKbOffset() {
-  const vv = window.visualViewport
-  if (!vv) {
-    document.documentElement.style.removeProperty('--kb-offset')
-    isImeOpen.value = false
-    return
-  }
-  const eaten = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-  const THRESHOLD = 24
-  const open = eaten > THRESHOLD
-  isImeOpen.value = open
-  document.documentElement.style.setProperty('--kb-offset', `${open ? eaten : 0}px`)
-}
-
-let _vvHandler: any = null
-onMounted(() => {
-  applyKbOffset()
-  const vv = window.visualViewport
-  if (vv) {
-    _vvHandler = () => {
-      applyKbOffset()
-    }
-    vv.addEventListener('resize', _vvHandler)
-    vv.addEventListener('scroll', _vvHandler)
-  }
-  window.addEventListener('orientationchange', applyKbOffset)
-  window.addEventListener('resize', applyKbOffset)
-})
-onUnmounted(() => {
-  const vv = window.visualViewport
-  if (vv && _vvHandler) {
-    vv.removeEventListener('resize', _vvHandler)
-    vv.removeEventListener('scroll', _vvHandler)
-  }
-  window.removeEventListener('orientationchange', applyKbOffset)
-  window.removeEventListener('resize', applyKbOffset)
-})
-
-// ============== 滚动校准（保持光标可见，避免跳动） ==============
+// ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
@@ -159,11 +121,10 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// ========= 新建时写入天气：工具函数 =========
+// ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
     return '未知地点'
-
   const lower = enCity.trim().toLowerCase()
   for (const [k, v] of Object.entries(cityMap)) {
     const kk = k.toLowerCase()
@@ -178,27 +139,24 @@ function getWeatherIcon(code: number) {
 }
 async function fetchWeatherLine(): Promise<string | null> {
   try {
+    // 定位：优先 ipapi.co，失败回退 ip-api.com
     let loc: { city: string; lat: number; lon: number }
     try {
       const r = await fetch('https://ipapi.co/json/')
       if (!r.ok)
         throw new Error(String(r.status))
-
       const d = await r.json()
       if (d?.error)
         throw new Error(d?.reason || 'ipapi error')
-
       loc = { city: d.city, lat: d.latitude, lon: d.longitude }
     }
     catch {
       const r2 = await fetch('https://ip-api.com/json/')
       if (!r2.ok)
         throw new Error(String(r2.status))
-
       const d2 = await r2.json()
       if (d2?.status === 'fail')
         throw new Error(d2?.message || 'ip-api error')
-
       loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
     }
 
@@ -207,16 +165,17 @@ async function fetchWeatherLine(): Promise<string | null> {
 
     const city = getMappedCityName(loc.city)
 
+    // 天气
     const w = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
     if (!w.ok)
       throw new Error(String(w.status))
-
     const d = await w.json()
     const tempC = d?.current?.temperature_2m
     const icon = getWeatherIcon(d?.current?.weathercode)
 
+    // 只保留：城市 温度°C 图标（无文字）
     return `${city} ${tempC}°C ${icon}`
   }
   catch {
@@ -224,7 +183,7 @@ async function fetchWeatherLine(): Promise<string | null> {
   }
 }
 
-// ========= 保存 =========
+// ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
 async function handleSave() {
   const content = contentModel.value || ''
   let weather: string | null | undefined
@@ -232,6 +191,7 @@ async function handleSave() {
   if (!props.isEditing)
     weather = await fetchWeatherLine()
 
+  // 父组件可按 (content, weather) 接收；旧笔记编辑不传天气
   emit('save', content, weather)
 }
 
@@ -241,6 +201,7 @@ function handleFocus() {
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
+
 function onBlur() {
   emit('blur')
   if (suppressNextBlur.value) {
@@ -254,16 +215,19 @@ function onBlur() {
     showTagSuggestions.value = false
   }, 200)
 }
+
 function handleClick() {
   captureCaret()
   requestAnimationFrame(ensureCaretVisibleInTextarea)
 }
 
-// —— 计算并展示“# 标签联想面板”
+// —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
   const lastHashIndex = textBeforeCursor.lastIndexOf('#')
+
+  // 不在“#片段”内就隐藏
   if (lastHashIndex === -1 || /\s/.test(textBeforeCursor.substring(lastHashIndex + 1))) {
     showTagSuggestions.value = false
     return
@@ -277,7 +241,6 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
       const bp = isPinned(b) ? 0 : 1
       if (ap !== bp)
         return ap - bp
-
       return a.slice(1).toLowerCase().localeCompare(b.slice(1).toLowerCase())
     })
 
@@ -287,12 +250,13 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     return
   }
 
-  // 定位在“光标下一行”
-  const wrapper = el.parentElement as HTMLElement
+  // === 计算光标像素位置（相对 .editor-wrapper） ===
+  const wrapper = el.parentElement as HTMLElement // .editor-wrapper（position: relative）
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const GAP = 6
+  const GAP = 6 // 面板与光标之间的额外间距
 
+  // 用镜像元素拿到光标（选区末端）位置
   const mirror = document.createElement('div')
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
@@ -306,10 +270,10 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   const selEnd = el.selectionEnd ?? el.value.length
   const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ')
-    .replace(/ /g, '\u00A0')
+    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
+    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
   const probe = document.createElement('span')
-  probe.textContent = '\u200B'
+  probe.textContent = '\u200B' // 零宽探针当作光标点
   mirror.textContent = before
   mirror.appendChild(probe)
 
@@ -321,20 +285,26 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
   mirror.remove()
 
+  // textarea 可视框（相对 wrapper）
   const textAreaBox = {
     top: elRect.top - wrapperRect.top,
     left: elRect.left - wrapperRect.left,
+    right: elRect.right - wrapperRect.left,
     bottom: elRect.bottom - wrapperRect.top,
     width: el.clientWidth,
     height: el.clientHeight,
   }
 
+  // === 核心：面板放在“光标下一行” ===
+  // 在手机端加一行高，避免遮住当前行光标
   const top = caretY + lineHeight + GAP
   let left = caretX
 
+  // 先设置初值并显示
   suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   showTagSuggestions.value = true
 
+  // 下一帧拿到面板尺寸后再做边界与滚动处理
   nextTick(() => {
     const panel = wrapper.querySelector('.tag-suggestions') as HTMLElement | null
     if (!panel)
@@ -343,18 +313,19 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     const panelW = panel.offsetWidth
     const panelH = panel.offsetHeight
 
+    // 右侧溢出 -> 向左收口（不越过 textarea 左边）
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
+    // 底部不够显示：优先滚动 textarea 给空间（避免翻到上方再挡住光标）
     const overflow = (top + panelH) - textAreaBox.bottom
     if (overflow > 0) {
-      const need = overflow + 8
+      const need = overflow + 8 // 额外 buffer
       const newScrollTop = Math.min(el.scrollTop + need, el.scrollHeight - el.clientHeight)
       if (newScrollTop !== el.scrollTop) {
         el.scrollTop = newScrollTop
-        requestAnimationFrame(() => {
-          computeAndShowTagSuggestions(el)
-        })
+        // 滚动后重新定位一次，确保仍处于“下一行”
+        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
         return
       }
     }
@@ -378,12 +349,12 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
-
       captureCaret()
       ensureCaretVisibleInTextarea()
     }
   })
 }
+
 function insertText(prefix: string, suffix = '') {
   const el = textarea.value
   if (!el)
@@ -395,24 +366,23 @@ function insertText(prefix: string, suffix = '') {
   const newTextFragment = `${prefix}${selectedText}${suffix}`
   const finalFullText = el.value.substring(0, start) + newTextFragment + el.value.substring(end)
   const newCursorPos = selectedText ? start + newTextFragment.length : start + prefix.length
-
   if (blurTimeoutId) {
     clearTimeout(blurTimeoutId)
     blurTimeoutId = null
   }
-
   updateTextarea(finalFullText, newCursorPos)
 }
+
 function runToolbarAction(fn: () => void) {
   fn()
   nextTick(() => {
     const el = textarea.value
     if (el)
       el.focus()
-
     captureCaret()
   })
 }
+
 function addHeading() {
   insertText('## ', '')
 }
@@ -426,7 +396,6 @@ function addBulletList() {
   const el = textarea.value
   if (!el)
     return
-
   const start = el.selectionStart
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const textToInsert = '- '
@@ -435,8 +404,10 @@ function addBulletList() {
   updateTextarea(finalFullText, newCursorPos)
 }
 function addMarkHighlight() {
+  // 用 == 包裹选中内容（需要渲染端启用 markdown-it-mark 才会显示黄色背景）
   insertText('==', '==')
 }
+
 function addTodo() {
   const el = textarea.value
   if (!el)
@@ -449,6 +420,7 @@ function addTodo() {
   const newCursorPos = start + textToInsert.length
   updateTextarea(finalFullText, newCursorPos)
 }
+
 function addOrderedList() {
   const el = textarea.value
   if (!el)
@@ -475,8 +447,11 @@ function handleEnterKey(event: KeyboardEvent) {
   const currentLineStart = el.value.lastIndexOf('\n', start - 1) + 1
   const currentLine = el.value.substring(currentLineStart, start)
 
+  // 1) 有序列表续行
   const orderedRe = /^(\d+)\.\s+/
   const orderedMatch = currentLine.match(orderedRe)
+
+  // 2) 无序/待办续行
   const todoRe = /^-\s\[\s?\]\s+/
   const bulletRe = /^(-|\*|\+)\s+/
   const todoMatch = currentLine.match(todoRe)
@@ -487,6 +462,7 @@ function handleEnterKey(event: KeyboardEvent) {
 
   event.preventDefault()
 
+  // 如果只有前缀本身 => 结束该列表（删除本行）
   const onlyPrefix
     = (orderedMatch && currentLine.trim() === orderedMatch[0].trim())
     || (todoMatch && currentLine.trim() === todoMatch[0].trim())
@@ -499,6 +475,7 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
+  // 正常续行逻辑
   if (orderedMatch) {
     const currentNumber = Number.parseInt(orderedMatch[1], 10)
     const nextPrefix = `\n${currentNumber + 1}. `
@@ -508,6 +485,7 @@ function handleEnterKey(event: KeyboardEvent) {
     return
   }
 
+  // 待办优先于普通无序
   if (todoMatch) {
     const nextPrefix = `\n- [ ] `
     const before2 = el.value.substring(0, start)
@@ -572,12 +550,10 @@ function selectTag(tag: string) {
   })
 }
 
-// —— 点击工具栏“#”：注入 # 并弹出联想面板
+// —— 点击工具栏的“#”：注入一个 # 并弹出同款联想面板
 function openTagMenu() {
   suppressNextBlur.value = true
-  runToolbarAction(() => {
-    insertText('#', '')
-  })
+  runToolbarAction(() => insertText('#', ''))
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const el = textarea.value
@@ -590,14 +566,13 @@ function openTagMenu() {
   })
 }
 
-// —— 样式弹层定位（固定在 Aa 上方）
+// —— 样式弹层定位（固定在 Aa 按钮上方）
 function placeFormatPalette() {
   const btn = formatBtnRef.value
   const root = rootRef.value
   const panel = formatPaletteRef.value
   if (!btn || !root || !panel)
     return
-
   const btnRect = btn.getBoundingClientRect()
   const rootRect = root.getBoundingClientRect()
   const gap = 8
@@ -606,6 +581,7 @@ function placeFormatPalette() {
   const left = (btnRect.left - rootRect.left) + btnRect.width / 2
   formatPalettePos.value = { top: `${Math.max(top, 0)}px`, left: `${left}px` }
 }
+
 let paletteFollowRaf: number | null = null
 function startPaletteFollowLoop() {
   stopPaletteFollowLoop()
@@ -623,6 +599,7 @@ function stopPaletteFollowLoop() {
     paletteFollowRaf = null
   }
 }
+
 function openFormatPalette() {
   showFormatPalette.value = true
   nextTick(() => {
@@ -637,13 +614,16 @@ function closeFormatPalette() {
 function toggleFormatPalette() {
   if (showFormatPalette.value)
     closeFormatPalette()
-  else
-    openFormatPalette()
+  else openFormatPalette()
 }
+
+// ✅ 统一处理样式按钮点击（修复 eslint: max-statements-per-line）
 function handleFormat(fn: () => void) {
   runToolbarAction(fn)
   closeFormatPalette()
 }
+
+// —— 监听滚动/尺寸变化，保持面板跟随 Aa
 function onWindowScrollOrResize() {
   if (showFormatPalette.value)
     placeFormatPalette()
@@ -657,20 +637,17 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
-// —— 点击外部 & ESC 关闭格式面板
+// —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
 function onGlobalPointerDown(e: Event) {
   if (!showFormatPalette.value)
     return
-
   const btn = formatBtnRef.value
   const panel = formatPaletteRef.value
   if (!btn || !panel)
     return
-
   const target = e.target as Node
   if (btn.contains(target) || panel.contains(target))
     return
-
   closeFormatPalette()
 }
 function onGlobalKeydown(e: KeyboardEvent) {
@@ -682,12 +659,11 @@ onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
 })
 onUnmounted(() => {
-  // @ts-expect-error TS 对第三参类型收窄
-  window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true })
+  window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
 })
 
-// —— 插入图片链接（记忆域名前缀）
+// —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
 const LAST_IMAGE_URL_PREFIX_KEY = 'note_image_url_prefix_v1'
 function getLastPrefix() {
   try {
@@ -706,17 +682,19 @@ function savePrefix(urlText: string) {
     const u = new URL(urlText)
     let prefix = ''
     if (looksLikeImage(urlText)) {
+      // 直链图片：记“目录”（去掉文件名）
       const dir = u.pathname.replace(/[^/]+$/u, '')
       prefix = `${u.origin}${dir}`
     }
     else {
+      // 非直链：记“完整路径”，去掉查询/哈希，并确保以 / 结尾
       const path = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`
       prefix = `${u.origin}${path}`
     }
     localStorage.setItem(LAST_IMAGE_URL_PREFIX_KEY, prefix)
   }
   catch {
-    // ignore
+    // 不是合法 URL 就不记忆
   }
 }
 function insertImageLink() {
@@ -730,14 +708,14 @@ function insertImageLink() {
       h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
         h(NInput, {
           'value': valRef.value,
-          'placeholder': 'https://example.com/image.jpg 或分享链接',
+          'placeholder': 'https://example.com/image.jpg 或微云分享链接',
           'onUpdate:value': (v: string) => {
             valRef.value = v
             errorRef.value = null
           },
           'autofocus': true,
           'clearable': true,
-          'inputProps': { style: 'font-size:16px;' },
+          'inputProps': { style: 'font-size:16px;' }, // ✅ iOS 防止放大（末尾不要逗号）
         }),
         errorRef.value
           ? h('div', { style: 'color:#dc2626;font-size:12px;' }, errorRef.value)
@@ -753,7 +731,9 @@ function insertImageLink() {
         errorRef.value = '必须以 http:// 或 https:// 开头'
         return false
       }
+      // 记忆前缀（增强规则）
       savePrefix(raw)
+      // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
       const text = looksLikeImage(raw) ? '图片（直链）' : '（点击查看图片）'
       insertText(`[${text}](${raw})`)
       return true
@@ -765,7 +745,10 @@ defineExpose({ reset: triggerResize })
 </script>
 
 <template>
-  <div ref="rootRef" class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']">
+  <div
+    ref="rootRef"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+  >
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
@@ -790,7 +773,11 @@ defineExpose({ reset: triggerResize })
         :style="suggestionsStyle"
       >
         <ul>
-          <li v-for="tag in tagSuggestions" :key="tag" @mousedown.prevent="selectTag(tag)">
+          <li
+            v-for="tag in tagSuggestions"
+            :key="tag"
+            @mousedown.prevent="selectTag(tag)"
+          >
             <span class="tag-text">{{ tag }}</span>
             <span v-if="isPinned(tag)" class="tag-star">★</span>
           </li>
@@ -798,8 +785,7 @@ defineExpose({ reset: triggerResize })
       </div>
     </div>
 
-    <!-- 底部工具栏：键盘开= fixed；键盘关= sticky -->
-    <div class="editor-footer" :class="{ fixed: isImeOpen }">
+    <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
           <!-- # 标签 -->
@@ -823,13 +809,23 @@ defineExpose({ reset: triggerResize })
             @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
           >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
-              <path d="M7 12l4 4 6-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <svg
+              class="icon-20" viewBox="0 0 24 24" fill="none"
+              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            >
+              <rect
+                x="3" y="3" width="18" height="18" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <path
+                d="M7 12l4 4 6-8"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
             </svg>
           </button>
 
-          <!-- 样式(Aa) -->
+          <!-- 样式(Aa)汇总按钮 -->
           <button
             ref="formatBtnRef"
             type="button"
@@ -842,7 +838,7 @@ defineExpose({ reset: triggerResize })
             Aa
           </button>
 
-          <!-- 插入图片链接 -->
+          <!-- 插入图片链接（Naive UI 对话框） -->
           <button
             type="button"
             class="toolbar-btn"
@@ -851,7 +847,8 @@ defineExpose({ reset: triggerResize })
             @touchstart.prevent
             @pointerdown.prevent="insertImageLink"
           >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <!-- Image icon -->
+            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
               <circle cx="9" cy="9" r="1.6" fill="currentColor" />
               <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
@@ -861,16 +858,26 @@ defineExpose({ reset: triggerResize })
 
           <span class="toolbar-sep" aria-hidden="true" />
         </div>
-        <span class="char-counter">{{ charCount }}</span>
+        <span class="char-counter">
+          {{ charCount }}
+        </span>
       </div>
-
       <div class="actions">
-        <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">取消</button>
-        <button type="button" class="btn-primary" :disabled="isLoading || !contentModel" @click="handleSave">保存</button>
+        <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">
+          取消
+        </button>
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="isLoading || !contentModel"
+          @click="handleSave"
+        >
+          保存
+        </button>
       </div>
     </div>
 
-    <!-- 样式弹层（更小、更贴 Aa） -->
+    <!-- 样式弹层（更小、更贴合 Aa） -->
     <div
       v-if="showFormatPalette"
       ref="formatPaletteRef"
@@ -880,11 +887,12 @@ defineExpose({ reset: triggerResize })
     >
       <div class="format-row">
         <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
+        <!-- 有序列表图标 -->
         <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <text x="4.4" y="8" font-size="7" fill="currentColor">1</text>
-            <text x="4.0" y="13" font-size="7" fill="currentColor">2</text>
-            <text x="4.0" y="18" font-size="7" fill="currentColor">3</text>
+            <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
+            <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
+            <text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">3</text>
             <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
             <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
@@ -892,6 +900,7 @@ defineExpose({ reset: triggerResize })
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
         <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
+        <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="6" cy="7" r="2" fill="currentColor" />
@@ -903,7 +912,7 @@ defineExpose({ reset: triggerResize })
           </svg>
         </button>
         <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
             <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
           </svg>
@@ -937,21 +946,16 @@ defineExpose({ reset: triggerResize })
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
 }
 
-/* 让 wrapper 成为滚动容器，textarea 不单独滚动 */
 .editor-wrapper {
   position: relative;
-  overflow: auto;
-  /* 预留底部工具栏空间（键盘收起时），避免最后一行被遮挡 */
-  padding-bottom: calc(var(--editor-footer-h, 44px) + max(8px, env(safe-area-inset-bottom)));
+  overflow-anchor: none;
 }
 
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  /* 重要：交给 .editor-wrapper 滚动，避免 caret 跳动 */
-  max-height: none;
-  overflow-y: visible;
-
+  max-height: 48vh;
+  overflow-y: auto;
   padding: 12px 8px 0px 16px;
   border: none;
   background-color: transparent;
@@ -1012,33 +1016,13 @@ defineExpose({ reset: triggerResize })
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
 
-/* 工具栏（键盘收起：sticky；键盘开启：fixed） */
 .editor-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  height: var(--editor-footer-h, 44px);
-  padding: 4px 12px max(4px, env(safe-area-inset-bottom)) 12px;
-  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.02));
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.editor-footer.fixed {
-  position: fixed;
-  /* 居中并限制宽度，与你页面的 480px 卡片一致 */
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(480px, 100vw - 32px);
-  /* 关键：把底边贴到键盘上沿（由 JS 写入 --kb-offset） */
-  bottom: calc(var(--kb-offset, 0px) + env(safe-area-inset-bottom));
-  z-index: 9999;
-}
-
-/* 深色模式的轻微背景区分 */
-.dark .editor-footer,
-.dark .editor-footer.fixed {
-  background: linear-gradient(to bottom, rgba(0,0,0,0.0), rgba(0,0,0,0.12));
+  padding: 4px 12px;
+  border-top: none;
+  background-color: transparent;
 }
 
 .footer-left {
@@ -1047,7 +1031,7 @@ defineExpose({ reset: triggerResize })
   gap: 8px;
 }
 
-/* 工具栏按钮间距（保持你之前 8px 的手感） */
+/* 工具栏按钮间距（维持你之前已加大的 8px） */
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -1084,6 +1068,11 @@ defineExpose({ reset: triggerResize })
   width: 26px;
 }
 
+.icon-image {
+  font-size: 16px;
+  line-height: 1;
+}
+
 .toolbar-sep {
   display: inline-block;
   width: 1px;
@@ -1093,7 +1082,7 @@ defineExpose({ reset: triggerResize })
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
-/* ======= 样式弹层（紧贴 Aa 上方） ======= */
+/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
 .format-palette {
   position: absolute;
   z-index: 1100;
@@ -1102,33 +1091,47 @@ defineExpose({ reset: triggerResize })
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  padding: 2px 4px;
+  padding: 2px 4px;          /* 缩小内边距 */
 }
 .dark .format-palette {
   background: #2c2c2e;
   border-color: #3f3f46;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
-.format-row { display: flex; align-items: center; gap: 6px; }
+
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;                  /* 缩小内部间距 */
+}
 .format-btn {
-  width: 24px; height: 24px; border-radius: 6px;
-  border: 1px solid transparent; background: transparent; color: inherit;
-  font-weight: 700; font-size: 14px;
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  width: 24px;               /* 缩小按钮 */
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 .format-btn:hover { background: rgba(0,0,0,0.06); }
-.dark .format-btn:hover { background: rgba(255,255,255,0.08); }
-.format-caret {
-  position: absolute; left: 50%; transform: translate(-50%, 3px) rotate(45deg);
-  bottom: -3px; width: 6px; height: 6px; background: inherit;
-  border-left: 1px solid inherit; border-bottom: 1px solid inherit;
-}
+.dark .format-btn:hover { background: rgba(255,255,255,255,0.08); }
 
-/* 让 Aa 面板里的图标“视觉放大”，但按钮仍是 24×24 */
-.format-btn { overflow: visible; }
-.format-btn .icon-bleed {
-  width: 40px !important; height: 40px !important;
-  display: block; margin: -5px !important; pointer-events: none;
+/* 小三角：指向 Aa 按钮（大幅缩小） */
+.format-caret {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 3px) rotate(45deg);
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  background: inherit;
+  border-left: 1px solid inherit;
+  border-bottom: 1px solid inherit;
 }
 
 /* 标签联想 */
@@ -1148,10 +1151,6 @@ defineExpose({ reset: triggerResize })
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
-
-.tag-suggestions li { display: flex; align-items: center; justify-content: space-between; }
-.tag-suggestions .tag-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag-suggestions .tag-star { opacity: 0.7; margin-left: 8px; font-size: 12px; color: #999; }
 
 /* 编辑态占位高度策略（保持原有） */
 .note-editor-reborn.editing-viewport .editor-wrapper {
@@ -1187,6 +1186,43 @@ defineExpose({ reset: triggerResize })
   overflow-y: auto;
 }
 
-/* 小图标尺寸 */
-.icon-20 { width: 20px; height: 20px; display: block; }
+/* tag 面板样式增强 */
+.tag-suggestions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.tag-suggestions .tag-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-suggestions .tag-star {
+  opacity: 0.7;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+.icon-20 {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* 允许图标溢出按钮盒，不改变按钮盒尺寸 */
+.format-btn { overflow: visible; }
+
+/* 让 Aa 面板里的图标“视觉放大”，但按钮仍旧是 24×24 */
+.format-btn .icon-bleed {
+  width: 40px !important;    /* 图标比按钮大一些 */
+  height: 40px !important;
+  display: block;
+  margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
+  pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
 </style>
