@@ -16,7 +16,6 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
   maxNoteLength: { type: Number, default: 5000 },
   searchQuery: { type: String, default: '' },
-  bottomInset: { type: Number, default: 180 },
 })
 
 const emit = defineEmits([
@@ -785,7 +784,6 @@ defineExpose({ scrollToTop, focusAndEditNote })
         <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
           {{ t('notes.loading') }}
         </div>
-        <div class="list-bottom-spacer" :style="{ height: `${props.bottomInset}px` }" />
       </template>
     </DynamicScroller>
 
