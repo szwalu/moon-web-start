@@ -125,6 +125,22 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
+// 统一的“多次重算”（rAF 双连 + 180ms/300ms 兜底）
+function scheduleRecompute() {
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
+  })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 180)
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 300)
+}
+
 function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
@@ -230,6 +246,13 @@ function recomputeBottomSafePadding() {
   }
 }
 
+function provisionalLift() {
+  // 先立刻把底部“垫”起来，避免首帧算成 0
+  const root = rootRef.value
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  const h = footerEl ? footerEl.offsetHeight : 100 // 拿不到就用兜底 100px
+  emit('bottomSafeChange', h)
+}
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
@@ -307,16 +330,9 @@ async function handleSave() {
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
+  provisionalLift()
   captureCaret()
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 180)
+  scheduleRecompute()
 }
 
 function onBlur() {
@@ -337,16 +353,9 @@ function onBlur() {
 }
 
 function handleClick() {
+  provisionalLift()
   captureCaret()
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 180)
+  scheduleRecompute()
 }
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
@@ -462,23 +471,12 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 }
 
 function handleInput(event: Event) {
+  provisionalLift() // 先把底部按钮露出来
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  // 等文本高度/滚动位更新后再计算（连续多次，覆盖键盘动画滞后）
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  })
-
-  // 兜底再来一次（键盘动画更慢时）
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 180)
+  scheduleRecompute() // rAF 双连 + 180ms/300ms 兜底，封装在工具函数里
 }
-
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
@@ -780,7 +778,7 @@ onUnmounted(() => {
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    const debounced = () => {
+    const debouncedRecompute = () => {
       if (_vvDebounceTimer)
         window.clearTimeout(_vvDebounceTimer)
 
@@ -788,8 +786,8 @@ onMounted(() => {
         recomputeBottomSafePadding()
       }, 120)
     }
-    vv.addEventListener('resize', debounced)
-    vv.addEventListener('scroll', debounced)
+    vv.addEventListener('resize', debouncedRecompute)
+    vv.addEventListener('scroll', debouncedRecompute)
   }
 })
 onUnmounted(() => {
