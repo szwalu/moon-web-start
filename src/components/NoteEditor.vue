@@ -1131,7 +1131,7 @@ defineExpose({ reset: triggerResize })
 .editor-textarea {
   width: 100%;
   min-height: 40px;
-  max-height: 48vh;
+  max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 0px 16px;
   border: none;
