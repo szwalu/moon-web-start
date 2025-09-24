@@ -168,6 +168,7 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
+  // Android：拖动选区时不参与计算，避免抖动
   if (isAndroid && isFreezingBottom.value)
     return
 
@@ -186,7 +187,6 @@ function recomputeBottomSafePadding() {
   }
 
   // 2) 判断键盘是否真的弹出
-  // 2) 判断键盘是否真的弹出
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
   if (!isAndroid && keyboardHeight < 60) {
@@ -195,20 +195,19 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 3) 计算“光标底部”在 **可视视口(visual viewport)** 内的坐标
+  // 3) 计算“光标底部”在 visual viewport 内的坐标
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // 光标在 textarea 内容内的 Y（相对内容顶部）
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
-      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
       + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
       + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
       + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + `border-style:solid;`
+      + 'border-style:solid;'
     document.body.appendChild(mirror)
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
@@ -218,21 +217,19 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
-  // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
   const caretBottomInViewport
-  = (rect.top - vv.offsetTop)
-  + (caretYInContent - el.scrollTop)
-  + lineHeight * (isAndroid ? 1.25 : 0.9)
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + lineHeight * (isAndroid ? 1.25 : 0.9) // iOS 略低、Android 略高
 
-  // Android 额外预留两行（首帧常“压两行”的保守余量）
+  // Android：首帧经常“压两行”，保守多留两行
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
-  // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
-  const footerH = getFooterHeight() // ← 确保你已实现该函数
-  // iOS 首次输入多给一点冗余，过了首帧就回到 12
+  // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
+  const footerH = getFooterHeight()
   const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
   const safeInset = (() => {
     try {
@@ -243,36 +240,36 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch { return 0 }
+    catch {
+      return 0
+    }
   })()
   const SAFE = footerH + safeInset + EXTRA
 
-  // 5) 阈值：可视视口底边向上 SAFE
+  // 5) 阈值与所需托起像素
   const threshold = vv.height - SAFE
-
-  // 安卓用 adjusted（多加两行余量），iPhone 保持原样
-  const rawNeed = isAndroid
+  const need = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  emit('bottomSafeChange', rawNeed)
-  // —— 只在“第一次需要时”轻推页面一点（iPhone 保持原策略；Android 更激进且用 window.scrollBy）—— //
+  emit('bottomSafeChange', need)
+
+  // —— 只在“第一次需要时”轻推页面一点 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
-    // iPhone：保持 0.7 / 160；Android：更猛 1.6 / 420（避免“始终压两行”）
+      // iPhone 保持原策略；Android 更激进并使用 window.scrollBy
       const ratio = isAndroid ? 1.6 : 0.7
       const cap = isAndroid ? 420 : 160
       const delta = Math.min(Math.ceil(need * ratio), cap)
 
       if (isAndroid) {
-      // 安卓 WebView/Chrome 用 window.scrollBy 更可靠
         window.scrollBy(0, delta)
       }
       else {
         const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
         if ('scrollBy' in scrollEl) {
-        // @ts-expect-error: HTMLElement 在运行时有 scrollBy；TS DOM 声明不包含
-          scrollEl.scrollBy(0, delta) // iPhone 保持原逻辑
+          // @ts-expect-error: HTMLElement 运行时有 scrollBy（DOM 声明缺失）
+          scrollEl.scrollBy(0, delta)
         }
         else {
           (scrollEl as HTMLElement).scrollTop += delta
@@ -280,9 +277,12 @@ function recomputeBottomSafePadding() {
       }
 
       _hasPushedPage = true
+
+      // iOS：首次输入一旦露出，关闭闩锁
       if (isIOS && iosFirstInputLatch.value)
         iosFirstInputLatch.value = false
-      // 安卓常见：vv.height/offsetTop 首帧会迟到 80~200ms，再补算一次
+
+      // Android：再补算一次（覆盖 vv 的迟到）
       if (isAndroid) {
         window.setTimeout(() => {
           _hasPushedPage = false
@@ -378,9 +378,8 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // iOS 首帧更容易被遮，临时多抬一点；Android 保持原策略
-  const tempLift = getFooterHeight() + (isIOS ? 24 : 0)
-  emit('bottomSafeChange', tempLift)
+  // 用真实 footer 高度“临时托起”，不等 vv
+  emit('bottomSafeChange', getFooterHeight())
 
   // 立即一轮计算
   requestAnimationFrame(() => {
@@ -388,16 +387,19 @@ function handleFocus() {
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 回报延迟（iOS 更慢一些）
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
-  }, isIOS ? 120 : 80)
+  }, t1)
 
+  const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
     recomputeBottomSafePadding()
-  }, isIOS ? 260 : 180)
+  }, t2)
 
-  // 启动短时“助推轮询”，覆盖 iOS vv 回报延迟
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -1024,10 +1026,13 @@ function startFocusBoost() {
 function handleBeforeInput() {
   _hasPushedPage = false
 
-  // iPhone 维持你现在的稳态；Android 首帧更激进一些
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120) // 安卓保底 180，iPhone 保底 120
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
+  if (isIOS && !iosFirstInputLatch.value)
+    iosFirstInputLatch.value = true
 
+  // 预抬升：iPhone 保底 120，Android 保底 180（更激进一点）
+  const base = getFooterHeight() + 24
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
