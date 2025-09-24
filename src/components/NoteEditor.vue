@@ -33,6 +33,13 @@ onMounted(() => {
   }
 })
 
+// 平台判定（尽量保守）
+const UA = navigator.userAgent.toLowerCase()
+const isIOS = /iphone|ipad|ipod/.test(UA)
+
+// iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
+const iosFirstInputLatch = ref(false)
+
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
@@ -214,7 +221,9 @@ function recomputeBottomSafePadding() {
   // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
   const caretBottomInViewport
-  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+  = (rect.top - vv.offsetTop)
+  + (caretYInContent - el.scrollTop)
+  + lineHeight * (isAndroid ? 1.25 : 0.9)
 
   // Android 额外预留两行（首帧常“压两行”的保守余量）
   const caretBottomAdjusted = isAndroid
@@ -223,8 +232,8 @@ function recomputeBottomSafePadding() {
 
   // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
   const footerH = getFooterHeight() // ← 确保你已实现该函数
-  // 用行高做 Android 冗余，等价于“多抬两行”
-  const EXTRA = isAndroid ? Math.ceil(2 * lineHeight) : 12
+  // iOS 首次输入多给一点冗余，过了首帧就回到 12
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -271,7 +280,8 @@ function recomputeBottomSafePadding() {
       }
 
       _hasPushedPage = true
-
+      if (isIOS && iosFirstInputLatch.value)
+        iosFirstInputLatch.value = false
       // 安卓常见：vv.height/offsetTop 首帧会迟到 80~200ms，再补算一次
       if (isAndroid) {
         window.setTimeout(() => {
@@ -368,14 +378,24 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 先用真实 footer 高度“临时托起”，不等 vv 更新
-  emit('bottomSafeChange', getFooterHeight())
+  // iOS 首帧更容易被遮，临时多抬一点；Android 保持原策略
+  const tempLift = getFooterHeight() + (isIOS ? 24 : 0)
+  emit('bottomSafeChange', tempLift)
 
   // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
+
+  // 覆盖 visualViewport 回报延迟（iOS 更慢一些）
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, isIOS ? 120 : 80)
+
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, isIOS ? 260 : 180)
 
   // 启动短时“助推轮询”，覆盖 iOS vv 回报延迟
   startFocusBoost()
