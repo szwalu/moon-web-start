@@ -225,31 +225,37 @@ function recomputeBottomSafePadding() {
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
   emit('bottomSafeChange', rawNeed)
-  // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
-  // 只在“第一次需要时”轻推页面一点（安卓更激进）
-  if (rawNeed > 0) {
+  // —— 只在“第一次需要时”轻推页面一点（iPhone 保持原策略；Android 更激进且用 window.scrollBy）—— //
+  if (need > 0) {
     if (!_hasPushedPage) {
-      const ratio = isAndroid ? 1.25 : 0.7
-      const cap = isAndroid ? 360 : 160
-      const delta = Math.min(Math.ceil(rawNeed * ratio), cap)
+    // iPhone：保持 0.7 / 160；Android：更猛 1.6 / 420（避免“始终压两行”）
+      const ratio = isAndroid ? 1.6 : 0.7
+      const cap = isAndroid ? 420 : 160
+      const delta = Math.min(Math.ceil(need * ratio), cap)
 
-      const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
-      if ('scrollBy' in scrollEl) {
-      // @ts-expect-error: HTMLElement 在运行时有 scrollBy，这里 DOM lib 未声明
-        scrollEl.scrollBy(0, delta)
+      if (isAndroid) {
+      // 安卓 WebView/Chrome 用 window.scrollBy 更可靠
+        window.scrollBy(0, delta)
       }
       else {
-        ;(scrollEl as HTMLElement).scrollTop += delta
+        const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+        if ('scrollBy' in scrollEl) {
+        // @ts-expect-error: HTMLElement 在运行时有 scrollBy；TS DOM 声明不包含
+          scrollEl.scrollBy(0, delta) // iPhone 保持原逻辑
+        }
+        else {
+          (scrollEl as HTMLElement).scrollTop += delta
+        }
       }
+
       _hasPushedPage = true
 
-      // —— 安卓再“补推”一次：首帧键盘高度回调常滞后 80~200ms —— //
+      // 安卓常见：vv.height/offsetTop 首帧会迟到 80~200ms，再补算一次
       if (isAndroid) {
         window.setTimeout(() => {
           _hasPushedPage = false
-          // 滞后一次再算（这次会带着新的 vv.height / offsetTop）
           recomputeBottomSafePadding()
-        }, 120)
+        }, 140)
       }
     }
   }
