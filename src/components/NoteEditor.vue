@@ -78,6 +78,17 @@ const contentModel = computed({
 
 // ============== Autosize ==============
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+
+onMounted(() => nextTick(() => triggerResize())) // 首次挂载就重算
+watch(() => props.modelValue, () => nextTick(() => triggerResize())) // 外部把旧内容塞进来时重算
+watch(() => props.isEditing, (v) => {
+  if (v)
+    nextTick(() => triggerResize())
+}) // 切到编辑态时重算
+// 切到“编辑旧笔记”时，让 autosize 立刻按现有内容重算一次高度
+watch(() => props.isEditing, () => {
+  nextTick(() => triggerResize())
+})
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
@@ -1102,6 +1113,7 @@ function handleBeforeInput(e: InputEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
+        :style="isEditing ? { maxHeight: 'none', overflow: 'hidden' } : null"
         @beforeinput="handleBeforeInput"
         @focus="handleFocus"
         @blur="onBlur"
@@ -1509,38 +1521,15 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* 编辑态占位高度策略（保持原有） */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto;
-}
-.note-editor-reborn.editing-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
-  display: flex;
-  flex-direction: column;
-}
-@supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
-  }
-}
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
+/* 编辑态：交给 autosize，别再限制高度 */
+.note-editor-reborn.editing-viewport { height: auto; min-height: 0; max-height: none; display: block; }
+.note-editor-reborn.editing-viewport .editor-wrapper { overflow: visible !important; min-height: 0; display: block; }
+
+/* 仅覆盖“上限与滚动”，不要写 height */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100% !important;
   max-height: none !important;
-  overflow-y: auto;
+  overflow: hidden;                 /* 关掉内滚动条 */
+  /* 不要有 height: ... 这里 */
 }
 
 /* tag 面板样式增强 */

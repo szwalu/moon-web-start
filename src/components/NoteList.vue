@@ -717,7 +717,14 @@ defineExpose({ scrollToTop, focusAndEditNote })
           :active="active"
           :data-index="index"
           :size-dependencies="item.type === 'note'
-            ? [item.content, expandedNote === item.id, editingNoteId === item.id, item.updated_at, item.vid]
+            ? [
+              item.content, // 内容变更
+              expandedNote === item.id, // 展开/收起
+              editingNoteId === item.id, // 进入/退出编辑态
+              (editingNoteId === item.id ? editingNoteContent.length : 0), // 正在编辑时，实时长度驱动重测 ✅
+              item.updated_at,
+              item.vid,
+            ]
             : [item.label, item.vid]"
           class="note-item-container"
           @resize="updateCollapsePos"
