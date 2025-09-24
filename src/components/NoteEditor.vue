@@ -33,6 +33,7 @@ onMounted(() => {
   }
 })
 
+const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // ============== Store ==============
 const settingsStore = useSettingStore()
 
@@ -194,7 +195,7 @@ function recomputeBottomSafePadding() {
 
   // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
   const footerH = getFooterHeight()
-  const EXTRA = 12
+  const EXTRA = isAndroid ? 28 : 24 // 安卓多给 4px，缓解首帧“多压两行”
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -220,17 +221,16 @@ function recomputeBottomSafePadding() {
   // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
-      // 仅推必要差值的 70%（避免过冲），并限制最大 160px
-      const delta = Math.min(Math.ceil(need * 0.7), 160)
-      // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
-      // 优先滚动最近的滚动容器；没有的话再滚动页面
+    // Android 更激进，iPhone 保持原有逻辑
+      const ratio = isAndroid ? 0.9 : 0.7
+      const cap = isAndroid ? 220 : 160
+      const delta = Math.min(Math.ceil(need * ratio), cap)
+
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
-        // @ts-expect-error: HTMLElement 有 scrollBy
-        scrollEl.scrollBy(0, delta)
+        ;(scrollEl as any).scrollBy(0, delta)
       }
       else {
-        // 极端兜底
         (scrollEl as HTMLElement).scrollTop += delta
       }
       _hasPushedPage = true
@@ -499,8 +499,14 @@ function handleInput(event: Event) {
       recomputeBottomSafePadding()
     }, 280)
   })
-}
 
+  // 👇 安卓专用兜底：覆盖部分机型 vv 更新慢的问题
+  if (isAndroid) {
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 240)
+  }
+}
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
@@ -951,8 +957,9 @@ function startFocusBoost() {
 function handleBeforeInput() {
   _hasPushedPage = false
 
-  // 更保守：footer 实高 + 24px 余量；再给一个最小保底，安卓更稳
-  const prelift = Math.max(getFooterHeight() + 24, 120) // 120 可按机型微调成 128
+  // iPhone 维持你现在的稳态；Android 首帧更激进一些
+  const base = getFooterHeight() + 24
+  const prelift = Math.max(base, isAndroid ? 180 : 120) // 安卓保底 180，iPhone 保底 120
 
   emit('bottomSafeChange', prelift)
 
