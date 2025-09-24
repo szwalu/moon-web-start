@@ -16,7 +16,11 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
+
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+
+let _vvDebounceTimer: number | null = null
+
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -139,8 +143,12 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   const el = textarea.value
-  if (!el)
+  if (!el) {
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+  emit('bottomSafeChange', 0)
 
   const vv = window.visualViewport
   // 1) 桌面或未弹键盘：不托
@@ -316,8 +324,13 @@ function handleFocus() {
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
   })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 180)
 }
 
 function onBlur() {
@@ -341,8 +354,13 @@ function handleClick() {
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
   })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 180)
 }
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
@@ -461,8 +479,18 @@ function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  // 等文本高度/滚动位更新后再计算
-  requestAnimationFrame(() => recomputeBottomSafePadding())
+  // 等文本高度/滚动位更新后再计算（连续多次，覆盖键盘动画滞后）
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
+  })
+
+  // 兜底再来一次（键盘动画更慢时）
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 180)
 }
 
 // ============== 文本与工具栏 ==============
@@ -766,8 +794,16 @@ onUnmounted(() => {
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
+    const debounced = () => {
+      if (_vvDebounceTimer)
+        window.clearTimeout(_vvDebounceTimer)
+
+      _vvDebounceTimer = window.setTimeout(() => {
+        recomputeBottomSafePadding()
+      }, 120)
+    }
+    vv.addEventListener('resize', debounced)
+    vv.addEventListener('scroll', debounced)
   }
 })
 onUnmounted(() => {
