@@ -135,6 +135,12 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+function getFooterHeight(): number {
+  const root = rootRef.value
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  return footerEl ? footerEl.offsetHeight : 88 // 兜底估值
+}
+
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
@@ -324,10 +330,28 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
+
+  // 关键：允许再次“轻推”，否则二次编辑可能不会再推
+  _hasPushedPage = false
+
+  // 关键：在键盘还没完全弹起之前，先根据 footer 的真实高度“临时托起”一截
+  // 这样用户一开始就能看到底部按钮，不用等 visualViewport 变化
+  emit('bottomSafeChange', getFooterHeight())
+
+  // 连续多次重算，覆盖键盘动画/视口变更的滞后
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
+  // iOS/Safari 上键盘高度回报经常滞后，补两次
+  window.setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  }, 180)
+  window.setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  }, 320)
 }
 
 function onBlur() {
