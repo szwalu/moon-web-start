@@ -44,18 +44,26 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
 
+// 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
-  if (isAndroid)
-    isFreezingBottom.value = true
+  isFreezingBottom.value = true
 }
+
+// 手指移动：保持冻结（避免过程中的抖动）
+function onTextPointerMove() {
+  // 保持监听，避免在拖动过程中触发布局重算；
+  // 不需要显式 return，防止 no-useless-return
+}
+
+// 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
-  if (isAndroid) {
-    isFreezingBottom.value = false
-    // 释放后补算一次（下一帧，避免和点击/选择事件时序打架）
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  }
+  isFreezingBottom.value = false
+  requestAnimationFrame(() => {
+    recomputeBottomSafePadding()
+  })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -116,6 +124,8 @@ function captureCaret() {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
+  if (isFreezingBottom.value)
+    return
   const el = textarea.value
   if (!el)
     return
@@ -168,8 +178,8 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
-  // Android：拖动选区时不参与计算，避免抖动
-  if (isAndroid && isFreezingBottom.value)
+  // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
+  if (isFreezingBottom.value)
     return
 
   const el = textarea.value
@@ -371,6 +381,32 @@ async function handleSave() {
 }
 
 // ============== 基础事件 ==============
+let selectionIdleTimer: number | null = null
+
+function onDocSelectionChange() {
+  const el = textarea.value
+  if (!el)
+    return
+  if (document.activeElement !== el)
+    return
+  if (isFreezingBottom.value)
+    return
+  if (selectionIdleTimer)
+    window.clearTimeout(selectionIdleTimer)
+  selectionIdleTimer = window.setTimeout(() => {
+    captureCaret()
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  }, 80)
+}
+
+onMounted(() => {
+  document.addEventListener('selectionchange', onDocSelectionChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('selectionchange', onDocSelectionChange)
+})
+
 function handleFocus() {
   emit('focus')
   captureCaret()
@@ -422,6 +458,8 @@ function onBlur() {
 }
 
 function handleClick() {
+  if (isFreezingBottom.value)
+    return
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
@@ -1023,14 +1061,24 @@ function startFocusBoost() {
   }, 60)
 }
 
-function handleBeforeInput() {
+function handleBeforeInput(e: InputEvent) {
   _hasPushedPage = false
+
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
+  const t = e.inputType || ''
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
+  if (!isRealTyping)
+    return
 
   // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180（更激进一点）
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
@@ -1068,6 +1116,10 @@ function handleBeforeInput() {
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
         @pointercancel="onTextPointerUp"
+        @touchstart.passive="onTextPointerDown"
+        @touchmove.passive="onTextPointerMove"
+        @touchend.passive="onTextPointerUp"
+        @touchcancel.passive="onTextPointerUp"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
