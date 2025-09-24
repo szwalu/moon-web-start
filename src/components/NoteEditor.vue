@@ -160,8 +160,10 @@ function recomputeBottomSafePadding() {
   }
 
   // 2) 判断键盘是否真的弹出
+  // 2) 判断键盘是否真的弹出
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (keyboardHeight < 60) { // 小于 60px 视为未弹出（可按机型调 48~80）
+  // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
+  if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
@@ -202,7 +204,8 @@ function recomputeBottomSafePadding() {
 
   // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
   const footerH = getFooterHeight() // ← 确保你已实现该函数
-  const EXTRA = isAndroid ? 28 : 12
+  // 用行高做 Android 冗余，等价于“多抬两行”
+  const EXTRA = isAndroid ? Math.ceil(2 * lineHeight) : 12
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -863,6 +866,8 @@ function onGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
   window.addEventListener('keydown', onGlobalKeydown)
+  if (isAndroid && rootRef.value)
+    rootRef.value.classList.add('android')
 })
 onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
@@ -1199,6 +1204,9 @@ function handleBeforeInput() {
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
+}
+.note-editor-reborn.android .editor-wrapper {
+  overflow-anchor: auto;
 }
 
 .editor-textarea {
