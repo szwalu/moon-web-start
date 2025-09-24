@@ -193,7 +193,12 @@ function recomputeBottomSafePadding() {
   // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
   const caretBottomInViewport
-    = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * (isAndroid ? 1.2 : 0.8)
+  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+
+  // Android 额外预留两行（首帧常“压两行”的保守余量）
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
 
   // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
   const footerH = getFooterHeight() // ← 确保你已实现该函数
@@ -214,34 +219,35 @@ function recomputeBottomSafePadding() {
   // 5) 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
 
-  // 需要托起的像素（>0 表示“会被挡住”）
-  const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  // 安卓用 adjusted（多加两行余量），iPhone 保持原样
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // —— 发给父级去显示“垫片” —— //
-  emit('bottomSafeChange', need)
-
+  emit('bottomSafeChange', rawNeed)
   // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
-  if (need > 0) {
+  // 只在“第一次需要时”轻推页面一点（安卓更激进）
+  if (rawNeed > 0) {
     if (!_hasPushedPage) {
-      // Android 更激进，iPhone 保持原策略
-      const ratio = isAndroid ? 1.1 : 0.7
-      const cap = isAndroid ? 320 : 160
-      const delta = Math.min(Math.ceil(need * ratio), cap)
+      const ratio = isAndroid ? 1.25 : 0.7
+      const cap = isAndroid ? 360 : 160
+      const delta = Math.min(Math.ceil(rawNeed * ratio), cap)
 
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
-        // @ts-expect-error - HTMLElement 在运行时有 scrollBy，这里 DOM lib 类型没声明
+      // @ts-expect-error: HTMLElement 在运行时有 scrollBy，这里 DOM lib 未声明
         scrollEl.scrollBy(0, delta)
       }
       else {
-        (scrollEl as HTMLElement).scrollTop += delta
+        ;(scrollEl as HTMLElement).scrollTop += delta
       }
       _hasPushedPage = true
 
-      // 仅 Android：等待一点点，让 visualViewport/键盘高度更新，再补推一次
+      // —— 安卓再“补推”一次：首帧键盘高度回调常滞后 80~200ms —— //
       if (isAndroid) {
         window.setTimeout(() => {
-          _hasPushedPage = false // 允许再推一次
+          _hasPushedPage = false
+          // 滞后一次再算（这次会带着新的 vv.height / offsetTop）
           recomputeBottomSafePadding()
         }, 120)
       }
