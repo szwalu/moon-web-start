@@ -156,11 +156,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // ……（你原来的 caret 计算保持不变）……
-
-  // 4) 需要露出的 UI 高度：保存 + 工具栏 + 安全区 + 冗余
-  // （保持你原来的 SAFE 计算逻辑）
-  const SAVE_AND_TOOLBAR = 56 + 44
+  // 4) 需要露出的 UI 高度：使用“实际 footer 高度 + 安全区 + 冗余”
   const EXTRA = 12
   const safeInset = (() => {
     try {
@@ -171,34 +167,50 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch { return 0 }
+    catch {
+      return 0
+    }
   })()
-  const SAFE = SAVE_AND_TOOLBAR + safeInset + EXTRA
+
+  // 动态拿到 footer 高度（拿不到就用合理兜底 100）
+  const root = rootRef.value
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  const footerHeight = footerEl ? footerEl.offsetHeight : 100
+
+  const SAFE = footerHeight + safeInset + EXTRA
 
   // 5) 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
 
-  // === 原有：基于“光标”是否被遮挡的 need ===
+  // === 依据“光标”是否被遮挡的 need（原逻辑保留）===
   const needCaret = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // === 新增：基于“底部按钮（.editor-footer）”是否被遮挡的 need ===
+  // === 新增：依据“footer 是否被遮挡”的 need（更稳的首次输入判定）===
   let needFooter = 0
-  const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   if (footerEl) {
     const footerRect = footerEl.getBoundingClientRect()
-    // 底部按钮的“底边”在可视视口中的位置
     const footerBottomInViewport = (footerRect.bottom - vv.offsetTop)
-    // 让按钮完全露出：只保留安全区 + 少许冗余
-    const FOOTER_SAFE = safeInset + 8
-    needFooter = Math.ceil(Math.max(0, footerBottomInViewport - (vv.height - FOOTER_SAFE)))
+    // 要求 footer 完整可见：footer 底边 <= 视口底边 - 安全区 - 少量冗余
+    const footerVisibleBottom = vv.height - (safeInset + 8)
+    needFooter = Math.ceil(Math.max(0, footerBottomInViewport - footerVisibleBottom))
   }
 
-  // === 取两者最大值作为最终托起值 ===
-  const finalNeed = Math.max(needCaret, needFooter)
+  // === 新增：依据“整个编辑器底边”是否被遮挡的 need（首次输入更稳）===
+  let needEditorBottom = 0
+  if (root) {
+    const rootRect = root.getBoundingClientRect()
+    const editorBottomInViewport = (rootRect.bottom - vv.offsetTop)
+    const editorVisibleBottom = vv.height - (safeInset + 8)
+    needEditorBottom = Math.ceil(Math.max(0, editorBottomInViewport - editorVisibleBottom))
+  }
 
+  // 取三者最大值
+  const finalNeed = Math.max(needCaret, needFooter, needEditorBottom)
+
+  // —— 发给父级去显示“垫片” —— //
   emit('bottomSafeChange', finalNeed)
 
+  // —— 仅在第一次需要时轻推页面一下 —— //
   if (finalNeed > 0) {
     if (!_hasPushedPage) {
       const delta = Math.min(Math.ceil(finalNeed * 0.7), 160)
