@@ -16,11 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
-let _vvDebounceTimer: number | null = null
-
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -125,22 +121,6 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-// 统一的“多次重算”（rAF 双连 + 180ms/300ms 兜底）
-function scheduleRecompute() {
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 180)
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 300)
-}
-
 function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
@@ -166,14 +146,27 @@ function recomputeBottomSafePadding() {
   }
 
   const vv = window.visualViewport
+  // 1) 桌面或未弹键盘：不托
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // 4) 需要露出的 UI 高度：使用“实际 footer 高度 + 安全区 + 冗余”
-  const EXTRA = 12
+  // 2) 判断键盘是否真的弹出
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (keyboardHeight < 60) { // 小于 60px 视为未弹出（可按机型调 48~80）
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // === 动态拿 footer 的真实高度（避免用写死的 56+44）===
+  const root = rootRef.value
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  const footerH = footerEl ? footerEl.offsetHeight : 88 // 拿不到就保守估 88px
+
+  // iOS 安全区
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -183,53 +176,60 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch {
-      return 0
-    }
+    catch { return 0 }
   })()
 
-  // 动态拿到 footer 高度（拿不到就用合理兜底 100）
-  const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  const footerHeight = footerEl ? footerEl.offsetHeight : 100
+  const EXTRA = 12
+  const SAFE = footerH + safeInset + EXTRA // 👈 这里改成用 footer 实高
 
-  const SAFE = footerHeight + safeInset + EXTRA
+  // === 光标底部相对 visual viewport 的位置 ===
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // 5) 阈值：可视视口底边向上 SAFE
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = `position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;`
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + `border-style:solid;`
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+
+  // 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
 
-  // === 依据“光标”是否被遮挡的 need（原逻辑保留）===
-  const needCaret = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  // 方案 A：基于“光标”的需要托起
+  let need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // === 新增：依据“footer 是否被遮挡”的 need（更稳的首次输入判定）===
-  let needFooter = 0
+  // 方案 B：基于“footer 本身”的需要托起 —— 二者取最大值
   if (footerEl) {
-    const footerRect = footerEl.getBoundingClientRect()
-    const footerBottomInViewport = (footerRect.bottom - vv.offsetTop)
-    // 要求 footer 完整可见：footer 底边 <= 视口底边 - 安全区 - 少量冗余
-    const footerVisibleBottom = vv.height - (safeInset + 8)
-    needFooter = Math.ceil(Math.max(0, footerBottomInViewport - footerVisibleBottom))
+    const fr = footerEl.getBoundingClientRect()
+    const footerBottomInViewport = fr.bottom - vv.offsetTop
+    const footerThreshold = vv.height - (safeInset + 8) // 给 footer 一点点余量
+    const footerNeed = Math.ceil(Math.max(0, footerBottomInViewport - footerThreshold))
+    if (footerNeed > need)
+      need = footerNeed
   }
-
-  // === 新增：依据“整个编辑器底边”是否被遮挡的 need（首次输入更稳）===
-  let needEditorBottom = 0
-  if (root) {
-    const rootRect = root.getBoundingClientRect()
-    const editorBottomInViewport = (rootRect.bottom - vv.offsetTop)
-    const editorVisibleBottom = vv.height - (safeInset + 8)
-    needEditorBottom = Math.ceil(Math.max(0, editorBottomInViewport - editorVisibleBottom))
-  }
-
-  // 取三者最大值
-  const finalNeed = Math.max(needCaret, needFooter, needEditorBottom)
 
   // —— 发给父级去显示“垫片” —— //
-  emit('bottomSafeChange', finalNeed)
+  emit('bottomSafeChange', need)
 
-  // —— 仅在第一次需要时轻推页面一下 —— //
-  if (finalNeed > 0) {
+  // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
+  if (need > 0) {
     if (!_hasPushedPage) {
-      const delta = Math.min(Math.ceil(finalNeed * 0.7), 160)
+      const delta = Math.min(Math.ceil(need * 0.7), 160)
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
         // @ts-expect-error: HTMLElement 有 scrollBy
@@ -246,13 +246,6 @@ function recomputeBottomSafePadding() {
   }
 }
 
-function provisionalLift() {
-  // 先立刻把底部“垫”起来，避免首帧算成 0
-  const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  const h = footerEl ? footerEl.offsetHeight : 100 // 拿不到就用兜底 100px
-  emit('bottomSafeChange', h)
-}
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
@@ -330,9 +323,11 @@ async function handleSave() {
 // ============== 基础事件 ==============
 function handleFocus() {
   emit('focus')
-  provisionalLift()
   captureCaret()
-  scheduleRecompute()
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  })
 }
 
 function onBlur() {
@@ -353,9 +348,11 @@ function onBlur() {
 }
 
 function handleClick() {
-  provisionalLift()
   captureCaret()
-  scheduleRecompute()
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  })
 }
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
@@ -471,12 +468,16 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 }
 
 function handleInput(event: Event) {
-  provisionalLift() // 先把底部按钮露出来
   const el = event.target as HTMLTextAreaElement
   captureCaret()
   computeAndShowTagSuggestions(el)
-  scheduleRecompute() // rAF 双连 + 180ms/300ms 兜底，封装在工具函数里
+  // 等文本高度/滚动位更新后再计算
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea() // ← 新增这一行
+    recomputeBottomSafePadding()
+  })
 }
+
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
@@ -778,16 +779,8 @@ onUnmounted(() => {
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    const debouncedRecompute = () => {
-      if (_vvDebounceTimer)
-        window.clearTimeout(_vvDebounceTimer)
-
-      _vvDebounceTimer = window.setTimeout(() => {
-        recomputeBottomSafePadding()
-      }, 120)
-    }
-    vv.addEventListener('resize', debouncedRecompute)
-    vv.addEventListener('scroll', debouncedRecompute)
+    vv.addEventListener('resize', recomputeBottomSafePadding)
+    vv.addEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 onUnmounted(() => {
