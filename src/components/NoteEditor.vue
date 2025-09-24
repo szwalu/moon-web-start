@@ -949,11 +949,13 @@ function startFocusBoost() {
 }
 
 function handleBeforeInput() {
-  // 再次输入的第一时刻：允许“轻推一次”
   _hasPushedPage = false
-  // 直接用真实 footer 高度先行托起，让这一键不会被挡
-  emit('bottomSafeChange', getFooterHeight())
-  // 赶在本帧结束前，先做一轮光标可见与安全区计算
+
+  // 更保守：footer 实高 + 24px 余量；再给一个最小保底，安卓更稳
+  const prelift = Math.max(getFooterHeight() + 24, 120) // 120 可按机型微调成 128
+
+  emit('bottomSafeChange', prelift)
+
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
@@ -1174,7 +1176,7 @@ function handleBeforeInput() {
   min-height: 40px;
   max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 8px 0px 16px;
+  padding: 12px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
