@@ -476,10 +476,29 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
+
+  // 允许这一轮输入重新触发“轻推一次”
+  _hasPushedPage = false
+
+  // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
+  ensureCaretVisibleInTextarea()
+
+  // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
-  // 等文本高度/滚动位更新后再计算
-  requestAnimationFrame(() => recomputeBottomSafePadding())
+
+  // 分三次重算，覆盖键盘动画 / visualViewport 延迟
+  requestAnimationFrame(() => {
+    recomputeBottomSafePadding()
+    // iOS 常见：vv 延迟 ~120–240ms
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 140)
+
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 280)
+  })
 }
 
 // ============== 文本与工具栏 ==============
@@ -928,6 +947,18 @@ function startFocusBoost() {
     }
   }, 60)
 }
+
+function handleBeforeInput() {
+  // 再次输入的第一时刻：允许“轻推一次”
+  _hasPushedPage = false
+  // 直接用真实 footer 高度先行托起，让这一键不会被挡
+  emit('bottomSafeChange', getFooterHeight())
+  // 赶在本帧结束前，先做一轮光标可见与安全区计算
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  })
+}
 </script>
 
 <template>
@@ -942,6 +973,7 @@ function startFocusBoost() {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
+        @beforeinput="handleBeforeInput"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
