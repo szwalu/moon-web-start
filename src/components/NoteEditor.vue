@@ -135,33 +135,18 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-function lightScrollForFooter() {
-  const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
-  // 用真实 footer 高度的 70% 轻推，最多 160px，和你 recompute 里保持一致的手感
-  const delta = Math.min(Math.ceil(getFooterHeight() * 0.7), 160)
-  if ('scrollBy' in scrollEl) {
-    ;(scrollEl as any).scrollBy(0, delta)
-  }
-  else {
-    (scrollEl as HTMLElement).scrollTop += delta
-  }
-}
-
 function getFooterHeight(): number {
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 88
+  return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   const el = textarea.value
-  if (!el) {
+  if (!el)
     emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
 
   const vv = window.visualViewport
   // 1) 桌面或未弹键盘：不托
@@ -179,31 +164,11 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // === 动态拿 footer 的真实高度（避免用写死的 56+44）===
-  const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  const footerH = footerEl ? footerEl.offsetHeight : 88 // 拿不到就保守估 88px
-
-  // iOS 安全区
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-
-  const EXTRA = 12
-  const SAFE = footerH + safeInset + EXTRA // 👈 这里改成用 footer 实高
-
-  // === 光标底部相对 visual viewport 的位置 ===
+  // 3) 计算“光标底部”在 **可视视口(visual viewport)** 内的坐标
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
+  // 光标在 textarea 内容内的 Y（相对内容顶部）
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -222,24 +187,32 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
+  // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
-  const caretBottomInViewport = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+  const caretBottomInViewport
+  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
 
-  // 阈值：可视视口底边向上 SAFE
+  // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
+  const footerH = getFooterHeight()
+  const EXTRA = 12
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const SAFE = footerH + safeInset + EXTRA
+
+  // 5) 阈值：可视视口底边向上 SAFE
   const threshold = vv.height - SAFE
 
-  // 方案 A：基于“光标”的需要托起
-  let need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  // 方案 B：基于“footer 本身”的需要托起 —— 二者取最大值
-  if (footerEl) {
-    const fr = footerEl.getBoundingClientRect()
-    const footerBottomInViewport = fr.bottom - vv.offsetTop
-    const footerThreshold = vv.height - (safeInset + 8) // 给 footer 一点点余量
-    const footerNeed = Math.ceil(Math.max(0, footerBottomInViewport - footerThreshold))
-    if (footerNeed > need)
-      need = footerNeed
-  }
+  // 需要托起的像素（>0 表示“会被挡住”）
+  const need = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
   // —— 发给父级去显示“垫片” —— //
   emit('bottomSafeChange', need)
@@ -247,12 +220,17 @@ function recomputeBottomSafePadding() {
   // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
+      // 仅推必要差值的 70%（避免过冲），并限制最大 160px
       const delta = Math.min(Math.ceil(need * 0.7), 160)
+      // 用同步滚动避免动画抖动（Safari 支持无 options 的老签名）
+      // 优先滚动最近的滚动容器；没有的话再滚动页面
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
-        ;(scrollEl as any).scrollBy(0, delta)
+        // @ts-expect-error: HTMLElement 有 scrollBy
+        scrollEl.scrollBy(0, delta)
       }
       else {
+        // 极端兜底
         (scrollEl as HTMLElement).scrollTop += delta
       }
       _hasPushedPage = true
@@ -345,31 +323,24 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 先用真实 footer 高度把底部垫出来（不等 vv 更新）
+  // 先用真实 footer 高度“临时托起”，不等 vv 更新
   emit('bottomSafeChange', getFooterHeight())
 
-  // 立刻轻推一小段滚动，把底部区域预先抬进可视区
-  lightScrollForFooter()
-
-  // 再分时多次重算，覆盖键盘动画/视口回报的滞后
+  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
-  window.setTimeout(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  }, 180)
-  window.setTimeout(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  }, 320)
+
+  // 启动短时“助推轮询”，覆盖 iOS vv 回报延迟
+  startFocusBoost()
 }
 
 function onBlur() {
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
+  stopFocusBoost()
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
@@ -508,10 +479,7 @@ function handleInput(event: Event) {
   captureCaret()
   computeAndShowTagSuggestions(el)
   // 等文本高度/滚动位更新后再计算
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea() // ← 新增这一行
-    recomputeBottomSafePadding()
-  })
+  requestAnimationFrame(() => recomputeBottomSafePadding())
 }
 
 // ============== 文本与工具栏 ==============
@@ -851,6 +819,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
+  stopFocusBoost()
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -932,6 +901,33 @@ function insertImageLink() {
 }
 
 defineExpose({ reset: triggerResize })
+
+let focusBoostTimer: number | null = null
+
+function stopFocusBoost() {
+  if (focusBoostTimer != null) {
+    clearInterval(focusBoostTimer)
+    focusBoostTimer = null
+  }
+}
+
+// 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
+function startFocusBoost() {
+  stopFocusBoost()
+  const vv = window.visualViewport
+  const startVvH = vv ? vv.height : 0
+  let ticks = 0
+  focusBoostTimer = window.setInterval(() => {
+    ticks++
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+    const vvNow = window.visualViewport
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
+    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
+      stopFocusBoost()
+    }
+  }, 60)
+}
 </script>
 
 <template>
