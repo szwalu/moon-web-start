@@ -34,6 +34,22 @@ onMounted(() => {
 })
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
+
+const isFreezingBottom = ref(false)
+
+function onTextPointerDown() {
+  if (isAndroid)
+    isFreezingBottom.value = true
+}
+function onTextPointerUp() {
+  if (isAndroid) {
+    isFreezingBottom.value = false
+    // 释放后补算一次（下一帧，避免和点击/选择事件时序打架）
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
+  }
+}
 // ============== Store ==============
 const settingsStore = useSettingStore()
 
@@ -145,6 +161,9 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
+  if (isAndroid && isFreezingBottom.value)
+    return
+
   const el = textarea.value
   if (!el) {
     emit('bottomSafeChange', 0)
@@ -1021,6 +1040,9 @@ function handleBeforeInput() {
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
         @input="handleInput"
+        @pointerdown="onTextPointerDown"
+        @pointerup="onTextPointerUp"
+        @pointercancel="onTextPointerUp"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
