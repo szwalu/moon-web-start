@@ -146,8 +146,10 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   const el = textarea.value
-  if (!el)
+  if (!el) {
     emit('bottomSafeChange', 0)
+    return
+  }
 
   const vv = window.visualViewport
   // 1) 桌面或未弹键盘：不托
@@ -191,11 +193,11 @@ function recomputeBottomSafePadding() {
   // textarea 盒子（相对 **可视视口** 的 rect）
   const rect = el.getBoundingClientRect()
   const caretBottomInViewport
-  = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * 0.8
+    = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight * (isAndroid ? 1.2 : 0.8)
 
   // 4) 需要露出的 UI 高度：使用“真实 footer 高度” + 安全区 + 冗余
-  const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : 24 // 安卓多给 4px，缓解首帧“多压两行”
+  const footerH = getFooterHeight() // ← 确保你已实现该函数
+  const EXTRA = isAndroid ? 28 : 12
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -221,19 +223,28 @@ function recomputeBottomSafePadding() {
   // —— 只在“第一次需要时”轻推页面一点，交给浏览器做后续锚定 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
-    // Android 更激进，iPhone 保持原有逻辑
-      const ratio = isAndroid ? 0.9 : 0.7
-      const cap = isAndroid ? 220 : 160
+      // Android 更激进，iPhone 保持原策略
+      const ratio = isAndroid ? 1.1 : 0.7
+      const cap = isAndroid ? 320 : 160
       const delta = Math.min(Math.ceil(need * ratio), cap)
 
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
-        ;(scrollEl as any).scrollBy(0, delta)
+        // @ts-expect-error - HTMLElement 在运行时有 scrollBy，这里 DOM lib 类型没声明
+        scrollEl.scrollBy(0, delta)
       }
       else {
         (scrollEl as HTMLElement).scrollTop += delta
       }
       _hasPushedPage = true
+
+      // 仅 Android：等待一点点，让 visualViewport/键盘高度更新，再补推一次
+      if (isAndroid) {
+        window.setTimeout(() => {
+          _hasPushedPage = false // 允许再推一次
+          recomputeBottomSafePadding()
+        }, 120)
+      }
     }
   }
   else {
@@ -500,7 +511,7 @@ function handleInput(event: Event) {
     }, 280)
   })
 
-  // 👇 安卓专用兜底：覆盖部分机型 vv 更新慢的问题
+  // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
       recomputeBottomSafePadding()
