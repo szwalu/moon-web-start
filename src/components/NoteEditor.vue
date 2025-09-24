@@ -135,10 +135,22 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+function lightScrollForFooter() {
+  const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+  // 用真实 footer 高度的 70% 轻推，最多 160px，和你 recompute 里保持一致的手感
+  const delta = Math.min(Math.ceil(getFooterHeight() * 0.7), 160)
+  if ('scrollBy' in scrollEl) {
+    ;(scrollEl as any).scrollBy(0, delta)
+  }
+  else {
+    (scrollEl as HTMLElement).scrollTop += delta
+  }
+}
+
 function getFooterHeight(): number {
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 88 // 兜底估值
+  return footerEl ? footerEl.offsetHeight : 88
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
@@ -238,8 +250,7 @@ function recomputeBottomSafePadding() {
       const delta = Math.min(Math.ceil(need * 0.7), 160)
       const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
       if ('scrollBy' in scrollEl) {
-        // @ts-expect-error: HTMLElement 有 scrollBy
-        scrollEl.scrollBy(0, delta)
+        ;(scrollEl as any).scrollBy(0, delta)
       }
       else {
         (scrollEl as HTMLElement).scrollTop += delta
@@ -331,19 +342,20 @@ function handleFocus() {
   emit('focus')
   captureCaret()
 
-  // 关键：允许再次“轻推”，否则二次编辑可能不会再推
+  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 关键：在键盘还没完全弹起之前，先根据 footer 的真实高度“临时托起”一截
-  // 这样用户一开始就能看到底部按钮，不用等 visualViewport 变化
+  // 先用真实 footer 高度把底部垫出来（不等 vv 更新）
   emit('bottomSafeChange', getFooterHeight())
 
-  // 连续多次重算，覆盖键盘动画/视口变更的滞后
+  // 立刻轻推一小段滚动，把底部区域预先抬进可视区
+  lightScrollForFooter()
+
+  // 再分时多次重算，覆盖键盘动画/视口回报的滞后
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
-  // iOS/Safari 上键盘高度回报经常滞后，补两次
   window.setTimeout(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
