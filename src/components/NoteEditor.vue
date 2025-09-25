@@ -33,6 +33,8 @@ onMounted(() => {
   }
 })
 
+const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+
 // 平台判定（尽量保守）
 const UA = navigator.userAgent.toLowerCase()
 const isIOS = /iphone|ipad|ipod/.test(UA)
@@ -178,6 +180,10 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
+  if (!isMobile) {
+    emit('bottomSafeChange', 0) // 在PC端，始终确保安全区为0
+    return
+  }
   // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
@@ -1062,6 +1068,8 @@ function startFocusBoost() {
 }
 
 function handleBeforeInput(e: InputEvent) {
+  if (!isMobile)
+    return
   _hasPushedPage = false
 
   // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
