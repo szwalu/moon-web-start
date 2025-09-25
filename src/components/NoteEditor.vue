@@ -1511,7 +1511,7 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height: none;
+  max-height: 90dvh;
 }
 
 /* tag 面板样式增强 */
