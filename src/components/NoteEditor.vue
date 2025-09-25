@@ -414,7 +414,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  emit('focus')
+  // emit('focus')
   captureCaret()
 
   // 允许再次“轻推”
