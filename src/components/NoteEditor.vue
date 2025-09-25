@@ -103,6 +103,7 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
 
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
+const isSubmitting = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
@@ -123,6 +124,11 @@ function captureCaret() {
   if (el && typeof el.selectionStart === 'number')
     lastSelectionStart.value = el.selectionStart
 }
+
+watch(() => props.isLoading, (newValue) => {
+  if (newValue === false)
+    isSubmitting.value = false
+})
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
@@ -376,13 +382,30 @@ async function fetchWeatherLine(): Promise<string | null> {
 
 // ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
 async function handleSave() {
+  // 1. 安全锁依然保留，防止重复提交
+  if (props.isLoading || isSubmitting.value)
+    return
+
+  // 2. 立即将状态设为“提交中”，禁用按钮
+  isSubmitting.value = true
+
   const content = contentModel.value || ''
-  let weather: string | null | undefined
+  let weather: string | null = null // 默认天气为 null
 
-  if (!props.isEditing)
-    weather = await fetchWeatherLine()
+  // 3. 仅在创建新笔记时尝试获取天气
+  if (!props.isEditing) {
+    try {
+      // 尝试获取天气，如果成功，weather 会被赋值
+      weather = await fetchWeatherLine()
+    }
+    catch (error) {
+      // 如果获取天气失败，只在控制台打印一个警告，然后继续执行。
+      // weather 的值将保持为 null，保存操作不会被中断。
+      console.warn('获取天气信息失败，笔记将不带天气数据保存:', error)
+    }
+  }
 
-  // 父组件可按 (content, weather) 接收；旧笔记编辑不传天气
+  // 4. 无论天气是否获取成功，都发射 save 事件
   emit('save', content, weather)
 }
 
@@ -1231,7 +1254,7 @@ function handleBeforeInput(e: InputEvent) {
         <button
           type="button"
           class="btn-primary"
-          :disabled="isLoading || !contentModel"
+          :disabled="isLoading || isSubmitting || !contentModel"
           @click="handleSave"
         >
           保存

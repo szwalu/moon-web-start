@@ -102,53 +102,78 @@ function loadAllDatesFromCache(): boolean {
 }
 
 /* ===================== 获取某日笔记：优先读缓存，缺失再拉取 ===================== */
+// 用这个新函数完整替换掉旧的 fetchNotesForDate 函数
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
 
   selectedDate.value = date
   expandedNoteId.value = null
-
   const cacheKey = getCalendarDateCacheKey(date)
-  const cachedData = localStorage.getItem(cacheKey)
 
+  // --- 开始重写逻辑 ---
+
+  // 阶段一：获取当天的笔记，优先用缓存
+  const cachedData = localStorage.getItem(cacheKey)
   if (cachedData) {
     try {
       selectedDateNotes.value = JSON.parse(cachedData)
-      return
     }
     catch {
-      localStorage.removeItem(cacheKey)
+      localStorage.removeItem(cacheKey) // 清除无效缓存，以便后续从网络获取
     }
   }
 
-  isLoadingNotes.value = true
-  selectedDateNotes.value = []
+  // 如果缓存不存在或无效，则从网络获取
+  if (!localStorage.getItem(cacheKey)) {
+    isLoadingNotes.value = true
+    try {
+      const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+      const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 
-  try {
-    const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
-    const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('user_id', user.value.id)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .order('created_at', { ascending: false })
 
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('user_id', user.value.id)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at', { ascending: false })
+      if (error)
+        throw error
 
-    if (error)
-      throw error
-
-    selectedDateNotes.value = data || []
-    localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
+      selectedDateNotes.value = data || []
+      localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
+    }
+    catch (err) {
+      console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
+      selectedDateNotes.value = [] // 失败时确保列表为空
+    }
+    finally {
+      isLoadingNotes.value = false
+    }
   }
-  catch (err) {
-    console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
+
+  // 阶段二：【核心修正】在笔记列表确定后，无论来源是哪，都强制校准小蓝点
+  const key = dateKeyStr(date)
+  const hasNotes = selectedDateNotes.value.length > 0
+  const hasDot = datesWithNotes.value.has(key)
+
+  // 如果笔记状态和蓝点状态不一致，则进行修正
+  if (hasNotes !== hasDot) {
+    if (hasNotes)
+      datesWithNotes.value.add(key)
+    else
+      datesWithNotes.value.delete(key)
+
+    // 触发响应式更新，并更新总缓存
+    datesWithNotes.value = new Set(datesWithNotes.value)
+    localStorage.setItem(
+      CACHE_KEYS.CALENDAR_ALL_DATES,
+      JSON.stringify(Array.from(datesWithNotes.value)),
+    )
   }
-  finally {
-    isLoadingNotes.value = false
-  }
+  // --- 结束重写逻辑 ---
 }
 
 /* ===================== 轻量校验 & 增量刷新 ===================== */
@@ -266,6 +291,7 @@ async function checkAndRefreshIncremental() {
   await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
 }
 
+// 把这个函数恢复成下面的样子
 async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpdatedAt: number) {
   await fetchNotesForDate(selectedDate.value)
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
