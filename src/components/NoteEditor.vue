@@ -1535,7 +1535,12 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 编辑态：交给 autosize，别再限制高度 */
 .note-editor-reborn.editing-viewport { height: auto; min-height: 0; max-height: none; display: block; }
-.note-editor-reborn.editing-viewport .editor-wrapper { overflow: visible !important; min-height: 0; display: block; }
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  overflow: visible !important;
+  min-height: 0;
+  display: block;
+  overflow-anchor: auto !important;   /* ✅ 编辑时允许成为锚点 */
+}
 
 /* 仅覆盖“上限与滚动”，不要写 height */
 .note-editor-reborn.editing-viewport .editor-textarea {

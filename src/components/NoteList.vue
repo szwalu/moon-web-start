@@ -623,6 +623,14 @@ watch(expandedNote, () => {
   })
 })
 
+// —— 开启/关闭 scroll anchoring：仅在编辑某条时打开 —— //
+watch(editingNoteId, (v) => {
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!sc)
+    return
+  sc.style.overflowAnchor = v ? 'auto' : '' // '' = 交给 CSS 默认
+})
+
 function updateCollapsePos() {
   if (isUserScrolling.value) {
     collapseVisible.value = false
@@ -689,6 +697,42 @@ function scrollToTop() {
 }
 
 defineExpose({ scrollToTop, focusAndEditNote })
+// 记录每条卡片的上次高度
+const lastHeights = ref<Record<string, number>>({})
+
+function handleEditedItemResize(noteId: string) {
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  const card = noteContainers.value[noteId] as HTMLElement | undefined
+  if (!sc || !card)
+    return
+
+  const prev = lastHeights.value[noteId] ?? card.offsetHeight
+  const now = card.offsetHeight
+  lastHeights.value[noteId] = now
+  const delta = now - prev
+  if (!delta)
+    return
+
+  // 键盘没弹起才补偿（键盘弹起时让系统托底/anchoring 生效）
+  const vv = window.visualViewport
+  const keyboardShown = vv ? (window.innerHeight - (vv.height + vv.offsetTop)) >= 60 : false
+  if (keyboardShown)
+    return
+
+  // 只有当卡片“在视口上半部”时才补偿（避免把用户刻意滚到下半部时强拉）
+  const scRect = sc.getBoundingClientRect()
+  const cardRect = card.getBoundingClientRect()
+  const aboveMid = cardRect.top < (scRect.top + scRect.height * 0.5)
+  if (aboveMid)
+    sc.scrollTop += delta // 用高度差抵消滚动
+}
+
+// 统一入口：既保持“收起按钮”的定位，又对正在编辑的项做补偿
+function onItemResize(item: any) {
+  updateCollapsePos()
+  if (item?.type === 'note' && editingNoteId.value === item.id)
+    handleEditedItemResize(item.id)
+}
 </script>
 
 <template>
@@ -737,7 +781,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
             ]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="updateCollapsePos"
+          @resize="onItemResize(item)"
         >
           <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div v-if="item.type === 'month-header'" class="month-header-outer">
