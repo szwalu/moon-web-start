@@ -601,25 +601,6 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
-// NoteList.vue —— 仅当键盘弹起时才滚动卡片，避免点击末尾时整卡被“对齐”跳动
-function handleEditorFocus(containerEl: HTMLElement) {
-  setTimeout(() => {
-    if (!containerEl || typeof containerEl.scrollIntoView !== 'function')
-      return
-
-    const vv = window.visualViewport
-    // 键盘高度估计（iOS vv.height 变化明显；Android 可能不准，但我们编辑态本来就不托底）
-    const keyboardHeight = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0
-    const keyboardShown = keyboardHeight >= 60
-
-    if (!keyboardShown) {
-      // 键盘没弹起：不要动列表
-      return
-    }
-    // 键盘弹起时，保持“就近可见”即可，避免强制顶到顶部
-    containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
-  }, 300)
-}
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
@@ -777,7 +758,6 @@ defineExpose({ scrollToTop, focusAndEditNote })
                 :all-tags="allTags"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
-                @focus="handleEditorFocus(noteContainers[item.id])"
               />
               <NoteItem
                 v-else
