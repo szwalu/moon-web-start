@@ -690,41 +690,6 @@ function scrollToTop() {
 
 defineExpose({ scrollToTop, focusAndEditNote })
 // 记录每条卡片的上次高度
-const lastHeights = ref<Record<string, number>>({})
-
-function handleEditedItemResize(noteId: string) {
-  const sc = scrollerRef.value?.$el as HTMLElement | undefined
-  const card = noteContainers.value[noteId] as HTMLElement | undefined
-  if (!sc || !card)
-    return
-
-  const prev = lastHeights.value[noteId] ?? card.offsetHeight
-  const now = card.offsetHeight
-  lastHeights.value[noteId] = now
-  const delta = now - prev
-  if (!delta)
-    return
-
-  // 键盘没弹起才补偿（键盘弹起时让系统托底/anchoring 生效）
-  const vv = window.visualViewport
-  const keyboardShown = vv ? (window.innerHeight - (vv.height + vv.offsetTop)) >= 60 : false
-  if (keyboardShown)
-    return
-
-  // 只有当卡片“在视口上半部”时才补偿（避免把用户刻意滚到下半部时强拉）
-  const scRect = sc.getBoundingClientRect()
-  const cardRect = card.getBoundingClientRect()
-  const aboveMid = cardRect.top < (scRect.top + scRect.height * 0.5)
-  if (aboveMid)
-    sc.scrollTop += delta // 用高度差抵消滚动
-}
-
-// 统一入口：既保持“收起按钮”的定位，又对正在编辑的项做补偿
-function onItemResize(item: any) {
-  updateCollapsePos()
-  if (item?.type === 'note' && editingNoteId.value === item.id)
-    handleEditedItemResize(item.id)
-}
 </script>
 
 <template>
@@ -764,16 +729,17 @@ function onItemResize(item: any) {
           :data-index="index"
           :size-dependencies="item.type === 'note'
             ? [
-              item.content, // 内容变更
-              expandedNote === item.id, // 展开/收起
-              editingNoteId === item.id, // 进入/退出编辑态
-              (editingNoteId === item.id ? editingNoteContent.length : 0), // 正在编辑时，实时长度驱动重测 ✅
+              item.content,
+              expandedNote === item.id,
+              editingNoteId === item.id,
+              (editingNoteId === item.id ? editingNoteContent.length : 0),
               item.updated_at,
               item.vid,
             ]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="onItemResize(item)"
+          :class="{ 'is-editing': item.type === 'note' && editingNoteId === item.id }"
+          @resize="updateCollapsePos"
         >
           <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div v-if="item.type === 'month-header'" class="month-header-outer">
@@ -968,4 +934,14 @@ function onItemResize(item: any) {
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
+
+/* 只允许“正在编辑”的那张卡片参与滚动锚点；其余一律禁用，避免列表被整体下推 */
+.scroller .note-item-container { overflow-anchor: none; }
+.scroller .note-item-container.is-editing { overflow-anchor: auto; }
+
+/* 防止其他浮动/固定元素被选为锚点 */
+.sticky-month,
+.month-header-outer,
+.month-header,
+.collapse-button { overflow-anchor: none; }
 </style>
