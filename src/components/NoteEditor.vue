@@ -409,13 +409,21 @@ function onDocSelectionChange() {
     return
   if (isFreezingBottom.value)
     return
+
+  // ✅ 编辑旧笔记：不要做托底计算，避免不必要的滚动干预
+  if (props.isEditing) {
+    captureCaret()
+    // 不调用 recomputeBottomSafePadding（键盘未弹起时尤其要禁掉）
+    return
+  }
+
   if (selectionIdleTimer)
     window.clearTimeout(selectionIdleTimer)
+
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     ensureCaretVisibleInTextarea()
-    if (!props.isEditing)
-      recomputeBottomSafePadding() // ← 只在新建输入框时托底
+    recomputeBottomSafePadding()
   }, 80)
 }
 
@@ -1326,10 +1334,7 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-wrapper {
   position: relative;
-  overflow-anchor: none;
-}
-.note-editor-reborn.android .editor-wrapper {
-  overflow-anchor: auto;
+  overflow-anchor: auto;  /* ✅ 允许作为滚动锚点 */
 }
 
 .editor-textarea {

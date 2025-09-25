@@ -526,7 +526,6 @@ async function toggleExpand(noteId: string) {
   }
 
   if (!isCurrentlyExpanded) {
-    // 记录展开前锚点
     const card = noteContainers.value[noteId] as HTMLElement | undefined
     if (card) {
       const scRect = scroller.getBoundingClientRect()
@@ -541,53 +540,46 @@ async function toggleExpand(noteId: string) {
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    // 🔻 展开后对齐：临时关闭锚点，结束后务必恢复
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      scroller.style.overflowAnchor = 'none'
-      try {
-        const scRectAfter = scroller.getBoundingClientRect()
-        const cardRectAfter = cardAfter.getBoundingClientRect()
-        const topPadding = 0
-        const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
-        const target = scroller.scrollTop + deltaAlign
-        await stableSetScrollTop(scroller, target, 6, 0.5)
-      }
-      finally {
-        // ✅ 恢复，让随后“编辑时打字”有锚点保护
-        scroller.style.overflowAnchor = ''
-      }
+      // 🔻 仅在对齐滚动期间临时关闭锚点，结束后立刻恢复
+      const prev = (scroller.style as any).overflowAnchor
+      ;(scroller.style as any).overflowAnchor = 'none'
+
+      const scRectAfter = scroller.getBoundingClientRect()
+      const cardRectAfter = cardAfter.getBoundingClientRect()
+      const topPadding = 0
+      const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
+      const target = scroller.scrollTop + deltaAlign
+      await stableSetScrollTop(scroller, target, 6, 0.5)
+
+      ;(scroller.style as any).overflowAnchor = prev || '' // ✅ 恢复
     }
   }
   else {
-    // 收起
     expandedNote.value = null
 
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-    // 🔻 收起后回到原来的视觉位置：同样临时关闭锚点并在 finally 恢复
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      scroller.style.overflowAnchor = 'none'
-      try {
-        const scRectAfter = scroller.getBoundingClientRect()
-        const cardRectAfter = cardAfter.getBoundingClientRect()
-        const anchor = expandAnchor.value
-        const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
-        const currentTopOffset = cardRectAfter.top - scRectAfter.top
-        const delta = currentTopOffset - wantTopOffset
+      const scRectAfter = scroller.getBoundingClientRect()
+      const cardRectAfter = cardAfter.getBoundingClientRect()
+      const anchor = expandAnchor.value
+      const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
+      const currentTopOffset = cardRectAfter.top - scRectAfter.top
+      const delta = currentTopOffset - wantTopOffset
 
-        let target = scroller.scrollTop + delta
-        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-        target = Math.min(Math.max(0, target), maxScrollTop)
+      let target = scroller.scrollTop + delta
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      target = Math.min(Math.max(0, target), maxScrollTop)
 
-        await stableSetScrollTop(scroller, target, 6, 0.5)
-      }
-      finally {
-        // ✅ 恢复默认（等同 overflow-anchor:auto）
-        scroller.style.overflowAnchor = ''
-      }
+      // 🔻 同样：只在这段滚动期间关闭锚点，结束后恢复
+      const prev = (scroller.style as any).overflowAnchor
+      ;(scroller.style as any).overflowAnchor = 'none'
+      await stableSetScrollTop(scroller, target, 6, 0.5)
+      ;(scroller.style as any).overflowAnchor = prev || '' // ✅ 恢复
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
