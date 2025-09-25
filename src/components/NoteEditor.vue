@@ -78,17 +78,6 @@ const contentModel = computed({
 
 // ============== Autosize ==============
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
-
-onMounted(() => nextTick(() => triggerResize())) // 首次挂载就重算
-watch(() => props.modelValue, () => nextTick(() => triggerResize())) // 外部把旧内容塞进来时重算
-watch(() => props.isEditing, (v) => {
-  if (v)
-    nextTick(() => triggerResize())
-}) // 切到编辑态时重算
-// 切到“编辑旧笔记”时，让 autosize 立刻按现有内容重算一次高度
-watch(() => props.isEditing, () => {
-  nextTick(() => triggerResize())
-})
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
@@ -189,13 +178,6 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
-  // ✅ 编辑旧笔记：完全禁用托底与页面滚动修正
-  if (props.isEditing) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
   // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
@@ -409,17 +391,8 @@ function onDocSelectionChange() {
     return
   if (isFreezingBottom.value)
     return
-
-  // ✅ 编辑旧笔记：不要做托底计算，避免不必要的滚动干预
-  if (props.isEditing) {
-    captureCaret()
-    // 不调用 recomputeBottomSafePadding（键盘未弹起时尤其要禁掉）
-    return
-  }
-
   if (selectionIdleTimer)
     window.clearTimeout(selectionIdleTimer)
-
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     ensureCaretVisibleInTextarea()
@@ -437,26 +410,32 @@ onUnmounted(() => {
 function handleFocus() {
   emit('focus')
   captureCaret()
+
+  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // ✅ 编辑态：不做托底、不推页面，不开启助推轮询
-  if (props.isEditing)
-    return
-
-  // —— 仅“新建输入框”才需要的托底逻辑 —— //
+  // 用真实 footer 高度“临时托起”，不等 vv
   emit('bottomSafeChange', getFooterHeight())
+
+  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
+
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t1)
+
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t2)
+
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -470,7 +449,6 @@ function onBlur() {
     suppressNextBlur.value = false
     return
   }
-
   if (blurTimeoutId)
     clearTimeout(blurTimeoutId)
 
@@ -480,17 +458,14 @@ function onBlur() {
 }
 
 function handleClick() {
-  captureCaret()
-  // ✅ 编辑态：不触发托底计算，避免页面跳动
-  if (props.isEditing)
+  if (isFreezingBottom.value)
     return
-
+  captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
-
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
@@ -539,8 +514,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   wrapper.appendChild(mirror)
 
   const selEnd = el.selectionEnd ?? el.value.length
-  const before = el.value
-    .slice(0, selEnd)
+  const before = el.value.slice(0, selEnd)
     .replace(/\n$/u, '\n ') // 末尾回车特殊处理
     .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
   const probe = document.createElement('span')
@@ -596,9 +570,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
       if (newScrollTop !== el.scrollTop) {
         el.scrollTop = newScrollTop
         // 滚动后重新定位一次，确保仍处于“下一行”
-        requestAnimationFrame(() => {
-          computeAndShowTagSuggestions(el)
-        })
+        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
         return
       }
     }
@@ -609,25 +581,31 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
+
+  // 允许这一轮输入重新触发“轻推一次”
   _hasPushedPage = false
+
+  // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
+  ensureCaretVisibleInTextarea()
+
+  // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
 
-  // ✅ 编辑态：不做键盘/视口托底重算
-  if (props.isEditing)
-    return
-
-  ensureCaretVisibleInTextarea()
+  // 分三次重算，覆盖键盘动画 / visualViewport 延迟
   requestAnimationFrame(() => {
     recomputeBottomSafePadding()
+    // iOS 常见：vv 延迟 ~120–240ms
     window.setTimeout(() => {
       recomputeBottomSafePadding()
     }, 140)
+
     window.setTimeout(() => {
       recomputeBottomSafePadding()
     }, 280)
   })
 
+  // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
       recomputeBottomSafePadding()
@@ -639,27 +617,13 @@ function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
   nextTick(() => {
     const el = textarea.value
-    if (!el)
-      return
-
-    // ✅ 防止浏览器因 focus 触发默认滚动（iOS 常见）
-    try {
-      (el as any).focus({ preventScroll: true })
-    }
-    catch {
+    if (el) {
       el.focus()
-    }
-
-    if (newCursorPos !== undefined)
-      el.setSelectionRange(newCursorPos, newCursorPos)
-
-    captureCaret()
-    ensureCaretVisibleInTextarea()
-    // 仅“新建输入框”需要托底；编辑旧笔记不托底
-    if (!props.isEditing) {
-      requestAnimationFrame(() => {
-        recomputeBottomSafePadding()
-      })
+      if (newCursorPos !== undefined)
+        el.setSelectionRange(newCursorPos, newCursorPos)
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+      requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
 }
@@ -870,11 +834,11 @@ function openTagMenu() {
         captureCaret()
         computeAndShowTagSuggestions(el)
       }
-      // 🔻 单独一行
       suppressNextBlur.value = false
     })
   })
 }
+
 // —— 样式弹层定位（固定在 Aa 按钮上方）
 function placeFormatPalette() {
   const btn = formatBtnRef.value
@@ -1100,20 +1064,25 @@ function startFocusBoost() {
 function handleBeforeInput(e: InputEvent) {
   _hasPushedPage = false
 
-  // ✅ 编辑态：完全不做预抬升
-  if (props.isEditing)
-    return
-
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
   if (!isRealTyping)
     return
 
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
+
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
+
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
@@ -1133,7 +1102,6 @@ function handleBeforeInput(e: InputEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
-        :style="isEditing ? { maxHeight: 'none', overflow: 'hidden' } : null"
         @beforeinput="handleBeforeInput"
         @focus="handleFocus"
         @blur="onBlur"
@@ -1334,7 +1302,10 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-wrapper {
   position: relative;
-  overflow-anchor: auto;  /* ✅ 允许作为滚动锚点 */
+  overflow-anchor: none;
+}
+.note-editor-reborn.android .editor-wrapper {
+  overflow-anchor: auto;
 }
 
 .editor-textarea {
@@ -1538,20 +1509,38 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* 编辑态：交给 autosize，别再限制高度 */
-.note-editor-reborn.editing-viewport { height: auto; min-height: 0; max-height: none; display: block; }
+/* 编辑态占位高度策略（保持原有） */
 .note-editor-reborn.editing-viewport .editor-wrapper {
-  overflow: visible !important;
-  min-height: 0;
-  display: block;
-  overflow-anchor: auto !important;   /* ✅ 编辑时允许成为锚点 */
+  flex: 1 1 auto;
+  overflow: auto;
 }
-
-/* 仅覆盖“上限与滚动”，不要写 height */
+.note-editor-reborn.editing-viewport {
+  height: 70dvh;
+  min-height: 70dvh;
+  max-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+}
+@supports not (height: 1dvh) {
+  .note-editor-reborn.editing-viewport {
+    height: 70vh;
+    min-height: 70vh;
+    max-height: 70vh;
+  }
+}
+.note-editor-reborn.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
 .note-editor-reborn.editing-viewport .editor-textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
   max-height: none !important;
-  overflow: hidden;                 /* 关掉内滚动条 */
-  /* 不要有 height: ... 这里 */
+  overflow-y: auto;
 }
 
 /* tag 面板样式增强 */

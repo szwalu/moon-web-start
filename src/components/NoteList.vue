@@ -542,22 +542,18 @@ async function toggleExpand(noteId: string) {
 
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      // 🔻 仅在对齐滚动期间临时关闭锚点，结束后立刻恢复
-      const prev = (scroller.style as any).overflowAnchor
-      ;(scroller.style as any).overflowAnchor = 'none'
-
+      scroller.style.overflowAnchor = 'none'
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
       const topPadding = 0
       const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
-
-      ;(scroller.style as any).overflowAnchor = prev || '' // ✅ 恢复
     }
   }
   else {
     expandedNote.value = null
+    scroller.style.overflowAnchor = 'none'
 
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
@@ -575,11 +571,7 @@ async function toggleExpand(noteId: string) {
       const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
       target = Math.min(Math.max(0, target), maxScrollTop)
 
-      // 🔻 同样：只在这段滚动期间关闭锚点，结束后恢复
-      const prev = (scroller.style as any).overflowAnchor
-      ;(scroller.style as any).overflowAnchor = 'none'
       await stableSetScrollTop(scroller, target, 6, 0.5)
-      ;(scroller.style as any).overflowAnchor = prev || '' // ✅ 恢复
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
@@ -609,18 +601,17 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
+function handleEditorFocus(containerEl: HTMLElement) {
+  setTimeout(() => {
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
+      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }, 300)
+}
+
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
   })
-})
-
-// —— 开启/关闭 scroll anchoring：仅在编辑某条时打开 —— //
-watch(editingNoteId, (v) => {
-  const sc = scrollerRef.value?.$el as HTMLElement | undefined
-  if (!sc)
-    return
-  sc.style.overflowAnchor = v ? 'auto' : '' // '' = 交给 CSS 默认
 })
 
 function updateCollapsePos() {
@@ -689,7 +680,6 @@ function scrollToTop() {
 }
 
 defineExpose({ scrollToTop, focusAndEditNote })
-// 记录每条卡片的上次高度
 </script>
 
 <template>
@@ -716,7 +706,6 @@ defineExpose({ scrollToTop, focusAndEditNote })
       :items="mixedItems"
       :min-item-size="120"
       class="scroller"
-      :class="{ 'with-anchoring': !!editingNoteId }"
       key-field="vid"
     >
       <template #before>
@@ -728,17 +717,9 @@ defineExpose({ scrollToTop, focusAndEditNote })
           :active="active"
           :data-index="index"
           :size-dependencies="item.type === 'note'
-            ? [
-              item.content,
-              expandedNote === item.id,
-              editingNoteId === item.id,
-              (editingNoteId === item.id ? editingNoteContent.length : 0),
-              item.updated_at,
-              item.vid,
-            ]
+            ? [item.content, expandedNote === item.id, editingNoteId === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
-          :class="{ 'is-editing': item.type === 'note' && editingNoteId === item.id }"
           @resize="updateCollapsePos"
         >
           <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
@@ -777,6 +758,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
                 :all-tags="allTags"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
+                @focus="handleEditorFocus(noteContainers[item.id])"
               />
               <NoteItem
                 v-else
@@ -822,10 +804,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; scroll-behavior: auto; }
-
-/* ✅ 用状态类来控制：编辑时打开锚点，非编辑保持当前行为 */
-.scroller.with-anchoring { overflow-anchor: auto; }
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
 .scroller { background-color: #f9fafb; padding: 0.5rem; }
 .dark .scroller { background-color: #111827; }
@@ -934,14 +913,4 @@ defineExpose({ scrollToTop, focusAndEditNote })
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
-
-/* 只允许“正在编辑”的那张卡片参与滚动锚点；其余一律禁用，避免列表被整体下推 */
-.scroller .note-item-container { overflow-anchor: none; }
-.scroller .note-item-container.is-editing { overflow-anchor: auto; }
-
-/* 防止其他浮动/固定元素被选为锚点 */
-.sticky-month,
-.month-header-outer,
-.month-header,
-.collapse-button { overflow-anchor: none; }
 </style>
