@@ -167,10 +167,9 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
-    emit('bottomSafeChange', 0) // 在PC端，始终确保安全区为0
+    emit('bottomSafeChange', 0)
     return
   }
-  // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
 
@@ -181,23 +180,21 @@ function recomputeBottomSafePadding() {
   }
 
   const vv = window.visualViewport
-  // 1) 桌面或未弹键盘：不托
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // 2) 判断键盘是否真的弹出
+  // —— 键盘是否真的弹出（iOS 仍可用；Android 不用此早退）
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // 3) 计算“光标底部”在 visual viewport 内的坐标
+  // —— 计算“光标底部”在 visual viewport 内的位置
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
@@ -223,16 +220,19 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.25 : 0.95) // iOS 略低、Android 略高
+    // ✅ iOS：把倍率从 0.9 提到 0.95（更保守，避免高估）
+    + lineHeight * (isAndroid ? 1.25 : 0.95)
 
-  // Android：首帧经常“压两行”，保守多留两行
+  // Android：首帧经常“压两行”，多留两行
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
-  // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
+  // —— 需要露出的 UI 高度 = footer + 安全区 + 冗余
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
+  // ✅ iOS 冗余略厚一点（首次 28 / 其后 14）；Android 保持 28
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 28 : 14)
+
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -248,23 +248,22 @@ function recomputeBottomSafePadding() {
   })()
   const SAFE = footerH + safeInset + EXTRA
 
-  // 5) 阈值与所需托起像素
+  // —— 阈值与“需要量”
   const threshold = vv.height - SAFE
 
   const needRaw = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // ✅ 仅 iOS 做反向校正，抵消候选条/工具栏的估算偏差
-  const iosAccessoryGuess = 24
-  const need = isIOS ? Math.max(0, needRaw - iosAccessoryGuess) : needRaw
+  // ✅ 仅 iOS：做反向校正，抵消候选条/工具栏测量偏差
+  const IOS_ACCESSORY_GUESS = 24
+  const need = isIOS ? Math.max(0, needRaw - IOS_ACCESSORY_GUESS) : needRaw
 
   emit('bottomSafeChange', need)
 
-  // —— 只在“第一次需要时”轻推页面一点 —— //
+  // —— 首次“轻推页面”仅限 Android；iOS 禁止滚动页面（避免连锁压缩）
   if (need > 0) {
     if (isAndroid) {
-    // ✅ 仅 Android 允许轻推页面
       if (!_hasPushedPage) {
         const ratio = 1.6
         const cap = 420
@@ -278,8 +277,10 @@ function recomputeBottomSafePadding() {
       }
     }
     else {
-    // 🚫 iOS 不滚动页面，完全交给 bottomSafeChange 外抬容器/底部留白
       _hasPushedPage = false
+      // iOS：首次输入一旦露出，关闭闩锁
+      if (iosFirstInputLatch.value)
+        iosFirstInputLatch.value = false
     }
   }
   else {
@@ -389,7 +390,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  emit('focus')
+  // emit('focus')
   captureCaret()
 
   // 允许再次“轻推”
@@ -415,7 +416,14 @@ function handleFocus() {
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t2)
-
+  if (isIOS) {
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 520)
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 800)
+  }
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
@@ -441,12 +449,14 @@ function onBlur() {
 function handleClick() {
   if (isFreezingBottom.value)
     return
+
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
+
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
@@ -586,6 +596,15 @@ function handleInput(event: Event) {
     }, 280)
   })
 
+  if (isIOS) {
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 520)
+    window.setTimeout(() => {
+      recomputeBottomSafePadding()
+    }, 800)
+  }
+
   // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
@@ -593,6 +612,7 @@ function handleInput(event: Event) {
     }, 240)
   }
 }
+
 // ============== 文本与工具栏 ==============
 function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
@@ -602,9 +622,12 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       el.focus()
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
+
       captureCaret()
       ensureCaretVisibleInTextarea()
-      requestAnimationFrame(() => recomputeBottomSafePadding())
+      requestAnimationFrame(() => {
+        recomputeBottomSafePadding()
+      })
     }
   })
 }
@@ -1294,6 +1317,8 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 40px;
+   max-height: 56svh;              /* 首选小视口单位 */
+  max-height: 56dvh;              /* 再试动态视口（新Safari） */
   max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
@@ -1494,7 +1519,9 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:75dvh;
+  max-height: 75svh;
+  max-height: 75dvh;
+  max-height: 75vh;
 }
 
 /* tag 面板样式增强 */
@@ -1535,5 +1562,10 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
+
+@supports (-webkit-touch-callout: none) {
+  /* 仅 iOS Safari 命中 */
+  .editor-textarea { padding-bottom: 12px; }
 }
 </style>
