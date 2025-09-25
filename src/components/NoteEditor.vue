@@ -1509,38 +1509,9 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* 编辑态占位高度策略（保持原有） */
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  overflow: auto;
-}
-.note-editor-reborn.editing-viewport {
-  height: 70dvh;
-  min-height: 70dvh;
-  max-height: 70dvh;
-  display: flex;
-  flex-direction: column;
-}
-@supports not (height: 1dvh) {
-  .note-editor-reborn.editing-viewport {
-    height: 70vh;
-    min-height: 70vh;
-    max-height: 70vh;
-  }
-}
-.note-editor-reborn.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
+/* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100% !important;
-  max-height: none !important;
-  overflow-y: auto;
+  max-height: none;
 }
 
 /* tag 面板样式增强 */
