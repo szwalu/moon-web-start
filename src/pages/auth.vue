@@ -592,6 +592,7 @@ function onEditorFocus() {
     editorHideTimer = null
   }
   isEditorActive.value = true
+  compactWhileTyping.value = true
 }
 function onEditorBlur() {
   // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
