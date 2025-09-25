@@ -148,8 +148,8 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.6
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.8
 
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -241,12 +241,12 @@ function recomputeBottomSafePadding() {
 
   // Android：首帧经常“压两行”，保守多留两行
   const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
+    ? (caretBottomInViewport + lineHeight * 2.5)
     : caretBottomInViewport
 
   // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
+  const EXTRA = isAndroid ? 36 : (iosFirstInputLatch.value ? 32 : 16)
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1087,8 +1087,8 @@ function handleBeforeInput(e: InputEvent) {
     iosFirstInputLatch.value = true
 
   // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  const base = getFooterHeight() + 28
+  const prelift = Math.max(base, isAndroid ? 220 : 160)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
