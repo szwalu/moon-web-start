@@ -237,7 +237,7 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.25 : 0.9) // iOS 略低、Android 略高
+    + lineHeight * (isAndroid ? 1.25 : 1.15) // iOS 略低、Android 略高
 
   // Android：首帧经常“压两行”，保守多留两行
   const caretBottomAdjusted = isAndroid
@@ -246,7 +246,7 @@ function recomputeBottomSafePadding() {
 
   // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 36 : (iosFirstInputLatch.value ? 32 : 16)
+  const EXTRA = isAndroid ? 36 : (iosFirstInputLatch.value ? 48 : 24)
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1088,7 +1088,10 @@ function handleBeforeInput(e: InputEvent) {
 
   // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 28
-  const prelift = Math.max(base, isAndroid ? 220 : 160)
+  const iosAccessoryGuess = 46 // iOS 键盘上方工具栏/候选条的常见高度
+  const prelift = isAndroid
+    ? Math.max(base, 220)
+    : Math.max(base + iosAccessoryGuess, 200)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
