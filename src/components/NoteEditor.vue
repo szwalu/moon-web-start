@@ -189,6 +189,13 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
+  // ✅ 编辑旧笔记：完全禁用托底与页面滚动修正
+  if (props.isEditing) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
   // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
@@ -407,7 +414,8 @@ function onDocSelectionChange() {
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    if (!props.isEditing)
+      recomputeBottomSafePadding() // ← 只在新建输入框时托底
   }, 80)
 }
 
@@ -625,15 +633,26 @@ function updateTextarea(newText: string, newCursorPos?: number) {
     const el = textarea.value
     if (!el)
       return
-    el.focus()
+
+    // ✅ 防止浏览器因 focus 触发默认滚动（iOS 常见）
+    try {
+      (el as any).focus({ preventScroll: true })
+    }
+    catch {
+      el.focus()
+    }
+
     if (newCursorPos !== undefined)
       el.setSelectionRange(newCursorPos, newCursorPos)
 
     captureCaret()
     ensureCaretVisibleInTextarea()
-    requestAnimationFrame(() => {
-      recomputeBottomSafePadding()
-    })
+    // 仅“新建输入框”需要托底；编辑旧笔记不托底
+    if (!props.isEditing) {
+      requestAnimationFrame(() => {
+        recomputeBottomSafePadding()
+      })
+    }
   })
 }
 
