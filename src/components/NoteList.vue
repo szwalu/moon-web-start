@@ -601,29 +601,24 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
+// NoteList.vue —— 仅当键盘弹起时才滚动卡片，避免点击末尾时整卡被“对齐”跳动
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
-    if (!containerEl)
+    if (!containerEl || typeof containerEl.scrollIntoView !== 'function')
       return
 
     const vv = window.visualViewport
-    const keyboardOpen = !!(vv && (window.innerHeight - (vv.height + vv.offsetTop)) >= 60)
+    // 键盘高度估计（iOS vv.height 变化明显；Android 可能不准，但我们编辑态本来就不托底）
+    const keyboardHeight = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0
+    const keyboardShown = keyboardHeight >= 60
 
-    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-    if (!scroller)
+    if (!keyboardShown) {
+      // 键盘没弹起：不要动列表
       return
-
-    const scRect = scroller.getBoundingClientRect()
-    const cardRect = containerEl.getBoundingClientRect()
-    const padding = 12
-    const outOfView = (cardRect.bottom <= scRect.top + padding) || (cardRect.top >= scRect.bottom - padding)
-
-    // ✅ 仅在“键盘已弹出”或“卡片确实不可见”时，才最小幅度滚动
-    if (keyboardOpen || outOfView)
-      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
-
-    // 否则什么都不做，避免“跳到中间”
-  }, 120)
+    }
+    // 键盘弹起时，保持“就近可见”即可，避免强制顶到顶部
+    containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }, 300)
 }
 watch(expandedNote, () => {
   nextTick(() => {
