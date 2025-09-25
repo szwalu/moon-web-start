@@ -603,11 +603,28 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
 
 function handleEditorFocus(containerEl: HTMLElement) {
   setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
-  }, 300)
-}
+    if (!containerEl)
+      return
 
+    const vv = window.visualViewport
+    const keyboardOpen = !!(vv && (window.innerHeight - (vv.height + vv.offsetTop)) >= 60)
+
+    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+    if (!scroller)
+      return
+
+    const scRect = scroller.getBoundingClientRect()
+    const cardRect = containerEl.getBoundingClientRect()
+    const padding = 12
+    const outOfView = (cardRect.bottom <= scRect.top + padding) || (cardRect.top >= scRect.bottom - padding)
+
+    // ✅ 仅在“键盘已弹出”或“卡片确实不可见”时，才最小幅度滚动
+    if (keyboardOpen || outOfView)
+      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+
+    // 否则什么都不做，避免“跳到中间”
+  }, 120)
+}
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()

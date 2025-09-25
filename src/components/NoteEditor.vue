@@ -421,32 +421,26 @@ onUnmounted(() => {
 function handleFocus() {
   emit('focus')
   captureCaret()
-
-  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
-  emit('bottomSafeChange', getFooterHeight())
+  // ✅ 编辑态：不做托底、不推页面，不开启助推轮询
+  if (props.isEditing)
+    return
 
-  // 立即一轮计算
+  // —— 仅“新建输入框”才需要的托底逻辑 —— //
+  emit('bottomSafeChange', getFooterHeight())
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
-
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t1)
-
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t2)
-
-  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -460,6 +454,7 @@ function onBlur() {
     suppressNextBlur.value = false
     return
   }
+
   if (blurTimeoutId)
     clearTimeout(blurTimeoutId)
 
@@ -469,14 +464,17 @@ function onBlur() {
 }
 
 function handleClick() {
-  if (isFreezingBottom.value)
-    return
   captureCaret()
+  // ✅ 编辑态：不触发托底计算，避免页面跳动
+  if (props.isEditing)
+    return
+
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
+
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
@@ -525,7 +523,8 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   wrapper.appendChild(mirror)
 
   const selEnd = el.selectionEnd ?? el.value.length
-  const before = el.value.slice(0, selEnd)
+  const before = el.value
+    .slice(0, selEnd)
     .replace(/\n$/u, '\n ') // 末尾回车特殊处理
     .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
   const probe = document.createElement('span')
@@ -581,7 +580,9 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
       if (newScrollTop !== el.scrollTop) {
         el.scrollTop = newScrollTop
         // 滚动后重新定位一次，确保仍处于“下一行”
-        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
+        requestAnimationFrame(() => {
+          computeAndShowTagSuggestions(el)
+        })
         return
       }
     }
@@ -592,31 +593,25 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
 function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
-
-  // 允许这一轮输入重新触发“轻推一次”
   _hasPushedPage = false
-
-  // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-  ensureCaretVisibleInTextarea()
-
-  // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
 
-  // 分三次重算，覆盖键盘动画 / visualViewport 延迟
+  // ✅ 编辑态：不做键盘/视口托底重算
+  if (props.isEditing)
+    return
+
+  ensureCaretVisibleInTextarea()
   requestAnimationFrame(() => {
     recomputeBottomSafePadding()
-    // iOS 常见：vv 延迟 ~120–240ms
     window.setTimeout(() => {
       recomputeBottomSafePadding()
     }, 140)
-
     window.setTimeout(() => {
       recomputeBottomSafePadding()
     }, 280)
   })
 
-  // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
       recomputeBottomSafePadding()
@@ -628,14 +623,17 @@ function updateTextarea(newText: string, newCursorPos?: number) {
   input.value = newText
   nextTick(() => {
     const el = textarea.value
-    if (el) {
-      el.focus()
-      if (newCursorPos !== undefined)
-        el.setSelectionRange(newCursorPos, newCursorPos)
-      captureCaret()
-      ensureCaretVisibleInTextarea()
-      requestAnimationFrame(() => recomputeBottomSafePadding())
-    }
+    if (!el)
+      return
+    el.focus()
+    if (newCursorPos !== undefined)
+      el.setSelectionRange(newCursorPos, newCursorPos)
+
+    captureCaret()
+    ensureCaretVisibleInTextarea()
+    requestAnimationFrame(() => {
+      recomputeBottomSafePadding()
+    })
   })
 }
 
@@ -845,11 +843,11 @@ function openTagMenu() {
         captureCaret()
         computeAndShowTagSuggestions(el)
       }
+      // 🔻 单独一行
       suppressNextBlur.value = false
     })
   })
 }
-
 // —— 样式弹层定位（固定在 Aa 按钮上方）
 function placeFormatPalette() {
   const btn = formatBtnRef.value
@@ -1075,25 +1073,20 @@ function startFocusBoost() {
 function handleBeforeInput(e: InputEvent) {
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
+  // ✅ 编辑态：完全不做预抬升
+  if (props.isEditing)
+    return
+
   const t = e.inputType || ''
-  const isRealTyping
-    = t.startsWith('insert')
-    || t.startsWith('delete')
-    || t === 'historyUndo'
-    || t === 'historyRedo'
+  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
-
-  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
-
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
