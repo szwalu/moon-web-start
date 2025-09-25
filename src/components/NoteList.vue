@@ -601,6 +601,13 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
+function handleEditorFocus(containerEl: HTMLElement) {
+  setTimeout(() => {
+    if (containerEl && typeof containerEl.scrollIntoView === 'function')
+      containerEl.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+  }, 300)
+}
+
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
@@ -751,6 +758,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
                 :all-tags="allTags"
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
+                @focus="handleEditorFocus(noteContainers[item.id])"
               />
               <NoteItem
                 v-else
