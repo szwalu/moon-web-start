@@ -90,6 +90,7 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
+const editorBottomPadding = ref(0)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -582,14 +583,6 @@ async function handleVisibilityChange() {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
   }
-}
-
-function handleEditorFocus(containerEl: HTMLElement) {
-  compactWhileTyping.value = true // 新增：隐藏页眉
-  setTimeout(() => {
-    if (containerEl && typeof containerEl.scrollIntoView === 'function')
-      containerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, 0)
 }
 
 let editorHideTimer: number | null = null
@@ -1325,7 +1318,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </script>
 
 <template>
-  <div class="auth-container" :class="{ 'is-typing': compactWhileTyping }" :aria-busy="!isReady">
+  <div
+    class="auth-container"
+    :class="{ 'is-typing': compactWhileTyping }"
+    :aria-busy="!isReady"
+  >
     <template v-if="user">
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
@@ -1459,10 +1456,17 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           @save="handleCreateNote"
-          @focus="() => { onEditorFocus(); handleEditorFocus(newNoteEditorContainerRef) }"
+          @focus="onEditorFocus"
           @blur="onEditorBlur"
+          @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
+      <div
+        v-show="editorBottomPadding > 0"
+        :style="{ height: `${editorBottomPadding}px` }"
+        style="flex:0 0 auto;"
+        aria-hidden="true"
+      />
 
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
@@ -1526,8 +1530,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+
+  min-height: 100dvh;     /* 从“固定高度”改为“最小高度” */
+  overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
   position: relative;
 }
 .dark .auth-container {
