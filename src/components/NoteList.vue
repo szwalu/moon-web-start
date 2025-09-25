@@ -526,6 +526,7 @@ async function toggleExpand(noteId: string) {
   }
 
   if (!isCurrentlyExpanded) {
+    // 记录展开前锚点
     const card = noteContainers.value[noteId] as HTMLElement | undefined
     if (card) {
       const scRect = scroller.getBoundingClientRect()
@@ -540,38 +541,53 @@ async function toggleExpand(noteId: string) {
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
+    // 🔻 展开后对齐：临时关闭锚点，结束后务必恢复
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
       scroller.style.overflowAnchor = 'none'
-      const scRectAfter = scroller.getBoundingClientRect()
-      const cardRectAfter = cardAfter.getBoundingClientRect()
-      const topPadding = 0
-      const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
-      const target = scroller.scrollTop + deltaAlign
-      await stableSetScrollTop(scroller, target, 6, 0.5)
+      try {
+        const scRectAfter = scroller.getBoundingClientRect()
+        const cardRectAfter = cardAfter.getBoundingClientRect()
+        const topPadding = 0
+        const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
+        const target = scroller.scrollTop + deltaAlign
+        await stableSetScrollTop(scroller, target, 6, 0.5)
+      }
+      finally {
+        // ✅ 恢复，让随后“编辑时打字”有锚点保护
+        scroller.style.overflowAnchor = ''
+      }
     }
   }
   else {
+    // 收起
     expandedNote.value = null
-    scroller.style.overflowAnchor = 'none'
 
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
+    // 🔻 收起后回到原来的视觉位置：同样临时关闭锚点并在 finally 恢复
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
-      const scRectAfter = scroller.getBoundingClientRect()
-      const cardRectAfter = cardAfter.getBoundingClientRect()
-      const anchor = expandAnchor.value
-      const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
-      const currentTopOffset = cardRectAfter.top - scRectAfter.top
-      const delta = currentTopOffset - wantTopOffset
+      scroller.style.overflowAnchor = 'none'
+      try {
+        const scRectAfter = scroller.getBoundingClientRect()
+        const cardRectAfter = cardAfter.getBoundingClientRect()
+        const anchor = expandAnchor.value
+        const wantTopOffset = (anchor.noteId === noteId) ? anchor.topOffset : 0
+        const currentTopOffset = cardRectAfter.top - scRectAfter.top
+        const delta = currentTopOffset - wantTopOffset
 
-      let target = scroller.scrollTop + delta
-      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-      target = Math.min(Math.max(0, target), maxScrollTop)
+        let target = scroller.scrollTop + delta
+        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+        target = Math.min(Math.max(0, target), maxScrollTop)
 
-      await stableSetScrollTop(scroller, target, 6, 0.5)
+        await stableSetScrollTop(scroller, target, 6, 0.5)
+      }
+      finally {
+        // ✅ 恢复默认（等同 overflow-anchor:auto）
+        scroller.style.overflowAnchor = ''
+      }
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
@@ -699,6 +715,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
       :items="mixedItems"
       :min-item-size="120"
       class="scroller"
+      :class="{ 'with-anchoring': !!editingNoteId }"
       key-field="vid"
     >
       <template #before>
@@ -803,7 +820,10 @@ defineExpose({ scrollToTop, focusAndEditNote })
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
+.scroller { height: 100%; overflow-y: auto; scroll-behavior: auto; }
+
+/* ✅ 用状态类来控制：编辑时打开锚点，非编辑保持当前行为 */
+.scroller.with-anchoring { overflow-anchor: auto; }
 /* 背景 */
 .scroller { background-color: #f9fafb; padding: 0.5rem; }
 .dark .scroller { background-color: #111827; }
