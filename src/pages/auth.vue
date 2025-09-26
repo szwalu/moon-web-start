@@ -1502,6 +1502,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :all-tags="allTags"
           :max-note-length="maxNoteLength"
           :search-query="searchQuery"
+          :bottom-inset="isAnniversaryViewActive ? 190 : 10"
           @load-more="nextPage"
           @update-note="handleUpdateNote"
           @delete-note="triggerDeleteConfirmation"

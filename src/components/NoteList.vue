@@ -42,6 +42,8 @@ const { t } = useI18n()
 
 const scrollerRef = ref<any>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
+const isUserScrolling = ref(false)
+let scrollHideTimer: number | null = null
 const collapseBtnRef = ref<HTMLElement | null>(null)
 const collapseVisible = ref(false)
 const collapseStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
@@ -129,6 +131,30 @@ const normalizedNotes = computed<any[]>(() => {
   })
 })
 /* ========================== 结束新增 ========================== */
+
+// —— 动态尾部补齐：保证可滚距离 ≥ bottomInset ——
+const tailFiller = ref(0)
+
+/**
+ * 目标：最终 R_new = (contentHeight + filler) - clientHeight ≥ bottomInset
+ * 其中 contentHeight = scrollHeight - currentFiller
+ * => 需要的 filler = max(0, bottomInset - (contentHeight - clientHeight))
+ */
+function recomputeTailFiller() {
+  if (isUserScrolling.value)
+    return
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!sc)
+    return
+
+  requestAnimationFrame(() => {
+    const currentFiller = tailFiller.value || 0
+    const contentHeight = sc.scrollHeight - currentFiller
+    const baseR = contentHeight - sc.clientHeight
+    const needed = Math.max(0, props.bottomInset - baseR)
+    tailFiller.value = needed // 只补“缺口”，不再叠加 bottomInset，本函数无振荡
+  })
+}
 
 /** 跳过置顶段，从第一条非置顶开始插入月份头 */
 const mixedItems = computed<MixedItem[]>(() => {
@@ -344,8 +370,6 @@ function getTopVisibleMonthKey(rootEl: HTMLElement): string {
 }
 
 // ---- 滚动状态（快速滚动先隐藏按钮，停止后恢复） ----
-const isUserScrolling = ref(false)
-let scrollHideTimer: number | null = null
 
 let collapseRetryId: number | null = null
 let collapseRetryCount = 0
@@ -435,6 +459,7 @@ watch(() => props.notes, () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recomputeStickyState()
+        recomputeTailFiller()
       })
     })
   })
@@ -452,6 +477,7 @@ watch(scrollerRef, (newScroller, oldScroller) => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           recomputeStickyState()
+          recomputeTailFiller()
         })
       })
     })
@@ -461,6 +487,7 @@ watch(scrollerRef, (newScroller, oldScroller) => {
 function handleWindowResize() {
   syncStickyGutters()
   updateCollapsePos()
+  recomputeTailFiller()
 }
 
 onMounted(() => {
@@ -476,6 +503,7 @@ onMounted(() => {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       recomputeStickyState()
+      recomputeTailFiller()
     })
   })
 })
@@ -503,6 +531,7 @@ function startEdit(note: any) {
     updateCollapsePos()
     requestAnimationFrame(() => {
       recomputeStickyState()
+      recomputeTailFiller()
     })
   })
 }
@@ -512,6 +541,7 @@ function cancelEdit() {
   editingNoteContent.value = ''
   requestAnimationFrame(() => {
     recomputeStickyState()
+    recomputeTailFiller()
   })
 }
 
@@ -585,6 +615,7 @@ async function toggleExpand(noteId: string) {
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
       recomputeStickyState()
+      recomputeTailFiller()
     }
   }
   else {
@@ -609,6 +640,7 @@ async function toggleExpand(noteId: string) {
 
       await stableSetScrollTop(scroller, target, 6, 0.5)
       recomputeStickyState()
+      recomputeTailFiller()
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
@@ -641,6 +673,11 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        recomputeTailFiller() // ✨ 展开/收起完成后再兜底一次
+      })
+    })
   })
 })
 
@@ -690,6 +727,12 @@ function updateCollapsePos() {
   const leftPx = cardRect.left - wrapperRect.left + 0
   collapseStyle.value = { left: `${leftPx}px`, top: `${topPx - wrapperRect.top}px` }
   collapseVisible.value = true
+}
+
+function onItemResize() {
+  updateCollapsePos()
+  recomputeStickyState()
+  recomputeTailFiller() // ✨ 卡片因展开/收起/渲染完成导致高度变化时，立刻补齐尾部
 }
 
 async function focusAndEditNote(noteId: string) {
@@ -753,7 +796,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
             ? [item.content, expandedNote === item.id, editingNoteId === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="updateCollapsePos"
+          @resize="onItemResize"
         >
           <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div v-if="item.type === 'month-header'" class="month-header-outer">
@@ -815,7 +858,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
         <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
           {{ t('notes.loading') }}
         </div>
-        <div class="list-bottom-spacer" :style="{ height: `${props.bottomInset}px` }" />
+        <div class="list-bottom-spacer" :style="{ height: `${tailFiller}px` }" />
       </template>
     </DynamicScroller>
 
