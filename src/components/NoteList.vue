@@ -798,18 +798,18 @@ defineExpose({ scrollToTop, focusAndEditNote })
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
-.scroller { background-color: #f9fafb; padding: 0.5rem; }
-.dark .scroller { background-color: #111827; }
+.scroller { background-color: #e5e7eb; padding: 0.5rem; }
+.dark .scroller { background-color: #0d1117; }
 /* 卡片 */
 .note-content-wrapper {
   background-color: #ffffff; border-radius: 12px; padding: 1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
+   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   transition: box-shadow 0.2s ease-in-out;
 }
 .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07); }
 .dark .note-content-wrapper {
   background-color: #1f2937; border: 1px solid #374151;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 .dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
 /* 间距与选择 */
