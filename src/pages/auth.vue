@@ -1201,41 +1201,63 @@ function handleMainMenuSelect(rawKey: string) {
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
-  // 1. 关闭日历视图
+  // 1. 关闭日历视图并清理所有筛选状态（这部分保持不变）
   showCalendarView.value = false
-
-  // 2. 清理所有筛选状态，回到主列表
   if (isAnniversaryViewActive.value)
     handleAnniversaryToggle(null)
-
   if (activeTagFilter.value)
     clearTagFilter()
-
   if (searchQuery.value || isShowingSearchResults.value)
     handleCancelSearch()
-
-  // 3. 等待UI和数据状态更新
   await nextTick()
 
-  // 4. 检查笔记是否已在当前加载的列表中。如果不在，则临时将其置顶。
-  //    这是关键一步，能确保 NoteList 组件的 props.notes 数组中包含目标笔记，
-  //    这样它内部的 findIndex 才能找到对应的索引。
+  // 2. 检查笔记是否已在当前加载的列表中
   const noteExists = notes.value.some(n => n.id === noteToFind.id)
-  if (!noteExists)
-    notes.value.unshift(noteToFind)
 
-  // 5. 再次等待 nextTick，确保 unshift 操作已经传递给 NoteList 组件
+  if (noteExists) {
+    // 情况A：笔记已在列表中，这是理想情况，直接定位即可
+    if (noteListRef.value)
+      (noteListRef.value as any).focusAndEditNote(noteToFind.id)
+
+    return
+  }
+
+  // 情况B：笔记不在列表中，这是问题的核心，需要从服务器分页加载直到找到它
+  isLoadingNotes.value = true // 显示加载动画
+  notes.value = [] // 清空当前列表
+  currentPage.value = 1 // 重置页码
+  hasMoreNotes.value = true // 假定有更多数据可以加载
+
+  // 循环加载，直到找到笔记或加载完所有笔记
+  while (hasMoreNotes.value) {
+    // fetchNotes 会根据 currentPage 加载该页数据并追加到 notes 数组
+    await fetchNotes()
+
+    // 检查新加载的这页数据里是否包含我们的目标笔记
+    const found = notes.value.some(n => n.id === noteToFind.id)
+    if (found) {
+      // 找到了！
+      isLoadingNotes.value = false // 隐藏加载动画
+      await nextTick() // 等待DOM更新
+      if (noteListRef.value) {
+        // 命令 NoteList 组件定位并编辑
+        (noteListRef.value as any).focusAndEditNote(noteToFind.id)
+      }
+      return // 任务完成，退出函数
+    }
+
+    // 如果当前页没找到，且服务器确认还有更多数据，则准备加载下一页
+    if (hasMoreNotes.value)
+      currentPage.value++
+  }
+
+  // 如果循环结束但仍未找到笔记（这是一种边缘情况，比如笔记在别处被删了）
+  isLoadingNotes.value = false
+  // 作为最后的保障，使用旧的 unshift 方法，至少让用户能编辑这条笔记，即使位置不对
+  notes.value.unshift(noteToFind)
   await nextTick()
-
-  // 6. 调用 NoteList 组件中已经写好的、暴露出来的 focusAndEditNote 方法
-  if (noteListRef.value) {
-    // @ts-expect-error: 'focusAndEditNote' is exposed via defineExpose
+  if (noteListRef.value)
     (noteListRef.value as any).focusAndEditNote(noteToFind.id)
-  }
-  else {
-    // 极端情况下的错误提示
-    messageHook.error('无法与笔记列表通信，请重试。')
-  }
 }
 
 async function fetchNotesByTag(tag: string) {
