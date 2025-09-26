@@ -54,7 +54,6 @@ const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const compactWhileTyping = ref(false)
-const dropdownContainerRef = ref(null)
 const user = computed(() => authStore.user)
 const isCreating = ref(false)
 const notes = ref<any[]>([])
@@ -309,8 +308,6 @@ onMounted(() => {
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
-
-  document.removeEventListener('click', closeDropdownOnClickOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
@@ -485,10 +482,25 @@ const displayedNotes = computed(() => {
   return notes.value
 })
 
-function closeDropdownOnClickOutside(event: MouseEvent) {
-  if (dropdownContainerRef.value && !(dropdownContainerRef.value as HTMLElement).contains(event.target as Node))
-    showDropdown.value = false
-}
+const MIN_NOTES_FOR_HIDE = 6
+
+// —— 安全的计数：兼容 ref 和非 ref，避免 TDZ 和形态判断散落各处 ——
+const notesCount = computed(() => {
+  if (Array.isArray((displayedNotes as any)?.value))
+    return (displayedNotes as any).value.length
+  if (Array.isArray(displayedNotes as any))
+    return (displayedNotes as any).length
+  return 0
+})
+
+// 统一规则：只有当可见笔记数 ≥ 6 时才允许隐藏（主页 / 那年今日 / 标签 / 搜索 全部适用）
+const canHideTopChrome = computed(() => notesCount.value >= MIN_NOTES_FOR_HIDE)
+
+// —— 视图切换 / 列表变化时，若不满足门槛则钉住展开 ——
+watch([notesCount, isAnniversaryViewActive, isShowingSearchResults, activeTagFilter], () => {
+  if (!canHideTopChrome.value)
+    headerCollapsed.value = false
+}, { immediate: true })
 
 async function fetchAllTags() {
   if (!user.value?.id) {
@@ -615,6 +627,11 @@ function handleExportTrigger() {
 }
 
 function onListScroll(top: number) {
+// 🚧 不满足条件时，禁止折叠隐藏顶部，强制展开并返回
+  if (!canHideTopChrome.value) {
+    headerCollapsed.value = false // 你的原有“是否折叠顶部”的布尔量
+    return
+  }
   // 下滑一点就折叠；你也可以改成 0 或 16，看手感
   headerCollapsed.value = top > 8
 }
@@ -1502,7 +1519,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           :all-tags="allTags"
           :max-note-length="maxNoteLength"
           :search-query="searchQuery"
-          :bottom-inset="isAnniversaryViewActive ? 190 : 10"
           @load-more="nextPage"
           @update-note="handleUpdateNote"
           @delete-note="triggerDeleteConfirmation"
