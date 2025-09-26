@@ -57,6 +57,7 @@ const noteContainers = ref<Record<string, HTMLElement>>({})
 function setNoteContainer(el: Element | null, id: string) {
   if (!el)
     return
+
   const $el = el as HTMLElement
   $el.setAttribute('data-note-id', id)
   noteContainers.value[id] = $el
@@ -104,6 +105,7 @@ const normalizedNotes = computed<any[]>(() => {
   for (const n of props.notes) {
     if (!n || n.id == null)
       continue
+
     const id = String(n.id)
     if (!seen.has(id)) {
       seen.add(id)
@@ -122,6 +124,7 @@ const normalizedNotes = computed<any[]>(() => {
     const pb = _isPinned(b) ? 0 : 1
     if (pa !== pb)
       return pa - pb
+
     return _ts(b) - _ts(a)
   })
 })
@@ -171,7 +174,9 @@ const noteIdToMixedIndex = computed<Record<string, number>>(() => {
 /** 新增：id -> 原始笔记（向上滚兜底需要），用 normalizedNotes 更一致 */
 const noteById = computed<Record<string, any>>(() => {
   const m: Record<string, any> = {}
-  for (const n of normalizedNotes.value) m[n.id] = n
+  for (const n of normalizedNotes.value)
+    m[n.id] = n
+
   return m
 })
 
@@ -184,6 +189,7 @@ function setHeaderEl(el: Element | null, monthKey: string) {
   if (!el) {
     if (headerEls.value[monthKey])
       delete headerEls.value[monthKey]
+
     return
   }
   headerEls.value[monthKey] = el as HTMLElement
@@ -195,6 +201,7 @@ const currentMonthKey = ref<string>('')
 const currentMonthLabel = computed(() => {
   if (!currentMonthKey.value)
     return ''
+
   const [y, m] = currentMonthKey.value.split('-')
   return `${Number(y)}年${Number(m)}月`
 })
@@ -222,8 +229,11 @@ function recomputeStickyState() {
 
   if (entries.length === 0) {
     // header 被虚拟化回收：向上滚时用可见卡片兜底，避免整月显示成上个月
-    if (scrollDir.value === 'up')
-      setCurrentByTopVisibleNote(root)
+    if (scrollDir.value === 'up') {
+      const topKey0 = getTopVisibleMonthKey(root)
+      if (topKey0 && topKey0 !== currentMonthKey.value)
+        currentMonthKey.value = topKey0
+    }
 
     pushOffset.value = 0
     return
@@ -234,6 +244,7 @@ function recomputeStickyState() {
   for (let i = 0; i < entries.length; i++) {
     if (entries[i].top <= rootTop + EPS)
       idxPrev = i
+
     else
       break
   }
@@ -266,9 +277,10 @@ function recomputeStickyState() {
     pushOffset.value = Math.min(HEADER_HEIGHT, overlap)
   }
 
-  // ✅ 仅当“向上滚”且 header 判断可能滞后时，用真实可见笔记做兜底修正（不改 pushOffset）
-  if (scrollDir.value === 'up')
-    setCurrentByTopVisibleNote(root)
+  // ✅ 兜底：无论向上/向下滚，都用“视口内最靠上的非置顶笔记”纠正月份
+  const topKey = getTopVisibleMonthKey(root)
+  if (topKey && topKey !== currentMonthKey.value)
+    currentMonthKey.value = topKey
 }
 
 // 让 .sticky-month 和 .month-header 宽度对齐（不遮住滚动条）
@@ -292,11 +304,13 @@ function syncStickyGutters() {
 }
 
 /** 新增：用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚调用） */
-function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
+// —— 返回“视口内最靠上的非置顶笔记”的月份 key（找不到返回空串）
+function getTopVisibleMonthKey(rootEl: HTMLElement): string {
   const scRect = rootEl.getBoundingClientRect()
 
   let topId: string | null = null
   let topY = Number.POSITIVE_INFINITY
+
   for (const [id, el] of Object.entries(noteContainers.value)) {
     if (!el || !el.isConnected)
       continue
@@ -324,9 +338,9 @@ function setCurrentByTopVisibleNote(rootEl: HTMLElement) {
   if (topId) {
     const n = noteById.value[topId]
     const { key } = getMonthKeyAndLabel(n)
-    if (key && currentMonthKey.value !== key)
-      currentMonthKey.value = key
+    return key || ''
   }
+  return ''
 }
 
 // ---- 滚动状态（快速滚动先隐藏按钮，停止后恢复） ----
@@ -338,6 +352,7 @@ let collapseRetryCount = 0
 function scheduleCollapseRetry() {
   if (collapseRetryId !== null)
     return
+
   collapseRetryCount = 0
   const step = () => {
     collapseRetryId = requestAnimationFrame(() => {
@@ -369,6 +384,7 @@ const handleScroll = throttle(() => {
   const curTop = el.scrollTop
   if (curTop > lastScrollTop)
     scrollDir.value = 'down'
+
   else if (curTop < lastScrollTop)
     scrollDir.value = 'up'
 
@@ -406,6 +422,7 @@ function rebindScrollListener() {
   const scrollerElement = scrollerRef.value?.$el as HTMLElement | undefined
   if (!scrollerElement)
     return
+
   scrollerElement.removeEventListener('scroll', handleScroll)
   scrollerElement.addEventListener('scroll', handleScroll, { passive: true } as any)
 }
@@ -416,7 +433,9 @@ watch(() => props.notes, () => {
     updateCollapsePos()
     syncStickyGutters()
     requestAnimationFrame(() => {
-      recomputeStickyState()
+      requestAnimationFrame(() => {
+        recomputeStickyState()
+      })
     })
   })
 }, { deep: false })
@@ -431,7 +450,9 @@ watch(scrollerRef, (newScroller, oldScroller) => {
       updateCollapsePos()
       syncStickyGutters()
       requestAnimationFrame(() => {
-        recomputeStickyState()
+        requestAnimationFrame(() => {
+          recomputeStickyState()
+        })
       })
     })
   }
@@ -451,6 +472,12 @@ onMounted(() => {
       recomputeStickyState()
     }, { root })
   }
+  // 🔁 冷启动“双 RAF”以确保虚拟列表完成首屏布局后再计算悬浮月份条
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      recomputeStickyState()
+    })
+  })
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
@@ -474,17 +501,24 @@ function startEdit(note: any) {
   expandedNote.value = null
   nextTick(() => {
     updateCollapsePos()
+    requestAnimationFrame(() => {
+      recomputeStickyState()
+    })
   })
 }
 
 function cancelEdit() {
   editingNoteId.value = null
   editingNoteContent.value = ''
+  requestAnimationFrame(() => {
+    recomputeStickyState()
+  })
 }
 
 async function handleUpdateNote() {
   if (!editingNoteId.value)
     return
+
   isUpdating.value = true
   emit('updateNote', { id: editingNoteId.value, content: editingNoteContent.value }, (success: boolean) => {
     isUpdating.value = false
@@ -505,6 +539,7 @@ function _ensureCardVisible(noteId: string) {
 
   if (cardRect.top < scrollerRect.top + padding)
     card.scrollIntoView({ behavior: 'auto', block: 'start' })
+
   else if (cardRect.bottom > scrollerRect.bottom)
     card.scrollIntoView({ behavior: 'auto', block: 'nearest' })
 }
@@ -549,6 +584,7 @@ async function toggleExpand(noteId: string) {
       const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
       const target = scroller.scrollTop + deltaAlign
       await stableSetScrollTop(scroller, target, 6, 0.5)
+      recomputeStickyState()
     }
   }
   else {
@@ -572,6 +608,7 @@ async function toggleExpand(noteId: string) {
       target = Math.min(Math.max(0, target), maxScrollTop)
 
       await stableSetScrollTop(scroller, target, 6, 0.5)
+      recomputeStickyState()
     }
     expandAnchor.value = { noteId: null, topOffset: 0, scrollTop: scroller.scrollTop }
   }
@@ -664,6 +701,9 @@ async function focusAndEditNote(noteId: string) {
       editingNoteContent.value = original.content
       await nextTick()
       scrollerRef.value?.scrollToItem(idx, { align: 'center', behavior: 'smooth' })
+      requestAnimationFrame(() => {
+        recomputeStickyState()
+      })
     }
   }
 }
@@ -772,7 +812,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
       </template>
 
       <template #after>
-        <div v-if="isLoading && notes.length > 0" class="text中心 py-4 text-gray-500">
+        <div v-if="isLoading && notes.length > 0" class="py-4 text-center text-gray-500">
           {{ t('notes.loading') }}
         </div>
         <div class="list-bottom-spacer" :style="{ height: `${props.bottomInset}px` }" />
