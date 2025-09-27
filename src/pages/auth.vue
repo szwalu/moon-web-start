@@ -1952,29 +1952,13 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;                                 /* 不占位 */
-  margin-bottom: calc(-1 * var(--safe-bottom) - 2px) !important;/* 👈 多压 2px，消掉发丝白线 */
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
-}
-
-/* 盖住 iOS 底部安全区的发丝缝：固定定位的填充条 */
-body::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* 用 safe-area + 额外 2px，确保覆盖所有取整差异 */
-  height: calc(env(safe-area-inset-bottom, 0px) + 2px);
-  background: var(--app-bg);      /* 跟页面背景一致，亮/暗色都适配 */
-  pointer-events: none;           /* 不影响点击 */
-  z-index: 2147483647;            /* 最高层，保证压住缝隙 */
-  transform: translateZ(0);       /* 强制独立合成层，避免抗锯齿缝 */
-  -webkit-transform: translateZ(0);
 }
 
 /* Sticky 头部下移 safe-top */
