@@ -1897,12 +1897,15 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 /* === 全局样式（非 scoped）=== */
 
 /* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
@@ -1910,73 +1913,58 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
+
+/* 子菜单项紧凑一些 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
+
+/* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70vh !important;
   }
 }
 
-/* 安全区变量（需要 index.html 里 viewport-fit=cover 才会生效） */
+/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px;
+  --header-base: 44px; /* 头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
-
-  /* 统一页面背景，暗亮主题各一份 */
   --app-bg: #ffffff;
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 让根节点背景与容器一致，防止露出白色窗口背景 */
+/* 统一页面背景 */
 html, body, #app {
   height: 100%;
   margin: 0;
   background: var(--app-bg);
 }
 
-/* 容器本体：顶部避让刘海，底部不加额外 padding（真实填充交给 ::after 做） */
+/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-  /* 顶部让出安全区 + 你之前的 0.5rem */
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-
-  /* 不额外垫底部，避免撑高布局；留给 ::after 来“涂色”填充 */
   padding-bottom: 0 !important;
-
-  /* 避免橡皮筋回弹把根背景露出来导致“白条变大” */
+  margin-bottom: calc(0px - var(--safe-bottom)) !important;  /* ✅ 压进 safe-area */
   overscroll-behavior-y: contain;
-
-  /* 很重要：容器背景必须和页面统一，这样 ::after 继承才无缝 */
   background: var(--app-bg);
-  position: relative; /* 供 ::after 继承背景 */
+  position: relative;
+
+  /* 去掉底部圆角，避免露出 app 背景产生“白条” */
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
 }
 
-/* 关键：用固定定位的伪元素把“系统 Home 指示条的安全区”永久涂满
-   - 随滚动不动（fixed），所以不会出现“滚一滚/拨一下才消失”的情况
-   - 只涂 env(safe-area-inset-bottom) 高度，多一像素都不占 */
-.auth-container::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--safe-bottom);
-  background: var(--app-bg);
-  pointer-events: none; /* 不挡点击 */
-  z-index: 1;          /* 低于页面内容即可 */
-}
-
-/* Sticky 头部：从安全区下方开始 */
+/* Sticky 头部下移 safe-top */
 .auth-container .page-header {
   top: var(--safe-top) !important;
   height: var(--header-base) !important;
   padding-top: 0.5rem !important;
 }
 
-/* 所有贴顶的二级横幅、搜索栏也要下移到头部之下 */
+/* 二级横幅、搜索栏跟随 header-height */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
