@@ -44,28 +44,59 @@
       });
     </script>
 
-    <!-- 仅首页启用的“顶端安全区”补偿类；普通浏览器/内页不受影响 -->
+    <!-- 仅首页启用的安全区补偿 -->
     <style>
       html, body, #app { margin: 0; }
-      /* 这个类只会在首页 + 全屏时被脚本加到 <body> 上 */
+      /* 首页整体向下让出刘海区（仅在全屏时会加到 body 上） */
       @supports (padding: env(safe-area-inset-top)) {
         body.home-safe-top { padding-top: env(safe-area-inset-top); }
       }
+      /* 自动标记为 needs-safe-top 的头部元素，永远避开刘海（滚动时也有效） */
+      @supports (top: env(safe-area-inset-top)) {
+        body.home-safe-top .needs-safe-top {
+          top: env(safe-area-inset-top) !important;
+        }
+      }
     </style>
 
-    <!-- 判断是否首页 + 全屏，然后给 body 加类名 -->
+    <!-- 首页 + 全屏：加类，并自动为固定/粘性头部补偿 safe-top -->
     <script>
       (function () {
         var isHome =
           location.pathname === '/' ||
           location.pathname === '/index.html' ||
-          location.pathname === '' ;
+          location.pathname === '';
+
         var isStandalone =
           (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-          window.navigator.standalone === true; // iOS Safari
+          window.navigator.standalone === true;
+
+        function tagFixedStickyHeaders() {
+          try {
+            if (!isHome || !isStandalone) return;
+            // 常见的头部选择器；也会检查任意 role="banner"
+            var candidates = document.querySelectorAll(
+              'header, .header, .site-header, .app-header, .topbar, .top-bar, .navbar, [data-fixed-header], [data-sticky-header], [role="banner"]'
+            );
+            candidates.forEach(function (el) {
+              var cs = getComputedStyle(el);
+              var isFixedOrSticky = cs.position === 'fixed' || cs.position === 'sticky';
+              // 只有 top 为 0 或 auto 的才需要补偿
+              if (isFixedOrSticky && (cs.top === '0px' || cs.top === 'auto')) {
+                el.classList.add('needs-safe-top');
+              }
+            });
+          } catch (_) {}
+        }
+
         if (isHome && isStandalone) {
           document.addEventListener('DOMContentLoaded', function () {
             document.body.classList.add('home-safe-top');
+            // 初次扫描（App 刚挂载）
+            setTimeout(tagFixedStickyHeaders, 0);
+            // 视口变化/旋转后再扫描一次
+            window.addEventListener('resize', tagFixedStickyHeaders);
+            if (window.visualViewport) visualViewport.addEventListener('resize', tagFixedStickyHeaders);
           });
         }
       })();
