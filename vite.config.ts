@@ -50,7 +50,7 @@ export default defineConfig({
       manifest: {
         name: '我abc网址导航',
         short_name: '我abc',
-        start_url: '/auth', // ← 改这里
+        start_url: '/', // ← 改这里
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
