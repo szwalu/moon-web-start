@@ -1897,6 +1897,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 /* === 全局样式（非 scoped）=== */
 
 /* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
@@ -1904,7 +1905,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
 }
 
-/* 子菜单的滚动限制 */
+/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
@@ -1913,11 +1914,12 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   padding-right: 4px;
 }
 
-/* 子菜单项更紧凑 */
+/* 子菜单里的每一项更紧凑些，显示更多可见项 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
 
+/* 移动端：给子菜单更多可视空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70vh !important;
@@ -1928,49 +1930,63 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px; /* 头部视觉高度 */
+  --header-base: 44px; /* 你原来的头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
 }
 
-/* 统一页面背景，防止安全区露底色不一致 */
+/* 统一页面背景 + 视口高度修正，避免底部出现大片空白 */
 html, body, #app {
   height: 100%;
+  /* 使用小视口单位，减少 iOS 顶部/底部栏变化带来的跳动 */
+  min-height: 100svh;
   background: #ffffff;
   margin: 0;
 }
 .dark body { background: #1e1e1e; }
 
-/* 顶部让出 safe-top；底部只保留 safe-bottom（不再额外 +0.75rem）*/
+/* 兼容旧版 iOS：当不支持 100svh 时，退化为 -webkit-fill-available */
+@supports not (height: 100svh) {
+  html, body, #app {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* 把底部安全区补偿放到 body，而不是整页主容器，避免把页面整体“抬起” */
+body {
+  padding-bottom: var(--safe-bottom);
+}
+
+/* 主容器仅处理顶部安全区；底部不再额外垫高 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: var(--safe-bottom) !important; /* ← 关键修改 */
+  padding-bottom: 0 !important;
+  /* 避免弹性回弹露出背景造成“空白更大”的视觉 */
+  overscroll-behavior-y: contain;
 }
 
 /* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
 .auth-container .page-header {
   top: var(--safe-top) !important;
-  height: var(--header-base) !important;
-  padding-top: 0.5rem !important;
+  height: var(--header-base) !important;              /* 仍然是 44px 视觉高度 */
+  padding-top: 0.5rem !important;                     /* 可按需调整 */
 }
 
-/* 所有“贴顶”的二级横幅、搜索栏下移到头部之下 */
+/* 所有“贴顶”的二级横幅、搜索栏也需要下移到头部之下 */
 .search-bar-container,
 .selection-actions-banner {
-  top: var(--header-height) !important; /* 44px + safe-top */
+  top: var(--header-height) !important;               /* 44px + safe-top */
 }
 
-/* === 尾部留白优化（防止出现“大白条”）=== */
-/* 列表容器给一点点缓冲，避免内容贴边 */
+/* 列表区只为底部 Home 指示条预留最小空间，不再出现“大白条” */
 .notes-list-container {
-  padding-bottom: 8px;
-}
-/* 列表最后一项与底部至少留出安全区高度 */
-.notes-list > div:last-child {
-  margin-bottom: max(8px, var(--safe-bottom));
+  padding-bottom: max(8px, var(--safe-bottom));
+  /* 若内部自己可滚动，也限制回弹 */
+  overscroll-behavior-y: contain;
 }
 
-/* 日历全屏视图也避让底部安全区（防止工具条/按钮贴到 Home 指示条） */
-.calendar-view {
-  padding-bottom: var(--safe-bottom);
+/* Calendar 全屏视图也避免回弹露白 */
+.calendar-view,
+.calendar-body {
+  overscroll-behavior-y: contain;
 }
 </style>
