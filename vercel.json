@@ -10,16 +10,6 @@
   ],
   "routes": [
     {
-      "src": "^/notes$",
-      "status": 302,
-      "headers": { "Location": "/auth" }
-    },
-    {
-      "src": "^/notes\\.html$",
-      "status": 302,
-      "headers": { "Location": "/auth" }
-    },
-    {
       "src": "^/manifest\\.webmanifest$",
       "dest": "/manifest.webmanifest",
       "headers": {

@@ -132,31 +132,6 @@ async function setupApp() {
   const pinia = createPinia()
   pinia.use(piniaPersistedstate)
 
-  // ===== A2HS 启动识别（独立模式 + 哈希入口）=====
-  function isStandaloneLaunch() {
-    const iosStandalone = (window as any).navigator?.standalone === true
-    const pwaStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
-    return iosStandalone || pwaStandalone
-  }
-
-  try {
-    const hash = location.hash || ''
-    // 1) 显式入口：如果带 #notes，记下来源并立刻无痕跳 /auth
-    if (hash === '#notes') {
-      localStorage.setItem('a2hs_entry', 'notes')
-      // 避免 hash 被路由处理成 404，直接换路径
-      location.replace('/auth')
-    }
-    else if (isStandaloneLaunch()) {
-    // 2) 兜底入口：有些 iOS 会把路径抹成 '/'，这时用上次的 entry 来纠偏
-      const entry = localStorage.getItem('a2hs_entry')
-      if (entry === 'notes' && location.pathname === '/')
-        location.replace('/auth')
-    }
-  }
-  catch {}
-  // =============================================
-
   app.use(pinia)
   app.use(router)
   app.mount('#app')
