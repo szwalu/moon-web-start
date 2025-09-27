@@ -610,8 +610,8 @@ function onEditorBlur() {
   // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
   editorHideTimer = window.setTimeout(() => {
     isEditorActive.value = false
-    // 关键：失焦后恢复横幅
     compactWhileTyping.value = false
+    editorBottomPadding.value = 0 // ← 新增：失焦时清零垫片高度
   }, 120)
 }
 
@@ -1501,9 +1501,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
           @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
+
       <div
-        v-show="editorBottomPadding > 0"
-        :style="{ height: `${editorBottomPadding}px` }"
+        v-show="isEditorActive && editorBottomPadding > 0"
+        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
