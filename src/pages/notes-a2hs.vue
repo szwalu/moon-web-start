@@ -1,41 +1,54 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabaseClient'
 
 const router = useRouter()
+const isStandalone = ref(false)
+
+function detectStandalone() {
+  // iOS Safari
+  const iosStandalone = (window as any).navigator?.standalone === true
+  // PWA 通用
+  const pwaStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
+  return iosStandalone || pwaStandalone
+}
 
 onMounted(async () => {
-  // 给桌面图标一个易识别的标题
   document.title = '我abc · 笔记'
+  isStandalone.value = detectStandalone()
 
-  // 读取会话
-  const { data: { session } } = await supabase.auth.getSession()
+  // 记一个“入口标记”，用于兜底纠偏（见 main.ts 里的补丁）
+  try {
+    localStorage.setItem('a2hs_entry', 'notes')
+  }
+  catch {}
 
-  // 已登录：直达笔记主页；未登录：跳到登录页（你的 /auth 同时也是笔记页）
-  if (session) {
-    router.replace('/auth')
+  if (isStandalone.value) {
+    // ✅ 只有从桌面图标启动时才做重定向逻辑
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session)
+      router.replace('/auth')
+    else
+      router.replace({ path: '/auth', query: { from: 'notes-a2hs' } })
   }
-  else {
-    // 带个来源标记，后续若需更智能的登录后回跳，可用到该参数
-    router.replace({ path: '/auth', query: { from: 'notes-a2hs' } })
-  }
+  // ⚠️ 在浏览器里（非 standalone）不跳转，这样你就能在 /notes-a2hs 这个URL上“添加到主屏幕”
 })
 </script>
 
 <template>
-  <!-- 占位空壳页：用于被“添加到主屏幕”成为二级图标 -->
-  <div class="h-screen w-screen" />
+  <!-- 浏览器里展示一页极简提示，引导用户添加到主屏幕；从桌面图标启动时几乎看不到这个页面 -->
+  <div class="h-screen w-screen flex items-center justify-center px-6 text-center selection:bg-black/10 dark:selection:bg-white/10">
+    <div>
+      <div class="mb-3 text-3xl font-semibold">添加“我abc · 笔记”到主屏幕</div>
+      <div class="leading-relaxed opacity-70">
+        请点击浏览器底部的分享按钮，选择
+        <strong>“添加到主屏幕”</strong>。添加后，从桌面图标进入将自动打开笔记页。
+      </div>
+    </div>
+  </div>
 </template>
 
 <style>
-/* 防止个别环境下出现空白闪烁时的滚动条 */
 html, body, #app { height: 100%; margin: 0; }
 </style>
-
-<!--
-使用说明（iOS）：
-1. 打开 https://www.woabc.com/notes-a2hs
-2. 使用 Safari 的“添加到主屏幕”
-3. 新生成的图标名为“我abc · 笔记”，点击即可直达 /auth（已登录）或进入登录
--->

@@ -132,6 +132,24 @@ async function setupApp() {
   const pinia = createPinia()
   pinia.use(piniaPersistedstate)
 
+  // ===== A2HS 启动纠偏（仅在独立模式下生效）=====
+  function isStandaloneLaunch() {
+    const iosStandalone = (window as any).navigator?.standalone === true
+    const pwaStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches === true
+    return iosStandalone || pwaStandalone
+  }
+
+  try {
+    if (isStandaloneLaunch()) {
+      const entry = localStorage.getItem('a2hs_entry')
+      // 如果是“笔记专用图标”启动，但当前却在首页路径，就无痕纠偏到 /auth
+      if (entry === 'notes' && location.pathname === '/')
+        location.replace('/auth')
+    }
+  }
+  catch {}
+  // =============================================
+
   app.use(pinia)
   app.use(router)
   app.mount('#app')
