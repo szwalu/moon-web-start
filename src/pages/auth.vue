@@ -1936,25 +1936,27 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 统一页面背景 */
 html, body, #app {
   height: 100%;
   margin: 0;
-  background: var(--app-bg);
+  background: #fff;              /* 或者 var(--app-bg)，与页面背景一致 */
 }
 
-/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
+/* auth.vue（全局样式里） */
 .auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;
-  margin-bottom: calc(0px - var(--safe-bottom)) !important;  /* ✅ 压进 safe-area */
-  overscroll-behavior-y: contain;
-  background: var(--app-bg);
-  position: relative;
-
-  /* 去掉底部圆角，避免露出 app 背景产生“白条” */
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: 0 !important;       /* 不再预留底部安全区 */
+  min-height: 100dvh;                 /* 关键：用动态视口单位，iOS PWA 才不会加那块“假高度” */
+  height: auto;
+  background: var(--app-bg, #fff);
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
+  overscroll-behavior-y: contain;
+}
+
+/* 老设备兜底：不支持 100dvh 时退回 100vh */
+@supports not (height: 100dvh) {
+  .auth-container { min-height: 100vh; }
 }
 
 /* Sticky 头部下移 safe-top */
