@@ -1561,11 +1561,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </template>
 
 <style scoped>
-/* auth.vue — <style scoped> 中 */
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 1.5rem 0 1.5rem;   /* ← 原来是 0.75rem，这里改成 0 */
+  padding: 0 1.5rem 0.75rem 1.5rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -1573,14 +1572,9 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   display: flex;
   flex-direction: column;
 
-  min-height: 100%;            /* 这里让外层（全局区）控制真正的视口高度 */
-  overflow: visible;
+  min-height: 100dvh;     /* 从“固定高度”改为“最小高度” */
+  overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
   position: relative;
-}
-
-/* 防止最后一个块级子元素的 margin-bottom 把容器“撑高” */
-.auth-container > *:last-child {
-  margin-bottom: 0 !important;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -1942,32 +1936,25 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 }
 .dark :root { --app-bg: #1e1e1e; }
 
+/* 统一页面背景 */
 html, body, #app {
   height: 100%;
   margin: 0;
-  background: #fff;              /* 或者 var(--app-bg)，与页面背景一致 */
+  background: var(--app-bg);
 }
 
-/* 视口高度策略：优先 100svh；其次 JS 注入的 --vh；再退回 100dvh/100vh */
+/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px)) !important;
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
   padding-bottom: 0 !important;
-  background: var(--app-bg, #fff);
+  margin-bottom: calc(0px - var(--safe-bottom)) !important;  /* ✅ 压进 safe-area */
+  overscroll-behavior-y: contain;
+  background: var(--app-bg);
+  position: relative;
+
+  /* 去掉底部圆角，避免露出 app 背景产生“白条” */
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
-  overscroll-behavior-y: contain;
-
-  /* 高度用“多重保险” */
-  min-height: 100svh;                     /* 1) 首选：小视口高度，避免 iOS 保留区 */
-}
-@supports not (height: 100svh) {
-  .auth-container { min-height: calc(var(--vh, 1vh) * 100); }  /* 2) JS 注入的 innerHeight 变量 */
-}
-@supports not (height: 100svh) and (height: 100dvh) {
-  .auth-container { min-height: 100dvh; }                      /* 3) 退回 dvh */
-}
-@supports not (height: 100svh) and (not (height: 100dvh)) {
-  .auth-container { min-height: 100vh; }                       /* 4) 老设备最后兜底 */
 }
 
 /* Sticky 头部下移 safe-top */

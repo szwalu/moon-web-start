@@ -15,14 +15,6 @@ import App from './App.vue'
 import router from './router'
 import { setupI18n } from './utils'
 
-function setVhVar() {
-  const vh = window.innerHeight * 0.01
-  document.documentElement.style.setProperty('--vh', `${vh}px`)
-}
-setVhVar()
-window.addEventListener('resize', setVhVar)
-window.addEventListener('orientationchange', setVhVar);
-
 // 修正 iOS PWA 视口高度，消除底部“白条”
 (function fixAppVh() {
   const setVH = () => {
