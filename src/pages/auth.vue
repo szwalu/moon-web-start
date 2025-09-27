@@ -1961,6 +1961,22 @@ html, body, #app {
   border-bottom-right-radius: 0 !important;
 }
 
+/* 盖住 iOS 底部安全区的发丝缝：固定定位的填充条 */
+body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 用 safe-area + 额外 2px，确保覆盖所有取整差异 */
+  height: calc(env(safe-area-inset-bottom, 0px) + 2px);
+  background: var(--app-bg);      /* 跟页面背景一致，亮/暗色都适配 */
+  pointer-events: none;           /* 不影响点击 */
+  z-index: 2147483647;            /* 最高层，保证压住缝隙 */
+  transform: translateZ(0);       /* 强制独立合成层，避免抗锯齿缝 */
+  -webkit-transform: translateZ(0);
+}
+
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
   top: var(--safe-top) !important;
