@@ -67,7 +67,7 @@ export default defineConfig({
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: '直达笔记', short_name: '笔记', url: '/auth' }, // 安卓长按快捷
+          { name: '云笔记', short_name: '笔记', url: '/auth' }, // 安卓长按快捷
         ],
       },
       workbox: {
