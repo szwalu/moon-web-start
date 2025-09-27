@@ -1959,7 +1959,7 @@ body {
 /* 主容器仅处理顶部安全区；底部不再额外垫高 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: max(1px, var(--safe-bottom)) !important; /* 保底 1px */
+  padding-bottom: min(1px, var(--safe-bottom)) !important; /* 强制 ≤ 1px */
   overscroll-behavior-y: contain;
 }
 
