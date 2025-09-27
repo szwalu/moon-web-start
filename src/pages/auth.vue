@@ -1932,13 +1932,22 @@ html, body, #app {
   background: var(--app-bg);
 }
 
-/* 让容器整体也让出一点顶部安全区空间；底部不再预留，让内容贴到屏幕底 */
+/* Auth 页容器，避免 100vh 触发 iOS PWA bug */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;            /* ← 关键：不要为 safe-area 预留 */
+  padding-bottom: 0 !important;
+
+  /* 🔑 关键：用动态视口单位，避免白边 */
+  min-height: 100dvh;          /* 新设备支持 */
+  height: 100%;                /* 确保 flex 撑满 */
+
+  background: var(--app-bg);
+  overscroll-behavior-y: contain;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
 }
 
-/* 老设备没有 100dvh 的兜底，不影响新机型 */
+/* 老设备兜底：没有 100dvh 时 fallback 到 100vh */
 @supports not (height: 100dvh) {
   .auth-container { min-height: 100vh; }
 }
