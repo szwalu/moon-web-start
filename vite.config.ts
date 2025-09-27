@@ -56,7 +56,7 @@ export default defineConfig({
       manifest: {
         name: '我abc网址导航',
         short_name: '我abc',
-        start_url: '/',
+        start_url: '/', // 主图标=主页
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
@@ -67,13 +67,15 @@ export default defineConfig({
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: '直达笔记', short_name: '笔记', url: '/auth' },
+          { name: '直达笔记', short_name: '笔记', url: '/auth' }, // 安卓长按快捷
         ],
       },
-      // 🔧 这里是关键：把 /notes/ 从 SW 导航回退中排除
       workbox: {
         navigateFallback: '/index.html',
+        // ⛔️ 关键：不要用 SPA 壳兜底 /notes.html（否则我们的静态跳转页不会被返回）
         navigateFallbackDenylist: [
+          /^\/notes\.html$/i,
+          // 若你以后还想保留目录版本，也一并挡掉：
           /^\/notes\/?$/i,
           /^\/notes\/index\.html$/i,
         ],
