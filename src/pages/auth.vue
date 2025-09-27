@@ -1952,4 +1952,34 @@ html, body, #app {
 .selection-actions-banner {
   top: var(--header-height) !important;
 }
+
+/* 1) 仍然维持：容器自己不加底部 padding，避免把内容往上顶 */
+.auth-container {
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  padding-bottom: 0 !important;
+  overscroll-behavior-y: contain;
+}
+
+/* 2) 用“覆盖层”把安全区涂满颜色：不占文档流高度，因此看起来几乎贴底 */
+.pwa-safe-bottom-cover {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  /* 跟页面背景一致（亮色/暗色分别给） */
+  background: #ffffff;
+  pointer-events: none;          /* 不拦截任何点击/滑动 */
+  z-index: 1;                    /* 在内容之下，但覆盖安全区 */
+}
+.dark .pwa-safe-bottom-cover {
+  background: #1e1e1e;
+}
+
+/* 3) 列表最后一项去掉额外间距，避免和 safe-area 叠加显得更厚 */
+.notes-list > div:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* 其余你现有的样式保持不变 */
 </style>
