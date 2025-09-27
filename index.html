@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" href="/logo.jpg" />
 
-    <!-- 视口与 iOS 全屏 -->
+    <!-- 视口与 iOS 全屏：只保留一套，避免重复 -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -28,87 +28,59 @@
       content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。"
     />
 
-    <!-- 首屏视口兜底（可配合 CSS 使用 var(--vh)） -->
+    <!-- 首屏视口兜底：把可见高度写入 --vh，配合 CSS 使用 calc(var(--vh) * 100) -->
     <script>
       (function setVH() {
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
         document.documentElement.style.setProperty('--vh', h + 'px');
       })();
-      window.addEventListener('resize', function () {
-        var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
-        document.documentElement.style.setProperty('--vh', h + 'px');
-      });
       window.addEventListener('orientationchange', function () {
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
         document.documentElement.style.setProperty('--vh', h + 'px');
       });
     </script>
 
-    <!-- 仅首页使用：为被标记的顶栏应用 safe-top（加 !important 保证覆盖原样式） -->
+    <!-- 仅“首页 + 全屏(PWA)”时，给顶部 fixed/sticky 栏让出刘海安全区。
+         不改 body 的 padding，不影响其它页面，也不监听滚动，避免抖动。 -->
     <style>
       html, body, #app { margin: 0; }
       @supports (top: env(safe-area-inset-top)) {
-        body.__home_fs .__safeTop {
+        body.__home header,
+        body.__home .header,
+        body.__home .site-header,
+        body.__home .app-header,
+        body.__home .topbar,
+        body.__home .top-bar,
+        body.__home .navbar,
+        body.__home [data-home-header] {
           top: env(safe-area-inset-top) !important;
         }
       }
     </style>
 
-    <!-- 首页 + 全屏：自动标记顶栏，离开首页即还原 -->
+    <!-- 只在“首页 + 全屏(PWA)”时给 body 加 __home；路由切换时自动还原 -->
     <script>
       (function () {
-        var isStandalone =
-          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-          window.navigator.standalone === true;
-
-        function isHomePath() {
-          return location.pathname === '/' || location.pathname === '/index.html' || location.pathname === '';
+        function isStandalone () {
+          return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                 || window.navigator.standalone === true; // iOS
         }
-
-        function markHeaders(apply) {
-          // 选取常见顶栏：header/导航条/顶部条；必要时可把你首页顶栏的类名补进来
-          var nodes = document.querySelectorAll(
-            'header, .header, .site-header, .app-header, .topbar, .top-bar, .navbar, [role="banner"], [data-fixed-header], [data-sticky-header]'
-          );
-          nodes.forEach(function (el) {
-            var cs = getComputedStyle(el);
-            var isFixedOrSticky = cs.position === 'fixed' || cs.position === 'sticky';
-            // 顶在最上面的才需要补偿（top:0 或没有设置 top）
-            var need = isFixedOrSticky && (cs.top === '0px' || cs.top === 'auto' || cs.top === '0');
-            if (apply && need) {
-              el.classList.add('__safeTop');
-            } else {
-              el.classList.remove('__safeTop');
-            }
-          });
+        function isHomePath () {
+          var p = location.pathname || '/';
+          return p === '/' || p === '/index.html';
         }
-
-        function update() {
-          var shouldApply = isStandalone && isHomePath();
-          document.body.classList.toggle('__home_fs', shouldApply);
-          markHeaders(shouldApply);
+        function applyFlag () {
+          var on = isStandalone() && isHomePath();
+          document.body.classList.toggle('__home', on);
         }
-
-        // 监听 SPA 路由变化：覆盖 pushState/replaceState，并监听 popstate
-        (function hookHistory() {
-          ['pushState', 'replaceState'].forEach(function (k) {
-            var orig = history[k];
-            history[k] = function () {
-              var ret = orig.apply(this, arguments);
-              setTimeout(update, 0);
-              return ret;
-            };
-          });
-          window.addEventListener('popstate', function () { setTimeout(update, 0); });
-        })();
-
-        document.addEventListener('DOMContentLoaded', function () {
-          update();
-          // App 挂载、布局/旋转后再试一次（确保渲染完成后能抓到顶栏）
-          setTimeout(update, 0);
-          window.addEventListener('resize', update);
-          if (window.visualViewport) visualViewport.addEventListener('resize', update);
+        // 初次
+        document.addEventListener('DOMContentLoaded', applyFlag);
+        // SPA 路由切换
+        ['pushState','replaceState'].forEach(function (k) {
+          var orig = history[k];
+          history[k] = function () { var r = orig.apply(this, arguments); setTimeout(applyFlag, 0); return r; };
         });
+        window.addEventListener('popstate', function(){ setTimeout(applyFlag, 0); });
       })();
     </script>
   </head>
