@@ -1896,16 +1896,13 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
-/* 让根层菜单也能滚动，避免太长溢出屏幕 */
+/* 根级下拉菜单滚动与高度限制（保留） */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-
-/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
@@ -1913,58 +1910,60 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
-
-/* 子菜单项紧凑一些 */
-.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
-  line-height: 1.2;
-}
-
-/* 移动端给子菜单更多空间 */
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option { line-height: 1.2; }
 @media (max-width: 768px) {
-  .n-dropdown-menu .n-dropdown-menu {
-    max-height: 70vh !important;
-  }
+  .n-dropdown-menu .n-dropdown-menu { max-height: 70vh !important; }
 }
 
-/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
+/* 安全区变量 + 背景色 */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px; /* 头部高度 */
+  --header-base: 44px;
   --header-height: calc(var(--header-base) + var(--safe-top));
   --app-bg: #ffffff;
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 统一页面背景 */
+/* 页面背景统一，避免露底色造成“白条感” */
 html, body, #app {
   height: 100%;
   margin: 0;
   background: var(--app-bg);
 }
 
-/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
+/* 主容器：顶部避让刘海；底部不额外加高，只做颜色延伸 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
   padding-bottom: 0 !important;
-  margin-bottom: calc(0px - var(--safe-bottom)) !important;  /* ✅ 压进 safe-area */
-  overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
+  overscroll-behavior-y: contain;
 
-  /* 去掉底部圆角，避免露出 app 背景产生“白条” */
+  /* 去掉底部圆角，避免与系统安全区交界出现“边缘线”错觉 */
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
 }
 
-/* Sticky 头部下移 safe-top */
+/* 用一个仅做“着色”的伪元素把容器背景延伸进安全区（不占布局高度） */
+.auth-container::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--safe-bottom);
+  background: var(--app-bg);
+  pointer-events: none;
+  z-index: 1; /* 低于弹窗/下拉等 */
+}
+
+/* 头部/二级条幅按安全区下移 */
 .auth-container .page-header {
   top: var(--safe-top) !important;
   height: var(--header-base) !important;
   padding-top: 0.5rem !important;
 }
-
-/* 二级横幅、搜索栏跟随 header-height */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
