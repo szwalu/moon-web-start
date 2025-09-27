@@ -73,7 +73,10 @@ async function handleSettingsClick() {
 </script>
 
 <template>
-  <div class="flex items-center justify-between px-4 pt-12 lg:px-8 md:px-6">
+  <div
+    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
+    :style="{ paddingTop: 'calc(env(safe-area-inset-top) + 3rem)' }"
+  >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
@@ -88,7 +91,8 @@ async function handleSettingsClick() {
     <div class="flex items-center gap-x-11">
       <RouterLink
         v-if="settingStore.isSetting"
-        class="text-7xl" :class="[getIconClass('home')]"
+        class="text-7xl"
+        :class="[getIconClass('home')]"
         to="/"
         i-carbon:home
         icon-btn
@@ -100,7 +104,6 @@ async function handleSettingsClick() {
         icon-btn
         @click="handleSettingsClick"
       />
-      <!-- ✅ 使用 toggleDark 切换明暗模式 -->
       <div
         class="text-7xl"
         i-carbon:moon

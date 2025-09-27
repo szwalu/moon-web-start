@@ -34,60 +34,14 @@
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
         document.documentElement.style.setProperty('--vh', h + 'px');
       })();
+      window.addEventListener('resize', function () {
+        var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
+        document.documentElement.style.setProperty('--vh', h + 'px');
+      });
       window.addEventListener('orientationchange', function () {
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
         document.documentElement.style.setProperty('--vh', h + 'px');
       });
-    </script>
-
-    <!-- 首页全屏时顶栏避开刘海 -->
-    <style>
-      html, body, #app { margin: 0; }
-      @supports (top: env(safe-area-inset-top)) {
-        body.__home header,
-        body.__home .header,
-        body.__home .site-header,
-        body.__home .app-header,
-        body.__home .topbar,
-        body.__home .top-bar,
-        body.__home .navbar,
-        body.__home [data-home-header] {
-          top: env(safe-area-inset-top) !important;
-        }
-      }
-    </style>
-
-    <!-- iOS A2HS 冷启动始终进入首页；首页+全屏时给 body 加 __home -->
-    <script>
-      (function () {
-        function isStandalone() {
-          return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-                 || window.navigator.standalone === true; // iOS
-        }
-        function isHomePath() {
-          var p = location.pathname || '/';
-          return p === '/' || p === '/index.html';
-        }
-
-        // 修正 iOS A2HS 冷启动路径 → 首页
-        var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation') || [])[0];
-        var isColdLaunch = document.referrer === '' && (!nav || nav.type === 'navigate');
-        if (isStandalone() && isColdLaunch && !isHomePath()) {
-          location.replace('/');
-        }
-
-        // 给首页加标记，控制 CSS 生效
-        function applyFlag() {
-          var on = isStandalone() && isHomePath();
-          document.body.classList.toggle('__home', on);
-        }
-        document.addEventListener('DOMContentLoaded', applyFlag);
-        ['pushState','replaceState'].forEach(function (k) {
-          var orig = history[k];
-          history[k] = function () { var r = orig.apply(this, arguments); setTimeout(applyFlag, 0); return r; };
-        });
-        window.addEventListener('popstate', function(){ setTimeout(applyFlag, 0); });
-      })();
     </script>
   </head>
   <body>
