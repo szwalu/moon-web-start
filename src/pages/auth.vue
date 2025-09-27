@@ -1932,17 +1932,15 @@ html, body, #app {
   background: var(--app-bg);
 }
 
-/* 主容器：顶部避让刘海；底部不额外加高，只做颜色延伸 */
+/* 让容器整体也让出一点顶部安全区空间；底部不再预留，让内容贴到屏幕底 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;
-  background: var(--app-bg);
-  position: relative;
-  overscroll-behavior-y: contain;
+  padding-bottom: 0 !important;            /* ← 关键：不要为 safe-area 预留 */
+}
 
-  /* 去掉底部圆角，避免与系统安全区交界出现“边缘线”错觉 */
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
+/* 老设备没有 100dvh 的兜底，不影响新机型 */
+@supports not (height: 100dvh) {
+  .auth-container { min-height: 100vh; }
 }
 
 /* 用一个仅做“着色”的伪元素把容器背景延伸进安全区（不占布局高度） */
