@@ -1,36 +1,26 @@
 <!DOCTYPE html>
 <html lang="zh">
   <head>
-    <meta charset="UTF-8">
-    <link rel="icon" href="/logo.jpg">
-    <!-- index.html -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>我abc网址导航：简洁高效的自定义网址导航站</title>
+    <meta charset="UTF-8" />
 
-    <!-- iOS 全屏相关 -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
-    <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="manifest" href="/manifest.webmanifest?v=8">
+    <!-- 视口与 PWA 基础（保持唯一，顺序也很重要） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#111111" />
 
-    <!-- PWA 基础 -->
-    <meta name="theme-color" content="#111111">
-    <link rel="manifest" href="/manifest.webmanifest">
+    <!-- Manifest（只保留一份；如需版本号可自己加 ?v=8） -->
+    <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- 图标（保留你原来的，同时新增 iOS 推荐尺寸） -->
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" sizes="180x180">
-    <link rel="apple-touch-icon" href="/favicon.ico">
+    <!-- 图标（保留你原有的，同时包含 iOS 推荐尺寸） -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
     <link rel="icon" href="/favicon.ico" />
     <link rel="icon" type="image/jpeg" href="/logo.jpg" />
 
-    <meta name="keywords" content="我abc网址导航,网址大全,网址站,网址大全,冷门网站,工具导航,收藏夹">
-    <meta name="description" content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。">
+    <title>我abc网址导航：简洁高效的自定义网址导航站</title>
+    <meta name="keywords" content="我abc网址导航,网址大全,网址站,网址大全,冷门网站,工具导航,收藏夹" />
+    <meta name="description" content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。" />
   </head>
   <body>
     <div id="app"></div>

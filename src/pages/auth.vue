@@ -1561,10 +1561,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 </template>
 
 <style scoped>
+/* auth.vue — <style scoped> 中 */
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 1.5rem 0.75rem 1.5rem;
+  padding: 0 1.5rem 0 1.5rem;   /* ← 原来是 0.75rem，这里改成 0 */
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -1572,9 +1573,14 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   display: flex;
   flex-direction: column;
 
-  min-height: 100dvh;     /* 从“固定高度”改为“最小高度” */
-  overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
+  min-height: 100%;            /* 这里让外层（全局区）控制真正的视口高度 */
+  overflow: visible;
   position: relative;
+}
+
+/* 防止最后一个块级子元素的 margin-bottom 把容器“撑高” */
+.auth-container > *:last-child {
+  margin-bottom: 0 !important;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -1942,21 +1948,26 @@ html, body, #app {
   background: #fff;              /* 或者 var(--app-bg)，与页面背景一致 */
 }
 
-/* auth.vue（全局样式里） */
+/* 视口高度策略：优先 100svh；其次 JS 注入的 --vh；再退回 100dvh/100vh */
 .auth-container {
   padding-top: calc(0.5rem + env(safe-area-inset-top, 0px)) !important;
-  padding-bottom: 0 !important;       /* 不再预留底部安全区 */
-  min-height: 100dvh;                 /* 关键：用动态视口单位，iOS PWA 才不会加那块“假高度” */
-  height: auto;
+  padding-bottom: 0 !important;
   background: var(--app-bg, #fff);
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
   overscroll-behavior-y: contain;
-}
 
-/* 老设备兜底：不支持 100dvh 时退回 100vh */
-@supports not (height: 100dvh) {
-  .auth-container { min-height: 100vh; }
+  /* 高度用“多重保险” */
+  min-height: 100svh;                     /* 1) 首选：小视口高度，避免 iOS 保留区 */
+}
+@supports not (height: 100svh) {
+  .auth-container { min-height: calc(var(--vh, 1vh) * 100); }  /* 2) JS 注入的 innerHeight 变量 */
+}
+@supports not (height: 100svh) and (height: 100dvh) {
+  .auth-container { min-height: 100dvh; }                      /* 3) 退回 dvh */
+}
+@supports not (height: 100svh) and (not (height: 100dvh)) {
+  .auth-container { min-height: 100vh; }                       /* 4) 老设备最后兜底 */
 }
 
 /* Sticky 头部下移 safe-top */
