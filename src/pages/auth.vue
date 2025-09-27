@@ -1933,12 +1933,20 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   --header-height: calc(var(--header-base) + var(--safe-top));
 }
 
-/* 让容器整体也让出一点顶部空间（可选，增强体感） */
+/* 让容器整体也让出一点顶部/底部安全区空间 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  /* 如需底部也避让 Home 指示条： */
-  /* padding-bottom: calc(0.75rem + var(--safe-bottom)) !important; */
+  /* 为底部 Home 指示条预留空间，避免出现“灰条” */
+  padding-bottom: calc(0.75rem + var(--safe-bottom)) !important;
 }
+
+/* 统一页面背景，防止安全区露出与容器底色不一致 */
+html, body, #app {
+  height: 100%;
+  background: #ffffff;
+  margin: 0;
+}
+.dark body { background: #1e1e1e; }
 
 /* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
 .auth-container .page-header {

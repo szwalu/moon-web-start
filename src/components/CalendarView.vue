@@ -398,6 +398,9 @@ defineExpose({ refreshData })
   display: flex;
   flex-direction: column;
   color: #333;
+   /* 关键：整体让出顶部/底部安全区 */
+   padding-top: var(--safe-top);
+   padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -407,10 +410,13 @@ defineExpose({ refreshData })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1.5rem;
+padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
+  position: sticky;
+  top: var(--safe-top);
+  z-index: 1;
 }
 .dark .calendar-header {
   border-bottom-color: #374151;
