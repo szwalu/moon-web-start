@@ -47,10 +47,16 @@ export default defineConfig({
     // ✅ PWA 插件（内联生成 manifest）
     VitePWA({
       registerType: 'autoUpdate',
+      manifestFilename: 'manifest.webmanifest',
+      includeAssets: [
+        '/icons/pwa-192.png',
+        '/icons/pwa-512.png',
+        '/icons/maskable-512.png',
+      ],
       manifest: {
         name: '我abc网址导航',
         short_name: '我abc',
-        start_url: '/', // ← 改这里
+        start_url: '/',
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
@@ -61,10 +67,17 @@ export default defineConfig({
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: '直达 Auth 页面', short_name: 'Auth', url: '/auth' },
+          { name: '直达笔记', short_name: '笔记', url: '/auth' },
         ],
       },
-      workbox: { navigateFallback: '/index.html' },
+      // 🔧 这里是关键：把 /notes/ 从 SW 导航回退中排除
+      workbox: {
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [
+          /^\/notes\/?$/i,
+          /^\/notes\/index\.html$/i,
+        ],
+      },
     }),
   ],
   resolve: {
