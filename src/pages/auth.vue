@@ -1351,6 +1351,7 @@ function clearTagFilter() {
   mainNotesCache = []
   hasMoreNotes.value = notes.value.length < totalNotes.value
   noteListKey.value++ // 还原后也刷新列表
+  headerCollapsed.value = false
 }
 
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”

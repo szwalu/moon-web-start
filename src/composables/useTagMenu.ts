@@ -36,6 +36,36 @@ async function getUserId(): Promise<string | null> {
   return data?.user?.id ?? null
 }
 
+/** 从 Supabase Auth.user_metadata 读取 pinned_tags（失败则返回 null） */
+async function loadPinnedFromAuth(): Promise<string[] | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error)
+      return null
+    const arr = (data?.user?.user_metadata as any)?.pinned_tags
+    return Array.isArray(arr) ? arr : []
+  }
+  catch {
+    return null
+  }
+}
+
+/** 写入 Supabase Auth.user_metadata 的 pinned_tags（成功返回 true） */
+async function savePinnedToAuth(pinned: string[]): Promise<boolean> {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        pinned_tags: pinned,
+        pinned_tags_updated_at: new Date().toISOString(),
+      },
+    })
+    return !error
+  }
+  catch {
+    return false
+  }
+}
+
 export function useTagMenu(
   allTags: Ref<string[]>,
   onSelectTag: (tag: string) => void,
@@ -154,12 +184,20 @@ export function useTagMenu(
   }
 
   onMounted(async () => {
+    // ① 先用本地缓存立即填充（保证首屏有数据）
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
     }
     catch {
       pinnedTags.value = []
+    }
+
+    // ② 再从服务器覆盖（以服务器为准），并同步一份回本地
+    const serverPinned = await loadPinnedFromAuth()
+    if (serverPinned) {
+      pinnedTags.value = serverPinned
+      localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
     }
 
     currentUserId.value = await getUserId()
@@ -214,21 +252,24 @@ export function useTagMenu(
     }
   })
 
-  function savePinned() {
+  async function savePinned() {
+    // 先写本地，保证即时反馈
     localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
+    // 再尝试写服务器；失败则静默，保留本地缓存
+    await savePinnedToAuth(pinnedTags.value)
   }
 
   function isPinned(tag: string) {
     return pinnedTags.value.includes(tag)
   }
 
-  function togglePin(tag: string) {
+  async function togglePin(tag: string) {
     const i = pinnedTags.value.indexOf(tag)
     if (i >= 0)
       pinnedTags.value.splice(i, 1)
     else
       pinnedTags.value.push(tag)
-    savePinned()
+    await savePinned()
   }
 
   function selectTag(tag: string) {
@@ -403,7 +444,7 @@ export function useTagMenu(
           const pIdx = pinnedTags.value.indexOf(oldTag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1, newTag)
-            savePinned()
+            await savePinned()
           }
 
           // 失效：标签缓存、搜索缓存
@@ -465,7 +506,7 @@ export function useTagMenu(
           const pIdx = pinnedTags.value.indexOf(tag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1)
-            savePinned()
+            await savePinned()
           }
 
           invalidateOneTagCache(tag)
