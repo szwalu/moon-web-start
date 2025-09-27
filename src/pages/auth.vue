@@ -1896,7 +1896,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 根菜单滚动限制（保留你原有配置） */
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
@@ -1910,105 +1910,75 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
-.n-dropdown-menu .n-dropdown-menu .n-dropdown-option { line-height: 1.2; }
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
+  line-height: 1.2;
+}
 @media (max-width: 768px) {
-  .n-dropdown-menu .n-dropdown-menu { max-height: 70vh !important; }
+  .n-dropdown-menu .n-dropdown-menu {
+    max-height: 70vh !important;
+  }
 }
 
-/* ===== 关键：统一安全区变量 + 提供 app 专用 vh 变量 ===== */
+/* 安全区变量（需要 index.html 里 viewport-fit=cover 才会生效） */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --header-base: 44px;
   --header-height: calc(var(--header-base) + var(--safe-top));
-  /* ✅ 默认先用 1vh，稍后用 JS 替换为 visualViewport */
-  --app-vh: 1vh;
-}
 
-/* 页面背景与尺寸归零，避免露出白边 */
+  /* 统一页面背景，暗亮主题各一份 */
+  --app-bg: #ffffff;
+}
+.dark :root { --app-bg: #1e1e1e; }
+
+/* 让根节点背景与容器一致，防止露出白色窗口背景 */
 html, body, #app {
   height: 100%;
   margin: 0;
-  padding: 0 !important;   /* ✅ 强制移除系统给 body 加的 padding */
-  background: #ffffff;
+  background: var(--app-bg);
 }
-.dark body { background: #1e1e1e; }
 
-/* ✅ 覆盖 scoped 里的 100dvh：使用我们可控的 --app-vh */
+/* 容器本体：顶部避让刘海，底部不加额外 padding（真实填充交给 ::after 做） */
 .auth-container {
-  min-height: calc(var(--app-vh) * 100) !important;
+  /* 顶部让出安全区 + 你之前的 0.5rem */
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;                /* ✅ 不再额外加底部空间 */
+
+  /* 不额外垫底部，避免撑高布局；留给 ::after 来“涂色”填充 */
+  padding-bottom: 0 !important;
+
+  /* 避免橡皮筋回弹把根背景露出来导致“白条变大” */
   overscroll-behavior-y: contain;
+
+  /* 很重要：容器背景必须和页面统一，这样 ::after 继承才无缝 */
+  background: var(--app-bg);
+  position: relative; /* 供 ::after 继承背景 */
 }
 
-/* 头部与二级条幅按照安全区下移 */
+/* 关键：用固定定位的伪元素把“系统 Home 指示条的安全区”永久涂满
+   - 随滚动不动（fixed），所以不会出现“滚一滚/拨一下才消失”的情况
+   - 只涂 env(safe-area-inset-bottom) 高度，多一像素都不占 */
+.auth-container::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--safe-bottom);
+  background: var(--app-bg);
+  pointer-events: none; /* 不挡点击 */
+  z-index: 1;          /* 低于页面内容即可 */
+}
+
+/* Sticky 头部：从安全区下方开始 */
 .auth-container .page-header {
   top: var(--safe-top) !important;
   height: var(--header-base) !important;
   padding-top: 0.5rem !important;
 }
+
+/* 所有贴顶的二级横幅、搜索栏也要下移到头部之下 */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
-}
-
-/* 1) 仍然维持：容器自己不加底部 padding，避免把内容往上顶 */
-.auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;
-  overscroll-behavior-y: contain;
-}
-
-/* 2) 用“覆盖层”把安全区涂满颜色：不占文档流高度，因此看起来几乎贴底 */
-.pwa-safe-bottom-cover {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: env(safe-area-inset-bottom, 0px);
-  /* 跟页面背景一致（亮色/暗色分别给） */
-  background: #ffffff;
-  pointer-events: none;          /* 不拦截任何点击/滑动 */
-  z-index: 1;                    /* 在内容之下，但覆盖安全区 */
-}
-.dark .pwa-safe-bottom-cover {
-  background: #1e1e1e;
-}
-
-/* 3) 列表最后一项去掉额外间距，避免和 safe-area 叠加显得更厚 */
-.notes-list > div:last-child {
-  margin-bottom: 0 !important;
-}
-
-/* ① 用“小视口单位”锁定容器最小高度：
-      iOS 有动态工具条时，100dvh/100vh 会偏大，改用 100svh 可以避免“额外的底部空隙”。 */
-.auth-container {
-  /* 保留你已有的 padding-top、padding-bottom:0，不改逻辑 */
-  min-height: 100svh;                 /* 首选：小视口 */
-}
-
-@supports not (height: 100svh) {
-  /* 兼容老机型：没有 svh 就退回 vh */
-  .auth-container { min-height: 100vh; }
-}
-
-/* ② 列表滚动区域/列表本身：把底部“可滚到的缓冲”压到安全区的最小值，
-      并且把“最后一项”的外边距清零（否则容易和安全区叠加，看起来更厚）。*/
-.notes-list-container,
-.notes-list {
-  padding-bottom: max(0px, env(safe-area-inset-bottom)); /* 只垫安全区，不额外加高 */
-}
-
-.notes-list > div:last-child {
-  margin-bottom: 0 !important;        /* 最后一卡片不再额外拉高底部 */
-}
-
-/* ③ 如果你的容器是白底+圆角+阴影，底部看起来会像一条“白边”。
-      下面两行可选：仅把底部圆角/阴影收一点，避免视觉上像留白。*/
-.auth-container {
-  border-bottom-left-radius: 0;       /* 可选 */
-  border-bottom-right-radius: 0;      /* 可选 */
-  /* box-shadow: none; */             /* 如果仍觉得有白边感，可暂时关掉底部阴影再对比 */
 }
 </style>
