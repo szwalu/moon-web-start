@@ -72,12 +72,9 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        // ⛔️ 关键：不要用 SPA 壳兜底 /notes.html（否则我们的静态跳转页不会被返回）
         navigateFallbackDenylist: [
-          /^\/notes\.html$/i,
-          // 若你以后还想保留目录版本，也一并挡掉：
           /^\/notes\/?$/i,
-          /^\/notes\/index\.html$/i,
+          /^\/notes\.html$/i,
         ],
       },
     }),
