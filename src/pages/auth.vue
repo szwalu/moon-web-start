@@ -1981,5 +1981,34 @@ html, body, #app {
   margin-bottom: 0 !important;
 }
 
-/* 其余你现有的样式保持不变 */
+/* ① 用“小视口单位”锁定容器最小高度：
+      iOS 有动态工具条时，100dvh/100vh 会偏大，改用 100svh 可以避免“额外的底部空隙”。 */
+.auth-container {
+  /* 保留你已有的 padding-top、padding-bottom:0，不改逻辑 */
+  min-height: 100svh;                 /* 首选：小视口 */
+}
+
+@supports not (height: 100svh) {
+  /* 兼容老机型：没有 svh 就退回 vh */
+  .auth-container { min-height: 100vh; }
+}
+
+/* ② 列表滚动区域/列表本身：把底部“可滚到的缓冲”压到安全区的最小值，
+      并且把“最后一项”的外边距清零（否则容易和安全区叠加，看起来更厚）。*/
+.notes-list-container,
+.notes-list {
+  padding-bottom: max(0px, env(safe-area-inset-bottom)); /* 只垫安全区，不额外加高 */
+}
+
+.notes-list > div:last-child {
+  margin-bottom: 0 !important;        /* 最后一卡片不再额外拉高底部 */
+}
+
+/* ③ 如果你的容器是白底+圆角+阴影，底部看起来会像一条“白边”。
+      下面两行可选：仅把底部圆角/阴影收一点，避免视觉上像留白。*/
+.auth-container {
+  border-bottom-left-radius: 0;       /* 可选 */
+  border-bottom-right-radius: 0;      /* 可选 */
+  /* box-shadow: none; */             /* 如果仍觉得有白边感，可暂时关掉底部阴影再对比 */
+}
 </style>
