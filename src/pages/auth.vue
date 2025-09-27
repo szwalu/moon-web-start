@@ -1925,25 +1925,33 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   }
 }
 
-/* === iOS 安全区 & 统一头部高度变量 === */
-:root{
-  /* iOS 11 老写法 constant() 作为兜底；新写法 env() 为主 */
+/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
+:root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px;                    /* 你现在的头部基准高度 */
+  --header-base: 44px; /* 你原来的头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
 }
 
-/* 头部：增加顶部内边距和高度，让出状态栏空间 */
-.page-header{
-  /* 原来就有 position:sticky; top:0; */
-  padding-top: calc(0.75rem + var(--safe-top));
-  height: var(--header-height);
+/* 让容器整体也让出一点顶部空间（可选，增强体感） */
+.auth-container {
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  /* 如需底部也避让 Home 指示条： */
+  /* padding-bottom: calc(0.75rem + var(--safe-bottom)) !important; */
 }
 
-/* 任何“贴顶”的二级条幅，都跟着新头部高度走 */
-.search-bar-container{ top: var(--header-height); }
-.selection-actions-banner{ top: var(--header-height); }
+/* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
+.auth-container .page-header {
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;              /* 仍然是 44px 视觉高度 */
+  padding-top: 0.5rem !important;                     /* 可按需调整 */
+}
 
-/* 若还有别的用到 top:44px 的，也统一改为：top: var(--header-height) */
+/* 所有“贴顶”的二级横幅、搜索栏也需要下移到头部之下 */
+.search-bar-container,
+.selection-actions-banner {
+  top: var(--header-height) !important;               /* 44px + safe-top */
+}
+
+/* 如果还有别处写死了 top:44px 的，也统一覆盖为 header-height */
 </style>
