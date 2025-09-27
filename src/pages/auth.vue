@@ -1572,7 +1572,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   display: flex;
   flex-direction: column;
 
-  min-height: 100dvh; /* 恢复：改回 min-height: 100dvh */
+  min-height: calc(100svh + var(--safe-bottom));
+min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
+min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
+min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
   overflow: visible;
   position: relative;
 }
@@ -1938,7 +1941,10 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 /* 统一页面背景 */
 html, body, #app {
-  height: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
+  min-height: 100lvh;
+  min-height: calc(var(--vh, 1vh) * 100);
   margin: 0;
   background: var(--app-bg);
 }
@@ -1946,13 +1952,11 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: var(--safe-bottom) !important;  /* ✅ 用 padding 占住安全区，不再用负 margin */
-  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
-
-  /* 去掉底部圆角，避免露出 app 背景产生“白条” */
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
 }
