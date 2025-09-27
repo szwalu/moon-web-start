@@ -10,6 +10,7 @@ import { createPinia } from 'pinia'
 import piniaPersistedstate from 'pinia-plugin-persistedstate'
 
 // ✅ 导入主组件和插件
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
 import { setupI18n } from './utils'
@@ -125,3 +126,4 @@ async function setupApp() {
 }
 
 setupApp()
+registerSW({ immediate: true })

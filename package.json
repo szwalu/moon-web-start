@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepare": "husky install",
-    "prod": "./scripts/deploy.sh"
+    "prod": "./scripts/deploy.sh",
+    "gen:icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.0",
@@ -76,6 +77,7 @@
     "naive-ui": "^2.34.3",
     "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.60.0",
+    "sharp": "^0.34.4",
     "typescript": "^5.0.4",
     "unocss": "^0.56.4",
     "unocss-preset-scalpel": "^1.2.6",
@@ -83,7 +85,8 @@
     "unplugin-vue-components": "^0.25.2",
     "unplugin-vue-macros": "^2.6.1",
     "vite": "^4.4.11",
-    "vite-plugin-pages": "^0.29.0"
+    "vite-plugin-pages": "^0.29.0",
+    "vite-plugin-pwa": "^1.0.3"
   },
   "lint-staged": {
     "*": "eslint --fix"

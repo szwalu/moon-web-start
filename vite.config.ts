@@ -12,6 +12,10 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
 
+import { VitePWA } from 'vite-plugin-pwa'
+
+// ✅ 新增
+
 export default defineConfig({
   /**
    * 👇 当为项目配置了自定义域名后，网站将从该域名的根目录提供服务。
@@ -45,6 +49,26 @@ export default defineConfig({
       compositionOnly: true,
       fullInstall: true,
       include: [path.resolve(__dirname, 'src/locales/**')],
+    }),
+    // ✅ PWA 插件（最小可用配置）
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: false, // 使用 public/manifest.webmanifest，避免双处配置冲突
+      includeAssets: [
+        'favicon.ico',
+        'logo.jpg',
+        'icons/apple-touch-icon-180.png',
+        'icons/pwa-192.png',
+        'icons/pwa-512.png',
+        'icons/maskable-512.png',
+      ],
+      workbox: {
+        // SPA 回退，确保直接打开 /auth 等路由能返回 index.html
+        navigateFallback: '/index.html',
+      },
+      devOptions: {
+        enabled: false, // 仅生产启用 SW，避免本地调试被缓存影响
+      },
     }),
   ],
   resolve: {
