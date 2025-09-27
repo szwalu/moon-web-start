@@ -40,8 +40,7 @@
       });
     </script>
 
-    <!-- 仅“首页 + 全屏(PWA)”时，给顶部 fixed/sticky 栏让出刘海安全区。
-         不改 body 的 padding，不影响其它页面，也不监听滚动，避免抖动。 -->
+    <!-- 首页全屏时顶栏避开刘海 -->
     <style>
       html, body, #app { margin: 0; }
       @supports (top: env(safe-area-inset-top)) {
@@ -58,24 +57,31 @@
       }
     </style>
 
-    <!-- 只在“首页 + 全屏(PWA)”时给 body 加 __home；路由切换时自动还原 -->
+    <!-- iOS A2HS 冷启动始终进入首页；首页+全屏时给 body 加 __home -->
     <script>
       (function () {
-        function isStandalone () {
+        function isStandalone() {
           return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
                  || window.navigator.standalone === true; // iOS
         }
-        function isHomePath () {
+        function isHomePath() {
           var p = location.pathname || '/';
           return p === '/' || p === '/index.html';
         }
-        function applyFlag () {
+
+        // 修正 iOS A2HS 冷启动路径 → 首页
+        var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation') || [])[0];
+        var isColdLaunch = document.referrer === '' && (!nav || nav.type === 'navigate');
+        if (isStandalone() && isColdLaunch && !isHomePath()) {
+          location.replace('/');
+        }
+
+        // 给首页加标记，控制 CSS 生效
+        function applyFlag() {
           var on = isStandalone() && isHomePath();
           document.body.classList.toggle('__home', on);
         }
-        // 初次
         document.addEventListener('DOMContentLoaded', applyFlag);
-        // SPA 路由切换
         ['pushState','replaceState'].forEach(function (k) {
           var orig = history[k];
           history[k] = function () { var r = orig.apply(this, arguments); setTimeout(applyFlag, 0); return r; };
