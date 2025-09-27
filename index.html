@@ -28,7 +28,7 @@
       content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。"
     />
 
-    <!-- 首屏视口兜底：写入 --vh，解决 iOS 初始高度差异 -->
+    <!-- 首屏视口兜底（可配合 CSS 使用 var(--vh)） -->
     <script>
       (function setVH() {
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
@@ -44,61 +44,71 @@
       });
     </script>
 
-    <!-- 仅首页启用的安全区补偿 -->
+    <!-- 仅首页使用：为被标记的顶栏应用 safe-top（加 !important 保证覆盖原样式） -->
     <style>
       html, body, #app { margin: 0; }
-      /* 首页整体向下让出刘海区（仅在全屏时会加到 body 上） */
-      @supports (padding: env(safe-area-inset-top)) {
-        body.home-safe-top { padding-top: env(safe-area-inset-top); }
-      }
-      /* 自动标记为 needs-safe-top 的头部元素，永远避开刘海（滚动时也有效） */
       @supports (top: env(safe-area-inset-top)) {
-        body.home-safe-top .needs-safe-top {
+        body.__home_fs .__safeTop {
           top: env(safe-area-inset-top) !important;
         }
       }
     </style>
 
-    <!-- 首页 + 全屏：加类，并自动为固定/粘性头部补偿 safe-top -->
+    <!-- 首页 + 全屏：自动标记顶栏，离开首页即还原 -->
     <script>
       (function () {
-        var isHome =
-          location.pathname === '/' ||
-          location.pathname === '/index.html' ||
-          location.pathname === '';
-
         var isStandalone =
           (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
           window.navigator.standalone === true;
 
-        function tagFixedStickyHeaders() {
-          try {
-            if (!isHome || !isStandalone) return;
-            // 常见的头部选择器；也会检查任意 role="banner"
-            var candidates = document.querySelectorAll(
-              'header, .header, .site-header, .app-header, .topbar, .top-bar, .navbar, [data-fixed-header], [data-sticky-header], [role="banner"]'
-            );
-            candidates.forEach(function (el) {
-              var cs = getComputedStyle(el);
-              var isFixedOrSticky = cs.position === 'fixed' || cs.position === 'sticky';
-              // 只有 top 为 0 或 auto 的才需要补偿
-              if (isFixedOrSticky && (cs.top === '0px' || cs.top === 'auto')) {
-                el.classList.add('needs-safe-top');
-              }
-            });
-          } catch (_) {}
+        function isHomePath() {
+          return location.pathname === '/' || location.pathname === '/index.html' || location.pathname === '';
         }
 
-        if (isHome && isStandalone) {
-          document.addEventListener('DOMContentLoaded', function () {
-            document.body.classList.add('home-safe-top');
-            // 初次扫描（App 刚挂载）
-            setTimeout(tagFixedStickyHeaders, 0);
-            // 视口变化/旋转后再扫描一次
-            window.addEventListener('resize', tagFixedStickyHeaders);
-            if (window.visualViewport) visualViewport.addEventListener('resize', tagFixedStickyHeaders);
+        function markHeaders(apply) {
+          // 选取常见顶栏：header/导航条/顶部条；必要时可把你首页顶栏的类名补进来
+          var nodes = document.querySelectorAll(
+            'header, .header, .site-header, .app-header, .topbar, .top-bar, .navbar, [role="banner"], [data-fixed-header], [data-sticky-header]'
+          );
+          nodes.forEach(function (el) {
+            var cs = getComputedStyle(el);
+            var isFixedOrSticky = cs.position === 'fixed' || cs.position === 'sticky';
+            // 顶在最上面的才需要补偿（top:0 或没有设置 top）
+            var need = isFixedOrSticky && (cs.top === '0px' || cs.top === 'auto' || cs.top === '0');
+            if (apply && need) {
+              el.classList.add('__safeTop');
+            } else {
+              el.classList.remove('__safeTop');
+            }
           });
         }
+
+        function update() {
+          var shouldApply = isStandalone && isHomePath();
+          document.body.classList.toggle('__home_fs', shouldApply);
+          markHeaders(shouldApply);
+        }
+
+        // 监听 SPA 路由变化：覆盖 pushState/replaceState，并监听 popstate
+        (function hookHistory() {
+          ['pushState', 'replaceState'].forEach(function (k) {
+            var orig = history[k];
+            history[k] = function () {
+              var ret = orig.apply(this, arguments);
+              setTimeout(update, 0);
+              return ret;
+            };
+          });
+          window.addEventListener('popstate', function () { setTimeout(update, 0); });
+        })();
+
+        document.addEventListener('DOMContentLoaded', function () {
+          update();
+          // App 挂载、布局/旋转后再试一次（确保渲染完成后能抓到顶栏）
+          setTimeout(update, 0);
+          window.addEventListener('resize', update);
+          if (window.visualViewport) visualViewport.addEventListener('resize', update);
+        });
       })();
     </script>
   </head>
