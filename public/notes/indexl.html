@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>我abc · 笔记</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- iOS 全屏外观（可选） -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- 给这个图标一个独立外观（可选） -->
+  <link rel="apple-touch-icon" href="/icons/pwa-192.png">
+  <link rel="icon" href="/favicon.ico">
+  <script>
+    (function () {
+      // 每次从图标打开这个 /notes/ 页面，立即跳到 /auth
+      // 用 replace 避免产生历史记录
+      location.replace('/auth');
+    })();
+  </script>
+</head>
+<body></body>
+</html>
