@@ -1949,8 +1949,7 @@ html, body, #app {
   height: 100%;
   background: #ffffff;
   margin: 0;
-  /* ✅ 降低 iOS 回弹时露出背景的“白块”观感 */
-  overscroll-behavior-y: none;
+  padding-bottom: 0 !important;
 }
 .dark body { background: #1e1e1e; }
 
