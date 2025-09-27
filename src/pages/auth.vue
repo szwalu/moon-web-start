@@ -1932,36 +1932,27 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --header-base: 44px; /* 你原来的头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
+
+  /* ✅ 新增：对底部安全区做“折扣”，避免一上来就是 20~34px 的大白边
+     典型机型 safe-bottom≈20px，减 18px 后只剩 ~2px 的保底；更大的机型也会被压到一个更小的可接受范围 */
+  --safe-bottom-adjust: max(0px, calc(var(--safe-bottom) - 22px));
 }
 
-/* 统一页面背景 + 视口高度修正，避免底部出现大片空白 */
-html, body, #app {
-  height: 100%;
-  /* 使用小视口单位，减少 iOS 顶部/底部栏变化带来的跳动 */
-  min-height: 100svh;
-  background: #ffffff;
-  margin: 0;
-}
-.dark body { background: #1e1e1e; }
-
-/* 兼容旧版 iOS：当不支持 100svh 时，退化为 -webkit-fill-available */
-@supports not (height: 100svh) {
-  html, body, #app {
-    min-height: -webkit-fill-available;
-  }
-}
-
-/* 把底部安全区补偿放到 body，而不是整页主容器，避免把页面整体“抬起” */
-body {
-  padding-bottom: var(--safe-bottom);
-}
-
-/* 主容器仅处理顶部安全区；底部不再额外垫高 */
+/* 让容器整体也让出一点顶部/底部空间（底部使用折扣后的小保底） */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: min(1px, var(--safe-bottom)) !important; /* 强制 ≤ 1px */
-  overscroll-behavior-y: contain;
+  padding-bottom: var(--safe-bottom-adjust) !important; /* ⬅️ 替换这里 */
 }
+
+/* 统一页面背景，防止安全区露出与容器底色不一致 */
+html, body, #app {
+  height: 100%;
+  background: #ffffff;
+  margin: 0;
+  /* ✅ 降低 iOS 回弹时露出背景的“白块”观感 */
+  overscroll-behavior-y: none;
+}
+.dark body { background: #1e1e1e; }
 
 /* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
 .auth-container .page-header {
@@ -1974,18 +1965,5 @@ body {
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;               /* 44px + safe-top */
-}
-
-/* 列表区只为底部 Home 指示条预留最小空间，不再出现“大白条” */
-.notes-list-container {
-  padding-bottom: max(8px, var(--safe-bottom));
-  /* 若内部自己可滚动，也限制回弹 */
-  overscroll-behavior-y: contain;
-}
-
-/* Calendar 全屏视图也避免回弹露白 */
-.calendar-view,
-.calendar-body {
-  overscroll-behavior-y: contain;
 }
 </style>
