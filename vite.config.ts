@@ -48,12 +48,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: '云笔记',
-        short_name: '云笔记',
-        start_url: '/auth',
+        name: '我abc网址导航',
+        short_name: '我abc',
+        start_url: '/auth', // ← 改这里
         scope: '/',
         display: 'standalone',
-        orientation: 'portrait',
         background_color: '#111111',
         theme_color: '#111111',
         icons: [
@@ -65,20 +64,7 @@ export default defineConfig({
           { name: '直达 Auth 页面', short_name: 'Auth', url: '/auth' },
         ],
       },
-      includeAssets: [
-        'favicon.ico',
-        'logo.jpg',
-        'icons/apple-touch-icon-180.png',
-        'icons/pwa-192.png',
-        'icons/pwa-512.png',
-        'icons/maskable-512.png',
-      ],
-      workbox: {
-        navigateFallback: '/index.html',
-      },
-      devOptions: {
-        enabled: false,
-      },
+      workbox: { navigateFallback: '/index.html' },
     }),
   ],
   resolve: {
