@@ -20,9 +20,8 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 <template>
   <NConfigProvider :theme="theme">
-    <!-- ✅ 给消息和对话框都设置 top -->
-    <NMessageProvider placement="top" :style="{ top: '30%' }">
-      <NDialogProvider :style="{ top: '30%' }">
+    <NMessageProvider>
+      <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
             <AppContainer>
@@ -51,5 +50,11 @@ body, html {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+/* 全局样式文件中 */
+.n-message-container,
+.n-notification-container {
+  top: 30% !important;
 }
 </style>
