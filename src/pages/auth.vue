@@ -1564,7 +1564,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 1.5rem 0.75rem 1.5rem;
+  padding: 0 1.5rem; /* 移除底部的 0.75rem padding，避免与全局样式冲突 */
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -1572,8 +1572,8 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   display: flex;
   flex-direction: column;
 
-  min-height: 100svh;    /* 从“固定高度”改为“最小高度” */
-  overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
+  height: 100%; /* 关键修改：从 min-height: 100dvh 改为 height: 100% */
+  overflow: visible;
   position: relative;
 }
 .dark .auth-container {
@@ -1937,10 +1937,15 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 .dark :root { --app-bg: #1e1e1e; }
 
 /* 统一页面背景 */
-html, body, #app {
-  min-height: 100svh;      /* 用 svh 覆盖初始布局 */
+html, body {
+  height: 100%;
   margin: 0;
   background: var(--app-bg);
+  overscroll-behavior-y: contain; /* 防止在容器内滚动时触发整个页面的下拉刷新 */
+}
+
+#app {
+  height: 100dvh; /* 关键修改：让 #app 负责撑开整个动态视口高度 */
 }
 
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
