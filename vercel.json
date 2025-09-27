@@ -8,11 +8,17 @@
       "config": { "distDir": "dist" }
     }
   ],
-  "redirects": [
-    { "source": "/notes", "destination": "/auth", "permanent": false },
-    { "source": "/notes.html", "destination": "/auth", "permanent": false }
-  ],
   "routes": [
+    {
+      "src": "^/notes$",
+      "status": 302,
+      "headers": { "Location": "/auth" }
+    },
+    {
+      "src": "^/notes\\.html$",
+      "status": 302,
+      "headers": { "Location": "/auth" }
+    },
     {
       "src": "^/manifest\\.webmanifest$",
       "dest": "/manifest.webmanifest",
