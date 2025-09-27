@@ -125,5 +125,30 @@ async function setupApp() {
   app.mount('#app')
 }
 
+// === [PWA 校验] 运行时确认是否以 Standalone 启动（iOS 桌面全屏） ===
+;(function checkStandalone() {
+  const isStandalone
+      = window.matchMedia?.('(display-mode: standalone)').matches
+      // iOS 独有：从主屏幕打开时为 true
+      || (navigator as any).standalone === true
+  // eslint-disable-next-line no-console
+  console.log('[PWA] display-mode standalone =', isStandalone)
+
+  // 如果不是 Standalone，临时给个可视化提示（调试用，确认后可删）
+  const TIP_ID = 'pwa-standalone-tip'
+  document.getElementById(TIP_ID)?.remove()
+  if (!isStandalone) {
+    const tip = document.createElement('div')
+    tip.id = TIP_ID
+    tip.textContent = '当前非 Standalone（iOS 桌面全屏）模式'
+    tip.style.cssText
+        = 'position:fixed;z-index:999999;left:0;right:0;top:0;'
+        + 'background:#ffdcdf;color:#b00020;padding:6px 10px;'
+        + 'font-size:12px;text-align:center'
+    document.body.appendChild(tip)
+  }
+})()
+// === [PWA 校验 END] ===
+
 setupApp()
 registerSW({ immediate: true })

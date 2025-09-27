@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PWA Test</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.webmanifest?v=3">
+  <style>
+    body{margin:0;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);font:16px/1.4 -apple-system,BlinkMacSystemFont}
+    .ok{position:fixed;top:0;left:0;background:#e0ffe0;padding:6px 10px}
+  </style>
+</head>
+<body>
+  <div class="ok">No Safari bars from Home Screen → OK</div>
+  <h1>PWA Standalone Test</h1>
+  <script>
+    const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator).standalone
+    document.body.insertAdjacentHTML('beforeend', `<p>Standalone: <b>${String(!!isStandalone)}</b></p>`)
+  </script>
+</body>
+</html>
