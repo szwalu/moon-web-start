@@ -1,7 +1,7 @@
 {
   "name": "我abc网址导航",
   "short_name": "我abc",
-  "start_url": "/auth",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
