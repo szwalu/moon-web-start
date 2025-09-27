@@ -1924,4 +1924,26 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
     max-height: 70vh !important;
   }
 }
+
+/* === iOS 安全区 & 统一头部高度变量 === */
+:root{
+  /* iOS 11 老写法 constant() 作为兜底；新写法 env() 为主 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-base: 44px;                    /* 你现在的头部基准高度 */
+  --header-height: calc(var(--header-base) + var(--safe-top));
+}
+
+/* 头部：增加顶部内边距和高度，让出状态栏空间 */
+.page-header{
+  /* 原来就有 position:sticky; top:0; */
+  padding-top: calc(0.75rem + var(--safe-top));
+  height: var(--header-height);
+}
+
+/* 任何“贴顶”的二级条幅，都跟着新头部高度走 */
+.search-bar-container{ top: var(--header-height); }
+.selection-actions-banner{ top: var(--header-height); }
+
+/* 若还有别的用到 top:44px 的，也统一改为：top: var(--header-height) */
 </style>
