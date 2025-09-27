@@ -1572,7 +1572,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   display: flex;
   flex-direction: column;
 
-  min-height: 100dvh;     /* 从“固定高度”改为“最小高度” */
+  min-height: 100svh;    /* 从“固定高度”改为“最小高度” */
   overflow: visible;      /* 不要裁掉溢出，否则 padding/垫片都白搭 */
   position: relative;
 }
@@ -1938,7 +1938,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 
 /* 统一页面背景 */
 html, body, #app {
-  height: 100%;
+  min-height: 100svh;      /* 用 svh 覆盖初始布局 */
   margin: 0;
   background: var(--app-bg);
 }
@@ -1946,8 +1946,8 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;
-  margin-bottom: calc(0px - var(--safe-bottom)) !important;  /* ✅ 压进 safe-area */
+  padding-bottom: var(--safe-bottom) !important;  /* ✅ 用 padding 占住安全区，不再用负 margin */
+  margin-bottom: 0 !important;
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
