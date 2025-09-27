@@ -14,13 +14,7 @@ import VueI18n from '@intlify/unplugin-vue-i18n/vite'
 
 import { VitePWA } from 'vite-plugin-pwa'
 
-// ✅ 新增
-
 export default defineConfig({
-  /**
-   * 👇 当为项目配置了自定义域名后，网站将从该域名的根目录提供服务。
-   * 因此 base 应该设置为 '/'。
-   */
   base: '/',
   plugins: [
     Vue(),
@@ -50,10 +44,27 @@ export default defineConfig({
       fullInstall: true,
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
-    // ✅ PWA 插件（最小可用配置）
+    // ✅ PWA 插件（内联生成 manifest）
     VitePWA({
       registerType: 'autoUpdate',
-      manifest: false, // 使用 public/manifest.webmanifest，避免双处配置冲突
+      manifest: {
+        name: '我abc网址导航',
+        short_name: '我abc',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#111111',
+        theme_color: '#111111',
+        icons: [
+          { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+        shortcuts: [
+          { name: '直达 Auth 页面', short_name: 'Auth', url: '/auth' },
+        ],
+      },
       includeAssets: [
         'favicon.ico',
         'logo.jpg',
@@ -63,11 +74,10 @@ export default defineConfig({
         'icons/maskable-512.png',
       ],
       workbox: {
-        // SPA 回退，确保直接打开 /auth 等路由能返回 index.html
         navigateFallback: '/index.html',
       },
       devOptions: {
-        enabled: false, // 仅生产启用 SW，避免本地调试被缓存影响
+        enabled: false,
       },
     }),
   ],
