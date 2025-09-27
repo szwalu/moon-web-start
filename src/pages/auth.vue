@@ -1896,7 +1896,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 /* === 全局样式（非 scoped）=== */
 
 /* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
-/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
@@ -1904,7 +1903,7 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
 }
 
-/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
+/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
@@ -1913,12 +1912,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   padding-right: 4px;
 }
 
-/* 子菜单里的每一项更紧凑些，显示更多可见项 */
+/* 子菜单项更紧凑 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
 
-/* 移动端：给子菜单更多可视空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70vh !important;
@@ -1929,18 +1927,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px; /* 你原来的头部高度 */
+  --header-base: 44px; /* 头部视觉高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
 }
 
-/* 让容器整体也让出一点顶部/底部安全区空间 */
-.auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  /* 为底部 Home 指示条预留空间，避免出现“灰条” */
-  padding-bottom: calc(0.75rem + var(--safe-bottom)) !important;
-}
-
-/* 统一页面背景，防止安全区露出与容器底色不一致 */
+/* 统一页面背景，防止安全区露底色不一致 */
 html, body, #app {
   height: 100%;
   background: #ffffff;
@@ -1948,18 +1939,37 @@ html, body, #app {
 }
 .dark body { background: #1e1e1e; }
 
+/* 顶部让出 safe-top；底部只保留 safe-bottom（不再额外 +0.75rem）*/
+.auth-container {
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  padding-bottom: var(--safe-bottom) !important; /* ← 关键修改 */
+}
+
 /* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
 .auth-container .page-header {
   top: var(--safe-top) !important;
-  height: var(--header-base) !important;              /* 仍然是 44px 视觉高度 */
-  padding-top: 0.5rem !important;                     /* 可按需调整 */
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
 }
 
-/* 所有“贴顶”的二级横幅、搜索栏也需要下移到头部之下 */
+/* 所有“贴顶”的二级横幅、搜索栏下移到头部之下 */
 .search-bar-container,
 .selection-actions-banner {
-  top: var(--header-height) !important;               /* 44px + safe-top */
+  top: var(--header-height) !important; /* 44px + safe-top */
 }
 
-/* 如果还有别处写死了 top:44px 的，也统一覆盖为 header-height */
+/* === 尾部留白优化（防止出现“大白条”）=== */
+/* 列表容器给一点点缓冲，避免内容贴边 */
+.notes-list-container {
+  padding-bottom: 8px;
+}
+/* 列表最后一项与底部至少留出安全区高度 */
+.notes-list > div:last-child {
+  margin-bottom: max(8px, var(--safe-bottom));
+}
+
+/* 日历全屏视图也避让底部安全区（防止工具条/按钮贴到 Home 指示条） */
+.calendar-view {
+  padding-bottom: var(--safe-bottom);
+}
 </style>
