@@ -20,8 +20,9 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 <template>
   <NConfigProvider :theme="theme">
-    <NMessageProvider>
-      <NDialogProvider>
+    <!-- ✅ 给消息和对话框都设置 top -->
+    <NMessageProvider placement="top" :style="{ top: '30%' }">
+      <NDialogProvider :style="{ top: '30%' }">
         <NNotificationProvider>
           <AppProvider>
             <AppContainer>
