@@ -1896,16 +1896,13 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
-/* 让根层菜单也能滚动，避免太长溢出屏幕 */
+/* 根菜单滚动限制（保留你原有配置） */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-
-/* 以前针对“子菜单”的滚动限制现在可以保留或删除均可 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: min(60vh, 420px) !important;
   overflow: auto !important;
@@ -1913,56 +1910,46 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
-
-/* 子菜单里的每一项更紧凑些，显示更多可见项 */
-.n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
-  line-height: 1.2;
-}
-
-/* 移动端：给子菜单更多可视空间 */
+.n-dropdown-menu .n-dropdown-menu .n-dropdown-option { line-height: 1.2; }
 @media (max-width: 768px) {
-  .n-dropdown-menu .n-dropdown-menu {
-    max-height: 70vh !important;
-  }
+  .n-dropdown-menu .n-dropdown-menu { max-height: 70vh !important; }
 }
 
-/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
+/* ===== 关键：统一安全区变量 + 提供 app 专用 vh 变量 ===== */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px; /* 你原来的头部高度 */
+  --header-base: 44px;
   --header-height: calc(var(--header-base) + var(--safe-top));
-
-  /* ✅ 新增：对底部安全区做“折扣”，避免一上来就是 20~34px 的大白边
-     典型机型 safe-bottom≈20px，减 18px 后只剩 ~2px 的保底；更大的机型也会被压到一个更小的可接受范围 */
-  --safe-bottom-adjust: max(0px, calc(var(--safe-bottom) - 22px));
+  /* ✅ 默认先用 1vh，稍后用 JS 替换为 visualViewport */
+  --app-vh: 1vh;
 }
 
-/* 让容器整体也让出一点顶部/底部空间（底部使用折扣后的小保底） */
-.auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: var(--safe-bottom-adjust) !important; /* ⬅️ 替换这里 */
-}
-
-/* 统一页面背景，防止安全区露出与容器底色不一致 */
+/* 页面背景与尺寸归零，避免露出白边 */
 html, body, #app {
   height: 100%;
-  background: #ffffff;
   margin: 0;
-  padding-bottom: 0 !important;
+  padding: 0 !important;   /* ✅ 强制移除系统给 body 加的 padding */
+  background: #ffffff;
 }
 .dark body { background: #1e1e1e; }
 
-/* 关键：Sticky 头部不要 top:0，改为 top: safe-top */
-.auth-container .page-header {
-  top: var(--safe-top) !important;
-  height: var(--header-base) !important;              /* 仍然是 44px 视觉高度 */
-  padding-top: 0.5rem !important;                     /* 可按需调整 */
+/* ✅ 覆盖 scoped 里的 100dvh：使用我们可控的 --app-vh */
+.auth-container {
+  min-height: calc(var(--app-vh) * 100) !important;
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  padding-bottom: 0 !important;                /* ✅ 不再额外加底部空间 */
+  overscroll-behavior-y: contain;
 }
 
-/* 所有“贴顶”的二级横幅、搜索栏也需要下移到头部之下 */
+/* 头部与二级条幅按照安全区下移 */
+.auth-container .page-header {
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
+}
 .search-bar-container,
 .selection-actions-banner {
-  top: var(--header-height) !important;               /* 44px + safe-top */
+  top: var(--header-height) !important;
 }
 </style>
