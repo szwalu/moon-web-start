@@ -70,17 +70,6 @@ async function handleSettingsClick() {
   // 3. 最后，无论用户处于何种状态，都执行统一的导航操作
   router.push('/setting')
 }
-
-onMounted(() => {
-  // 进入首页就强制关闭一次，避免历史残留导致移动端一进来就“打开汉堡菜单”
-  if (router.currentRoute.value.path === '/') {
-    // 关掉 Pinia 里的状态
-    settingStore.isSideNavOpen = false
-    // 可选：清掉可能的持久化键名（按你 store 里实际的 key 改名）
-    sessionStorage.removeItem('isSideNavOpen')
-    localStorage.removeItem('isSideNavOpen')
-  }
-})
 </script>
 
 <template>
