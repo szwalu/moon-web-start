@@ -349,3 +349,8 @@ tags:
   input_new_tag: 输入新标签名
   remove_tag: 移除
   more_actions: 更多操作
+  change_icon: 更改图标
+  search_icon: 搜索常用图标
+  clear_icon: 清除图标
+  tip_icon_custom: 也可以直接在上方粘贴表情或符号搜索
+  no_icons_found: 图标没有找到

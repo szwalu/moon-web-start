@@ -1,13 +1,15 @@
 // src/composables/useTagMenu.ts
-import { type Ref, computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+import { type Ref, computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
+import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
 /** 本地存储 Key */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
-const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:' // 会拼接 userId
-const TAG_ICON_MAP_KEY = 'tag_icons_v1' // 标签 → 图标（仅菜单显示）
+const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:'
+const TAG_ICON_MAP_KEY = 'tag_icons_v1'
 
 /** 将标签标准化为 "#xxx" 形式 */
 function normalizeTag(tag: string) {
@@ -97,102 +99,6 @@ async function saveTagIconsToAuth(map: Record<string, string>): Promise<boolean>
   }
 }
 
-/** 常用 emoji（可自行再扩充） */
-const EMOJI_POOL = [
-  // 物品/标记
-  '⭐',
-  '🔥',
-  '✨',
-  '📌',
-  '📍',
-  '🔖',
-  '🏷️',
-  '✅',
-  '🟩',
-  '🟥',
-  '🟨',
-  '🟦',
-  '🟪',
-  '⬜',
-  '⬛',
-  '📝',
-  '📒',
-  '📔',
-  '📚',
-  '✏️',
-  '🖊️',
-  '📎',
-  '🔗',
-  '🔍',
-  '⏱️',
-  '⏰',
-  '📅',
-  '📆',
-  // 人/服饰
-  '😊',
-  '😉',
-  '🤔',
-  '🥳',
-  '😴',
-  '🤒',
-  '🧘',
-  '🏃',
-  '💼',
-  '👟',
-  '👔',
-  '👗',
-  '🧢',
-  '🎓',
-  // 自然/动物
-  '🌞',
-  '🌙',
-  '⭐',
-  '☁️',
-  '🌧️',
-  '🌈',
-  '🌊',
-  '🌱',
-  '🌲',
-  '🍀',
-  '🐱',
-  '🐶',
-  '🐼',
-  '🐻',
-  // 食物
-  '🍎',
-  '🍊',
-  '🍋',
-  '🍇',
-  '🍓',
-  '🍉',
-  '🍞',
-  '🍔',
-  '🍟',
-  '🍜',
-  '🍕',
-  '☕',
-  '🍵',
-  // 旅行/地点
-  '🏠',
-  '🏫',
-  '🏢',
-  '🏥',
-  '🏞️',
-  '🚗',
-  '🚲',
-  '✈️',
-  '🚄',
-  '🗺️',
-  // 运动/娱乐
-  '⚽',
-  '🏀',
-  '🏓',
-  '🎵',
-  '🎧',
-  '🎬',
-  '🎮',
-]
-
 export function useTagMenu(
   allTags: Ref<string[]>,
   onSelectTag: (tag: string) => void,
@@ -205,27 +111,21 @@ export function useTagMenu(
   const dialog = useDialog()
   const isBusy = ref(false)
 
-  // —— 标签计数（内存）与本地缓存 —— //
   const tagCounts = ref<Record<string, number>>({})
-  const tagCountsSig = ref<string | null>(null) // 仅用于持久化记录
+  const tagCountsSig = ref<string | null>(null)
   const isLoadingCounts = ref(false)
   const currentUserId = ref<string | null>(null)
-
-  // —— 标签图标映射（仅菜单显示） —— //
   const tagIconMap = ref<Record<string, string>>({})
-
-  // Realtime（可用则加速，但不依赖）
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
-  let lastFetchAt = 0 // 防抖（毫秒时间戳）
+  let lastFetchAt = 0
 
-  /** 写入本地缓存 */
   function saveCountsCacheToLocal() {
     const uid = currentUserId.value
     if (!uid)
       return
     const items = Object.entries(tagCounts.value).map(([tag, cnt]) => ({ tag, cnt }))
     localStorage.setItem(
-      TAG_COUNT_CACHE_KEY_PREFIX + uid,
+      `${TAG_COUNT_CACHE_KEY_PREFIX}${uid}`,
       JSON.stringify({
         sig: tagCountsSig.value,
         items,
@@ -234,7 +134,6 @@ export function useTagMenu(
     )
   }
 
-  /** 读取 tagIconMap 的本地缓存 */
   function hydrateIconsFromLocal() {
     try {
       const raw = localStorage.getItem(TAG_ICON_MAP_KEY)
@@ -245,14 +144,11 @@ export function useTagMenu(
     }
   }
 
-  /** 保存 tagIconMap 到本地与云端 */
   async function saveIcons() {
     localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
-    // 尝试同步云端（失败不提示）
     await saveTagIconsToAuth(tagIconMap.value)
   }
 
-  /** 读取本地缓存（若有）并填充内存；返回 savedAt */
   function hydrateCountsFromLocal(uid: string): number | null {
     const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
     const cachedRaw = localStorage.getItem(cacheKey)
@@ -276,27 +172,22 @@ export function useTagMenu(
     }
   }
 
-  /** 覆盖式拉取：从服务端取最新统计，更新内存与本地缓存（防抖 700ms；始终直连服务器） */
   async function refreshTagCountsFromServer(force = false) {
     const now = Date.now()
     if (!force && now - lastFetchAt < 700)
       return
     lastFetchAt = now
-
     if (isLoadingCounts.value)
       return
-
     const uid = await getUserId()
     if (!uid)
       return
     currentUserId.value = uid
-
     try {
       isLoadingCounts.value = true
       const { data, error } = await supabase.rpc('get_tag_counts', { p_user_id: uid })
       if (error)
         throw error
-
       const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
       if (Array.isArray(data) && data.length > 0) {
         const serverSig: string | null = data[0].last_updated
@@ -311,11 +202,7 @@ export function useTagMenu(
         tagCounts.value = map
         tagCountsSig.value = serverSig || null
         saveCountsCacheToLocal()
-        localStorage.setItem(cacheKey, JSON.stringify({
-          sig: tagCountsSig.value,
-          items,
-          savedAt: Date.now(),
-        }))
+        localStorage.setItem(cacheKey, JSON.stringify({ sig: tagCountsSig.value, items, savedAt: Date.now() }))
       }
       else {
         tagCounts.value = {}
@@ -324,7 +211,6 @@ export function useTagMenu(
       }
     }
     catch {
-      // 静默失败：保留旧值
     }
     finally {
       isLoadingCounts.value = false
@@ -332,7 +218,6 @@ export function useTagMenu(
   }
 
   onMounted(async () => {
-    // ① 先用本地缓存立即填充（保证首屏有数据）
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
@@ -341,8 +226,6 @@ export function useTagMenu(
       pinnedTags.value = []
     }
     hydrateIconsFromLocal()
-
-    // ② 再从服务器覆盖（以服务器为准），并同步一份回本地
     const serverPinned = await loadPinnedFromAuth()
     if (serverPinned) {
       pinnedTags.value = serverPinned
@@ -353,45 +236,29 @@ export function useTagMenu(
       tagIconMap.value = { ...tagIconMap.value, ...serverIcons }
       localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
     }
-
     currentUserId.value = await getUserId()
     const uid = currentUserId.value
     if (uid) {
-      // 先用缓存即时填充
       hydrateCountsFromLocal(uid)
-
-      // Realtime（仅作加速；拿不到 content 时也保守刷新）
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const content = payload?.new?.content as string | undefined
-            if (content === undefined || contentHasAnyTag(content))
-              refreshTagCountsFromServer(true).catch(() => {})
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const oldContent = payload?.old?.content as string | undefined
-            if (oldContent === undefined || contentHasAnyTag(oldContent))
-              refreshTagCountsFromServer(true).catch(() => {})
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const beforeContent = payload?.old?.content as string | undefined
-            const afterContent = payload?.new?.content as string | undefined
-            const unsure = beforeContent === undefined && afterContent === undefined
-            if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
-              refreshTagCountsFromServer(true).catch(() => {})
-          },
-        )
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const content = payload?.new?.content as string | undefined
+          if (content === undefined || contentHasAnyTag(content))
+            refreshTagCountsFromServer(true).catch(() => {})
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const oldContent = payload?.old?.content as string | undefined
+          if (oldContent === undefined || contentHasAnyTag(oldContent))
+            refreshTagCountsFromServer(true).catch(() => {})
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const beforeContent = payload?.old?.content as string | undefined
+          const afterContent = payload?.new?.content as string | undefined
+          const unsure = beforeContent === undefined && afterContent === undefined
+          if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
+            refreshTagCountsFromServer(true).catch(() => {})
+        })
         .subscribe()
     }
   })
@@ -407,9 +274,7 @@ export function useTagMenu(
   })
 
   async function savePinned() {
-    // 先写本地，保证即时反馈
     localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
-    // 再尝试写服务器；失败则静默，保留本地缓存
     await savePinnedToAuth(pinnedTags.value)
   }
 
@@ -462,7 +327,6 @@ export function useTagMenu(
     return letters.map(letter => ({ letter, tags: groups[letter] }))
   })
 
-  /** —— 缓存失效工具（标签/搜索） —— */
   function invalidateOneTagCache(tag: string) {
     const k = getTagCacheKey(tag)
     localStorage.removeItem(k)
@@ -486,13 +350,12 @@ export function useTagMenu(
     }
   }
 
-  /** —— 打开菜单：先用缓存、再强制直连服务器刷新一次 —— */
   async function onMainMenuOpen() {
     const uid = await getUserId()
     if (!uid)
       return
-    hydrateCountsFromLocal(uid) // 先即时呈现
-    refreshTagCountsFromServer(true).catch(() => {}) // 再拉权威数据覆盖
+    hydrateCountsFromLocal(uid)
+    refreshTagCountsFromServer(true).catch(() => {})
   }
 
   watch(mainMenuVisible, (show) => {
@@ -500,8 +363,7 @@ export function useTagMenu(
       onMainMenuOpen().catch(() => {})
   })
 
-  /** —— 行内操作：置顶/重命名/移除/更改图标 —— */
-  function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon' | 'clear_icon') {
+  function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     if (action === 'pin') {
       togglePin(tag)
       return
@@ -514,14 +376,8 @@ export function useTagMenu(
       removeTagCompletely(tag)
       return
     }
-    if (action === 'change_icon') {
+    if (action === 'change_icon')
       changeTagIcon(tag)
-      return
-    }
-    if (action === 'clear_icon') {
-      delete tagIconMap.value[tag]
-      saveIcons()
-    }
   }
 
   function getRowMenuOptions(tag: string) {
@@ -540,114 +396,96 @@ export function useTagMenu(
         key: 'change_icon',
       },
       {
-        label: t('tags.clear_icon') || '清除图标',
-        key: 'clear_icon',
-      },
-      {
         label: t('tags.remove_tag') || '移除',
         key: 'remove',
       },
     ]
   }
 
-  /** —— 选择图标（弹出一个简单的 emoji 选择器） —— */
   function changeTagIcon(raw: string) {
     const tag = normalizeTag(raw)
-    const state = { q: '' }
-    let inst: any
+    let dialogInst: any
 
     const pick = (emoji: string) => {
       tagIconMap.value = { ...tagIconMap.value, [tag]: emoji }
       saveIcons()
-      inst?.destroy?.()
+      dialogInst?.destroy?.()
     }
 
-    inst = dialog.create({
+    const IconPickerComponent = defineComponent({
+      setup() {
+        const searchQuery = ref('')
+        return () => {
+          const query = searchQuery.value.trim().toLowerCase()
+          const renderBody = () => {
+            let iconList = ICON_CATEGORIES
+            if (query) {
+              const allIcons = ICON_CATEGORIES.flatMap(cat => cat.icons)
+              const filteredIcons = allIcons.filter(item =>
+                item.icon.includes(query) || item.keywords.some(kw => kw.includes(query)),
+              )
+              if (filteredIcons.length === 0)
+                return h('div', { style: 'text-align:center; padding: 20px; color: #888;' }, t('tags.no_icons_found') || '未找到匹配的图标')
+
+              iconList = [{ category: '搜索结果', icons: filteredIcons }]
+            }
+
+            return iconList.map(category =>
+              h('div', { style: 'margin-bottom: 16px;' }, [
+                h('h4', { style: 'font-size: 14px; font-weight: 600; color: #555; margin: 0 0 8px 4px;' }, category.category),
+                h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill, minmax(40px, 1fr));gap:8px;box-sizing: border-box;' }, category.icons.map(item =>
+                  h(
+                    'button',
+                    {
+                      style: 'height:42px; font-size: 24px; display: flex; align-items: center; justify-content: center; border:1px solid #eee;border-radius:8px;background:#fff;cursor:pointer;transition:background .2s;',
+                      onClick: () => pick(item.icon),
+                      onMouseover: (ev: any) => ev.currentTarget.style.background = '#f5f5f5',
+                      onMouseout: (ev: any) => ev.currentTarget.style.background = '#fff',
+                    },
+                    item.icon,
+                  ),
+                )),
+              ]),
+            )
+          }
+          return h('div', { style: 'width: 100%; box-sizing: border-box;' }, [
+            h(NInput, {
+              'value': searchQuery.value,
+              'onUpdate:value': (v: string) => { searchQuery.value = v },
+              'placeholder': t('tags.search_icon') || '搜索图标或关键词',
+              'clearable': true,
+              'size': 'small',
+              'style': 'font-size:16px; width: 100%; box-sizing: border-box;',
+              'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+            }),
+            h('div', { style: 'margin-top:4px; margin-bottom: 12px;' }, [
+              h('div', { style: 'font-size:12px;color:#888' }, t('tags.tip_icon_custom') || '也可以在上面输入框直接粘贴任意符号作为图标'),
+            ]),
+            h('div', { style: 'height:min(360px, 60vh);overflow-y:auto; padding: 2px 10px 2px 2px; margin-right: -10px' }, [renderBody()]),
+            h('div', { style: 'display:flex;justify-content:flex-end;margin-top:12px' }, [
+              h('button', { style: 'border:none;background:#e5e5e5;border-radius:8px;padding:6px 10px;cursor:pointer', onClick: () => dialogInst?.destroy?.() }, t('auth.cancel') || '取消'),
+            ]),
+          ])
+        }
+      },
+    })
+
+    dialogInst = dialog.create({
       title: t('tags.change_icon') || '更改图标',
       type: 'info',
       closable: true,
       maskClosable: true,
       showIcon: false,
-      content: () => {
-        const grid = () => {
-          const list = state.q.trim()
-            ? EMOJI_POOL.filter(e => e.includes(state.q.trim()))
-            : EMOJI_POOL
-          return h(
-            'div',
-            {
-              style:
-                'display:grid;grid-template-columns:repeat(8,1fr);gap:8px;max-height:60vh;overflow:auto;padding-top:8px;box-sizing:border-box;',
-            },
-            list.map(e =>
-              h(
-                'button',
-                {
-                  style:
-                    'height:40px;font-size:22px;line-height:40px;text-align:center;border:1px solid #eee;border-radius:8px;background:#fff;cursor:pointer',
-                  onClick: () => pick(e),
-                },
-                e,
-              ),
-            ),
-          )
-        }
-
-        return h('div', { style: 'width:min(420px,92vw);padding:8px;box-sizing:border-box;overflow:hidden' }, [
-          h(NInput, {
-            'value': state.q,
-            'onUpdate:value': (v: string) => (state.q = v),
-            'placeholder': t('tags.search_icon') || '搜索或直接输入表情',
-            'clearable': true,
-            'size': 'small',
-            'style': 'font-size:16px;',
-            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
-          }),
-          h('div', { style: 'margin-top:8px' }, [
-            // 允许用户直接粘贴任意字符作为图标
-            h(
-              'div',
-              { style: 'font-size:12px;color:#888' },
-              t('tags.tip_icon_custom') || '也可以在上面输入框直接粘贴任意 emoji/符号作为图标',
-            ),
-          ]),
-          grid(),
-          h('div', { style: 'display:flex;justify-content:space-between;margin-top:12px' }, [
-            h(
-              'button',
-              {
-                style: 'border:none;background:#f5f5f5;border-radius:8px;padding:6px 10px;cursor:pointer',
-                onClick: () => {
-                  delete tagIconMap.value[tag]
-                  saveIcons()
-                  inst?.destroy?.()
-                },
-              },
-              t('tags.clear_icon') || '清除图标',
-            ),
-            h(
-              'button',
-              {
-                style: 'border:none;background:#e5e5e5;border-radius:8px;padding:6px 10px;cursor:pointer',
-                onClick: () => inst?.destroy?.(),
-              },
-              t('auth.cancel') || '取消',
-            ),
-          ]),
-        ])
-      },
+      content: () => h(IconPickerComponent),
       action: null,
     })
   }
 
-  /** —— RPC 版：重命名/移除 —— */
   async function renameTag(oldRaw: string) {
     if (isBusy.value)
       return
     const oldTag = normalizeTag(oldRaw)
     const initial = tagKeyName(oldTag)
-
-    // 弹窗输入新名字
     const renameState = { next: initial }
     dialog.create({
       type: 'info',
@@ -659,7 +497,7 @@ export function useTagMenu(
             defaultValue: initial,
             autofocus: true,
             placeholder: t('tags.input_new_tag') || '输入新标签名',
-            style: 'font-size:16px;width:100%;box-sizing:border-box;display:block;', // iOS 防放大
+            style: 'font-size:16px;',
             onVnodeMounted: (vnode: any) => {
               const el = vnode?.el?.querySelector('input') as HTMLInputElement | null
               if (el) {
@@ -680,13 +518,11 @@ export function useTagMenu(
         const newTag = normalizeTag(nextName)
         if (!newTag || newTag === oldTag)
           return
-
         isBusy.value = true
         try {
           const uid = await getUserId()
           if (!uid)
             throw new Error(t('auth.session_expired') || '登录已过期')
-
           const { data, error } = await supabase.rpc('rename_tag', {
             p_user_id: uid,
             p_old: oldTag,
@@ -694,36 +530,25 @@ export function useTagMenu(
           })
           if (error)
             throw error
-
-          // 本地 allTags 更新
           const idx = allTags.value.indexOf(oldTag)
           if (idx >= 0)
             allTags.value.splice(idx, 1, newTag)
           else if (!allTags.value.includes(newTag))
             allTags.value.push(newTag)
-
-          // 迁移置顶状态
           const pIdx = pinnedTags.value.indexOf(oldTag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1, newTag)
             await savePinned()
           }
-
-          // 迁移图标
           if (tagIconMap.value[oldTag]) {
             tagIconMap.value[newTag] = tagIconMap.value[oldTag]
             delete tagIconMap.value[oldTag]
             await saveIcons()
           }
-
-          // 失效：标签缓存、搜索缓存
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
-
-          // 强制刷新一次计数（重命名会影响计数分布）——直连服务器
           await refreshTagCountsFromServer(true)
-
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
@@ -744,7 +569,6 @@ export function useTagMenu(
     if (isBusy.value)
       return
     const tag = normalizeTag(raw)
-
     dialog.warning({
       title: t('tags.delete_tag_title') || '删除标签',
       content:
@@ -759,38 +583,28 @@ export function useTagMenu(
           const uid = await getUserId()
           if (!uid)
             throw new Error(t('auth.session_expired') || '登录已过期')
-
           const { data, error } = await supabase.rpc('remove_tag', {
             p_user_id: uid,
             p_tag: tag,
           })
           if (error)
             throw error
-
-          // 本地状态与缓存清理
           const i = allTags.value.indexOf(tag)
           if (i >= 0)
             allTags.value.splice(i, 1)
-
           const pIdx = pinnedTags.value.indexOf(tag)
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1)
             await savePinned()
           }
-
-          // 同步清理图标
           if (tagIconMap.value[tag]) {
             delete tagIconMap.value[tag]
             await saveIcons()
           }
-
           invalidateOneTagCache(tag)
           invalidateAllTagCaches()
           invalidateAllSearchCaches()
-
-          // 强制刷新一次计数——直连服务器
           await refreshTagCountsFromServer(true)
-
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
@@ -807,12 +621,10 @@ export function useTagMenu(
     })
   }
 
-  /** —— 菜单渲染（显示计数 + 「⋯」行内菜单） —— */
   const tagMenuChildren = computed(() => {
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
-
     const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
     const searchOption = {
       key: 'tag-search',
@@ -821,9 +633,7 @@ export function useTagMenu(
         h('div', { class: 'tag-search-row' }, [
           h(NInput, {
             'value': tagSearch.value,
-            'onUpdate:value': (v: string) => {
-              tagSearch.value = v
-            },
+            'onUpdate:value': (v: string) => { tagSearch.value = v },
             'placeholder': placeholderText,
             'clearable': true,
             'autofocus': true,
@@ -833,31 +643,14 @@ export function useTagMenu(
           }),
         ]),
     }
-
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
       .map(tag => makeTagRow(tag))
-
-    const pinnedGroup
-      = pinnedChildren.length > 0
-        ? [{
-            type: 'group' as const,
-            key: 'pinned-group',
-            label: `⭐ ${t('notes.favorites') || '常用'}`,
-            children: pinnedChildren,
-          }]
-        : []
-
+    const pinnedGroup = pinnedChildren.length > 0 ? [{ type: 'group' as const, key: 'pinned-group', label: `⭐ ${t('notes.favorites') || '常用'}`, children: pinnedChildren }] : []
     const letterGroups = groupedTags.value
       .filter(({ tags }) => tags.length > 0)
-      .map(({ letter, tags }) => ({
-        type: 'group' as const,
-        key: `grp-${letter}`,
-        label: letter,
-        children: tags.map(tag => makeTagRow(tag)),
-      }))
-
+      .map(({ letter, tags }) => ({ type: 'group' as const, key: `grp-${letter}`, label: letter, children: tags.map(tag => makeTagRow(tag)) }))
     return [searchOption, ...pinnedGroup, ...letterGroups]
   })
 
@@ -867,44 +660,22 @@ export function useTagMenu(
     const icon = tagIconMap.value[tag] || '#'
     const left = `${icon} ${displayName}`
     const display = count > 0 ? `${left}（${count}）` : left
-
     return {
       key: tag,
       label: () =>
-        h('div', {
-          class: 'tag-row',
-          style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;',
-        }, [
-          // 左侧文本（图标 + 名称 + 计数）
-          h('span', {
-            class: 'tag-text',
-            style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-            title: display,
-          }, display),
-
-          // 右侧「三个小黑点」下拉菜单
+        h('div', { class: 'tag-row', style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;' }, [
+          h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
             trigger: 'click',
             showArrow: false,
             size: 'small',
             placement: 'bottom-end',
-            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon' | 'clear_icon') => {
-              handleRowMenuSelect(tag, key)
-            },
-            onClickoutside: () => {
-              // 不打断父级下拉的显示
-            },
+            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => { handleRowMenuSelect(tag, key) },
+            onClickoutside: () => {},
           }, {
             default: () =>
-              h('button', {
-                'class': 'more-btn',
-                'aria-label': t('tags.more_actions') || '更多操作',
-                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
-                'onClick': (e: MouseEvent) => {
-                  e.stopPropagation()
-                },
-              }, '⋯'),
+              h('button', { 'class': 'more-btn', 'aria-label': t('tags.more_actions') || '更多操作', 'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;', 'onClick': (e: MouseEvent) => { e.stopPropagation() } }, '⋯'),
           }),
         ]),
       props: { onClick: () => selectTag(tag) },
