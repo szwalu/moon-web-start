@@ -577,7 +577,7 @@ export function useTagMenu(
             'div',
             {
               style:
-                'display:grid;grid-template-columns:repeat(8,1fr);gap:8px;max-height:360px;overflow:auto;padding-top:8px;',
+                'display:grid;grid-template-columns:repeat(8,1fr);gap:8px;max-height:60vh;overflow:auto;padding-top:8px;box-sizing:border-box;',
             },
             list.map(e =>
               h(
@@ -593,7 +593,7 @@ export function useTagMenu(
           )
         }
 
-        return h('div', { style: 'width:420px;max-width:90vw' }, [
+        return h('div', { style: 'width:min(420px,92vw);padding:8px;box-sizing:border-box;overflow:hidden' }, [
           h(NInput, {
             'value': state.q,
             'onUpdate:value': (v: string) => (state.q = v),
@@ -659,7 +659,7 @@ export function useTagMenu(
             defaultValue: initial,
             autofocus: true,
             placeholder: t('tags.input_new_tag') || '输入新标签名',
-            style: 'font-size:16px;', // iOS 防放大
+            style: 'font-size:16px;width:100%;box-sizing:border-box;display:block;', // iOS 防放大
             onVnodeMounted: (vnode: any) => {
               const el = vnode?.el?.querySelector('input') as HTMLInputElement | null
               if (el) {
