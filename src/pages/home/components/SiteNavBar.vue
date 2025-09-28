@@ -3,9 +3,6 @@ import draggable from 'vuedraggable'
 import { onMounted, ref } from 'vue'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
-
-// 增加登陆按钮
-
 import { supabase } from '@/utils/supabaseClient'
 
 const modalStore = useModalStore()
@@ -28,11 +25,12 @@ onMounted(() => {
   })
 })
 
-function checkIsMobileDevice(): boolean {
-  if (typeof navigator !== 'undefined')
-    return /Mobi|Android|iPhone/i.test(navigator.userAgent)
-
-  return false
+/**
+ * Closes the sidebar if the view is mobile.
+ */
+function closeSidebarOnMobile() {
+  if (isMobile.value)
+    settingStore.isSideNavOpen = false
 }
 
 function handleCateClick(cateIndex: number) {
@@ -46,12 +44,12 @@ function handleCateClick(cateIndex: number) {
   if (clickedCate.groupList && clickedCate.groupList.length > 0) {
     if (activeSubMenuIndex.value === cateIndex)
       activeSubMenuIndex.value = -1
-
     else
       activeSubMenuIndex.value = cateIndex
   }
   else {
     activeSubMenuIndex.value = -1
+    closeSidebarOnMobile()
   }
 }
 
@@ -76,10 +74,7 @@ function handleSubMenuClick(subItem: any) {
       behavior: 'smooth',
     })
   }
-  if (checkIsMobileDevice()) {
-    activeSubMenuIndex.value = -1
-    settingStore.toggleSideNav()
-  }
+  closeSidebarOnMobile()
 }
 
 // 创建一个本地的响应式变量来存储用户状态
@@ -95,14 +90,17 @@ onMounted(() => {
 
 <template>
   <section
-    class="site-navbar-sidebar pb-12 text-16" :class="{ 'is-open': settingStore.isSideNavOpen }"
+    class="site-navbar-sidebar pb-12 text-16"
+    :class="{ 'is-open': settingStore.isSideNavOpen }"
+    :style="{ paddingTop: 'env(safe-area-inset-top)' }"
   >
     <div v-if="!isMobile || (isMobile && settingStore.isSideNavOpen)" class="sidebar-logo-container flex items-center justify-center py-7 p-4">
       <img src="/logo.jpg" alt="Logo" class="w-auto h-40">
     </div>
 
     <draggable
-      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2" :list="siteStore.data"
+      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2"
+      :list="siteStore.data"
       item-key="id"
       tag="div"
       v-bind="draggableOptions"
@@ -132,7 +130,8 @@ onMounted(() => {
           <transition name="slide-fade-vertical">
             <div v-if="activeSubMenuIndex === i && subMenuRows.length > 0" class="sub-nav-container-vertical mt-1.5 py-1 pl-3 pr-1">
               <div
-                v-for="subItem in subMenuRows[0]" :key="subItem.id"
+                v-for="subItem in subMenuRows[0]"
+                :key="subItem.id"
                 class="sub-nav-item-vertical"
                 @click="handleSubMenuClick(subItem)"
               >
@@ -166,6 +165,7 @@ onMounted(() => {
         to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -176,6 +176,7 @@ onMounted(() => {
         to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -185,6 +186,7 @@ onMounted(() => {
         to="/my-account"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -195,6 +197,7 @@ onMounted(() => {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.apply') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -204,6 +207,7 @@ onMounted(() => {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.links') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -214,6 +218,7 @@ onMounted(() => {
         rel="noopener noreferrer"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSidebarOnMobile"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />

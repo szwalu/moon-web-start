@@ -9,7 +9,6 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-/** 顶部安全区（避免页眉在 PWA/全屏时贴到刘海） */
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
@@ -17,8 +16,8 @@ const safeTopStyle = computed(() => {
 })
 
 const route = useRoute()
-const router = useRouter()
 const settingStore = useSettingStore()
+const router = useRouter()
 
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
@@ -37,50 +36,13 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/** —— 关键修复 1：发生站内导航/滚动时，统一关闭侧栏 —— */
-function closeSideNav() {
-  settingStore.isSideNavOpen = false
-}
-
-/** 捕获阶段委托：只要点到站内 <a>（含锚点），下一帧关闭侧栏 */
-function onAnyInternalLinkClickCapture(e: MouseEvent) {
-  const t = e.target as Element | null
-  if (!t)
-    return
-
-  const a = t.closest('a') as HTMLAnchorElement | null
-  if (!a)
-    return
-
-  const href = a.getAttribute('href') || ''
-  const isInternal = href.startsWith('/') || href.startsWith('#') || a.origin === window.location.origin
-  const isNewTab = a.target === '_blank'
-  if (isInternal && !isNewTab) {
-    requestAnimationFrame(() => {
-      closeSideNav()
-    })
-  }
-}
-
-/** —— 关键修复 2：iOS 刘海/PWA 下为抽屉/侧栏强制补安全区 —— */
-function applySafeInsetForDrawers() {
-  const selectors = [
-    '.n-drawer',
-    '.n-drawer-body',
-    '.n-drawer-header',
-    '.SideNav',
-    '.SideNavHeader',
-    '.side-nav',
-    '.side-nav__header',
-  ]
-  for (const sel of selectors) {
-    const nodes = document.querySelectorAll<HTMLElement>(sel)
-    for (const el of nodes)
-      el.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
-  }
-}
-
-/** 首帧：避免“先开再关” */
+/**
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
+ * - PC：默认打开
+ * - 其它移动端：默认关闭
+ * - iOS Safari：强制关闭
+ * 同时在首帧禁用过渡，mounted 后恢复。
+ */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
 
@@ -89,50 +51,23 @@ if (typeof window !== 'undefined') {
 
   if (isMobileSafari.value)
     settingStore.isSideNavOpen = false
-
   else
     settingStore.isSideNavOpen = !isMobile.value
 }
 
 onMounted(() => {
-  window.addEventListener('resize', () => {
-    updateIsMobile()
-    applySafeInsetForDrawers()
-  }, { passive: true })
+  window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // —— 导航发生后，统一关闭侧栏（包括仅 hash 变化）
-  router.afterEach(() => {
-    closeSideNav()
-    // 路由切换后也补一遍安全区（抽屉可能新挂载）
-    requestAnimationFrame(() => {
-      applySafeInsetForDrawers()
-    })
-  })
-  window.addEventListener('hashchange', () => {
-    closeSideNav()
-  })
-
-  // —— 捕获阶段监听任意站内 <a> 点击
-  document.addEventListener('click', onAnyInternalLinkClickCapture, true)
-
-  // —— 初次挂载也补一次安全区
-  requestAnimationFrame(() => {
-    applySafeInsetForDrawers()
-  })
-
-  // 恢复过渡
+  // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', onAnyInternalLinkClickCapture, true)
-  window.removeEventListener('hashchange', closeSideNav as any)
-  window.removeEventListener('resize', updateIsMobile as any)
+  window.removeEventListener('resize', updateIsMobile)
 })
 
-/** —— 其余原有逻辑 —— */
 const user = ref<any>(null)
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -220,34 +155,9 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 关闭首帧过渡，避免“先开再关”闪烁 */
+/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
-}
-
-/* —— 刘海/PWA 安全区兜底：覆盖 Naive UI Drawer 与自定义侧栏 —— */
-:global(.n-drawer),
-:global(.n-drawer-body),
-:global(.n-drawer-header),
-:global(.SideNav),
-:global(.SideNavHeader),
-:global(.side-nav),
-:global(.side-nav__header) {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
-}
-
-/* 某些实现里 header/Logo 绝对定位，再兜一层 */
-:global(.n-drawer-header),
-:global(.SideNavHeader),
-:global(.side-nav__header) {
-  position: relative;
-}
-
-/* 如你的侧栏头部 Logo 是绝对定位并标了 data-logo，可再抬一格（可选） */
-:global(.n-drawer-header > *[data-logo]),
-:global(.SideNavHeader > *[data-logo]),
-:global(.side-nav__header > *[data-logo]) {
-  margin-top: env(safe-area-inset-top, 0px);
 }
 </style>
