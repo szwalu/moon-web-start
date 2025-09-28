@@ -29,8 +29,14 @@ function updateIsMobile() {
 }
 
 onMounted(() => {
-  updateIsMobile() // 初始判断一次
+  updateIsMobile()
   window.addEventListener('resize', updateIsMobile, { passive: true })
+
+  // ✅ 关键：仅在“首次进入首页”时依据设备设定一次默认状态
+  if (route.path === '/' && !sessionStorage.getItem('sidenav_init_done')) {
+    settingStore.isSideNavOpen = !isMobile.value // PC=true, 移动=false
+    sessionStorage.setItem('sidenav_init_done', '1')
+  }
 })
 
 onBeforeUnmount(() => {
@@ -82,15 +88,6 @@ async function handleSettingsClick() {
   // 3. 最后，无论用户处于何种状态，都执行统一的导航操作
   router.push('/setting')
 }
-
-onMounted(() => {
-  // 进入导航站首页时，强制关闭一次侧栏，清理历史残留
-  if (route.path === '/') {
-    settingStore.isSideNavOpen = false
-    sessionStorage.removeItem('isSideNavOpen')
-    localStorage.removeItem('isSideNavOpen')
-  }
-})
 </script>
 
 <template>
