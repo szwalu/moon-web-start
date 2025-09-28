@@ -154,49 +154,6 @@ async function handleSettingsClick() {
   </div>
 </template>
 
-<template>
-  <div
-    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
-    :style="safeTopStyle"
-  >
-    <div class="header-left flex items-center gap-x-4">
-      <HamburgerButton class="text-gray-700 dark:text-gray-300" />
-      <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
-        <img
-          :src="logoPath"
-          alt="Logo"
-          class="w-auto h-32"
-        >
-      </RouterLink>
-    </div>
-
-    <div class="flex items-center gap-x-11">
-      <RouterLink
-        v-if="settingStore.isSetting"
-        class="text-7xl"
-        :class="[getIconClass('home')]"
-        to="/"
-        i-carbon:home
-        icon-btn
-      />
-      <div
-        v-else
-        class="text-7xl"
-        i-carbon:settings
-        icon-btn
-        @click="handleSettingsClick"
-      />
-      <div
-        class="text-7xl"
-        i-carbon:moon
-        dark:i-carbon:light
-        icon-btn
-        @click="(e) => toggleDark()"
-      />
-    </div>
-  </div>
-</template>
-
 <style scoped>
 /* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
 :global(html[data-booting] .SideNav),
