@@ -9,15 +9,16 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+// ================== 头部安全区 ==================
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
   }
 })
 
+const router = useRouter()
 const route = useRoute()
 const settingStore = useSettingStore()
-const router = useRouter()
 
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
@@ -36,75 +37,131 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/** 新增：移动端关闭侧栏的统一函数 */
+// ================== 侧栏：安全区 + 自动收起 ==================
+let sideNavEl: HTMLElement | null = null
+let sideNavObserver: MutationObserver | null = null
+
+function querySideNav(): HTMLElement | null {
+  return (
+    document.querySelector<HTMLElement>('.SideNav')
+    || document.querySelector<HTMLElement>('.side-nav')
+    || document.querySelector<HTMLElement>('[data-sidenav]')
+    || Array.from(document.querySelectorAll<HTMLElement>('[role="navigation"], aside, nav'))
+      .find(el => getComputedStyle(el).position === 'fixed')
+    || null
+  )
+}
+
+function applySafeTopToSideNav() {
+  if (!sideNavEl)
+    return
+
+  sideNavEl.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
+  const headerCandidate
+    = sideNavEl.querySelector<HTMLElement>('.SideNavHeader, .side-nav__header, header, .header')
+  if (headerCandidate)
+    headerCandidate.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
+}
+
 function closeSideNavIfMobile() {
   if (isMobile.value)
     settingStore.isSideNavOpen = false
 }
 
-/** 新增：委托监听侧栏内部链接点击（锚点/站内链接）后自动关闭侧栏 */
-function onSideNavLinkClick(e: MouseEvent) {
-  const target = e.target as HTMLElement | null
-  if (!target)
+function isLikelyNavigateTarget(el: Element | null) {
+  if (!el)
+    return false
+
+  const a = el.closest('a') as HTMLAnchorElement | null
+  if (a && a.getAttribute('href') && a.getAttribute('target') !== '_blank')
+    return true
+
+  if (el.closest('[data-nav-link]'))
+    return true
+
+  if (el.closest('button,[role="menuitem"],[data-action="navigate"]'))
+    return true
+
+  return false
+}
+
+function onSideNavClickCapture(e: MouseEvent) {
+  if (!sideNavEl || !sideNavEl.contains(e.target as Node))
     return
-  // 只关心侧栏内的 <a>
-  const a = target.closest('a') as HTMLAnchorElement | null
-  const sideNav = (target.closest('.SideNav') || document.querySelector('.SideNav')) as HTMLElement | null
-  if (!a || !sideNav)
-    return
-  const href = a.getAttribute('href') || ''
-  const isInternal
-    = href.startsWith('#')
-    || href.startsWith('/')
-    || (a.origin === window.location.origin && href) // 绝对站内链接
-  const isNewTab = a.getAttribute('target') === '_blank'
-  if (isInternal && !isNewTab) {
-    // 让浏览器/路由先处理跳转/滚动，再关闭侧栏，避免“提前收起导致跳转被阻断”的边缘情况
-    requestAnimationFrame(() => closeSideNavIfMobile())
+
+  const target = e.target as Element | null
+  if (isLikelyNavigateTarget(target)) {
+    requestAnimationFrame(() => {
+      closeSideNavIfMobile()
+    })
   }
 }
 
-/**
- * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
- * - PC：默认打开
- * - 其它移动端：默认关闭
- * - iOS Safari：强制关闭
- * 同时在首帧禁用过渡，mounted 后恢复。
- */
+function mountSideNavHooks() {
+  sideNavEl = querySideNav()
+  if (!sideNavEl)
+    return
+
+  applySafeTopToSideNav()
+  document.addEventListener('click', onSideNavClickCapture, true)
+}
+
+function unmountSideNavHooks() {
+  document.removeEventListener('click', onSideNavClickCapture, true)
+  sideNavEl = null
+}
+
+// ================== 初始可视化与首帧优化 ==================
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
-
   isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
 
   if (isMobileSafari.value)
     settingStore.isSideNavOpen = false
+
   else
     settingStore.isSideNavOpen = !isMobile.value
 }
 
 onMounted(() => {
-  window.addEventListener('resize', updateIsMobile, { passive: true })
+  window.addEventListener('resize', () => {
+    updateIsMobile()
+    applySafeTopToSideNav()
+  }, { passive: true })
 
-  // 新增：路由切换后（含从 / 到 /#music 这类 hash 变化），自动关闭侧栏（移动端）
+  // —— 1) 侧栏挂钩（支持异步渲染的侧栏容器）
+  mountSideNavHooks()
+  sideNavObserver = new MutationObserver(() => {
+    if (!sideNavEl)
+      mountSideNavHooks()
+  })
+  sideNavObserver.observe(document.documentElement, { childList: true, subtree: true })
+
+  // —— 2) 路由 / hash 变化后自动关闭（移动端）
   router.afterEach(() => {
     closeSideNavIfMobile()
   })
+  window.addEventListener('hashchange', () => {
+    closeSideNavIfMobile()
+  })
 
-  // 新增：捕获侧栏内部链接点击，锚点/站内跳转后关闭侧栏
-  document.addEventListener('click', onSideNavLinkClick, true)
-
-  // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateIsMobile)
-  document.removeEventListener('click', onSideNavLinkClick, true)
+  window.removeEventListener('hashchange', closeSideNavIfMobile as any)
+  window.removeEventListener('resize', updateIsMobile as any)
+  unmountSideNavHooks()
+  if (sideNavObserver) {
+    sideNavObserver.disconnect()
+    sideNavObserver = null
+  }
 })
 
+// ================== 其余原有逻辑 ==================
 const user = ref<any>(null)
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -128,9 +185,7 @@ function getIconClass(routeName: string) {
 async function handleSettingsClick() {
   await manualSaveData()
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  const { data: { session } } = await supabase.auth.getSession()
 
   if (session) {
     setTimeout(() => {
@@ -192,13 +247,13 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
+/* 关闭首帧过渡，避免“先开再关”闪烁 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
 }
 
-/* ✅ 修复：侧栏顶部在 iOS 全屏/PWA 下避开刘海区 */
+/* 兜底：给常见的侧栏容器/头部加上安全区上内边距（如果你的类名不同，上面的 JS 已经用行内样式覆盖了） */
 :global(.SideNav),
 :global(.SideNavHeader) {
   padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
