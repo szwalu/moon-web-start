@@ -10,7 +10,9 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 const { manualSaveData } = useAutoSave()
 
 const safeTopStyle = computed(() => {
-  return { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }
+  return {
+    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+  }
 })
 
 const route = useRoute()
@@ -34,17 +36,32 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-onMounted(() => {
-  updateIsMobile()
-  isMobileSafari.value = detectMobileSafari()
-  window.addEventListener('resize', updateIsMobile, { passive: true })
+/**
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
+ * - PC：默认打开
+ * - 其它移动端：默认关闭
+ * - iOS Safari：强制关闭
+ * 同时在首帧禁用过渡，mounted 后恢复。
+ */
+if (typeof window !== 'undefined') {
+  document.documentElement.setAttribute('data-booting', '1')
 
-  // PC 端：默认打开；iOS Safari：强制关闭；其它移动端：默认关闭
+  isMobileSafari.value = detectMobileSafari()
+  updateIsMobile()
+
   if (isMobileSafari.value)
     settingStore.isSideNavOpen = false
-
   else
     settingStore.isSideNavOpen = !isMobile.value
+}
+
+onMounted(() => {
+  window.addEventListener('resize', updateIsMobile, { passive: true })
+
+  // 恢复过渡：放到下一帧，确保首帧渲染完成
+  requestAnimationFrame(() => {
+    document.documentElement.removeAttribute('data-booting')
+  })
 })
 
 onBeforeUnmount(() => {
@@ -73,7 +90,11 @@ function getIconClass(routeName: string) {
 
 async function handleSettingsClick() {
   await manualSaveData()
-  const { data: { session } } = await supabase.auth.getSession()
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   if (session) {
     setTimeout(() => {
       loadRemoteDataOnceAndMergeToLocal()
@@ -85,9 +106,53 @@ async function handleSettingsClick() {
       // $message.warning(t('auth.please_login'))
     }
   }
+
   router.push('/setting')
 }
 </script>
+
+<template>
+  <div
+    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
+    :style="safeTopStyle"
+  >
+    <div class="header-left flex items-center gap-x-4">
+      <HamburgerButton class="text-gray-700 dark:text-gray-300" />
+      <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
+        <img
+          :src="logoPath"
+          alt="Logo"
+          class="w-auto h-32"
+        >
+      </RouterLink>
+    </div>
+
+    <div class="flex items-center gap-x-11">
+      <RouterLink
+        v-if="settingStore.isSetting"
+        class="text-7xl"
+        :class="[getIconClass('home')]"
+        to="/"
+        i-carbon:home
+        icon-btn
+      />
+      <div
+        v-else
+        class="text-7xl"
+        i-carbon:settings
+        icon-btn
+        @click="handleSettingsClick"
+      />
+      <div
+        class="text-7xl"
+        i-carbon:moon
+        dark:i-carbon:light
+        icon-btn
+        @click="() => toggleDark()"
+      />
+    </div>
+  </div>
+</template>
 
 <template>
   <div
@@ -131,3 +196,11 @@ async function handleSettingsClick() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
+:global(html[data-booting] .SideNav),
+:global(html[data-booting] .SideNavOverlay) {
+  transition: none !important;
+}
+</style>
