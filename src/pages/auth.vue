@@ -1363,6 +1363,10 @@ function clearTagFilter() {
 
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
+
+function goToLinksSite() {
+  window.location.assign('/')
+}
 </script>
 
 <template>
@@ -1393,14 +1397,13 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <router-link
-            to="/"
+          <button
             class="header-action-btn"
             aria-label="前往网址站"
-            @click.stop
+            @click="goToLinksSite"
           >
             <X :size="18" />
-          </router-link>
+          </button>
         </div>
       </div>
 
