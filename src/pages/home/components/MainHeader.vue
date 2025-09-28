@@ -32,9 +32,17 @@ onMounted(() => {
   updateIsMobile()
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // ✅ 关键：仅在“首次进入首页”时依据设备设定一次默认状态
+  // 仅首次进入首页时，按设备给侧栏设一次默认值：
+  // PC 打开，移动关闭；之后不再干扰用户手动操作
   if (route.path === '/' && !sessionStorage.getItem('sidenav_init_done')) {
-    settingStore.isSideNavOpen = !isMobile.value // PC=true, 移动=false
+    // 如果你做了 A.3，则用 store 自带的方法最稳：
+    if (typeof settingStore.applySideNavDefaultByViewport === 'function') {
+      settingStore.applySideNavDefaultByViewport()
+    }
+    else {
+      // 否则用本地 isMobile 也可
+      settingStore.isSideNavOpen = !isMobile.value
+    }
     sessionStorage.setItem('sidenav_init_done', '1')
   }
 })
