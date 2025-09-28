@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { RouterLink, useRouter } from 'vue-router'
-import { onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -11,6 +11,11 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+const safeTopStyle = computed(() => {
+  // 小基准 8px + iOS 刘海安全区；不会把头推得太夸张
+  return { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }
+})
+
 // const { t } = useI18n()
 const route = useRoute()
 const settingStore = useSettingStore()
@@ -18,11 +23,18 @@ const router = useRouter()
 // const $message = useMessage()
 
 const isMobile = ref(false)
-onMounted(() => {
+
+function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
-  window.addEventListener('resize', () => {
-    isMobile.value = window.innerWidth <= 768
-  })
+}
+
+onMounted(() => {
+  updateIsMobile() // 初始判断一次
+  window.addEventListener('resize', updateIsMobile, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateIsMobile)
 })
 
 const user = ref<any>(null)
@@ -70,12 +82,21 @@ async function handleSettingsClick() {
   // 3. 最后，无论用户处于何种状态，都执行统一的导航操作
   router.push('/setting')
 }
+
+onMounted(() => {
+  // 进入导航站首页时，强制关闭一次侧栏，清理历史残留
+  if (route.path === '/') {
+    settingStore.isSideNavOpen = false
+    sessionStorage.removeItem('isSideNavOpen')
+    localStorage.removeItem('isSideNavOpen')
+  }
+})
 </script>
 
 <template>
   <div
     class="flex items-center justify-between px-4 lg:px-8 md:px-6"
-    :style="{ paddingTop: 'calc(env(safe-area-inset-top) + 3rem)' }"
+    :style="safeTopStyle"
   >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
