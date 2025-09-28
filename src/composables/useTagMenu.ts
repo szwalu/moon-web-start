@@ -670,7 +670,7 @@ export function useTagMenu(
             trigger: 'click',
             showArrow: false,
             size: 'small',
-            placement: 'bottom-end',
+            // placement: 'bottom-end',
             onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => { handleRowMenuSelect(tag, key) },
             onClickoutside: () => {},
           }, {
