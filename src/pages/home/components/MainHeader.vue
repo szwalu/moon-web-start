@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -11,11 +11,6 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-const safeTopStyle = computed(() => {
-  // 小基准 8px + iOS 刘海安全区；不会把头推得太夸张
-  return { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }
-})
-
 // const { t } = useI18n()
 const route = useRoute()
 const settingStore = useSettingStore()
@@ -23,32 +18,11 @@ const router = useRouter()
 // const $message = useMessage()
 
 const isMobile = ref(false)
-
-function updateIsMobile() {
-  isMobile.value = window.innerWidth <= 768
-}
-
 onMounted(() => {
-  updateIsMobile()
-  window.addEventListener('resize', updateIsMobile, { passive: true })
-
-  // 仅首次进入首页时，按设备给侧栏设一次默认值：
-  // PC 打开，移动关闭；之后不再干扰用户手动操作
-  if (route.path === '/' && !sessionStorage.getItem('sidenav_init_done')) {
-    // 如果你做了 A.3，则用 store 自带的方法最稳：
-    if (typeof settingStore.applySideNavDefaultByViewport === 'function') {
-      settingStore.applySideNavDefaultByViewport()
-    }
-    else {
-      // 否则用本地 isMobile 也可
-      settingStore.isSideNavOpen = !isMobile.value
-    }
-    sessionStorage.setItem('sidenav_init_done', '1')
-  }
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateIsMobile)
+  isMobile.value = window.innerWidth <= 768
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 768
+  })
 })
 
 const user = ref<any>(null)
@@ -99,10 +73,7 @@ async function handleSettingsClick() {
 </script>
 
 <template>
-  <div
-    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
-    :style="safeTopStyle"
-  >
+  <div class="flex items-center justify-between px-4 pt-12 lg:px-8 md:px-6">
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
@@ -117,8 +88,7 @@ async function handleSettingsClick() {
     <div class="flex items-center gap-x-11">
       <RouterLink
         v-if="settingStore.isSetting"
-        class="text-7xl"
-        :class="[getIconClass('home')]"
+        class="text-7xl" :class="[getIconClass('home')]"
         to="/"
         i-carbon:home
         icon-btn
@@ -130,6 +100,7 @@ async function handleSettingsClick() {
         icon-btn
         @click="handleSettingsClick"
       />
+      <!-- ✅ 使用 toggleDark 切换明暗模式 -->
       <div
         class="text-7xl"
         i-carbon:moon
