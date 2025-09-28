@@ -7,6 +7,7 @@ import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 /** 本地存储 Key */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:' // 会拼接 userId
+const TAG_ICON_MAP_KEY = 'tag_icons_v1' // 标签 → 图标（仅菜单显示）
 
 /** 将标签标准化为 "#xxx" 形式 */
 function normalizeTag(tag: string) {
@@ -66,6 +67,132 @@ async function savePinnedToAuth(pinned: string[]): Promise<boolean> {
   }
 }
 
+/** 从 Auth.user_metadata 读取 tag_icons（失败返回 null） */
+async function loadTagIconsFromAuth(): Promise<Record<string, string> | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error)
+      return null
+    const map = (data?.user?.user_metadata as any)?.tag_icons
+    return map && typeof map === 'object' ? map as Record<string, string> : {}
+  }
+  catch {
+    return null
+  }
+}
+
+/** 保存 tag_icons 到 Auth.user_metadata（失败静默） */
+async function saveTagIconsToAuth(map: Record<string, string>): Promise<boolean> {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        tag_icons: map,
+        tag_icons_updated_at: new Date().toISOString(),
+      },
+    })
+    return !error
+  }
+  catch {
+    return false
+  }
+}
+
+/** 常用 emoji（可自行再扩充） */
+const EMOJI_POOL = [
+  // 物品/标记
+  '⭐',
+  '🔥',
+  '✨',
+  '📌',
+  '📍',
+  '🔖',
+  '🏷️',
+  '✅',
+  '🟩',
+  '🟥',
+  '🟨',
+  '🟦',
+  '🟪',
+  '⬜',
+  '⬛',
+  '📝',
+  '📒',
+  '📔',
+  '📚',
+  '✏️',
+  '🖊️',
+  '📎',
+  '🔗',
+  '🔍',
+  '⏱️',
+  '⏰',
+  '📅',
+  '📆',
+  // 人/服饰
+  '😊',
+  '😉',
+  '🤔',
+  '🥳',
+  '😴',
+  '🤒',
+  '🧘',
+  '🏃',
+  '💼',
+  '👟',
+  '👔',
+  '👗',
+  '🧢',
+  '🎓',
+  // 自然/动物
+  '🌞',
+  '🌙',
+  '⭐',
+  '☁️',
+  '🌧️',
+  '🌈',
+  '🌊',
+  '🌱',
+  '🌲',
+  '🍀',
+  '🐱',
+  '🐶',
+  '🐼',
+  '🐻',
+  // 食物
+  '🍎',
+  '🍊',
+  '🍋',
+  '🍇',
+  '🍓',
+  '🍉',
+  '🍞',
+  '🍔',
+  '🍟',
+  '🍜',
+  '🍕',
+  '☕',
+  '🍵',
+  // 旅行/地点
+  '🏠',
+  '🏫',
+  '🏢',
+  '🏥',
+  '🏞️',
+  '🚗',
+  '🚲',
+  '✈️',
+  '🚄',
+  '🗺️',
+  // 运动/娱乐
+  '⚽',
+  '🏀',
+  '🏓',
+  '🎵',
+  '🎧',
+  '🎬',
+  '🎮',
+]
+
 export function useTagMenu(
   allTags: Ref<string[]>,
   onSelectTag: (tag: string) => void,
@@ -83,6 +210,9 @@ export function useTagMenu(
   const tagCountsSig = ref<string | null>(null) // 仅用于持久化记录
   const isLoadingCounts = ref(false)
   const currentUserId = ref<string | null>(null)
+
+  // —— 标签图标映射（仅菜单显示） —— //
+  const tagIconMap = ref<Record<string, string>>({})
 
   // Realtime（可用则加速，但不依赖）
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
@@ -102,6 +232,24 @@ export function useTagMenu(
         savedAt: Date.now(),
       }),
     )
+  }
+
+  /** 读取 tagIconMap 的本地缓存 */
+  function hydrateIconsFromLocal() {
+    try {
+      const raw = localStorage.getItem(TAG_ICON_MAP_KEY)
+      tagIconMap.value = raw ? (JSON.parse(raw) || {}) : {}
+    }
+    catch {
+      tagIconMap.value = {}
+    }
+  }
+
+  /** 保存 tagIconMap 到本地与云端 */
+  async function saveIcons() {
+    localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
+    // 尝试同步云端（失败不提示）
+    await saveTagIconsToAuth(tagIconMap.value)
   }
 
   /** 读取本地缓存（若有）并填充内存；返回 savedAt */
@@ -192,12 +340,18 @@ export function useTagMenu(
     catch {
       pinnedTags.value = []
     }
+    hydrateIconsFromLocal()
 
     // ② 再从服务器覆盖（以服务器为准），并同步一份回本地
     const serverPinned = await loadPinnedFromAuth()
     if (serverPinned) {
       pinnedTags.value = serverPinned
       localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
+    }
+    const serverIcons = await loadTagIconsFromAuth()
+    if (serverIcons) {
+      tagIconMap.value = { ...tagIconMap.value, ...serverIcons }
+      localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
     }
 
     currentUserId.value = await getUserId()
@@ -346,8 +500,8 @@ export function useTagMenu(
       onMainMenuOpen().catch(() => {})
   })
 
-  /** —— 行内操作：置顶/重命名/移除（供下拉菜单使用） —— */
-  function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove') {
+  /** —— 行内操作：置顶/重命名/移除/更改图标 —— */
+  function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon' | 'clear_icon') {
     if (action === 'pin') {
       togglePin(tag)
       return
@@ -356,8 +510,18 @@ export function useTagMenu(
       renameTag(tag)
       return
     }
-    if (action === 'remove')
+    if (action === 'remove') {
       removeTagCompletely(tag)
+      return
+    }
+    if (action === 'change_icon') {
+      changeTagIcon(tag)
+      return
+    }
+    if (action === 'clear_icon') {
+      delete tagIconMap.value[tag]
+      saveIcons()
+    }
   }
 
   function getRowMenuOptions(tag: string) {
@@ -372,10 +536,108 @@ export function useTagMenu(
         key: 'rename',
       },
       {
+        label: t('tags.change_icon') || '更改图标',
+        key: 'change_icon',
+      },
+      {
+        label: t('tags.clear_icon') || '清除图标',
+        key: 'clear_icon',
+      },
+      {
         label: t('tags.remove_tag') || '移除',
         key: 'remove',
       },
     ]
+  }
+
+  /** —— 选择图标（弹出一个简单的 emoji 选择器） —— */
+  function changeTagIcon(raw: string) {
+    const tag = normalizeTag(raw)
+    const state = { q: '' }
+    let inst: any
+
+    const pick = (emoji: string) => {
+      tagIconMap.value = { ...tagIconMap.value, [tag]: emoji }
+      saveIcons()
+      inst?.destroy?.()
+    }
+
+    inst = dialog.create({
+      title: t('tags.change_icon') || '更改图标',
+      type: 'info',
+      closable: true,
+      maskClosable: true,
+      showIcon: false,
+      content: () => {
+        const grid = () => {
+          const list = state.q.trim()
+            ? EMOJI_POOL.filter(e => e.includes(state.q.trim()))
+            : EMOJI_POOL
+          return h(
+            'div',
+            {
+              style:
+                'display:grid;grid-template-columns:repeat(8,1fr);gap:8px;max-height:360px;overflow:auto;padding-top:8px;',
+            },
+            list.map(e =>
+              h(
+                'button',
+                {
+                  style:
+                    'height:40px;font-size:22px;line-height:40px;text-align:center;border:1px solid #eee;border-radius:8px;background:#fff;cursor:pointer',
+                  onClick: () => pick(e),
+                },
+                e,
+              ),
+            ),
+          )
+        }
+
+        return h('div', { style: 'width:420px;max-width:90vw' }, [
+          h(NInput, {
+            'value': state.q,
+            'onUpdate:value': (v: string) => (state.q = v),
+            'placeholder': t('tags.search_icon') || '搜索或直接输入表情',
+            'clearable': true,
+            'size': 'small',
+            'style': 'font-size:16px;',
+            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+          }),
+          h('div', { style: 'margin-top:8px' }, [
+            // 允许用户直接粘贴任意字符作为图标
+            h(
+              'div',
+              { style: 'font-size:12px;color:#888' },
+              t('tags.tip_icon_custom') || '也可以在上面输入框直接粘贴任意 emoji/符号作为图标',
+            ),
+          ]),
+          grid(),
+          h('div', { style: 'display:flex;justify-content:space-between;margin-top:12px' }, [
+            h(
+              'button',
+              {
+                style: 'border:none;background:#f5f5f5;border-radius:8px;padding:6px 10px;cursor:pointer',
+                onClick: () => {
+                  delete tagIconMap.value[tag]
+                  saveIcons()
+                  inst?.destroy?.()
+                },
+              },
+              t('tags.clear_icon') || '清除图标',
+            ),
+            h(
+              'button',
+              {
+                style: 'border:none;background:#e5e5e5;border-radius:8px;padding:6px 10px;cursor:pointer',
+                onClick: () => inst?.destroy?.(),
+              },
+              t('auth.cancel') || '取消',
+            ),
+          ]),
+        ])
+      },
+      action: null,
+    })
   }
 
   /** —— RPC 版：重命名/移除 —— */
@@ -447,6 +709,13 @@ export function useTagMenu(
             await savePinned()
           }
 
+          // 迁移图标
+          if (tagIconMap.value[oldTag]) {
+            tagIconMap.value[newTag] = tagIconMap.value[oldTag]
+            delete tagIconMap.value[oldTag]
+            await saveIcons()
+          }
+
           // 失效：标签缓存、搜索缓存
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
@@ -507,6 +776,12 @@ export function useTagMenu(
           if (pIdx >= 0) {
             pinnedTags.value.splice(pIdx, 1)
             await savePinned()
+          }
+
+          // 同步清理图标
+          if (tagIconMap.value[tag]) {
+            delete tagIconMap.value[tag]
+            await saveIcons()
           }
 
           invalidateOneTagCache(tag)
@@ -588,7 +863,10 @@ export function useTagMenu(
 
   function makeTagRow(tag: string) {
     const count = tagCounts.value[tag] ?? 0
-    const display = count > 0 ? `${tag}（${count}）` : tag
+    const displayName = tagKeyName(tag)
+    const icon = tagIconMap.value[tag] || '#'
+    const left = `${icon} ${displayName}`
+    const display = count > 0 ? `${left}（${count}）` : left
 
     return {
       key: tag,
@@ -597,7 +875,7 @@ export function useTagMenu(
           class: 'tag-row',
           style: 'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;',
         }, [
-          // 左侧文本
+          // 左侧文本（图标 + 名称 + 计数）
           h('span', {
             class: 'tag-text',
             style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
@@ -611,7 +889,7 @@ export function useTagMenu(
             showArrow: false,
             size: 'small',
             placement: 'bottom-end',
-            onSelect: (key: 'pin' | 'rename' | 'remove') => {
+            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon' | 'clear_icon') => {
               handleRowMenuSelect(tag, key)
             },
             onClickoutside: () => {
