@@ -1,6 +1,6 @@
 // src/composables/useTagMenu.ts
 
-import { type Ref, computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
@@ -10,6 +10,61 @@ import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:'
 const TAG_ICON_MAP_KEY = 'tag_icons_v1'
+
+type SmartPlacement = 'bottom-end' | 'bottom-start' | 'top-end' | 'top-start'
+
+/** 严格判断：只有能“完整容纳”菜单才选择该方向；否则翻到另一侧 */
+function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlacement {
+  if (!anchorEl)
+    return 'top-start'
+  const rect = anchorEl.getBoundingClientRect()
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+
+  // 经验尺寸：你的菜单含搜索、分组，通常较高，这里采用“必须完整容纳”的严格阈值
+  const MENU_W = 300
+  const MENU_H = Math.min(400, Math.floor(vh * 0.7))
+  const MARGIN = 8
+
+  const spaceBelow = vh - rect.bottom - MARGIN
+  const spaceAbove = rect.top - MARGIN
+  const spaceRight = vw - rect.right - MARGIN
+  const spaceLeft = rect.left - MARGIN
+
+  // 垂直方向：优先能完整容纳的一侧；都不能完整容纳则选空间更大的一侧
+  let vertical: 'top' | 'bottom'
+  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H) {
+    // 两边都够时，默认优先下方
+    vertical = 'bottom'
+  }
+  else if (spaceBelow >= MENU_H) {
+    vertical = 'bottom'
+  }
+  else if (spaceAbove >= MENU_H) {
+    vertical = 'top'
+  }
+  else {
+    vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
+  }
+
+  // 水平方向：同理，只有完整容纳才选该侧；都不够则选空间更大的一侧
+  let horizontal: 'start' | 'end'
+  if (spaceRight >= MENU_W && spaceLeft >= MENU_W) {
+    // 两边都够，默认优先 end（右侧）
+    horizontal = 'end'
+  }
+  else if (spaceRight >= MENU_W) {
+    horizontal = 'end'
+  }
+  else if (spaceLeft >= MENU_W) {
+    horizontal = 'start'
+  }
+  else {
+    horizontal = spaceRight >= spaceLeft ? 'end' : 'start'
+  }
+
+  return `${vertical}-${horizontal}` as SmartPlacement
+}
 
 /** 将标签标准化为 "#xxx" 形式 */
 function normalizeTag(tag: string) {
@@ -660,6 +715,20 @@ export function useTagMenu(
     const icon = tagIconMap.value[tag] || '#'
     const left = `${icon} ${displayName}`
     const display = count > 0 ? `${left}（${count}）` : left
+
+    // —— 每行“更多”菜单的严格方向与手动触发 —— //
+    const placementRef = ref<SmartPlacement>('top-start')
+    const showRef = ref(false)
+    let btnEl: HTMLElement | null = null
+
+    const openMenu = () => {
+      placementRef.value = computeSmartPlacementStrict(btnEl)
+      showRef.value = true
+    }
+    const closeMenu = () => {
+      showRef.value = false
+    }
+
     return {
       key: tag,
       label: () =>
@@ -667,15 +736,42 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
-            trigger: 'click',
+            // ✅ 改为手动触发，先算方向再展示，避免“先下后翻”
+            trigger: 'manual',
+            show: showRef.value,
             showArrow: false,
             size: 'small',
-            // placement: 'bottom-end',
-            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => { handleRowMenuSelect(tag, key) },
-            onClickoutside: () => {},
+            placement: placementRef.value,
+            to: 'body',
+            onUpdateShow: (show: boolean) => {
+              // 仅允许通过我们控制；外部变化（如点击外部）也可关闭
+              if (!show)
+                showRef.value = false
+            },
+            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => {
+              handleRowMenuSelect(tag, key)
+              closeMenu()
+            },
+            onClickoutside: () => closeMenu(),
           }, {
             default: () =>
-              h('button', { 'class': 'more-btn', 'aria-label': t('tags.more_actions') || '更多操作', 'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;', 'onClick': (e: MouseEvent) => { e.stopPropagation() } }, '⋯'),
+              h('button', {
+                'class': 'more-btn',
+                'aria-label': t('tags.more_actions') || '更多操作',
+                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
+                'onClick': (e: MouseEvent) => {
+                  e.stopPropagation()
+                  btnEl = e.currentTarget as HTMLElement
+                  if (showRef.value) {
+                    closeMenu()
+                  }
+                  else {
+                    // 先计算，只有能完整显示在下方才会放下方，否则翻到上方
+                    placementRef.value = computeSmartPlacementStrict(btnEl)
+                    nextTick(openMenu)
+                  }
+                },
+              }, '⋯'),
           }),
         ]),
       props: { onClick: () => selectTag(tag) },
