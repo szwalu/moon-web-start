@@ -9,15 +9,15 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-// ================== 头部安全区 ==================
+/** 顶部安全区（避免页眉在 PWA/全屏时贴到刘海） */
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
   }
 })
 
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 const settingStore = useSettingStore()
 
 const isMobile = ref(false)
@@ -37,83 +37,53 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-// ================== 侧栏：安全区 + 自动收起 ==================
-let sideNavEl: HTMLElement | null = null
-let sideNavObserver: MutationObserver | null = null
-
-function querySideNav(): HTMLElement | null {
-  return (
-    document.querySelector<HTMLElement>('.SideNav')
-    || document.querySelector<HTMLElement>('.side-nav')
-    || document.querySelector<HTMLElement>('[data-sidenav]')
-    || Array.from(document.querySelectorAll<HTMLElement>('[role="navigation"], aside, nav'))
-      .find(el => getComputedStyle(el).position === 'fixed')
-    || null
-  )
+/** —— 关键修复 1：发生站内导航/滚动时，统一关闭侧栏 —— */
+function closeSideNav() {
+  settingStore.isSideNavOpen = false
 }
 
-function applySafeTopToSideNav() {
-  if (!sideNavEl)
+/** 捕获阶段委托：只要点到站内 <a>（含锚点），下一帧关闭侧栏 */
+function onAnyInternalLinkClickCapture(e: MouseEvent) {
+  const t = e.target as Element | null
+  if (!t)
     return
 
-  sideNavEl.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
-  const headerCandidate
-    = sideNavEl.querySelector<HTMLElement>('.SideNavHeader, .side-nav__header, header, .header')
-  if (headerCandidate)
-    headerCandidate.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
-}
-
-function closeSideNavIfMobile() {
-  if (isMobile.value)
-    settingStore.isSideNavOpen = false
-}
-
-function isLikelyNavigateTarget(el: Element | null) {
-  if (!el)
-    return false
-
-  const a = el.closest('a') as HTMLAnchorElement | null
-  if (a && a.getAttribute('href') && a.getAttribute('target') !== '_blank')
-    return true
-
-  if (el.closest('[data-nav-link]'))
-    return true
-
-  if (el.closest('button,[role="menuitem"],[data-action="navigate"]'))
-    return true
-
-  return false
-}
-
-function onSideNavClickCapture(e: MouseEvent) {
-  if (!sideNavEl || !sideNavEl.contains(e.target as Node))
+  const a = t.closest('a') as HTMLAnchorElement | null
+  if (!a)
     return
 
-  const target = e.target as Element | null
-  if (isLikelyNavigateTarget(target)) {
+  const href = a.getAttribute('href') || ''
+  const isInternal = href.startsWith('/') || href.startsWith('#') || a.origin === window.location.origin
+  const isNewTab = a.target === '_blank'
+  if (isInternal && !isNewTab) {
     requestAnimationFrame(() => {
-      closeSideNavIfMobile()
+      closeSideNav()
     })
   }
 }
 
-function mountSideNavHooks() {
-  sideNavEl = querySideNav()
-  if (!sideNavEl)
-    return
-
-  applySafeTopToSideNav()
-  document.addEventListener('click', onSideNavClickCapture, true)
+/** —— 关键修复 2：iOS 刘海/PWA 下为抽屉/侧栏强制补安全区 —— */
+function applySafeInsetForDrawers() {
+  const selectors = [
+    '.n-drawer',
+    '.n-drawer-body',
+    '.n-drawer-header',
+    '.SideNav',
+    '.SideNavHeader',
+    '.side-nav',
+    '.side-nav__header',
+  ]
+  for (const sel of selectors) {
+    const nodes = document.querySelectorAll<HTMLElement>(sel)
+    for (const el of nodes)
+      el.style.paddingTop = 'calc(env(safe-area-inset-top, 0px) + 8px)'
+  }
 }
 
-function unmountSideNavHooks() {
-  document.removeEventListener('click', onSideNavClickCapture, true)
-  sideNavEl = null
-}
-
-// ================== 初始可视化与首帧优化 ==================
+/** 首帧：避免“先开再关” */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
+
   isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
 
@@ -127,41 +97,42 @@ if (typeof window !== 'undefined') {
 onMounted(() => {
   window.addEventListener('resize', () => {
     updateIsMobile()
-    applySafeTopToSideNav()
+    applySafeInsetForDrawers()
   }, { passive: true })
 
-  // —— 1) 侧栏挂钩（支持异步渲染的侧栏容器）
-  mountSideNavHooks()
-  sideNavObserver = new MutationObserver(() => {
-    if (!sideNavEl)
-      mountSideNavHooks()
-  })
-  sideNavObserver.observe(document.documentElement, { childList: true, subtree: true })
-
-  // —— 2) 路由 / hash 变化后自动关闭（移动端）
+  // —— 导航发生后，统一关闭侧栏（包括仅 hash 变化）
   router.afterEach(() => {
-    closeSideNavIfMobile()
+    closeSideNav()
+    // 路由切换后也补一遍安全区（抽屉可能新挂载）
+    requestAnimationFrame(() => {
+      applySafeInsetForDrawers()
+    })
   })
   window.addEventListener('hashchange', () => {
-    closeSideNavIfMobile()
+    closeSideNav()
   })
 
+  // —— 捕获阶段监听任意站内 <a> 点击
+  document.addEventListener('click', onAnyInternalLinkClickCapture, true)
+
+  // —— 初次挂载也补一次安全区
+  requestAnimationFrame(() => {
+    applySafeInsetForDrawers()
+  })
+
+  // 恢复过渡
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', closeSideNavIfMobile as any)
+  document.removeEventListener('click', onAnyInternalLinkClickCapture, true)
+  window.removeEventListener('hashchange', closeSideNav as any)
   window.removeEventListener('resize', updateIsMobile as any)
-  unmountSideNavHooks()
-  if (sideNavObserver) {
-    sideNavObserver.disconnect()
-    sideNavObserver = null
-  }
 })
 
-// ================== 其余原有逻辑 ==================
+/** —— 其余原有逻辑 —— */
 const user = ref<any>(null)
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -185,7 +156,9 @@ function getIconClass(routeName: string) {
 async function handleSettingsClick() {
   await manualSaveData()
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
   if (session) {
     setTimeout(() => {
@@ -253,9 +226,28 @@ async function handleSettingsClick() {
   transition: none !important;
 }
 
-/* 兜底：给常见的侧栏容器/头部加上安全区上内边距（如果你的类名不同，上面的 JS 已经用行内样式覆盖了） */
+/* —— 刘海/PWA 安全区兜底：覆盖 Naive UI Drawer 与自定义侧栏 —— */
+:global(.n-drawer),
+:global(.n-drawer-body),
+:global(.n-drawer-header),
 :global(.SideNav),
-:global(.SideNavHeader) {
-  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+:global(.SideNavHeader),
+:global(.side-nav),
+:global(.side-nav__header) {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+}
+
+/* 某些实现里 header/Logo 绝对定位，再兜一层 */
+:global(.n-drawer-header),
+:global(.SideNavHeader),
+:global(.side-nav__header) {
+  position: relative;
+}
+
+/* 如你的侧栏头部 Logo 是绝对定位并标了 data-logo，可再抬一格（可选） */
+:global(.n-drawer-header > *[data-logo]),
+:global(.SideNavHeader > *[data-logo]),
+:global(.side-nav__header > *[data-logo]) {
+  margin-top: env(safe-area-inset-top, 0px);
 }
 </style>
