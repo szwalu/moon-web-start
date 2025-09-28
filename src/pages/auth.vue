@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
+import { Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -125,12 +126,18 @@ watch(activeTagFilter, (newValue) => {
 })
 
 const mainMenuOptions = computed(() => [
-  { label: '日历', key: 'calendar' },
-  { label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'), key: 'toggleSelection' },
-  { label: t('settings.font_title'), key: 'settings' },
-  { label: t('notes.export_all'), key: 'export' },
-  { label: t('auth.account_title'), key: 'account' },
-  { label: '回收站', key: 'trash' },
+  { label: '日历', key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
+  {
+    label: isSelectionModeActive.value
+      ? t('notes.cancel_selection')
+      : t('notes.select_notes'),
+    key: 'toggleSelection',
+    icon: () => h(CheckSquare, { size: 18 }),
+  },
+  { label: t('settings.font_title'), key: 'settings', icon: () => h(Settings, { size: 18 }) },
+  { label: t('notes.export_all'), key: 'export', icon: () => h(Download, { size: 18 }) },
+  { label: t('auth.account_title'), key: 'account', icon: () => h(User, { size: 18 }) },
+  { label: '回收站', key: 'trash', icon: () => h(Trash2, { size: 18 }) },
 
   // —— 分界线 ——
   { type: 'divider', key: 'div-tags' },
@@ -1386,6 +1393,14 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
         <h1 class="page-title">{{ $t('notes.notes') }}</h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
+          <router-link
+            to="/"
+            class="header-action-btn"
+            aria-label="前往网址站"
+            @click.stop
+          >
+            <X :size="18" />
+          </router-link>
         </div>
       </div>
 

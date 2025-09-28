@@ -55,6 +55,6 @@ body, html {
 /* 全局样式文件中 */
 .n-message-container,
 .n-notification-container {
-  top: 30% !important;
+  top: 10% !important;
 }
 </style>
