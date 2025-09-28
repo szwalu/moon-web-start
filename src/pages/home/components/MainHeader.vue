@@ -36,6 +36,34 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
+/** 新增：移动端关闭侧栏的统一函数 */
+function closeSideNavIfMobile() {
+  if (isMobile.value)
+    settingStore.isSideNavOpen = false
+}
+
+/** 新增：委托监听侧栏内部链接点击（锚点/站内链接）后自动关闭侧栏 */
+function onSideNavLinkClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target)
+    return
+  // 只关心侧栏内的 <a>
+  const a = target.closest('a') as HTMLAnchorElement | null
+  const sideNav = (target.closest('.SideNav') || document.querySelector('.SideNav')) as HTMLElement | null
+  if (!a || !sideNav)
+    return
+  const href = a.getAttribute('href') || ''
+  const isInternal
+    = href.startsWith('#')
+    || href.startsWith('/')
+    || (a.origin === window.location.origin && href) // 绝对站内链接
+  const isNewTab = a.getAttribute('target') === '_blank'
+  if (isInternal && !isNewTab) {
+    // 让浏览器/路由先处理跳转/滚动，再关闭侧栏，避免“提前收起导致跳转被阻断”的边缘情况
+    requestAnimationFrame(() => closeSideNavIfMobile())
+  }
+}
+
 /**
  * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
  * - PC：默认打开
@@ -58,6 +86,14 @@ if (typeof window !== 'undefined') {
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
+  // 新增：路由切换后（含从 / 到 /#music 这类 hash 变化），自动关闭侧栏（移动端）
+  router.afterEach(() => {
+    closeSideNavIfMobile()
+  })
+
+  // 新增：捕获侧栏内部链接点击，锚点/站内跳转后关闭侧栏
+  document.addEventListener('click', onSideNavLinkClick, true)
+
   // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
@@ -66,6 +102,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
+  document.removeEventListener('click', onSideNavLinkClick, true)
 })
 
 const user = ref<any>(null)
@@ -159,5 +196,11 @@ async function handleSettingsClick() {
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
+}
+
+/* ✅ 修复：侧栏顶部在 iOS 全屏/PWA 下避开刘海区 */
+:global(.SideNav),
+:global(.SideNavHeader) {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
 }
 </style>
