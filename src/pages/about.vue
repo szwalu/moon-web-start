@@ -23,25 +23,71 @@ const features = computed(() => {
 </script>
 
 <template>
-  <div class="about-container">
-    <h1 class="title">{{ t('about.title') }}</h1>
+  <div class="page-safearea">
+    <!-- 顶部关闭按钮（返回首页） -->
+    <RouterLink to="/" class="close-btn" role="button" aria-label="Close and go home">×</RouterLink>
 
-    <ul class="features">
-      <li v-for="(item, index) in features" :key="index">
-        <span class="icon" />
-        <span class="text" v-html="item.replace(/\n/g, '<br>')" />
-      </li>
-    </ul>
+    <div class="about-container">
+      <h1 class="title">{{ t('about.title') }}</h1>
 
-    <div class="thanks">
-      <div>{{ t('about.thanks') }}：</div>
-      <div>jic999</div>
-      <div>Gemini</div>
+      <ul class="features">
+        <li v-for="(item, index) in features" :key="index">
+          <span class="icon" />
+          <span class="text" v-html="item.replace(/\n/g, '<br>')" />
+        </li>
+      </ul>
+
+      <div class="thanks">
+        <div>{{ t('about.thanks') }}：</div>
+        <div>jic999</div>
+        <div>Gemini</div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 顶部安全区容器：避免内容顶进刘海区 */
+.page-safearea {
+  /* 旧 iOS: constant() ；新 iOS: env() */
+  padding-top: calc(8px + constant(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
+}
+
+/* 右上角关闭按钮（保证足够大，易点） */
+.close-btn {
+  position: fixed;
+  /* 使用 max() 确保在无刘海设备也有合适内边距 */
+  top: max(10px, constant(safe-area-inset-top));
+  top: max(10px, env(safe-area-inset-top));
+  right: 12px;
+  z-index: 1000;
+
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  text-align: center;
+
+  font-size: 28px;
+  font-weight: 600;
+  color: #666;
+  text-decoration: none;
+
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  backdrop-filter: saturate(180%) blur(8px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.close-btn:active { transform: scale(0.98); }
+@media (prefers-color-scheme: dark) {
+  .close-btn {
+    color: #ddd;
+    background: rgba(30, 30, 30, 0.9);
+    border-color: rgba(255,255,255,0.08);
+  }
+}
+
 /* 1. 给整个页面设置一个背景色 */
 :global(body) {
   background-color: #f0f2f5;
@@ -50,27 +96,25 @@ const features = computed(() => {
 
 .about-container {
   max-width: 720px;
-  margin: 4rem auto; /* 增加上下边距，让卡片更居中 */
-  padding: 2.5rem 3rem; /* 调整内边距 */
+  margin: 4rem auto;
+  padding: 2.5rem 3rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.8;
 
-  /* 2. 将内容区设计成卡片 */
   background-color: #ffffff;
-  border-radius: 12px; /* 圆角 */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* 微妙的阴影 */
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   transition: background-color 0.3s ease, color 0.3s ease;
 
-  /* 3. 优化基础字体 */
-  font-size: 15px; /* 提高基础字号，增强可读性 */
-  color: #34495e; /* 使用更柔和的深灰色 */
+  font-size: 15px;
+  color: #34495e;
 }
 
 .title {
   display: block;
   text-align: center;
   font-weight: 700;
-  font-size: 4.5rem; /* <<-- 已将主标题调大 */
+  font-size: 4.5rem;
   margin-bottom: 3.5rem;
   color: #2c3e50;
   transition: color 0.3s ease;
@@ -86,8 +130,8 @@ const features = computed(() => {
   display: flex;
   align-items: flex-start;
   margin-bottom: 1rem;
-  padding: 1rem; /* 为列表项增加内边距 */
-  border-radius: 8px; /* 列表项也加圆角 */
+  padding: 1rem;
+  border-radius: 8px;
   transition: background-color 0.2s ease;
 }
 
@@ -99,9 +143,9 @@ const features = computed(() => {
   content: '•';
   font-size: 1.2em;
   line-height: 1.5;
-  margin-right: 2.5rem; /* 调整为更合理的间距 */
+  margin-right: 2.5rem;
   position: relative;
-  top: 0.15em; /* 微调图标垂直位置，使其与文本更对齐 */
+  top: 0.15em;
 }
 
 .features li .text {
@@ -109,18 +153,18 @@ const features = computed(() => {
 }
 
 .thanks {
-  text-align: center; /* 居中 */
+  text-align: center;
   margin-top: 4rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e9ecef; /* 分割线 */
-  font-size: 3.5rem; /* <<-- 已将“特别感谢”区域字体调大 */
+  border-top: 1px solid #e9ecef;
+  font-size: 3.5rem;
   font-weight: 500;
   color: #868e96;
 }
 
 .thanks div {
   display: inline-block;
-  margin: 0 0.5em; /* 调整致谢名单的间距 */
+  margin: 0 0.5em;
 }
 
 /* 移动端适配 */
@@ -128,27 +172,27 @@ const features = computed(() => {
   .about-container {
     margin: 2rem 1rem;
     padding: 2rem 1.5rem;
-    font-size: 17px; /* <<-- 在这里调整移动端正文基础字体大小 */
-    line-height: 1.5; /* <<-- 在这里调整移动端行距 */
+    font-size: 17px;
+    line-height: 1.5;
   }
   .title {
-    font-size: 5.5rem; /* <<-- 同样增大了移动端的主标题 */
+    font-size: 5.5rem;
   }
   .thanks {
-    font-size: 3.0rem; /* <<-- 调整移动端“特别感谢”字体大小 */
+    font-size: 3.0rem;
   }
 }
 
 /* 暗黑模式适配 */
 @media (prefers-color-scheme: dark) {
   :global(body) {
-    background-color: #1a1b1e; /* 更深的背景 */
+    background-color: #1a1b1e;
   }
 
   .about-container {
-    background-color: #2d2d2d; /* 卡片背景 */
+    background-color: #2d2d2d;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    color: #c8d6e5; /* 更柔和的亮灰色文字 */
+    color: #c8d6e5;
   }
 
   .title {

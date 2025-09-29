@@ -54,46 +54,95 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+function handleClose() {
+  window.location.assign('/')
+}
 </script>
 
 <template>
-  <div class="form-container">
-    <div class="breadcrumb">{{ t('form.breadcrumb') }}</div>
-    <p class="tip">{{ t('form.tip') }}</p>
+  <div class="page-frame">
+    <!-- 右上角关闭按钮 -->
+    <button class="close-btn" aria-label="Close" @click="handleClose">×</button>
 
-    <form ref="form" class="form-body" @submit.prevent="handleSubmit">
-      <label>
-        <span class="required">*</span>{{ t('form.selectLabel') }}
-        <select name="type" required>
-          <option value="" disabled selected hidden>{{ t('form.selectPlaceholder') }}</option>
-          <option value="apply-site">{{ t('form.options.applySite') }}</option>
-          <option value="apply-link">{{ t('form.options.applyLink') }}</option>
-          <option value="feedback">{{ t('form.options.feedback') }}</option>
-          <option value="feedback">{{ t('form.options.applyinvitecode') }}</option>
-        </select>
-      </label>
+    <div class="form-container">
+      <div class="breadcrumb">{{ t('form.breadcrumb') }}</div>
+      <p class="tip">{{ t('form.tip') }}</p>
 
-      <label>
-        <span class="required">*</span>{{ t('form.messageLabel') }}
-        <textarea name="message" rows="8" required />
-      </label>
+      <form ref="form" class="form-body" @submit.prevent="handleSubmit">
+        <label>
+          <span class="required">*</span>{{ t('form.selectLabel') }}
+          <select name="type" required>
+            <option value="" disabled selected hidden>{{ t('form.selectPlaceholder') }}</option>
+            <option value="apply-site">{{ t('form.options.applySite') }}</option>
+            <option value="apply-link">{{ t('form.options.applyLink') }}</option>
+            <option value="feedback">{{ t('form.options.feedback') }}</option>
+            <option value="feedback">{{ t('form.options.applyinvitecode') }}</option>
+          </select>
+        </label>
 
-      <label>
-        {{ t('form.emailLabel') }}
-        <input type="email" name="email">
-      </label>
+        <label>
+          <span class="required">*</span>{{ t('form.messageLabel') }}
+          <textarea name="message" rows="8" required />
+        </label>
 
-      <button type="submit" :disabled="loading">
-        {{ loading ? '提交中...' : t('form.submit') }}
-      </button>
+        <label>
+          {{ t('form.emailLabel') }}
+          <input type="email" name="email">
+        </label>
 
-      <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
-      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-    </form>
+        <button type="submit" :disabled="loading">
+          {{ loading ? '提交中...' : t('form.submit') }}
+        </button>
+
+        <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
+        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+      </form>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* ================= 安全区容器（解决全屏模式刘海/状态栏侵入） ================= */
+.page-frame {
+  padding-top: constant(safe-area-inset-top);
+  padding-left: constant(safe-area-inset-left);
+  padding-right: constant(safe-area-inset-right);
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  position: relative;
+  min-height: 100vh;
+}
+
+/* 右上角关闭按钮 */
+.close-btn {
+  position: fixed;
+  top: calc(constant(safe-area-inset-top) + 8px);
+  top: calc(env(safe-area-inset-top) + 8px);
+  right: calc(env(safe-area-inset-right) + 12px);
+  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.9);
+  color: #333;
+  cursor: pointer;
+  font-size: 22px;
+  backdrop-filter: saturate(180%) blur(12px);
+}
+@media (prefers-color-scheme: dark) {
+  .close-btn {
+    background: rgba(30,30,30,0.85);
+    color: #eee;
+    border-color: rgba(255,255,255,0.2);
+  }
+}
+
+/* ============== 原样式保持 ============== */
 .form-container {
   max-width: 640px;
   margin: 2rem auto;

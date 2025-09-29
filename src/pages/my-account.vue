@@ -80,41 +80,49 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="account-container" :aria-busy="!sessionReady">
-    <div v-if="sessionReady && user">
-      <h1 class="account-title">{{ t('auth.account_title') }}</h1>
-      <div class="info-grid">
-        <p>
-          <span class="info-label">{{ t('auth.account_email_label') }}</span>
-          <span class="info-value">{{ user.email }}</span>
-        </p>
-        <p>
-          <span class="info-label">{{ t('auth.account_last_login_label') }}</span>
-          <span class="info-value">{{ lastLoginTime }}</span>
-        </p>
-        <p>
-          <span class="info-label">{{ t('auth.account_last_backup_label') }}</span>
-          <span class="info-value">{{ lastBackupTime }}</span>
-        </p>
-      </div>
+  <div class="page-safearea">
+    <div class="account-container" :aria-busy="!sessionReady">
+      <div v-if="sessionReady && user">
+        <h1 class="account-title">{{ t('auth.account_title') }}</h1>
+        <div class="info-grid">
+          <p>
+            <span class="info-label">{{ t('auth.account_email_label') }}</span>
+            <span class="info-value">{{ user.email }}</span>
+          </p>
+          <p>
+            <span class="info-label">{{ t('auth.account_last_login_label') }}</span>
+            <span class="info-value">{{ lastLoginTime }}</span>
+          </p>
+          <p>
+            <span class="info-label">{{ t('auth.account_last_backup_label') }}</span>
+            <span class="info-value">{{ lastBackupTime }}</span>
+          </p>
+        </div>
 
-      <div class="button-group">
-        <!-- [PATCH-3] 返回首页改为纯导航，避免依赖 JS 状态导致点击无效 -->
-        <RouterLink to="/" class="btn-like" role="button" aria-label="Home">
-          {{ t('auth.return_home') }}
-        </RouterLink>
-        <button type="button" class="button--secondary" :disabled="loading" @click="handleLogout">
-          {{ loading ? t('auth.loading') : t('auth.logout') }}
-        </button>
+        <div class="button-group">
+          <!-- [PATCH-3] 返回首页改为纯导航，避免依赖 JS 状态导致点击无效 -->
+          <RouterLink to="/" class="btn-like" role="button" aria-label="Home">
+            {{ t('auth.return_home') }}
+          </RouterLink>
+          <button type="button" class="button--secondary" :disabled="loading" @click="handleLogout">
+            {{ loading ? t('auth.loading') : t('auth.logout') }}
+          </button>
+        </div>
       </div>
-    </div>
-    <div v-else class="loading-container">
-      <p>正在加载用户信息...</p>
+      <div v-else class="loading-container">
+        <p>正在加载用户信息...</p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 顶部安全区容器：避免内容顶进刘海区 */
+.page-safearea {
+  padding-top: calc(8px + constant(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
+}
+
 /* 容器与主题 */
 .account-container {
   max-width: 480px;
