@@ -64,6 +64,34 @@ onMounted(() => {
   })
 })
 
+// ✅ iOS Safari 聚焦输入时，阻止默认把目标“顶到页面最上方”——改为就近可见
+if (isMobileSafari.value) {
+  const onFocusIn = (e: Event) => {
+    const t = e.target as HTMLElement | null
+    if (!t)
+      return
+    const isEditable
+      = t instanceof HTMLInputElement
+      || t instanceof HTMLTextAreaElement
+      || t.getAttribute('contenteditable') === 'true'
+      || t.getAttribute('role') === 'searchbox'
+    if (!isEditable)
+      return
+
+    // 让浏览器先完成自身的滚动，再在下一帧“拉回到就近位置”，避免被塞进刘海
+    requestAnimationFrame(() => {
+      try {
+        t.scrollIntoView({ block: 'nearest', inline: 'nearest' /* behavior: 'instant' 默认即可 */ })
+      }
+      catch {}
+    })
+  }
+  document.addEventListener('focusin', onFocusIn, { passive: true })
+  onBeforeUnmount(() => {
+    document.removeEventListener('focusin', onFocusIn as any)
+  })
+}
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
 })
@@ -161,38 +189,38 @@ async function handleSettingsClick() {
   transition: none !important;
 }
 
-/* ==== 只新增以下内容即可 ==== */
-
-/* 1) 告诉浏览器：自动滚动时，顶部要预留刘海安全区 + 你原本的 8px */
-:global(html) {
+/* ✅ 自动滚动时预留顶部安全区 + 你原有的 8px；不改变静态布局 */
+:global(html),
+:global(body) {
   scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
 }
 @supports (padding: constant(safe-area-inset-top)) {
-  :global(html) {
+  :global(html),
+  :global(body) {
     scroll-padding-top: calc(constant(safe-area-inset-top) + 8px);
   }
 }
 
-/* 2) 被聚焦的可编辑元素本身也预留同样上边距（避免顶到刘海） */
-:global(input),
+/* ✅ 只影响自动滚动：常见输入控件给出上边距，避免对齐到“刘海下方” */
+:global(input[type="search"]),
+:global(input[type="text"]),
 :global(textarea),
 :global([contenteditable="true"]),
-:global([role="searchbox"]),
-:global(input[type="search"]) {
+:global([role="searchbox"]) {
   scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 8px);
 }
 @supports (padding: constant(safe-area-inset-top)) {
-  :global(input),
+  :global(input[type="search"]),
+  :global(input[type="text"]),
   :global(textarea),
   :global([contenteditable="true"]),
-  :global([role="searchbox"]),
-  :global(input[type="search"]) {
+  :global([role="searchbox"]) {
     scroll-margin-top: calc(constant(safe-area-inset-top) + 8px);
   }
 }
 
-/* 3) 轻度抑制 iOS 顶部回弹带来的过度滚动（不影响正常滚动） */
-:global(body) {
-  overscroll-behavior-y: contain;
+/* ✅ 防止 iOS 的“滚动锚定”在动态高度变动时把视口猛地回拉产生跳动 */
+.header-left {
+  overflow-anchor: none;
 }
 </style>

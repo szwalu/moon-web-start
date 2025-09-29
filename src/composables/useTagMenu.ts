@@ -509,8 +509,6 @@ export function useTagMenu(
               'onUpdate:value': (v: string) => { searchQuery.value = v },
               'placeholder': t('tags.search_icon') || '搜索图标或关键词',
               'clearable': true,
-              // ✅ 核心修改：在这里添加 autofocus: false
-              'autofocus': false,
               'size': 'small',
               'style': 'font-size:16px; width: 100%; box-sizing: border-box;',
               'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
@@ -693,7 +691,6 @@ export function useTagMenu(
             'onUpdate:value': (v: string) => { tagSearch.value = v },
             'placeholder': placeholderText,
             'clearable': true,
-            // ✅ 恢复主搜索框的自动聚焦
             'autofocus': true,
             'size': 'small',
             'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
@@ -739,6 +736,7 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
+            // ✅ 手动触发
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -760,6 +758,7 @@ export function useTagMenu(
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
                 'title': t('tags.more_actions') || '更多操作',
+                // ✅ 放大按钮：固定触控面积 40×40，字号 24px，行高 1，居中
                 'style': [
                   'background:none;border:none;cursor:pointer;',
                   'display:inline-flex;align-items:center;justify-content:center;',
@@ -777,6 +776,7 @@ export function useTagMenu(
                     placementRef.value = computeSmartPlacementStrict(btnEl)
                     nextTick(() => {
                       openMenu()
+                      // 让焦点留在按钮上，避免内部输入意外抢焦点
                       requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
                     })
                   }
