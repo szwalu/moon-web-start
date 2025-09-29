@@ -9,8 +9,28 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-const headerRef = ref<HTMLElement | null>(null)
+// --- 解决方案核心 ---
+const viewportTopOffset = ref(0)
 
+// 1. 创建一个响应式的计算属性来动态生成样式
+const dynamicHeaderStyle = computed(() => {
+  const isOffset = viewportTopOffset.value > 0
+  return {
+    transform: `translateY(${viewportTopOffset.value}px)`,
+    // 2. 关键：当键盘弹出导致视图偏移时，强制禁用所有过渡动画，防止跳动
+    // 当键盘收起恢复原位时，恢复正常的过渡效果
+    transition: isOffset ? 'none' : '',
+  }
+})
+
+// 3. 创建一个处理函数，它只做一件事：更新偏移量状态
+function handleViewportResize() {
+  if (window.visualViewport)
+    viewportTopOffset.value = window.visualViewport.offsetTop
+}
+// --- 解决方案核心结束 ---
+
+// 原始代码部分
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
@@ -22,64 +42,40 @@ const settingStore = useSettingStore()
 const router = useRouter()
 
 const isMobile = ref(false)
+const isMobileSafari = ref(false)
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
 }
 
-// 原始代码中的 isMobileSafari 和相关逻辑不再需要，可以简化
+function detectMobileSafari() {
+  const ua = navigator.userAgent
+  const isiOS
+    = /iP(hone|od|ad)/.test(ua)
+    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
+  const isSafari
+    = /Safari/.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Mercury)/.test(ua)
+  return isiOS && isSafari
+}
+
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
+
+  isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
-  settingStore.isSideNavOpen = !isMobile.value
+
+  if (isMobileSafari.value)
+    settingStore.isSideNavOpen = false
+  else
+    settingStore.isSideNavOpen = !isMobile.value
 }
-
-// --- 全新解决方案：开始 ---
-
-let originalScrollY = 0
-
-/**
- * 当输入框聚焦时，将页眉从 fixed 切换到 absolute 定位，避免浏览器视口调整带来的跳动。
- */
-function handleFocusIn(event: FocusEvent) {
-  const target = event.target as HTMLElement
-  if (isMobile.value && headerRef.value && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
-    // 锁定前，先禁用过渡动画，防止切换时闪烁
-    headerRef.value.classList.add('no-transition')
-
-    // 记录当前滚动位置
-    originalScrollY = window.scrollY
-
-    // 切换到 absolute 定位
-    headerRef.value.style.position = 'absolute'
-    headerRef.value.style.top = `${originalScrollY}px`
-  }
-}
-
-/**
- * 当输入框失焦时，将页眉恢复为 fixed 定位。
- */
-function handleFocusOut() {
-  if (isMobile.value && headerRef.value) {
-    // 恢复 fixed 定位，并清除 top 值
-    headerRef.value.style.position = '' // 恢复为 CSS 文件中定义的样式 (通常是 fixed 或 sticky)
-    headerRef.value.style.top = ''
-
-    // 稍作延迟后恢复过渡效果，确保布局稳定
-    setTimeout(() => {
-      headerRef.value?.classList.remove('no-transition')
-    }, 100)
-  }
-}
-
-// --- 全新解决方案：结束 ---
 
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // --- 挂载新的事件监听器 ---
-  document.addEventListener('focusin', handleFocusIn)
-  document.addEventListener('focusout', handleFocusOut)
+  // 4. 在挂载时，监听 visualViewport 的 resize 事件
+  if (window.visualViewport)
+    window.visualViewport.addEventListener('resize', handleViewportResize)
 
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
@@ -89,9 +85,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
 
-  // --- 卸载新的事件监听器 ---
-  document.removeEventListener('focusin', handleFocusIn)
-  document.removeEventListener('focusout', handleFocusOut)
+  // 5. 在卸载时，清理监听器
+  if (window.visualViewport)
+    window.visualViewport.removeEventListener('resize', handleViewportResize)
 })
 
 const user = ref<any>(null)
@@ -139,9 +135,8 @@ async function handleSettingsClick() {
 
 <template>
   <div
-    ref="headerRef"
     class="flex items-center justify-between px-4 lg:px-8 md:px-6"
-    :style="safeTopStyle"
+    :style="[safeTopStyle, dynamicHeaderStyle]"
   >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
@@ -182,11 +177,7 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 这个 CSS 规则是新方案的关键部分 */
-.no-transition {
-  transition: none !important;
-}
-
+/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
