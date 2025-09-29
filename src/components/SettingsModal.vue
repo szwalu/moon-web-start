@@ -147,7 +147,7 @@ watch(() => settingsStore.noteFontSize, (noteSize) => {
 </script>
 
 <template>
-  <NModal v-model:show="isVisible">
+  <NModal v-model:show="isVisible" :auto-focus="false">
     <NCard
       style="width: 420px"
       :title="t('settings.font_title', '字号设置')"
