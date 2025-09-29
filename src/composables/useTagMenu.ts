@@ -21,7 +21,6 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const vw = window.innerWidth
   const vh = window.innerHeight
 
-  // 经验尺寸：你的菜单含搜索、分组，通常较高，这里采用“必须完整容纳”的严格阈值
   const MENU_W = 300
   const MENU_H = Math.min(400, Math.floor(vh * 0.7))
   const MARGIN = 8
@@ -31,37 +30,31 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const spaceRight = vw - rect.right - MARGIN
   const spaceLeft = rect.left - MARGIN
 
-  // 垂直方向：优先能完整容纳的一侧；都不能完整容纳则选空间更大的一侧
   let vertical: 'top' | 'bottom'
-  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H) {
-    // 两边都够时，默认优先下方
+  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
     vertical = 'bottom'
-  }
-  else if (spaceBelow >= MENU_H) {
-    vertical = 'bottom'
-  }
-  else if (spaceAbove >= MENU_H) {
-    vertical = 'top'
-  }
-  else {
-    vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
-  }
 
-  // 水平方向：同理，只有完整容纳才选该侧；都不够则选空间更大的一侧
+  else if (spaceBelow >= MENU_H)
+    vertical = 'bottom'
+
+  else if (spaceAbove >= MENU_H)
+    vertical = 'top'
+
+  else
+    vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
+
   let horizontal: 'start' | 'end'
-  if (spaceRight >= MENU_W && spaceLeft >= MENU_W) {
-    // 两边都够，默认优先 end（右侧）
+  if (spaceRight >= MENU_W && spaceLeft >= MENU_W)
     horizontal = 'end'
-  }
-  else if (spaceRight >= MENU_W) {
+
+  else if (spaceRight >= MENU_W)
     horizontal = 'end'
-  }
-  else if (spaceLeft >= MENU_W) {
+
+  else if (spaceLeft >= MENU_W)
     horizontal = 'start'
-  }
-  else {
+
+  else
     horizontal = spaceRight >= spaceLeft ? 'end' : 'start'
-  }
 
   return `${vertical}-${horizontal}` as SmartPlacement
 }
@@ -509,9 +502,29 @@ export function useTagMenu(
               'onUpdate:value': (v: string) => { searchQuery.value = v },
               'placeholder': t('tags.search_icon') || '搜索图标或关键词',
               'clearable': true,
+              'autofocus': false,
               'size': 'small',
               'style': 'font-size:16px; width: 100%; box-sizing: border-box;',
               'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+              // ✅ 终极方案：在组件挂载后，启动一个短暂的、高频的失焦定时器
+              'onVnodeMounted': (vnode) => {
+                const inputEl = vnode.el?.querySelector('input')
+                if (!inputEl)
+                  return
+
+                // 立即执行一次失焦
+                inputEl.blur()
+
+                const startTime = Date.now()
+                const blurInterval = setInterval(() => {
+                  // 300毫秒后停止定时器
+                  if (Date.now() - startTime > 300) {
+                    clearInterval(blurInterval)
+                    return
+                  }
+                  inputEl.blur()
+                }, 16) // 大约每帧执行一次
+              },
             }),
             h('div', { style: 'margin-top:4px; margin-bottom: 12px;' }, [
               h('div', { style: 'font-size:12px;color:#888' }, t('tags.tip_icon_custom') || '也可以在上面输入框直接粘贴任意符号作为图标'),
@@ -736,7 +749,6 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
-            // ✅ 手动触发
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -758,7 +770,6 @@ export function useTagMenu(
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
                 'title': t('tags.more_actions') || '更多操作',
-                // ✅ 放大按钮：固定触控面积 40×40，字号 24px，行高 1，居中
                 'style': [
                   'background:none;border:none;cursor:pointer;',
                   'display:inline-flex;align-items:center;justify-content:center;',
@@ -776,7 +787,6 @@ export function useTagMenu(
                     placementRef.value = computeSmartPlacementStrict(btnEl)
                     nextTick(() => {
                       openMenu()
-                      // 让焦点留在按钮上，避免内部输入意外抢焦点
                       requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
                     })
                   }
