@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
 
-// 增加登陆按钮
+// 这些路径按你项目实际，如不同请改回原路径
+import { useModalStore } from '@/stores/modal'
+import { useSiteStore } from '@/stores/site'
+import { useDrag } from '@/composables/useDrag'
 
+// 增加登陆按钮
 import { supabase } from '@/utils/supabaseClient'
 
 const modalStore = useModalStore()
@@ -16,8 +21,13 @@ const settingStore = useSettingStore()
 const { draggableOptions, handleStart, handleEnd } = useDrag()
 
 const activeSubMenuIndex = ref(-1)
-
 const isMobile = ref(false)
+
+/** ✅ 显式关闭侧栏（不再 toggle） */
+function closeSideNav() {
+  activeSubMenuIndex.value = -1
+  settingStore.isSideNavOpen = false
+}
 
 onMounted(() => {
   // 检查初始状态
@@ -27,13 +37,6 @@ onMounted(() => {
     isMobile.value = window.innerWidth <= 768
   })
 })
-
-function checkIsMobileDevice(): boolean {
-  if (typeof navigator !== 'undefined')
-    return /Mobi|Android|iPhone/i.test(navigator.userAgent)
-
-  return false
-}
 
 function handleCateClick(cateIndex: number) {
   if (route.name === 'setting' && siteStore.cateIndex === cateIndex) {
@@ -58,17 +61,20 @@ function handleCateClick(cateIndex: number) {
 const subMenuRows = computed(() => {
   if (activeSubMenuIndex.value < 0 || activeSubMenuIndex.value >= siteStore.data.length)
     return []
+
   const activeCate = siteStore.data[activeSubMenuIndex.value]
   if (!activeCate || !activeCate.groupList || !activeCate.groupList.length)
     return []
+
   return [activeCate.groupList]
 })
 
+/** ✅ 子菜单点击：滚动定位后“下一帧”收起侧栏（平台统一行为） */
 function handleSubMenuClick(subItem: any) {
   const element = document.getElementById(String(subItem.id))
   if (element) {
     const headerElement = document.querySelector('[sticky]')
-    const headerHeight = headerElement ? headerElement.clientHeight : 80
+    const headerHeight = headerElement ? (headerElement as HTMLElement).clientHeight : 80
     const elementPosition = element.getBoundingClientRect().top
     const offsetPosition = elementPosition + window.pageYOffset - headerHeight - 10
     window.scrollTo({
@@ -76,10 +82,10 @@ function handleSubMenuClick(subItem: any) {
       behavior: 'smooth',
     })
   }
-  if (checkIsMobileDevice()) {
-    activeSubMenuIndex.value = -1
-    settingStore.toggleSideNav()
-  }
+
+  requestAnimationFrame(() => {
+    closeSideNav()
+  })
 }
 
 // 创建一个本地的响应式变量来存储用户状态
@@ -95,14 +101,19 @@ onMounted(() => {
 
 <template>
   <section
-    class="site-navbar-sidebar pb-12 text-16" :class="{ 'is-open': settingStore.isSideNavOpen }"
+    class="site-navbar-sidebar pb-12 text-16"
+    :class="{ 'is-open': settingStore.isSideNavOpen }"
   >
-    <div v-if="!isMobile || (isMobile && settingStore.isSideNavOpen)" class="sidebar-logo-container flex items-center justify-center py-7 p-4">
+    <div
+      v-if="!isMobile || (isMobile && settingStore.isSideNavOpen)"
+      class="sidebar-logo-container flex items-center justify-center py-7 p-4"
+    >
       <img src="/logo.jpg" alt="Logo" class="w-auto h-40">
     </div>
 
     <draggable
-      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2" :list="siteStore.data"
+      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2"
+      :list="siteStore.data"
       item-key="id"
       tag="div"
       v-bind="draggableOptions"
@@ -117,22 +128,36 @@ onMounted(() => {
               'hover:text-$primary-c': !settingStore.isSetting,
               'nav__item--active': siteStore.cateIndex === i && activeSubMenuIndex === -1,
             }"
-            cursor-pointer rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200
+            cursor-pointer
+            rounded-md
+            py-1.5
+            pl-0.5
+            pr-1
+            transition-colors
+            duration-200
             @click="handleCateClick(i)"
           >
             <span class="flex-grow truncate text-center">{{ cate.name }}</span>
             <div
               v-if="cate.groupList && cate.groupList.length > 0"
               class="chevron-icon ml-0.5 flex-shrink-0"
-              i-carbon-chevron-right text-13 transition-transform duration-300
+              i-carbon-chevron-right
+              text-13
+              transition-transform
+              duration-300
               :class="{ 'rotate-90': activeSubMenuIndex === i }"
             />
             <div v-else class="chevron-placeholder flex-shrink-0" />
           </div>
+
           <transition name="slide-fade-vertical">
-            <div v-if="activeSubMenuIndex === i && subMenuRows.length > 0" class="sub-nav-container-vertical mt-1.5 py-1 pl-3 pr-1">
+            <div
+              v-if="activeSubMenuIndex === i && subMenuRows.length > 0"
+              class="sub-nav-container-vertical mt-1.5 py-1 pl-3 pr-1"
+            >
               <div
-                v-for="subItem in subMenuRows[0]" :key="subItem.id"
+                v-for="subItem in subMenuRows[0]"
+                :key="subItem.id"
                 class="sub-nav-item-vertical"
                 @click="handleSubMenuClick(subItem)"
               >
@@ -162,10 +187,12 @@ onMounted(() => {
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
     <div class="static-links-container flex flex-col gap-y-15 px-2 pb-4 pt-8">
+      <!-- ✅ 站内跳转：点击即收起 -->
       <router-link
         to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSideNav"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -176,6 +203,7 @@ onMounted(() => {
         to="/auth"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSideNav"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -185,16 +213,19 @@ onMounted(() => {
         to="/my-account"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
+        @click="closeSideNav"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 
+      <!-- 外链新窗口：不强制收起 -->
       <a
         href="https://www.woabc.com/apply"
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"
+        rel="noopener"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.apply') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -204,6 +235,7 @@ onMounted(() => {
         class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
         role="menuitem"
         target="_blank"
+        rel="noopener"
       >
         <span class="flex-grow truncate text-center">{{ $t('navbar.links') }}</span>
         <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
@@ -223,7 +255,11 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-/* 所有CSS部分与您提供的版本完全一致，无需修改 */
+/* ✅ 刘海/PWA 安全区补齐（防止 Logo 顶进刘海区） */
+.site-navbar-sidebar {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+
 .site-navbar-sidebar {
   position: fixed;
   top: 0;
@@ -294,7 +330,6 @@ onMounted(() => {
   justify-content: center;
 }
 .sub-nav-container-vertical {
-  /* Spacing classes are in the template */
 }
 .sub-nav-item-vertical {
   padding: 5px 6px;
