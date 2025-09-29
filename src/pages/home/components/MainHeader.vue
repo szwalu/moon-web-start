@@ -9,6 +9,9 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+// --- 修改点 1：为 header 元素创建一个 ref ---
+const headerRef = ref<HTMLElement | null>(null)
+
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
@@ -36,13 +39,6 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/**
- * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
- * - PC：默认打开
- * - 其它移动端：默认关闭
- * - iOS Safari：强制关闭
- * 同时在首帧禁用过渡，mounted 后恢复。
- */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
 
@@ -55,34 +51,33 @@ if (typeof window !== 'undefined') {
     settingStore.isSideNavOpen = !isMobile.value
 }
 
-// --- 新增代码：开始 ---
+// --- 修改点 2：新增 visualViewport 解决方案的核心逻辑 ---
+
 /**
- * 解决移动端键盘弹出导致页眉上移进入刘海区的问题。
- * 当输入框聚焦时，移动端浏览器可能会滚动整个页面，导致fixed定位的页眉上移。
- * 此函数通过将页面滚动回顶部来抵消该行为。
- * @param event 焦点事件对象
+ * 使用 visualViewport API 平滑处理键盘弹出时的布局位移。
+ * 当键盘弹出，浏览器会将布局视口向上推，导致 fixed 的页眉移出屏幕。
+ * 我们监听 visualViewport 的变化，获取其偏移量 (offsetTop)，
+ * 然后通过 CSS transform 将页眉平移回来，保持其在可见区域的顶部。
+ * 这种方法性能高，无闪烁。
  */
-function preventLayoutShiftOnFocus(event: FocusEvent) {
-  const target = event.target as HTMLElement
-  // 仅在移动设备上，且事件源是输入框或文本域时触发
-  if (isMobile.value && target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
-    // 使用一个短暂的延时确保我们的滚动操作在浏览器自身的滚动调整之后执行
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-    }, 100)
+function handleViewportChange() {
+  if (headerRef.value && window.visualViewport) {
+    const offsetTop = window.visualViewport.offsetTop
+    // 仅当视口有偏移时（通常是键盘弹出）才应用 transform
+    headerRef.value.style.transform = `translateY(${offsetTop}px)`
   }
 }
-// --- 新增代码：结束 ---
 
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // --- 修改代码：开始 ---
-  // 添加全局事件监听器以处理输入框聚焦问题
-  document.addEventListener('focusin', preventLayoutShiftOnFocus)
-  // --- 修改代码：结束 ---
+  // --- 修改点 2 (续)：挂载监听器 ---
+  if (window.visualViewport) {
+    // 监听 resize 和 scroll 事件以覆盖所有情况
+    window.visualViewport.addEventListener('resize', handleViewportChange)
+    window.visualViewport.addEventListener('scroll', handleViewportChange)
+  }
 
-  // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
@@ -91,13 +86,16 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
 
-  // --- 修改代码：开始 ---
-  // 在组件销毁时移除监听器，防止内存泄漏
-  document.removeEventListener('focusin', preventLayoutShiftOnFocus)
-  // --- 修改代码：结束 ---
+  // --- 修改点 2 (续)：卸载监听器，防止内存泄漏 ---
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleViewportChange)
+    window.visualViewport.removeEventListener('scroll', handleViewportChange)
+  }
 })
 
 const user = ref<any>(null)
+// 注意：Vue 3.2+ setup 语法糖中，同一个生命周期钩子可以写多次，它们会依次执行。
+// 所以这里的 onMounted 和上面的 onMounted 都会生效。
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
@@ -142,6 +140,7 @@ async function handleSettingsClick() {
 
 <template>
   <div
+    ref="headerRef"
     class="flex items-center justify-between px-4 lg:px-8 md:px-6"
     :style="safeTopStyle"
   >
