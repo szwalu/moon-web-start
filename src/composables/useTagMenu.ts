@@ -774,7 +774,7 @@ export function useTagMenu(
                   'background:none;border:none;cursor:pointer;',
                   'display:inline-flex;align-items:center;justify-content:center;',
                   'width:30px;height:30px;',
-                  'font-size:32px;line-height:1;font-weight:600;',
+                  'font-size:38px;line-height:1;font-weight:600;',
                   'border-radius:10px;opacity:0.95;',
                 ].join(''),
                 'onClick': (e: MouseEvent) => {

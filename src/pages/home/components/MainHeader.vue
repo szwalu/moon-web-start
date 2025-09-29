@@ -55,8 +55,32 @@ if (typeof window !== 'undefined') {
     settingStore.isSideNavOpen = !isMobile.value
 }
 
+// --- 新增代码：开始 ---
+/**
+ * 解决移动端键盘弹出导致页眉上移进入刘海区的问题。
+ * 当输入框聚焦时，移动端浏览器可能会滚动整个页面，导致fixed定位的页眉上移。
+ * 此函数通过将页面滚动回顶部来抵消该行为。
+ * @param event 焦点事件对象
+ */
+function preventLayoutShiftOnFocus(event: FocusEvent) {
+  const target = event.target as HTMLElement
+  // 仅在移动设备上，且事件源是输入框或文本域时触发
+  if (isMobile.value && target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
+    // 使用一个短暂的延时确保我们的滚动操作在浏览器自身的滚动调整之后执行
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+    }, 100)
+  }
+}
+// --- 新增代码：结束 ---
+
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
+
+  // --- 修改代码：开始 ---
+  // 添加全局事件监听器以处理输入框聚焦问题
+  document.addEventListener('focusin', preventLayoutShiftOnFocus)
+  // --- 修改代码：结束 ---
 
   // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
@@ -64,36 +88,13 @@ onMounted(() => {
   })
 })
 
-// ✅ iOS Safari 聚焦输入时，阻止默认把目标“顶到页面最上方”——改为就近可见
-if (isMobileSafari.value) {
-  const onFocusIn = (e: Event) => {
-    const t = e.target as HTMLElement | null
-    if (!t)
-      return
-    const isEditable
-      = t instanceof HTMLInputElement
-      || t instanceof HTMLTextAreaElement
-      || t.getAttribute('contenteditable') === 'true'
-      || t.getAttribute('role') === 'searchbox'
-    if (!isEditable)
-      return
-
-    // 让浏览器先完成自身的滚动，再在下一帧“拉回到就近位置”，避免被塞进刘海
-    requestAnimationFrame(() => {
-      try {
-        t.scrollIntoView({ block: 'nearest', inline: 'nearest' /* behavior: 'instant' 默认即可 */ })
-      }
-      catch {}
-    })
-  }
-  document.addEventListener('focusin', onFocusIn, { passive: true })
-  onBeforeUnmount(() => {
-    document.removeEventListener('focusin', onFocusIn as any)
-  })
-}
-
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
+
+  // --- 修改代码：开始 ---
+  // 在组件销毁时移除监听器，防止内存泄漏
+  document.removeEventListener('focusin', preventLayoutShiftOnFocus)
+  // --- 修改代码：结束 ---
 })
 
 const user = ref<any>(null)
@@ -187,40 +188,5 @@ async function handleSettingsClick() {
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
-}
-
-/* ✅ 自动滚动时预留顶部安全区 + 你原有的 8px；不改变静态布局 */
-:global(html),
-:global(body) {
-  scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
-}
-@supports (padding: constant(safe-area-inset-top)) {
-  :global(html),
-  :global(body) {
-    scroll-padding-top: calc(constant(safe-area-inset-top) + 8px);
-  }
-}
-
-/* ✅ 只影响自动滚动：常见输入控件给出上边距，避免对齐到“刘海下方” */
-:global(input[type="search"]),
-:global(input[type="text"]),
-:global(textarea),
-:global([contenteditable="true"]),
-:global([role="searchbox"]) {
-  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 8px);
-}
-@supports (padding: constant(safe-area-inset-top)) {
-  :global(input[type="search"]),
-  :global(input[type="text"]),
-  :global(textarea),
-  :global([contenteditable="true"]),
-  :global([role="searchbox"]) {
-    scroll-margin-top: calc(constant(safe-area-inset-top) + 8px);
-  }
-}
-
-/* ✅ 防止 iOS 的“滚动锚定”在动态高度变动时把视口猛地回拉产生跳动 */
-.header-left {
-  overflow-anchor: none;
 }
 </style>
