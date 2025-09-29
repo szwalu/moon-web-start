@@ -21,7 +21,6 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const vw = window.innerWidth
   const vh = window.innerHeight
 
-  // 经验尺寸：你的菜单含搜索、分组，通常较高，这里采用“必须完整容纳”的严格阈值
   const MENU_W = 300
   const MENU_H = Math.min(400, Math.floor(vh * 0.7))
   const MARGIN = 8
@@ -31,37 +30,25 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const spaceRight = vw - rect.right - MARGIN
   const spaceLeft = rect.left - MARGIN
 
-  // 垂直方向：优先能完整容纳的一侧；都不能完整容纳则选空间更大的一侧
   let vertical: 'top' | 'bottom'
-  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H) {
-    // 两边都够时，默认优先下方
+  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
     vertical = 'bottom'
-  }
-  else if (spaceBelow >= MENU_H) {
+  else if (spaceBelow >= MENU_H)
     vertical = 'bottom'
-  }
-  else if (spaceAbove >= MENU_H) {
+  else if (spaceAbove >= MENU_H)
     vertical = 'top'
-  }
-  else {
+  else
     vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
-  }
 
-  // 水平方向：同理，只有完整容纳才选该侧；都不够则选空间更大的一侧
   let horizontal: 'start' | 'end'
-  if (spaceRight >= MENU_W && spaceLeft >= MENU_W) {
-    // 两边都够，默认优先 end（右侧）
+  if (spaceRight >= MENU_W && spaceLeft >= MENU_W)
     horizontal = 'end'
-  }
-  else if (spaceRight >= MENU_W) {
+  else if (spaceRight >= MENU_W)
     horizontal = 'end'
-  }
-  else if (spaceLeft >= MENU_W) {
+  else if (spaceLeft >= MENU_W)
     horizontal = 'start'
-  }
-  else {
+  else
     horizontal = spaceRight >= spaceLeft ? 'end' : 'start'
-  }
 
   return `${vertical}-${horizontal}` as SmartPlacement
 }
@@ -165,8 +152,6 @@ export function useTagMenu(
   const message = useMessage()
   const dialog = useDialog()
   const isBusy = ref(false)
-
-  const avoidAutoFocus = ref(true) // 菜单刚开时短暂禁用搜索框，防抢焦点
 
   const tagCounts = ref<Record<string, number>>({})
   const tagCountsSig = ref<string | null>(null)
@@ -330,6 +315,22 @@ export function useTagMenu(
     }
   })
 
+  async function onMainMenuOpen() {
+    const uid = await getUserId()
+    if (!uid)
+      return
+    hydrateCountsFromLocal(uid)
+    refreshTagCountsFromServer(true).catch(() => {})
+  }
+
+  watch(mainMenuVisible, (show) => {
+    if (show)
+      onMainMenuOpen().catch(() => {})
+
+    else
+      tagSearch.value = ''
+  })
+
   async function savePinned() {
     localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
     await savePinnedToAuth(pinnedTags.value)
@@ -406,35 +407,6 @@ export function useTagMenu(
         localStorage.removeItem(key)
     }
   }
-
-  async function onMainMenuOpen() {
-    const uid = await getUserId()
-    if (!uid)
-      return
-    hydrateCountsFromLocal(uid)
-    refreshTagCountsFromServer(true).catch(() => {})
-  }
-
-  watch(mainMenuVisible, (show) => {
-    if (show) {
-      avoidAutoFocus.value = true
-      onMainMenuOpen().catch(() => {})
-      nextTick(() => {
-      // 双保险：把可能已被聚焦的输入强制 blur
-        const el = document.querySelector('.tag-search-row input') as HTMLInputElement | null
-        el?.blur()
-        // 150ms 后再开放搜索框
-        setTimeout(() => {
-          avoidAutoFocus.value = false
-          const el2 = document.querySelector('.tag-search-row input') as HTMLInputElement | null
-          el2?.blur()
-        }, 150)
-      })
-    }
-    else {
-      avoidAutoFocus.value = true
-    }
-  })
 
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     if (action === 'pin') {
@@ -700,39 +672,73 @@ export function useTagMenu(
       return [] as any[]
 
     const placeholderText
-    = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
+      = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
 
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
       render: () =>
-        h('div', { class: 'tag-search-row' }, [
-          h(NInput, {
-            'value': tagSearch.value,
-            'onUpdate:value': (v: string) => { tagSearch.value = v },
-            'placeholder': placeholderText,
-            'clearable': true,
-            'size': 'small',
-            'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
-            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+        h(
+          'div',
+          {
+            // 让容器不阻挡下方元素的点击
+            style: 'padding: 0 10px;',
+          },
+          [
+            h(
+              'button',
+              {
+                style: 'font-size: 14px; width: 100%; text-align: left; height: 28px; border: 1px solid var(--n-border-color, #ccc); border-radius: 3px; padding: 0 7px; color: var(--n-placeholder-color, #aaa); background: var(--n-color, #fff); cursor: pointer; box-sizing: border-box;',
+                onClick: (e: MouseEvent) => {
+                  e.stopPropagation() // 阻止Dropdown关闭
+                  mainMenuVisible.value = false // 手动先关闭主菜单
 
-            // ✅ 关键：菜单初开时禁用 + 脱离 Tab 顺序，防抢焦点
-            'disabled': avoidAutoFocus.value,
-            'inputProps': { tabindex: avoidAutoFocus.value ? -1 : 0, autocomplete: 'off' },
-
-            // ✅ 就算某些环境仍把焦点塞进来，也立即 blur
-            'onFocus': (e: FocusEvent) => (avoidAutoFocus.value ? (e.target as HTMLInputElement | null)?.blur?.() : null),
-
-            // ✅ 初次挂载双保险：微任务 + 宏任务 blur
-            'onVnodeMounted': (vnode: any) => {
-              const el = vnode?.el?.querySelector?.('input,textarea') as HTMLInputElement | null
-              if (el) {
-                queueMicrotask(() => el.blur())
-                setTimeout(() => el.blur(), 0)
-              }
-            },
-          }),
-        ]),
+                  // 延迟打开搜索对话框，避免冲突
+                  setTimeout(() => {
+                    const d = dialog.create({
+                      title: placeholderText,
+                      showIcon: false,
+                      content: () => h(NInput, {
+                        'value': tagSearch.value,
+                        'onUpdate:value': (v: string) => (tagSearch.value = v),
+                        'autofocus': true,
+                        'placeholder': placeholderText,
+                        'clearable': true,
+                      }),
+                      positiveText: t('auth.confirm', '确定'),
+                      negativeText: t('auth.cancel', '取消'),
+                      onPositiveClick: () => {
+                        // 在这里可以处理搜索逻辑，但由于列表已过滤，关闭即可
+                        d.destroy()
+                        // 重新打开主菜单以显示过滤结果
+                        nextTick(() => {
+                          mainMenuVisible.value = true
+                        })
+                      },
+                      onNegativeClick: () => {
+                        // 如果取消，清空搜索词并重新打开主菜单
+                        tagSearch.value = ''
+                        d.destroy()
+                        nextTick(() => {
+                          mainMenuVisible.value = true
+                        })
+                      },
+                      onClose: () => {
+                        // 点击遮罩或关闭按钮时，也重新打开主菜单
+                        if (mainMenuVisible.value === false) {
+                          nextTick(() => {
+                            mainMenuVisible.value = true
+                          })
+                        }
+                      },
+                    })
+                  }, 100)
+                },
+              },
+              tagSearch.value || placeholderText,
+            ),
+          ],
+        ),
     }
 
     const pinnedChildren = pinnedTags.value
@@ -741,14 +747,14 @@ export function useTagMenu(
       .map(tag => makeTagRow(tag))
 
     const pinnedGroup
-    = pinnedChildren.length > 0
-      ? [{
-          type: 'group' as const,
-          key: 'pinned-group',
-          label: `⭐ ${t('notes.favorites') || '常用'}`,
-          children: pinnedChildren,
-        }]
-      : []
+      = pinnedChildren.length > 0
+        ? [{
+            type: 'group' as const,
+            key: 'pinned-group',
+            label: `⭐ ${t('notes.favorites') || '常用'}`,
+            children: pinnedChildren,
+          }]
+        : []
 
     const letterGroups = groupedTags.value
       .filter(({ tags }) => tags.length > 0)
@@ -769,7 +775,6 @@ export function useTagMenu(
     const left = `${icon} ${displayName}`
     const display = count > 0 ? `${left}（${count}）` : left
 
-    // —— 每行“更多”菜单的严格方向与手动触发 —— //
     const placementRef = ref<SmartPlacement>('top-start')
     const showRef = ref(false)
     let btnEl: HTMLElement | null = null
@@ -789,7 +794,6 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
-            // ✅ 手动触发
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -811,7 +815,6 @@ export function useTagMenu(
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
                 'title': t('tags.more_actions') || '更多操作',
-                // ✅ 放大按钮：固定触控面积 40×40，字号 24px，行高 1，居中
                 'style': [
                   'background:none;border:none;cursor:pointer;',
                   'display:inline-flex;align-items:center;justify-content:center;',
@@ -829,7 +832,6 @@ export function useTagMenu(
                     placementRef.value = computeSmartPlacementStrict(btnEl)
                     nextTick(() => {
                       openMenu()
-                      // 让焦点留在按钮上，避免内部输入意外抢焦点
                       requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
                     })
                   }
