@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import draggable from 'vuedraggable'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { Category } from '@/types'
 import { useSettingStore } from '@/stores/setting'
@@ -35,21 +35,28 @@ const draggableOptions = {
   chosenClass: 'drag-chosen',
   dragClass: 'drag-dragging',
 }
-function handleStart() {
-  // 需要的话在这里加：document.body.classList.add('dragging');
-}
-function handleEnd() {
-  // 需要的话在这里加：document.body.classList.remove('dragging');
-}
+function handleStart() {}
+function handleEnd() {}
 
 onMounted(() => {
-  // 检查初始状态
   isMobile.value = window.innerWidth <= 768
-  // 监听窗口大小变化
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth <= 768
   })
 })
+
+/** ✅ 侧栏开关时，冻结/解除页面滚动，避免抽屉与页面双滚导致的抖动/跳顶 */
+watch(
+  () => settingStore.isSideNavOpen,
+  (open) => {
+    const html = document.documentElement
+    if (open)
+      html.classList.add('side-nav-open')
+    else
+      html.classList.remove('side-nav-open')
+  },
+  { immediate: true },
+)
 
 function handleCateClick(cateIndex: number) {
   if (route.name === 'setting' && siteStore.cateIndex === cateIndex) {
@@ -95,7 +102,6 @@ function handleSubMenuClick(subItem: any) {
       behavior: 'smooth',
     })
   }
-
   requestAnimationFrame(() => {
     closeSideNav()
   })
@@ -103,8 +109,6 @@ function handleSubMenuClick(subItem: any) {
 
 // 创建一个本地的响应式变量来存储用户状态
 const user = ref<any>(null)
-
-// 在组件挂载后，设置一个监听器来实时更新用户状态
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
@@ -271,14 +275,19 @@ onMounted(() => {
 /* ✅ 刘海/PWA 安全区补齐（防止 Logo 顶进刘海区） */
 .site-navbar-sidebar {
   padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  /* ✅ iOS 滚动锚点关闭，避免布局尺寸变化导致回弹跳顶 */
+  overflow-anchor: none;
 }
 
+/* ✅ 关键：固定上下，不用 100vh，避免 iOS 地址栏显隐引发高度抖动 */
 .site-navbar-sidebar {
   position: fixed;
-  top: 0;
+  /* 顶部考虑安全区，底部钉住，避免 100vh 抖动 */
+  top: env(safe-area-inset-top, 0px);
+  bottom: 0;
   left: 0;
   width: 130px;
-  height: 100vh;
+  height: auto; /* 代替 height: 100vh / 100svh / 100dvh */
   background-color: var(--main-bg-c);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.07);
   transform: translateX(-100%);
@@ -289,6 +298,7 @@ onMounted(() => {
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
 .site-navbar-sidebar::-webkit-scrollbar {
   width: 0;
@@ -367,5 +377,12 @@ onMounted(() => {
   max-height: 0;
   overflow: hidden;
   transform: translateY(-10px);
+}
+
+/* ✅ 页面在侧栏打开时冻结滚动，防止页面与抽屉双滚冲突（避免抖动/回弹） */
+:global(html.side-nav-open) {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
 }
 </style>
