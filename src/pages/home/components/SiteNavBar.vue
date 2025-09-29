@@ -20,16 +20,13 @@ const settingStore = useSettingStore()
 const activeSubMenuIndex = ref(-1)
 const isMobile = ref(false)
 
-/** ✅ 显式关闭侧栏（不再 toggle） */
 function closeSideNav() {
   activeSubMenuIndex.value = -1
   settingStore.isSideNavOpen = false
 }
 
-/** ✅ 本地内置：拖拽选项与钩子（替代 useDrag 以便先通过构建） */
 const draggableOptions = {
   animation: 200,
-  delay: 0,
   forceFallback: true,
   ghostClass: 'dragging',
   chosenClass: 'drag-chosen',
@@ -45,7 +42,6 @@ onMounted(() => {
   })
 })
 
-/** ✅ 侧栏开关时，冻结/解除页面滚动，避免抽屉与页面双滚导致的抖动/跳顶 */
 watch(
   () => settingStore.isSideNavOpen,
   (open) => {
@@ -66,30 +62,20 @@ function handleCateClick(cateIndex: number) {
   siteStore.setCateIndex(cateIndex)
 
   const clickedCate = siteStore.data[cateIndex]
-  if (clickedCate.groupList && clickedCate.groupList.length > 0) {
-    if (activeSubMenuIndex.value === cateIndex)
-      activeSubMenuIndex.value = -1
+  if (clickedCate.groupList && clickedCate.groupList.length > 0)
+    activeSubMenuIndex.value = activeSubMenuIndex.value === cateIndex ? -1 : cateIndex
 
-    else
-      activeSubMenuIndex.value = cateIndex
-  }
-  else {
+  else
     activeSubMenuIndex.value = -1
-  }
 }
 
 const subMenuRows = computed(() => {
   if (activeSubMenuIndex.value < 0 || activeSubMenuIndex.value >= siteStore.data.length)
     return []
-
   const activeCate = siteStore.data[activeSubMenuIndex.value]
-  if (!activeCate || !activeCate.groupList || !activeCate.groupList.length)
-    return []
-
-  return [activeCate.groupList]
+  return activeCate?.groupList?.length ? [activeCate.groupList] : []
 })
 
-/** ✅ 子菜单点击：滚动定位后“下一帧”收起侧栏（平台统一行为） */
 function handleSubMenuClick(subItem: any) {
   const element = document.getElementById(String(subItem.id))
   if (element) {
@@ -97,17 +83,11 @@ function handleSubMenuClick(subItem: any) {
     const headerHeight = headerElement ? (headerElement as HTMLElement).clientHeight : 80
     const elementPosition = element.getBoundingClientRect().top
     const offsetPosition = elementPosition + window.pageYOffset - headerHeight - 10
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: 'smooth',
-    })
+    window.scrollTo({ top: offsetPosition, behavior: 'smooth' })
   }
-  requestAnimationFrame(() => {
-    closeSideNav()
-  })
+  requestAnimationFrame(() => closeSideNav())
 }
 
-// 创建一个本地的响应式变量来存储用户状态
 const user = ref<any>(null)
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -123,7 +103,7 @@ onMounted(() => {
   >
     <div
       v-if="!isMobile || (isMobile && settingStore.isSideNavOpen)"
-      class="sidebar-logo-container flex items-center justify-center py-7 p-4"
+      class="sidebar-logo-container flex items-center justify-center pt-2 p-4"
     >
       <img src="/logo.jpg" alt="Logo" class="w-auto h-40">
     </div>
@@ -156,7 +136,7 @@ onMounted(() => {
           >
             <span class="flex-grow truncate text-center">{{ cate.name }}</span>
             <div
-              v-if="cate.groupList && cate.groupList.length > 0"
+              v-if="cate.groupList?.length"
               class="chevron-icon ml-0.5 flex-shrink-0"
               i-carbon-chevron-right
               text-13
@@ -169,7 +149,7 @@ onMounted(() => {
 
           <transition name="slide-fade-vertical">
             <div
-              v-if="activeSubMenuIndex === i && subMenuRows.length > 0"
+              v-if="activeSubMenuIndex === i && subMenuRows.length"
               class="sub-nav-container-vertical mt-1.5 py-1 pl-3 pr-1"
             >
               <div
@@ -195,99 +175,47 @@ onMounted(() => {
         block
         @click="modalStore.showModal('add', 'cate')"
       >
-        <template #icon>
-          <div i-carbon:add />
-        </template>
+        <template #icon><div i-carbon:add /></template>
         {{ $t('button.addCategory') }}
       </n-button>
     </div>
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
     <div class="static-links-container flex flex-col gap-y-15 px-2 pb-4 pt-8">
-      <!-- ✅ 站内跳转：点击即收起 -->
-      <router-link
-        to="/auth"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-        @click="closeSideNav"
-      >
+      <router-link to="/auth" class="nav__item" @click="closeSideNav">
         <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 
-      <router-link
-        v-if="!user"
-        to="/auth"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-        @click="closeSideNav"
-      >
+      <router-link v-if="!user" to="/auth" class="nav__item" @click="closeSideNav">
         <span class="flex-grow truncate text-center">{{ $t('navbar.auth') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
-      <router-link
-        v-else
-        to="/my-account"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-        @click="closeSideNav"
-      >
+      <router-link v-else to="/my-account" class="nav__item" @click="closeSideNav">
         <span class="flex-grow truncate text-center">{{ $t('navbar.account') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </router-link>
 
-      <!-- 外链新窗口：不强制收起 -->
-      <a
-        href="https://www.woabc.com/apply"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-        target="_blank"
-        rel="noopener"
-      >
+      <a href="https://www.woabc.com/apply" target="_blank" class="nav__item">
         <span class="flex-grow truncate text-center">{{ $t('navbar.apply') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-      <a
-        href="https://www.woabc.com/apply"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-        target="_blank"
-        rel="noopener"
-      >
+      <a href="https://www.woabc.com/apply" target="_blank" class="nav__item">
         <span class="flex-grow truncate text-center">{{ $t('navbar.links') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
-      <a
-        href="https://www.woabc.com/about"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="nav__item w-full flex items-center rounded-md py-1.5 pl-0.5 pr-1 transition-colors duration-200 hover:bg-[rgba(var(--primary-c-rgb),0.05)] hover:text-$primary-c"
-        role="menuitem"
-      >
+      <a href="https://www.woabc.com/about" target="_blank" class="nav__item">
         <span class="flex-grow truncate text-center">{{ $t('navbar.about') }}</span>
-        <div class="chevron-placeholder h-[13px] w-[13px] flex-shrink-0" />
       </a>
     </div>
   </section>
 </template>
 
 <style lang="scss" scoped>
-/* ✅ 刘海/PWA 安全区补齐（防止 Logo 顶进刘海区） */
 .site-navbar-sidebar {
   padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
-  /* ✅ iOS 滚动锚点关闭，避免布局尺寸变化导致回弹跳顶 */
   overflow-anchor: none;
-}
-
-/* ✅ 关键：固定上下，不用 100vh，避免 iOS 地址栏显隐引发高度抖动 */
-.site-navbar-sidebar {
   position: fixed;
-  /* 顶部考虑安全区，底部钉住，避免 100vh 抖动 */
-  top: env(safe-area-inset-top, 0px);
+  top: 0; /* 顶到最上，避免左上缺口 */
   bottom: 0;
   left: 0;
   width: 130px;
-  height: auto; /* 代替 height: 100vh / 100svh / 100dvh */
+  height: auto;
   background-color: var(--main-bg-c);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.07);
   transform: translateX(-100%);
@@ -300,86 +228,30 @@ onMounted(() => {
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
 }
-.site-navbar-sidebar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-.site-navbar-sidebar.is-open {
-  transform: translateX(0);
-}
-.sidebar-logo-container img {
-  max-width: 90%;
-  object-fit: contain;
-}
-.nav {
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
+.site-navbar-sidebar.is-open { transform: translateX(0); }
+.site-navbar-sidebar::-webkit-scrollbar { width: 0; height: 0; }
+.sidebar-logo-container img { max-width: 90%; object-fit: contain; }
+
 .nav__item {
-  position: relative;
-  span {
-    display: inline-block;
-  }
-  &::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 0%;
-    border-radius: 1.5px;
-    background-color: var(--primary-c);
-    transition: height 0.2s ease-in-out, background-color 0.2s ease-in-out;
-  }
-  &--active {
-    color: var(--primary-c);
-    &::after {
-      height: 70%;
-    }
-  }
-  &:not(.nav__item--active):hover {
-    background-color: rgba(var(--primary-c-rgb), 0.05);
-    color: var(--primary-c);
-  }
-}
-.chevron-icon, .chevron-placeholder {
-  width: 13px;
-  height: 13px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  padding: 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
 }
+.nav__item:hover { background: rgba(var(--primary-c-rgb), 0.05); color: var(--primary-c); }
+
 .sub-nav-item-vertical {
   padding: 5px 6px;
   font-size: 0.9em;
-  color: var(--text-c-2);
   border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
   text-align: center;
-  display: block;
-  width: 100%;
-  &:hover {
-    background-color: rgba(var(--primary-c-rgb), 0.08);
-    color: var(--primary-c);
-  }
 }
-.slide-fade-vertical-enter-active,
-.slide-fade-vertical-leave-active {
-  transition: all 0.25s ease-out;
-  max-height: 200px;
-}
-.slide-fade-vertical-enter-from,
-.slide-fade-vertical-leave-to {
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  transform: translateY(-10px);
+.sub-nav-item-vertical:hover {
+  background-color: rgba(var(--primary-c-rgb), 0.08);
+  color: var(--primary-c);
 }
 
-/* ✅ 页面在侧栏打开时冻结滚动，防止页面与抽屉双滚冲突（避免抖动/回弹） */
 :global(html.side-nav-open) {
   overflow: hidden;
   position: fixed;
