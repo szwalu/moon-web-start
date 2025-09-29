@@ -166,7 +166,7 @@ export function useTagMenu(
   const dialog = useDialog()
   const isBusy = ref(false)
 
-  const searchActive = ref(false) // 是否显示真正的搜索输入框
+  const avoidAutoFocus = ref(true) // 菜单刚开时短暂禁用搜索框，防抢焦点
 
   const tagCounts = ref<Record<string, number>>({})
   const tagCountsSig = ref<string | null>(null)
@@ -417,10 +417,25 @@ export function useTagMenu(
 
   watch(mainMenuVisible, (show) => {
     if (show) {
-      searchActive.value = false // 菜单一开先用假输入框，彻底杜绝自动聚焦
+      avoidAutoFocus.value = true
       onMainMenuOpen().catch(() => {})
+      nextTick(() => {
+      // 双保险：把可能已被聚焦的输入强制 blur
+        const el = document.querySelector('.tag-search-row input') as HTMLInputElement | null
+        el?.blur()
+        // 150ms 后再开放搜索框
+        setTimeout(() => {
+          avoidAutoFocus.value = false
+          const el2 = document.querySelector('.tag-search-row input') as HTMLInputElement | null
+          el2?.blur()
+        }, 150)
+      })
+    }
+    else {
+      avoidAutoFocus.value = true
     }
   })
+
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     if (action === 'pin') {
       togglePin(tag)
@@ -683,61 +698,67 @@ export function useTagMenu(
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
-    const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
+
+    const placeholderText
+    = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
+
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
-      render: () => {
-        // 初次打开或每次打开时，searchActive=false → 渲染假输入框
-        if (!searchActive.value) {
-          return h('div', { class: 'tag-search-row' }, [
-            // ✅ 假输入框：看起来像输入框，但不是 <input>，不会被自动聚焦
-            h('div', {
-              class: 'fake-input',
-              style: [
-                'width:calc(100% - 20px);margin:0 auto;',
-                'height:32px;display:flex;align-items:center;',
-                'padding:0 10px;border:1px solid var(--divider-color, #e5e5e5);',
-                'border-radius:6px;background:var(--input-color, #fff);',
-                'font-size:14px;color:#999;user-select:none;cursor:text;',
-              ].join(''),
-              onClick: () => {
-                // 用户点击才切换为真正的 NInput，并在下一帧聚焦它
-                searchActive.value = true
-                nextTick(() => {
-                  const el = document.querySelector('[data-tag-search-input]') as HTMLInputElement | null
-                  el?.focus()
-                })
-              },
-            }, placeholderText),
-          ])
-        }
-
-        // ✅ 真输入框：只有当用户点了“假输入框”或你在别处手动把 searchActive 设为 true 才会渲染
-        return h('div', { class: 'tag-search-row' }, [
+      render: () =>
+        h('div', { class: 'tag-search-row' }, [
           h(NInput, {
             'value': tagSearch.value,
             'onUpdate:value': (v: string) => { tagSearch.value = v },
             'placeholder': placeholderText,
             'clearable': true,
-            'autofocus': false, // 显式禁止自动聚焦
             'size': 'small',
             'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
-            // 给内部原生 input 一个可选的标识，便于上面 nextTick 定位并 focus
-            'inputProps': { 'data-tag-search-input': '1', 'autocomplete': 'off' },
+
+            // ✅ 关键：菜单初开时禁用 + 脱离 Tab 顺序，防抢焦点
+            'disabled': avoidAutoFocus.value,
+            'inputProps': { tabindex: avoidAutoFocus.value ? -1 : 0, autocomplete: 'off' },
+
+            // ✅ 就算某些环境仍把焦点塞进来，也立即 blur
+            'onFocus': (e: FocusEvent) => (avoidAutoFocus.value ? (e.target as HTMLInputElement | null)?.blur?.() : null),
+
+            // ✅ 初次挂载双保险：微任务 + 宏任务 blur
+            'onVnodeMounted': (vnode: any) => {
+              const el = vnode?.el?.querySelector?.('input,textarea') as HTMLInputElement | null
+              if (el) {
+                queueMicrotask(() => el.blur())
+                setTimeout(() => el.blur(), 0)
+              }
+            },
           }),
-        ])
-      },
+        ]),
     }
+
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
       .map(tag => makeTagRow(tag))
-    const pinnedGroup = pinnedChildren.length > 0 ? [{ type: 'group' as const, key: 'pinned-group', label: `⭐ ${t('notes.favorites') || '常用'}`, children: pinnedChildren }] : []
+
+    const pinnedGroup
+    = pinnedChildren.length > 0
+      ? [{
+          type: 'group' as const,
+          key: 'pinned-group',
+          label: `⭐ ${t('notes.favorites') || '常用'}`,
+          children: pinnedChildren,
+        }]
+      : []
+
     const letterGroups = groupedTags.value
       .filter(({ tags }) => tags.length > 0)
-      .map(({ letter, tags }) => ({ type: 'group' as const, key: `grp-${letter}`, label: letter, children: tags.map(tag => makeTagRow(tag)) }))
+      .map(({ letter, tags }) => ({
+        type: 'group' as const,
+        key: `grp-${letter}`,
+        label: letter,
+        children: tags.map(tag => makeTagRow(tag)),
+      }))
+
     return [searchOption, ...pinnedGroup, ...letterGroups]
   })
 
@@ -768,7 +789,7 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
-            // ✅ 改为手动触发，先算方向再展示，避免“先下后翻”
+            // ✅ 手动触发
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -776,7 +797,6 @@ export function useTagMenu(
             placement: placementRef.value,
             to: 'body',
             onUpdateShow: (show: boolean) => {
-              // 仅允许通过我们控制；外部变化（如点击外部）也可关闭
               if (!show)
                 showRef.value = false
             },
@@ -790,7 +810,15 @@ export function useTagMenu(
               h('button', {
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
-                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
+                'title': t('tags.more_actions') || '更多操作',
+                // ✅ 放大按钮：固定触控面积 40×40，字号 24px，行高 1，居中
+                'style': [
+                  'background:none;border:none;cursor:pointer;',
+                  'display:inline-flex;align-items:center;justify-content:center;',
+                  'width:35px;height:35px;',
+                  'font-size:30px;line-height:1;font-weight:600;',
+                  'border-radius:10px;opacity:0.95;',
+                ].join(''),
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
                   btnEl = e.currentTarget as HTMLElement
@@ -798,12 +826,17 @@ export function useTagMenu(
                     closeMenu()
                   }
                   else {
-                    // 先计算，只有能完整显示在下方才会放下方，否则翻到上方
                     placementRef.value = computeSmartPlacementStrict(btnEl)
-                    nextTick(openMenu)
+                    nextTick(() => {
+                      openMenu()
+                      // 让焦点留在按钮上，避免内部输入意外抢焦点
+                      requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
+                    })
                   }
                 },
-              }, '⋯'),
+              }, [
+                h('span', { style: 'transform: translateY(-1px); display:inline-block;' }, '⋯'),
+              ]),
           }),
         ]),
       props: { onClick: () => selectTag(tag) },
