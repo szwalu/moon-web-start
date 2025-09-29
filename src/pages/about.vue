@@ -24,8 +24,11 @@ const features = computed(() => {
 
 <template>
   <div class="page-safearea">
-    <!-- 顶部关闭按钮（返回首页） -->
-    <RouterLink to="/" class="close-btn" role="button" aria-label="Close and go home">×</RouterLink>
+    <!-- 页眉：固定在卡片右上角的关闭按钮 -->
+    <div class="about-header">
+      <div class="header-spacer" />
+      <RouterLink to="/" class="close-btn" role="button" aria-label="Close and go home">×</RouterLink>
+    </div>
 
     <div class="about-container">
       <h1 class="title">{{ t('about.title') }}</h1>
@@ -49,20 +52,24 @@ const features = computed(() => {
 <style scoped>
 /* 顶部安全区容器：避免内容顶进刘海区 */
 .page-safearea {
-  /* 旧 iOS: constant() ；新 iOS: env() */
   padding-top: calc(8px + constant(safe-area-inset-top));
   padding-top: calc(8px + env(safe-area-inset-top));
 }
 
-/* 右上角关闭按钮（保证足够大，易点） */
-.close-btn {
-  position: fixed;
-  /* 使用 max() 确保在无刘海设备也有合适内边距 */
-  top: max(10px, constant(safe-area-inset-top));
-  top: max(10px, env(safe-area-inset-top));
-  right: 12px;
-  z-index: 1000;
+/* 页眉：右上角固定在布局里（非悬浮覆盖） */
+.about-header {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* 与 about-container 的左右内边距保持一致，使按钮对齐卡片右侧 */
+}
 
+/* 关闭按钮样式（不使用 position: fixed） */
+.close-btn {
+  display: inline-block;
   width: 44px;
   height: 44px;
   line-height: 44px;
@@ -73,17 +80,16 @@ const features = computed(() => {
   color: #666;
   text-decoration: none;
 
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
-  backdrop-filter: saturate(180%) blur(8px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 .close-btn:active { transform: scale(0.98); }
 @media (prefers-color-scheme: dark) {
   .close-btn {
     color: #ddd;
-    background: rgba(30, 30, 30, 0.9);
+    background: #2a2a2a;
     border-color: rgba(255,255,255,0.08);
   }
 }
@@ -96,7 +102,7 @@ const features = computed(() => {
 
 .about-container {
   max-width: 720px;
-  margin: 4rem auto;
+  margin: 1rem auto 4rem; /* 顶部留一点距离给 header */
   padding: 2.5rem 3rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.8;
@@ -169,47 +175,28 @@ const features = computed(() => {
 
 /* 移动端适配 */
 @media (max-width: 600px) {
+  .about-header { padding: 0 1.5rem; }
   .about-container {
-    margin: 2rem 1rem;
+    margin: 1rem 1rem 2rem;
     padding: 2rem 1.5rem;
     font-size: 17px;
     line-height: 1.5;
   }
-  .title {
-    font-size: 5.5rem;
-  }
-  .thanks {
-    font-size: 3.0rem;
-  }
+  .title { font-size: 5.5rem; }
+  .thanks { font-size: 3.0rem; }
 }
 
 /* 暗黑模式适配 */
 @media (prefers-color-scheme: dark) {
-  :global(body) {
-    background-color: #1a1b1e;
-  }
-
+  :global(body) { background-color: #1a1b1e; }
   .about-container {
     background-color: #2d2d2d;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     color: #c8d6e5;
   }
-
-  .title {
-    color: #ffffff;
-  }
-
-  .features li .icon::before {
-    content: '🌟';
-  }
-
-  .features li:hover {
-    background-color: #3a3a3a;
-  }
-
-  .thanks {
-    border-top-color: #4a4a4a;
-    color: #7a7a7a;
-  }
+  .title { color: #ffffff; }
+  .features li .icon::before { content: '🌟'; }
+  .features li:hover { background-color: #3a3a3a; }
+  .thanks { border-top-color: #4a4a4a; color: #7a7a7a; }
 }
 </style>

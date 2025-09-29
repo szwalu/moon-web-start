@@ -54,17 +54,10 @@ async function handleSubmit() {
     loading.value = false
   }
 }
-
-function handleClose() {
-  window.location.assign('/')
-}
 </script>
 
 <template>
-  <div class="page-frame">
-    <!-- 右上角关闭按钮 -->
-    <button class="close-btn" aria-label="Close" @click="handleClose">×</button>
-
+  <div class="page-safearea">
     <div class="form-container">
       <div class="breadcrumb">{{ t('form.breadcrumb') }}</div>
       <p class="tip">{{ t('form.tip') }}</p>
@@ -91,9 +84,16 @@ function handleClose() {
           <input type="email" name="email">
         </label>
 
-        <button type="submit" :disabled="loading">
-          {{ loading ? '提交中...' : t('form.submit') }}
-        </button>
+        <!-- 提交与返回按钮：5:1 -->
+        <div class="button-row">
+          <button type="submit" :disabled="loading">
+            {{ loading ? '提交中...' : t('form.submit') }}
+          </button>
+
+          <RouterLink to="/" class="btn-back" role="button" aria-label="返回主页">
+            返回
+          </RouterLink>
+        </div>
 
         <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
         <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
@@ -103,43 +103,10 @@ function handleClose() {
 </template>
 
 <style scoped>
-/* ================= 安全区容器（解决全屏模式刘海/状态栏侵入） ================= */
-.page-frame {
-  padding-top: constant(safe-area-inset-top);
-  padding-left: constant(safe-area-inset-left);
-  padding-right: constant(safe-area-inset-right);
-  padding-top: env(safe-area-inset-top);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  position: relative;
-  min-height: 100vh;
-}
-
-/* 右上角关闭按钮 */
-.close-btn {
-  position: fixed;
-  top: calc(constant(safe-area-inset-top) + 8px);
-  top: calc(env(safe-area-inset-top) + 8px);
-  right: calc(env(safe-area-inset-right) + 12px);
-  z-index: 1000;
-  width: 36px;
-  height: 36px;
-  line-height: 36px;
-  text-align: center;
-  border: 1px solid rgba(0,0,0,0.15);
-  border-radius: 10px;
-  background: rgba(255,255,255,0.9);
-  color: #333;
-  cursor: pointer;
-  font-size: 22px;
-  backdrop-filter: saturate(180%) blur(12px);
-}
-@media (prefers-color-scheme: dark) {
-  .close-btn {
-    background: rgba(30,30,30,0.85);
-    color: #eee;
-    border-color: rgba(255,255,255,0.2);
-  }
+/* 顶部安全区容器：避免内容顶进刘海区 */
+.page-safearea {
+  padding-top: calc(8px + constant(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
 }
 
 /* ============== 原样式保持 ============== */
@@ -180,8 +147,7 @@ label {
 
 select,
 textarea,
-input,
-button {
+input {
   font-size: 13px !important;
   font-family: inherit;
   width: 100%;
@@ -201,23 +167,46 @@ textarea {
   margin-right: 4px;
 }
 
-button {
+/* 按钮行：5:1 */
+.button-row {
+  display: grid;
+  grid-template-columns: 5fr 1fr;
+  gap: 0.75rem;
   margin-top: 1rem;
+}
+
+button {
   background-color: #00b386;
   border: none;
   color: white;
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.3s;
+  padding: 0.8rem;
+  font-size: 13px !important;
 }
-
 button[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
 }
-
 button:hover:not([disabled]) {
   background-color: #009f77;
+}
+
+/* 返回按钮视觉为次级 */
+.btn-back {
+  display: inline-block;
+  text-align: center;
+  padding: 0.8rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 13px !important;
+  background: #f0f0f0;
+  color: #333;
+  border: 1px solid #ddd;
+}
+.btn-back:hover {
+  background: #e9e9e9;
 }
 
 .success-message,
@@ -226,31 +215,17 @@ button:hover:not([disabled]) {
   font-weight: bold;
   text-align: center;
 }
-
-.success-message {
-  color: #008800;
-}
-
-.error-message {
-  color: red;
-}
+.success-message { color: #008800; }
+.error-message { color: red; }
 
 @media (max-width: 600px) {
   .form-container {
     padding: 1.25rem;
     font-size: 15px !important;
   }
-
-  .breadcrumb {
-    font-size: 18px !important;
-  }
-
-  select,
-  textarea,
-  input,
-  button {
-    font-size: 15px !important;
-  }
+  .breadcrumb { font-size: 18px !important; }
+  select, textarea, input { font-size: 15px !important; }
+  button, .btn-back { font-size: 15px !important; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -259,30 +234,25 @@ button:hover:not([disabled]) {
     color: #eee;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
   }
-
-  input,
-  textarea,
-  select {
+  input, textarea, select {
     background: #2a2a2a;
     color: #eee;
     border: 1px solid #555;
   }
-
   .breadcrumb {
     background: #333;
     color: #ffec99;
   }
-
-  .tip {
-    color: #ccc;
+  .tip { color: #ccc; }
+  button { background-color: #009f77; }
+  button:hover:not([disabled]) { background-color: #00b386; }
+  .btn-back {
+    background: #2a2a2a;
+    color: #eee;
+    border-color: #555;
   }
-
-  button {
-    background-color: #009f77;
-  }
-
-  button:hover:not([disabled]) {
-    background-color: #00b386;
+  .btn-back:hover {
+    background: #333;
   }
 }
 </style>

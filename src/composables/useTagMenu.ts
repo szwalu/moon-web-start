@@ -691,7 +691,7 @@ export function useTagMenu(
             'onUpdate:value': (v: string) => { tagSearch.value = v },
             'placeholder': placeholderText,
             'clearable': true,
-            'autofocus': true,
+            // 'autofocus': true,
             'size': 'small',
             'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
@@ -758,7 +758,7 @@ export function useTagMenu(
               h('button', {
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
-                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
+                'style': 'background:none;border:none;cursor:pointer;padding:6px 10px;font-size:22px;line-height:1;min-width:36px;min-height:36px;opacity:0.9;border-radius:8px;',
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
                   btnEl = e.currentTarget as HTMLElement

@@ -163,7 +163,7 @@ async function handleLogout() {
 /* 按钮区 */
 .button-group {
   display: grid;
-  grid-template-columns: 5fr 1fr;
+  grid-template-columns: 4fr 1fr;
   gap: 1rem;
   margin-top: 2rem;
 }
