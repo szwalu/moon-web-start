@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import HamburgerButton from './HamburgerButton.vue'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -9,21 +9,15 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+const safeTopStyle = computed(() => {
+  return {
+    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+  }
+})
+
 const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
-
-/** ===== 关键：仍然保留你的 safeTopStyle，用 JS 决定何时叠加 env() ===== */
-const safeTopStyle = ref<{ paddingTop: string }>({ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' })
-const headerWrapRef = ref<HTMLElement | null>(null)
-
-function applyTopPaddingByScrollPos() {
-  // 只要页面不是在“最顶部”，就只保留 8px；在最顶部就叠加安全区高度
-  if (window.scrollY <= 0)
-    safeTopStyle.value = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }
-  else
-    safeTopStyle.value = { paddingTop: '8px' }
-}
 
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
@@ -43,7 +37,11 @@ function detectMobileSafari() {
 }
 
 /**
- * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
+ * - PC：默认打开
+ * - 其它移动端：默认关闭
+ * - iOS Safari：强制关闭
+ * 同时在首帧禁用过渡，mounted 后恢复。
  */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
@@ -58,30 +56,7 @@ if (typeof window !== 'undefined') {
 }
 
 onMounted(() => {
-  // 初始根据滚动位置设置一次（此时通常 scrollY = 0）
-  applyTopPaddingByScrollPos()
-
-  // 滚动时动态切换 safe-area 顶部内边距
-  const onScroll = () => {
-    // 用 rAF 防抖一帧，避免频繁布局
-    requestAnimationFrame(applyTopPaddingByScrollPos)
-  }
-  window.addEventListener('scroll', onScroll, { passive: true })
-
-  // 窗口尺寸变化也要重算一次
-  window.addEventListener('resize', () => requestAnimationFrame(applyTopPaddingByScrollPos), { passive: true })
-
-  // ✅ iOS 关键：键盘/地址栏动画会触发 visualViewport 变化
-  if (isMobileSafari.value && 'visualViewport' in window) {
-    const vv = (window as any).visualViewport as VisualViewport
-    const tick = () => requestAnimationFrame(applyTopPaddingByScrollPos)
-    vv.addEventListener('resize', tick)
-    vv.addEventListener('scroll', tick)
-    onBeforeUnmount(() => {
-      vv.removeEventListener('resize', tick)
-      vv.removeEventListener('scroll', tick)
-    })
-  }
+  window.addEventListener('resize', updateIsMobile, { passive: true })
 
   // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
@@ -90,8 +65,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', applyTopPaddingByScrollPos as any)
-  window.removeEventListener('resize', applyTopPaddingByScrollPos as any)
+  window.removeEventListener('resize', updateIsMobile)
 })
 
 const user = ref<any>(null)
@@ -117,7 +91,10 @@ function getIconClass(routeName: string) {
 async function handleSettingsClick() {
   await manualSaveData()
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   if (session) {
     setTimeout(() => {
       loadRemoteDataOnceAndMergeToLocal()
@@ -129,13 +106,13 @@ async function handleSettingsClick() {
       // $message.warning(t('auth.please_login'))
     }
   }
+
   router.push('/setting')
 }
 </script>
 
 <template>
   <div
-    ref="headerWrapRef"
     class="flex items-center justify-between px-4 lg:px-8 md:px-6"
     :style="safeTopStyle"
   >
@@ -178,7 +155,7 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 仍保留你的首帧过渡禁用 */
+/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
