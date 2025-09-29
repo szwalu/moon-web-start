@@ -736,7 +736,7 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
-            // ✅ 改为手动触发，先算方向再展示，避免“先下后翻”
+            // ✅ 手动触发
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -744,7 +744,6 @@ export function useTagMenu(
             placement: placementRef.value,
             to: 'body',
             onUpdateShow: (show: boolean) => {
-              // 仅允许通过我们控制；外部变化（如点击外部）也可关闭
               if (!show)
                 showRef.value = false
             },
@@ -758,7 +757,15 @@ export function useTagMenu(
               h('button', {
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
-                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
+                'title': t('tags.more_actions') || '更多操作',
+                // ✅ 放大按钮：固定触控面积 40×40，字号 24px，行高 1，居中
+                'style': [
+                  'background:none;border:none;cursor:pointer;',
+                  'display:inline-flex;align-items:center;justify-content:center;',
+                  'width:30px;height:30px;',
+                  'font-size:32px;line-height:1;font-weight:600;',
+                  'border-radius:10px;opacity:0.95;',
+                ].join(''),
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
                   btnEl = e.currentTarget as HTMLElement
@@ -766,12 +773,17 @@ export function useTagMenu(
                     closeMenu()
                   }
                   else {
-                    // 先计算，只有能完整显示在下方才会放下方，否则翻到上方
                     placementRef.value = computeSmartPlacementStrict(btnEl)
-                    nextTick(openMenu)
+                    nextTick(() => {
+                      openMenu()
+                      // 让焦点留在按钮上，避免内部输入意外抢焦点
+                      requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
+                    })
                   }
                 },
-              }, '⋯'),
+              }, [
+                h('span', { style: 'transform: translateY(-1px); display:inline-block;' }, '⋯'),
+              ]),
           }),
         ]),
       props: { onClick: () => selectTag(tag) },

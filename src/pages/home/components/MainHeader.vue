@@ -13,6 +13,18 @@ const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
 
+/** ===== 关键：仍然保留你的 safeTopStyle，用 JS 决定何时叠加 env() ===== */
+const safeTopStyle = ref<{ paddingTop: string }>({ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' })
+const headerWrapRef = ref<HTMLElement | null>(null)
+
+function applyTopPaddingByScrollPos() {
+  // 只要页面不是在“最顶部”，就只保留 8px；在最顶部就叠加安全区高度
+  if (window.scrollY <= 0)
+    safeTopStyle.value = { paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }
+  else
+    safeTopStyle.value = { paddingTop: '8px' }
+}
+
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
 
@@ -30,37 +42,39 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/** 首帧：与原逻辑一致 */
+/**
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”
+ */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
+
   isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
+
   if (isMobileSafari.value)
     settingStore.isSideNavOpen = false
-  else settingStore.isSideNavOpen = !isMobile.value
-}
-
-const headerEl = ref<HTMLElement | null>(null)
-
-/** 计算并写入头部实际高度（用于 spacer 占位），避免“拉大间距” */
-function writeHeaderHeightVar() {
-  const h = headerEl.value?.offsetHeight ?? 56 // 合理缺省
-  document.documentElement.style.setProperty('--header-h', `${h}px`)
+  else
+    settingStore.isSideNavOpen = !isMobile.value
 }
 
 onMounted(() => {
-  window.addEventListener('resize', updateIsMobile, { passive: true })
+  // 初始根据滚动位置设置一次（此时通常 scrollY = 0）
+  applyTopPaddingByScrollPos()
 
-  // 头部渲染后写一次高度；延迟到下一帧更准确
-  requestAnimationFrame(() => {
-    writeHeaderHeightVar()
-    document.documentElement.removeAttribute('data-booting')
-  })
+  // 滚动时动态切换 safe-area 顶部内边距
+  const onScroll = () => {
+    // 用 rAF 防抖一帧，避免频繁布局
+    requestAnimationFrame(applyTopPaddingByScrollPos)
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
 
-  // iOS 键盘/地址栏变化 → 视口变化，重算一次高度更稳妥
+  // 窗口尺寸变化也要重算一次
+  window.addEventListener('resize', () => requestAnimationFrame(applyTopPaddingByScrollPos), { passive: true })
+
+  // ✅ iOS 关键：键盘/地址栏动画会触发 visualViewport 变化
   if (isMobileSafari.value && 'visualViewport' in window) {
     const vv = (window as any).visualViewport as VisualViewport
-    const tick = () => requestAnimationFrame(writeHeaderHeightVar)
+    const tick = () => requestAnimationFrame(applyTopPaddingByScrollPos)
     vv.addEventListener('resize', tick)
     vv.addEventListener('scroll', tick)
     onBeforeUnmount(() => {
@@ -68,10 +82,16 @@ onMounted(() => {
       vv.removeEventListener('scroll', tick)
     })
   }
+
+  // 恢复过渡：放到下一帧，确保首帧渲染完成
+  requestAnimationFrame(() => {
+    document.documentElement.removeAttribute('data-booting')
+  })
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateIsMobile)
+  window.removeEventListener('scroll', applyTopPaddingByScrollPos as any)
+  window.removeEventListener('resize', applyTopPaddingByScrollPos as any)
 })
 
 const user = ref<any>(null)
@@ -114,15 +134,19 @@ async function handleSettingsClick() {
 </script>
 
 <template>
-  <!-- ✅ spacer：只占“头部实际高度 + 刘海安全区”，不额外放大页面间距 -->
-  <div class="header-spacer" aria-hidden="true" />
-
-  <!-- ✅ 头部固定在 safe-area 之下，无论滚动/聚焦都不会进刘海 -->
-  <div ref="headerEl" class="header-fixed flex items-center justify-between px-4 lg:px-8 md:px-6">
+  <div
+    ref="headerWrapRef"
+    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
+    :style="safeTopStyle"
+  >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
-        <img :src="logoPath" alt="Logo" class="w-auto h-32">
+        <img
+          :src="logoPath"
+          alt="Logo"
+          class="w-auto h-32"
+        >
       </RouterLink>
     </div>
 
@@ -154,27 +178,7 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-:root { --sat: env(safe-area-inset-top); }
-
-/* 占位元素：恰好等于头部本体高度 + 刘海安全区 */
-.header-spacer {
-  height: calc(var(--header-h, 56px) + var(--sat));
-}
-
-/* 头部本体：固定在视口 top = 刘海安全区，保留你原来的 8px 视觉内边距 */
-.header-fixed {
-  position: fixed;
-  top: var(--sat);
-  left: 0;
-  right: 0;
-  padding-top: 8px;
-  z-index: 100; /* 高于内容 */
-  background: var(--body-bg, transparent);
-  /* 可选：若顶部有透底闪烁，可给背景色或加一点点模糊 */
-  /* backdrop-filter: saturate(100%) blur(0px); */
-}
-
-/* 首帧过渡禁用：与原逻辑一致 */
+/* 仍保留你的首帧过渡禁用 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
