@@ -9,35 +9,6 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-// --- 修改点：将 isMobile 相关的定义和函数全部移到顶部 ---
-const isMobile = ref(false)
-const isMobileSafari = ref(false)
-let scrollY = 0
-
-function updateIsMobile() {
-  isMobile.value = window.innerWidth <= 768
-}
-
-function handleFocusIn(event: FocusEvent) {
-  const target = event.target as HTMLElement
-  if (isMobile.value && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
-    scrollY = window.scrollY
-    document.body.style.position = 'fixed'
-    document.body.style.width = '100%'
-    document.body.style.top = `-${scrollY}px`
-  }
-}
-
-function handleFocusOut() {
-  if (isMobile.value && document.body.style.position === 'fixed') {
-    document.body.style.position = ''
-    document.body.style.width = ''
-    document.body.style.top = ''
-    window.scrollTo(0, scrollY)
-  }
-}
-// --- 修改点结束 ---
-
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
@@ -48,17 +19,11 @@ const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
 
-// setup 同步阶段的初始化
-if (typeof window !== 'undefined') {
-  document.documentElement.setAttribute('data-booting', '1')
+const isMobile = ref(false)
+const isMobileSafari = ref(false)
 
-  isMobileSafari.value = detectMobileSafari()
-  updateIsMobile()
-
-  if (isMobileSafari.value)
-    settingStore.isSideNavOpen = false
-  else
-    settingStore.isSideNavOpen = !isMobile.value
+function updateIsMobile() {
+  isMobile.value = window.innerWidth <= 768
 }
 
 function detectMobileSafari() {
@@ -71,12 +36,29 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
+/**
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
+ * - PC：默认打开
+ * - 其它移动端：默认关闭
+ * - iOS Safari：强制关闭
+ * 同时在首帧禁用过渡，mounted 后恢复。
+ */
+if (typeof window !== 'undefined') {
+  document.documentElement.setAttribute('data-booting', '1')
+
+  isMobileSafari.value = detectMobileSafari()
+  updateIsMobile()
+
+  if (isMobileSafari.value)
+    settingStore.isSideNavOpen = false
+  else
+    settingStore.isSideNavOpen = !isMobile.value
+}
+
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  document.addEventListener('focusin', handleFocusIn)
-  document.addEventListener('focusout', handleFocusOut)
-
+  // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
@@ -84,12 +66,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
-
-  document.removeEventListener('focusin', handleFocusIn)
-  document.removeEventListener('focusout', handleFocusOut)
-
-  if (document.body.style.position === 'fixed')
-    handleFocusOut()
 })
 
 const user = ref<any>(null)
@@ -108,7 +84,7 @@ onMounted(async () => {
 
 function getIconClass(routeName: string) {
   return {
-    'text-$primary-c opacity-100': route.name === routeName,
+    'text-$primary-c opacity-100': routeName === route.name,
   }
 }
 
