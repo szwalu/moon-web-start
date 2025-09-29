@@ -9,28 +9,35 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-// --- 解决方案核心 ---
-const viewportTopOffset = ref(0)
+// --- 修改点：将 isMobile 相关的定义和函数全部移到顶部 ---
+const isMobile = ref(false)
+const isMobileSafari = ref(false)
+let scrollY = 0
 
-// 1. 创建一个响应式的计算属性来动态生成样式
-const dynamicHeaderStyle = computed(() => {
-  const isOffset = viewportTopOffset.value > 0
-  return {
-    transform: `translateY(${viewportTopOffset.value}px)`,
-    // 2. 关键：当键盘弹出导致视图偏移时，强制禁用所有过渡动画，防止跳动
-    // 当键盘收起恢复原位时，恢复正常的过渡效果
-    transition: isOffset ? 'none' : '',
-  }
-})
-
-// 3. 创建一个处理函数，它只做一件事：更新偏移量状态
-function handleViewportResize() {
-  if (window.visualViewport)
-    viewportTopOffset.value = window.visualViewport.offsetTop
+function updateIsMobile() {
+  isMobile.value = window.innerWidth <= 768
 }
-// --- 解决方案核心结束 ---
 
-// 原始代码部分
+function handleFocusIn(event: FocusEvent) {
+  const target = event.target as HTMLElement
+  if (isMobile.value && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
+    scrollY = window.scrollY
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    document.body.style.top = `-${scrollY}px`
+  }
+}
+
+function handleFocusOut() {
+  if (isMobile.value && document.body.style.position === 'fixed') {
+    document.body.style.position = ''
+    document.body.style.width = ''
+    document.body.style.top = ''
+    window.scrollTo(0, scrollY)
+  }
+}
+// --- 修改点结束 ---
+
 const safeTopStyle = computed(() => {
   return {
     paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
@@ -41,23 +48,7 @@ const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
 
-const isMobile = ref(false)
-const isMobileSafari = ref(false)
-
-function updateIsMobile() {
-  isMobile.value = window.innerWidth <= 768
-}
-
-function detectMobileSafari() {
-  const ua = navigator.userAgent
-  const isiOS
-    = /iP(hone|od|ad)/.test(ua)
-    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
-  const isSafari
-    = /Safari/.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Mercury)/.test(ua)
-  return isiOS && isSafari
-}
-
+// setup 同步阶段的初始化
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
 
@@ -70,12 +61,21 @@ if (typeof window !== 'undefined') {
     settingStore.isSideNavOpen = !isMobile.value
 }
 
+function detectMobileSafari() {
+  const ua = navigator.userAgent
+  const isiOS
+    = /iP(hone|od|ad)/.test(ua)
+    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
+  const isSafari
+    = /Safari/.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Mercury)/.test(ua)
+  return isiOS && isSafari
+}
+
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // 4. 在挂载时，监听 visualViewport 的 resize 事件
-  if (window.visualViewport)
-    window.visualViewport.addEventListener('resize', handleViewportResize)
+  document.addEventListener('focusin', handleFocusIn)
+  document.addEventListener('focusout', handleFocusOut)
 
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
@@ -85,9 +85,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
 
-  // 5. 在卸载时，清理监听器
-  if (window.visualViewport)
-    window.visualViewport.removeEventListener('resize', handleViewportResize)
+  document.removeEventListener('focusin', handleFocusIn)
+  document.removeEventListener('focusout', handleFocusOut)
+
+  if (document.body.style.position === 'fixed')
+    handleFocusOut()
 })
 
 const user = ref<any>(null)
@@ -106,7 +108,7 @@ onMounted(async () => {
 
 function getIconClass(routeName: string) {
   return {
-    'text-$primary-c opacity-100': routeName === route.name,
+    'text-$primary-c opacity-100': route.name === routeName,
   }
 }
 
@@ -136,7 +138,7 @@ async function handleSettingsClick() {
 <template>
   <div
     class="flex items-center justify-between px-4 lg:px-8 md:px-6"
-    :style="[safeTopStyle, dynamicHeaderStyle]"
+    :style="safeTopStyle"
   >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
