@@ -9,7 +9,6 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-// --- 修改点 1：为 header 元素创建一个 ref ---
 const headerRef = ref<HTMLElement | null>(null)
 
 const safeTopStyle = computed(() => {
@@ -23,60 +22,64 @@ const settingStore = useSettingStore()
 const router = useRouter()
 
 const isMobile = ref(false)
-const isMobileSafari = ref(false)
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
 }
 
-function detectMobileSafari() {
-  const ua = navigator.userAgent
-  const isiOS
-    = /iP(hone|od|ad)/.test(ua)
-    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
-  const isSafari
-    = /Safari/.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Mercury)/.test(ua)
-  return isiOS && isSafari
-}
-
+// 原始代码中的 isMobileSafari 和相关逻辑不再需要，可以简化
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
-
-  isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
-
-  if (isMobileSafari.value)
-    settingStore.isSideNavOpen = false
-  else
-    settingStore.isSideNavOpen = !isMobile.value
+  settingStore.isSideNavOpen = !isMobile.value
 }
 
-// --- 修改点 2：新增 visualViewport 解决方案的核心逻辑 ---
+// --- 全新解决方案：开始 ---
+
+let originalScrollY = 0
 
 /**
- * 使用 visualViewport API 平滑处理键盘弹出时的布局位移。
- * 当键盘弹出，浏览器会将布局视口向上推，导致 fixed 的页眉移出屏幕。
- * 我们监听 visualViewport 的变化，获取其偏移量 (offsetTop)，
- * 然后通过 CSS transform 将页眉平移回来，保持其在可见区域的顶部。
- * 这种方法性能高，无闪烁。
+ * 当输入框聚焦时，将页眉从 fixed 切换到 absolute 定位，避免浏览器视口调整带来的跳动。
  */
-function handleViewportChange() {
-  if (headerRef.value && window.visualViewport) {
-    const offsetTop = window.visualViewport.offsetTop
-    // 仅当视口有偏移时（通常是键盘弹出）才应用 transform
-    headerRef.value.style.transform = `translateY(${offsetTop}px)`
+function handleFocusIn(event: FocusEvent) {
+  const target = event.target as HTMLElement
+  if (isMobile.value && headerRef.value && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
+    // 锁定前，先禁用过渡动画，防止切换时闪烁
+    headerRef.value.classList.add('no-transition')
+
+    // 记录当前滚动位置
+    originalScrollY = window.scrollY
+
+    // 切换到 absolute 定位
+    headerRef.value.style.position = 'absolute'
+    headerRef.value.style.top = `${originalScrollY}px`
   }
 }
+
+/**
+ * 当输入框失焦时，将页眉恢复为 fixed 定位。
+ */
+function handleFocusOut() {
+  if (isMobile.value && headerRef.value) {
+    // 恢复 fixed 定位，并清除 top 值
+    headerRef.value.style.position = '' // 恢复为 CSS 文件中定义的样式 (通常是 fixed 或 sticky)
+    headerRef.value.style.top = ''
+
+    // 稍作延迟后恢复过渡效果，确保布局稳定
+    setTimeout(() => {
+      headerRef.value?.classList.remove('no-transition')
+    }, 100)
+  }
+}
+
+// --- 全新解决方案：结束 ---
 
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // --- 修改点 2 (续)：挂载监听器 ---
-  if (window.visualViewport) {
-    // 监听 resize 和 scroll 事件以覆盖所有情况
-    window.visualViewport.addEventListener('resize', handleViewportChange)
-    window.visualViewport.addEventListener('scroll', handleViewportChange)
-  }
+  // --- 挂载新的事件监听器 ---
+  document.addEventListener('focusin', handleFocusIn)
+  document.addEventListener('focusout', handleFocusOut)
 
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
@@ -86,16 +89,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
 
-  // --- 修改点 2 (续)：卸载监听器，防止内存泄漏 ---
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', handleViewportChange)
-    window.visualViewport.removeEventListener('scroll', handleViewportChange)
-  }
+  // --- 卸载新的事件监听器 ---
+  document.removeEventListener('focusin', handleFocusIn)
+  document.removeEventListener('focusout', handleFocusOut)
 })
 
 const user = ref<any>(null)
-// 注意：Vue 3.2+ setup 语法糖中，同一个生命周期钩子可以写多次，它们会依次执行。
-// 所以这里的 onMounted 和上面的 onMounted 都会生效。
 onMounted(() => {
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
@@ -183,7 +182,11 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
+/* 这个 CSS 规则是新方案的关键部分 */
+.no-transition {
+  transition: none !important;
+}
+
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
