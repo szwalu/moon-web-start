@@ -1,45 +1,156 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NCard, NModal, NRadioButton, NRadioGroup, NSpace } from 'naive-ui'
+import { NCard, NModal, NRadioButton, NRadioGroup, NSpace, NSwitch } from 'naive-ui'
 import { type NoteFontSize as FontSize, useSettingStore } from '@/stores/setting.ts'
 
-// 1. props 定义保持不变
-const props = defineProps<{
-  show: boolean
-}>()
+/**
+ * 目标：
+ * - 只改本文件；系统字号仅作用于 Naive UI 的浮层/抽屉/下拉等系统 UI
+ * - 不改 html/body，避免主界面列表与间距被拉大；不影响标题“云笔记”
+ */
 
-// 2. emit 定义改变：我们只需要一个 'close' 事件
-const emit = defineEmits<{
-  (e: 'close'): void
-}>()
+type UiFontSize = 'xs' | 'sm' | 'md' | 'lg'
+const props = defineProps<{ show: boolean }>()
+const emit = defineEmits<{ (e: 'close'): void }>()
+const UI_FONT_KEY = 'ui_font_size'
+const UI_FOLLOW_KEY = 'ui_font_follow'
+
+const uiPxMap: Record<UiFontSize, string> = { xs: '12px', sm: '13px', md: '14px', lg: '15px' }
+
+function readUiFont(): UiFontSize {
+  const v = localStorage.getItem(UI_FONT_KEY)
+  return v === 'xs' || v === 'sm' || v === 'md' || v === 'lg' ? v : 'md'
+}
+function readUiFollow(): boolean {
+  return localStorage.getItem(UI_FOLLOW_KEY) === 'true'
+}
+function writeUiFont(v: UiFontSize) {
+  localStorage.setItem(UI_FONT_KEY, v)
+}
+function writeUiFollow(flag: boolean) {
+  localStorage.setItem(UI_FOLLOW_KEY, String(flag))
+}
+
+/** 仅对浮层/抽屉/下拉/消息等系统 UI 应用字号；不改主文档流 */
+function ensureGlobalUiFontStyle(px: string) {
+  const id = 'ui-font-global'
+  let styleEl = document.getElementById(id) as HTMLStyleElement | null
+  const css = `
+:root { --ui-font: ${px}; }
+
+/* 这些是 Naive UI 的“系统层”容器：抽屉、下拉、气泡、模态、消息、通知、以及 v-binder 的浮层根 */
+.n-drawer,
+.n-dropdown,
+.n-popover,
+.n-popconfirm,
+.n-modal,
+.n-message,
+.n-notification,
+.v-binder-follower {
+  font-size: var(--ui-font) !important;
+}
+
+/* 其内部所有后代继承字号（避免组件内部用 px 锁死） */
+.n-drawer :where(*):not(svg):not(svg *),
+.n-dropdown :where(*):not(svg):not(svg *),
+.n-popover :where(*):not(svg):not(svg *),
+.n-popconfirm :where(*):not(svg):not(svg *),
+.n-modal :where(*):not(svg):not(svg *),
+.n-message :where(*):not(svg):not(svg *),
+.n-notification :where(*):not(svg):not(svg *),
+.v-binder-follower :where(.n-select-menu, .n-date-panel, .n-time-picker, .n-cascader-menu, .n-tree-select-menu, .n-color-picker-panel, .n-mention, .n-auto-complete, .n-transfer) :where(*):not(svg):not(svg *) {
+  font-size: inherit !important;
+}
+
+/* 当菜单/导航出现在“抽屉/下拉/浮层”中时，菜单也随之继承（不会影响主界面顶栏的菜单/标题） */
+.n-drawer .n-menu :where(*):not(svg):not(svg *),
+.n-dropdown .n-menu :where(*):not(svg):not(svg *),
+.n-popover .n-menu :where(*):not(svg):not(svg *) {
+  font-size: inherit !important;
+}
+`.trim()
+
+  if (!styleEl) {
+    styleEl = document.createElement('style')
+    styleEl.id = id
+    styleEl.type = 'text/css'
+    styleEl.appendChild(document.createTextNode(css))
+    document.head.appendChild(styleEl)
+  }
+  else {
+    styleEl.textContent = css
+  }
+}
+
+function mapNoteToUi(noteSize: FontSize): UiFontSize {
+  const map: Record<FontSize, UiFontSize> = {
+    'small': 'sm',
+    'medium': 'md',
+    'large': 'lg',
+    'extra-large': 'lg',
+  }
+  return map[noteSize]
+}
 
 const { t } = useI18n()
 const settingsStore = useSettingStore()
 
-// 3. 核心修改：改造 computed
-//    - get: 依然读取 props.show
-//    - set: 当 Naive UI 的 n-modal 尝试改变值（即关闭时），我们发出 'close' 事件通知父组件
 const isVisible = computed({
   get: () => props.show,
-  set: (value) => {
-    if (!value)
+  set: (v) => {
+    if (!v)
       emit('close')
   },
 })
 
-// 这个部分保持不变
 const selectedFontSize = computed({
   get: () => settingsStore.noteFontSize,
-  set: value => settingsStore.setNoteFontSize(value as FontSize),
+  set: v => settingsStore.setNoteFontSize(v as FontSize),
+})
+
+const uiFontSize = ref<UiFontSize>(readUiFont())
+const uiFontFollowsNote = ref<boolean>(readUiFollow())
+
+onMounted(() => {
+  ensureGlobalUiFontStyle(uiPxMap[uiFontSize.value])
+  if (uiFontFollowsNote.value) {
+    const mapped = mapNoteToUi(settingsStore.noteFontSize)
+    if (mapped !== uiFontSize.value) {
+      uiFontSize.value = mapped
+      writeUiFont(mapped)
+      ensureGlobalUiFontStyle(uiPxMap[mapped])
+    }
+  }
+})
+
+watch(uiFontSize, (v) => {
+  writeUiFont(v)
+  ensureGlobalUiFontStyle(uiPxMap[v])
+})
+
+watch(uiFontFollowsNote, (flag) => {
+  writeUiFollow(flag)
+  if (flag) {
+    const mapped = mapNoteToUi(settingsStore.noteFontSize)
+    uiFontSize.value = mapped
+  }
+})
+
+watch(() => settingsStore.noteFontSize, (noteSize) => {
+  if (!uiFontFollowsNote.value)
+    return
+  const mapped = mapNoteToUi(noteSize)
+  if (mapped !== uiFontSize.value)
+    uiFontSize.value = mapped
 })
 </script>
 
 <template>
   <NModal v-model:show="isVisible">
     <NCard
-      style="width: 400px"
-      :title="t('settings.font_title')"
+      style="width: 420px"
+      :title="t('settings.font_title', '字号设置')"
       :bordered="false"
       size="huge"
       role="dialog"
@@ -49,48 +160,101 @@ const selectedFontSize = computed({
         <button class="close-btn" @click="emit('close')">&times;</button>
       </template>
 
-      <NSpace vertical>
-        <label>{{ t('settings.font_size_label', '字号大小') }}</label>
-        <NRadioGroup v-model:value="selectedFontSize" name="font-size-group">
-          <NRadioButton value="small">
-            {{ t('settings.font_size_small', '小') }}
-          </NRadioButton>
-          <NRadioButton value="medium">
-            {{ t('settings.font_size_medium', '中') }}
-          </NRadioButton>
-          <NRadioButton value="large">
-            {{ t('settings.font_size_large', '大') }}
-          </NRadioButton>
-          <NRadioButton value="extra-large">
-            {{ t('settings.font_size_extra_large', '特大') }}
-          </NRadioButton>
-        </NRadioGroup>
+      <NSpace vertical size="large">
+        <!-- 内容字号（编辑器/列表/正文） -->
+        <section>
+          <label class="group-label">
+            {{ t('settings.font_size_label', '内容字号（笔记编辑与列表）') }}
+          </label>
+          <NRadioGroup v-model:value="selectedFontSize" name="note-font-size-group">
+            <NRadioButton value="small">
+              {{ t('settings.font_size_small', '小') }}
+            </NRadioButton>
+            <NRadioButton value="medium">
+              {{ t('settings.font_size_medium', '中') }}
+            </NRadioButton>
+            <NRadioButton value="large">
+              {{ t('settings.font_size_large', '大') }}
+            </NRadioButton>
+            <NRadioButton value="extra-large">
+              {{ t('settings.font_size_extra_large', '特大') }}
+            </NRadioButton>
+          </NRadioGroup>
+        </section>
+
+        <!-- 系统字号（界面 UI） -->
+        <section>
+          <div class="row">
+            <label class="group-label">
+              {{ t('settings.ui_font_title', '系统字号（界面控件）') }}
+            </label>
+            <div class="follow">
+              <span class="follow-text">
+                {{ t('settings.ui_font_follow_note', '跟随内容字号') }}
+              </span>
+              <NSwitch v-model:value="uiFontFollowsNote" />
+            </div>
+          </div>
+
+          <NRadioGroup
+            v-model:value="uiFontSize"
+            name="ui-font-size-group"
+            :disabled="uiFontFollowsNote"
+          >
+            <NRadioButton value="xs">
+              {{ t('settings.ui_font_xs', '极小') }}
+            </NRadioButton>
+            <NRadioButton value="sm">
+              {{ t('settings.ui_font_sm', '偏小') }}
+            </NRadioButton>
+            <NRadioButton value="md">
+              {{ t('settings.ui_font_md', '适中') }}
+            </NRadioButton>
+            <NRadioButton value="lg">
+              {{ t('settings.ui_font_lg', '偏大') }}
+            </NRadioButton>
+          </NRadioGroup>
+
+          <p class="hint">
+            {{ t('settings.ui_font_hint', '提示：系统字号影响抽屉、下拉、弹窗、消息等界面元素；开启“跟随”后将根据内容字号自动选择合适的系统字号。') }}
+          </p>
+        </section>
       </NSpace>
     </NCard>
   </NModal>
 </template>
 
 <style scoped>
-.n-card {
-  border-radius: 8px;
-}
+.n-card { border-radius: 8px; }
 
-.n-card {
-  border-radius: 8px;
-}
-
-/* --- 新增这段样式 --- */
+/* 关闭按钮 */
 .close-btn {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 28px !important;
   cursor: pointer;
   color: #888;
   padding: 0;
   line-height: 1;
   transition: color 0.2s;
 }
-.close-btn:hover {
-  color: #333;
+.close-btn:hover { color: #333; }
+
+.group-label {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-weight: 600;
 }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.follow { display: inline-flex; align-items: center; gap: 8px; }
+.follow-text { opacity: 0.8; font-size: 13px; }
+
+.hint { margin-top: 10px; font-size: 12px; opacity: 0.7; }
 </style>
