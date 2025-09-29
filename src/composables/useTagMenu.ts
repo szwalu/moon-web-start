@@ -414,8 +414,13 @@ export function useTagMenu(
   }
 
   watch(mainMenuVisible, (show) => {
-    if (show)
+    if (show) {
       onMainMenuOpen().catch(() => {})
+      nextTick(() => {
+        const el = document.querySelector('.tag-search-row input') as HTMLInputElement | null
+        el?.blur()
+      })
+    }
   })
 
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
@@ -691,10 +696,20 @@ export function useTagMenu(
             'onUpdate:value': (v: string) => { tagSearch.value = v },
             'placeholder': placeholderText,
             'clearable': true,
-            // 'autofocus': true,
+            // 'autofocus': true,   // ← 已删除
             'size': 'small',
             'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+
+            // ✅ 新增：挂载后立刻 blur，防止抢焦点
+            'onVnodeMounted': (vnode: any) => {
+              const el = vnode?.el?.querySelector?.('input,textarea') as HTMLInputElement | null
+              if (el)
+                queueMicrotask(() => el.blur())
+            },
+
+            // ✅ 新增：让它不在 Tab 顺序里，也不作为初始焦点
+            'inputProps': { tabindex: -1 },
           }),
         ]),
     }
