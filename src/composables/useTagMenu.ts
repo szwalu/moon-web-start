@@ -21,6 +21,7 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const vw = window.innerWidth
   const vh = window.innerHeight
 
+  // 经验尺寸：你的菜单含搜索、分组，通常较高，这里采用“必须完整容纳”的严格阈值
   const MENU_W = 300
   const MENU_H = Math.min(400, Math.floor(vh * 0.7))
   const MARGIN = 8
@@ -30,25 +31,37 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const spaceRight = vw - rect.right - MARGIN
   const spaceLeft = rect.left - MARGIN
 
+  // 垂直方向：优先能完整容纳的一侧；都不能完整容纳则选空间更大的一侧
   let vertical: 'top' | 'bottom'
-  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
+  if (spaceBelow >= MENU_H && spaceAbove >= MENU_H) {
+    // 两边都够时，默认优先下方
     vertical = 'bottom'
-  else if (spaceBelow >= MENU_H)
+  }
+  else if (spaceBelow >= MENU_H) {
     vertical = 'bottom'
-  else if (spaceAbove >= MENU_H)
+  }
+  else if (spaceAbove >= MENU_H) {
     vertical = 'top'
-  else
+  }
+  else {
     vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
+  }
 
+  // 水平方向：同理，只有完整容纳才选该侧；都不够则选空间更大的一侧
   let horizontal: 'start' | 'end'
-  if (spaceRight >= MENU_W && spaceLeft >= MENU_W)
+  if (spaceRight >= MENU_W && spaceLeft >= MENU_W) {
+    // 两边都够，默认优先 end（右侧）
     horizontal = 'end'
-  else if (spaceRight >= MENU_W)
+  }
+  else if (spaceRight >= MENU_W) {
     horizontal = 'end'
-  else if (spaceLeft >= MENU_W)
+  }
+  else if (spaceLeft >= MENU_W) {
     horizontal = 'start'
-  else
+  }
+  else {
     horizontal = spaceRight >= spaceLeft ? 'end' : 'start'
+  }
 
   return `${vertical}-${horizontal}` as SmartPlacement
 }
@@ -315,22 +328,6 @@ export function useTagMenu(
     }
   })
 
-  async function onMainMenuOpen() {
-    const uid = await getUserId()
-    if (!uid)
-      return
-    hydrateCountsFromLocal(uid)
-    refreshTagCountsFromServer(true).catch(() => {})
-  }
-
-  watch(mainMenuVisible, (show) => {
-    if (show)
-      onMainMenuOpen().catch(() => {})
-
-    else
-      tagSearch.value = ''
-  })
-
   async function savePinned() {
     localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
     await savePinnedToAuth(pinnedTags.value)
@@ -407,6 +404,19 @@ export function useTagMenu(
         localStorage.removeItem(key)
     }
   }
+
+  async function onMainMenuOpen() {
+    const uid = await getUserId()
+    if (!uid)
+      return
+    hydrateCountsFromLocal(uid)
+    refreshTagCountsFromServer(true).catch(() => {})
+  }
+
+  watch(mainMenuVisible, (show) => {
+    if (show)
+      onMainMenuOpen().catch(() => {})
+  })
 
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     if (action === 'pin') {
@@ -670,101 +680,32 @@ export function useTagMenu(
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
-
-    const placeholderText
-      = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
-
+    const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
       render: () =>
-        h(
-          'div',
-          {
-            // 让容器不阻挡下方元素的点击
-            style: 'padding: 0 10px;',
-          },
-          [
-            h(
-              'button',
-              {
-                style: 'font-size: 14px; width: 100%; text-align: left; height: 28px; border: 1px solid var(--n-border-color, #ccc); border-radius: 3px; padding: 0 7px; color: var(--n-placeholder-color, #aaa); background: var(--n-color, #fff); cursor: pointer; box-sizing: border-box;',
-                onClick: (e: MouseEvent) => {
-                  e.stopPropagation() // 阻止Dropdown关闭
-                  mainMenuVisible.value = false // 手动先关闭主菜单
-
-                  // 延迟打开搜索对话框，避免冲突
-                  setTimeout(() => {
-                    const d = dialog.create({
-                      title: placeholderText,
-                      showIcon: false,
-                      content: () => h(NInput, {
-                        'value': tagSearch.value,
-                        'onUpdate:value': (v: string) => (tagSearch.value = v),
-                        'autofocus': true,
-                        'placeholder': placeholderText,
-                        'clearable': true,
-                      }),
-                      positiveText: t('auth.confirm', '确定'),
-                      negativeText: t('auth.cancel', '取消'),
-                      onPositiveClick: () => {
-                        // 在这里可以处理搜索逻辑，但由于列表已过滤，关闭即可
-                        d.destroy()
-                        // 重新打开主菜单以显示过滤结果
-                        nextTick(() => {
-                          mainMenuVisible.value = true
-                        })
-                      },
-                      onNegativeClick: () => {
-                        // 如果取消，清空搜索词并重新打开主菜单
-                        tagSearch.value = ''
-                        d.destroy()
-                        nextTick(() => {
-                          mainMenuVisible.value = true
-                        })
-                      },
-                      onClose: () => {
-                        // 点击遮罩或关闭按钮时，也重新打开主菜单
-                        if (mainMenuVisible.value === false) {
-                          nextTick(() => {
-                            mainMenuVisible.value = true
-                          })
-                        }
-                      },
-                    })
-                  }, 100)
-                },
-              },
-              tagSearch.value || placeholderText,
-            ),
-          ],
-        ),
+        h('div', { class: 'tag-search-row' }, [
+          h(NInput, {
+            'value': tagSearch.value,
+            'onUpdate:value': (v: string) => { tagSearch.value = v },
+            'placeholder': placeholderText,
+            'clearable': true,
+            'autofocus': true,
+            'size': 'small',
+            'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
+            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
+          }),
+        ]),
     }
-
     const pinnedChildren = pinnedTags.value
       .filter(tag => filteredTags.value.includes(tag))
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
       .map(tag => makeTagRow(tag))
-
-    const pinnedGroup
-      = pinnedChildren.length > 0
-        ? [{
-            type: 'group' as const,
-            key: 'pinned-group',
-            label: `⭐ ${t('notes.favorites') || '常用'}`,
-            children: pinnedChildren,
-          }]
-        : []
-
+    const pinnedGroup = pinnedChildren.length > 0 ? [{ type: 'group' as const, key: 'pinned-group', label: `⭐ ${t('notes.favorites') || '常用'}`, children: pinnedChildren }] : []
     const letterGroups = groupedTags.value
       .filter(({ tags }) => tags.length > 0)
-      .map(({ letter, tags }) => ({
-        type: 'group' as const,
-        key: `grp-${letter}`,
-        label: letter,
-        children: tags.map(tag => makeTagRow(tag)),
-      }))
-
+      .map(({ letter, tags }) => ({ type: 'group' as const, key: `grp-${letter}`, label: letter, children: tags.map(tag => makeTagRow(tag)) }))
     return [searchOption, ...pinnedGroup, ...letterGroups]
   })
 
@@ -775,6 +716,7 @@ export function useTagMenu(
     const left = `${icon} ${displayName}`
     const display = count > 0 ? `${left}（${count}）` : left
 
+    // —— 每行“更多”菜单的严格方向与手动触发 —— //
     const placementRef = ref<SmartPlacement>('top-start')
     const showRef = ref(false)
     let btnEl: HTMLElement | null = null
@@ -794,6 +736,7 @@ export function useTagMenu(
           h('span', { class: 'tag-text', style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', title: display }, display),
           h(NDropdown, {
             options: getRowMenuOptions(tag),
+            // ✅ 改为手动触发，先算方向再展示，避免“先下后翻”
             trigger: 'manual',
             show: showRef.value,
             showArrow: false,
@@ -801,6 +744,7 @@ export function useTagMenu(
             placement: placementRef.value,
             to: 'body',
             onUpdateShow: (show: boolean) => {
+              // 仅允许通过我们控制；外部变化（如点击外部）也可关闭
               if (!show)
                 showRef.value = false
             },
@@ -814,14 +758,7 @@ export function useTagMenu(
               h('button', {
                 'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
-                'title': t('tags.more_actions') || '更多操作',
-                'style': [
-                  'background:none;border:none;cursor:pointer;',
-                  'display:inline-flex;align-items:center;justify-content:center;',
-                  'width:35px;height:35px;',
-                  'font-size:30px;line-height:1;font-weight:600;',
-                  'border-radius:10px;opacity:0.95;',
-                ].join(''),
+                'style': 'background:none;border:none;cursor:pointer;padding:2px 6px;font-size:18px;opacity:0.9;',
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
                   btnEl = e.currentTarget as HTMLElement
@@ -829,16 +766,12 @@ export function useTagMenu(
                     closeMenu()
                   }
                   else {
+                    // 先计算，只有能完整显示在下方才会放下方，否则翻到上方
                     placementRef.value = computeSmartPlacementStrict(btnEl)
-                    nextTick(() => {
-                      openMenu()
-                      requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
-                    })
+                    nextTick(openMenu)
                   }
                 },
-              }, [
-                h('span', { style: 'transform: translateY(-1px); display:inline-block;' }, '⋯'),
-              ]),
+              }, '⋯'),
           }),
         ]),
       props: { onClick: () => selectTag(tag) },

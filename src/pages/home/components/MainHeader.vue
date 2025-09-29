@@ -30,26 +30,44 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/** 与原逻辑一致：首帧防抖、侧栏默认状态 */
+/** 首帧：与原逻辑一致 */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
-
   isMobileSafari.value = detectMobileSafari()
   updateIsMobile()
-
   if (isMobileSafari.value)
     settingStore.isSideNavOpen = false
-  else
-    settingStore.isSideNavOpen = !isMobile.value
+  else settingStore.isSideNavOpen = !isMobile.value
+}
+
+const headerEl = ref<HTMLElement | null>(null)
+
+/** 计算并写入头部实际高度（用于 spacer 占位），避免“拉大间距” */
+function writeHeaderHeightVar() {
+  const h = headerEl.value?.offsetHeight ?? 56 // 合理缺省
+  document.documentElement.style.setProperty('--header-h', `${h}px`)
 }
 
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // 恢复过渡
+  // 头部渲染后写一次高度；延迟到下一帧更准确
   requestAnimationFrame(() => {
+    writeHeaderHeightVar()
     document.documentElement.removeAttribute('data-booting')
   })
+
+  // iOS 键盘/地址栏变化 → 视口变化，重算一次高度更稳妥
+  if (isMobileSafari.value && 'visualViewport' in window) {
+    const vv = (window as any).visualViewport as VisualViewport
+    const tick = () => requestAnimationFrame(writeHeaderHeightVar)
+    vv.addEventListener('resize', tick)
+    vv.addEventListener('scroll', tick)
+    onBeforeUnmount(() => {
+      vv.removeEventListener('resize', tick)
+      vv.removeEventListener('scroll', tick)
+    })
+  }
 })
 
 onBeforeUnmount(() => {
@@ -96,8 +114,11 @@ async function handleSettingsClick() {
 </script>
 
 <template>
-  <!-- 头部容器：不再用 :style 绑定 env()，保持结构不变 -->
-  <div class="header-wrap flex items-center justify-between px-4 lg:px-8 md:px-6">
+  <!-- ✅ spacer：只占“头部实际高度 + 刘海安全区”，不额外放大页面间距 -->
+  <div class="header-spacer" aria-hidden="true" />
+
+  <!-- ✅ 头部固定在 safe-area 之下，无论滚动/聚焦都不会进刘海 -->
+  <div ref="headerEl" class="header-fixed flex items-center justify-between px-4 lg:px-8 md:px-6">
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
       <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
@@ -133,22 +154,27 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* ✅ 把“让出刘海安全区”的职责交给 body（全局），可靠且不受输入法影响 */
-:global(body) {
-  /* iOS 刘海：仅在有安全区时生效；无刘海设备等于 0px，不会增加额外间距 */
-  padding-top: env(safe-area-inset-top);
+:root { --sat: env(safe-area-inset-top); }
+
+/* 占位元素：恰好等于头部本体高度 + 刘海安全区 */
+.header-spacer {
+  height: calc(var(--header-h, 56px) + var(--sat));
 }
 
-/* 头部保留你原本的 8px 视觉内边距；使用 sticky 贴顶，避免被滚动顶进刘海 */
-.header-wrap {
-  position: sticky;
-  top: 0;
+/* 头部本体：固定在视口 top = 刘海安全区，保留你原来的 8px 视觉内边距 */
+.header-fixed {
+  position: fixed;
+  top: var(--sat);
+  left: 0;
+  right: 0;
   padding-top: 8px;
-  z-index: 60;
+  z-index: 100; /* 高于内容 */
   background: var(--body-bg, transparent);
+  /* 可选：若顶部有透底闪烁，可给背景色或加一点点模糊 */
+  /* backdrop-filter: saturate(100%) blur(0px); */
 }
 
-/* 与原来一致：首帧过渡禁用 */
+/* 首帧过渡禁用：与原逻辑一致 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
