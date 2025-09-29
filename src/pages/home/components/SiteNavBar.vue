@@ -9,7 +9,7 @@ import { useSettingStore } from '@/stores/setting'
 import { useModalStore } from '@/stores/modal'
 import { useSiteStore } from '@/stores/site'
 
-// 增加登陆按钮
+// 增加登陆按钮。
 import { supabase } from '@/utils/supabaseClient'
 
 const modalStore = useModalStore()
