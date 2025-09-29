@@ -15,6 +15,18 @@ import App from './App.vue'
 import router from './router'
 import { setupI18n } from './utils'
 
+// 修正 iOS PWA 视口高度，消除底部“白条”
+(function fixAppVh() {
+  const setVH = () => {
+    const vh = (window.visualViewport?.height ?? window.innerHeight) * 0.01
+    document.documentElement.style.setProperty('--app-vh', `${vh}px`)
+  }
+  setVH()
+  window.visualViewport?.addEventListener('resize', setVH)
+  window.addEventListener('orientationchange', setVH)
+  window.addEventListener('resize', setVH)
+})();
+
 // ========== 全局兜底：懒加载分包失效时自动刷新 ==========
 (function installChunkFailGuard() {
   let reloading = false
