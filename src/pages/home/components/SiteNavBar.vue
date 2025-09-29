@@ -8,7 +8,6 @@ import { useSettingStore } from '@/stores/setting'
 // 这些路径按你项目实际，如不同请改回原路径
 import { useModalStore } from '@/stores/modal'
 import { useSiteStore } from '@/stores/site'
-import { useDrag } from '@/composables/useDrag'
 
 // 增加登陆按钮
 import { supabase } from '@/utils/supabaseClient'
@@ -18,8 +17,6 @@ const siteStore = useSiteStore()
 const route = useRoute()
 const settingStore = useSettingStore()
 
-const { draggableOptions, handleStart, handleEnd } = useDrag()
-
 const activeSubMenuIndex = ref(-1)
 const isMobile = ref(false)
 
@@ -27,6 +24,22 @@ const isMobile = ref(false)
 function closeSideNav() {
   activeSubMenuIndex.value = -1
   settingStore.isSideNavOpen = false
+}
+
+/** ✅ 本地内置：拖拽选项与钩子（替代 useDrag 以便先通过构建） */
+const draggableOptions = {
+  animation: 200,
+  delay: 0,
+  forceFallback: true,
+  ghostClass: 'dragging',
+  chosenClass: 'drag-chosen',
+  dragClass: 'drag-dragging',
+}
+function handleStart() {
+  // 需要的话在这里加：document.body.classList.add('dragging');
+}
+function handleEnd() {
+  // 需要的话在这里加：document.body.classList.remove('dragging');
 }
 
 onMounted(() => {
@@ -289,7 +302,6 @@ onMounted(() => {
   object-fit: contain;
 }
 .nav {
-  /* 移除了 flex-grow，让它只占据内容所需高度 */
   &::-webkit-scrollbar {
     display: none;
   }
@@ -329,8 +341,6 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
 }
-.sub-nav-container-vertical {
-}
 .sub-nav-item-vertical {
   padding: 5px 6px;
   font-size: 0.9em;
@@ -341,7 +351,6 @@ onMounted(() => {
   text-align: center;
   display: block;
   width: 100%;
-
   &:hover {
     background-color: rgba(var(--primary-c-rgb), 0.08);
     color: var(--primary-c);
