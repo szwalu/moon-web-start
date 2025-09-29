@@ -30,9 +30,7 @@ function detectMobileSafari() {
   return isiOS && isSafari
 }
 
-/**
- * 首帧：与原逻辑一致，避免“先开再关”的过渡抖动
- */
+/** 与原逻辑一致：首帧防抖、侧栏默认状态 */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
 
@@ -48,26 +46,7 @@ if (typeof window !== 'undefined') {
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // ✅ 关键：iOS 键盘弹出/收起会改 visualViewport，触发一次“轻触重绘”
-  if (isMobileSafari.value && 'visualViewport' in window) {
-    const vv = (window as any).visualViewport as VisualViewport
-    const tick = () => {
-      // 通过切换类名触发样式重计算，确保 env(safe-area-*) 与 sticky 重新生效
-      document.documentElement.classList.toggle('vv-tick')
-      requestAnimationFrame(() => {
-        document.documentElement.classList.toggle('vv-tick')
-      })
-    }
-    vv.addEventListener('resize', tick)
-    vv.addEventListener('scroll', tick)
-    // 卸载时清理
-    onBeforeUnmount(() => {
-      vv.removeEventListener('resize', tick)
-      vv.removeEventListener('scroll', tick)
-    })
-  }
-
-  // 恢复过渡：放到下一帧，确保首帧渲染完成
+  // 恢复过渡
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
@@ -117,10 +96,7 @@ async function handleSettingsClick() {
 </script>
 
 <template>
-  <!-- ✅ 安全区垫片：只占用刘海安全区的高度，不会增加你要求之外的间距 -->
-  <div class="ios-safe-top" />
-
-  <!-- ✅ 头部本体：sticky 固定在文档顶部，不随页面滚动被“塞进”刘海 -->
+  <!-- 头部容器：不再用 :style 绑定 env()，保持结构不变 -->
   <div class="header-wrap flex items-center justify-between px-4 lg:px-8 md:px-6">
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
@@ -157,37 +133,24 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* ---------- 刘海安全区 & 头部定位 ---------- */
-/* iOS Safari 动态 env() → 放到 CSS，而不是内联样式，提升刷新可靠性 */
-:root { --sat: env(safe-area-inset-top); }
-
-/* 顶部“安全区垫片”：高度=刘海安全区；sticky 保证始终贴顶且参与文档流 */
-.ios-safe-top {
-  position: sticky;
-  top: 0;
-  height: var(--sat);
-  /* 让垫片具备背景，避免地址栏收起时露出“刘海下的页面内容”闪一下 */
-  background: var(--body-bg, transparent);
-  z-index: 50;
-  pointer-events: none; /* 不影响点击 */
+/* ✅ 把“让出刘海安全区”的职责交给 body（全局），可靠且不受输入法影响 */
+:global(body) {
+  /* iOS 刘海：仅在有安全区时生效；无刘海设备等于 0px，不会增加额外间距 */
+  padding-top: env(safe-area-inset-top);
 }
 
-/* 头部本体：只做常规 8px 顶内边距，不再直接使用 env() */
+/* 头部保留你原本的 8px 视觉内边距；使用 sticky 贴顶，避免被滚动顶进刘海 */
 .header-wrap {
   position: sticky;
-  top: 0;               /* 贴合垫片下边缘 */
-  padding-top: 8px;     /* 你之前的 8px 视觉间距 */
-  z-index: 60;          /* 在垫片之上 */
-  background: var(--body-bg, transparent); /* 收起地址栏时避免透底 */
-  backdrop-filter: saturate(100%) blur(0px); /* 可留空，仅保证合成层 */
+  top: 0;
+  padding-top: 8px;
+  z-index: 60;
+  background: var(--body-bg, transparent);
 }
 
-/* 首帧过渡禁用：与原逻辑一致 */
+/* 与原来一致：首帧过渡禁用 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
 }
-
-/* 轻触重绘时不给任何视觉变化，仅作为触发器 */
-:global(html.vv-tick) {}
 </style>
