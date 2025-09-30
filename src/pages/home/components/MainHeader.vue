@@ -59,6 +59,11 @@ if (typeof window !== 'undefined') {
 const _user = ref<any>(null)
 const logoPath = ref('/logow.jpg')
 
+// 记录并解绑 visualViewport 监听
+let _vvResize: (() => void) | null = null
+let _vvScroll: (() => void) | null = null
+let _vvRaf = 0
+
 onMounted(async () => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
@@ -77,21 +82,45 @@ onMounted(async () => {
   if (session)
     logoPath.value = '/logo.jpg'
 
-  // —— 视觉视口兜底：在键盘/旋转等场景维护 --vk-offset-top ——
+  // —— 视觉视口兜底：仅在“键盘明显出现”时更新 --vk-offset-top，避免滚动抖动 ——
   if ('visualViewport' in window) {
     const vv = window.visualViewport!
-    const updateVv = () => {
-      const off = Math.max(vv.offsetTop || 0, 0)
-      document.documentElement.style.setProperty('--vk-offset-top', `${off}px`)
+
+    const scheduleUpdate = () => {
+      if (_vvRaf)
+        cancelAnimationFrame(_vvRaf)
+      _vvRaf = requestAnimationFrame(() => {
+        // “键盘明显出现”的判定：可视高度比窗口高度小很多（留一定冗余）
+        const keyboardLikely
+          = vv.height < window.innerHeight * 0.92
+          || (window.innerHeight - vv.height) > 80
+
+        const off = keyboardLikely ? Math.max(vv.offsetTop || 0, 0) : 0
+        document.documentElement.style.setProperty('--vk-offset-top', `${off}px`)
+      })
     }
-    vv.addEventListener('resize', updateVv, { passive: true })
-    vv.addEventListener('scroll', updateVv, { passive: true })
-    updateVv()
+
+    _vvResize = () => scheduleUpdate()
+    _vvScroll = () => scheduleUpdate()
+
+    vv.addEventListener('resize', _vvResize, { passive: true })
+    vv.addEventListener('scroll', _vvScroll, { passive: true })
+    scheduleUpdate()
   }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
+
+  if ('visualViewport' in window) {
+    const vv = window.visualViewport as any
+    if (_vvResize)
+      vv.removeEventListener('resize', _vvResize)
+    if (_vvScroll)
+      vv.removeEventListener('scroll', _vvScroll)
+    if (_vvRaf)
+      cancelAnimationFrame(_vvRaf)
+  }
 })
 
 function getIconClass(routeName: string) {
@@ -172,13 +201,22 @@ async function handleSettingsClick() {
   position: sticky;
   top: 0; /* 关键：贴在视口顶部，不再把 env() 用于 top */
   z-index: 50;
-  background: var(--bg, #fff); /* 不透明背景避免视觉穿透刘海 */
-  will-change: padding-top;     /* 我们动态改变的是 padding-top */
+  background: var(--bg, #fff);      /* 不透明背景避免视觉穿透刘海 */
+  will-change: padding-top;         /* 我们动态改变的是 padding-top */
+  overflow-anchor: none;            /* 防止滚动锚点导致的跳动 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  contain: paint;                   /* 轻量的合成层，有助于稳定渲染 */
 }
 
 /* 暗黑模式下给 header 一个接近不透明的深色背景 */
 :global(html.dark) .app-header {
   background: rgba(24, 24, 28, 0.98);
+}
+
+/* 可选：抑制 iOS 顶部橡皮筋回弹对下层的连带影响（仅页面层面，安全） */
+:global(body) {
+  overscroll-behavior-y: contain;
 }
 
 /* 首帧禁用过渡：你原有逻辑保留 */
