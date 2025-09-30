@@ -9,10 +9,10 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
-// 视觉内边距独立处理，避免键盘期 env() 变 0 牵连布局
+// 通过 padding-top“让开”刘海与键盘偏移：env(safe-area) + --vk-offset-top + 8px 视觉留白
 const safeTopStyle = computed(() => {
   return {
-    paddingTop: '8px',
+    paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--vk-offset-top, 0px) + 8px)',
   }
 })
 
@@ -56,7 +56,7 @@ if (typeof window !== 'undefined') {
     settingStore.isSideNavOpen = !isMobile.value
 }
 
-const user = ref<any>(null)
+const _user = ref<any>(null)
 const logoPath = ref('/logow.jpg')
 
 onMounted(async () => {
@@ -69,7 +69,7 @@ onMounted(async () => {
 
   // 监听登录状态
   supabase.auth.onAuthStateChange((_event, session) => {
-    user.value = session?.user ?? null
+    _user.value = session?.user ?? null
   })
 
   // 根据会话切换 Logo
@@ -77,7 +77,7 @@ onMounted(async () => {
   if (session)
     logoPath.value = '/logo.jpg'
 
-  // —— 视觉视口兜底：在键盘/旋转等场景确保 top 计算稳定 ——
+  // —— 视觉视口兜底：在键盘/旋转等场景维护 --vk-offset-top ——
   if ('visualViewport' in window) {
     const vv = window.visualViewport!
     const updateVv = () => {
@@ -167,20 +167,16 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 让页眉粘在安全区下沿，避免被顶进刘海；顺序：constant() 兜底 -> env() -> 叠加可视视口偏移 */
+/* Header 固定贴顶，由 padding-top 让出安全区与键盘偏移 */
 .app-header {
   position: sticky;
-  top: constant(safe-area-inset-top, 0px);
-  top: env(safe-area-inset-top, 0px);
-  top: calc(env(safe-area-inset-top, 0px) + var(--vk-offset-top, 0px));
+  top: 0; /* 关键：贴在视口顶部，不再把 env() 用于 top */
   z-index: 50;
-  /* 背景保持不透明，避免“看见”刘海下层内容造成视觉误判 */
-  background: var(--bg, #fff);
-  /* 减少 iOS 粘滞重绘抖动 */
-  will-change: top;
+  background: var(--bg, #fff); /* 不透明背景避免视觉穿透刘海 */
+  will-change: padding-top;     /* 我们动态改变的是 padding-top */
 }
 
-/* 暗黑模式下，给 header 一个接近不透明的深色背景 */
+/* 暗黑模式下给 header 一个接近不透明的深色背景 */
 :global(html.dark) .app-header {
   background: rgba(24, 24, 28, 0.98);
 }
