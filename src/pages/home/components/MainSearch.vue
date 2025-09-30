@@ -27,7 +27,7 @@ watch(() => settingStore.settings.search, (val) => {
 }, { immediate: true })
 
 // 动态计算固定定位时的样式，基于父容器居中
-const fixedStyle = computed(() => {
+const _fixedStyle = computed(() => {
   if (!isSticky.value)
     return {}
   const left = parentLeft.value + (parentWidth.value / 2)
@@ -40,7 +40,7 @@ const fixedStyle = computed(() => {
 })
 
 // 防抖处理滚动事件
-const handleScroll = debounce(() => {
+const _handleScroll = debounce(() => {
   if (searchBarRef.value) {
     const headerElement = document.querySelector('[sticky]') || document.querySelector('.header-left')?.parentElement
     const parentElement = searchBarRef.value.parentElement || document.body
@@ -264,21 +264,17 @@ const { iconStyle } = useIconStyle()
 
 onMounted(() => {
   window.addEventListener('keydown', handleFocusShortcut)
-  window.addEventListener('scroll', handleScroll)
   if (searchBarRef.value)
     initialOffsetTop.value = searchBarRef.value.offsetTop
-
-  handleScroll()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleFocusShortcut)
-  window.removeEventListener('scroll', handleScroll)
 })
 </script>
 
 <template>
-  <div ref="searchBarRef" class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]" :class="{ fixed: isSticky }" :style="fixedStyle">
+  <div ref="searchBarRef" class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]">
     <div v-on-click-outside="() => selectionVisible = false" class="search-engine-logo-container relative flex-center shrink-0 w-44">
       <div hover="op-100" class="h-full w-full flex-center cursor-pointer op-80 transition-300" @click="toggleSelection">
         <div v-if="searchList[curSearchIndex].value.favicon?.startsWith('i-')" :class="searchList[curSearchIndex].value.favicon" class="text-24" />
@@ -381,23 +377,6 @@ onUnmounted(() => {
   background-color: white;
   border: 1px solid #e5e7eb;
   transition: background-color 0.3s ease, border-color 0.3s ease, top 0.3s ease, left 0.3s ease, width 0.3s ease;
-}
-
-.search-bar-container.fixed {
-  position: fixed;
-  z-index: 1000;
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.dark .search-bar-container {
-  background-color: #262626;
-  border-color: #404040;
-}
-
-.dark .search-bar-container.fixed {
-  background-color: #262626;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .search-input {
