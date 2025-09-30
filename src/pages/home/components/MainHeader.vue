@@ -9,9 +9,10 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+// 视觉内边距独立处理，避免键盘期 env() 变 0 牵连布局
 const safeTopStyle = computed(() => {
   return {
-    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+    paddingTop: '8px',
   }
 })
 
@@ -55,31 +56,42 @@ if (typeof window !== 'undefined') {
     settingStore.isSideNavOpen = !isMobile.value
 }
 
-onMounted(() => {
+const user = ref<any>(null)
+const logoPath = ref('/logow.jpg')
+
+onMounted(async () => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
   // 恢复过渡：放到下一帧，确保首帧渲染完成
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
+
+  // 监听登录状态
+  supabase.auth.onAuthStateChange((_event, session) => {
+    user.value = session?.user ?? null
+  })
+
+  // 根据会话切换 Logo
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session)
+    logoPath.value = '/logo.jpg'
+
+  // —— 视觉视口兜底：在键盘/旋转等场景确保 top 计算稳定 ——
+  if ('visualViewport' in window) {
+    const vv = window.visualViewport!
+    const updateVv = () => {
+      const off = Math.max(vv.offsetTop || 0, 0)
+      document.documentElement.style.setProperty('--vk-offset-top', `${off}px`)
+    }
+    vv.addEventListener('resize', updateVv, { passive: true })
+    vv.addEventListener('scroll', updateVv, { passive: true })
+    updateVv()
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
-})
-
-const user = ref<any>(null)
-onMounted(() => {
-  supabase.auth.onAuthStateChange((_event, session) => {
-    user.value = session?.user ?? null
-  })
-})
-
-const logoPath = ref('/logow.jpg')
-onMounted(async () => {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (session)
-    logoPath.value = '/logo.jpg'
 })
 
 function getIconClass(routeName: string) {
@@ -113,7 +125,7 @@ async function handleSettingsClick() {
 
 <template>
   <div
-    class="flex items-center justify-between px-4 lg:px-8 md:px-6"
+    class="app-header flex items-center justify-between px-4 lg:px-8 md:px-6"
     :style="safeTopStyle"
   >
     <div class="header-left flex items-center gap-x-4">
@@ -155,7 +167,25 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
+/* 让页眉粘在安全区下沿，避免被顶进刘海；顺序：constant() 兜底 -> env() -> 叠加可视视口偏移 */
+.app-header {
+  position: sticky;
+  top: constant(safe-area-inset-top, 0px);
+  top: env(safe-area-inset-top, 0px);
+  top: calc(env(safe-area-inset-top, 0px) + var(--vk-offset-top, 0px));
+  z-index: 50;
+  /* 背景保持不透明，避免“看见”刘海下层内容造成视觉误判 */
+  background: var(--bg, #fff);
+  /* 减少 iOS 粘滞重绘抖动 */
+  will-change: top;
+}
+
+/* 暗黑模式下，给 header 一个接近不透明的深色背景 */
+:global(html.dark) .app-header {
+  background: rgba(24, 24, 28, 0.98);
+}
+
+/* 首帧禁用过渡：你原有逻辑保留 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
