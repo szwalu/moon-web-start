@@ -1,14 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NCard, NModal, NRadioButton, NRadioGroup, NSpace, NSwitch } from 'naive-ui'
 import { type NoteFontSize as FontSize, useSettingStore } from '@/stores/setting.ts'
-
-/**
- * 目标：
- * - 只改本文件；系统字号仅作用于 Naive UI 的浮层/抽屉/下拉等系统 UI
- * - 不改 html/body，避免主界面列表与间距被拉大；不影响标题“云笔记”
- */
 
 type UiFontSize = 'xs' | 'sm' | 'md' | 'lg'
 const props = defineProps<{ show: boolean }>()
@@ -39,7 +33,6 @@ function ensureGlobalUiFontStyle(px: string) {
   const css = `
 :root { --ui-font: ${px}; }
 
-/* 这些是 Naive UI 的“系统层”容器：抽屉、下拉、气泡、模态、消息、通知、以及 v-binder 的浮层根 */
 .n-drawer,
 .n-dropdown,
 .n-popover,
@@ -51,7 +44,6 @@ function ensureGlobalUiFontStyle(px: string) {
   font-size: var(--ui-font) !important;
 }
 
-/* 其内部所有后代继承字号（避免组件内部用 px 锁死） */
 .n-drawer :where(*):not(svg):not(svg *),
 .n-dropdown :where(*):not(svg):not(svg *),
 .n-popover :where(*):not(svg):not(svg *),
@@ -63,7 +55,6 @@ function ensureGlobalUiFontStyle(px: string) {
   font-size: inherit !important;
 }
 
-/* 当菜单/导航出现在“抽屉/下拉/浮层”中时，菜单也随之继承（不会影响主界面顶栏的菜单/标题） */
 .n-drawer .n-menu :where(*):not(svg):not(svg *),
 .n-dropdown .n-menu :where(*):not(svg):not(svg *),
 .n-popover .n-menu :where(*):not(svg):not(svg *) {
@@ -105,12 +96,21 @@ const isVisible = computed({
 })
 
 const selectedFontSize = computed({
-  get: () => settingsStore.noteFontSize,
+  get: () => settingsStore.noteFontSize || 'medium',
   set: v => settingsStore.setNoteFontSize(v as FontSize),
 })
 
 const uiFontSize = ref<UiFontSize>(readUiFont())
 const uiFontFollowsNote = ref<boolean>(readUiFollow())
+
+// 让初始焦点落在关闭按钮，避免第一个单选（"小"）出现焦点框
+const closeBtnRef = ref<HTMLButtonElement | null>(null)
+watch(isVisible, async (v) => {
+  if (v) {
+    await nextTick()
+    closeBtnRef.value?.focus()
+  }
+})
 
 onMounted(() => {
   ensureGlobalUiFontStyle(uiPxMap[uiFontSize.value])
@@ -147,7 +147,7 @@ watch(() => settingsStore.noteFontSize, (noteSize) => {
 </script>
 
 <template>
-  <NModal v-model:show="isVisible">
+  <NModal v-model:show="isVisible" :auto-focus="false">
     <NCard
       style="width: 420px"
       :title="t('settings.font_title', '字号设置')"
@@ -157,7 +157,7 @@ watch(() => settingsStore.noteFontSize, (noteSize) => {
       aria-modal="true"
     >
       <template #header-extra>
-        <button class="close-btn" @click="emit('close')">&times;</button>
+        <button ref="closeBtnRef" class="close-btn" @click="emit('close')">&times;</button>
       </template>
 
       <NSpace vertical size="large">
@@ -257,4 +257,11 @@ watch(() => settingsStore.noteFontSize, (noteSize) => {
 .follow-text { opacity: 0.8; font-size: 13px; }
 
 .hint { margin-top: 10px; font-size: 12px; opacity: 0.7; }
+
+/* 关键：未选中的单选按钮获得焦点时，不显示默认焦点外框 */
+:deep(.n-radio-button:not(.n-radio-button--checked):focus),
+:deep(.n-radio-button:not(.n-radio-button--checked):focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
 </style>

@@ -33,26 +33,20 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   let vertical: 'top' | 'bottom'
   if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
     vertical = 'bottom'
-
   else if (spaceBelow >= MENU_H)
     vertical = 'bottom'
-
   else if (spaceAbove >= MENU_H)
     vertical = 'top'
-
   else
     vertical = spaceBelow >= spaceAbove ? 'bottom' : 'top'
 
   let horizontal: 'start' | 'end'
   if (spaceRight >= MENU_W && spaceLeft >= MENU_W)
     horizontal = 'end'
-
   else if (spaceRight >= MENU_W)
     horizontal = 'end'
-
   else if (spaceLeft >= MENU_W)
     horizontal = 'start'
-
   else
     horizontal = spaceRight >= spaceLeft ? 'end' : 'start'
 
@@ -167,6 +161,11 @@ export function useTagMenu(
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
   let lastFetchAt = 0
 
+  // —— 保持主菜单常开的辅助状态 —— //
+  const isRowMoreOpen = ref(false) // 任意一行的“更多”小菜单是否打开
+  let lastMoreClosedByOutside = false // 上一次收起“更多”是否因“点击外部”触发（只生效一次）
+  const dialogOpenCount = ref(0) // 是否有对话框打开（重命名/换图标/删除确认）
+
   function saveCountsCacheToLocal() {
     const uid = currentUserId.value
     if (!uid)
@@ -212,6 +211,7 @@ export function useTagMenu(
       const map: Record<string, number> = {}
       for (const it of cached.items)
         map[it.tag] = it.cnt
+
       tagCounts.value = map
       return cached.savedAt ?? null
     }
@@ -411,6 +411,15 @@ export function useTagMenu(
       onMainMenuOpen().catch(() => {})
   })
 
+  // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
+  watch(mainMenuVisible, (show) => {
+    if (!show && (isRowMoreOpen.value || dialogOpenCount.value > 0) && !lastMoreClosedByOutside) {
+      nextTick(() => {
+        mainMenuVisible.value = true
+      })
+    }
+  })
+
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     if (action === 'pin') {
       togglePin(tag)
@@ -538,6 +547,7 @@ export function useTagMenu(
       },
     })
 
+    dialogOpenCount.value += 1
     dialogInst = dialog.create({
       title: t('tags.change_icon') || '更改图标',
       type: 'info',
@@ -546,6 +556,9 @@ export function useTagMenu(
       showIcon: false,
       content: () => h(IconPickerComponent),
       action: null,
+      onAfterLeave: () => {
+        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+      },
     })
   }
 
@@ -555,6 +568,7 @@ export function useTagMenu(
     const oldTag = normalizeTag(oldRaw)
     const initial = tagKeyName(oldTag)
     const renameState = { next: initial }
+    dialogOpenCount.value += 1
     dialog.create({
       type: 'info',
       title: t('tags.rename_tag') || '重命名标签',
@@ -581,6 +595,9 @@ export function useTagMenu(
       positiveText: t('auth.confirm') || '确定',
       negativeText: t('auth.cancel') || '取消',
       maskClosable: false,
+      onAfterLeave: () => {
+        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+      },
       onPositiveClick: async () => {
         const nextName = renameState.next || ''
         const newTag = normalizeTag(nextName)
@@ -637,6 +654,7 @@ export function useTagMenu(
     if (isBusy.value)
       return
     const tag = normalizeTag(raw)
+    dialogOpenCount.value += 1
     dialog.warning({
       title: t('tags.delete_tag_title') || '删除标签',
       content:
@@ -645,6 +663,9 @@ export function useTagMenu(
       positiveText: t('tags.delete_tag_confirm') || '删除标签',
       negativeText: t('notes.cancel') || '取消',
       maskClosable: false,
+      onAfterLeave: () => {
+        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+      },
       onPositiveClick: async () => {
         isBusy.value = true
         try {
@@ -737,10 +758,16 @@ export function useTagMenu(
     const openMenu = () => {
       placementRef.value = computeSmartPlacementStrict(btnEl)
       showRef.value = true
+      isRowMoreOpen.value = true
     }
+
     const closeMenu = () => {
       showRef.value = false
+      isRowMoreOpen.value = false
     }
+
+    // ✅ 在这里定义局部常量（渲染函数能闭包到它）
+    const MORE_DOT_SIZE = 18 // 想要多大改这个数字：22/28/32/38...
 
     return {
       key: tag,
@@ -755,44 +782,61 @@ export function useTagMenu(
             size: 'small',
             placement: placementRef.value,
             to: 'body',
+            // 跟踪小菜单开合；清除“外部关闭”标记
             onUpdateShow: (show: boolean) => {
-              if (!show)
-                showRef.value = false
+              showRef.value = show
+              isRowMoreOpen.value = show
+              if (show)
+                lastMoreClosedByOutside = false
             },
             onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => {
+            // 小菜单内部交互：不允许主菜单随之关闭
+              lastMoreClosedByOutside = false
               handleRowMenuSelect(tag, key)
               closeMenu()
             },
-            onClickoutside: () => closeMenu(),
+            onClickoutside: () => {
+            // 仅在“点击小菜单外部”时允许主菜单关闭
+              lastMoreClosedByOutside = true
+              closeMenu()
+              setTimeout(() => {
+                lastMoreClosedByOutside = false
+              }, 0)
+            },
           }, {
             default: () =>
               h('button', {
-                'class': 'more-btn',
                 'aria-label': t('tags.more_actions') || '更多操作',
                 'title': t('tags.more_actions') || '更多操作',
                 'style': [
                   'background:none;border:none;cursor:pointer;',
                   'display:inline-flex;align-items:center;justify-content:center;',
-                  'width:30px;height:30px;',
-                  'font-size:38px;line-height:1;font-weight:600;',
-                  'border-radius:10px;opacity:0.95;',
+      `width:${MORE_DOT_SIZE + 8}px !important;`,
+      `height:${MORE_DOT_SIZE + 8}px !important;`,
+      `font-size:${MORE_DOT_SIZE}px !important;`,
+      `line-height:${MORE_DOT_SIZE + 8}px !important;`,
+      'font-weight:600;',
+      'border-radius:10px;opacity:0.95;',
                 ].join(''),
                 'onClick': (e: MouseEvent) => {
                   e.stopPropagation()
                   btnEl = e.currentTarget as HTMLElement
                   if (showRef.value) {
+                    lastMoreClosedByOutside = false
                     closeMenu()
                   }
                   else {
                     placementRef.value = computeSmartPlacementStrict(btnEl)
                     nextTick(() => {
                       openMenu()
-                      requestAnimationFrame(() => (btnEl as HTMLElement | null)?.focus?.())
+                      requestAnimationFrame(() => {
+                        (btnEl as HTMLElement | null)?.focus?.()
+                      })
                     })
                   }
                 },
               }, [
-                h('span', { style: 'transform: translateY(-1px); display:inline-block;' }, '⋯'),
+                h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯'),
               ]),
           }),
         ]),
