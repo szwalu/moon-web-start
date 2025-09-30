@@ -15,6 +15,7 @@ declare module 'vue' {
     Blank: typeof import('./components/Blank.vue')['default']
     CalendarView: typeof import('./components/CalendarView.vue')['default']
     DateTimePickerModal: typeof import('./components/DateTimePickerModal.vue')['default']
+    DesktopSidebar: typeof import('./components/DesktopSidebar.vue')['default']
     MobileDateRangePicker: typeof import('./components/MobileDateRangePicker.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCollapse: typeof import('naive-ui')['NCollapse']
@@ -29,6 +30,7 @@ declare module 'vue' {
     NoteItem: typeof import('./components/NoteItem.vue')['default']
     NoteItemSkeleton: typeof import('./components/NoteItemSkeleton.vue')['default']
     NoteList: typeof import('./components/NoteList.vue')['default']
+    NoteSidebar: typeof import('./components/NoteSidebar.vue')['default']
     NSelect: typeof import('naive-ui')['NSelect']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
@@ -36,5 +38,6 @@ declare module 'vue' {
     TheDoc: typeof import('./components/TheDoc.vue')['default']
     TheFooter: typeof import('./components/TheFooter/index.vue')['default']
     TrashModal: typeof import('./components/TrashModal.vue')['default']
+    'TrashModal_副本': typeof import('./components/TrashModal_副本.vue')['default']
   }
 }

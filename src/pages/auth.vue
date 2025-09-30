@@ -1913,6 +1913,11 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   margin: 0 !important;
   overflow: hidden;
 }
+@media (min-width: 768px) {
+  .auth-container {
+    max-width: 960px;
+  }
+}
 </style>
 
 <style>
