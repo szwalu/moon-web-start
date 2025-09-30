@@ -1926,7 +1926,7 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 /* 先“清零”所有根级下拉菜单的限制：不出现滚动条不限制高度 */
 /* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
-  max-height: min(70vh, 520px) !important;
+  max-height: calc(100vh - var(--header-height) - var(--safe-bottom)) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -1934,7 +1934,7 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 
 /* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
-  max-height: min(60vh, 420px) !important;
+  max-height: calc(100vh - var(--header-height) - var(--safe-bottom) - 16px) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -1959,7 +1959,6 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --header-base: 44px; /* 头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
-  --app-bg: #ffffff;
 }
 .dark :root { --app-bg: #1e1e1e; }
 

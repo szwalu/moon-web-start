@@ -767,7 +767,7 @@ export function useTagMenu(
     }
 
     // ✅ 在这里定义局部常量（渲染函数能闭包到它）
-    const MORE_DOT_SIZE = 18 // 想要多大改这个数字：22/28/32/38...
+    const MORE_DOT_SIZE = 20 // 想要多大改这个数字：22/28/32/38...
 
     return {
       key: tag,
