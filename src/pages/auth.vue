@@ -1923,7 +1923,7 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 先“清零”所有根级下拉菜单的限制：不出现滚动条、不限制高度 */
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条不限制高度 */
 /* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: min(70vh, 520px) !important;
