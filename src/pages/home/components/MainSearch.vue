@@ -319,7 +319,23 @@ const { iconStyle } = useIconStyle()
 .search-bar-container {
   background-color: white;
   border: 1px solid #e5e7eb;
+  border-radius: 12px;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.dark .search-bar-container {
+  background-color: #1f1f1f;   /* 深色背景 */
+  border: 1px solid #404040;  /* 深色边框 */
+}
+
+.search-button {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.search-input {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
 }
 
 .search-input {
