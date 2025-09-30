@@ -64,6 +64,10 @@ let _vvResize: (() => void) | null = null
 let _vvScroll: (() => void) | null = null
 let _vvRaf = 0
 
+// 只调整一次的开关：一旦设置过 --vk-offset-top，就不再改动
+let _vkHasAdjusted = false
+const VK_VAR_NAME = '--vk-offset-top'
+
 onMounted(async () => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
@@ -82,7 +86,7 @@ onMounted(async () => {
   if (session)
     logoPath.value = '/logo.jpg'
 
-  // —— 视觉视口兜底：仅在“键盘明显出现”时更新 --vk-offset-top，避免滚动抖动 ——
+  // —— 视觉视口兜底：只在“键盘首次明显出现”时设置一次，收起时不还原、不调整 ——
   if ('visualViewport' in window) {
     const vv = window.visualViewport!
 
@@ -95,8 +99,13 @@ onMounted(async () => {
           = vv.height < window.innerHeight * 0.92
           || (window.innerHeight - vv.height) > 80
 
-        const off = keyboardLikely ? Math.max(vv.offsetTop || 0, 0) : 0
-        document.documentElement.style.setProperty('--vk-offset-top', `${off}px`)
+        // 只在“首次从未调整过且检测到键盘出现”时写入一次；其余情况一律不改动
+        if (keyboardLikely && !_vkHasAdjusted) {
+          const off = Math.max(vv.offsetTop || 0, 0)
+          document.documentElement.style.setProperty(VK_VAR_NAME, `${off}px`)
+          _vkHasAdjusted = true
+        }
+        // 键盘收起时不做任何处理（不清零、不回调），避免页面跳动
       })
     }
 
