@@ -109,7 +109,7 @@ onMounted(() => {
     </div>
 
     <draggable
-      class="nav flex flex-col gap-y-20 pb-8 pt-16 p-2"
+      class="nav flex flex-col gap-y-10 pb-8 pt-16 p-2"
       :list="siteStore.data"
       item-key="id"
       tag="div"
@@ -181,7 +181,7 @@ onMounted(() => {
     </div>
     <div class="divider mx-4 border-t border-gray-200 dark:border-gray-700" />
 
-    <div class="static-links-container flex flex-col gap-y-15 px-2 pb-4 pt-8">
+    <div class="static-links-container flex flex-col gap-y-10 px-2 pb-4 pt-8">
       <router-link to="/auth" class="nav__item" @click="closeSideNav">
         <span class="flex-grow truncate text-center">{{ $t('navbar.cloud_Notes') }}</span>
       </router-link>
