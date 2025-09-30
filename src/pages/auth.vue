@@ -633,15 +633,14 @@ function handleExportTrigger() {
   }
 }
 
-function onListScroll(_top: number) {
-  // --- 暂时注释掉所有内容 ---
-  /*
+function onListScroll(top: number) {
+// 🚧 不满足条件时，禁止折叠隐藏顶部，强制展开并返回
   if (!canHideTopChrome.value) {
-    headerCollapsed.value = false
+    headerCollapsed.value = false // 你的原有“是否折叠顶部”的布尔量
     return
   }
+  // 下滑一点就折叠；你也可以改成 0 或 16，看手感
   headerCollapsed.value = top > 8
-  */
 }
 
 async function handleBatchExport() {
@@ -1908,14 +1907,11 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   transition: height .18s ease, padding .18s ease, margin .18s ease;
 }
 .new-note-editor-container.collapsed {
-  /* --- 暂时注释掉整条规则 --- */
-  /*
   height: 0 !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
   margin: 0 !important;
   overflow: hidden;
-  */
 }
 </style>
 
