@@ -9,16 +9,18 @@ import { loadRemoteDataOnceAndMergeToLocal, useAutoSave } from '@/composables/us
 
 const { manualSaveData } = useAutoSave()
 
+const safeTopStyle = computed(() => {
+  return {
+    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+  }
+})
+
 const route = useRoute()
 const settingStore = useSettingStore()
 const router = useRouter()
 
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
-
-const safeTopStyle = computed(() => ({
-  paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--vk-offset-top, 0px) + var(--prelift-top, 0px) + 8px)',
-}))
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768

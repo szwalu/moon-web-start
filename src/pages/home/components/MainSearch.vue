@@ -6,16 +6,13 @@ import { debounce, getFaviconUrl, getText, search as searchSetting } from '@/uti
 import searchEngine from '@/utils/search-engine'
 import { useSiteStore } from '@/stores/site'
 import { useSettingStore } from '@/stores/setting'
-import { useKeyboardPrelift } from '@/composables/useKeyboardPrelift'
 
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
 const searchList = searchSetting.children
 const keyword = ref('')
 const curSearchIndex = ref(0)
-const searchInputRef = ref<HTMLInputElement | null>(null)
-// 预抬升 20px（可改 16/24）
-useKeyboardPrelift(searchInputRef, 20)
+const searchInputRef = ref<HTMLInputElement>()
 
 watch(() => settingStore.settings.search, (val) => {
   const index = searchList.findIndex(search => search.key === val)
@@ -250,7 +247,6 @@ const { iconStyle } = useIconStyle()
         autofocus
         class="$text-c-1 search-input h-full w-full bg-inherit px-2 op-80"
         :placeholder="getText(searchList[curSearchIndex].name)"
-        type="search"
         @keydown.enter="handleSearch"
         @input="handleInput"
         @focus="handleFocus"
