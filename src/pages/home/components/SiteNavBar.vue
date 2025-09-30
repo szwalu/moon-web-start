@@ -45,11 +45,11 @@ onMounted(() => {
 watch(
   () => settingStore.isSideNavOpen,
   (open) => {
-    const html = document.documentElement
+    const root = document.body
     if (open)
-      html.classList.add('side-nav-open')
+      root.classList.add('side-nav-open')
     else
-      html.classList.remove('side-nav-open')
+      root.classList.remove('side-nav-open')
   },
   { immediate: true },
 )
@@ -252,9 +252,18 @@ onMounted(() => {
   color: var(--primary-c);
 }
 
-:global(html.side-nav-open) {
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
+/* 仅在触屏设备（手机/平板）锁背景滚动；桌面端正常滚动 */
+@media (hover: none) and (pointer: coarse) {
+  :global(body.side-nav-open) {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+}
+
+/* 桌面端显式解锁，避免任何意外样式覆盖 */
+@media (hover: hover) and (pointer: fine) {
+  :global(body.side-nav-open) {
+    overflow: visible;
+  }
 }
 </style>

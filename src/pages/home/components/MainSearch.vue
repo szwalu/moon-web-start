@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { vOnClickOutside } from '@vueuse/components'
 import type { Search } from '@/types'
 import { debounce, getFaviconUrl, getText, search as searchSetting } from '@/utils'
@@ -13,54 +13,12 @@ const searchList = searchSetting.children
 const keyword = ref('')
 const curSearchIndex = ref(0)
 const searchInputRef = ref<HTMLInputElement>()
-const searchBarRef = ref<HTMLDivElement>()
-const isSticky = ref(false)
-const headerHeight = ref(0)
-const initialOffsetTop = ref(0)
-const parentLeft = ref(0)
-const parentWidth = ref(0)
 
 watch(() => settingStore.settings.search, (val) => {
   const index = searchList.findIndex(search => search.key === val)
   if (index !== -1)
     curSearchIndex.value = index
 }, { immediate: true })
-
-// 动态计算固定定位时的样式，基于父容器居中
-const _fixedStyle = computed(() => {
-  if (!isSticky.value)
-    return {}
-  const left = parentLeft.value + (parentWidth.value / 2)
-  return {
-    left: `${left}px`,
-    transform: 'translateX(-50%)',
-    top: `${headerHeight.value}px`,
-    width: `${Math.min(parentWidth.value, 700)}px`,
-  }
-})
-
-// 防抖处理滚动事件
-const _handleScroll = debounce(() => {
-  if (searchBarRef.value) {
-    const headerElement = document.querySelector('[sticky]') || document.querySelector('.header-left')?.parentElement
-    const parentElement = searchBarRef.value.parentElement || document.body
-    if (headerElement) {
-      headerHeight.value = headerElement.getBoundingClientRect().height
-      const searchBarRect = searchBarRef.value.getBoundingClientRect()
-      const currentOffsetTop = window.pageYOffset + searchBarRect.top
-      isSticky.value = searchBarRect.top <= headerHeight.value + 10 && currentOffsetTop > initialOffsetTop.value
-      const parentRect = parentElement.getBoundingClientRect()
-      parentLeft.value = parentRect.left
-      parentWidth.value = parentRect.width
-    }
-    else {
-      headerHeight.value = 80
-      isSticky.value = searchBarRef.value.getBoundingClientRect().top <= 80
-      parentLeft.value = 0
-      parentWidth.value = window.innerWidth
-    }
-  }
-}, 10)
 
 // 本地搜索结果状态
 interface LocalSearchResult {
@@ -255,26 +213,11 @@ function handleFocus() {
     handleInput()
 }
 
-function handleFocusShortcut(e: KeyboardEvent) {
-  if (e.ctrlKey && e.key === 'Enter')
-    searchInputRef.value?.focus()
-}
-
 const { iconStyle } = useIconStyle()
-
-onMounted(() => {
-  window.addEventListener('keydown', handleFocusShortcut)
-  if (searchBarRef.value)
-    initialOffsetTop.value = searchBarRef.value.offsetTop
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleFocusShortcut)
-})
 </script>
 
 <template>
-  <div ref="searchBarRef" class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]">
+  <div class="search-bar-container relative mx-auto w-full flex h-44 sm:w-[700px]">
     <div v-on-click-outside="() => selectionVisible = false" class="search-engine-logo-container relative flex-center shrink-0 w-44">
       <div hover="op-100" class="h-full w-full flex-center cursor-pointer op-80 transition-300" @click="toggleSelection">
         <div v-if="searchList[curSearchIndex].value.favicon?.startsWith('i-')" :class="searchList[curSearchIndex].value.favicon" class="text-24" />
@@ -376,7 +319,7 @@ onUnmounted(() => {
 .search-bar-container {
   background-color: white;
   border: 1px solid #e5e7eb;
-  transition: background-color 0.3s ease, border-color 0.3s ease, top 0.3s ease, left 0.3s ease, width 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .search-input {
