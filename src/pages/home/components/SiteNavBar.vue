@@ -79,13 +79,17 @@ const subMenuRows = computed(() => {
 function handleSubMenuClick(subItem: any) {
   const element = document.getElementById(String(subItem.id))
   if (element) {
-    const headerElement = document.querySelector('[sticky]')
-    const headerHeight = headerElement ? (headerElement as HTMLElement).clientHeight : 80
-    const elementPosition = element.getBoundingClientRect().top
-    const offsetPosition = elementPosition + window.pageYOffset - headerHeight - 10
-    window.scrollTo({ top: offsetPosition, behavior: 'smooth' })
+    const headerElement = document.querySelector('[sticky]') as HTMLElement | null
+    const headerHeight = headerElement ? headerElement.clientHeight : 80
+    const rectTop = element.getBoundingClientRect().top
+    const targetTop = rectTop + window.pageYOffset - headerHeight - 10
+
+    window.scrollTo({ top: targetTop, behavior: 'smooth' })
   }
-  requestAnimationFrame(() => closeSideNav())
+
+  // 仅在移动端收起侧边栏；PC 端保持展开
+  if (isMobile.value)
+    requestAnimationFrame(() => closeSideNav())
 }
 
 const user = ref<any>(null)
