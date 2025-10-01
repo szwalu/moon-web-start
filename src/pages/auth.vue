@@ -92,6 +92,37 @@ let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 
+// —— iOS 检测 & 页面滚动锁 —— //
+const isiOS = typeof window !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
+
+let _scrollLockY = 0
+function lockBodyScrollIOS() {
+  if (!isiOS)
+    return
+  // 记录当前滚动并把 body 固定住，避免 Safari 在键盘/viewport 变化时“推整页”
+  _scrollLockY = window.scrollY || 0
+  const b = document.body
+  b.style.position = 'fixed'
+  b.style.top = `-${_scrollLockY}px`
+  b.style.left = '0'
+  b.style.right = '0'
+  b.style.width = '100%'
+  // 防止 iOS 回弹造成的整体位移
+  document.documentElement.style.overscrollBehaviorY = 'contain'
+}
+function unlockBodyScrollIOS() {
+  if (!isiOS)
+    return
+  const b = document.body
+  b.style.position = ''
+  b.style.top = ''
+  b.style.left = ''
+  b.style.right = ''
+  b.style.width = ''
+  document.documentElement.style.overscrollBehaviorY = ''
+  window.scrollTo(0, _scrollLockY || 0)
+}
+
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -612,6 +643,7 @@ function onEditorFocus() {
   }
   isEditorActive.value = true
   compactWhileTyping.value = true
+  lockBodyScrollIOS()
 }
 function onEditorBlur() {
   // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
@@ -619,6 +651,7 @@ function onEditorBlur() {
     isEditorActive.value = false
     compactWhileTyping.value = false
     editorBottomPadding.value = 0 // ← 新增：失焦时清零垫片高度
+    unlockBodyScrollIOS()
   }, 120)
 }
 
@@ -1372,7 +1405,7 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': compactWhileTyping, 'editing': isEditorActive }"
+    :class="{ 'is-typing': compactWhileTyping, 'editing': isEditorActive, 'ios-fixed': isEditorActive && isiOS }"
     :style="{ '--editor-pad-bottom': `${Math.min(editorBottomPadding, 320)}px` }"
     :aria-busy="!isReady"
   >
@@ -2013,4 +2046,46 @@ html, body, #app {
   pointer-events: none;      /* 不挡交互 */
   z-index: 3100;             /* 高于内容，低于弹窗即可 */
 }
+
+/* iOS 编辑态：把容器固定在安全区内，滚动发生在容器自身（而不是整页） */
+.auth-container.editing.ios-fixed {
+  position: fixed;
+  /* 把容器“钉”在 safe-top 到底部之间，不受页面滚动影响 */
+  top: var(--safe-top);
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  /* 让滚动发生在容器内部，避免 sticky 区被 Safari 顶进刘海区 */
+  overflow: auto;
+
+  /* 编辑态不再使用负外边距，把让位放到 padding-bottom（由 --editor-pad-bottom 控制） */
+  margin-bottom: 0 !important;
+  padding-bottom: var(--editor-pad-bottom, 0px) !important;
+
+  /* 防 iOS 橡皮筋回弹引发的位移 */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* 因为容器在 editing+iOS 时已经把 safe-top 占掉了，
+   容器内部子元素（例如 sticky 头部）就不需再额外下移 safe-top 了 */
+.auth-container.editing.ios-fixed .page-header {
+  top: 0 !important;                  /* 关键：避免 header 叠加 safe-top 再位移 */
+}
+
+/* 同理，二级横幅/搜索条沿用“纯头部高度” */
+.auth-container.editing.ios-fixed .search-bar-container,
+.auth-container.editing.ios-fixed .selection-actions-banner {
+  top: var(--header-base) !important; /* 不再用 --header-height（= base + safe-top） */
+}
+
+/* 视觉一致性：容器内背景覆盖到底部 */
+.auth-container.editing.ios-fixed {
+  background: var(--app-bg);
+}
+
+/* （保留你原有的：编辑态 margin-bottom 置零、padding-bottom 启用）
+   如果上一次已加了 .auth-container.editing 这段，也可保留，不冲突；
+   但在 iOS 编辑态下，上面的 .editing.ios-fixed 会覆盖为 fixed+overflow:auto */
 </style>
