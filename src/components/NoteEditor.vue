@@ -421,8 +421,7 @@ function handleFocus() {
   _hasPushedPage = false
 
   // 用真实 footer 高度“临时托起”，不等 vv
-  const prelift = isAndroid ? getFooterHeight() : Math.min(getFooterHeight(), 48)
-  emit('bottomSafeChange', prelift)
+  emit('bottomSafeChange', getFooterHeight())
 
   // 立即一轮计算
   requestAnimationFrame(() => {
