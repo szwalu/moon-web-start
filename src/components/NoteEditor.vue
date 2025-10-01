@@ -98,7 +98,11 @@ function ensureCaretVisible() {
   const caretBottom = (lineIndex + 1) * lineHeight
 
   const viewTop = ta.scrollTop
-  const viewBottom = ta.scrollTop + ta.clientHeight - 8 // 给 8px 缓冲
+  // 读取我们写到 :root 的 --kb-offset，兜底为 0
+  const kb = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kb-offset') || '0') || 0
+  // const safeInset = Number.parseFloat(getComputedStyle(ta).getPropertyValue('padding-bottom') || '0') || 0
+  // 把键盘遮挡和 padding-bottom 都考虑进去，留 8px 缓冲
+  const viewBottom = ta.scrollTop + ta.clientHeight - Math.max(kb, 0) - 8
 
   if (caretBottom > viewBottom)
     ta.scrollTop = Math.max(0, caretBottom - ta.clientHeight + lineHeight * 1.2)
@@ -1466,10 +1470,10 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 160px; /* 想更高可再调，比如 180px/200px */
+  min-height: 460px; /* 想更高可再调，比如 180px/200px */
   max-height: calc(80vh - var(--kb-offset, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
+  padding: 12px 8px calc(16px + var(--kb-offset, 0px) + env(safe-area-inset-bottom, 0px)) 16px;
   border: none;
   background-color: transparent;
   color: inherit;
