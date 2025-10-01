@@ -92,26 +92,28 @@ let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 
-// —— iOS 识别 + 视觉视口高度同步（避免键盘变化引起整体“顶上去”）——
+// iOS 检测 + 键盘让位（不再固定容器）
 const isiOS = typeof window !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
 
-function applyVvh() {
+function updateKeyboardInset() {
+  // 仅在 iOS 且有 visualViewport 时计算
   if (!isiOS || !window.visualViewport)
     return
-  const h = Math.round(window.visualViewport.height)
-  document.documentElement.style.setProperty('--vvh', `${h}px`)
+  // 键盘高度≈ 内窗高度 - 视觉视口高度
+  const kb = Math.max(0, window.innerHeight - window.visualViewport.height)
+  document.documentElement.style.setProperty('--kb', `${kb}px`)
 }
 
 onMounted(() => {
-  if (isiOS) {
-    applyVvh()
-    window.visualViewport?.addEventListener('resize', applyVvh)
+  if (isiOS && window.visualViewport) {
+    updateKeyboardInset()
+    window.visualViewport.addEventListener('resize', updateKeyboardInset)
   }
 })
 
 onUnmounted(() => {
-  if (isiOS)
-    window.visualViewport?.removeEventListener('resize', applyVvh)
+  if (isiOS && window.visualViewport)
+    window.visualViewport.removeEventListener('resize', updateKeyboardInset)
 })
 
 // ++ 新增：定义用于sessionStorage的键
@@ -1395,7 +1397,6 @@ function goToLinksSite() {
   <div
     class="auth-container"
     :class="{ 'is-typing': compactWhileTyping, 'ios': isiOS }"
-    :style="{ '--editor-pad-bottom': `${Math.min(editorBottomPadding, 320)}px` }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
@@ -1995,37 +1996,40 @@ html, body, #app {
   background: var(--app-bg);
 }
 
-/* iOS：把页面滚动“隔离”到容器内部；防止键盘托底时把整页往上推 */
-.auth-container.ios {
-  position: fixed;
-  /* 用视觉视口高度来适配键盘变化；回退到 100dvh 以兼容没有 visualViewport 的环境 */
-  top: env(safe-area-inset-top);
-  left: 0;
-  right: 0;
-  /* 用 --vvh 优先，其次 100dvh；底部自然留出 safe-bottom */
-  height: calc(var(--vvh, 100dvh) - env(safe-area-inset-top));
-  padding-top: 0.5rem;                  /* 你原本的顶部内边距 */
-  padding-bottom: var(--editor-pad-bottom, 0px); /* 键盘让位直接作用在容器上 */
-  margin: 0 !important;                 /* 不要再用负 margin 压底部安全区 */
-  overflow: auto;                        /* 让滚动只发生在容器内部 */
+/* 不要再用 position: fixed；保持正常文档流 */
+.auth-container {
+  height: 100%;                     /* 占满 #app */
+  overflow: auto;                    /* 只让容器滚 */
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;        /* 防回弹把父级一起拖动 */
-  background: var(--app-bg);             /* 你原来的页面底色 */
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: max(var(--kb, 0px), env(safe-area-inset-bottom, 0px)); /* 键盘让位 + 底部安全区 */
+  margin: 0 !important;
+  overscroll-behavior-y: contain;    /* 防止回弹带动外层 */
 }
 
-/* 容器内部的 sticky 元素，以容器为参考：顶就用 0（不要叠加 safe-top） */
-.auth-container.ios .page-header {
+/* 头部以容器为参照，不再额外叠 safe-top */
+.auth-container .page-header {
   position: sticky;
-  top: 0;
+  top: 0;                /* 就是 0，不要加 safe-top */
 }
 
-/* 二级横幅/搜索栏同理：以“头部高度”定位，而不是 header+safe-top 的总和 */
-.auth-container.ios .search-bar-container,
-.auth-container.ios .selection-actions-banner {
+/* 二级条幅/搜索栏：以头部高度为参照 */
+.auth-container .search-bar-container,
+.auth-container .selection-actions-banner {
   top: var(--header-base);
 }
 
-/* 非 iOS 平台维持你原来的布局，不受影响 */
+/* 二级横幅、搜索栏跟随 header-height */
+.search-bar-container,
+.selection-actions-banner {
+  top: var(--header-height) !important;
+}
+/* 让“页面不滚动”，滚动交给根容器 */
+html, body, #app {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  margin: 0;
+  background: var(--app-bg);
+}
 </style>
