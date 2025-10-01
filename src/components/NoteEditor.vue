@@ -172,6 +172,26 @@ function onTextPointerUp() {
 // ============== Store ==============
 const settingsStore = useSettingStore()
 
+// 本地计算字号 → 写成标准 CSS 尺寸字符串
+const editorFontSize = computed(() => {
+  const v = (settingsStore as any).noteFontSize
+  if (typeof v === 'number')
+    return `${v}px`
+  if (typeof v === 'string' && /^\d+(\.\d+)?(px|rem|em)$/i.test(v))
+    return v
+  const map: Record<string, string> = {
+    'sm': '14px',
+    'md': '16px',
+    'lg': '18px',
+    'xl': '20px',
+    'small': '14px',
+    'medium': '16px',
+    'large': '20px',
+    'extra-large': '22px',
+  }
+  return map[v] || '16px'
+})
+
 // ============== v-model ==============
 const contentModel = computed({
   get: () => props.modelValue,
@@ -1225,14 +1245,15 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn"
+    :class="[isEditing ? 'editing-viewport' : '']"
+    :style="{ '--note-font-size': editorFontSize }"
   >
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
         v-model="input"
         class="editor-textarea"
-        :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         @beforeinput="handleBeforeInput"
         @focus="handleFocus"
@@ -1445,7 +1466,7 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 460px; /* 想更高可再调，比如 180px/200px */
+  min-height: 160px; /* 想更高可再调，比如 180px/200px */
   max-height: calc(80vh - var(--kb-offset, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
@@ -1459,6 +1480,7 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+  font-size: var(--note-font-size, 16px) !important;
   overscroll-behavior: contain; /* 避免滚到页面外层 */
 }
 

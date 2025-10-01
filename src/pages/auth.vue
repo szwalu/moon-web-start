@@ -15,13 +15,27 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
+import { useSettingStore } from '@/stores/setting'
 
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
-// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
+
 const allTags = ref<string[]>([])
 
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
+
+const settingsStore = useSettingStore() // ✅ 新增
+
+// ✅ 映射你项目里的字号规格到具体 CSS 尺寸（按你的实际枚举调整）
+const noteFontSize = computed(() => {
+  const v = (settingsStore as any)?.noteFontSize
+  if (typeof v === 'number')
+    return `${v}px` // 纯数字：当 px
+  if (typeof v === 'string' && /^\d+(\.\d+)?(px|rem|em)$/i.test(v))
+    return v // 已是合法尺寸串
+  const map: Record<string, string> = { sm: '14px', md: '16px', lg: '18px', xl: '20px' }
+  return map[v as string] || '16px' // 枚举 → px，兜底 16px
+})
 
 // 组合式：放在 t / allTags 之后
 const {
@@ -405,7 +419,7 @@ async function _reloadNotes() {
 
 // 接收 NoteEditor.vue 发来的 { content, weather }
 
-async function handleCreateNote(content: string, weather?: string | null) {
+async function _handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
   try {
     const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
@@ -1535,7 +1549,8 @@ function goToLinksSite() {
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
-          @save="handleCreateNote"
+          :style="{ '--note-font-size': noteFontSize }"
+          @save="_handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
           @bottom-safe-change="val => (editorBottomPadding = val)"
