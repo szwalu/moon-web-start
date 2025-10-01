@@ -20,6 +20,14 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 
 const textarea = ref<HTMLTextAreaElement | null>(null)
 
+// —— 抖动治理相关的状态 ——
+// 最近一次需要托起的像素（用于迟滞）
+const lastNeed = ref(0)
+// 刚聚焦或键盘动画进行中，短时间内放宽/抑制托起
+const isSettling = ref(false)
+// 预托起只做一次的闩锁
+let preliftArmed = false
+
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -312,10 +320,9 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
-    emit('bottomSafeChange', 0) // 在PC端，始终确保安全区为0
+    emit('bottomSafeChange', 0)
     return
   }
-  // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
 
@@ -326,26 +333,23 @@ function recomputeBottomSafePadding() {
   }
 
   const vv = window.visualViewport
-  // 1) 桌面或未弹键盘：不托
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // 2) 判断键盘是否真的弹出
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // 3) 计算“光标底部”在 visual viewport 内的坐标
+  // === 早退 1：刚打开或滚到顶部，且光标接近最上方，不要托起（避免“顶飞第一行”） ===
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
+  // 估算 caret Y（已保留你的 mirror 方案）
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -364,18 +368,19 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
+  // 如果文本框没滚动（scrollTop≈0），且光标行在 1.3 行以内，则认为“靠近顶部”
+  if ((el.scrollTop || 0) < 2 && caretYInContent <= lineHeight * 1.3) {
+    emit('bottomSafeChange', 0)
+    lastNeed.value = 0
+    return
+  }
+
   const rect = el.getBoundingClientRect()
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.25 : 0.9) // iOS 略低、Android 略高
+    + lineHeight * (isAndroid ? 1.25 : 0.9)
 
-  // Android：首帧经常“压两行”，保守多留两行
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
-
-  // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
   const footerH = getFooterHeight()
   const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
   const safeInset = (() => {
@@ -387,27 +392,28 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch {
-      return 0
-    }
+    catch { return 0 }
   })()
   const SAFE = footerH + safeInset + EXTRA
 
-  // 5) 阈值与所需托起像素
   const threshold = vv.height - SAFE
-  const need = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  emit('bottomSafeChange', need)
+  // === 迟滞：need 与上次差值小于 12px 就不抖动更新 ===
+  const HYST = 12
+  if (Math.abs(rawNeed - lastNeed.value) < HYST)
+    return
 
-  // —— 只在“第一次需要时”轻推页面一点 —— //
-  if (need > 0) {
+  lastNeed.value = rawNeed
+
+  emit('bottomSafeChange', rawNeed)
+
+  // === 限流：settling 期间不做页面 scrollBy 的“推页” ===
+  if (rawNeed > 0 && !isSettling.value) {
     if (!_hasPushedPage) {
-      // iPhone 保持原策略；Android 更激进并使用 window.scrollBy
-      const ratio = isAndroid ? 1.6 : 0.7
-      const cap = isAndroid ? 420 : 160
-      const delta = Math.min(Math.ceil(need * ratio), cap)
+      const ratio = isAndroid ? 1.4 : 0.6
+      const cap = isAndroid ? 360 : 140
+      const delta = Math.min(Math.ceil(rawNeed * ratio), cap)
 
       if (isAndroid) {
         window.scrollBy(0, delta)
@@ -415,7 +421,7 @@ function recomputeBottomSafePadding() {
       else {
         const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
         if ('scrollBy' in scrollEl) {
-          // @ts-expect-error: HTMLElement 运行时有 scrollBy（DOM 声明缺失）
+          // @ts-expect-error - HTMLElement may have scrollBy at runtime although not in TS DOM typings
           scrollEl.scrollBy(0, delta)
         }
         else {
@@ -425,11 +431,9 @@ function recomputeBottomSafePadding() {
 
       _hasPushedPage = true
 
-      // iOS：首次输入一旦露出，关闭闩锁
       if (isIOS && iosFirstInputLatch.value)
         iosFirstInputLatch.value = false
 
-      // Android：再补算一次（覆盖 vv 的迟到）
       if (isAndroid) {
         window.setTimeout(() => {
           _hasPushedPage = false
@@ -438,7 +442,7 @@ function recomputeBottomSafePadding() {
       }
     }
   }
-  else {
+  else if (rawNeed === 0) {
     _hasPushedPage = false
   }
 }
@@ -568,8 +572,24 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
-  emit('bottomSafeChange', getFooterHeight())
+  // 进入短暂的“settling”期，抑制过度托起与滚动
+  isSettling.value = true
+  setTimeout(() => {
+    isSettling.value = false
+  }, isIOS ? 320 : 240)
+
+  // 轻微预托起：以 footer 为上限，但不超过“当前文本框顶部到可视区顶部的空隙-24”
+  // 这样避免一上来就顶太高把第一行顶出视区
+  const el = textarea.value
+  const vv = window.visualViewport
+  let prelift = 0
+  if (el) {
+    const rect = el.getBoundingClientRect()
+    const headroom = Math.max(0, (rect.top - (vv?.offsetTop || 0)))
+    prelift = Math.min(getFooterHeight(), Math.max(0, headroom - 24))
+  }
+  emit('bottomSafeChange', prelift)
+  preliftArmed = true
 
   // 立即一轮计算
   requestAnimationFrame(() => {
@@ -577,7 +597,6 @@ function handleFocus() {
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
@@ -1220,24 +1239,20 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping
-    = t.startsWith('insert')
-    || t.startsWith('delete')
-    || t === 'historyUndo'
-    || t === 'historyRedo'
+  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
-  emit('bottomSafeChange', prelift)
+  // 只在首次真实输入时做一次小幅预托起
+  if (!preliftArmed) {
+    const base = Math.min(getFooterHeight(), 80) // 更保守
+    emit('bottomSafeChange', base)
+    preliftArmed = true
+  }
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
