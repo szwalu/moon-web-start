@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
@@ -16,10 +15,113 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
+
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+
+const textarea = ref<HTMLTextAreaElement | null>(null)
+
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
+
+const kbOffset = ref(0)
+
+function applyKbOffset(px: number) {
+  kbOffset.value = Math.max(0, Math.round(px))
+
+  document.documentElement.style.setProperty('--kb-offset', `${kbOffset.value}px`)
+  // 发出事件给父组件（模板中仍可使用 kebab-case: @bottom-safe-change）
+  emit('bottomSafeChange', kbOffset.value)
+}
+
+// iOS/Android 双保险：visualViewport + Virtual Keyboard API
+function bindKeyboardWatchers() {
+  const vv = window.visualViewport
+
+  const onVVChange = () => {
+    // 键盘弹出时，window.innerHeight 与 vv.height 的差值 ~ 键盘高度
+    const overlap = Math.max(
+      0,
+      window.innerHeight - (vv?.height ?? window.innerHeight) - (vv?.offsetTop ?? 0),
+    )
+    applyKbOffset(overlap)
+    // 视口变化后，把光标滚进视区
+    ensureCaretVisible()
+  }
+
+  vv?.addEventListener('resize', onVVChange)
+  vv?.addEventListener('scroll', onVVChange)
+
+  // Android/Chrome 提供的 Virtual Keyboard API
+  const vk = (navigator as any).virtualKeyboard
+  if (vk) {
+    try {
+      vk.overlaysContent = true
+    }
+    catch (e) {
+      // 可选记录
+    }
+
+    const onGeom = () => {
+      const h = vk?.boundingRect?.height ? Math.round(vk.boundingRect.height) : 0
+      applyKbOffset(h)
+    }
+
+    vk.addEventListener?.('geometrychange', onGeom)
+
+    // 清理 vk 监听
+    onUnmounted(() => {
+      vk.removeEventListener?.('geometrychange', onGeom)
+    })
+  }
+
+  // 清理 visualViewport 监听
+  onUnmounted(() => {
+    vv?.removeEventListener('resize', onVVChange)
+    vv?.removeEventListener('scroll', onVVChange)
+  })
+
+  // 初次应用
+  onVVChange()
+}
+
+// 简化版“确保光标可见”：根据行数估算光标像素位置并调整 scrollTop
+function ensureCaretVisible() {
+  const ta = textarea?.value
+  if (!ta)
+    return
+  // 估算当前行的底部像素（不依赖复杂的镜像元素）
+  const style = window.getComputedStyle(ta)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+  const before = ta.value.slice(0, ta.selectionEnd)
+  const lineIndex = (before.match(/\n/g)?.length ?? 0) // 0-based
+  const caretBottom = (lineIndex + 1) * lineHeight
+
+  const viewTop = ta.scrollTop
+  const viewBottom = ta.scrollTop + ta.clientHeight - 8 // 给 8px 缓冲
+
+  if (caretBottom > viewBottom)
+    ta.scrollTop = Math.max(0, caretBottom - ta.clientHeight + lineHeight * 1.2)
+  else if (caretBottom - lineHeight < viewTop)
+    ta.scrollTop = Math.max(0, caretBottom - lineHeight * 1.2)
+}
+
+onMounted(() => {
+  bindKeyboardWatchers()
+  const ta = textarea?.value
+  if (!ta)
+    return
+  const handler = () => nextTick(ensureCaretVisible)
+  ta.addEventListener('input', handler)
+  ta.addEventListener('click', handler)
+  ta.addEventListener('keyup', handler)
+  onUnmounted(() => {
+    ta.removeEventListener('input', handler)
+    ta.removeEventListener('click', handler)
+    ta.removeEventListener('keyup', handler)
+  })
+})
+
 function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
@@ -79,7 +181,6 @@ const contentModel = computed({
 })
 
 // ============== Autosize ==============
-const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
@@ -1339,10 +1440,13 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
+/* 全局变量，JS 会动态写入 --kb-offset */
+:root { --kb-offset: 0px; }
+
 .editor-textarea {
   width: 100%;
-  min-height: 40px;
-  max-height: 56vh;
+  min-height: 260px; /* 想更高可再调，比如 180px/200px */
+  max-height: calc(80vh - var(--kb-offset, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -1355,6 +1459,7 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain; /* 避免滚到页面外层 */
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
