@@ -1445,7 +1445,7 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 260px; /* 想更高可再调，比如 180px/200px */
+  min-height: 460px; /* 想更高可再调，比如 180px/200px */
   max-height: calc(80vh - var(--kb-offset, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
