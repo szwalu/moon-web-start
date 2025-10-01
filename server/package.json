@@ -6,6 +6,7 @@
   "author": "",
   "license": "ISC",
   "keywords": [],
+  "main": "dist/src/index.js",
   "scripts": {
     "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc && fix-esm-import-path dist/src/index.js && cp -r public dist",

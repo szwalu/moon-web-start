@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:app": "sh ./scripts/build.sh",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepare": "husky install",
-    "prod": "./scripts/deploy.sh"
+    "prod": "sh ./scripts/deploy.sh"
   },
   "dependencies": {
     "@vueuse/components": "^10.1.2",
