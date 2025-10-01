@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
@@ -15,131 +16,10 @@ const props = defineProps({
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
-const textarea = ref<HTMLTextAreaElement | null>(null)
-
-// —— 键盘托起节流/平滑用的小状态 —— //
-let rafPending = false // RAF 节流
-let preliftArmed = false // 首次真实输入时只预托一次
-
-function scheduleRecompute() {
-  if (rafPending)
-    return
-  rafPending = true
-  requestAnimationFrame(() => {
-    rafPending = false
-    scheduleRecompute()
-  })
-}
-
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
-
-const kbOffset = ref(0)
-
-function applyKbOffset(px: number) {
-  kbOffset.value = Math.max(0, Math.round(px))
-
-  document.documentElement.style.setProperty('--kb-offset', `${kbOffset.value}px`)
-  // 发出事件给父组件（模板中仍可使用 kebab-case: @bottom-safe-change）
-  emit('bottomSafeChange', kbOffset.value)
-}
-
-// iOS/Android 双保险：visualViewport + Virtual Keyboard API
-function bindKeyboardWatchers() {
-  const vv = window.visualViewport
-
-  const onVVChange = () => {
-    // 键盘弹出时，window.innerHeight 与 vv.height 的差值 ~ 键盘高度
-    const overlap = Math.max(
-      0,
-      window.innerHeight - (vv?.height ?? window.innerHeight) - (vv?.offsetTop ?? 0),
-    )
-    applyKbOffset(overlap)
-    // 视口变化后，把光标滚进视区
-    ensureCaretVisible()
-  }
-
-  vv?.addEventListener('resize', onVVChange)
-  vv?.addEventListener('scroll', onVVChange)
-
-  // Android/Chrome 提供的 Virtual Keyboard API
-  const vk = (navigator as any).virtualKeyboard
-  if (vk) {
-    try {
-      vk.overlaysContent = true
-    }
-    catch (e) {
-      // 可选记录
-    }
-
-    const onGeom = () => {
-      const h = vk?.boundingRect?.height ? Math.round(vk.boundingRect.height) : 0
-      applyKbOffset(h)
-    }
-
-    vk.addEventListener?.('geometrychange', onGeom)
-
-    // 清理 vk 监听
-    onUnmounted(() => {
-      vk.removeEventListener?.('geometrychange', onGeom)
-    })
-  }
-
-  // 清理 visualViewport 监听
-  onUnmounted(() => {
-    vv?.removeEventListener('resize', onVVChange)
-    vv?.removeEventListener('scroll', onVVChange)
-  })
-
-  // 初次应用
-  onVVChange()
-}
-
-// 简化版“确保光标可见”：根据行数估算光标像素位置并调整 scrollTop
-function ensureCaretVisible() {
-  const ta = textarea?.value
-  if (!ta)
-    return
-  // 估算当前行的底部像素（不依赖复杂的镜像元素）
-  const style = window.getComputedStyle(ta)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-  const before = ta.value.slice(0, ta.selectionEnd)
-  const lineIndex = (before.match(/\n/g)?.length ?? 0) // 0-based
-  const caretBottom = (lineIndex + 1) * lineHeight
-
-  const viewTop = ta.scrollTop
-  // 读取我们写到 :root 的 --kb-offset，兜底为 0
-  const kb = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kb-offset') || '0') || 0
-  // const safeInset = Number.parseFloat(getComputedStyle(ta).getPropertyValue('padding-bottom') || '0') || 0
-  // 把键盘遮挡和 padding-bottom 都考虑进去，留 8px 缓冲
-  const viewBottom = ta.scrollTop + ta.clientHeight - Math.max(kb, 0) - 8
-
-  if (caretBottom > viewBottom)
-    ta.scrollTop = Math.max(0, caretBottom - ta.clientHeight + lineHeight * 1.2)
-  else if (caretBottom - lineHeight < viewTop)
-    ta.scrollTop = Math.max(0, caretBottom - lineHeight * 1.2)
-}
-
-onMounted(() => {
-  bindKeyboardWatchers()
-  const ta = textarea?.value
-  if (!ta)
-    return
-  const handler = () => nextTick(ensureCaretVisible)
-  ta.addEventListener('input', handler)
-  ta.addEventListener('click', handler)
-  ta.addEventListener('keyup', handler)
-  onUnmounted(() => {
-    ta.removeEventListener('input', handler)
-    ta.removeEventListener('click', handler)
-    ta.removeEventListener('keyup', handler)
-  })
-})
-
 function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
@@ -181,34 +61,14 @@ function onTextPointerMove() {
 function onTextPointerUp() {
   isFreezingBottom.value = false
   requestAnimationFrame(() => {
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   })
   window.setTimeout(() => {
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
-
-// 本地计算字号 → 写成标准 CSS 尺寸字符串
-const editorFontSize = computed(() => {
-  const v = (settingsStore as any).noteFontSize
-  if (typeof v === 'number')
-    return `${v}px`
-  if (typeof v === 'string' && /^\d+(\.\d+)?(px|rem|em)$/i.test(v))
-    return v
-  const map: Record<string, string> = {
-    'sm': '14px',
-    'md': '16px',
-    'lg': '18px',
-    'xl': '20px',
-    'small': '14px',
-    'medium': '16px',
-    'large': '20px',
-    'extra-large': '22px',
-  }
-  return map[v] || '16px'
-})
 
 // ============== v-model ==============
 const contentModel = computed({
@@ -219,6 +79,7 @@ const contentModel = computed({
 })
 
 // ============== Autosize ==============
+const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
@@ -302,6 +163,20 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
+function getScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let el = node
+  while (el) {
+    const s = getComputedStyle(el)
+    const canScroll
+      = /(auto|scroll|overlay)/.test(s.overflowY)
+      || /(auto|scroll|overlay)/.test(s.overflow)
+    if (canScroll && el.scrollHeight > el.clientHeight)
+      return el
+    el = el.parentElement
+  }
+  return null
+}
+
 function getFooterHeight(): number {
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
@@ -309,6 +184,139 @@ function getFooterHeight(): number {
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+
+function recomputeBottomSafePadding() {
+  if (!isMobile) {
+    emit('bottomSafeChange', 0) // 在PC端，始终确保安全区为0
+    return
+  }
+  // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
+  if (isFreezingBottom.value)
+    return
+
+  const el = textarea.value
+  if (!el) {
+    emit('bottomSafeChange', 0)
+    return
+  }
+
+  const vv = window.visualViewport
+  // 1) 桌面或未弹键盘：不托
+  if (!vv) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // 2) 判断键盘是否真的弹出
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
+  if (!isAndroid && keyboardHeight < 60) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // 3) 计算“光标底部”在 visual viewport 内的坐标
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + lineHeight * (isAndroid ? 1.25 : 0.9) // iOS 略低、Android 略高
+
+  // Android：首帧经常“压两行”，保守多留两行
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
+
+  // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch {
+      return 0
+    }
+  })()
+  const SAFE = footerH + safeInset + EXTRA
+
+  // 5) 阈值与所需托起像素
+  const threshold = vv.height - SAFE
+  const need = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  emit('bottomSafeChange', need)
+
+  // —— 只在“第一次需要时”轻推页面一点 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      // iPhone 保持原策略；Android 更激进并使用 window.scrollBy
+      const ratio = isAndroid ? 1.6 : 0.7
+      const cap = isAndroid ? 420 : 160
+      const delta = Math.min(Math.ceil(need * ratio), cap)
+
+      if (isAndroid) {
+        window.scrollBy(0, delta)
+      }
+      else {
+        const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+        if ('scrollBy' in scrollEl) {
+          // @ts-expect-error: HTMLElement 运行时有 scrollBy（DOM 声明缺失）
+          scrollEl.scrollBy(0, delta)
+        }
+        else {
+          (scrollEl as HTMLElement).scrollTop += delta
+        }
+      }
+
+      _hasPushedPage = true
+
+      // iOS：首次输入一旦露出，关闭闩锁
+      if (isIOS && iosFirstInputLatch.value)
+        iosFirstInputLatch.value = false
+
+      // Android：再补算一次（覆盖 vv 的迟到）
+      if (isAndroid) {
+        window.setTimeout(() => {
+          _hasPushedPage = false
+          recomputeBottomSafePadding()
+        }, 140)
+      }
+    }
+  }
+  else {
+    _hasPushedPage = false
+  }
+}
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
@@ -417,7 +425,7 @@ function onDocSelectionChange() {
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     ensureCaretVisibleInTextarea()
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   }, 80)
 }
 
@@ -431,30 +439,32 @@ onUnmounted(() => {
 function handleFocus() {
   emit('focus')
   captureCaret()
+
+  // 允许再次“轻推”
   _hasPushedPage = false
-  lastFocusTs = Date.now() // 🌟 记录焦点时间
-  lastNeed = 0 // 🌟 重置阈值参考
 
-  // 轻量预托：只给 footer 高度的 60%，避免首帧猛顶
-  const prelift = Math.round(getFooterHeight() * 0.6)
-  emit('bottomSafeChange', prelift)
+  // 用真实 footer 高度“临时托起”，不等 vv
+  emit('bottomSafeChange', getFooterHeight())
 
-  // 合并到 RAF，避免多源抖动
+  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   })
 
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   }, t2)
 
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -468,11 +478,8 @@ function onBlur() {
     suppressNextBlur.value = false
     return
   }
-
-  if (blurTimeoutId) {
+  if (blurTimeoutId)
     clearTimeout(blurTimeoutId)
-    blurTimeoutId = null
-  }
 
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
@@ -485,7 +492,7 @@ function handleClick() {
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   })
 }
 // —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
@@ -616,21 +623,21 @@ function handleInput(event: Event) {
 
   // 分三次重算，覆盖键盘动画 / visualViewport 延迟
   requestAnimationFrame(() => {
-    scheduleRecompute()
+    recomputeBottomSafePadding()
     // iOS 常见：vv 延迟 ~120–240ms
     window.setTimeout(() => {
-      scheduleRecompute()
+      recomputeBottomSafePadding()
     }, 140)
 
     window.setTimeout(() => {
-      scheduleRecompute()
+      recomputeBottomSafePadding()
     }, 280)
   })
 
   // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
-      scheduleRecompute()
+      recomputeBottomSafePadding()
     }, 240)
   }
 }
@@ -645,7 +652,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
       ensureCaretVisibleInTextarea()
-      requestAnimationFrame(() => scheduleRecompute())
+      requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
 }
@@ -935,15 +942,15 @@ onUnmounted(() => {
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.addEventListener('resize', scheduleRecompute)
-    vv.addEventListener('scroll', scheduleRecompute)
+    vv.addEventListener('resize', recomputeBottomSafePadding)
+    vv.addEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.removeEventListener('resize', scheduleRecompute)
-    vv.removeEventListener('scroll', scheduleRecompute)
+    vv.removeEventListener('resize', recomputeBottomSafePadding)
+    vv.removeEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 
@@ -1054,7 +1061,7 @@ function insertImageLink() {
   })
 }
 
-// defineExpose({ reset: triggerResize })
+defineExpose({ reset: triggerResize })
 
 let focusBoostTimer: number | null = null
 
@@ -1074,7 +1081,7 @@ function startFocusBoost() {
   focusBoostTimer = window.setInterval(() => {
     ticks++
     ensureCaretVisibleInTextarea()
-    scheduleRecompute()
+    recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
     if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
@@ -1088,24 +1095,28 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
   if (!isRealTyping)
     return
 
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 只在首次真实输入时做一次小幅预托起
-  if (!preliftArmed) {
-    const base = Math.min(getFooterHeight(), 80) // 更保守
-    emit('bottomSafeChange', base)
-    preliftArmed = true
-  }
+  // 预抬升：iPhone 保底 120，Android 保底 180
+  const base = getFooterHeight() + 24
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    scheduleRecompute()
+    recomputeBottomSafePadding()
   })
 }
 </script>
@@ -1113,15 +1124,14 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn"
-    :class="[isEditing ? 'editing-viewport' : '']"
-    :style="{ '--note-font-size': editorFontSize }"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
         v-model="input"
         class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
         @beforeinput="handleBeforeInput"
         @focus="handleFocus"
@@ -1329,15 +1339,12 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
-/* 全局变量，JS 会动态写入 --kb-offset */
-:root { --kb-offset: 0px; }
-
 .editor-textarea {
   width: 100%;
-  min-height: 460px; /* 想更高可再调，比如 180px/200px */
-  max-height: calc(80vh - var(--kb-offset, 0px) - env(safe-area-inset-bottom, 0px));
+  min-height: 40px;
+  max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 8px calc(16px + var(--kb-offset, 0px) + env(safe-area-inset-bottom, 0px)) 16px;
+  padding: 12px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1348,8 +1355,6 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-  font-size: var(--note-font-size, 16px) !important;
-  overscroll-behavior: contain; /* 避免滚到页面外层 */
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }

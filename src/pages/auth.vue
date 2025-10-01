@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDrawer, NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
@@ -15,27 +15,13 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
-import { useSettingStore } from '@/stores/setting'
 
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
-
+// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
 const allTags = ref<string[]>([])
 
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
-
-const settingsStore = useSettingStore() // ✅ 新增
-
-// ✅ 映射你项目里的字号规格到具体 CSS 尺寸（按你的实际枚举调整）
-const noteFontSize = computed(() => {
-  const v = (settingsStore as any)?.noteFontSize
-  if (typeof v === 'number')
-    return `${v}px` // 纯数字：当 px
-  if (typeof v === 'string' && /^\d+(\.\d+)?(px|rem|em)$/i.test(v))
-    return v // 已是合法尺寸串
-  const map: Record<string, string> = { sm: '14px', md: '16px', lg: '18px', xl: '20px' }
-  return map[v as string] || '16px' // 枚举 → px，兜底 16px
-})
 
 // 组合式：放在 t / allTags 之后
 const {
@@ -105,27 +91,6 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
-
-// === 新增：控制“快速新建”抽屉开关（右下角 + 按钮用） ===
-const showQuickEditor = ref(false)
-
-// === 新增：抽屉里的保存封装（不改你原有 handleCreateNote，避免侵入） ===
-async function handleCreateNoteFromDrawer(content: string, weather?: string | null) {
-  const saved = await saveNote(content, null, { showMessage: true, weather: weather ?? null })
-  if (saved) {
-    // 清空草稿、关闭抽屉、复位（与 handleCreateNote 成功分支保持一致）
-    localStorage.removeItem(LOCAL_CONTENT_KEY)
-    newNoteContent.value = ''
-    showQuickEditor.value = false
-    nextTick(() => {
-      (newNoteEditorRef.value as any)?.reset?.()
-    })
-    // 保存后，如需刷新标签 / 列表，saveNote 内部已处理 invalidate & fetchAllTags
-  }
-}
-
-// 统一开关：如需回退到“顶部输入框模式”，把它改为 true 即可
-const showInlineNewNote = false
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -419,7 +384,7 @@ async function _reloadNotes() {
 
 // 接收 NoteEditor.vue 发来的 { content, weather }
 
-async function _handleCreateNote(content: string, weather?: string | null) {
+async function handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
   try {
     const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
@@ -1534,9 +1499,9 @@ function goToLinksSite() {
         </div>
       </div>
 
-      <!-- 主页输入框：改为总开关控制；默认 false，不再渲染到列表上方 -->
+      <!-- 主页输入框：选择模式时隐藏 -->
       <div
-        v-if="showInlineNewNote && !isSelectionModeActive"
+        v-show="!isSelectionModeActive"
         ref="newNoteEditorContainerRef"
         class="new-note-editor-container"
         :class="{ collapsed: headerCollapsed }"
@@ -1549,8 +1514,7 @@ function goToLinksSite() {
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
-          :style="{ '--note-font-size': noteFontSize }"
-          @save="_handleCreateNote"
+          @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
           @bottom-safe-change="val => (editorBottomPadding = val)"
@@ -1559,7 +1523,7 @@ function goToLinksSite() {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${editorBottomPadding}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
@@ -1608,38 +1572,6 @@ function goToLinksSite() {
           @delete="triggerDeleteConfirmation"
         />
       </Transition>
-
-      <!-- 右下角 + 按钮（不放滚动容器里，避免联动滚动） -->
-      <button
-        class="fab-new-note"
-        aria-label="新建笔记"
-        @click="showQuickEditor = true"
-      >
-        +
-      </button>
-
-      <!-- 新建笔记抽屉（纯净版）：直接就是 NoteEditor，没有外层标题/边框 -->
-      <NDrawer
-        v-model:show="showQuickEditor"
-        placement="bottom"
-        height="80vh"
-        :auto-focus="false"
-        :closable="false"
-      >
-        <NoteEditor
-          ref="newNoteEditorRef"
-          v-model="newNoteContent"
-          :is-editing="false"
-          :is-loading="isCreating"
-          :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.content_placeholder')"
-          :all-tags="allTags"
-          @save="handleCreateNoteFromDrawer"
-          @focus="onEditorFocus"
-          @blur="onEditorBlur"
-          @bottom-safe-change="val => (editorBottomPadding = val)"
-        />
-      </NDrawer>
     </template>
     <template v-else>
       <Authentication />
@@ -1986,26 +1918,6 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
     max-width: 960px;
   }
 }
-/* === 新增：右下角 + 浮动按钮 === */
-.fab-new-note {
-  position: fixed;
-  right: 18px;
-  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: none;
-  font-size: 32px;
-  line-height: 56px;
-  text-align: center;
-  cursor: pointer;
-  z-index: 4000; /* 高于列表与横幅 */
-  box-shadow: 0 6px 18px rgba(0,0,0,.2);
-  background: var(--fab-bg, #4f46e5);
-  color: #fff;
-}
-.fab-new-note:active { transform: translateY(1px); }
-.dark .fab-new-note { background: var(--fab-bg, #6366f1); }
 </style>
 
 <style>
