@@ -1372,11 +1372,11 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': compactWhileTyping }"
+    :class="{ 'is-typing': isEditorActive }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <div class="page-header" :class="{ 'editor-active': isEditorActive }" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1918,6 +1918,23 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
     max-width: 960px;
   }
 }
+
+.page-header {
+  transition: height 0.25s ease-in-out, padding-top 0.25s ease-in-out;
+  overflow: hidden;
+}
+
+/* 当编辑器激活时，折叠页眉 */
+.page-header.editor-active {
+  height: var(--safe-top) !important; /* 将高度收缩为仅刘海的高度 */
+  padding-top: 0 !important;
+  pointer-events: none; /* 折叠后不可点击 */
+}
+
+/* 隐藏折叠后页眉的所有子元素 */
+.page-header.editor-active > * {
+  display: none;
+}
 </style>
 
 <style>
@@ -1986,9 +2003,9 @@ html, body, #app {
 
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-  top: var(--safe-top) !important;
-  height: var(--header-base) !important;
-  padding-top: 0.5rem !important;
+top: 0 !important; /* 修改：粘在屏幕最顶部 */
+height: var(--header-height) !important; /* 修改：高度包含安全区 */
+padding-top: var(--safe-top) !important; /* 修改：用内边距把内容挤下去 */
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
