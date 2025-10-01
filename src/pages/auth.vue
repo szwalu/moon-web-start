@@ -92,30 +92,6 @@ let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 
-// iOS 检测 + 键盘让位（不再固定容器）
-const isiOS = typeof window !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
-
-function updateKeyboardInset() {
-  // 仅在 iOS 且有 visualViewport 时计算
-  if (!isiOS || !window.visualViewport)
-    return
-  // 键盘高度≈ 内窗高度 - 视觉视口高度
-  const kb = Math.max(0, window.innerHeight - window.visualViewport.height)
-  document.documentElement.style.setProperty('--kb', `${kb}px`)
-}
-
-onMounted(() => {
-  if (isiOS && window.visualViewport) {
-    updateKeyboardInset()
-    window.visualViewport.addEventListener('resize', updateKeyboardInset)
-  }
-})
-
-onUnmounted(() => {
-  if (isiOS && window.visualViewport)
-    window.visualViewport.removeEventListener('resize', updateKeyboardInset)
-})
-
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -1396,11 +1372,12 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': compactWhileTyping, 'ios': isiOS }"
+    :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <!-- ✅ 固定头部：不参与滚动，避免被键盘/托底顶进刘海 -->
+      <header v-show="!isEditorActive" class="page-header-fixed" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1429,174 +1406,178 @@ function goToLinksSite() {
             <X :size="18" />
           </button>
         </div>
-      </div>
+      </header>
 
-      <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
-      <Transition name="slide-fade">
+      <!-- ✅ 独立滚动层：除头部以外的所有内容都放这里滚动 -->
+      <div class="page-scroll">
+        <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
+        <Transition name="slide-fade">
+          <div
+            v-if="isSelectionModeActive"
+            class="selection-actions-banner"
+            role="region"
+            aria-live="polite"
+          >
+            <div class="banner-left">
+              <strong>{{ $t('notes.select_notes') }}</strong>
+              <span class="sep">·</span>
+              <span>{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</span>
+            </div>
+            <div class="banner-right">
+              <button
+                class="action-btn copy-btn"
+                :disabled="selectedNoteIds.length === 0"
+                @click="handleCopySelected"
+              >
+                {{ $t('notes.copy') }}
+              </button>
+              <button
+                class="action-btn delete-btn"
+                :disabled="selectedNoteIds.length === 0"
+                @click="handleDeleteSelected"
+              >
+                {{ $t('notes.delete') }}
+              </button>
+              <button class="finish-btn" @click="finishSelectionMode">
+                {{ $t('notes.cancel') || '完成' }}
+              </button>
+            </div>
+          </div>
+        </Transition>
+
+        <Transition name="slide-fade">
+          <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
+            <NoteActions
+              ref="noteActionsRef"
+              v-model="searchQuery"
+              class="search-actions-wrapper"
+              :all-tags="allTags"
+              :is-exporting="isExporting"
+              :search-query="searchQuery"
+              :user="user"
+              :show-export-button="!isShowingSearchResults"
+              @export="handleExportTrigger"
+              @search-started="handleSearchStarted"
+              @search-completed="handleSearchCompleted"
+              @search-cleared="handleSearchCleared"
+            />
+            <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
+          </div>
+        </Transition>
+
+        <AnniversaryBanner
+          v-show="showAnniversaryBanner && !headerCollapsed"
+          ref="anniversaryBannerRef"
+          @toggle-view="handleAnniversaryToggle"
+        />
+
+        <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
+          <span class="banner-info">
+            <span class="banner-text-main">
+              正在筛选标签：<strong>{{ activeTagFilter }}</strong>
+            </span>
+            <span class="banner-text-count">
+              共 {{ filteredNotesCount }} 条笔记
+            </span>
+          </span>
+          <div class="banner-actions">
+            <button class="export-results-btn" @click="handleExportTrigger">导出</button>
+            <button class="clear-filter-btn" @click="clearTagFilter">×</button>
+          </div>
+        </div>
+
+        <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
+          <span class="banner-info">
+            <span class="banner-text-main">
+              搜索“<strong>{{ searchQuery }}</strong>”的结果
+            </span>
+            <span class="banner-text-count">
+              共 {{ notes.length }} 条笔记
+            </span>
+          </span>
+          <div class="banner-actions">
+            <button class="export-results-btn" @click="handleExportTrigger">
+              导出
+            </button>
+          </div>
+        </div>
+
+        <!-- 主页输入框：选择模式时隐藏 -->
         <div
-          v-if="isSelectionModeActive"
-          class="selection-actions-banner"
-          role="region"
-          aria-live="polite"
+          v-show="!isSelectionModeActive"
+          ref="newNoteEditorContainerRef"
+          class="new-note-editor-container"
+          :class="{ collapsed: headerCollapsed }"
         >
-          <div class="banner-left">
-            <strong>{{ $t('notes.select_notes') }}</strong>
-            <span class="sep">·</span>
-            <span>{{ $t('notes.items_selected', { count: selectedNoteIds.length }) }}</span>
-          </div>
-          <div class="banner-right">
-            <button
-              class="action-btn copy-btn"
-              :disabled="selectedNoteIds.length === 0"
-              @click="handleCopySelected"
-            >
-              {{ $t('notes.copy') }}
-            </button>
-            <button
-              class="action-btn delete-btn"
-              :disabled="selectedNoteIds.length === 0"
-              @click="handleDeleteSelected"
-            >
-              {{ $t('notes.delete') }}
-            </button>
-            <button class="finish-btn" @click="finishSelectionMode">
-              {{ $t('notes.cancel') || '完成' }}
-            </button>
-          </div>
-        </div>
-      </Transition>
-
-      <Transition name="slide-fade">
-        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
-          <NoteActions
-            ref="noteActionsRef"
-            v-model="searchQuery"
-            class="search-actions-wrapper"
+          <NoteEditor
+            ref="newNoteEditorRef"
+            v-model="newNoteContent"
+            :is-editing="false"
+            :is-loading="isCreating"
+            :max-note-length="maxNoteLength"
+            :placeholder="$t('notes.content_placeholder')"
             :all-tags="allTags"
-            :is-exporting="isExporting"
-            :search-query="searchQuery"
-            :user="user"
-            :show-export-button="!isShowingSearchResults"
-            @export="handleExportTrigger"
-            @search-started="handleSearchStarted"
-            @search-completed="handleSearchCompleted"
-            @search-cleared="handleSearchCleared"
+            @save="handleCreateNote"
+            @focus="onEditorFocus"
+            @blur="onEditorBlur"
+            @bottom-safe-change="val => (editorBottomPadding = val)"
           />
-          <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
         </div>
-      </Transition>
 
-      <AnniversaryBanner
-        v-show="showAnniversaryBanner && !headerCollapsed"
-        ref="anniversaryBannerRef"
-        @toggle-view="handleAnniversaryToggle"
-      />
+        <div
+          v-show="isEditorActive && editorBottomPadding > 0"
+          :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
+          style="flex:0 0 auto;"
+          aria-hidden="true"
+        />
 
-      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
-        <span class="banner-info">
-          <span class="banner-text-main">
-            正在筛选标签：<strong>{{ activeTagFilter }}</strong>
-          </span>
-          <span class="banner-text-count">
-            共 {{ filteredNotesCount }} 条笔记
-          </span>
-        </span>
-        <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">导出</button>
-          <button class="clear-filter-btn" @click="clearTagFilter">×</button>
+        <div v-if="showNotesList" class="notes-list-container">
+          <NoteList
+            ref="noteListRef" :key="noteListKey"
+            :notes="displayedNotes"
+            :is-loading="isLoadingNotes"
+            :has-more="hasMoreNotes"
+            :is-selection-mode-active="isSelectionModeActive"
+            :selected-note-ids="selectedNoteIds"
+            :all-tags="allTags"
+            :max-note-length="maxNoteLength"
+            :search-query="searchQuery"
+            @load-more="nextPage"
+            @update-note="handleUpdateNote"
+            @delete-note="triggerDeleteConfirmation"
+            @pin-note="handlePinToggle"
+            @copy-note="handleCopy"
+            @task-toggle="handleNoteContentClick"
+            @toggle-select="handleToggleSelect"
+            @date-updated="fetchNotes"
+            @scrolled="onListScroll"
+          />
         </div>
-      </div>
 
-      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
-        <span class="banner-info">
-          <span class="banner-text-main">
-            搜索“<strong>{{ searchQuery }}</strong>”的结果
-          </span>
-          <span class="banner-text-count">
-            共 {{ notes.length }} 条笔记
-          </span>
-        </span>
-        <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">
-            导出
-          </button>
-        </div>
-      </div>
-
-      <!-- 主页输入框：选择模式时隐藏 -->
-      <div
-        v-show="!isSelectionModeActive"
-        ref="newNoteEditorContainerRef"
-        class="new-note-editor-container"
-        :class="{ collapsed: headerCollapsed }"
-      >
-        <NoteEditor
-          ref="newNoteEditorRef"
-          v-model="newNoteContent"
-          :is-editing="false"
-          :is-loading="isCreating"
-          :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.content_placeholder')"
-          :all-tags="allTags"
-          @save="handleCreateNote"
-          @focus="onEditorFocus"
-          @blur="onEditorBlur"
-          @bottom-safe-change="val => (editorBottomPadding = val)"
+        <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
+        <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+        <TrashModal
+          :show="showTrashModal"
+          @close="showTrashModal = false"
+          @restored="invalidateAllTagCaches(); handleTrashRestored()"
+          @purged="invalidateAllTagCaches(); handleTrashPurged()"
         />
+
+        <!-- （原底部 selection-actions-popup 已移除） -->
+
+        <Transition name="slide-up-fade">
+          <CalendarView
+            v-if="showCalendarView" ref="calendarViewRef"
+            @close="showCalendarView = false"
+            @edit-note="handleEditFromCalendar"
+            @copy="handleCopy"
+            @pin="handlePinToggle"
+            @delete="triggerDeleteConfirmation"
+          />
+        </Transition>
       </div>
-
-      <div
-        v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
-        style="flex:0 0 auto;"
-        aria-hidden="true"
-      />
-
-      <div v-if="showNotesList" class="notes-list-container">
-        <NoteList
-          ref="noteListRef" :key="noteListKey"
-          :notes="displayedNotes"
-          :is-loading="isLoadingNotes"
-          :has-more="hasMoreNotes"
-          :is-selection-mode-active="isSelectionModeActive"
-          :selected-note-ids="selectedNoteIds"
-          :all-tags="allTags"
-          :max-note-length="maxNoteLength"
-          :search-query="searchQuery"
-          @load-more="nextPage"
-          @update-note="handleUpdateNote"
-          @delete-note="triggerDeleteConfirmation"
-          @pin-note="handlePinToggle"
-          @copy-note="handleCopy"
-          @task-toggle="handleNoteContentClick"
-          @toggle-select="handleToggleSelect"
-          @date-updated="fetchNotes"
-          @scrolled="onListScroll"
-        />
-      </div>
-
-      <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
-      <TrashModal
-        :show="showTrashModal"
-        @close="showTrashModal = false"
-        @restored="invalidateAllTagCaches(); handleTrashRestored()"
-        @purged="invalidateAllTagCaches(); handleTrashPurged()"
-      />
-
-      <!-- （原底部 selection-actions-popup 已移除） -->
-
-      <Transition name="slide-up-fade">
-        <CalendarView
-          v-if="showCalendarView" ref="calendarViewRef"
-          @close="showCalendarView = false"
-          @edit-note="handleEditFromCalendar"
-          @copy="handleCopy"
-          @pin="handlePinToggle"
-          @delete="triggerDeleteConfirmation"
-        />
-      </Transition>
     </template>
+
     <template v-else>
       <Authentication />
     </template>
@@ -1986,50 +1967,82 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 统一页面背景 */
+/* ====== 全局基础：铺满屏，不使用 100vh，避免 iOS PWA 拉伸 ====== */
 html, body, #app {
-  min-height: 100svh;
-  min-height: 100dvh;
-  min-height: 100lvh;
-  min-height: calc(var(--vh, 1vh) * 100);
+  height: 100%;
   margin: 0;
   background: var(--app-bg);
+  overflow: hidden;                /* 锁住页面滚动 */
+}
+@supports (-webkit-touch-callout: none) {
+  html, body, #app { height: -webkit-fill-available; } /* iOS 真机 */
 }
 
-/* 不要再用 position: fixed；保持正常文档流 */
-.auth-container {
-  height: 100%;                     /* 占满 #app */
-  overflow: auto;                    /* 只让容器滚 */
+/* 安全区变量（已存在可复用） */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-base: 44px;
+}
+
+/* 让页面高度稳定，不用 vh，避免 iOS PWA/全屏下的视口变化 */
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;                      /* 锁住整页滚动，只让内部容器滚 */
+  background: var(--app-bg, #fff);
+}
+@supports (-webkit-touch-callout: none) {
+  html, body, #app { height: -webkit-fill-available; } /* iOS 真机 */
+}
+
+/* 安全区与头部高度 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-h: 44px;
+}
+
+/* ✅ 固定头部：永远停在安全区下方，不随内容滚动 */
+.page-header-fixed {
+  position: fixed;
+  top: var(--safe-top);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  height: var(--header-h);
+  width: min(960px, 100%);
+  padding: 0 1.5rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: inherit;                   /* 与页面同底色 */
+  /* 如果需要圆角/阴影，保持你原来的样式 */
+}
+
+/* ✅ 独立滚动层：所有主体内容在这里滚，不影响固定头部 */
+.page-scroll {
+  position: relative;
+  height: 100%;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
-  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
-  padding-bottom: max(var(--kb, 0px), env(safe-area-inset-bottom, 0px)); /* 键盘让位 + 底部安全区 */
-  margin: 0 !important;
-  overscroll-behavior-y: contain;    /* 防止回弹带动外层 */
+
+  /* 头部占位 + 一点间距，避免一聚焦就“撞头” */
+  padding-top: calc(var(--safe-top) + var(--header-h) + 8px);
+  padding-bottom: var(--safe-bottom);
+
+  /* 关键：让浏览器在输入框聚焦时，把内容滚到头部下方的安全区域 */
+  scroll-padding-top: calc(var(--safe-top) + var(--header-h) + 8px);
 }
 
-/* 头部以容器为参照，不再额外叠 safe-top */
-.auth-container .page-header {
+/* 如果你之前给 .search-bar-container / .selection-actions-banner 写了 sticky
+   请改回普通流，或改成 top: 0（相对 .page-scroll，而不是 safe-top）
+   例如需要吸顶时用： */
+.page-scroll .inside-sticky {
   position: sticky;
-  top: 0;                /* 就是 0，不要加 safe-top */
-}
-
-/* 二级条幅/搜索栏：以头部高度为参照 */
-.auth-container .search-bar-container,
-.auth-container .selection-actions-banner {
-  top: var(--header-base);
-}
-
-/* 二级横幅、搜索栏跟随 header-height */
-.search-bar-container,
-.selection-actions-banner {
-  top: var(--header-height) !important;
-}
-/* 让“页面不滚动”，滚动交给根容器 */
-html, body, #app {
-  height: 100dvh;
-  overflow: hidden;
-  overscroll-behavior: none;
-  margin: 0;
-  background: var(--app-bg);
+  top: 0;                 /* 相对滚动容器吸顶，不会顶进刘海 */
+  z-index: 2000;
 }
 </style>
