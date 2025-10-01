@@ -1372,7 +1372,8 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': compactWhileTyping }"
+    :class="{ 'is-typing': compactWhileTyping, 'editing': isEditorActive }"
+    :style="{ '--editor-pad-bottom': `${Math.min(editorBottomPadding, 320)}px` }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
@@ -1522,10 +1523,9 @@ function goToLinksSite() {
       </div>
 
       <div
-        v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
-        style="flex:0 0 auto;"
-        aria-hidden="true"
+        v-if="isEditorActive && editorBottomPadding > 0"
+        class="editor-bottom-overlay"
+        :style="{ height: `min(${Math.min(editorBottomPadding, 320)}, 320px)` }"
       />
 
       <div v-if="showNotesList" class="notes-list-container">
@@ -1995,5 +1995,22 @@ html, body, #app {
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
+}
+/* 编辑态下：取消负 margin-bottom，改用 padding-bottom 来让位 */
+.auth-container.editing {
+  margin-bottom: 0 !important;                          /* 关键：不再把容器压进 Home 指示条 */
+  padding-bottom: var(--editor-pad-bottom, 0px) !important;  /* 让位键盘/工具栏 */
+}
+
+/* 可选：固定在底部的视觉遮罩（不改布局） */
+.editor-bottom-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;                 /* 由内联 style 动态设置 */
+  background: var(--app-bg); /* 与容器背景一致，避免“透底” */
+  pointer-events: none;      /* 不挡交互 */
+  z-index: 3100;             /* 高于内容，低于弹窗即可 */
 }
 </style>
