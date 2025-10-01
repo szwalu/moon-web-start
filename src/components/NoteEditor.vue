@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NInput, useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
@@ -1162,7 +1162,7 @@ function insertImageLink() {
   })
 }
 
-defineExpose({ reset: triggerResize })
+// defineExpose({ reset: triggerResize })
 
 let focusBoostTimer: number | null = null
 
