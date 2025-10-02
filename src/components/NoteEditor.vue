@@ -264,11 +264,8 @@ function recomputeBottomSafePadding() {
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 给移动端输入法候选栏/工具条一点“保护高度”，避免压住最后 1~2 行
-  const IME_BAR_GUARD = isAndroid ? 40 : 56 // 可按机型微调：Android 40~48，iOS 56~64
-  const MAX_PAD = 420 // 上限防炸
-  const padded = Math.min(need > 0 ? need + IME_BAR_GUARD : 0, MAX_PAD)
-  emit('bottomSafeChange', padded)
+  // 把“需要的让位像素”交给外层（auth.vue）生成垫片
+  emit('bottomSafeChange', need)
 
   // ✅ 关键改动：
   // iOS：不做 page push，完全依赖外层垫片；避免把 header 顶进刘海区
@@ -1117,9 +1114,9 @@ function handleBeforeInput(e: InputEvent) {
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-  const guard = isAndroid ? 40 : 56
-  const prelift = Math.max(base + guard, isAndroid ? 200 : 140)
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
