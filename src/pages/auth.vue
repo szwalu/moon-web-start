@@ -23,12 +23,49 @@ const allTags = ref<string[]>([])
 
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
 
+// 放在 <script setup> 顶部区域（常量区）：
 const isStandalone
   = window.matchMedia?.('(display-mode: standalone)')?.matches
-  // 旧版 iOS PWA
+  // iOS PWA 旧接口
   || (window.navigator as any)?.standalone === true
 
-const BROWSER_CHROME_GUARD = 160 // ⬅️ 网页模式的保底垫片高度（可调）
+let vvCleanup: (() => void) | null = null
+
+function installViewportKeyboardShim() {
+  if (isStandalone || !window.visualViewport)
+    return
+
+  const vv = window.visualViewport
+
+  const apply = () => {
+    // 键盘估算高度 = 布局视口高度 - 可视视口高度
+    const kb = Math.max(0, window.innerHeight - vv.height)
+    // 设置一个 CSS 变量给全局用
+    document.documentElement.style.setProperty('--kb', `${kb}px`)
+  }
+
+  vv.addEventListener('resize', apply)
+  vv.addEventListener('scroll', apply) // iOS 会在键盘弹出时“挪动”可视视口
+  window.addEventListener('orientationchange', apply)
+  // 初始化一次
+  apply()
+
+  vvCleanup = () => {
+    vv.removeEventListener('resize', apply)
+    vv.removeEventListener('scroll', apply)
+    window.removeEventListener('orientationchange', apply)
+    document.documentElement.style.removeProperty('--kb')
+  }
+}
+
+onMounted(() => {
+  installViewportKeyboardShim()
+})
+
+onUnmounted(() => {
+  vvCleanup?.()
+  vvCleanup = null
+})
 
 // 组合式：放在 t / allTags 之后
 const {
@@ -98,6 +135,9 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
+function applyBottomSafe(val: number) {
+  editorBottomPadding.value = val // 仅做本地视觉垫片
+}
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -1374,11 +1414,6 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 function goToLinksSite() {
   window.location.assign('/')
 }
-
-function applyBottomSafe(val: number) {
-  // 全屏（standalone）直接用真实键盘高度；网页模式用“键盘高度或 88px 取大值”
-  editorBottomPadding.value = isStandalone ? val : Math.max(val, BROWSER_CHROME_GUARD)
-}
 </script>
 
 <template>
@@ -1535,7 +1570,7 @@ function applyBottomSafe(val: number) {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 120)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
@@ -2008,8 +2043,15 @@ html, body, #app {
 .selection-actions-banner {
   top: var(--header-height) !important;
 }
-.auth-container,
-.notes-list-container {
-  scroll-padding-bottom: 96px; /* 与保底高度接近即可 */
+
+/* 让浏览器执行“滚动光标到可视区”时有底部缓冲区 */
+html {
+  /* 让浏览器滚动定位（如光标、scrollIntoView）预留底部空间 */
+  scroll-padding-bottom: calc(var(--kb, 0px) + 16px);
+}
+
+/* 让页面真实可滚动高度包含键盘空间（网页模式下才会有 --kb）*/
+body, #app, .auth-container {
+  padding-bottom: max(var(--kb, 0px), var(--safe-bottom, 0px)) !important;
 }
 </style>
