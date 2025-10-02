@@ -38,6 +38,7 @@ const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || n
 // 运行时状态
 let isLifted = false // 是否处于“已托起”状态
 let lastEmittedNeed = 0 // 上次发射的 need（含 HEADROOM）
+const focusTs = ref(0) // 记录最近一次 focus 的时间戳
 
 // 平台判定（尽量保守）
 const UA = navigator.userAgent.toLowerCase()
@@ -309,9 +310,12 @@ function recomputeBottomSafePadding() {
     lastEmittedNeed = need
   }
 
-  // —— 轻推页面（保持“一次性小推”，覆盖 vv 迟到），用 need 判断 —— //
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
-    if (!_hasPushedPage) {
+  // ✅ 新增：聚焦后 350ms 内禁止轻推，避免首帧跳动
+    const justFocused = focusTs.value && (Date.now() - focusTs.value) < 350
+
+    if (!_hasPushedPage && !justFocused) {
       if (isAndroid) {
         const ratio = 1.6
         const cap = 420
@@ -319,7 +323,6 @@ function recomputeBottomSafePadding() {
         window.scrollBy(0, delta)
       }
       else {
-        // iOS：小幅轻推，主要补齐候选栏盲区；更温和
         const ratio = 0.35
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
@@ -332,7 +335,7 @@ function recomputeBottomSafePadding() {
         recomputeBottomSafePadding()
       }, 140)
     }
-    // iOS：首次输入一旦露出，关闭闩锁
+    // iOS latch 关闭
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
   }
@@ -461,6 +464,7 @@ onUnmounted(() => {
 
 function handleFocus() {
   emit('focus')
+  focusTs.value = Date.now()
   captureCaret()
 
   // 允许再次“轻推”
@@ -1149,7 +1153,6 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
   const isRealTyping
     = t.startsWith('insert')
@@ -1159,14 +1162,15 @@ function handleBeforeInput(e: InputEvent) {
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
+  // iOS 首次输入 latch
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
-  emit('bottomSafeChange', prelift)
+  // ✅ 改动：不要大幅预托起，避免“首字巨空白”
+  // iOS：不预托起（交给 recompute 统一判定）
+  // Android：给一个很小的占位（只露出 footer，且最多 24px）
+  const smallBase = Math.min(getFooterHeight(), 24)
+  emit('bottomSafeChange', isAndroid ? smallBase : 0)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
