@@ -35,6 +35,10 @@ onMounted(() => {
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
+// 运行时状态
+let isLifted = false // 是否处于“已托起”状态
+let lastEmittedNeed = 0 // 上次发射的 need（含 HEADROOM）
+
 // 平台判定（尽量保守）
 const UA = navigator.userAgent.toLowerCase()
 const isIOS = /iphone|ipad|ipod/.test(UA)
@@ -186,8 +190,17 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
+  // —— 统一的提前返回：直接清零并同步内部状态 —— //
+  const clearAndReturn = () => {
+    if (lastEmittedNeed !== 0) {
+      emit('bottomSafeChange', 0)
+      lastEmittedNeed = 0
+    }
+    _hasPushedPage = false
+  }
+
   if (!isMobile) {
-    emit('bottomSafeChange', 0)
+    clearAndReturn()
     return
   }
   if (isFreezingBottom.value)
@@ -195,24 +208,23 @@ function recomputeBottomSafePadding() {
 
   const el = textarea.value
   if (!el) {
-    emit('bottomSafeChange', 0)
+    clearAndReturn()
     return
   }
 
   const vv = window.visualViewport
   if (!vv) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
+    clearAndReturn()
     return
   }
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
+    clearAndReturn()
     return
   }
 
+  // —— 计算 caret 的几何位置 —— //
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
@@ -238,14 +250,14 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 稍高，避开候选栏
 
   const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
+    ? (caretBottomInViewport + lineHeight * 2) // Android 保守多两行
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 首帧多给点
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -257,18 +269,47 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
+
+  // 头部冗余：让保存按钮有机会露出一点点
   const HEADROOM = isAndroid ? 60 : 60
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
-  const need = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  const caretBottom = isAndroid ? caretBottomAdjusted : caretBottomInViewport
 
-  // 把需要的像素交给外层垫片
-  emit('bottomSafeChange', need)
+  // ========= 临近再托 + 滞回 + 去抖 =========
+  // 只在“靠近底部 GATE 像素内”才启托；离开 gateLine HYST 后再撤
+  const GATE = isAndroid ? 120 : 140 // 越小：越“临近才托”；越大：越早介入
+  const HYST = 48 // 滞回：防止临界抖动
+  const MIN_DELTA_TO_EMIT = 10 // 去抖：变化 < 10px 不重复 emit
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  const gateLine = threshold - GATE
+
+  // 1) 门槛进入/退出（带滞回）
+  if (!isLifted) {
+    if (caretBottom > gateLine)
+      isLifted = true
+  }
+  else {
+    if (caretBottom < gateLine - HYST)
+      isLifted = false
+  }
+
+  // 2) 只在 isLifted 时计算 need；否则为 0
+  const rawNeed = Math.ceil(Math.max(0, caretBottom - threshold))
+  const need = isLifted ? rawNeed : 0
+
+  // 3) 去抖发射（比上次变化不足 MIN_DELTA_TO_EMIT 就不 emit）
+  if (need === 0 && lastEmittedNeed !== 0) {
+    emit('bottomSafeChange', 0)
+    lastEmittedNeed = 0
+  }
+  else if (Math.abs(need - lastEmittedNeed) >= MIN_DELTA_TO_EMIT) {
+    emit('bottomSafeChange', need)
+    lastEmittedNeed = need
+  }
+
+  // —— 轻推页面（保持“一次性小推”，覆盖 vv 迟到），用 need 判断 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
@@ -425,16 +466,17 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
+  // 🔄 进入编辑重置状态
+  isLifted = false
+  lastEmittedNeed = 0
+
   emit('bottomSafeChange', getFooterHeight())
 
-  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
@@ -445,7 +487,6 @@ function handleFocus() {
     recomputeBottomSafePadding()
   }, t2)
 
-  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -454,6 +495,10 @@ function onBlur() {
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
+
+  // 🔄 离开编辑重置状态
+  isLifted = false
+  lastEmittedNeed = 0
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
