@@ -1523,7 +1523,7 @@ function goToLinksSite() {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 480)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
