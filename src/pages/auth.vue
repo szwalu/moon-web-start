@@ -1609,9 +1609,9 @@ function goToLinksSite() {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
-  overflow-y: auto;          /* ← 从 hidden 改为 auto */
+  overflow-y: hidden;
   position: relative;
-  -webkit-overflow-scrolling: touch; /* 提升 iOS 惯性滚动手感 */
+  min-height: 0;
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
