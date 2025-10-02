@@ -163,7 +163,7 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
-function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
+function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
     const s = getComputedStyle(el)
@@ -187,9 +187,10 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
-    emit('bottomSafeChange', 0)
+    emit('bottomSafeChange', 0) // 在PC端，始终确保安全区为0
     return
   }
+  // 选择/拖动期间不参与计算（两端都适用），避免抖动与拉扯
   if (isFreezingBottom.value)
     return
 
@@ -200,19 +201,23 @@ function recomputeBottomSafePadding() {
   }
 
   const vv = window.visualViewport
+  // 1) 桌面或未弹键盘：不托
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
+  // 2) 判断键盘是否真的弹出
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  // Android 的 vv.height 基本不随键盘变化，不能据此早退；iPhone 保持原判定
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
+  // 3) 计算“光标底部”在 visual viewport 内的坐标
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
@@ -238,12 +243,14 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.25 : 0.9)
+    + lineHeight * (isAndroid ? 1.25 : 0.9) // iOS 略低、Android 略高
 
+  // Android：首帧经常“压两行”，保守多留两行
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
+  // 4) 需要露出的 UI 高度：真实 footer + 安全区 + 冗余
   const footerH = getFooterHeight()
   const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
   const safeInset = (() => {
@@ -255,39 +262,55 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch { return 0 }
+    catch {
+      return 0
+    }
   })()
   const SAFE = footerH + safeInset + EXTRA
 
+  // 5) 阈值与所需托起像素
   const threshold = vv.height - SAFE
   const need = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 把“需要的让位像素”交给外层（auth.vue）生成垫片
   emit('bottomSafeChange', need)
 
-  // ✅ 关键改动：
-  // iOS：不做 page push，完全依赖外层垫片；避免把 header 顶进刘海区
-  // Android：保留一次轻推，改善首帧可见性
+  // —— 只在“第一次需要时”轻推页面一点 —— //
   if (need > 0) {
-    if (isAndroid && !_hasPushedPage) {
-      const ratio = 1.6
-      const cap = 420
+    if (!_hasPushedPage) {
+      // iPhone 保持原策略；Android 更激进并使用 window.scrollBy
+      const ratio = isAndroid ? 1.6 : 0.7
+      const cap = isAndroid ? 420 : 160
       const delta = Math.min(Math.ceil(need * ratio), cap)
-      window.scrollBy(0, delta)
+
+      if (isAndroid) {
+        window.scrollBy(0, delta)
+      }
+      else {
+        const scrollEl = getScrollParent(rootRef.value) || document.scrollingElement || document.documentElement
+        if ('scrollBy' in scrollEl) {
+          // @ts-expect-error: HTMLElement 运行时有 scrollBy（DOM 声明缺失）
+          scrollEl.scrollBy(0, delta)
+        }
+        else {
+          (scrollEl as HTMLElement).scrollTop += delta
+        }
+      }
+
       _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
-    }
-    else {
-      // iOS 或已推过：不再推页面
-      _hasPushedPage = false
+
       // iOS：首次输入一旦露出，关闭闩锁
       if (isIOS && iosFirstInputLatch.value)
         iosFirstInputLatch.value = false
+
+      // Android：再补算一次（覆盖 vv 的迟到）
+      if (isAndroid) {
+        window.setTimeout(() => {
+          _hasPushedPage = false
+          recomputeBottomSafePadding()
+        }, 140)
+      }
     }
   }
   else {
@@ -466,18 +489,13 @@ function onBlur() {
 function handleClick() {
   if (isFreezingBottom.value)
     return
-
-  // 新增：点击 textarea 任意位置时，若面板已打开则关闭
-  if (showTagSuggestions.value)
-    showTagSuggestions.value = false
-
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
-// —— 计算并展示“# 标签联想面板”（智能决定在光标下方或上方，不够则限高）
+// —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
@@ -507,14 +525,9 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   }
 
   // === 计算光标像素位置（相对 .editor-wrapper） ===
-  const wrapper = el.parentElement as HTMLElement | null // .editor-wrapper（position: relative）
-  if (!wrapper) {
-    showTagSuggestions.value = false
-    return
-  }
-
+  const wrapper = el.parentElement as HTMLElement // .editor-wrapper（position: relative）
   const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const GAP = 6 // 面板与光标之间的额外间距
 
   // 用镜像元素拿到光标（选区末端）位置
@@ -531,8 +544,8 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   const selEnd = el.selectionEnd ?? el.value.length
   const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ')
-    .replace(/ /g, '\u00A0')
+    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
+    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
   const probe = document.createElement('span')
   probe.textContent = '\u200B' // 零宽探针当作光标点
   mirror.textContent = before
@@ -556,56 +569,38 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     height: el.clientHeight,
   }
 
-  // 先按“下方”给一个初值并显示，以便下一帧拿到尺寸
-  const initialTop = caretY + lineHeight + GAP
+  // === 核心：面板放在“光标下一行” ===
+  // 在手机端加一行高，避免遮住当前行光标
+  const top = caretY + lineHeight + GAP
   let left = caretX
-  suggestionsStyle.value = { top: `${initialTop}px`, left: `${left}px` }
+
+  // 先设置初值并显示
+  suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   showTagSuggestions.value = true
 
+  // 下一帧拿到面板尺寸后再做边界与滚动处理
   nextTick(() => {
     const panel = wrapper.querySelector('.tag-suggestions') as HTMLElement | null
     if (!panel)
       return
 
-    // 基本尺寸
     const panelW = panel.offsetWidth
-    let panelH = panel.offsetHeight
+    const panelH = panel.offsetHeight
 
-    // 水平防溢出：右侧不够则左收口（不越过 textarea 左边）
+    // 右侧溢出 -> 向左收口（不越过 textarea 左边）
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
-    // 计算上下可用空间（相对 textarea 可视区）
-    const spaceBelow = (textAreaBox.bottom) - (caretY + lineHeight + GAP)
-    const spaceAbove = (caretY) - (textAreaBox.top) - GAP
-    const BUFFER = 8
-
-    let top: number
-
-    // 规则：优先完整放下方；否则完整放上方；否则选空间更大的一侧并限高
-    if (spaceBelow >= panelH + BUFFER) {
-      // ✅ 下方足够
-      top = caretY + lineHeight + GAP
-      panel.style.maxHeight = '' // 还原可能的历史限高
-    }
-    else if (spaceAbove >= panelH + BUFFER) {
-      // ✅ 上方足够
-      top = Math.max(textAreaBox.top, caretY - GAP - panelH)
-      panel.style.maxHeight = ''
-    }
-    else {
-      // 两侧都不够：选空间更大的一侧，设置 max-height
-      if (spaceBelow >= spaceAbove) {
-        const maxH = Math.max(100, spaceBelow - BUFFER)
-        panel.style.maxHeight = `${maxH}px`
-        panelH = panel.offsetHeight
-        top = caretY + lineHeight + GAP
-      }
-      else {
-        const maxH = Math.max(100, spaceAbove - BUFFER)
-        panel.style.maxHeight = `${maxH}px`
-        panelH = panel.offsetHeight
-        top = Math.max(textAreaBox.top, caretY - GAP - panelH)
+    // 底部不够显示：优先滚动 textarea 给空间（避免翻到上方再挡住光标）
+    const overflow = (top + panelH) - textAreaBox.bottom
+    if (overflow > 0) {
+      const need = overflow + 8 // 额外 buffer
+      const newScrollTop = Math.min(el.scrollTop + need, el.scrollHeight - el.clientHeight)
+      if (newScrollTop !== el.scrollTop) {
+        el.scrollTop = newScrollTop
+        // 滚动后重新定位一次，确保仍处于“下一行”
+        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
+        return
       }
     }
 
@@ -1535,7 +1530,7 @@ function handleBeforeInput(e: InputEvent) {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  max-height: 300px;
+  max-height: 150px;
   overflow-y: auto;
   min-width: 120px;
 }
