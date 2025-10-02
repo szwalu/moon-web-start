@@ -1523,11 +1523,10 @@ function goToLinksSite() {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 480)}px` }"
-        style="flex:0 0 auto;"
+        :style="{ height: `${editorBottomPadding}px` }"
+        class="editor-bottom-spacer"
         aria-hidden="true"
       />
-
       <div v-if="showNotesList" class="notes-list-container">
         <NoteList
           ref="noteListRef" :key="noteListKey"

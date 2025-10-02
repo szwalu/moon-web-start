@@ -154,10 +154,8 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-
-  // ⬇️ 调整这里：把“希望的底边”从 1.5 行提高到 2.1 行，更不易被下缘遮住
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 2.1
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -218,7 +216,6 @@ function recomputeBottomSafePadding() {
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // ---- ① 光标在内容中的像素 Y ----
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -241,16 +238,14 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.25 : 0.9)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.2) // iOS 抬高估值，避免被候选栏吃掉
 
-  // Android 首帧保守多留两行
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
-  // ---- ② 需要露出的 UI 高度（原有 SAFE）----
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 56 : 40) // iOS 提高冗余量
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -264,38 +259,40 @@ function recomputeBottomSafePadding() {
   })()
   const SAFE = footerH + safeInset + EXTRA
 
-  // ---- ③ iOS 专用：为输入法候选栏 / 工具条预留一条“IME 缓冲带” ----
-  // 经验值：40~56px 更稳。按行高放大一丢丢，避免边缘临界遮挡。
-  const isSafariIOS = isIOS && /safari/i.test(UA) && !/crios|fxios|edgios/i.test(UA)
-  const IME_RESERVE = isSafariIOS ? Math.max(40, Math.round(lineHeight * 1.8)) : 0
-
-  // ---- ④ 计算需要让位像素 need（iOS 比旧版多减去 IME_RESERVE）----
-  const threshold = vv.height - SAFE - IME_RESERVE
+  const threshold = vv.height - SAFE
   const need = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 把“需要的让位像素”交给外层（auth.vue）生成垫片
+  // 把需要的像素交给外层垫片
   emit('bottomSafeChange', need)
 
-  // ---- ⑤ 轻推策略：Android 保留一次；iOS 不推，保持“温和” ----
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
-    if (isAndroid && !_hasPushedPage) {
-      const ratio = 1.6
-      const cap = 420
-      const delta = Math.min(Math.ceil(need * ratio), cap)
-      window.scrollBy(0, delta)
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        window.scrollBy(0, delta)
+      }
+      else {
+        // iOS：小幅轻推，主要补齐候选栏盲区；更温和
+        const ratio = 0.55
+        const cap = 120
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0)
+          window.scrollBy(0, delta)
+      }
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
         recomputeBottomSafePadding()
       }, 140)
     }
-    else {
-      _hasPushedPage = false
-      if (isIOS && iosFirstInputLatch.value)
-        iosFirstInputLatch.value = false
-    }
+    // iOS：首次输入一旦露出，关闭闩锁
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
   }
   else {
     _hasPushedPage = false
@@ -1107,25 +1104,23 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
   if (!isRealTyping)
     return
 
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-
-  // 与 recompute 保持一致的 iOS 预留
-  const isSafariIOS = isIOS && /safari/i.test(UA) && !/crios|fxios|edgios/i.test(UA)
-  const lineHeight = (() => {
-    const el = textarea.value
-    return el ? Number.parseFloat(getComputedStyle(el).lineHeight || '20') : 20
-  })()
-  const IME_RESERVE = isSafariIOS ? Math.max(40, Math.round(lineHeight * 1.8)) : 0
-
-  const prelift = Math.max(base + IME_RESERVE, isAndroid ? 180 : 120)
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
