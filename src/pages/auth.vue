@@ -149,8 +149,8 @@ const mainMenuOptions = computed(() => [
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
   // 如果正在编辑新笔记，则隐藏
-  if (compactWhileTyping.value)
-    return false
+  // if (compactWhileTyping.value)
+  //   return false
 
   // 如果激活了标签筛选，则隐藏
   if (activeTagFilter.value)

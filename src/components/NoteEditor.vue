@@ -272,7 +272,7 @@ function recomputeBottomSafePadding() {
   })()
 
   // 头部冗余：让保存按钮有机会露出一点点
-  const HEADROOM = isAndroid ? 60 : 60
+  const HEADROOM = isAndroid ? 60 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
