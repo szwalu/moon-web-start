@@ -1523,7 +1523,7 @@ function goToLinksSite() {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
@@ -1580,25 +1580,23 @@ function goToLinksSite() {
 </template>
 
 <style scoped>
-/* 通用：顶部留 safe-top，底部不要负 margin，允许页面正常滚动 */
 .auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  /* 网页模式保留一点底部 padding，避免被 Safari 工具栏贴边压住 */
-  padding-bottom: max(16px, var(--safe-bottom)) !important;
-  margin-bottom: 0 !important;                 /* 关键：网页模式不再负 margin */
-  overscroll-behavior-y: contain;
-  background: var(--app-bg);
-  position: relative;
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-}
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 1.5rem; /* 安全修改：仅移除底部的 0.75rem padding */
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  font-family: system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
 
-/* 仅 PWA 全屏（standalone）再使用负 margin 住 Home 指示条 */
-@media (display-mode: standalone) {
-  .auth-container {
-    padding-bottom: 0 !important;
-    margin-bottom: calc(-1 * var(--safe-bottom)) !important;
-  }
+  min-height: calc(100svh + var(--safe-bottom));
+min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
+min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
+min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
+  overflow: visible;
+  position: relative;
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -1611,7 +1609,6 @@ function goToLinksSite() {
   flex-basis: 0;
   overflow-y: hidden;
   position: relative;
-  min-height: 0;
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
