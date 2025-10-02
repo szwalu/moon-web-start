@@ -257,7 +257,8 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const SAFE = footerH + safeInset + EXTRA
+  const HEADROOM = isAndroid ? 56 : 80
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
   const need = isAndroid
