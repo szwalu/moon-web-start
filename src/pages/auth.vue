@@ -23,50 +23,6 @@ const allTags = ref<string[]>([])
 
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
 
-// 放在 <script setup> 顶部区域（常量区）：
-const isStandalone
-  = window.matchMedia?.('(display-mode: standalone)')?.matches
-  // iOS PWA 旧接口
-  || (window.navigator as any)?.standalone === true
-
-let vvCleanup: (() => void) | null = null
-
-function installViewportKeyboardShim() {
-  if (isStandalone || !window.visualViewport)
-    return
-
-  const vv = window.visualViewport
-
-  const apply = () => {
-    // 键盘估算高度 = 布局视口高度 - 可视视口高度
-    const kb = Math.max(0, window.innerHeight - vv.height)
-    // 设置一个 CSS 变量给全局用
-    document.documentElement.style.setProperty('--kb', `${kb}px`)
-  }
-
-  vv.addEventListener('resize', apply)
-  vv.addEventListener('scroll', apply) // iOS 会在键盘弹出时“挪动”可视视口
-  window.addEventListener('orientationchange', apply)
-  // 初始化一次
-  apply()
-
-  vvCleanup = () => {
-    vv.removeEventListener('resize', apply)
-    vv.removeEventListener('scroll', apply)
-    window.removeEventListener('orientationchange', apply)
-    document.documentElement.style.removeProperty('--kb')
-  }
-}
-
-onMounted(() => {
-  installViewportKeyboardShim()
-})
-
-onUnmounted(() => {
-  vvCleanup?.()
-  vvCleanup = null
-})
-
 // 组合式：放在 t / allTags 之后
 const {
   mainMenuVisible,
@@ -135,9 +91,6 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
-function applyBottomSafe(val: number) {
-  editorBottomPadding.value = val // 仅做本地视觉垫片
-}
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -1564,13 +1517,13 @@ function goToLinksSite() {
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
-          @bottom-safe-change="applyBottomSafe"
+          @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 120)}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
@@ -1627,23 +1580,25 @@ function goToLinksSite() {
 </template>
 
 <style scoped>
+/* 通用：顶部留 safe-top，底部不要负 margin，允许页面正常滚动 */
 .auth-container {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 0 1.5rem; /* 安全修改：仅移除底部的 0.75rem padding */
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-  font-family: system-ui, sans-serif;
-  display: flex;
-  flex-direction: column;
-
-  min-height: calc(100svh + var(--safe-bottom));
-min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
-min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
-min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
-  overflow: visible;
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  /* 网页模式保留一点底部 padding，避免被 Safari 工具栏贴边压住 */
+  padding-bottom: max(16px, var(--safe-bottom)) !important;
+  margin-bottom: 0 !important;                 /* 关键：网页模式不再负 margin */
+  overscroll-behavior-y: contain;
+  background: var(--app-bg);
   position: relative;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+/* 仅 PWA 全屏（standalone）再使用负 margin 遮住 Home 指示条 */
+@media (display-mode: standalone) {
+  .auth-container {
+    padding-bottom: 0 !important;
+    margin-bottom: calc(-1 * var(--safe-bottom)) !important;
+  }
 }
 .dark .auth-container {
   background: #1e1e1e;
@@ -1654,8 +1609,9 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
-  overflow-y: hidden;
+  overflow-y: auto;          /* ← 从 hidden 改为 auto */
   position: relative;
+  -webkit-overflow-scrolling: touch; /* 提升 iOS 惯性滚动手感 */
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
@@ -2042,16 +1998,5 @@ html, body, #app {
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
-}
-
-/* 让浏览器执行“滚动光标到可视区”时有底部缓冲区 */
-html {
-  /* 让浏览器滚动定位（如光标、scrollIntoView）预留底部空间 */
-  scroll-padding-bottom: calc(var(--kb, 0px) + 16px);
-}
-
-/* 让页面真实可滚动高度包含键盘空间（网页模式下才会有 --kb）*/
-body, #app, .auth-container {
-  padding-bottom: max(var(--kb, 0px), var(--safe-bottom, 0px)) !important;
 }
 </style>
