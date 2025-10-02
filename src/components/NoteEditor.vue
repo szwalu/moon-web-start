@@ -436,7 +436,7 @@ function handleFocus() {
   // ✅ iOS 兜底：首帧再抬一点，确保保存按钮尽量露出
   if (isIOS) {
     setTimeout(() => {
-      emit('bottomSafeChange', getFooterHeight() + 64) // 可调：48~80 之间
+      emit('bottomSafeChange', getFooterHeight() + 80) // 可调：48~80 之间
       recomputeBottomSafePadding()
     }, 60)
   }
