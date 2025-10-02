@@ -1535,7 +1535,7 @@ function handleBeforeInput(e: InputEvent) {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  max-height: 150px;
+  max-height: 250px;
   overflow-y: auto;
   min-width: 120px;
 }
