@@ -23,6 +23,13 @@ const allTags = ref<string[]>([])
 
 const onSelectTag = (tag: string) => fetchNotesByTag(tag)
 
+const isStandalone
+  = window.matchMedia?.('(display-mode: standalone)')?.matches
+  // 旧版 iOS PWA
+  || (window.navigator as any)?.standalone === true
+
+const BROWSER_CHROME_GUARD = 88 // ⬅️ 网页模式的保底垫片高度（可调）
+
 // 组合式：放在 t / allTags 之后
 const {
   mainMenuVisible,
@@ -1367,6 +1374,11 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 function goToLinksSite() {
   window.location.assign('/')
 }
+
+function applyBottomSafe(val: number) {
+  // 全屏（standalone）直接用真实键盘高度；网页模式用“键盘高度或 88px 取大值”
+  editorBottomPadding.value = isStandalone ? val : Math.max(val, BROWSER_CHROME_GUARD)
+}
 </script>
 
 <template>
@@ -1517,7 +1529,7 @@ function goToLinksSite() {
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
-          @bottom-safe-change="val => (editorBottomPadding = val)"
+          @bottom-safe-change="applyBottomSafe"
         />
       </div>
 
@@ -1995,5 +2007,9 @@ html, body, #app {
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
+}
+.auth-container,
+.notes-list-container {
+  scroll-padding-bottom: 96px; /* 与保底高度接近即可 */
 }
 </style>
