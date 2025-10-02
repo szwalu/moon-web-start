@@ -262,7 +262,7 @@ async function handleDateUpdate(newDate: Date) {
       <div class="flex-1 min-w-0">
         <div v-if="isExpanded">
           <div
-            class="prose dark:prose-invert max-w-none"
+            class="note-content prose dark:prose-invert max-w-none"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
@@ -280,7 +280,7 @@ async function handleDateUpdate(newDate: Date) {
         <div v-else>
           <div
             ref="contentRef"
-            class="prose dark:prose-invert line-clamp-3 max-w-none"
+            class="prose dark:prose-invert note-content line-clamp-3 max-w-none"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
@@ -520,5 +520,29 @@ async function handleDateUpdate(newDate: Date) {
 :deep(ins) {
   text-decoration: underline;
   text-underline-offset: 2px; /* 可选：下划线与文字距离 */
+}
+/* 让 Tailwind Typography 的链接色变量变成你要的蓝色 */
+.note-content {
+  /* 亮色模式链接色 */
+  --tw-prose-links: #2563eb;
+}
+.dark .note-content {
+  /* 暗色模式链接色（Typography 的反相变量） */
+  --tw-prose-invert-links: #60a5fa;
+}
+
+/* 直接命中渲染出来的 <a>（v-html 的内容需用 :deep 才能选中） */
+.note-content :deep(a),
+.note-content :deep(a:visited) {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+.note-content :deep(a:hover) {
+  color: #1d4ed8 !important;
+}
+/* 暗色模式下更亮一些 */
+.dark .note-content :deep(a),
+.dark .note-content :deep(a:visited) {
+  color: #60a5fa !important;
 }
 </style>
