@@ -91,7 +91,6 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
-const scrollLockPosition = ref(0)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -150,8 +149,8 @@ const mainMenuOptions = computed(() => [
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
   // 如果正在编辑新笔记，则隐藏
-  if (compactWhileTyping.value)
-    return false
+  // if (compactWhileTyping.value)
+  // return false
 
   // 如果激活了标签筛选，则隐藏
   if (activeTagFilter.value)
@@ -611,38 +610,15 @@ function onEditorFocus() {
     clearTimeout(editorHideTimer)
     editorHideTimer = null
   }
-
-  // ▼▼▼ 开始锁定 ▼▼▼
-  // 记录当前页面滚动了多少
-  scrollLockPosition.value = window.scrollY
-  // 锁定 body 的滚动
-  document.body.style.overflow = 'hidden'
-  // 把应用容器固定住，并用负的 top 值让它保持在原地
-  const authContainer = document.querySelector('.auth-container') as HTMLElement | null
-  if (authContainer)
-    authContainer.style.top = `-${scrollLockPosition.value}px`
-
-  // ▲▲▲ 锁定结束 ▲▲▲
-
   isEditorActive.value = true
-  compactWhileTyping.value = true // 如果你还需要这个class的话
+  compactWhileTyping.value = true
 }
-
 function onEditorBlur() {
+  // 稍微等一下，避免点击工具栏等交互导致瞬时闪烁
   editorHideTimer = window.setTimeout(() => {
-    // ▼▼▼ 开始解锁 ▼▼▼
-    const authContainer = document.querySelector('.auth-container') as HTMLElement | null
-    if (authContainer)
-      authContainer.style.top = ''
-
-    document.body.style.overflow = ''
-    // 关键：页面恢复滚动后，立刻跳回之前的位置
-    window.scrollTo(0, scrollLockPosition.value)
-    // ▲▲▲ 解锁结束 ▲▲▲
-
     isEditorActive.value = false
     compactWhileTyping.value = false
-    editorBottomPadding.value = 0
+    editorBottomPadding.value = 0 // ← 新增：失焦时清零垫片高度
   }, 120)
 }
 
@@ -1396,11 +1372,11 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': compactWhileTyping, 'scroll-locked': isEditorActive }"
+    :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1467,7 +1443,7 @@ function goToLinksSite() {
       </Transition>
 
       <Transition name="slide-fade">
-        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
+        <div v-if="showSearchBar" class="search-bar-container">
           <NoteActions
             ref="noteActionsRef"
             v-model="searchQuery"
@@ -1492,7 +1468,7 @@ function goToLinksSite() {
         @toggle-view="handleAnniversaryToggle"
       />
 
-      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
+      <div v-if="activeTagFilter" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             正在筛选标签：<strong>{{ activeTagFilter }}</strong>
@@ -1507,7 +1483,7 @@ function goToLinksSite() {
         </div>
       </div>
 
-      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
+      <div v-if="isShowingSearchResults" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             搜索“<strong>{{ searchQuery }}</strong>”的结果
@@ -1941,32 +1917,6 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   .auth-container {
     max-width: 960px;
   }
-}
-
-/* 新增：当进入滚动锁定模式时的样式 */
-.auth-container.scroll-locked {
-  position: fixed; /* [1] 将容器固定，脱离文档流 */
-  top: 0;
-  left: 0;
-  right: 0;
-  width: 100%;
-  overflow: hidden; /* [2] 容器自身不能滚动 */
-
-  /* [3] 抵消 max-width 和 margin: auto 的影响，使其在PC端也能正常工作 */
-  margin: 0 auto;
-  max-width: 480px;
-}
-@media (min-width: 768px) {
-  .auth-container.scroll-locked {
-    max-width: 960px;
-  }
-}
-
-/* 新增：在锁定模式下，让笔记列表成为新的滚动区 */
-.auth-container.scroll-locked .notes-list-container {
-  overflow-y: auto; /* [4] 允许这个容器垂直滚动 */
-  -webkit-overflow-scrolling: touch; /* [5] 在iOS上开启流畅滚动 */
-  height: 100%; /* [6] 确保它有高度可以滚动 */
 }
 </style>
 
