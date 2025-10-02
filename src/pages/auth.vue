@@ -28,7 +28,7 @@ const isStandalone
   // 旧版 iOS PWA
   || (window.navigator as any)?.standalone === true
 
-const BROWSER_CHROME_GUARD = 88 // ⬅️ 网页模式的保底垫片高度（可调）
+const BROWSER_CHROME_GUARD = 160 // ⬅️ 网页模式的保底垫片高度（可调）
 
 // 组合式：放在 t / allTags 之后
 const {
