@@ -1593,7 +1593,7 @@ function goToLinksSite() {
   border-bottom-right-radius: 0 !important;
 }
 
-/* 仅 PWA 全屏（standalone）再使用负 margin 遮住 Home 指示条 */
+/* 仅 PWA 全屏（standalone）再使用负 margin 住 Home 指示条 */
 @media (display-mode: standalone) {
   .auth-container {
     padding-bottom: 0 !important;
