@@ -238,14 +238,14 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.2) // iOS 抬高估值，避免被候选栏吃掉
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
 
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 56 : 40) // iOS 提高冗余量
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -278,8 +278,8 @@ function recomputeBottomSafePadding() {
       }
       else {
         // iOS：小幅轻推，主要补齐候选栏盲区；更温和
-        const ratio = 0.55
-        const cap = 120
+        const ratio = 0.35
+        const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (delta > 0)
           window.scrollBy(0, delta)
