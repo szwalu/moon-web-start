@@ -257,7 +257,7 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 56 : 80
+  const HEADROOM = isAndroid ? 56 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
@@ -433,14 +433,6 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
-
-  // ✅ iOS 兜底：首帧再抬一点，确保保存按钮尽量露出
-  if (isIOS) {
-    setTimeout(() => {
-      emit('bottomSafeChange', getFooterHeight() + 80) // 可调：48~80 之间
-      recomputeBottomSafePadding()
-    }, 60)
-  }
 
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
