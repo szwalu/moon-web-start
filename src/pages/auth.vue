@@ -1372,11 +1372,11 @@ function goToLinksSite() {
 <template>
   <div
     class="auth-container"
-    :class="{ 'is-typing': isEditorActive }"
+    :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div class="page-header" :class="{ 'editor-active': isEditorActive }" @click="handleHeaderClick">
+      <div :class="{ 'editor-active': isEditorActive }" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1918,20 +1918,17 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
     max-width: 960px;
   }
 }
-
 .page-header {
-  transition: height 0.25s ease-in-out, padding-top 0.25s ease-in-out;
-  overflow: hidden;
+  transition: height 0.2s ease-in-out, padding-top 0.2s ease-in-out;
 }
 
-/* 当编辑器激活时，折叠页眉 */
 .page-header.editor-active {
-  height: var(--safe-top) !important; /* 将高度收缩为仅刘海的高度 */
+  height: var(--safe-top) !important;
   padding-top: 0 !important;
-  pointer-events: none; /* 折叠后不可点击 */
+  padding-bottom: 0 !important;
+  border: none !important;
 }
 
-/* 隐藏折叠后页眉的所有子元素 */
 .page-header.editor-active > * {
   display: none;
 }
@@ -1991,7 +1988,7 @@ html, body, #app {
 
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
+padding-top: 0 !important;
   padding-bottom: 0 !important;                                  /* 不占位 */
   margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
@@ -2003,9 +2000,11 @@ html, body, #app {
 
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-top: 0 !important; /* 修改：粘在屏幕最顶部 */
-height: var(--header-height) !important; /* 修改：高度包含安全区 */
-padding-top: var(--safe-top) !important; /* 修改：用内边距把内容挤下去 */
+top: 0 !important; /* [2] 让页眉粘在屏幕最顶部 */
+/* [3] 页眉的内边距负责处理安全区 + 你想要的额外间距 */
+padding-top: calc(0.5rem + var(--safe-top)) !important;
+ /* [4] 总高度也需要相应地增加 */
+height: calc(var(--header-base) + 0.5rem + var(--safe-top)) !important;
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
