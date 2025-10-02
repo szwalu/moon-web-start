@@ -154,8 +154,10 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
+
+  // ⬇️ 调整这里：把“希望的底边”从 1.5 行提高到 2.1 行，更不易被下缘遮住
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 2.1
 
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -216,6 +218,7 @@ function recomputeBottomSafePadding() {
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
+  // ---- ① 光标在内容中的像素 Y ----
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -240,10 +243,12 @@ function recomputeBottomSafePadding() {
     + (caretYInContent - el.scrollTop)
     + lineHeight * (isAndroid ? 1.25 : 0.9)
 
+  // Android 首帧保守多留两行
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
+  // ---- ② 需要露出的 UI 高度（原有 SAFE）----
   const footerH = getFooterHeight()
   const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 24 : 12)
   const safeInset = (() => {
@@ -259,7 +264,13 @@ function recomputeBottomSafePadding() {
   })()
   const SAFE = footerH + safeInset + EXTRA
 
-  const threshold = vv.height - SAFE
+  // ---- ③ iOS 专用：为输入法候选栏 / 工具条预留一条“IME 缓冲带” ----
+  // 经验值：40~56px 更稳。按行高放大一丢丢，避免边缘临界遮挡。
+  const isSafariIOS = isIOS && /safari/i.test(UA) && !/crios|fxios|edgios/i.test(UA)
+  const IME_RESERVE = isSafariIOS ? Math.max(40, Math.round(lineHeight * 1.8)) : 0
+
+  // ---- ④ 计算需要让位像素 need（iOS 比旧版多减去 IME_RESERVE）----
+  const threshold = vv.height - SAFE - IME_RESERVE
   const need = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
@@ -267,9 +278,7 @@ function recomputeBottomSafePadding() {
   // 把“需要的让位像素”交给外层（auth.vue）生成垫片
   emit('bottomSafeChange', need)
 
-  // ✅ 关键改动：
-  // iOS：不做 page push，完全依赖外层垫片；避免把 header 顶进刘海区
-  // Android：保留一次轻推，改善首帧可见性
+  // ---- ⑤ 轻推策略：Android 保留一次；iOS 不推，保持“温和” ----
   if (need > 0) {
     if (isAndroid && !_hasPushedPage) {
       const ratio = 1.6
@@ -283,9 +292,7 @@ function recomputeBottomSafePadding() {
       }, 140)
     }
     else {
-      // iOS 或已推过：不再推页面
       _hasPushedPage = false
-      // iOS：首次输入一旦露出，关闭闩锁
       if (isIOS && iosFirstInputLatch.value)
         iosFirstInputLatch.value = false
     }
@@ -466,13 +473,18 @@ function onBlur() {
 function handleClick() {
   if (isFreezingBottom.value)
     return
+
+  // 新增：点击 textarea 任意位置时，若面板已打开则关闭
+  if (showTagSuggestions.value)
+    showTagSuggestions.value = false
+
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
-// —— 抽出：计算并展示“# 标签联想面板”（始终放在光标下一行，底部不够则滚动 textarea）
+// —— 计算并展示“# 标签联想面板”（智能决定在光标下方或上方，不够则限高）
 function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const cursorPos = el.selectionStart
   const textBeforeCursor = el.value.substring(0, cursorPos)
@@ -502,9 +514,14 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   }
 
   // === 计算光标像素位置（相对 .editor-wrapper） ===
-  const wrapper = el.parentElement as HTMLElement // .editor-wrapper（position: relative）
+  const wrapper = el.parentElement as HTMLElement | null // .editor-wrapper（position: relative）
+  if (!wrapper) {
+    showTagSuggestions.value = false
+    return
+  }
+
   const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
   const GAP = 6 // 面板与光标之间的额外间距
 
   // 用镜像元素拿到光标（选区末端）位置
@@ -521,8 +538,8 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   const selEnd = el.selectionEnd ?? el.value.length
   const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ') // 末尾回车特殊处理
-    .replace(/ /g, '\u00A0') // 空格用 nbsp 计宽
+    .replace(/\n$/u, '\n ')
+    .replace(/ /g, '\u00A0')
   const probe = document.createElement('span')
   probe.textContent = '\u200B' // 零宽探针当作光标点
   mirror.textContent = before
@@ -546,38 +563,56 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     height: el.clientHeight,
   }
 
-  // === 核心：面板放在“光标下一行” ===
-  // 在手机端加一行高，避免遮住当前行光标
-  const top = caretY + lineHeight + GAP
+  // 先按“下方”给一个初值并显示，以便下一帧拿到尺寸
+  const initialTop = caretY + lineHeight + GAP
   let left = caretX
-
-  // 先设置初值并显示
-  suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
+  suggestionsStyle.value = { top: `${initialTop}px`, left: `${left}px` }
   showTagSuggestions.value = true
 
-  // 下一帧拿到面板尺寸后再做边界与滚动处理
   nextTick(() => {
     const panel = wrapper.querySelector('.tag-suggestions') as HTMLElement | null
     if (!panel)
       return
 
+    // 基本尺寸
     const panelW = panel.offsetWidth
-    const panelH = panel.offsetHeight
+    let panelH = panel.offsetHeight
 
-    // 右侧溢出 -> 向左收口（不越过 textarea 左边）
+    // 水平防溢出：右侧不够则左收口（不越过 textarea 左边）
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
-    // 底部不够显示：优先滚动 textarea 给空间（避免翻到上方再挡住光标）
-    const overflow = (top + panelH) - textAreaBox.bottom
-    if (overflow > 0) {
-      const need = overflow + 8 // 额外 buffer
-      const newScrollTop = Math.min(el.scrollTop + need, el.scrollHeight - el.clientHeight)
-      if (newScrollTop !== el.scrollTop) {
-        el.scrollTop = newScrollTop
-        // 滚动后重新定位一次，确保仍处于“下一行”
-        requestAnimationFrame(() => computeAndShowTagSuggestions(el))
-        return
+    // 计算上下可用空间（相对 textarea 可视区）
+    const spaceBelow = (textAreaBox.bottom) - (caretY + lineHeight + GAP)
+    const spaceAbove = (caretY) - (textAreaBox.top) - GAP
+    const BUFFER = 8
+
+    let top: number
+
+    // 规则：优先完整放下方；否则完整放上方；否则选空间更大的一侧并限高
+    if (spaceBelow >= panelH + BUFFER) {
+      // ✅ 下方足够
+      top = caretY + lineHeight + GAP
+      panel.style.maxHeight = '' // 还原可能的历史限高
+    }
+    else if (spaceAbove >= panelH + BUFFER) {
+      // ✅ 上方足够
+      top = Math.max(textAreaBox.top, caretY - GAP - panelH)
+      panel.style.maxHeight = ''
+    }
+    else {
+      // 两侧都不够：选空间更大的一侧，设置 max-height
+      if (spaceBelow >= spaceAbove) {
+        const maxH = Math.max(100, spaceBelow - BUFFER)
+        panel.style.maxHeight = `${maxH}px`
+        panelH = panel.offsetHeight
+        top = caretY + lineHeight + GAP
+      }
+      else {
+        const maxH = Math.max(100, spaceAbove - BUFFER)
+        panel.style.maxHeight = `${maxH}px`
+        panelH = panel.offsetHeight
+        top = Math.max(textAreaBox.top, caretY - GAP - panelH)
       }
     }
 
@@ -1072,23 +1107,25 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping
-    = t.startsWith('insert')
-    || t.startsWith('delete')
-    || t === 'historyUndo'
-    || t === 'historyRedo'
+  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
+
+  // 与 recompute 保持一致的 iOS 预留
+  const isSafariIOS = isIOS && /safari/i.test(UA) && !/crios|fxios|edgios/i.test(UA)
+  const lineHeight = (() => {
+    const el = textarea.value
+    return el ? Number.parseFloat(getComputedStyle(el).lineHeight || '20') : 20
+  })()
+  const IME_RESERVE = isSafariIOS ? Math.max(40, Math.round(lineHeight * 1.8)) : 0
+
+  const prelift = Math.max(base + IME_RESERVE, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
@@ -1507,7 +1544,7 @@ function handleBeforeInput(e: InputEvent) {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  max-height: 150px;
+  max-height: 300px;
   overflow-y: auto;
   min-width: 120px;
 }
