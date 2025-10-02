@@ -272,7 +272,7 @@ function recomputeBottomSafePadding() {
   })()
 
   // 头部冗余：让保存按钮有机会露出一点点
-  const HEADROOM = isAndroid ? 60 : 80
+  const HEADROOM = isAndroid ? 60 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
@@ -297,8 +297,10 @@ function recomputeBottomSafePadding() {
   }
 
   // 2) 只在 isLifted 时计算 need；否则为 0
-  const rawNeed = Math.ceil(Math.max(0, caretBottom - threshold))
-  const need = isLifted ? rawNeed : 0
+  // 先算基础 need
+  const rawNeed = Math.max(0, caretBottom - threshold)
+  // 再额外叠加 HEADROOM，让保存按钮固定露出一点
+  const need = rawNeed > 0 ? rawNeed + HEADROOM : 0
 
   // 3) 去抖发射（比上次变化不足 MIN_DELTA_TO_EMIT 就不 emit）
   if (need === 0 && lastEmittedNeed !== 0) {
