@@ -474,8 +474,6 @@ function handleFocus() {
   isLifted = false
   lastEmittedNeed = 0
 
-  emit('bottomSafeChange', getFooterHeight())
-
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
@@ -1169,7 +1167,7 @@ function handleBeforeInput(e: InputEvent) {
   // ✅ 改动：不要大幅预托起，避免“首字巨空白”
   // iOS：不预托起（交给 recompute 统一判定）
   // Android：给一个很小的占位（只露出 footer，且最多 24px）
-  const smallBase = Math.min(getFooterHeight(), 5)
+  const smallBase = Math.min(getFooterHeight(), 24)
   emit('bottomSafeChange', isAndroid ? smallBase : 0)
 
   requestAnimationFrame(() => {
