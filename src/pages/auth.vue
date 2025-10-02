@@ -1376,7 +1376,7 @@ function goToLinksSite() {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <div class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
