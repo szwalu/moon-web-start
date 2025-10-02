@@ -1376,7 +1376,7 @@ function goToLinksSite() {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div :class="{ 'editor-active': isEditorActive }" class="page-header" @click="handleHeaderClick">
+      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1406,6 +1406,8 @@ function goToLinksSite() {
           </button>
         </div>
       </div>
+
+      <div v-if="isEditorActive" class="safe-area-spacer" />
 
       <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
       <Transition name="slide-fade">
@@ -1918,20 +1920,6 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
     max-width: 960px;
   }
 }
-.page-header {
-  transition: height 0.2s ease-in-out, padding-top 0.2s ease-in-out;
-}
-
-.page-header.editor-active {
-  height: var(--safe-top) !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-  border: none !important;
-}
-
-.page-header.editor-active > * {
-  display: none;
-}
 </style>
 
 <style>
@@ -1988,7 +1976,7 @@ html, body, #app {
 
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-padding-top: 0 !important;
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
   padding-bottom: 0 !important;                                  /* 不占位 */
   margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
@@ -2000,16 +1988,22 @@ padding-top: 0 !important;
 
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-top: 0 !important; /* [2] 让页眉粘在屏幕最顶部 */
-/* [3] 页眉的内边距负责处理安全区 + 你想要的额外间距 */
-padding-top: calc(0.5rem + var(--safe-top)) !important;
- /* [4] 总高度也需要相应地增加 */
-height: calc(var(--header-base) + 0.5rem + var(--safe-top)) !important;
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
+}
+/* 新增：安全区占位条的样式 */
+.safe-area-spacer {
+  position: sticky;
+  top: 0;
+  height: var(--safe-top); /* 高度就是刘海的高度 */
+  flex-shrink: 0; /* 在 flex 布局中防止被压缩 */
+  z-index: 10; /* 确保它在内容之上 */
 }
 </style>
