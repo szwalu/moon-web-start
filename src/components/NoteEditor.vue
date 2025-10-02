@@ -433,7 +433,14 @@ function handleFocus() {
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // ✅ iOS 兜底：首帧再抬一点，确保保存按钮尽量露出
+  if (isIOS) {
+    setTimeout(() => {
+      emit('bottomSafeChange', getFooterHeight() + 64) // 可调：48~80 之间
+      recomputeBottomSafePadding()
+    }, 60)
+  }
+
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
