@@ -149,8 +149,8 @@ const mainMenuOptions = computed(() => [
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
   // 如果正在编辑新笔记，则隐藏
-  // if (compactWhileTyping.value)
-  // return false
+  if (compactWhileTyping.value)
+    return false
 
   // 如果激活了标签筛选，则隐藏
   if (activeTagFilter.value)
@@ -1376,7 +1376,7 @@ function goToLinksSite() {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div class="page-header" @click="handleHeaderClick">
+      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -1443,7 +1443,7 @@ function goToLinksSite() {
       </Transition>
 
       <Transition name="slide-fade">
-        <div v-if="showSearchBar" class="search-bar-container">
+        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
           <NoteActions
             ref="noteActionsRef"
             v-model="searchQuery"
@@ -1468,7 +1468,7 @@ function goToLinksSite() {
         @toggle-view="handleAnniversaryToggle"
       />
 
-      <div v-if="activeTagFilter" class="active-filter-bar">
+      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             正在筛选标签：<strong>{{ activeTagFilter }}</strong>
@@ -1483,7 +1483,7 @@ function goToLinksSite() {
         </div>
       </div>
 
-      <div v-if="isShowingSearchResults" class="active-filter-bar search-results-bar">
+      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             搜索“<strong>{{ searchQuery }}</strong>”的结果
@@ -1523,7 +1523,7 @@ function goToLinksSite() {
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${Math.min(editorBottomPadding, 44)}px` }"
+        :style="{ height: `${Math.min(editorBottomPadding, 320)}px` }"
         style="flex:0 0 auto;"
         aria-hidden="true"
       />
