@@ -49,7 +49,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: {
         name: '我abc网址导航',
-        short_name: '我abc',
+        short_name: '云笔记',
         start_url: '/auth', // ← 改这里
         scope: '/',
         display: 'standalone',
@@ -61,7 +61,7 @@ export default defineConfig({
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: '直达 Auth 页面', short_name: 'Auth', url: '/auth' },
+          { name: '云笔记', short_name: 'Auth', url: '/auth' },
         ],
       },
       workbox: { navigateFallback: '/index.html' },
