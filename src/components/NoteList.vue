@@ -50,6 +50,9 @@ const expandedNote = ref<string | null>(null)
 const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
 const isUpdating = ref(false)
+function draftKeyFor(id: string | number) {
+  return `note_draft_${id}`
+}
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
@@ -789,6 +792,9 @@ defineExpose({ scrollToTop, focusAndEditNote })
                 :max-note-length="maxNoteLength"
                 :placeholder="$t('notes.update_note')"
                 :all-tags="allTags"
+                enable-drafts
+                :draft-key="draftKeyFor(item.id)"
+                clear-draft-on-save
                 @save="handleUpdateNote"
                 @cancel="cancelEdit"
               />

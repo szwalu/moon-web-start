@@ -7,6 +7,7 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    10: typeof import('./components/NoteEditor 10.vue')['default']
     AccountModal: typeof import('./components/AccountModal.vue')['default']
     AnniversaryBanner: typeof import('./components/AnniversaryBanner.vue')['default']
     AppContainer: typeof import('./components/AppContainer.vue')['default']

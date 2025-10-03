@@ -1514,6 +1514,7 @@ function goToLinksSite() {
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
+          enable-drafts
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"

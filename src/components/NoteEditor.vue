@@ -15,8 +15,21 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 20000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
+
+  // ===== 仅用于“简单自动草稿”的开关与键（新增）=====
+  enableDrafts: { type: Boolean, default: false },
+  // 不传就用一个安全的默认键；你也可以在父组件传一个自定义 key
+  draftKey: { type: String, default: '' },
+  // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
+  clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const draftStorageKey = computed(() => {
+  if (!props.enableDrafts)
+    return null
+  // 优先使用父组件传入的 draftKey；否则根据 isEditing 给一个稳定的默认值
+  return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
+})
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -78,8 +91,102 @@ const contentModel = computed({
   },
 })
 
-// ============== Autosize ==============
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+// ===== 简单自动草稿 =====
+let draftTimer: number | null = null
+const DRAFT_SAVE_DELAY = 400 // ms
+
+function loadDraft() {
+  if (!props.enableDrafts)
+    return
+  const key = draftStorageKey.value
+  if (!key)
+    return
+
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw)
+      return
+    // 兼容两种格式：纯字符串或 JSON 包 content 字段
+    let text = ''
+    try {
+      const obj = JSON.parse(raw)
+      text = typeof obj?.content === 'string' ? obj.content : ''
+    }
+    catch {
+      text = raw
+    }
+    if (text && text !== contentModel.value) {
+      emit('update:modelValue', text)
+      // 如果你用了 autosize，触发一下
+      try {
+        triggerResize?.()
+      }
+      catch {
+        // noop
+      }
+    }
+  }
+  catch (e) {
+    console.warn('[NoteEditor] 读取草稿失败：', e)
+  }
+}
+
+function saveDraft() {
+  if (!props.enableDrafts)
+    return
+  const key = draftStorageKey.value
+  if (!key)
+    return
+  try {
+    // 存 JSON，后续扩展更安全
+    const payload = JSON.stringify({ content: contentModel.value || '' })
+    localStorage.setItem(key, payload)
+  }
+  catch (e) {
+    console.warn('[NoteEditor] 保存草稿失败：', e)
+  }
+}
+
+function clearDraft() {
+  const key = draftStorageKey.value
+  if (!key)
+    return
+  try {
+    localStorage.removeItem(key)
+  }
+  catch {
+    // noop
+  }
+}
+
+// 初次挂载：尝试恢复
+onMounted(() => {
+  loadDraft()
+})
+
+// 内容变化：400ms 节流保存
+watch(() => contentModel.value, () => {
+  if (!props.enableDrafts)
+    return
+  if (draftTimer)
+    window.clearTimeout(draftTimer)
+
+  draftTimer = window.setTimeout(() => {
+    saveDraft()
+    draftTimer = null
+  }, DRAFT_SAVE_DELAY) as unknown as number
+})
+
+// 组件卸载：收尾
+onUnmounted(() => {
+  if (draftTimer) {
+    window.clearTimeout(draftTimer)
+    draftTimer = null
+  }
+})
+
+// ============== Autosize ==============
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
@@ -389,6 +496,9 @@ async function handleSave() {
 
   // 4. 无论天气是否获取成功，都发射 save 事件
   emit('save', content, weather)
+  // ✅ 如果父组件愿意“点击保存就清草稿”，在 props.clearDraftOnSave = true 时清掉
+  if (props.clearDraftOnSave)
+    clearDraft()
 }
 
 // ============== 基础事件 ==============
