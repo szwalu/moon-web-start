@@ -545,4 +545,53 @@ async function handleDateUpdate(newDate: Date) {
 .dark .note-content :deep(a:visited) {
   color: #60a5fa !important;
 }
+
+/* 1) 统一把列表上下的外边距收紧（不影响段落自身行高） */
+.note-content :deep(ul),
+.note-content :deep(ol) {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+  padding-left: 1.2em;
+}
+
+/* 2) 普通段落的上下外边距略收紧（避免整体过稀） */
+.note-content :deep(p) {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+/* 3) 关键：当“段落后面紧跟列表”时，把两者之间的间距进一步压小
+   - 现代浏览器（含新 iOS Safari）支持 :has，精准只影响相邻场景 */
+@supports(selector(:has(+ *))) {
+  .note-content :deep(p:has(+ ul)),
+  .note-content :deep(p:has(+ ol)),
+  .note-content :deep(p:has(+ ul.task-list)) {
+    margin-bottom: 0.2em; /* ← 决定红框这块的高度 */
+  }
+}
+
+/* 4) 任务列表的复选框细节（防止复选框把行拉高） */
+.note-content :deep(li.task-list-item) {
+  line-height: inherit;
+  margin: 0;
+  padding: 0;
+}
+.note-content :deep(li.task-list-item > label) {
+  display: inline;
+  margin: 0;
+  line-height: inherit;
+}
+.note-content :deep(li.task-list-item input[type="checkbox"]) {
+  vertical-align: middle;
+  margin: 0 0.45em 0 0;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
+/* 5) 有些渲染器会在 li 里包 <p>，把它变成内联，避免额外间距 */
+.note-content :deep(li > p) {
+  display: inline;
+  margin: 0;
+  line-height: inherit;
+}
 </style>
