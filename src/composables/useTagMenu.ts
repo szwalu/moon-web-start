@@ -513,7 +513,10 @@ export function useTagMenu(
               'clearable': true,
               'autofocus': false,
               'size': 'small',
-              'style': 'font-size:16px; width: 100%; box-sizing: border-box;',
+              // ↓ 双保险：外层+CSS变量
+              'style': '--n-input-font-size:16px;font-size:16px;width:100%;box-sizing:border-box;',
+              // ↓ 直接作用到内部 <input>
+              'inputProps': { style: 'font-size:16px' },
               'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
               // ✅ 终极方案：在组件挂载后，启动一个短暂的、高频的失焦定时器
               'onVnodeMounted': (vnode) => {
@@ -727,7 +730,10 @@ export function useTagMenu(
             'clearable': true,
             'autofocus': true,
             'size': 'small',
-            'style': 'font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
+            // ↓ 双保险：外层+CSS变量
+            'style': '--n-input-font-size:16px;font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
+            // ↓ 把样式直接传给原生 <input>
+            'inputProps': { style: 'font-size:16px' },
             'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
           }),
         ]),
