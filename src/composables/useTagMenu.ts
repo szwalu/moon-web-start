@@ -53,6 +53,23 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   return `${vertical}-${horizontal}` as SmartPlacement
 }
 
+// === iOS 输入框 16px 修复（无需单独的全局样式文件）===
+function ensureTagMenuInputFontFix() {
+  if (typeof document === 'undefined')
+    return
+  const id = 'tag-menu-ios-input-16px-fix'
+  if (document.getElementById(id))
+    return
+  const style = document.createElement('style')
+  style.id = id
+  style.textContent = `
+    /* 只影响本组件里的两个搜索框 */
+    .n-dropdown-menu .tag-search-row .n-input__input-el { font-size: 16px !important; }
+    .n-dialog .icon-picker-root .n-input__input-el     { font-size: 16px !important; }
+  `
+  document.head.appendChild(style)
+}
+
 /** 将标签标准化为 "#xxx" 形式 */
 function normalizeTag(tag: string) {
   const v = (tag || '').trim()
@@ -266,6 +283,7 @@ export function useTagMenu(
   }
 
   onMounted(async () => {
+    ensureTagMenuInputFontFix()
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
@@ -505,7 +523,7 @@ export function useTagMenu(
               ]),
             )
           }
-          return h('div', { style: 'width: 100%; box-sizing: border-box;' }, [
+          return h('div', { class: 'icon-picker-root', style: 'width: 100%; box-sizing: border-box;' }, [
             h(NInput, {
               'value': searchQuery.value,
               'onUpdate:value': (v: string) => { searchQuery.value = v },
@@ -513,10 +531,7 @@ export function useTagMenu(
               'clearable': true,
               'autofocus': false,
               'size': 'small',
-              // ↓ 双保险：外层+CSS变量
-              'style': '--n-input-font-size:16px;font-size:16px;width:100%;box-sizing:border-box;',
-              // ↓ 直接作用到内部 <input>
-              'inputProps': { style: 'font-size:16px' },
+              'style': 'width: 100%; box-sizing: border-box;',
               'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
               // ✅ 终极方案：在组件挂载后，启动一个短暂的、高频的失焦定时器
               'onVnodeMounted': (vnode) => {
