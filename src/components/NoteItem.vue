@@ -419,7 +419,7 @@ async function handleDateUpdate(newDate: Date) {
 /* 内容排版 */
 :deep(.prose) {
   font-size: 17px !important;
-  line-height: 1.8;
+  line-height: 1.7;
   overflow-wrap: break-word;
 }
 .line-clamp-3 {
@@ -549,15 +549,15 @@ async function handleDateUpdate(newDate: Date) {
 /* 1) 统一把列表上下的外边距收紧（不影响段落自身行高） */
 .note-content :deep(ul),
 .note-content :deep(ol) {
-  margin-top: 0.3em;
-  margin-bottom: 0.3em;
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
   padding-left: 1.2em;
 }
 
 /* 2) 普通段落的上下外边距略收紧（避免整体过稀） */
 .note-content :deep(p) {
-  margin-top: 0.3em;
-  margin-bottom: 0.3em;
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
 }
 
 /* 3) 关键：当“段落后面紧跟列表”时，把两者之间的间距进一步压小
@@ -566,7 +566,7 @@ async function handleDateUpdate(newDate: Date) {
   .note-content :deep(p:has(+ ul)),
   .note-content :deep(p:has(+ ol)),
   .note-content :deep(p:has(+ ul.task-list)) {
-    margin-bottom: 0.1em; /* ← 决定红框这块的高度 */
+    margin-bottom: 0.15em; /* ← 决定红框这块的高度 */
   }
 }
 
