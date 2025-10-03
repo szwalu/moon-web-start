@@ -417,10 +417,19 @@ async function handleDateUpdate(newDate: Date) {
 }
 
 /* 内容排版 */
+/* 默认：桌面端 */
 :deep(.prose) {
   font-size: 17px !important;
-  line-height: 1.7;
+  line-height: 2.0; /* 桌面端更宽松 */
   overflow-wrap: break-word;
+}
+
+/* 移动端（屏幕宽度 <= 768px 时） */
+@media (max-width: 768px) {
+  :deep(.prose) {
+    line-height: 1.7; /* 移动端稍紧凑 */
+    overflow-wrap: break-word;
+  }
 }
 .line-clamp-3 {
   overflow: hidden;
