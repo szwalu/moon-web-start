@@ -271,25 +271,15 @@ function recomputeBottomSafePadding() {
     catch { return 0 }
   })()
 
+  // 头部冗余：让保存按钮有机会露出一点点
+  const HEADROOM = isAndroid ? 60 : 80
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+
+  const threshold = vv.height - SAFE
   const caretBottom = isAndroid ? caretBottomAdjusted : caretBottomInViewport
 
-  // ===== 先算 HEADROOM / SAFE / threshold（按顺序，避免 use-before-define）=====
-  const BASE_HEADROOM = isAndroid ? 60 : 80
-  // iOS 网页版（非 PWA）额外补一点，让可见度更一致
-  const IOS_WEB_BONUS = (
-    isIOS
-  && !(((window as any).matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    || (navigator as any).standalone === true)
-  )
-    ? 22
-    : 0
-
-  const HEADROOM = BASE_HEADROOM + IOS_WEB_BONUS
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
-  const threshold = vv.height - SAFE
-
   // ========= 临近再托 + 滞回 + 去抖 =========
-  // 只在“靠近底部 GATE 像素内”才启托；离开 gateLine - HYST 后再撤
+  // 只在“靠近底部 GATE 像素内”才启托；离开 gateLine HYST 后再撤
   const GATE = isAndroid ? 120 : 140 // 越小：越“临近才托”；越大：越早介入
   const HYST = 48 // 滞回：防止临界抖动
   const MIN_DELTA_TO_EMIT = 10 // 去抖：变化 < 10px 不重复 emit
@@ -307,21 +297,8 @@ function recomputeBottomSafePadding() {
   }
 
   // 2) 只在 isLifted 时计算 need；否则为 0
-  let rawNeed = 0
-  let need = 0
-  if (isLifted) {
-    rawNeed = Math.max(0, caretBottom - threshold)
-
-    // 小门槛：很小的 need 当做 0 处理，避免 0/几 px 来回抖
-    const MIN_TRIGGER = 6
-
-    // 在加入 HEADROOM 之前先减掉微小触发量，再叠加 HEADROOM
-    need = rawNeed > 0 ? Math.max(0, rawNeed - MIN_TRIGGER) + HEADROOM : 0
-  }
-  else {
-    rawNeed = 0
-    need = 0
-  }
+  const rawNeed = Math.ceil(Math.max(0, caretBottom - threshold))
+  const need = isLifted ? rawNeed : 0
 
   // 3) 去抖发射（比上次变化不足 MIN_DELTA_TO_EMIT 就不 emit）
   if (need === 0 && lastEmittedNeed !== 0) {
