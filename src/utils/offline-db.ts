@@ -116,7 +116,6 @@ function withTx<T>(
 }
 
 // ------------------------------------------------------
-// 方案一：快照 API（保留）
 // 方案一：快照 API（保留 + 修复“覆盖脏条目”的问题）
 export async function saveNotesSnapshot(list: LocalNote[]) {
   await withTx(['notes'], 'readwrite', async (tx) => {
@@ -129,7 +128,7 @@ export async function saveNotesSnapshot(list: LocalNote[]) {
       r.onerror = () => reject(r.error)
     })
 
-    // 2) 建表：以 id 为 key
+    // 2) 用 id 做 map
     const map = new Map<string, LocalNote>()
     for (const n of existing) map.set(String(n.id), n)
 
@@ -139,14 +138,12 @@ export async function saveNotesSnapshot(list: LocalNote[]) {
       const cur = map.get(id)
       if (cur && (cur.dirty || cur.localOnly)) {
         // 本地有脏版本，优先保留本地（避免丢失离线编辑/新建）
-        // 如需合并可在此做更细规则，这里直接保留本地
         continue
       }
       map.set(id, { ...srv, dirty: !!srv.dirty, localOnly: !!srv.localOnly })
     }
 
-    // 4) 为了删除“已在本地但服务端已删”的干净记录：我们清空再重写“合并结果”
-    //    这样不会丢失脏条，因为 map 里已经保留了它们
+    // 4) 清空后用“合并结果”重写（不会丢本地脏条，因为 map 里保留了）
     await clearStore(store)
     for (const n of map.values())
       store.put(n)

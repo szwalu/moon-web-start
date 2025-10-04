@@ -1080,27 +1080,21 @@ async function fetchNotes() {
     const newNotes = data || []
     totalNotes.value = count || 0
 
-    // 先得到“服务端分页后的可见列表”
-    const serviceList = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
-
-    // ✅ 合并“本地脏/仅本地”的笔记，避免刷新时丢失离线新建/编辑
-    let merged = serviceList
+    // —— 合并“本地脏/仅本地”的笔记，避免刷新时丢失离线新建/编辑 —— //
+    let mergedList = newNotes
     try {
       const localSnap = await readNotesSnapshot()
-      const dirtyLocals = (localSnap || []).filter(n => n && (n.dirty || n.localOnly))
-      if (dirtyLocals.length > 0) {
+      const dirtyLocals = (localSnap || []).filter(n => n?.dirty || n?.localOnly)
+      if (dirtyLocals.length) {
         const map = new Map<string, any>()
         // 先放服务端
-        for (const s of serviceList)
-          map.set(String(s.id), s)
-
+        for (const s of newNotes) map.set(String(s.id), s)
         // 再用本地脏条覆盖（本地为准）
-        for (const l of dirtyLocals)
-          map.set(String(l.id), l)
+        for (const l of dirtyLocals) map.set(String(l.id), l)
 
-        merged = Array.from(map.values()).sort((a: any, b: any) => {
-          const pa = a && a.is_pinned ? 0 : 1
-          const pb = b && b.is_pinned ? 0 : 1
+        mergedList = Array.from(map.values()).sort((a: any, b: any) => {
+          const pa = a?.is_pinned ? 0 : 1
+          const pb = b?.is_pinned ? 0 : 1
           if (pa !== pb)
             return pa - pb
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -1108,19 +1102,18 @@ async function fetchNotes() {
       }
     }
     catch {
-      // 合并失败就退化用服务端数据（merged 已是 serviceList）
+      // 合并失败就退化用服务端数据
     }
 
-    // 用合并结果更新可见列表
-    notes.value = merged
+    // ✅ 用 mergedList 更新 UI 和快照（不要再用 newNotes）
+    notes.value = currentPage.value > 1 ? [...notes.value, ...mergedList] : mergedList
 
-    // 写入 localStorage 元数据与主页缓存（用于在线时的快速恢复）
-    if (merged.length > 0) {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(merged))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    if (mergedList.length > 0) {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
     }
 
-    // 同步一份“离线快照”（冷启动离线直接还原）
+    // 在线 or 离线都把“当前可见列表”写入 IndexedDB 快照（保留脏条）
     try {
       await saveNotesSnapshot(notes.value)
     }
@@ -1128,8 +1121,7 @@ async function fetchNotes() {
       console.warn('[offline] saveNotesSnapshot failed:', e)
     }
 
-    // 合并分页或覆盖
-    notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+    hasMoreNotes.value = to + 1 < totalNotes.value
 
     if (newNotes.length > 0) {
       // 现有本地缓存（localStorage）

@@ -141,11 +141,17 @@ export function useOfflineSync(onSynced?: () => void) {
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'visible') {
-        try {
-          await flushOutbox(serverOps)
-          onSynced?.()
+        const tryFlush = async () => {
+          try {
+            await flushOutbox(serverOps)
+            onSynced?.()
+          }
+          catch {}
         }
-        catch {}
+        // 立刻一次 + 1.5s 再试 + 5s 再试（PWA 恢复网络/会话经常滞后）
+        tryFlush()
+        setTimeout(tryFlush, 1500)
+        setTimeout(tryFlush, 5000)
       }
     })
   }
