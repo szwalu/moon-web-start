@@ -1126,8 +1126,8 @@ function savePrefix(urlText: string) {
       prefix = `${u.origin}${dir}`
     }
     else {
-      // 非直链：记“完整路径”，去掉查询/哈希，并确保以 / 结尾
-      const path = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`
+      // 非直链：记“完整路径”，去掉查询/哈希，不补尾斜杠
+      const path = u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname
       prefix = `${u.origin}${path}`
     }
     localStorage.setItem(LAST_IMAGE_URL_PREFIX_KEY, prefix)
@@ -1252,23 +1252,23 @@ function handleBeforeInput(e: InputEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
+        autocomplete="off"
+        autocorrect="on"
+        autocapitalize="sentences"
         @beforeinput="handleBeforeInput"
+        inputmode="text"
         @focus="handleFocus"
+        enterkeyhint="done"
         @blur="onBlur"
         @click="handleClick"
         @keydown="captureCaret"
         @keyup="captureCaret"
         @mouseup="captureCaret"
         @keydown.enter="handleEnterKey"
-        autocomplete="off"
         @compositionstart="isComposing = true"
-        autocorrect="on"
         @compositionend="isComposing = false"
-        autocapitalize="sentences"
         @input="handleInput"
-        inputmode="text"
         @pointerdown="onTextPointerDown"
-        enterkeyhint="done"
         @pointerup="onTextPointerUp"
 
         @pointercancel="onTextPointerUp"
