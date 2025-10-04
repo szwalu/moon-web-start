@@ -345,7 +345,7 @@ async function handleDateUpdate(newDate: Date) {
 /* v-html 注入的元素不带作用域，必须用 :deep 才能命中 */
 :deep(.date-day) {
   font-weight: 700 !important; /* 仅“几日”加粗 */
-  font-size: 18px !important;  /* ← 加这一行即可，原来是跟随 14px，现在稍大 */
+  font-size: 16px !important;  /* ← 加这一行即可，原来是跟随 14px，现在稍大 */
 }
 
 .note-meta-left {
