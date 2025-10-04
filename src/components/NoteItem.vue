@@ -70,7 +70,7 @@ function formatDateWithWeekday(dateStr: string) {
   const mm = String(d.getMinutes()).padStart(2, '0')
   const weekdayMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
   const weekday = weekdayMap[d.getDay()]
-  return `<span class="date-day">${day}日</span> ${hh}:${mm} ${weekday}`
+  return `<span class="date-day">${day}日</span> ${weekday} ${hh}:${mm}`
 }
 
 const weatherDisplay = computed(() => {
@@ -345,6 +345,7 @@ async function handleDateUpdate(newDate: Date) {
 /* v-html 注入的元素不带作用域，必须用 :deep 才能命中 */
 :deep(.date-day) {
   font-weight: 700 !important; /* 仅“几日”加粗 */
+  font-size: 18px !important;  /* ← 加这一行即可，原来是跟随 14px，现在稍大 */
 }
 
 .note-meta-left {
