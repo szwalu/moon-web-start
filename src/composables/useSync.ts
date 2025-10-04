@@ -195,3 +195,24 @@ export function useOfflineSync(onSynced?: () => void) {
 
   return { manualSync }
 }
+
+// 订阅 auth，缓存 uid（PWA 恢复慢时，flush 也能用这个 uid）
+supabase.auth.onAuthStateChange((_event, session) => {
+  const uid = session?.user?.id ?? null
+  try {
+    if (uid && typeof localStorage !== 'undefined')
+      localStorage.setItem('last_uid', uid)
+  }
+  catch {}
+})
+
+// 启动时也尝试写一次（若已有会话）
+;(async () => {
+  try {
+    const s = await supabase.auth.getSession()
+    const uid = s?.data?.session?.user?.id ?? null
+    if (uid && typeof localStorage !== 'undefined')
+      localStorage.setItem('last_uid', uid)
+  }
+  catch {}
+})()

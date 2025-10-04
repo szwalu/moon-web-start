@@ -1264,7 +1264,72 @@ async function triggerDeleteConfirmation(id: string) {
           return
         }
 
-        // ---- 离线：入队 outbox 并乐观更新本地 ----
+        // =========================
+        //    离线删除分支
+        // =========================
+        const isLocalOnly = !!noteToDelete?.localOnly
+
+        if (isLocalOnly) {
+          // A) “仅本地”的笔记：不排 delete；直接清 outbox 同 id 记录并本地移除
+          try {
+            await deleteOutboxByNoteId(id) // 需要从 '@/utils/offline-db' 导入
+          }
+          catch (e) {
+            console.warn('[offline] deleteOutboxByNoteId failed:', e)
+          }
+
+          try {
+            await removeNoteLocal(id) // 需要从 '@/utils/offline-db' 导入
+          }
+          catch (e) {
+            console.warn('[offline] removeNoteLocal failed:', e)
+          }
+
+          // 本地 UI 先移除
+          if (activeTagFilter.value) {
+            mainNotesCache = mainNotesCache.filter(n => n.id !== id)
+            notes.value = notes.value.filter(n => n.id !== id)
+          }
+          else {
+            notes.value = notes.value.filter(n => n.id !== id)
+          }
+
+          // 同步 localStorage（主页缓存）
+          const homeCacheRaw2 = localStorage.getItem(CACHE_KEYS.HOME)
+          if (homeCacheRaw2) {
+            const homeCache2 = JSON.parse(homeCacheRaw2)
+            const updatedHomeCache2 = homeCache2.filter((n: any) => n.id !== id)
+            localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache2))
+          }
+
+          totalNotes.value = Math.max(0, (totalNotes.value || 0) - 1)
+          localStorage.setItem(
+            CACHE_KEYS.HOME_META,
+            JSON.stringify({ totalNotes: totalNotes.value }),
+          )
+
+          // 刷新 IndexedDB 的“当前可见列表”快照（离线冷启动也能还原）
+          try {
+            await saveNotesSnapshot(notes.value)
+          }
+          catch (e) {
+            console.warn('[offline] snapshot after local-only delete failed:', e)
+          }
+
+          // 清理标签/日历等缓存
+          if (noteToDelete)
+            invalidateCachesOnDataChange(noteToDelete)
+
+          messageHook.success('已删除（本地笔记，未上云）')
+
+          if (showCalendarView.value && calendarViewRef.value) {
+            // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+            (calendarViewRef.value as any).refreshData?.()
+          }
+          return
+        }
+
+        // B) 非 localOnly：正常离线删除——入队 outbox
         await queueMutation({ op: 'delete', note_id: id, payload: {} })
 
         // 本地 UI 先移除
