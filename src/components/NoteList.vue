@@ -558,39 +558,55 @@ async function toggleExpand(noteId: string) {
     return
 
   if (isSwitching) {
+    // 先收起旧的，再展开新的，避免高度突变
     expandedNote.value = null
     await nextTick()
     await new Promise(r => requestAnimationFrame(r))
   }
 
   if (!isCurrentlyExpanded) {
+    // 记录展开前，卡片相对滚动容器顶部的偏移（用于展开后保持顶部不动）
     const card = noteContainers.value[noteId] as HTMLElement | undefined
     if (card) {
       const scRect = scroller.getBoundingClientRect()
       const cardRect = card.getBoundingClientRect()
-      expandAnchor.value = { noteId, topOffset: cardRect.top - scRect.top, scrollTop: scroller.scrollTop }
+      expandAnchor.value = {
+        noteId,
+        topOffset: cardRect.top - scRect.top, // 展开前的相对顶部偏移
+        scrollTop: scroller.scrollTop,
+      }
     }
     else {
       expandAnchor.value = { noteId, topOffset: 0, scrollTop: scroller.scrollTop }
     }
 
+    // 展开
     expandedNote.value = noteId
     await nextTick()
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
+    // ✅ 只向下展开：保持“展开前的顶部位置”不变
     const cardAfter = noteContainers.value[noteId] as HTMLElement | undefined
     if (cardAfter) {
       scroller.style.overflowAnchor = 'none'
       const scRectAfter = scroller.getBoundingClientRect()
       const cardRectAfter = cardAfter.getBoundingClientRect()
-      const topPadding = 0
-      const deltaAlign = (cardRectAfter.top - scRectAfter.top) - topPadding
+
+      // 目标是让 (卡片顶部相对滚动容器的偏移) == 展开前记录的 topOffset
+      const anchor = expandAnchor.value
+      const wantTopOffset
+        = anchor.noteId === noteId ? anchor.topOffset : (cardRectAfter.top - scRectAfter.top)
+
+      const currentTopOffset = cardRectAfter.top - scRectAfter.top
+      const deltaAlign = currentTopOffset - wantTopOffset
       const target = scroller.scrollTop + deltaAlign
+
       await stableSetScrollTop(scroller, target, 6, 0.5)
       recomputeStickyState()
     }
   }
   else {
+    // 收起：保持原有“回到展开前位置”的逻辑不变
     expandedNote.value = null
     scroller.style.overflowAnchor = 'none'
 
