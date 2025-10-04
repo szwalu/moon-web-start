@@ -35,3 +35,9 @@ coverage
 package-lock.json
 package-lock.json
 package-lock.json
+
+# build/dev outputs
+/dev-dist/
+/dist/
+/src/auto-imports.d.ts
+/src/components.d.ts
