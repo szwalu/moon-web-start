@@ -47,7 +47,6 @@ export default defineConfig({
     // ✅ PWA 插件（内联生成 manifest）
     VitePWA({
       registerType: 'autoUpdate',
-      devOptions: { enabled: true },
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',

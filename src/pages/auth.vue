@@ -16,29 +16,6 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
-// 新增：离线数据库/队列
-import {
-  deleteOutboxByNoteId,
-  isOnline,
-  putNoteLocal,
-  queueMutation,
-  queuePendingNote,
-  readNotesSnapshot,
-  removeNoteLocal,
-  saveNotesSnapshot,
-} from '@/utils/offline-db'
-
-import { useOfflineSync, useSyncDebug } from '@/composables/useSync'
-
-const currentPage = ref(1)
-const { manualSync: _manualSync } = useOfflineSync(() => {
-  currentPage.value = 1
-  fetchNotes()
-})
-const dbg = useSyncDebug()
-// 允许通过 localStorage 开关调试 UI
-const showSyncDebug = computed(() => localStorage.getItem('DEBUG_SYNC') === '1')
-
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
 // ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
@@ -84,6 +61,7 @@ const notes = ref<any[]>([])
 const newNoteContent = ref('')
 const isLoadingNotes = ref(false)
 const showNotesList = ref(true)
+const currentPage = ref(1)
 const notesPerPage = 30
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
@@ -113,7 +91,6 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
-const isOffline = ref(false)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -221,23 +198,6 @@ onMounted(() => {
   setTimeout(() => {
     loadCache()
   }, 0)
-
-  // ✅ IndexedDB 快照兜底（仅当上面的 localStorage 没恢复任何内容时才触发）
-  ;(async () => {
-    try {
-      // 等一帧，给 loadCache() 一个机会先把 localStorage 填进来
-      await Promise.resolve()
-      if (!notes.value || notes.value.length === 0) {
-        const local = await loadNotesSnapshot()
-        if (local && local.length) {
-          notes.value = local
-          isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
-        }
-      }
-    }
-    catch {}
-  })()
-
   document.addEventListener('visibilitychange', handleVisibilityChange)
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
@@ -447,21 +407,6 @@ async function handleUpdateNote({ id, content }: { id: string; content: string }
     callback(!!saved)
 }
 
-// 构造一条“本地新建”的笔记对象（与线上结构一致）
-function _buildLocalNote(content: string, weather?: string | null) {
-  const nowIso = new Date().toISOString()
-  return {
-    id: uuidv4(),
-    content: content.trim(),
-    weather: weather ?? null,
-    created_at: nowIso,
-    updated_at: nowIso,
-    is_pinned: false,
-    user_id: user.value!.id, // 已登录前提
-    _localOnly: true as const, // 仅用于 UI 标记（可选）
-  }
-}
-
 async function saveNote(
   contentToSave: string,
   noteIdToUpdate: string | null,
@@ -477,203 +422,58 @@ async function saveNote(
     return null
   }
 
-  // 通用 noteData（用于“在线新建”）
   const noteData = {
     content: contentToSave.trim(),
     updated_at: new Date().toISOString(),
     user_id: user.value.id,
   }
 
-  // ============== A) 编辑（update） ==============
-  if (noteIdToUpdate) {
-    const patch = {
-      content: contentToSave.trim(),
-      updated_at: new Date().toISOString(),
-    }
+  let savedNote
+  try {
+    if (noteIdToUpdate) {
+      // ===== 编辑：不更新 weather =====
+      const { data: updatedData, error: updateError } = await supabase
+        .from('notes')
+        .update(noteData)
+        .eq('id', noteIdToUpdate)
+        .eq('user_id', user.value.id)
+        .select()
+      if (updateError || !updatedData?.length)
+        throw new Error(t('auth.update_failed'))
 
-    // ---- 离线：本地更新 + 入队 + 刷快照 ----
-    if (!isOnline()) {
-      const local = notes.value.find(n => n.id === noteIdToUpdate)
-
-      if (local) {
-        const updatedLocal = { ...local, ...patch, dirty: true }
-
-        // 1) 更新 UI 列表
-        updateNoteInList(updatedLocal)
-
-        // 2) IndexedDB 单条 upsert
-        await putNoteLocal(updatedLocal, { dirty: true })
-
-        // 3) 入队 outbox
-        await queueMutation({ op: 'update', note_id: noteIdToUpdate, payload: patch })
-
-        // 4) 保存“当前可见列表”快照
-        try {
-          await saveNotesSnapshot(notes.value)
-        }
-        catch (e) {
-          console.warn('[offline] snapshot after update failed:', e)
-        }
-
-        if (showMessage)
-          messageHook.success('已离线保存，联网后自动同步。')
-
-        return updatedLocal
-      }
-
-      // 列表里没找到：兜底在本地 upsert 一条
-      const fallbackCreatedAt = new Date().toISOString()
-      const fallback = {
-        id: noteIdToUpdate,
-        content: patch.content,
-        created_at: fallbackCreatedAt,
-        updated_at: patch.updated_at,
-        is_pinned: false,
-        weather: null,
-        user_id: user.value?.id,
-        dirty: true,
-        localOnly: true,
-      }
-
-      await putNoteLocal(fallback, { dirty: true, localOnly: true })
-      await queueMutation({ op: 'update', note_id: noteIdToUpdate, payload: patch })
-
-      try {
-        await saveNotesSnapshot(notes.value)
-      }
-      catch (e) {
-        console.warn('[offline] snapshot after update (fallback) failed:', e)
-      }
-
+      savedNote = updatedData[0]
+      updateNoteInList(savedNote)
       if (showMessage)
-        messageHook.success('已离线保存，联网后自动同步。')
+        messageHook.success(t('notes.update_success'))
+    }
+    else {
+      // ===== 新建：把 weather 一并写入 =====
+      const newId = uuidv4()
+      const insertPayload: any = { ...noteData, id: newId }
+      // 只有在新建时写入天气（允许为 null）
+      insertPayload.weather = weather ?? null
 
-      return fallback
+      const { data: insertedData, error: insertError } = await supabase
+        .from('notes')
+        .insert(insertPayload)
+        .select()
+      if (insertError || !insertedData?.length)
+        throw new Error(t('auth.insert_failed_create_note'))
+
+      savedNote = insertedData[0]
+      addNoteToList(savedNote)
+      if (showMessage)
+        messageHook.success(t('notes.auto_saved'))
     }
 
-    // ---- 在线：请求服务端更新，成功后同步本地与快照 ----
-    const { data: updatedData, error: updateError } = await supabase
-      .from('notes')
-      .update(patch)
-      .eq('id', noteIdToUpdate)
-      .eq('user_id', user.value.id)
-      .select()
-
-    if (updateError || !updatedData?.length)
-      throw new Error(t('auth.update_failed'))
-
-    const savedNote = updatedData[0]
-    updateNoteInList(savedNote)
-
-    try {
-      await putNoteLocal(savedNote, { dirty: false })
-      await saveNotesSnapshot(notes.value)
-    }
-    catch (e) {
-      console.warn('[offline] persist after online update failed:', e)
-    }
-
-    if (showMessage)
-      messageHook.success(t('notes.update_success'))
-
-    // 更新相关缓存
     invalidateCachesOnDataChange(savedNote)
     await fetchAllTags()
-
     return savedNote
   }
-  // ============== A) 编辑（update）结束 ==============
-
-  // ============== B) 新建（insert） ==============
-  // ---- 离线：本地新建 + 入队 + 刷快照 ----
-  if (!isOnline()) {
-    const newId = uuidv4()
-    const now = new Date().toISOString()
-    const localNote = {
-      id: newId,
-      content: contentToSave.trim(),
-      created_at: now,
-      updated_at: now,
-      is_pinned: false,
-      weather: weather ?? null,
-      user_id: user.value.id,
-      dirty: true,
-      localOnly: true,
-    }
-
-    // 0) UI 先插入到列表顶部
-    notes.value.unshift(localNote)
-
-    // 1) 更新计数和 localStorage
-    try {
-      totalNotes.value = (totalNotes.value || 0) + 1
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-    }
-    catch {
-      // localStorage 写失败不阻止后续逻辑
-    }
-
-    // 2) IndexedDB：本地持久化单条
-    await putNoteLocal(localNote, { dirty: true, localOnly: true })
-
-    // 3) 写入 IndexedDB 快照（冷启动直接还原）
-    try {
-      await saveNotesSnapshot(notes.value)
-    }
-    catch (e) {
-      console.warn('[offline] snapshot failed', e)
-    }
-
-    // 4) 入队 outbox，等上线后 flushOutbox 推送到服务端
-    try {
-      await queuePendingNote(localNote)
-    }
-    catch (e) {
-      console.warn('[offline] queuePendingNote failed', e)
-    }
-
-    // 5) 提示
-    if (showMessage)
-      messageHook.success('已离线保存，联网后将自动同步。')
-
-    // 6) 返回本地记录
-    return localNote
+  catch (error: any) {
+    messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
+    return null
   }
-
-  // ---- 在线：直接创建（保留天气），成功后同步本地与快照 ----
-  const newId = uuidv4()
-  const insertPayload: any = { ...noteData, id: newId, weather: weather ?? null }
-
-  const { data: insertedData, error: insertError } = await supabase
-    .from('notes')
-    .insert(insertPayload)
-    .select()
-
-  if (insertError || !insertedData?.length)
-    throw new Error(t('auth.insert_failed_create_note'))
-
-  const savedOnline = insertedData[0]
-  addNoteToList(savedOnline)
-
-  // 同步快照（保证冷启动的一致）
-  try {
-    await putNoteLocal(savedOnline, { dirty: false })
-    await saveNotesSnapshot(notes.value)
-  }
-  catch (e) {
-    console.warn('[offline] snapshot after online insert failed:', e)
-  }
-
-  if (showMessage)
-    messageHook.success(t('notes.auto_saved'))
-
-  // 更新相关缓存
-  invalidateCachesOnDataChange(savedOnline)
-  await fetchAllTags()
-
-  return savedOnline
-  // ============== B) 新建（insert）结束 ==============
 }
 
 const displayedNotes = computed(() => {
@@ -995,57 +795,12 @@ async function handlePinToggle(note: any) {
     return
 
   const newPinStatus = !note.is_pinned
-
   try {
-    // --- 离线逻辑：先更新本地，入队同步 ---
-    if (!isOnline()) {
-      const updated = {
-        ...note,
-        is_pinned: newPinStatus,
-        dirty: true,
-        updated_at: new Date().toISOString(),
-      }
-
-      // 1️⃣ UI 立即更新（前端无感切换）
-      notes.value = notes.value.map(n => (n.id === note.id ? updated : n))
-      // 2️⃣ 本地 IndexedDB 记录更新
-      await putNoteLocal(updated, { dirty: true })
-      // 3️⃣ 入队 outbox
-      await queueMutation({
-        op: 'pin',
-        note_id: note.id,
-        payload: { is_pinned: newPinStatus },
-      })
-      // 4️⃣ 保存当前快照（保证冷启动还原）
-      try {
-        await saveNotesSnapshot(notes.value)
-      }
-      catch (e) {
-        console.warn('[offline] snapshot after pin failed:', e)
-      }
-
-      // 5️⃣ 友好提示
-      messageHook.success(
-        newPinStatus
-          ? '已离线置顶，联网后自动同步。'
-          : '已离线取消置顶，联网后自动同步。',
-      )
-      return
-    }
-
-    // --- 在线逻辑：照常更新 Supabase ---
-    const { error } = await supabase
-      .from('notes')
-      .update({ is_pinned: newPinStatus })
-      .eq('id', note.id)
-      .eq('user_id', user.value.id)
-
+    const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
     if (error)
       throw error
 
-    messageHook.success(
-      newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'),
-    )
+    messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
 
     // 刷新主页列表
     await fetchNotes()
@@ -1060,6 +815,7 @@ async function handlePinToggle(note: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
   }
 }
+
 function updateNoteInList(updatedNote: any) {
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
   if (index !== -1) {
@@ -1084,72 +840,16 @@ async function fetchNotes() {
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .range(from, to)
-
     if (error)
       throw error
 
     const newNotes = data || []
     totalNotes.value = count || 0
-
-    // —— 合并“本地脏/仅本地”的笔记，避免刷新时丢失离线新建/编辑 —— //
-    let mergedList = newNotes
-    try {
-      const localSnap = await readNotesSnapshot()
-      const dirtyLocals = (localSnap || []).filter(n => n?.dirty || n?.localOnly)
-      if (dirtyLocals.length) {
-        const map = new Map<string, any>()
-        // 先放服务端
-        for (const s of newNotes) map.set(String(s.id), s)
-        // 再用本地脏条覆盖（本地为准）
-        for (const l of dirtyLocals) map.set(String(l.id), l)
-
-        mergedList = Array.from(map.values()).sort((a: any, b: any) => {
-          const pa = a?.is_pinned ? 0 : 1
-          const pb = b?.is_pinned ? 0 : 1
-          if (pa !== pb)
-            return pa - pb
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        })
-      }
-    }
-    catch {
-      // 合并失败就退化用服务端数据
-    }
-
-    // ✅ 用 mergedList 更新 UI 和快照（不要再用 newNotes）
-    notes.value = currentPage.value > 1 ? [...notes.value, ...mergedList] : mergedList
-
-    if (mergedList.length > 0) {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
-    }
-
-    // 在线 or 离线都把“当前可见列表”写入 IndexedDB 快照（保留脏条）
-    try {
-      await saveNotesSnapshot(notes.value)
-    }
-    catch (e) {
-      console.warn('[offline] saveNotesSnapshot failed:', e)
-    }
-
-    hasMoreNotes.value = to + 1 < totalNotes.value
-
+    notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
     if (newNotes.length > 0) {
-      // 现有本地缓存（localStorage）
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
-
-      // ✅ 写入 IndexedDB 快照（只读离线用）
-      //    这里用“当前可见列表”（即 notes.value），让断网冷启动能直接还原。
-      try {
-        await saveNotesSnapshot(notes.value)
-      }
-      catch (e) {
-        // 静默：IndexedDB 写入失败不影响在线逻辑
-        console.warn('[offline] saveNotesSnapshot failed:', e)
-      }
     }
-
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
   catch (err) {
@@ -1213,8 +913,9 @@ async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
 
-  const noteToDelete = notes.value.find(n => n.id === id)
+  const noteToDelete = notes.value.find(note => note.id === id)
 
+  // 单次确认
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -1222,174 +923,46 @@ async function triggerDeleteConfirmation(id: string) {
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       try {
-        // ---- 在线：直连服务端删除 ----
-        if (isOnline()) {
-          const { error } = await supabase
-            .from('notes')
-            .delete()
-            .eq('id', id)
-            .eq('user_id', user.value.id)
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.value!.id)
 
-          if (error)
-            throw new Error(error.message)
+        if (error)
+          throw new Error(error.message)
 
-          // 成功后：更新本地 UI + localStorage
-          const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
-          if (homeCacheRaw) {
-            const homeCache = JSON.parse(homeCacheRaw)
-            const updatedHomeCache = homeCache.filter((n: any) => n.id !== id)
-            localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
-          }
-
-          totalNotes.value = Math.max(0, (totalNotes.value || 0) - 1)
-          localStorage.setItem(
-            CACHE_KEYS.HOME_META,
-            JSON.stringify({ totalNotes: totalNotes.value }),
-          )
-
-          if (activeTagFilter.value) {
-            mainNotesCache = mainNotesCache.filter(n => n.id !== id)
-            notes.value = notes.value.filter(n => n.id !== id)
-          }
-          else {
-            notes.value = notes.value.filter(n => n.id !== id)
-          }
-
-          // 写入 IndexedDB 快照，保证后续离线一致
-          try {
-            await saveNotesSnapshot(notes.value)
-          }
-          catch (e) {
-            console.warn('[offline] snapshot after delete failed:', e)
-          }
-
-          messageHook.success(t('notes.delete_success'))
-
-          if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete)
-
-          if (showCalendarView.value && calendarViewRef.value) {
-            // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-            (calendarViewRef.value as any).refreshData?.()
-          }
-          return
-        }
-
-        // =========================
-        //    离线删除分支
-        // =========================
-        const isLocalOnly = !!noteToDelete?.localOnly
-
-        if (isLocalOnly) {
-          // A) “仅本地”的笔记：不排 delete；直接清 outbox 同 id 记录并本地移除
-          try {
-            await deleteOutboxByNoteId(id) // 需要从 '@/utils/offline-db' 导入
-          }
-          catch (e) {
-            console.warn('[offline] deleteOutboxByNoteId failed:', e)
-          }
-
-          try {
-            await removeNoteLocal(id) // 需要从 '@/utils/offline-db' 导入
-          }
-          catch (e) {
-            console.warn('[offline] removeNoteLocal failed:', e)
-          }
-
-          // 本地 UI 先移除
-          if (activeTagFilter.value) {
-            mainNotesCache = mainNotesCache.filter(n => n.id !== id)
-            notes.value = notes.value.filter(n => n.id !== id)
-          }
-          else {
-            notes.value = notes.value.filter(n => n.id !== id)
-          }
-
-          // 同步 localStorage（主页缓存）
-          const homeCacheRaw2 = localStorage.getItem(CACHE_KEYS.HOME)
-          if (homeCacheRaw2) {
-            const homeCache2 = JSON.parse(homeCacheRaw2)
-            const updatedHomeCache2 = homeCache2.filter((n: any) => n.id !== id)
-            localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache2))
-          }
-
-          totalNotes.value = Math.max(0, (totalNotes.value || 0) - 1)
-          localStorage.setItem(
-            CACHE_KEYS.HOME_META,
-            JSON.stringify({ totalNotes: totalNotes.value }),
-          )
-
-          // 刷新 IndexedDB 的“当前可见列表”快照（离线冷启动也能还原）
-          try {
-            await saveNotesSnapshot(notes.value)
-          }
-          catch (e) {
-            console.warn('[offline] snapshot after local-only delete failed:', e)
-          }
-
-          // 清理标签/日历等缓存
-          if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete)
-
-          messageHook.success('已删除（本地笔记，未上云）')
-
-          if (showCalendarView.value && calendarViewRef.value) {
-            // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-            (calendarViewRef.value as any).refreshData?.()
-          }
-          return
-        }
-
-        // B) 非 localOnly：正常离线删除——入队 outbox
-        await queueMutation({ op: 'delete', note_id: id, payload: {} })
-
-        // 本地 UI 先移除
-        if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(n => n.id !== id)
-          notes.value = notes.value.filter(n => n.id !== id)
-        }
-        else {
-          notes.value = notes.value.filter(n => n.id !== id)
-        }
-
-        // 同步 localStorage（主页缓存）
+        // 更新本地缓存与 UI（保持原有逻辑）
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((n: any) => n.id !== id)
+          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
         }
 
-        totalNotes.value = Math.max(0, (totalNotes.value || 0) - 1)
-        localStorage.setItem(
-          CACHE_KEYS.HOME_META,
-          JSON.stringify({ totalNotes: totalNotes.value }),
-        )
+        totalNotes.value -= 1
+        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
-        // 刷新 IndexedDB 的“当前可见列表”快照（离线冷启动也能还原）
-        try {
-          await saveNotesSnapshot(notes.value)
+        if (activeTagFilter.value) {
+          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
+          notes.value = notes.value.filter(note => note.id !== id)
         }
-        catch (e) {
-          console.warn('[offline] snapshot after offline delete failed:', e)
+        else {
+          notes.value = notes.value.filter(note => note.id !== id)
         }
 
-        // 清理标签/日历等缓存
+        messageHook.success(t('notes.delete_success'))
+
         if (noteToDelete)
           invalidateCachesOnDataChange(noteToDelete)
 
-        // 友好提示：已离线，稍后会自动同步
-        messageHook.success(
-          `${t('notes.delete_success') as string}（已离线，恢复联网后会自动同步）`,
-        )
-
         if (showCalendarView.value && calendarViewRef.value) {
           // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
-          (calendarViewRef.value as any).refreshData?.()
+          ;(calendarViewRef.value as any).refreshData?.()
         }
       }
       catch (err: any) {
-        messageHook.error(`删除失败: ${err?.message || '请稍后重试'}`)
+        messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
       }
     },
   })
@@ -2003,18 +1576,6 @@ function goToLinksSite() {
     <template v-else>
       <Authentication />
     </template>
-  </div>
-  <!-- 调试条：仅当 DEBUG_SYNC=1 时显示 -->
-  <div
-    v-if="showSyncDebug"
-    style="position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9999; padding: 8px; background: rgba(0,0,0,.75); color: #fff; border-radius: 8px; font-size: 12px;"
-  >
-    <div>online: {{ dbg.online ? 'yes' : 'no' }} | uid: {{ dbg.uid || '-' }} | outbox: {{ dbg.outboxCount }}</div>
-    <div v-if="dbg.lastError" style="color:#ffb4b4; margin-top:4px;">error: {{ dbg.lastError }}</div>
-    <div style="margin-top:4px; display:flex; gap:8px;">
-      <button style="padding:4px 8px;" @click="_manualSync()">手动同步</button>
-      <button style="padding:4px 8px;" @click="() => { localStorage.setItem('DEBUG_SYNC', '0'); location.reload() }">关闭调试</button>
-    </div>
   </div>
 </template>
 
