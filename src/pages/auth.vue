@@ -16,9 +16,17 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
-// import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, putNoteLocal, queueMutation, queuePendingNote, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
+import {
+  deleteOutboxByNoteId,
+  isOnline,
+  putNoteLocal,
+  queueMutation,
+  queuePendingNote,
+  readNotesSnapshot,
+  removeNoteLocal,
+  saveNotesSnapshot,
+} from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 

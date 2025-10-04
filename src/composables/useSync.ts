@@ -24,6 +24,22 @@ export async function getUidSoft(): Promise<string | null> {
   return null
 }
 
+// 确保会话可用且不过期；必要时刷新
+async function ensureSessionFresh(): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const sess = data?.session ?? null
+    const expSec = sess?.expires_at ?? 0
+    const nowSec = Math.floor(Date.now() / 1000)
+    // 若没有会话或即将过期（< 15s），尝试刷新
+    if (!sess || expSec - nowSec < 15)
+      await supabase.auth.refreshSession()
+  }
+  catch {
+    // 忽略，让后续 onAuthStateChange + tripleFlush 再试
+  }
+}
+
 // 等待 auth 就绪（最多等 5 秒）；PWA 场景很关键
 async function waitForUid(maxMs = 5000): Promise<string> {
   const start = Date.now()
@@ -84,20 +100,19 @@ async function waitForUid(maxMs = 5000): Promise<string> {
   })
 }
 
-// —— 服务端操作封装（供 outbox 冲洗调用）：统一保障 user_id（RLS 的关键） ——
 const serverOps = {
   insert: async (payload: any) => {
     const uid = await waitForUid()
-    // ★ 关键：强制带上 user_id（若 payload 已有则保留原值）
+    await ensureSessionFresh() // ★ 新增：保证携带有效 access token
     const toInsert = { ...payload, user_id: payload?.user_id ?? uid }
     const { data, error } = await supabase.from('notes').insert(toInsert).select()
     if (error)
       throw error
-
     return data?.[0]
   },
   update: async (id: string, patch: any) => {
     const uid = await waitForUid()
+    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .update(patch)
@@ -108,6 +123,7 @@ const serverOps = {
   },
   remove: async (id: string) => {
     const uid = await waitForUid()
+    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .delete()
@@ -118,6 +134,7 @@ const serverOps = {
   },
   pin: async (id: string, is_pinned: boolean) => {
     const uid = await waitForUid()
+    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .update({ is_pinned })
@@ -163,6 +180,14 @@ export function useOfflineSync(onSynced?: () => void) {
         // ignore
       }
     }, 5000)
+
+    setTimeout(async () => {
+      try {
+        await flushOutbox(serverOps)
+        onSynced?.()
+      }
+      catch { /* ignore */ }
+    }, 12000)
   }
 
   // 3：从后台回前台（PWA 常见）
