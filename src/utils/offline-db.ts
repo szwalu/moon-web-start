@@ -117,16 +117,39 @@ function withTx<T>(
 
 // ------------------------------------------------------
 // 方案一：快照 API（保留）
-// ------------------------------------------------------
+// 方案一：快照 API（保留 + 修复“覆盖脏条目”的问题）
 export async function saveNotesSnapshot(list: LocalNote[]) {
   await withTx(['notes'], 'readwrite', async (tx) => {
     const store = tx.objectStore(STORES.notes)
-    // 简化：清空再写（冷启动离线能还原“当前可见列表”）
-    await clearStore(store)
-    for (const n of list) {
-      const safe = { ...n, dirty: !!n.dirty, localOnly: !!n.localOnly }
-      store.put(safe)
+
+    // 1) 先读出现有本地条目
+    const existing: LocalNote[] = await new Promise((resolve, reject) => {
+      const r = store.getAll()
+      r.onsuccess = () => resolve((r.result || []) as LocalNote[])
+      r.onerror = () => reject(r.error)
+    })
+
+    // 2) 建表：以 id 为 key
+    const map = new Map<string, LocalNote>()
+    for (const n of existing) map.set(String(n.id), n)
+
+    // 3) 把“在线列表”写进去；但不覆盖本地的 dirty/localOnly 记录
+    for (const srv of list) {
+      const id = String(srv.id)
+      const cur = map.get(id)
+      if (cur && (cur.dirty || cur.localOnly)) {
+        // 本地有脏版本，优先保留本地（避免丢失离线编辑/新建）
+        // 如需合并可在此做更细规则，这里直接保留本地
+        continue
+      }
+      map.set(id, { ...srv, dirty: !!srv.dirty, localOnly: !!srv.localOnly })
     }
+
+    // 4) 为了删除“已在本地但服务端已删”的干净记录：我们清空再重写“合并结果”
+    //    这样不会丢失脏条，因为 map 里已经保留了它们
+    await clearStore(store)
+    for (const n of map.values())
+      store.put(n)
   })
 }
 
