@@ -273,18 +273,35 @@ export async function flushOutbox(server: ServerOps, opts?: { onEachSuccess?: (i
   for (const it of items) {
     try {
       switch (it.op) {
+        // ---- offline-db.ts: flushOutbox 内 ----
         case 'insert': {
-          // payload 中应包含完整的新建记录（id/content/created_at/updated_at/...）
-          const created = await server.insert(it.payload)
-          // 冲洗成功：把本地 note 标记为干净（可能顺带更新 server 回填字段）
-          await markNoteClean(it.note_id, created
+          // ★ 兜底：insert 前强制补 user_id，避免 RLS 拒绝
+          const payload = { ...it.payload }
+          try {
+            // 动态导入避免循环依赖
+            const mod = await import('@/composables/useSync')
+            const uid = await mod.getUidSoft?.()
+            if (uid && !payload.user_id)
+              payload.user_id = uid
+          }
+          catch {
+            // ignore
+          }
+
+          const created = await server.insert(payload)
+
+          // 将要写回本地的补丁（多行构造，避免 multiline-ternary 报错）
+          const syncedPatch = created
             ? {
                 created_at: created.created_at,
                 updated_at: created.updated_at,
                 is_pinned: created.is_pinned,
                 weather: created.weather ?? null,
+                user_id: created.user_id ?? payload.user_id,
               }
-            : {})
+            : {}
+
+          await markNoteSynced(it.note_id, syncedPatch)
           break
         }
         case 'update': {

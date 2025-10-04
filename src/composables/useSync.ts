@@ -2,22 +2,25 @@
 import { flushOutbox, setupOnlineAutoFlush } from '@/utils/offline-db'
 import { supabase } from '@/utils/supabaseClient'
 
-// 小工具：尽力拿到 uid（先读 session，再读 user）；拿不到就返回 null
-async function getUidSoft(): Promise<string | null> {
+// 导出：尽力拿到 uid（先读 session，再读 user）；拿不到就返回 null
+export async function getUidSoft(): Promise<string | null> {
   try {
     const s = await supabase.auth.getSession()
     const uid1 = s?.data?.session?.user?.id ?? null
     if (uid1)
       return uid1
   }
-  catch {}
-
+  catch {
+    // ignore
+  }
   try {
     const u = await supabase.auth.getUser()
-    return u?.data?.user?.id ?? null
+    const uid2 = u?.data?.user?.id ?? null
+    return uid2
   }
-  catch {}
-
+  catch {
+    // ignore
+  }
   return null
 }
 
@@ -30,6 +33,7 @@ async function waitForUid(maxMs = 5000): Promise<string> {
     const uid = await getUidSoft()
     if (uid)
       return uid
+
     await new Promise(resolve => setTimeout(resolve, 100))
   }
 
@@ -38,20 +42,17 @@ async function waitForUid(maxMs = 5000): Promise<string> {
     let settled = false
     let unsubscribe: (() => void) | null = null
 
-    const done = (uid?: string | null) => {
+    const done = (uid: string | null) => {
       if (settled)
         return
+
       settled = true
-
-      if (unsubscribe) {
-        try {
-          unsubscribe()
-        }
-        catch {}
-
-        unsubscribe = null
+      try {
+        unsubscribe?.()
       }
-
+      catch {
+        // ignore
+      }
       if (uid)
         resolve(uid)
 
@@ -70,28 +71,29 @@ async function waitForUid(maxMs = 5000): Promise<string> {
       data?.subscription?.unsubscribe()
     }
 
-    // 同时跑一个定时器超时
+    // 超时兜底
     const tick = () => {
-      if (Date.now() - start > maxMs) {
+      const elapsed = Date.now() - start
+      if (elapsed > maxMs) {
         done(null)
         return
       }
       setTimeout(tick, 150)
     }
-
     tick()
   })
 }
 
-// —— 服务端操作封装（供 outbox 冲洗调用）——
-// 统一保障 user_id（RLS 403 的根源通常在这里）
+// —— 服务端操作封装（供 outbox 冲洗调用）：统一保障 user_id（RLS 的关键） ——
 const serverOps = {
   insert: async (payload: any) => {
     const uid = await waitForUid()
+    // ★ 关键：强制带上 user_id（若 payload 已有则保留原值）
     const toInsert = { ...payload, user_id: payload?.user_id ?? uid }
     const { data, error } = await supabase.from('notes').insert(toInsert).select()
     if (error)
       throw error
+
     return data?.[0]
   },
   update: async (id: string, patch: any) => {
@@ -127,58 +129,65 @@ const serverOps = {
 }
 
 // —— 组合函数：更“激进”的自动冲洗 ——
-// 触发时机：
-// 1) 初次启动（setupOnlineAutoFlush 已有）
-// 2) online 事件（已有）
-// 3) visibilitychange 恢复可见
-// 4) pageshow（iOS PWA 从后台回前台常用）
-// 5) auth 状态就绪/刷新（SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED）
+// 触发时机：1) 初次启动（setupOnlineAutoFlush 已有） 2) online 事件（已有）
+// 3) visibilitychange 恢复可见（连刷三次） 4) pageshow  5) auth 状态就绪/刷新
 export function useOfflineSync(onSynced?: () => void) {
   // 1/2：已有逻辑（内部会先尝试一次 + 监听 online）
   setupOnlineAutoFlush(serverOps, { onSynced })
 
-  // 3：从后台回前台
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible') {
-        const tryFlush = async () => {
-          try {
-            await flushOutbox(serverOps)
-            onSynced?.()
-          }
-          catch {}
-        }
-        // 立刻一次 + 1.5s 再试 + 5s 再试（PWA 恢复网络/会话经常滞后）
-        tryFlush()
-        setTimeout(tryFlush, 1500)
-        setTimeout(tryFlush, 5000)
+  const tripleFlush = async () => {
+    try {
+      await flushOutbox(serverOps)
+      onSynced?.()
+    }
+    catch {
+      // ignore
+    }
+
+    setTimeout(async () => {
+      try {
+        await flushOutbox(serverOps)
+        onSynced?.()
       }
+      catch {
+        // ignore
+      }
+    }, 1500)
+
+    setTimeout(async () => {
+      try {
+        await flushOutbox(serverOps)
+        onSynced?.()
+      }
+      catch {
+        // ignore
+      }
+    }, 5000)
+  }
+
+  // 3：从后台回前台（PWA 常见）
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible')
+        tripleFlush()
     })
   }
 
   // 4：iOS PWA 场景常用
   if (typeof window !== 'undefined') {
-    window.addEventListener('pageshow', async () => {
-      try {
-        await flushOutbox(serverOps)
-        onSynced?.()
-      }
-      catch {}
+    window.addEventListener('pageshow', () => {
+      tripleFlush()
     })
   }
 
-  // 5：auth 就绪/刷新后再冲洗一次（参数以下划线命名，避免未使用报错）
-  supabase.auth.onAuthStateChange(async (event, _session) => {
-    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
-      try {
-        await flushOutbox(serverOps)
-        onSynced?.()
-      }
-      catch {}
-    }
+  // 5：auth 就绪/刷新后再冲洗一次
+  supabase.auth.onAuthStateChange(async (event) => {
+    const need = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED'
+    if (need)
+      tripleFlush()
   })
 
-  // 手动触发一次冲洗（页面可挂按钮）
+  // 手动触发一次冲洗（如果需要按钮）
   async function manualSync() {
     await flushOutbox(serverOps)
     onSynced?.()
