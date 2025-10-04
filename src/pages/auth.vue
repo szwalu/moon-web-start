@@ -28,13 +28,16 @@ import {
   saveNotesSnapshot,
 } from '@/utils/offline-db'
 
-import { useOfflineSync } from '@/composables/useSync'
+import { useOfflineSync, useSyncDebug } from '@/composables/useSync'
 
 const currentPage = ref(1)
 const { manualSync: _manualSync } = useOfflineSync(() => {
   currentPage.value = 1
   fetchNotes()
 })
+const dbg = useSyncDebug()
+// 允许通过 localStorage 开关调试 UI
+const showSyncDebug = computed(() => localStorage.getItem('DEBUG_SYNC') === '1')
 
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
@@ -2000,6 +2003,18 @@ function goToLinksSite() {
     <template v-else>
       <Authentication />
     </template>
+  </div>
+  <!-- 调试条：仅当 DEBUG_SYNC=1 时显示 -->
+  <div
+    v-if="showSyncDebug"
+    style="position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9999; padding: 8px; background: rgba(0,0,0,.75); color: #fff; border-radius: 8px; font-size: 12px;"
+  >
+    <div>online: {{ dbg.online ? 'yes' : 'no' }} | uid: {{ dbg.uid || '-' }} | outbox: {{ dbg.outboxCount }}</div>
+    <div v-if="dbg.lastError" style="color:#ffb4b4; margin-top:4px;">error: {{ dbg.lastError }}</div>
+    <div style="margin-top:4px; display:flex; gap:8px;">
+      <button style="padding:4px 8px;" @click="_manualSync()">手动同步</button>
+      <button style="padding:4px 8px;" @click="() => { localStorage.setItem('DEBUG_SYNC', '0'); location.reload() }">关闭调试</button>
+    </div>
   </div>
 </template>
 

@@ -2,7 +2,9 @@
 import { flushOutbox, setupOnlineAutoFlush } from '@/utils/offline-db'
 import { supabase } from '@/utils/supabaseClient'
 
-// 导出：尽力拿到 uid（先读 session，再读 user）；拿不到就返回 null
+/**
+ * 尽力拿到 uid（先读 session，再读 user）；拿不到就返回 null（导出供其他模块使用）
+ */
 export async function getUidSoft(): Promise<string | null> {
   try {
     const s = await supabase.auth.getSession()
@@ -24,23 +26,9 @@ export async function getUidSoft(): Promise<string | null> {
   return null
 }
 
-// 确保会话可用且不过期；必要时刷新
-async function ensureSessionFresh(): Promise<void> {
-  try {
-    const { data } = await supabase.auth.getSession()
-    const sess = data?.session ?? null
-    const expSec = sess?.expires_at ?? 0
-    const nowSec = Math.floor(Date.now() / 1000)
-    // 若没有会话或即将过期（< 15s），尝试刷新
-    if (!sess || expSec - nowSec < 15)
-      await supabase.auth.refreshSession()
-  }
-  catch {
-    // 忽略，让后续 onAuthStateChange + tripleFlush 再试
-  }
-}
-
-// 等待 auth 就绪（最多等 5 秒）；PWA 场景很关键
+/**
+ * 等待 auth 就绪（最多等 5 秒）；PWA 场景很关键
+ */
 async function waitForUid(maxMs = 5000): Promise<string> {
   const start = Date.now()
 
@@ -49,8 +37,9 @@ async function waitForUid(maxMs = 5000): Promise<string> {
     const uid = await getUidSoft()
     if (uid)
       return uid
-
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 100)
+    })
   }
 
   // 订阅一次 auth 事件，谁先来用谁
@@ -61,17 +50,16 @@ async function waitForUid(maxMs = 5000): Promise<string> {
     const done = (uid: string | null) => {
       if (settled)
         return
-
       settled = true
       try {
-        unsubscribe?.()
+        if (unsubscribe)
+          unsubscribe()
       }
       catch {
         // ignore
       }
       if (uid)
         resolve(uid)
-
       else
         reject(new Error('Auth not ready'))
     }
@@ -94,16 +82,21 @@ async function waitForUid(maxMs = 5000): Promise<string> {
         done(null)
         return
       }
-      setTimeout(tick, 150)
+      setTimeout(() => {
+        tick()
+      }, 150)
     }
     tick()
   })
 }
 
+/**
+ * —— 服务端操作封装（供 outbox 冲洗调用）：统一保障 user_id（RLS 的关键） ——
+ */
 const serverOps = {
   insert: async (payload: any) => {
     const uid = await waitForUid()
-    await ensureSessionFresh() // ★ 新增：保证携带有效 access token
+    // 关键：强制带上 user_id（若 payload 已有则保留原值）
     const toInsert = { ...payload, user_id: payload?.user_id ?? uid }
     const { data, error } = await supabase.from('notes').insert(toInsert).select()
     if (error)
@@ -112,7 +105,6 @@ const serverOps = {
   },
   update: async (id: string, patch: any) => {
     const uid = await waitForUid()
-    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .update(patch)
@@ -123,7 +115,6 @@ const serverOps = {
   },
   remove: async (id: string) => {
     const uid = await waitForUid()
-    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .delete()
@@ -134,7 +125,6 @@ const serverOps = {
   },
   pin: async (id: string, is_pinned: boolean) => {
     const uid = await waitForUid()
-    await ensureSessionFresh() // ★ 新增
     const { error } = await supabase
       .from('notes')
       .update({ is_pinned })
@@ -145,13 +135,20 @@ const serverOps = {
   },
 }
 
-// —— 组合函数：更“激进”的自动冲洗 ——
-// 触发时机：1) 初次启动（setupOnlineAutoFlush 已有） 2) online 事件（已有）
-// 3) visibilitychange 恢复可见（连刷三次） 4) pageshow  5) auth 状态就绪/刷新
+/**
+ * —— 组合函数：更“激进”的自动冲洗 ——
+ * 触发时机：
+ * 1) 初次启动（setupOnlineAutoFlush 已有）
+ * 2) online 事件（已有）
+ * 3) visibilitychange 恢复可见（连刷三次）
+ * 4) pageshow
+ * 5) auth 状态就绪/刷新
+ */
 export function useOfflineSync(onSynced?: () => void) {
   // 1/2：已有逻辑（内部会先尝试一次 + 监听 online）
   setupOnlineAutoFlush(serverOps, { onSynced })
 
+  // 连续冲洗 3 次，尽量覆盖 PWA 恢复时序问题
   const tripleFlush = async () => {
     try {
       await flushOutbox(serverOps)
@@ -180,14 +177,6 @@ export function useOfflineSync(onSynced?: () => void) {
         // ignore
       }
     }, 5000)
-
-    setTimeout(async () => {
-      try {
-        await flushOutbox(serverOps)
-        onSynced?.()
-      }
-      catch { /* ignore */ }
-    }, 12000)
   }
 
   // 3：从后台回前台（PWA 常见）
@@ -207,7 +196,10 @@ export function useOfflineSync(onSynced?: () => void) {
 
   // 5：auth 就绪/刷新后再冲洗一次
   supabase.auth.onAuthStateChange(async (event) => {
-    const need = event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED'
+    const need
+      = event === 'SIGNED_IN'
+      || event === 'INITIAL_SESSION'
+      || event === 'TOKEN_REFRESHED'
     if (need)
       tripleFlush()
   })
@@ -221,14 +213,18 @@ export function useOfflineSync(onSynced?: () => void) {
   return { manualSync }
 }
 
-// 订阅 auth，缓存 uid（PWA 恢复慢时，flush 也能用这个 uid）
+/**
+ * 缓存 uid（PWA 恢复慢时，flush 也能用这个 uid）
+ */
 supabase.auth.onAuthStateChange((_event, session) => {
   const uid = session?.user?.id ?? null
   try {
     if (uid && typeof localStorage !== 'undefined')
       localStorage.setItem('last_uid', uid)
   }
-  catch {}
+  catch {
+    // ignore
+  }
 })
 
 // 启动时也尝试写一次（若已有会话）
@@ -239,5 +235,7 @@ supabase.auth.onAuthStateChange((_event, session) => {
     if (uid && typeof localStorage !== 'undefined')
       localStorage.setItem('last_uid', uid)
   }
-  catch {}
+  catch {
+    // ignore
+  }
 })()

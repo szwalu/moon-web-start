@@ -364,3 +364,21 @@ export function getCachedUid(): string | null {
   catch {}
   return null
 }
+
+// 统计 outbox 数量（调试面板/角标用）
+export async function countOutbox(): Promise<number> {
+  return withTx(['outbox'], 'readonly', async (tx) => {
+    const store = tx.objectStore(STORES.outbox)
+    return await new Promise<number>((resolve, reject) => {
+      const r = store.count()
+      r.onsuccess = () => resolve(r.result || 0)
+      r.onerror = () => reject(r.error)
+    })
+  })
+}
+
+// 读取最近 N 条 outbox（调试面板用）
+export async function readOutboxTail(n = 20): Promise<OutboxItem[]> {
+  const all = await readOutbox()
+  return all.slice(-n)
+}
