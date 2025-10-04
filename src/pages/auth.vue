@@ -18,7 +18,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, putNoteLocal, queueMutation, queuePendingNote, saveNotesSnapshot } from '@/utils/offline-db'
+import { isOnline, putNoteLocal, queueMutation, queuePendingNote, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -1079,6 +1079,54 @@ async function fetchNotes() {
 
     const newNotes = data || []
     totalNotes.value = count || 0
+
+    // 先得到“服务端分页后的可见列表”
+    const serviceList = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+
+    // ✅ 合并“本地脏/仅本地”的笔记，避免刷新时丢失离线新建/编辑
+    let merged = serviceList
+    try {
+      const localSnap = await readNotesSnapshot()
+      const dirtyLocals = (localSnap || []).filter(n => n && (n.dirty || n.localOnly))
+      if (dirtyLocals.length > 0) {
+        const map = new Map<string, any>()
+        // 先放服务端
+        for (const s of serviceList)
+          map.set(String(s.id), s)
+
+        // 再用本地脏条覆盖（本地为准）
+        for (const l of dirtyLocals)
+          map.set(String(l.id), l)
+
+        merged = Array.from(map.values()).sort((a: any, b: any) => {
+          const pa = a && a.is_pinned ? 0 : 1
+          const pb = b && b.is_pinned ? 0 : 1
+          if (pa !== pb)
+            return pa - pb
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        })
+      }
+    }
+    catch {
+      // 合并失败就退化用服务端数据（merged 已是 serviceList）
+    }
+
+    // 用合并结果更新可见列表
+    notes.value = merged
+
+    // 写入 localStorage 元数据与主页缓存（用于在线时的快速恢复）
+    if (merged.length > 0) {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(merged))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    }
+
+    // 同步一份“离线快照”（冷启动离线直接还原）
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch (e) {
+      console.warn('[offline] saveNotesSnapshot failed:', e)
+    }
 
     // 合并分页或覆盖
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
