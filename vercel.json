@@ -3,12 +3,6 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
 
-  "functions": {
-    "api/**": {
-      "runtime": "nodejs20.x"
-    }
-  },
-
   "headers": [
     {
       "source": "/manifest.webmanifest",
@@ -24,7 +18,6 @@
       ]
     }
   ],
-
   "rewrites": [
     { "source": "/pwa-test.html", "destination": "/pwa-test.html" },
     { "source": "/functions/v1/send-mail", "destination": "https://reikfzpaefbbokwwocdr.functions.supabase.co/send-mail" },
