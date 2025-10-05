@@ -243,6 +243,47 @@ export async function queuePendingUpdate(note_id: string, patch: Partial<LocalNo
   })
 }
 
+// 兼容 auth.vue：离线“置顶/取消置顶”专用便捷封装
+export async function queuePendingPin(note_id: string, is_pinned: boolean) {
+  // 1) 本地 notes 表更新：只改 is_pinned，打上 dirty 标记
+  await withTx(['notes'], 'readwrite', async (tx) => {
+    const store = tx.objectStore(STORES.notes)
+
+    const current: LocalNote | undefined = await new Promise((resolve, reject) => {
+      const req = store.get(note_id)
+      req.onsuccess = () => resolve(req.result as LocalNote | undefined)
+      req.onerror = () => reject(req.error)
+    })
+
+    if (current) {
+      const next: LocalNote = { ...current, is_pinned, dirty: true, localOnly: !!current.localOnly }
+      store.put(next)
+    }
+    else {
+      // 兜底：本地没有记录也写一条最小对象，避免 UI/快照不一致
+      const nowIso = new Date().toISOString()
+      const next: LocalNote = {
+        id: note_id,
+        content: '',
+        created_at: nowIso,
+        updated_at: nowIso,
+        is_pinned,
+        weather: null,
+        dirty: true,
+        localOnly: false,
+      }
+      store.put(next)
+    }
+  })
+
+  // 2) 入队 outbox 的 pin 操作
+  await queueMutation({
+    op: 'pin',
+    note_id,
+    payload: { is_pinned },
+  })
+}
+
 // 读取 / 删除 outbox
 export async function readOutbox(): Promise<OutboxItem[]> {
   return withTx(['outbox'], 'readonly', async (tx) => {

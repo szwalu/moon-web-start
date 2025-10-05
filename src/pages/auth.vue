@@ -18,7 +18,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
+import { isOnline, queuePendingDelete, queuePendingNote, queuePendingPin, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -963,14 +963,72 @@ async function handlePinToggle(note: any) {
     return
 
   const newPinStatus = !note.is_pinned
+
+  // —— 离线分支：本地更新 + 快照 + 入队 pin ——
+  if (!isOnline()) {
+    try {
+      // 1) 更新 UI
+      const idx = notes.value.findIndex(n => n.id === note.id)
+      if (idx >= 0)
+        notes.value[idx] = { ...notes.value[idx], is_pinned: newPinStatus, updated_at: new Date().toISOString() }
+
+      // 2) 置顶优先 + 时间倒序的排序保持一致
+      notes.value.sort(
+        (a, b) =>
+          (b.is_pinned - a.is_pinned)
+          || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+      )
+
+      // 3) 刷新本地缓存
+      try {
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      }
+      catch {
+        // 忽略 localStorage 异常
+      }
+
+      // 4) 写入 IndexedDB 快照
+      try {
+        await saveNotesSnapshot(notes.value)
+      }
+      catch (e) {
+        console.warn('[offline] saveNotesSnapshot failed after pin toggle:', e)
+      }
+
+      // 5) 入队 outbox.pin
+      try {
+        await queuePendingPin(note.id, newPinStatus)
+      }
+      catch (e) {
+        console.warn('[offline] queuePendingPin failed:', e)
+      }
+
+      // 6) 友好提示（与在线一致）
+      messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+
+      // 离线不调用 fetchNotes，避免网络依赖
+      return
+    }
+    catch (err: any) {
+      messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
+      return
+    }
+  }
+
+  // —— 在线分支：保持原逻辑不变 ——
   try {
-    const { error } = await supabase.from('notes').update({ is_pinned: newPinStatus }).eq('id', note.id).eq('user_id', user.value.id)
+    const { error } = await supabase
+      .from('notes')
+      .update({ is_pinned: newPinStatus })
+      .eq('id', note.id)
+      .eq('user_id', user.value.id)
+
     if (error)
       throw error
 
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
 
-    // 刷新主页列表
+    // 刷新主页列表（你原来的行为）
     await fetchNotes()
 
     // 如果日历视图是打开的，则调用它的刷新方法
