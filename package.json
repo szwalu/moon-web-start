@@ -89,7 +89,8 @@
     "unplugin-vue-components": "^0.25.2",
     "unplugin-vue-macros": "^2.6.1",
     "vite": "^4.4.11",
-    "vite-plugin-pages": "^0.29.0"
+    "vite-plugin-pages": "^0.29.0",
+    "vite-plugin-pwa": "^1.0.3"
   },
   "lint-staged": {
     "*": "eslint --fix"
