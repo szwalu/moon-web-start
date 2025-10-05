@@ -18,7 +18,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, queuePendingNote, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
+import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -1093,13 +1093,54 @@ async function nextPage() {
   await fetchNotes()
 }
 
+// 本地应用“删除”并刷新缓存/快照（单条或批量都可复用）
+async function applyLocalDeletion(idsToDelete: string[]) {
+  // 1) 更新 UI 列表
+  const toDelete = new Set(idsToDelete)
+  const deletedNotes = notes.value.filter(n => toDelete.has(n.id)) // 用于缓存失效
+  notes.value = notes.value.filter(n => !toDelete.has(n.id))
+  cachedNotes.value = cachedNotes.value.filter(n => !toDelete.has(n.id))
+
+  // 2) 维护 total / 分页元数据
+  const delta = idsToDelete.length
+  totalNotes.value = Math.max(0, (totalNotes.value || 0) - delta)
+  hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
+  hasPreviousNotes.value = currentPage.value > 1
+
+  // 3) 失效相关缓存（标签、日历、搜索）
+  for (const note of deletedNotes) {
+    try {
+      invalidateCachesOnDataChange(note)
+    }
+    catch {
+      // 忽略单条缓存失效异常
+    }
+  }
+
+  // 4) 刷新 localStorage
+  try {
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+  }
+  catch {
+    // 忽略 localStorage 写入异常
+  }
+
+  // 5) 写入 IndexedDB 快照（离线冷启动直接还原）
+  try {
+    await saveNotesSnapshot(notes.value)
+  }
+  catch (e) {
+    console.warn('[offline] saveNotesSnapshot failed after deletion:', e)
+  }
+}
+
 async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
 
   const noteToDelete = notes.value.find(note => note.id === id)
 
-  // 单次确认
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -1107,6 +1148,15 @@ async function triggerDeleteConfirmation(id: string) {
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       try {
+        // —— 离线分支：本地删除 + 入队 outbox.delete ——
+        if (!isOnline()) {
+          await queuePendingDelete(id)
+          await applyLocalDeletion([id])
+          messageHook.success(t('notes.delete_success'))
+          return
+        }
+
+        // —— 在线分支（保持原逻辑）——
         const { error } = await supabase
           .from('notes')
           .delete()
@@ -1120,7 +1170,7 @@ async function triggerDeleteConfirmation(id: string) {
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
         if (homeCacheRaw) {
           const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((note: any) => note.id !== id)
+          const updatedHomeCache = homeCache.filter((n: any) => n.id !== id)
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
         }
 
@@ -1128,11 +1178,11 @@ async function triggerDeleteConfirmation(id: string) {
         localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
         if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(note => note.id !== id)
-          notes.value = notes.value.filter(note => note.id !== id)
+          mainNotesCache = mainNotesCache.filter(n => n.id !== id)
+          notes.value = notes.value.filter(n => n.id !== id)
         }
         else {
-          notes.value = notes.value.filter(note => note.id !== id)
+          notes.value = notes.value.filter(n => n.id !== id)
         }
 
         messageHook.success(t('notes.delete_success'))
@@ -1141,7 +1191,7 @@ async function triggerDeleteConfirmation(id: string) {
           invalidateCachesOnDataChange(noteToDelete)
 
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error: defineExpose 暴露的方法在异步组件上类型无法推断
+          // @ts-expect-error defineExpose 暴露的方法
           ;(calendarViewRef.value as any).refreshData?.()
         }
       }
@@ -1301,12 +1351,43 @@ async function handleDeleteSelected() {
         loading.value = true
         const idsToDelete = [...selectedNoteIds.value]
 
+        // —— 离线分支：本地删除 + 入队 delete（逐条）——
+        if (!isOnline()) {
+          for (const id of idsToDelete) {
+            try {
+              await queuePendingDelete(id)
+            }
+            catch (e) {
+              console.warn('[offline] queuePendingDelete failed:', id, e)
+            }
+          }
+
+          await applyLocalDeletion(idsToDelete)
+
+          // 清理“正在编辑”的本地态
+          if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+            newNoteContent.value = ''
+            lastSavedId.value = null
+            editingNote.value = null
+            localStorage.removeItem(LOCAL_NOTE_ID_KEY)
+            localStorage.removeItem(LOCAL_CONTENT_KEY)
+          }
+
+          isSelectionModeActive.value = false
+          selectedNoteIds.value = []
+
+          messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+          return
+        }
+
+        // —— 在线分支（保持你原来的流程）——
         // 步骤 1: 循环处理每个笔记的【精确】缓存（标签和日历）
-        // 通过传入 true，我们告诉函数暂时不要处理搜索缓存。
         idsToDelete.forEach((id) => {
           const noteToDelete = notes.value.find(n => n.id === id)
-          if (noteToDelete)
-            invalidateCachesOnDataChange(noteToDelete, true) // Pass true to skip search invalidation
+          if (noteToDelete) {
+            // @ts-expect-error 原函数签名未声明第二参，这里等同你的注释意图
+            invalidateCachesOnDataChange(noteToDelete, true)
+          }
         })
 
         // 步骤 2: 执行数据库批量删除操作

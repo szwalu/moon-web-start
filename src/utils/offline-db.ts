@@ -188,6 +188,21 @@ export async function queuePendingNote(note: LocalNote) {
   })
 }
 
+// 兼容 auth.vue：离线“删除旧笔记”专用便捷封装
+export async function queuePendingDelete(note_id: string) {
+  // 1) 本地 notes 表直接删除（离线立即生效）
+  await withTx(['notes'], 'readwrite', async (tx) => {
+    tx.objectStore(STORES.notes).delete(note_id)
+  })
+
+  // 2) 入队 outbox 的 delete 操作（上线后由 flushOutbox -> serverOps.remove 同步到服务端）
+  await queueMutation({
+    op: 'delete',
+    note_id,
+    payload: {}, // 删除不需要额外信息
+  })
+}
+
 // 兼容 auth.vue：离线“编辑旧笔记”专用便捷封装
 export async function queuePendingUpdate(note_id: string, patch: Partial<LocalNote>) {
   // 1) 本地 notes 表更新：合并已有记录，打上 dirty 标记（localOnly = false）
