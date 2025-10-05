@@ -16,6 +16,14 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
+// import { saveNotesSnapshot } from '@/utils/db'
+// 新增：离线数据库/队列
+import { isOnline, queuePendingNote, saveNotesSnapshot } from '@/utils/offline-db'
+
+import { useOfflineSync } from '@/composables/useSync'
+
+const { manualSync: _manualSync } = useOfflineSync()
+
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
 // ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
@@ -91,6 +99,7 @@ const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
+const isOffline = ref(false)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -198,6 +207,23 @@ onMounted(() => {
   setTimeout(() => {
     loadCache()
   }, 0)
+
+  // ✅ IndexedDB 快照兜底（仅当上面的 localStorage 没恢复任何内容时才触发）
+  ;(async () => {
+    try {
+      // 等一帧，给 loadCache() 一个机会先把 localStorage 填进来
+      await Promise.resolve()
+      if (!notes.value || notes.value.length === 0) {
+        const local = await loadNotesSnapshot()
+        if (local && local.length) {
+          notes.value = local
+          isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
+        }
+      }
+    }
+    catch {}
+  })()
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
   const result = supabase.auth.onAuthStateChange(
     (event, session) => {
@@ -407,14 +433,31 @@ async function handleUpdateNote({ id, content }: { id: string; content: string }
     callback(!!saved)
 }
 
+// 构造一条“本地新建”的笔记对象（与线上结构一致）
+function buildLocalNote(content: string, weather?: string | null) {
+  const nowIso = new Date().toISOString()
+  return {
+    id: uuidv4(),
+    content: content.trim(),
+    weather: weather ?? null,
+    created_at: nowIso,
+    updated_at: nowIso,
+    is_pinned: false,
+    user_id: user.value!.id, // 已登录前提
+    _localOnly: true as const, // 仅用于 UI 标记（可选）
+  }
+}
+
 async function saveNote(
   contentToSave: string,
   noteIdToUpdate: string | null,
   { showMessage = false, weather = null }: { showMessage?: boolean; weather?: string | null } = {},
 ) {
+  // 基本校验
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
+
     return null
   }
   if (contentToSave.length > maxNoteLength) {
@@ -422,55 +465,120 @@ async function saveNote(
     return null
   }
 
+  // ====== A) 新建 且 当前离线：走本地落盘 + outbox 入队 ======
+  if (!noteIdToUpdate && !isOnline()) {
+    const localNote = buildLocalNote(contentToSave, weather)
+
+    // 1) UI 先显示出来（置顶优先、时间倒序）
+    notes.value = [localNote, ...notes.value].sort(
+      (a: any, b: any) =>
+        b.is_pinned - a.is_pinned
+        || new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+
+    // 2) 更新 localStorage 主页缓存与元数据
+    try {
+      totalNotes.value = (totalNotes.value || 0) + 1
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(
+        CACHE_KEYS.HOME_META,
+        JSON.stringify({ totalNotes: totalNotes.value }),
+      )
+    }
+    catch {
+      // 忽略本地存储异常
+    }
+
+    // 3) 写入 IndexedDB 快照（冷启动直接还原）
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch (e) {
+      console.warn('[offline] snapshot failed', e)
+    }
+
+    // 4) 入队 outbox，等上线后 flushOutbox 推送到服务端
+    try {
+      await queuePendingNote(localNote)
+    }
+    catch (e) {
+      console.warn('[offline] queuePendingNote failed', e)
+    }
+
+    // 5) 友好提示
+    messageHook.success('已离线保存，联网后将自动同步。')
+
+    // 6) 返回这条本地记录（供调用方后续逻辑使用）
+    return localNote
+  }
+
+  // ====== B) 其它情况：走你原有的在线保存逻辑 ======
   const noteData = {
     content: contentToSave.trim(),
     updated_at: new Date().toISOString(),
     user_id: user.value.id,
   }
 
-  let savedNote
+  let savedNote: any
   try {
     if (noteIdToUpdate) {
-      // ===== 编辑：不更新 weather =====
+      // 在线更新
       const { data: updatedData, error: updateError } = await supabase
         .from('notes')
         .update(noteData)
         .eq('id', noteIdToUpdate)
         .eq('user_id', user.value.id)
         .select()
+
       if (updateError || !updatedData?.length)
         throw new Error(t('auth.update_failed'))
 
       savedNote = updatedData[0]
       updateNoteInList(savedNote)
+
       if (showMessage)
         messageHook.success(t('notes.update_success'))
     }
     else {
-      // ===== 新建：把 weather 一并写入 =====
+      // 在线新建：与你原来一致（保留天气）
       const newId = uuidv4()
-      const insertPayload: any = { ...noteData, id: newId }
-      // 只有在新建时写入天气（允许为 null）
-      insertPayload.weather = weather ?? null
+      const insertPayload: any = { ...noteData, id: newId, weather: weather ?? null }
 
       const { data: insertedData, error: insertError } = await supabase
         .from('notes')
         .insert(insertPayload)
         .select()
+
       if (insertError || !insertedData?.length)
         throw new Error(t('auth.insert_failed_create_note'))
 
       savedNote = insertedData[0]
       addNoteToList(savedNote)
+
       if (showMessage)
         messageHook.success(t('notes.auto_saved'))
     }
 
+    // 在线成功后，按你原有策略清理缓存/刷新标签
     invalidateCachesOnDataChange(savedNote)
     await fetchAllTags()
+
+    // 同步快照（保证冷启动的一致）
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch {
+      // 忽略错误
+    }
+
     return savedNote
   }
   catch (error: any) {
+    // 如果是“离线编辑”触发到这里，给个更明确的提示（可选）
+    if (!isOnline() && noteIdToUpdate) {
+      messageHook.error('当前离线，编辑暂未同步；我们会在后续步骤加入离线编辑队列。')
+      return null
+    }
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }
@@ -840,16 +948,32 @@ async function fetchNotes() {
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .range(from, to)
+
     if (error)
       throw error
 
     const newNotes = data || []
     totalNotes.value = count || 0
+
+    // 合并分页或覆盖
     notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+
     if (newNotes.length > 0) {
+      // 现有本地缓存（localStorage）
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
+
+      // ✅ 写入 IndexedDB 快照（只读离线用）
+      //    这里用“当前可见列表”（即 notes.value），让断网冷启动能直接还原。
+      try {
+        await saveNotesSnapshot(notes.value)
+      }
+      catch (e) {
+        // 静默：IndexedDB 写入失败不影响在线逻辑
+        console.warn('[offline] saveNotesSnapshot failed:', e)
+      }
     }
+
     hasMoreNotes.value = to + 1 < totalNotes.value
   }
   catch (err) {
