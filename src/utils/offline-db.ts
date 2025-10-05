@@ -188,6 +188,46 @@ export async function queuePendingNote(note: LocalNote) {
   })
 }
 
+// 兼容 auth.vue：离线“编辑旧笔记”专用便捷封装
+export async function queuePendingUpdate(note_id: string, patch: Partial<LocalNote>) {
+  // 1) 本地 notes 表更新：合并已有记录，打上 dirty 标记（localOnly = false）
+  await withTx(['notes'], 'readwrite', async (tx) => {
+    const store = tx.objectStore(STORES.notes)
+
+    const current: LocalNote | undefined = await new Promise((resolve, reject) => {
+      const req = store.get(note_id)
+      req.onsuccess = () => resolve(req.result as LocalNote | undefined)
+      req.onerror = () => reject(req.error)
+    })
+
+    const base: LocalNote = current || {
+      id: note_id,
+      content: '',
+      created_at: patch.created_at || new Date().toISOString(),
+      updated_at: patch.updated_at || new Date().toISOString(),
+      is_pinned: false,
+      weather: null,
+      user_id: patch.user_id,
+    }
+
+    const next: LocalNote = {
+      ...base,
+      ...patch,
+      dirty: true,
+      localOnly: false,
+    }
+
+    store.put(next)
+  })
+
+  // 2) 入队 outbox，等在线 flush 时执行 serverOps.update(id, patch)
+  await queueMutation({
+    op: 'update',
+    note_id,
+    payload: { ...patch },
+  })
+}
+
 // 读取 / 删除 outbox
 export async function readOutbox(): Promise<OutboxItem[]> {
   return withTx(['outbox'], 'readonly', async (tx) => {

@@ -18,7 +18,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, queuePendingNote, saveNotesSnapshot } from '@/utils/offline-db'
+import { isOnline, queuePendingNote, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -463,6 +463,66 @@ async function saveNote(
   if (contentToSave.length > maxNoteLength) {
     messageHook.error(t('notes.max_length_exceeded', { max: maxNoteLength }))
     return null
+  }
+
+  // ====== A0) 编辑 旧笔记 且 当前离线：本地更新 + 入队 update ======
+  if (noteIdToUpdate && !isOnline()) {
+    const nowIso = new Date().toISOString()
+    const trimmed = contentToSave.trim()
+
+    // 1) 先更新 UI 列表
+    const idx = notes.value.findIndex(n => n.id === noteIdToUpdate)
+    if (idx >= 0) {
+      const old = notes.value[idx]
+      const updated = { ...old, content: trimmed, updated_at: nowIso }
+      notes.value[idx] = updated
+    }
+    else {
+    // 不在当前列表：兜底插入到最前，避免用户“看不见改动”
+      notes.value.unshift({
+        id: noteIdToUpdate,
+        content: trimmed,
+        created_at: nowIso, // 没有原始数据时的兜底
+        updated_at: nowIso,
+        is_pinned: false,
+        weather: null,
+        user_id: user.value!.id,
+      })
+    }
+
+    // 与主页一致的排序：置顶优先、时间倒序
+    notes.value.sort(
+      (a: any, b: any) =>
+        (b.is_pinned - a.is_pinned)
+      || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    )
+
+    // 2) 刷新本地缓存（localStorage）
+    try {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    }
+    catch {}
+
+    // 3) 写入 IndexedDB 快照（冷启动直接还原）
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch (e) {
+      console.warn('[offline] snapshot failed (update)', e)
+    }
+
+    // 4) 入队 outbox 的 update 操作（最小补丁）
+    try {
+      await queuePendingUpdate(noteIdToUpdate, { content: trimmed, updated_at: nowIso, user_id: user.value!.id })
+    }
+    catch (e) {
+      console.warn('[offline] queuePendingUpdate failed', e)
+    }
+
+    // 5) 友好提示，并返回更新后的对象（供调用方使用）
+    messageHook.success('已离线修改，联网后将自动同步。')
+    const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
+    return updatedObj
   }
 
   // ====== A) 新建 且 当前离线：走本地落盘 + outbox 入队 ======
