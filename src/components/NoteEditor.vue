@@ -374,7 +374,7 @@ function recomputeBottomSafePadding() {
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
   // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 52 // 离底部还差这么多像素就先不托
+  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
   const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
   const STICKY = 12 // 微抖动抑制阈值
 
