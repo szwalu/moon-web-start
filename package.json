@@ -2,7 +2,9 @@
   "name": "moon-web-start",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
-  "engines": { "node": ">=18.18 <23" }
+  "engines": {
+    "node": ">=18.18 <23"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/postbuild-copy.js",
@@ -74,8 +76,8 @@
     "@vitejs/plugin-vue": "^4.4.0",
     "eslint": "^8.50.0",
     "eslint-plugin-vue": "^9.10.0",
-    "husky": "^8.0.0",
-    "lint-staged": "^13.2.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.3.0",
     "naive-ui": "^2.34.3",
     "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.60.0",
