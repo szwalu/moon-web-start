@@ -291,6 +291,7 @@ function getFooterHeight(): number {
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
@@ -368,11 +369,26 @@ function recomputeBottomSafePadding() {
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
-  const need = isAndroid
+  const rawNeed = isAndroid
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 把需要的像素交给外层垫片
+  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
+  const DEADZONE = isAndroid ? 72 : 60 // 离底部还差这么多像素就先不托
+  const MIN_STEP = isAndroid ? 24 : 16 // 小于这个像素的需要值不托，避免细碎抖动
+  const STICKY = 12 // 微抖动抑制阈值
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  // 抑制小幅抖动：与上次差异很小时保持不变
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
   // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
@@ -385,7 +401,6 @@ function recomputeBottomSafePadding() {
         window.scrollBy(0, delta)
       }
       else {
-        // iOS：小幅轻推，主要补齐候选栏盲区；更温和
         const ratio = 0.35
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
@@ -398,7 +413,6 @@ function recomputeBottomSafePadding() {
         recomputeBottomSafePadding()
       }, 140)
     }
-    // iOS：首次输入一旦露出，关闭闩锁
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
   }
@@ -564,6 +578,7 @@ function onBlur() {
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
+  _lastBottomNeed = 0
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
@@ -1255,10 +1270,10 @@ function handleBeforeInput(e: InputEvent) {
         autocomplete="off"
         autocorrect="on"
         autocapitalize="sentences"
-        @beforeinput="handleBeforeInput"
         inputmode="text"
-        @focus="handleFocus"
         enterkeyhint="done"
+        @beforeinput="handleBeforeInput"
+        @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
         @keydown="captureCaret"
