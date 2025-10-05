@@ -124,12 +124,11 @@ onMounted(() => {
       <template #item="{ element: cate, index: i }: { element: Category, index: number }">
         <div :key="cate.id" class="nav-item-wrapper">
           <div
-            class="dragging nav__item w-full flex items-center gap-x-0"
+            class="dragging nav__item w-full flex cursor-pointer items-center gap-x-0"
             :class="{
               'hover:text-$primary-c': !settingStore.isSetting,
               'nav__item--active': siteStore.cateIndex === i && activeSubMenuIndex === -1,
             }"
-            cursor-pointer
             rounded-md
             py-1.5
             pl-0.5
@@ -159,7 +158,7 @@ onMounted(() => {
               <div
                 v-for="subItem in subMenuRows[0]"
                 :key="subItem.id"
-                class="sub-nav-item-vertical"
+                class="sub-nav-item-vertical cursor-pointer"
                 @click="handleSubMenuClick(subItem)"
               >
                 {{ subItem.name }}
@@ -269,5 +268,11 @@ onMounted(() => {
   :global(body.side-nav-open) {
     overflow: visible;
   }
+}
+
+/* 指针手型兜底 */
+.nav__item,
+.sub-nav-item-vertical {
+  cursor: pointer;
 }
 </style>
