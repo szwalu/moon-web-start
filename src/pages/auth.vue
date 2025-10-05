@@ -18,7 +18,8 @@ import { useTagMenu } from '@/composables/useTagMenu'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
-import { isOnline, queuePendingDelete, queuePendingNote, queuePendingPin, queuePendingUpdate, saveNotesSnapshot } from '@/utils/offline-db'
+// 把这行替换为包含 readNotesSnapshot
+import { isOnline, queuePendingDelete, queuePendingNote, queuePendingPin, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -214,7 +215,7 @@ onMounted(() => {
       // 等一帧，给 loadCache() 一个机会先把 localStorage 填进来
       await Promise.resolve()
       if (!notes.value || notes.value.length === 0) {
-        const local = await loadNotesSnapshot()
+        const local = await readNotesSnapshot()
         if (local && local.length) {
           notes.value = local
           isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
