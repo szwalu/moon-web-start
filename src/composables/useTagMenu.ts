@@ -92,6 +92,14 @@ function splitTagPath(tag: string): string[] {
   return name.split('/').map(s => s.trim()).filter(Boolean)
 }
 
+/** 常用区的紧凑标签名：#一/二/三 -> "…/三"；单级仍显示本名 */
+function compactLabelForPinned(tag: string): string {
+  const parts = splitTagPath(tag) // ["一","二","三"]
+  if (parts.length >= 2)
+    return `…/${parts[parts.length - 1]}`
+  return parts[0] || tagKeyName(tag)
+}
+
 /** 多级标签树节点 */
 interface TagTreeNode {
   name: string
@@ -948,7 +956,7 @@ export function useTagMenu(
         return tagKeyName(tag).toLowerCase().includes(q)
       })
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-      .map(tag => makeTagRow(tag))
+      .map(tag => makeTagRow(tag, compactLabelForPinned(tag)))
 
     const pinnedGroup = pinnedChildren.length > 0
       ? [{
@@ -1232,7 +1240,7 @@ export function useTagMenu(
         }, [
           h('span', {
             class: 'tag-text',
-            style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            style: 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             title: display,
           }, display),
           h('span', { style: 'width: 28px; height: 1px;' }, ''),
