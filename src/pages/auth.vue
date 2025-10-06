@@ -19,7 +19,7 @@ import { useTagMenu } from '@/composables/useTagMenu'
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
 // 把这行替换为包含 readNotesSnapshot
-import { isOnline, queuePendingDelete, queuePendingNote, queuePendingPin, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
+import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
@@ -36,6 +36,7 @@ const onSelectTag = (tag: string) => fetchNotesByTag(tag)
 const {
   mainMenuVisible,
   tagMenuChildren,
+  UNTAGGED_SENTINEL,
 } = useTagMenu(allTags, onSelectTag, t)
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
@@ -965,53 +966,22 @@ async function handlePinToggle(note: any) {
 
   const newPinStatus = !note.is_pinned
 
-  // —— 离线分支：本地更新 + 快照 + 入队 pin ——
+  // —— 离线分支：本地删除 + 入队 outbox.delete ——
   if (!isOnline()) {
     try {
-      // 1) 更新 UI
-      const idx = notes.value.findIndex(n => n.id === note.id)
-      if (idx >= 0)
-        notes.value[idx] = { ...notes.value[idx], is_pinned: newPinStatus, updated_at: new Date().toISOString() }
+    // 1) 先入队 delete（增强版会原子清理其它 outbox 项）
+      await queuePendingDelete(id)
 
-      // 2) 置顶优先 + 时间倒序的排序保持一致
-      notes.value.sort(
-        (a, b) =>
-          (b.is_pinned - a.is_pinned)
-          || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-      )
+      // 2) 再应用本地 UI/缓存/快照删除（保持你现有实现）
+      await applyLocalDeletion([id])
 
-      // 3) 刷新本地缓存
-      try {
-        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      }
-      catch {
-        // 忽略 localStorage 异常
-      }
-
-      // 4) 写入 IndexedDB 快照
-      try {
-        await saveNotesSnapshot(notes.value)
-      }
-      catch (e) {
-        console.warn('[offline] saveNotesSnapshot failed after pin toggle:', e)
-      }
-
-      // 5) 入队 outbox.pin
-      try {
-        await queuePendingPin(note.id, newPinStatus)
-      }
-      catch (e) {
-        console.warn('[offline] queuePendingPin failed:', e)
-      }
-
-      // 6) 友好提示（与在线一致）
-      messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
-
-      // 离线不调用 fetchNotes，避免网络依赖
+      messageHook.success(t('notes.delete_success'))
       return
     }
-    catch (err: any) {
-      messageHook.error(`${t('notes.operation_error')}: ${err.message || '未知错误'}`)
+    catch (e: any) {
+    // 极端情况下的兜底：提示并不改变现有列表（或可在此回滚 UI）
+      console.warn('[offline] delete failed:', e)
+      messageHook.error(`${t('notes.delete_error')}: ${e?.message || t('notes.try_again')}`)
       return
     }
   }
@@ -1149,7 +1119,11 @@ async function nextPage() {
     return
 
   currentPage.value++
-  await fetchNotes()
+
+  if (activeTagFilter.value)
+    await fetchNotesByTag(activeTagFilter.value, true) // 追加模式
+  else
+    await fetchNotes()
 }
 
 // 本地应用“删除”并刷新缓存/快照（单条或批量都可复用）
@@ -1608,71 +1582,110 @@ async function handleEditFromCalendar(noteToFind: any) {
     (noteListRef.value as any).focusAndEditNote(noteToFind.id)
 }
 
-async function fetchNotesByTag(tag: string) {
-// —— 进入标签筛选时，若正在“那年今日”视图，先退出它（与搜索互斥的同样逻辑）——
+let fetchTagRequestId = 0 // 👈 在函数外定义（保持全局递增）
+
+async function fetchNotesByTag(tag: string, append = false) {
   if (isAnniversaryViewActive.value) {
-    anniversaryBannerRef.value?.setView(false) // 通知条幅切换回“未激活”外观
+    anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
-  // 统一为 "#xxx"
+
   if (!tag)
     return
   const normalize = (k: string) => (k.startsWith('#') ? k : `#${k}`)
-  const hashTag = normalize(tag)
-
-  isShowingSearchResults.value = false
-  showSearchBar.value = false // 关闭搜索栏，避免“看起来没变化”
-  searchQuery.value = '' // 清空搜索关键字
-  // 进入标签筛选，清理“那年今日”持久化（互斥）
-  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+  const hashTag = tag === UNTAGGED_SENTINEL ? UNTAGGED_SENTINEL : normalize(tag)
   if (!user.value)
     return
 
-  // 首次进入标签筛选时，缓存一下主列表，方便清除时还原
+  // 生成唯一请求编号
+  const reqId = ++fetchTagRequestId
+
+  // 进入新标签前立即清空旧数量，防止短暂显示旧数字
+  if (!append)
+    filteredNotesCount.value = 0
+
+  // 退出搜索 / 还原主列表
+  isShowingSearchResults.value = false
+  showSearchBar.value = false
+  searchQuery.value = ''
+  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
 
-  const cacheKey = getTagCacheKey(hashTag)
   activeTagFilter.value = hashTag
 
-  // 先走本地缓存
-  const cachedData = localStorage.getItem(cacheKey)
-  if (cachedData) {
-    const cachedNotes = JSON.parse(cachedData)
-    notes.value = cachedNotes
-    filteredNotesCount.value = cachedNotes.length
-    hasMoreNotes.value = false
-    // noteListKey.value++ // 强制刷新 NoteList <-- 删除此行
-    return
+  if (!append) {
+    currentPage.value = 1
+    hasMoreNotes.value = true
+    notes.value = []
   }
 
-  // 无缓存，拉取
   isLoadingNotes.value = true
-  notes.value = []
+
   try {
-    const { data, error } = await supabase
+    const from = (currentPage.value - 1) * notesPerPage
+    const to = from + notesPerPage - 1
+
+    // === 特殊分支：无标签 ===
+    if (hashTag === UNTAGGED_SENTINEL) {
+      const [{ data, error }, { data: countData, error: countErr }] = await Promise.all([
+        supabase.rpc('get_untagged_page', {
+          p_user_id: user.value.id,
+          p_limit: notesPerPage,
+          p_offset: from,
+        }),
+        supabase.rpc('get_untagged_count', {
+          p_user_id: user.value.id,
+        }),
+      ])
+
+      if (error)
+        throw error
+      if (countErr)
+        throw countErr
+      const total
+        = typeof countData === 'number'
+          ? countData
+          : countData?.count || data?.length || 0
+
+      // ✅ 只处理当前仍是这个请求的最新结果
+      if (reqId === fetchTagRequestId && activeTagFilter.value === UNTAGGED_SENTINEL) {
+        notes.value = append ? [...notes.value, ...(data || [])] : data || []
+        filteredNotesCount.value = total
+        hasMoreNotes.value = currentPage.value * notesPerPage < total
+      }
+      return
+    }
+
+    // === 普通标签 ===
+    const { data, error, count } = await supabase
       .from('notes')
-      .select('*')
+      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
       .eq('user_id', user.value.id)
       .ilike('content', `%${hashTag}%`)
+      .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
+      .range(from, to)
 
     if (error)
       throw error
 
-    notes.value = data || []
-    filteredNotesCount.value = notes.value.length
-    localStorage.setItem(cacheKey, JSON.stringify(notes.value))
-    hasMoreNotes.value = false
-    // noteListKey.value++ // 强制刷新 NoteList
+    // ✅ 只在当前请求仍为最新时更新界面
+    if (reqId === fetchTagRequestId && activeTagFilter.value === hashTag) {
+      notes.value = append ? [...notes.value, ...(data || [])] : data || []
+      filteredNotesCount.value = typeof count === 'number' ? count : notes.value.length
+      hasMoreNotes.value = to + 1 < (count || 0)
+    }
   }
   catch (err: any) {
-    messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
+    if (reqId === fetchTagRequestId)
+      messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
   }
   finally {
-    isLoadingNotes.value = false
+    if (reqId === fetchTagRequestId)
+      isLoadingNotes.value = false
   }
 }
 
@@ -1795,7 +1808,7 @@ function goToLinksSite() {
       <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
-            正在筛选标签：<strong>{{ activeTagFilter }}</strong>
+            正在筛选标签：<strong>{{ activeTagFilter === UNTAGGED_SENTINEL ? ($t('tags.untagged') || '∅ 无标签') : activeTagFilter }}</strong>
           </span>
           <span class="banner-text-count">
             共 {{ filteredNotesCount }} 条笔记

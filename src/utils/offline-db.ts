@@ -188,18 +188,33 @@ export async function queuePendingNote(note: LocalNote) {
   })
 }
 
-// 兼容 auth.vue：离线“删除旧笔记”专用便捷封装
+// 兼容 auth.vue：离线“删除旧笔记”专用便捷封装（增强版：同事务原子 + 去重）
 export async function queuePendingDelete(note_id: string) {
-  // 1) 本地 notes 表直接删除（离线立即生效）
-  await withTx(['notes'], 'readwrite', async (tx) => {
-    tx.objectStore(STORES.notes).delete(note_id)
-  })
+  await withTx(['notes', 'outbox'], 'readwrite', async (tx) => {
+    const notesStore = tx.objectStore(STORES.notes)
+    const outboxStore = tx.objectStore(STORES.outbox)
 
-  // 2) 入队 outbox 的 delete 操作（上线后由 flushOutbox -> serverOps.remove 同步到服务端）
-  await queueMutation({
-    op: 'delete',
-    note_id,
-    payload: {}, // 删除不需要额外信息
+    // A) 本地 notes：直接删除，让冷启动/离线列表不会再复现
+    notesStore.delete(note_id)
+
+    // B) 清理 outbox 中同一 note 的其它操作，避免“复活”
+    //    逻辑：凡是同 note_id 的 insert/update/pin 一律删掉，仅保留（或最终加入）delete
+    const getAllReq = outboxStore.getAll()
+    const allOutbox: OutboxItem[] = await new Promise((resolve, reject) => {
+      getAllReq.onsuccess = () => resolve((getAllReq.result || []) as OutboxItem[])
+      getAllReq.onerror = () => reject(getAllReq.error)
+    })
+
+    for (const it of allOutbox) {
+      if (it?.note_id === note_id && (it.op === 'insert' || it.op === 'update' || it.op === 'pin')) {
+        if (typeof it.key === 'number')
+          outboxStore.delete(it.key)
+      }
+    }
+
+    // C) 最终入队 delete（若已存在重复 delete，可容忍；冲洗时会顺序执行且无副作用）
+    const rec: OutboxItem = { op: 'delete', note_id, payload: {}, ts: Date.now(), retries: 0 }
+    outboxStore.add(rec)
   })
 }
 
