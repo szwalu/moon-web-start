@@ -1366,8 +1366,13 @@ async function handleCopy(noteContent: string) {
 }
 
 function toggleSearchBar() {
-  showSearchBar.value = !showSearchBar.value
+  const willShow = !showSearchBar.value
+  showSearchBar.value = willShow
   showDropdown.value = false
+
+  // 🔒 互斥规则：打开“搜索”时，若当前有标签筛选，则关闭标签筛选
+  if (willShow && activeTagFilter.value)
+    clearTagFilter()
 }
 
 function handleCancelSearch() {
@@ -1696,8 +1701,29 @@ async function fetchNotesByTag(tag: string) {
     return
 
   // 首次进入标签筛选时缓存主页列表，便于“清除筛选”时恢复
-  if (!activeTagFilter.value)
-    mainNotesCache = [...notes.value]
+  if (!activeTagFilter.value) {
+  // ✅ 优先用主页缓存，避免把“搜索结果”误当成主页缓存
+    const homeRaw = localStorage.getItem(CACHE_KEYS.HOME)
+    if (homeRaw) {
+      try {
+        mainNotesCache = JSON.parse(homeRaw)
+      }
+      catch {
+        mainNotesCache = [...notes.value]
+      }
+    }
+    else {
+      mainNotesCache = [...notes.value]
+    }
+
+    // 顺手关掉任何残留的“搜索态”（防止出现“有搜索横幅但没搜索框”的错位）
+    isShowingSearchResults.value = false
+    showSearchBar.value = false
+    searchQuery.value = ''
+    sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+    sessionStorage.removeItem(SESSION_SHOW_SEARCH_BAR_KEY)
+  }
 
   activeTagFilter.value = hashTag
   filteredNotesCount.value = 0
