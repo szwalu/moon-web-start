@@ -28,12 +28,23 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const CAL_LAST_SYNC_TS = 'calendar_last_sync_ts'
 const CAL_LAST_TOTAL = 'calendar_last_total'
 
-/** 工具：把任意日期归一到“自然日”的 key（toDateString） */
+/** 把任意日期归一到“自然日”的 key（本地时区 YYYY-MM-DD） */
 function dateKeyStr(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toDateString()
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  const mm = m < 10 ? `0${m}` : `${m}`
+  const dd = day < 10 ? `0${day}` : `${day}`
+  return `${y}-${mm}-${dd}`
 }
 function toDateKeyStrFromISO(iso: string) {
-  return dateKeyStr(new Date(iso))
+  return dateKeyStr(new Date(iso)) // new Date(iso) -> 本地时间，再取本地年月日
+}
+
+/** 从 YYYY-MM-DD 还原为日期对象（100%稳定、无时差） */
+function dateFromKeyStr(key: string) {
+  const [y, m, d] = key.split('-').map(n => Number(n))
+  return new Date(y, (m - 1), d)
 }
 
 /* ===================== 事件处理（逐行写法，避免 max-statements-per-line） ===================== */
@@ -46,8 +57,12 @@ function handleCopy(content: string) {
 function handlePin(note: any) {
   emit('pin', note)
 }
-function handleDelete(noteId: string) {
+async function handleDelete(noteId: string) {
   emit('delete', noteId)
+  // 从当前列表移除
+  selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
+  // ✅ 删除后重新校准蓝点状态
+  refreshDotAfterDelete()
 }
 function handleDateUpdated() {
   refreshData()
@@ -62,29 +77,46 @@ function toggleExpandInCalendar(noteId: string) {
 
 /* ===================== 日历点（小圆点） ===================== */
 const attributes = computed(() => {
-  return Array.from(datesWithNotes.value).map(dateStr => ({
-    key: dateStr,
+  return Array.from(datesWithNotes.value).map(key => ({
+    key, // 任意唯一键
     dot: true,
-    dates: new Date(dateStr),
+    dates: dateFromKeyStr(key),
   }))
 })
 
-/* ===================== 全量：获取所有有笔记的日期集合 ===================== */
+/* ===================== 全量：获取所有有笔记的日期集合（分页） ===================== */
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
 
-  const { data, error } = await supabase
-    .from('notes')
-    .select('created_at')
-    .eq('user_id', user.value.id)
+  const PAGE = 1000
+  let from = 0
+  let to = PAGE - 1
+  const acc = new Set<string>()
 
-  if (error)
-    throw error
+  while (true) {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('created_at') // 只取需要的列
+      .eq('user_id', user.value.id)
+      .order('created_at', { ascending: false })
+      .range(from, to) // ✅ 分页
 
-  const dateStrings = (data || []).map(n => toDateKeyStrFromISO(n.created_at))
-  datesWithNotes.value = new Set(dateStrings)
-  localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(dateStrings))
+    if (error)
+      throw error
+
+    ;(data || []).forEach((n) => {
+      acc.add(toDateKeyStrFromISO(n.created_at))
+    })
+
+    if (!data || data.length < PAGE)
+      break // 最后一页
+    from += PAGE
+    to += PAGE
+  }
+
+  datesWithNotes.value = new Set(acc)
+  localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(acc)))
 }
 
 /* ===================== 从缓存恢复日期点 ===================== */
@@ -95,7 +127,21 @@ function loadAllDatesFromCache(): boolean {
 
   try {
     const arr: string[] = JSON.parse(cached)
-    datesWithNotes.value = new Set(arr)
+
+    // 迁移：如果发现不是 YYYY-MM-DD，就尝试解析并转成 YYYY-MM-DD
+    const normalized = arr.map((s) => {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s))
+        return s // 已是新格式
+      const d = new Date(s) // 旧格式（toDateString）尽力解析
+      if (Number.isNaN(d.getTime()))
+        return s // 保底：解析失败就原样返回（很少见）
+      return dateKeyStr(d)
+    })
+
+    datesWithNotes.value = new Set(normalized)
+
+    // 把迁移后的写回去，统一成新格式
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(normalized))
     return true
   }
   catch {
@@ -179,6 +225,26 @@ async function fetchNotesForDate(date: Date) {
   // --- 结束重写逻辑 ---
 }
 
+/** 在删除后重新校准当前日期的蓝点状态 */
+function refreshDotAfterDelete() {
+  const key = dateKeyStr(selectedDate.value)
+  const hasNotes = selectedDateNotes.value.length > 0
+  const hasDot = datesWithNotes.value.has(key)
+
+  if (hasNotes && !hasDot)
+    datesWithNotes.value.add(key)
+  else if (!hasNotes && hasDot)
+    datesWithNotes.value.delete(key)
+
+  // 替换新 Set 实例以触发响应式更新
+  datesWithNotes.value = new Set(datesWithNotes.value)
+
+  // 同步写回缓存
+  localStorage.setItem(
+    CACHE_KEYS.CALENDAR_ALL_DATES,
+    JSON.stringify(Array.from(datesWithNotes.value)),
+  )
+}
 /* ===================== 轻量校验 & 增量刷新 ===================== */
 async function checkAndRefreshIncremental() {
   if (!user.value)
@@ -273,9 +339,9 @@ async function checkAndRefreshIncremental() {
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
 
-      // 清理这些日期的日缓存
+      // 清理这些日期的日缓存（使用本地无歧义还原）
       affectedDateKeys.forEach((keyStr) => {
-        const partsDate = new Date(keyStr)
+        const partsDate = dateFromKeyStr(keyStr) // ✅ 本地时区安全
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
