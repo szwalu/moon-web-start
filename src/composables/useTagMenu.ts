@@ -680,12 +680,34 @@ export function useTagMenu(
       nextTick(() => { mainMenuVisible.value = true })
   })
 
+  // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
-    if (action === 'pin') { togglePin(tag); return }
-    if (action === 'rename') { renameTag(tag); return }
-    if (action === 'remove') { removeTagCompletely(tag); return }
-    if (action === 'change_icon')
+  // 这句可选：明确声明不是“外部点击”导致的关闭
+    lastMoreClosedByOutside = false
+
+    // 关键：无论执行哪种操作，都立刻安排把主菜单保持为打开
+    // 用 nextTick 避免与 NDropdown 的收起事件“打架”
+    const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
+
+    if (action === 'pin') {
+      togglePin(tag)
+      keepOpen() // <— 保持汉堡菜单不关
+      return
+    }
+    if (action === 'rename') {
+      keepOpen() // 先保持打开，再弹重命名对话框
+      renameTag(tag)
+      return
+    }
+    if (action === 'remove') {
+      keepOpen()
+      removeTagCompletely(tag)
+      return
+    }
+    if (action === 'change_icon') {
+      keepOpen()
       changeTagIcon(tag)
+    }
   }
 
   function getRowMenuOptions(tag: string) {

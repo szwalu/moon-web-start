@@ -1073,6 +1073,81 @@ async function fetchNotes() {
   }
 }
 
+// ✨ 统一的标签分页加载器（支持有/无标签）
+// ✨ 统一的标签分页加载器（支持有/无标签）
+async function fetchNotesByTagPage(hashTag: string, page = 1) {
+  isLoadingNotes.value = true
+  try {
+    const isUntagged = hashTag === UNTAGGED_SENTINEL
+
+    if (isUntagged) {
+      // --- “无标签”的特殊处理逻辑 ---
+
+      // 1. 调用刚刚修正的函数来获取【正确总数】，用于更新条幅
+      const { data: countData, error: countError } = await supabase.rpc(
+        'get_untagged_count',
+        { p_user_id: user.value!.id },
+      )
+      if (countError)
+        throw countError
+      const totalCount = typeof countData === 'number' ? countData : 0
+      filteredNotesCount.value = totalCount
+
+      // 2. 使用能绕过客户端 bug 的方式获取【笔记列表】
+      const from = (page - 1) * notesPerPage
+      const to = from + notesPerPage - 1
+      const { data: notesData, error: notesError } = await supabase
+        .from('notes')
+        .select('id, content, weather, created_at, updated_at, is_pinned')
+        .eq('user_id', user.value!.id)
+        .or('content.is.null,content.not.ilike.%#%') // 再次尝试最标准的OR语法，如果还错，说明问题在别处
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to)
+
+      if (notesError)
+        throw notesError
+
+      if (page === 1)
+        notes.value = notesData || []
+      else
+        notes.value = [...notes.value, ...(notesData || [])]
+
+      hasMoreNotes.value = notes.value.length < totalCount
+    }
+    else {
+      // --- 普通标签的处理逻辑（保持不变） ---
+      const from = (page - 1) * notesPerPage
+      const to = from + notesPerPage - 1
+      const { data, error, count } = await supabase
+        .from('notes')
+        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+        .eq('user_id', user.value!.id)
+        .ilike('content', `%${hashTag}%`)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to)
+
+      if (error)
+        throw error
+
+      if (page === 1)
+        notes.value = data || []
+      else notes.value = [...notes.value, ...(data || [])]
+
+      filteredNotesCount.value = count || 0
+      hasMoreNotes.value = notes.value.length < (count || 0)
+    }
+  }
+  catch (err: any) {
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message || err}`)
+    notes.value = []
+    hasMoreNotes.value = false
+  }
+  finally {
+    isLoadingNotes.value = false
+  }
+}
 async function handleTrashRestored(restoredNotes?: any[]) {
   // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
   const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
@@ -1120,10 +1195,24 @@ async function nextPage() {
 
   currentPage.value++
 
-  if (activeTagFilter.value)
-    await fetchNotesByTag(activeTagFilter.value, true) // 追加模式
-  else
+  if (activeTagFilter.value) {
+    // 标签筛选下的翻页（含无标签）
+    isLoadingNotes.value = true
+    try {
+      await fetchNotesByTagPage(activeTagFilter.value, currentPage.value)
+    }
+    catch (e: any) {
+      messageHook.error(`${t('notes.fetch_error')}: ${e.message || e}`)
+      hasMoreNotes.value = false
+    }
+    finally {
+      isLoadingNotes.value = false
+    }
+  }
+  else {
+    // 主页翻页
     await fetchNotes()
+  }
 }
 
 // 本地应用“删除”并刷新缓存/快照（单条或批量都可复用）
@@ -1582,111 +1671,59 @@ async function handleEditFromCalendar(noteToFind: any) {
     (noteListRef.value as any).focusAndEditNote(noteToFind.id)
 }
 
-let fetchTagRequestId = 0 // 👈 在函数外定义（保持全局递增）
+const _fetchTagRequestId = 0 // 👈 在函数外定义（保持全局递增）
 
-async function fetchNotesByTag(tag: string, append = false) {
+async function fetchNotesByTag(tag: string) {
+  // —— 与你现有的互斥清理保持一致 —— //
   if (isAnniversaryViewActive.value) {
     anniversaryBannerRef.value?.setView(false)
     isAnniversaryViewActive.value = false
     anniversaryNotes.value = null
   }
-
   if (!tag)
     return
-  const normalize = (k: string) => (k.startsWith('#') ? k : `#${k}`)
-  const hashTag = tag === UNTAGGED_SENTINEL ? UNTAGGED_SENTINEL : normalize(tag)
-  if (!user.value)
-    return
+  const hashTag
+  = tag === UNTAGGED_SENTINEL
+    ? UNTAGGED_SENTINEL
+    : (tag.startsWith('#') ? tag : `#${tag}`)
 
-  // 生成唯一请求编号
-  const reqId = ++fetchTagRequestId
-
-  // 进入新标签前立即清空旧数量，防止短暂显示旧数字
-  if (!append)
-    filteredNotesCount.value = 0
-
-  // 退出搜索 / 还原主列表
   isShowingSearchResults.value = false
   showSearchBar.value = false
   searchQuery.value = ''
   sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
   sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+  if (!user.value)
+    return
+
+  // 首次进入标签筛选时缓存主页列表，便于“清除筛选”时恢复
   if (!activeTagFilter.value)
     mainNotesCache = [...notes.value]
 
   activeTagFilter.value = hashTag
-
-  if (!append) {
-    currentPage.value = 1
-    hasMoreNotes.value = true
-    notes.value = []
-  }
-
+  filteredNotesCount.value = 0
+  currentPage.value = 1
+  hasMoreNotes.value = true
   isLoadingNotes.value = true
+  notes.value = []
 
   try {
-    const from = (currentPage.value - 1) * notesPerPage
-    const to = from + notesPerPage - 1
-
-    // === 特殊分支：无标签 ===
-    if (hashTag === UNTAGGED_SENTINEL) {
-      const [{ data, error }, { data: countData, error: countErr }] = await Promise.all([
-        supabase.rpc('get_untagged_page', {
-          p_user_id: user.value.id,
-          p_limit: notesPerPage,
-          p_offset: from,
-        }),
-        supabase.rpc('get_untagged_count', {
-          p_user_id: user.value.id,
-        }),
-      ])
-
-      if (error)
-        throw error
-      if (countErr)
-        throw countErr
-      const total
-        = typeof countData === 'number'
-          ? countData
-          : countData?.count || data?.length || 0
-
-      // ✅ 只处理当前仍是这个请求的最新结果
-      if (reqId === fetchTagRequestId && activeTagFilter.value === UNTAGGED_SENTINEL) {
-        notes.value = append ? [...notes.value, ...(data || [])] : data || []
-        filteredNotesCount.value = total
-        hasMoreNotes.value = currentPage.value * notesPerPage < total
-      }
-      return
-    }
-
-    // === 普通标签 ===
-    const { data, error, count } = await supabase
-      .from('notes')
-      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
-      .eq('user_id', user.value.id)
-      .ilike('content', `%${hashTag}%`)
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(from, to)
-
-    if (error)
-      throw error
-
-    // ✅ 只在当前请求仍为最新时更新界面
-    if (reqId === fetchTagRequestId && activeTagFilter.value === hashTag) {
-      notes.value = append ? [...notes.value, ...(data || [])] : data || []
-      filteredNotesCount.value = typeof count === 'number' ? count : notes.value.length
-      hasMoreNotes.value = to + 1 < (count || 0)
-    }
+    // 🚚 核心：统一走分页加载器
+    await fetchNotesByTagPage(hashTag, 1)
   }
   catch (err: any) {
-    if (reqId === fetchTagRequestId)
-      messageHook.error(`${t('notes.fetch_error')}: ${err.message}`)
+    messageHook.error(`${t('notes.fetch_error')}: ${err.message || err}`)
+    notes.value = []
+    hasMoreNotes.value = false
   }
   finally {
-    if (reqId === fetchTagRequestId)
-      isLoadingNotes.value = false
+    isLoadingNotes.value = false
   }
+
+  // ❌ 重要：标签筛选已改为分页，不再用“整表缓存”。
+  // 以前的：
+  //   const cacheKey = getTagCacheKey(hashTag)
+  //   localStorage.setItem(cacheKey, JSON.stringify(notes.value))
+  // 请删除/不要再写入，否则会干扰翻页。
 }
 
 function clearTagFilter() {
