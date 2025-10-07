@@ -351,6 +351,22 @@ function startWriting() {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+// ✅ 计算按钮文字（今日前→补写，今日/未来→写）
+const composeButtonText = computed(() => {
+  const sel = selectedDate.value
+  const now = new Date()
+
+  // 归零时分秒，保证仅比较日期
+  const selDay = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate())
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+
+  if (selDay < today)
+    return `＋补写 ${labelDate} 笔记`
+  return `＋写 ${labelDate} 笔记`
+})
+
 // 退出输入（不清草稿）
 function cancelWriting() {
   isWriting.value = false
@@ -427,14 +443,10 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
 
       <div class="notes-for-day-container">
-        <div class="selected-date-header">
-          {{ selectedDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) }}
-        </div>
-
         <!-- 工具行：写笔记按钮 -->
         <div class="compose-row">
           <button v-if="!isWriting" class="compose-btn" @click="startWriting">
-            ＋ 在这天写笔记
+            {{ composeButtonText }}
           </button>
         </div>
 
