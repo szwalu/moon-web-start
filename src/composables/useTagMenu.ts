@@ -984,7 +984,9 @@ export function useTagMenu(
       ? [{
           type: 'group' as const,
           key: 'pinned-group',
-          label: () => h('div', { style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px;` }, `⭐ ${t('notes.favorites') || '常用'}`),
+          label: () => h('div', {
+            style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`,
+          }, `⭐ ${t('notes.favorites') || '常用'}`),
           children: pinnedChildren,
         }]
       : []
@@ -1070,11 +1072,15 @@ export function useTagMenu(
             'gap:12px;',
             `margin-left: -${SHIFT_LEFT_PX}px;`,
             rowPadding,
+            'min-width:0;',
+            'max-width:100%;',
+            'box-sizing:border-box;',
+            'overflow:hidden;',
           ].join(''),
         }, [
           h('span', {
             class: 'tag-text',
-            style: 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            style: 'flex:1 1 0%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             title: display,
           }, display),
           h(NDropdown, {
@@ -1110,6 +1116,7 @@ export function useTagMenu(
                 'display:inline-flex;align-items:center;justify-content:center;',
                 'flex:0 0 auto;',
                 `width:${MORE_DOT_SIZE + 16}px !important;`,
+                'flex-shrink:0;',
                 `height:${MORE_DOT_SIZE + 16}px !重要;`,
                 `font-size:${MORE_DOT_SIZE}px !important;`,
                 `line-height:${MORE_DOT_SIZE + 16}px !important;`,
@@ -1216,6 +1223,7 @@ export function useTagMenu(
                 'display:inline-flex;align-items:center;justify内容:center;',
                 'flex:0 0 auto;',
                 `width:${MORE_DOT_SIZE + 16}px !important;`,
+                'flex-shrink:0;',
                 `height:${MORE_DOT_SIZE + 16}px !important;`,
                 `font-size:${MORE_DOT_SIZE}px !important;`,
                 `line-height:${MORE_DOT_SIZE + 16}px !important;`,
@@ -1264,7 +1272,7 @@ export function useTagMenu(
         }, [
           h('span', {
             class: 'tag-text',
-            style: 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            style: 'flex:1 1 0%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             title: display,
           }, display),
           h('span', { style: 'width: 28px; height: 1px;' }, ''),
