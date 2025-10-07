@@ -1074,7 +1074,7 @@ export function useTagMenu(
         }, [
           h('span', {
             class: 'tag-text',
-            style: 'flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            style: 'flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             title: display,
           }, display),
           h(NDropdown, {
@@ -1108,7 +1108,6 @@ export function useTagMenu(
               'style': [
                 'background:none;border:none;cursor:pointer;',
                 'display:inline-flex;align-items:center;justify-content:center;',
-                'flex:0 0 auto;',
                 `width:${MORE_DOT_SIZE + 16}px !important;`,
                 `height:${MORE_DOT_SIZE + 16}px !重要;`,
                 `font-size:${MORE_DOT_SIZE}px !important;`,
@@ -1174,7 +1173,7 @@ export function useTagMenu(
         }, [
           h('div', { style: 'display:flex;align-items:center;gap:8px;flex:1 1 auto;overflow:hidden;' }, [
             h('span', {
-              style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;flex-grow:1;min-width:0;',
+              style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;flex-grow:1;',
               title: text,
               onClick: (e: MouseEvent) => { e.stopPropagation(); selectTag(tagFull) },
             }, text),
@@ -1214,7 +1213,6 @@ export function useTagMenu(
               'style': [
                 'background:none;border:none;cursor:pointer;',
                 'display:inline-flex;align-items:center;justify内容:center;',
-                'flex:0 0 auto;',
                 `width:${MORE_DOT_SIZE + 16}px !important;`,
                 `height:${MORE_DOT_SIZE + 16}px !important;`,
                 `font-size:${MORE_DOT_SIZE}px !important;`,
