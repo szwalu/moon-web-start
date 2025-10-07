@@ -8,7 +8,10 @@ import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
 
-const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate'])
+// ========== 轻量“日历内写笔记” ==========
+import NoteEditor from '@/components/NoteEditor.vue'
+
+const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created'])
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -336,6 +339,75 @@ function refreshData() {
   checkAndRefreshIncremental()
 }
 defineExpose({ refreshData })
+
+const isWriting = ref(false) // 是否显示输入框
+const newNoteContent = ref('') // v-model
+const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+
+// 打开输入框（并让列表滚回顶部）
+function startWriting() {
+  isWriting.value = true
+  if (scrollBodyRef.value)
+    scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// 退出输入（不清草稿）
+function cancelWriting() {
+  isWriting.value = false
+}
+
+// 把“日历选中的自然日 + 当前时分秒”合成 created_at
+function buildCreatedAtForSelectedDay(): string {
+  const day = new Date(selectedDate.value) // 自然日
+  const now = new Date()
+  day.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
+  return day.toISOString()
+}
+
+// 在日历内保存新笔记（NoteEditor 的 @save 回调签名：content, weather）
+async function saveNewNote(content: string, weather: string | null) {
+  if (!user.value || !content.trim())
+    return
+
+  const createdISO = buildCreatedAtForSelectedDay()
+  const { data, error } = await supabase
+    .from('notes')
+    .insert({
+      user_id: user.value.id,
+      content: content.trim(),
+      created_at: createdISO,
+      updated_at: createdISO,
+      weather, // 你 NoteItem 已支持显示天气
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    console.error('保存失败：', error)
+    return
+  }
+
+  // 1) 立即插入到当天列表（置顶）
+  selectedDateNotes.value = [data, ...selectedDateNotes.value]
+
+  // 2) 小蓝点：确保当天有点
+  const key = dateKeyStr(selectedDate.value)
+  if (!datesWithNotes.value.has(key)) {
+    datesWithNotes.value.add(key)
+    datesWithNotes.value = new Set(datesWithNotes.value)
+    localStorage.setItem(
+      CACHE_KEYS.CALENDAR_ALL_DATES,
+      JSON.stringify(Array.from(datesWithNotes.value)),
+    )
+  }
+
+  // 3) 刷新当天缓存
+  localStorage.setItem(getCalendarDateCacheKey(selectedDate.value), JSON.stringify(selectedDateNotes.value))
+  emit('created', data)
+  // 4) 关输入框（NoteEditor 自带 clearDraftOnSave=true 会清草稿）
+  isWriting.value = false
+  newNoteContent.value = ''
+}
 </script>
 
 <template>
@@ -345,7 +417,7 @@ defineExpose({ refreshData })
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
-      <div class="calendar-container">
+      <div v-show="!isWriting" class="calendar-container">
         <Calendar
           is-expanded
           :attributes="attributes"
@@ -357,6 +429,32 @@ defineExpose({ refreshData })
       <div class="notes-for-day-container">
         <div class="selected-date-header">
           {{ selectedDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) }}
+        </div>
+
+        <!-- 工具行：写笔记按钮 -->
+        <div class="compose-row">
+          <button v-if="!isWriting" class="compose-btn" @click="startWriting">
+            ＋ 在这天写笔记
+          </button>
+        </div>
+
+        <!-- 轻量输入框（显示时隐藏上面的日历） -->
+        <div v-if="isWriting" class="inline-editor">
+          <NoteEditor
+            v-model="newNoteContent"
+            :is-editing="false"
+            :is-loading="false"
+            :max-note-length="20000"
+            placeholder="在这里写点什么……"
+            :all-tags="[]"
+            :enable-drafts="true"
+            :draft-key="writingKey"
+            :clear-draft-on-save="true"
+            @save="saveNewNote"
+            @cancel="cancelWriting"
+            @focus="() => {}"
+            @blur="() => {}"
+          />
         </div>
 
         <div v-if="isLoadingNotes" class="loading-text">加载中...</div>
@@ -500,5 +598,30 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 .n-popover,
 .n-dropdown {
   z-index: 6004 !important;
+}
+
+/* 写笔记按钮行 */
+.compose-row {
+  margin: 0 0 12px 0;
+}
+.compose-btn {
+  background: #00b386;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.compose-btn:hover { background: #009a74; }
+
+/* 输入框容器与间距 */
+.inline-editor {
+  margin-bottom: 16px;
+}
+
+/* 关键：当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
+.calendar-container {
+  transition: height 0.2s ease, opacity 0.2s ease;
 }
 </style>

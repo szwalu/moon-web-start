@@ -1767,6 +1767,29 @@ const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFr
 function goToLinksSite() {
   window.location.assign('/')
 }
+
+function onCalendarCreated(note: any) {
+  try {
+    notes.value = [note, ...(notes.value || [])]
+  }
+  catch {
+    /* 忽略 */
+  }
+
+  try {
+    totalNotes.value = (totalNotes.value || 0) + 1
+  }
+  catch {
+    /* 忽略 */
+  }
+
+  try {
+    localStorage.removeItem('notes_first_page_cache_key')
+  }
+  catch {
+    /* 忽略 */
+  }
+}
 </script>
 
 <template>
@@ -1966,6 +1989,7 @@ function goToLinksSite() {
         <CalendarView
           v-if="showCalendarView" ref="calendarViewRef"
           @close="showCalendarView = false"
+          @created="onCalendarCreated"
           @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
           @pin="handlePinToggle"
