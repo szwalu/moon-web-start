@@ -1790,6 +1790,31 @@ function onCalendarCreated(note: any) {
     /* 忽略 */
   }
 }
+
+function onCalendarUpdated(updated: any) {
+  updateNoteInList(updated)
+
+  try {
+    invalidateCachesOnDataChange(updated)
+  }
+  catch (e) {
+    // noop
+  }
+
+  fetchAllTags()
+
+  // 异步快照：不阻塞，不抛错影响提交流程
+  saveNotesSnapshot(notes.value).catch(() => {})
+
+  if (
+    isAnniversaryViewActive.value
+    && Array.isArray(anniversaryNotes.value)
+  ) {
+    anniversaryNotes.value = anniversaryNotes.value.map(n =>
+      n.id === updated.id ? { ...n, ...updated } : n,
+    )
+  }
+}
 </script>
 
 <template>
@@ -1990,6 +2015,7 @@ function onCalendarCreated(note: any) {
           v-if="showCalendarView" ref="calendarViewRef"
           @close="showCalendarView = false"
           @created="onCalendarCreated"
+          @updated="onCalendarUpdated"
           @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
           @pin="handlePinToggle"

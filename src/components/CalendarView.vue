@@ -11,7 +11,7 @@ import NoteItem from '@/components/NoteItem.vue'
 // ========== 轻量“日历内写笔记” ==========
 import NoteEditor from '@/components/NoteEditor.vue'
 
-const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created'])
+const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated'])
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -253,6 +253,7 @@ async function saveExistingNote(content: string /* , _weather: string | null */)
       getCalendarDateCacheKey(selectedDate.value),
       JSON.stringify(selectedDateNotes.value),
     )
+    emit('updated', data)
   }
   catch (e) {
     console.error('更新笔记失败：', e)
