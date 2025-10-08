@@ -89,17 +89,50 @@ function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
 }
 
-function _openNativeDatePicker() {
-  const el = nativeDateInputRef.value
+// 是否为移动端（触屏）
+// 触屏判断（不要重复声明）
+const isMobile
+  = typeof window !== 'undefined'
+  && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0))
+
+// 隐形的 <input type="month">
+const monthInputRef = ref<HTMLInputElement | null>(null)
+
+function _monthKeyStr(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+function _onNativeMonthChange(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (!el)
+    return
+  const v = el.value
+  if (!v)
+    return
+
+  const parts = v.split('-')
+  const y = Number(parts[0])
+  const m = Number(parts[1])
+  const day = selectedDate.value.getDate()
+  const dt = new Date(y, m - 1, day)
+
+  fetchNotesForDate(dt)
+}
+
+function openMonthPickerFromTitle() {
+  if (!isMobile)
+    return
+  const el = monthInputRef.value
   if (!el)
     return
 
-  // 同步当前选中日作为默认值
-  el.value = dateKeyStr(selectedDate.value)
+  el.value = monthKeyStr(selectedDate.value)
 
-  // 1) 现代内核：showPicker
   const anyEl = el as unknown as { showPicker?: () => void }
-  if (anyEl && typeof anyEl.showPicker === 'function') {
+  const hasShowPicker = anyEl && typeof anyEl.showPicker === 'function'
+  if (hasShowPicker) {
     try {
       anyEl.showPicker()
       return
@@ -109,28 +142,14 @@ function _openNativeDatePicker() {
     }
   }
 
-  // 2) iOS/部分安卓：需要在用户手势中 focus 再 click
   try {
     el.focus()
   }
   catch (e) {
     // noop
   }
-  try {
-    el.click()
-    return
-  }
-  catch (e) {
-    // 继续走兜底
-  }
 
-  // 3) 极端兜底：抖动 type 再触发
   try {
-    const originalType = el.type
-    el.blur()
-    el.type = 'text'
-    el.type = originalType
-    el.focus()
     el.click()
   }
   catch (e) {
@@ -617,20 +636,7 @@ async function saveNewNote(content: string, weather: string | null) {
     <div class="calendar-header" @click="handleHeaderClick">
       <div class="header-left">
         <h2>日历</h2>
-
-        <!-- 透明 input 覆盖按钮：iOS 稳定触发滚轮 -->
-        <div class="picker-wrap">
-          <button class="picker-btn" type="button">选择日期</button>
-          <input
-            type="month"
-            class="native-date-input"
-            :value="monthKeyStr(selectedDate)"
-            aria-label="选择月份"
-            @change="onNativeMonthChange"
-          >
-        </div>
       </div>
-
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
@@ -640,7 +646,30 @@ async function saveNewNote(content: string, weather: string | null) {
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
-        />
+        >
+          <!-- ✅ 标题插槽（桌面端正常显示，移动端可点击弹出“年/月滚轮”） -->
+          <template #header-title="{ title }">
+            <button
+              v-if="isMobile"
+              type="button"
+              class="vc-title-button"
+              @click.stop="openMonthPickerFromTitle"
+            >
+              {{ title }}
+            </button>
+            <span v-else>{{ title }}</span>
+          </template>
+        </Calendar>
+
+        <!-- ✅ 隐形月份输入：移动端点击标题时弹出系统“年/月滚轮” -->
+        <input
+          ref="monthInputRef"
+          type="month"
+          class="native-month-input"
+          :value="monthKeyStr(selectedDate)"
+          aria-label="选择月份"
+          @change="onNativeMonthChange"
+        >
       </div>
 
       <div class="notes-for-day-container">
@@ -897,5 +926,36 @@ async function saveNewNote(content: string, weather: string | null) {
 /* 关键：当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
+}
+
+/* 让 Calendar 标题在移动端看起来和默认标题一致 */
+:deep(.vc-header) { position: relative; }
+.vc-title-button {
+  font: inherit;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: #f3f4f6;
+  color: inherit;
+  cursor: pointer;
+}
+.dark .vc-title-button {
+  border-color: rgba(255,255,255,0.15);
+  background: #2f2f33;
+}
+
+/* 隐形的 <input type="month">：可交互但不可见 */
+.native-month-input {
+  position: fixed;   /* 不占位 */
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
 }
 </style>
