@@ -138,12 +138,19 @@ function _openNativeDatePicker() {
   }
 }
 
-function onNativeDateChange(e: Event) {
+function monthKeyStr(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+function onNativeMonthChange(e: Event) {
   const el = e.target as HTMLInputElement
   if (!el?.value)
     return
-  const [y, m, d] = el.value.split('-').map(n => Number(n))
-  const dt = new Date(y, m - 1, d)
+  const [y, m] = el.value.split('-').map(Number)
+  const dt = new Date(y, m - 1, selectedDate.value.getDate())
+  // 用主界面现有的日历去选具体天
   fetchNotesForDate(dt)
 }
 
@@ -615,11 +622,11 @@ async function saveNewNote(content: string, weather: string | null) {
         <div class="picker-wrap">
           <button class="picker-btn" type="button">选择日期</button>
           <input
-            type="date"
+            type="month"
             class="native-date-input"
-            :value="dateKeyStr(selectedDate)"
-            aria-label="选择日期"
-            @change="onNativeDateChange"
+            :value="monthKeyStr(selectedDate)"
+            aria-label="选择月份"
+            @change="onNativeMonthChange"
           >
         </div>
       </div>
