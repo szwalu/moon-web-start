@@ -1039,8 +1039,8 @@ export function useTagMenu(
     const count = tagCounts.value[tag] ?? 0
     const displayName = labelName ?? tagKeyName(tag)
     const icon = tagIconMap.value[tag] || '#'
-    const left = `${icon} ${displayName}`
-    const display = count > 0 ? `${left}（${count}）` : left
+    const textLabel = count > 0 ? `${displayName}（${count}）` : displayName
+    const fullTitle = `${icon} ${textLabel}`
 
     const placementRef = ref<SmartPlacement>('top-start')
     const showRef = ref(false)
@@ -1063,82 +1063,62 @@ export function useTagMenu(
       key: tag,
       label: () =>
         h('div', {
-          class: 'tag-row',
+          class: 'tag-row-wrapper',
           style: [
-            'display:flex;',
-            'align-items:center;',
-            'justify-content:space-between;',
             `width: calc(100% + ${SHIFT_LEFT_PX}px);`,
-            'gap:12px;',
             `margin-left: -${SHIFT_LEFT_PX}px;`,
             rowPadding,
-            'min-width:0;',
-            'max-width:100%;',
-            'box-sizing:border-box;',
-            'overflow:hidden;',
+            'box-sizing: border-box;',
           ].join(''),
         }, [
-          h('span', {
-            class: 'tag-text',
-            style: 'flex:1 1 0%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-            title: display,
-          }, display),
-          h(NDropdown, {
-            options: getRowMenuOptions(tag),
-            trigger: 'manual',
-            show: showRef.value,
-            showArrow: false,
-            size: 'small',
-            placement: placementRef.value,
-            to: 'body',
-            onUpdateShow: (show: boolean) => {
-              showRef.value = show
-              isRowMoreOpen.value = show
-              if (show)
-                lastMoreClosedByOutside = false
-            },
-            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => {
-              lastMoreClosedByOutside = false
-              handleRowMenuSelect(tag, key)
-              closeMenu()
-            },
-            onClickoutside: () => {
-              lastMoreClosedByOutside = true
-              closeMenu()
-              setTimeout(() => { lastMoreClosedByOutside = false }, 0)
-            },
-          }, {
-            default: () => h('button', {
-              'aria-label': t('tags.more_actions') || '更多操作',
-              'title': t('tags.more_actions') || '更多操作',
-              'style': [
-                'background:none;border:none;cursor:pointer;',
-                'display:inline-flex;align-items:center;justify-content:center;',
-                'flex:0 0 auto;',
-                `width:${MORE_DOT_SIZE + 16}px !important;`,
-                'flex-shrink:0;',
-                `height:${MORE_DOT_SIZE + 16}px !重要;`,
-                `font-size:${MORE_DOT_SIZE}px !important;`,
-                `line-height:${MORE_DOT_SIZE + 16}px !important;`,
-                'font-weight:600;border-radius:10px;opacity:0.95;',
-              ].join(''),
-              'onClick': (e: MouseEvent) => {
-                e.stopPropagation()
-                btnEl = e.currentTarget as HTMLElement
-                if (showRef.value) {
-                  lastMoreClosedByOutside = false
-                  closeMenu()
-                }
-                else {
-                  placementRef.value = computeSmartPlacementStrict(btnEl)
-                  nextTick(() => {
-                    openMenu()
-                    requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() })
-                  })
-                }
-              },
-            }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
-          }),
+          h('div', {
+            class: 'tag-row-table-layout',
+            style: 'display: table; width: 100%; table-layout: fixed;',
+            title: fullTitle,
+          }, [
+            // Cell 1: Icon
+            h('div', { style: 'display: table-cell; width: 22px; vertical-align: middle; padding-right: 6px;' }, icon),
+            // Cell 2: Text (will truncate)
+            h('div', { style: 'display: table-cell; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, textLabel),
+            // Cell 3: "More" button
+            h('div', { style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;' }, [
+              h(NDropdown, {
+                options: getRowMenuOptions(tag),
+                trigger: 'manual',
+                show: showRef.value,
+                showArrow: false,
+                size: 'small',
+                placement: placementRef.value,
+                to: 'body',
+                onUpdateShow: (show: boolean) => {
+                  showRef.value = show; isRowMoreOpen.value = show
+                  if (show)
+                    lastMoreClosedByOutside = false
+                },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
+                onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
+              }, {
+                default: () => h('button', {
+                  'aria-label': t('tags.more_actions') || '更多操作',
+                  'title': t('tags.more_actions') || '更多操作',
+                  'style': [
+                    'background:none;border:none;cursor:pointer;',
+                    'display:inline-flex;align-items:center;justify-content:center;',
+                    'flex-shrink:0;',
+                    `width:${MORE_DOT_SIZE + 16}px !important;`,
+                    `height:${MORE_DOT_SIZE + 16}px !important;`,
+                    `font-size:${MORE_DOT_SIZE}px !important;`,
+                    `line-height:${MORE_DOT_SIZE + 16}px !important;`,
+                    'font-weight:600;border-radius:10px;opacity:0.95;',
+                  ].join(''),
+                  'onClick': (e: MouseEvent) => {
+                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                  },
+                }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
+              }),
+            ]),
+          ]),
         ]),
       props: { onClick: () => selectTag(tag) },
     }
@@ -1155,7 +1135,8 @@ export function useTagMenu(
     const HORIZONTAL_PADDING = BASE_NAIVE_PADDING - SHIFT_LEFT_PX
     const total = getNodeCount(node, tagCounts.value)
     const icon = tagIconMap.value[tagFull] || '#'
-    const text = total > 0 ? `${icon} ${labelName}（${total}）` : `${icon} ${labelName}`
+    const textLabel = total > 0 ? `${labelName}（${total}）` : `${labelName}`
+    const fullTitle = `${icon} ${textLabel}`
     const arrow = expanded ? '▼' : '▶'
 
     const MORE_DOT_SIZE = 20
@@ -1172,79 +1153,75 @@ export function useTagMenu(
       render: () =>
         h('div', {
           style: [
-            'display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;',
             `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
             'padding-right: 4px;',
             'box-sizing: border-box;',
-            'user-select:none;',
+            'width: 100%;',
+            'user-select: none;',
           ].join(''),
         }, [
-          h('div', { style: 'display:flex;align-items:center;gap:8px;flex:1 1 auto;overflow:hidden;' }, [
-            h('span', {
-              style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;flex-grow:1;min-width:0;',
-              title: text,
+          h('div', {
+            style: 'display: table; width: 100%; table-layout: fixed;',
+          }, [
+            // Cell 1: Icon + Text (clickable, will truncate)
+            h('div', {
+              style: 'display: table-cell; vertical-align: middle; overflow: hidden; white-space: nowrap; cursor: pointer;',
+              title: fullTitle,
               onClick: (e: MouseEvent) => { e.stopPropagation(); selectTag(tagFull) },
-            }, text),
-            h('span', {
-              style: 'font-size: 110%; width:16px; display:inline-flex; align-items:center; justify-content:center; opacity:.6; cursor:pointer; flex-shrink:0;',
+            }, [
+              h('span', { style: 'text-overflow: ellipsis; overflow: hidden; display: inline-block; max-width: 100%;' }, [
+                h('span', null, icon),
+                h('span', { style: 'margin-left: 6px;' }, textLabel),
+              ]),
+            ]),
+            // Cell 2: Arrow (clickable)
+            h('div', {
+              style: 'display: table-cell; width: 24px; vertical-align: middle; text-align: center; cursor: pointer;',
               onClick: (e: MouseEvent) => { e.stopPropagation(); onToggle() },
             }, arrow),
+            // Cell 3: "More" button
+            h('div', {
+              style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;',
+            }, [
+              h(NDropdown, {
+                options: getRowMenuOptions(tagFull),
+                trigger: 'manual',
+                show: showRef.value,
+                showArrow: false,
+                size: 'small',
+                placement: placementRef.value,
+                to: 'body',
+                onUpdateShow: (show: boolean) => {
+                  showRef.value = show; isRowMoreOpen.value = show
+                  if (show)
+                    lastMoreClosedByOutside = false
+                },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
+                onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
+              }, {
+                default: () => h('button', {
+                  'aria-label': t('tags.more_actions') || '更多操作',
+                  'title': t('tags.more_actions') || '更多操作',
+                  'style': [
+                    'background:none;border:none;cursor:pointer;',
+                    'display:inline-flex;align-items:center;justify-content:center;',
+                    'flex-shrink:0;',
+                    `width:${MORE_DOT_SIZE + 16}px !important;`,
+                    `height:${MORE_DOT_SIZE + 16}px !important;`,
+                    `font-size:${MORE_DOT_SIZE}px !important;`,
+                    `line-height:${MORE_DOT_SIZE + 16}px !important;`,
+                    'font-weight:600;border-radius:10px;opacity:0.95;',
+                  ].join(''),
+                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onClick': (e: MouseEvent) => {
+                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                  },
+                }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
+              }),
+            ]),
           ]),
-          h(NDropdown, {
-            options: getRowMenuOptions(tagFull),
-            trigger: 'manual',
-            show: showRef.value,
-            showArrow: false,
-            size: 'small',
-            placement: placementRef.value,
-            to: 'body',
-            onUpdateShow: (show: boolean) => {
-              showRef.value = show
-              isRowMoreOpen.value = show
-              if (show)
-                lastMoreClosedByOutside = false
-            },
-            onSelect: (key: 'pin' | 'rename' | 'remove' | 'change_icon') => {
-              lastMoreClosedByOutside = false
-              handleRowMenuSelect(tagFull, key)
-              closeMenu()
-            },
-            onClickoutside: () => {
-              lastMoreClosedByOutside = true
-              closeMenu()
-              setTimeout(() => { lastMoreClosedByOutside = false }, 0)
-            },
-          }, {
-            default: () => h('button', {
-              'aria-label': t('tags.more_actions') || '更多操作',
-              'title': t('tags.more_actions') || '更多操作',
-              'style': [
-                'background:none;border:none;cursor:pointer;',
-                'display:inline-flex;align-items:center;justify内容:center;',
-                'flex:0 0 auto;',
-                `width:${MORE_DOT_SIZE + 16}px !important;`,
-                'flex-shrink:0;',
-                `height:${MORE_DOT_SIZE + 16}px !important;`,
-                `font-size:${MORE_DOT_SIZE}px !important;`,
-                `line-height:${MORE_DOT_SIZE + 16}px !important;`,
-                'font-weight:600;border-radius:10px;opacity:0.95;',
-              ].join(''),
-              'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
-              'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
-              'onClick': (e: MouseEvent) => {
-                e.stopPropagation()
-                btnEl = e.currentTarget as HTMLElement
-                if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
-                else {
-                  placementRef.value = computeSmartPlacementStrict(btnEl)
-                  nextTick(() => {
-                    openMenu()
-                    requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() })
-                  })
-                }
-              },
-            }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
-          }),
         ]),
     }
   }

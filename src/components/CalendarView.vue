@@ -133,13 +133,31 @@ function toggleExpandInCalendar(noteId: string) {
 
 /* ===================== 日历点（小圆点） ===================== */
 const attributes = computed(() => {
-  return Array.from(datesWithNotes.value).map(key => ({
-    key, // 任意唯一键
-    dot: true,
-    dates: dateFromKeyStr(key),
-  }))
-})
+  const attrs: any[] = []
 
+  // ① 有笔记的日期（小蓝点）
+  for (const key of datesWithNotes.value) {
+    attrs.push({
+      key: `note-${key}`,
+      dot: true,
+      dates: dateFromKeyStr(key),
+    })
+  }
+
+  // ② 今天的蓝色圆框
+  const today = new Date()
+  attrs.push({
+    key: 'today-highlight',
+    dates: today,
+    highlight: {
+      color: 'blue', // 蓝色
+      fillMode: 'outline', // 空心圆框
+      contentClass: 'today-outline', // 额外 class（可选）
+    },
+  })
+
+  return attrs
+})
 /* ===================== 全量：获取所有有笔记的日期集合（分页） ===================== */
 async function fetchAllNoteDatesFull() {
   if (!user.value)
@@ -719,7 +737,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom-color: #374151;
 }
 .calendar-header h2 {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
   margin: 0;
 }

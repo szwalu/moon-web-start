@@ -1807,7 +1807,7 @@ function onCalendarCreated(note: any) {
             placement="bottom-start"
             :options="mainMenuOptions"
             :show-arrow="false"
-            :width="240"
+            :width="300"
             @select="handleMainMenuSelect"
           >
             <button class="header-action-btn" @click.stop>
