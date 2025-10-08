@@ -89,10 +89,7 @@ function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
 }
 
-// —— 原生滚轮日期选择（iOS/Android 都支持，iOS 会是三列滚轮）——
-const nativeDateInputRef = ref<HTMLInputElement | null>(null)
-
-function openNativeDatePicker() {
+function _openNativeDatePicker() {
   const el = nativeDateInputRef.value
   if (!el)
     return
@@ -613,16 +610,18 @@ async function saveNewNote(content: string, weather: string | null) {
     <div class="calendar-header" @click="handleHeaderClick">
       <div class="header-left">
         <h2>日历</h2>
-        <!-- 打开系统滚轮式日期选择 -->
-        <button class="picker-btn" @click.stop="openNativeDatePicker">选择日期</button>
-        <!-- 隐藏但可触发的原生 date 输入（iOS 会是三列滚轮） -->
-        <input
-          ref="nativeDateInputRef"
-          type="date"
-          class="native-date-input"
-          :value="dateKeyStr(selectedDate)"
-          @change="onNativeDateChange"
-        >
+
+        <!-- 透明 input 覆盖按钮：iOS 稳定触发滚轮 -->
+        <div class="picker-wrap">
+          <button class="picker-btn" type="button">选择日期</button>
+          <input
+            type="date"
+            class="native-date-input"
+            :value="dateKeyStr(selectedDate)"
+            aria-label="选择日期"
+            @change="onNativeDateChange"
+          >
+        </div>
       </div>
 
       <button class="close-btn" @click.stop="emit('close')">×</button>
@@ -761,6 +760,11 @@ async function saveNewNote(content: string, weather: string | null) {
   align-items: center;
   gap: 8px;
 }
+/* 包裹：用于定位透明 input */
+.picker-wrap {
+  position: relative;
+  display: inline-block;
+}
 /* 选择日期按钮（小巧扁平） */
 .picker-btn {
   font-size: 12px;
@@ -781,13 +785,16 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .picker-btn:hover { background: #3a3a3f; }
 /* 隐藏的原生日期输入 */
 .native-date-input {
-  position: fixed;     /* 不影响布局 */
-  left: -9999px;       /* 屏幕外，但仍可交互 */
-  top: 0;
-  width: 1px;          /* 必须 > 0，部分内核才认为是可交互元素 */
-  height: 1px;
-  opacity: 0;          /* 对用户不可见 */
-  pointer-events: auto;/* 允许程序触发 click/focus */
+  position: absolute;
+  inset: 0;                 /* 覆盖整个按钮 */
+  width: 100%;
+  height: 100%;
+  opacity: 0;               /* 完全透明但仍可交互 */
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
 }
 .calendar-body {
   flex: 1;
