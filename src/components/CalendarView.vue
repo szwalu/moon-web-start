@@ -23,6 +23,14 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
+const isWriting = ref(false) // 是否显示输入框
+const newNoteContent = ref('') // v-model
+const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+
+const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
+const editContent = ref('') // 编辑框 v-model
+const isEditingExisting = computed(() => !!editingNote.value)
+const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
 
 /** 本地元信息键：最近一次同步时间戳 & 总数 */
 const CAL_LAST_SYNC_TS = 'calendar_last_sync_ts'
@@ -49,7 +57,13 @@ function dateFromKeyStr(key: string) {
 
 /* ===================== 事件处理（逐行写法，避免 max-statements-per-line） ===================== */
 function handleEdit(note: any) {
-  emit('editNote', note)
+  // 直接在日历里编辑，不再跳回主页
+  editingNote.value = note
+  editContent.value = note?.content || ''
+  isWriting.value = false
+  expandedNoteId.value = null
+  if (scrollBodyRef.value)
+    scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
 function handleCopy(content: string) {
   emit('copy', content)
@@ -73,6 +87,28 @@ function handleHeaderClick() {
 }
 function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
+}
+
+// —— 原生滚轮日期选择（iOS/Android 都支持，iOS 会是三列滚轮）——
+const nativeDateInputRef = ref<HTMLInputElement | null>(null)
+
+function openNativeDatePicker() {
+  // 优先使用 showPicker（现代浏览器），否则退回 click
+  const el = nativeDateInputRef.value
+  if (!el)
+    return
+  // 同步当前选中日作为初始值
+  el.value = dateKeyStr(selectedDate.value)
+  ;(el as any).showPicker?.() ?? el.click()
+}
+
+function onNativeDateChange(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (!el?.value)
+    return
+  const [y, m, d] = el.value.split('-').map(n => Number(n))
+  const dt = new Date(y, m - 1, d)
+  fetchNotesForDate(dt)
 }
 
 /* ===================== 日历点（小圆点） ===================== */
@@ -148,6 +184,51 @@ function loadAllDatesFromCache(): boolean {
     localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
     return false
   }
+}
+
+async function saveExistingNote(content: string /* , _weather: string | null */) {
+  if (!user.value || !editingNote.value)
+    return
+  const id = editingNote.value.id
+  const trimmed = (content || '').trim()
+  if (!trimmed)
+    return
+
+  try {
+    const nowISO = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ content: trimmed, updated_at: nowISO })
+      .eq('id', id)
+      .eq('user_id', user.value.id)
+      .select('*')
+      .single()
+
+    if (error)
+      throw error
+
+    // 本地列表就地替换
+    selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? data : n))
+
+    // 刷新当天缓存
+    localStorage.setItem(
+      getCalendarDateCacheKey(selectedDate.value),
+      JSON.stringify(selectedDateNotes.value),
+    )
+  }
+  catch (e) {
+    console.error('更新笔记失败：', e)
+    return
+  }
+
+  // 退出编辑器并清空
+  editingNote.value = null
+  editContent.value = ''
+}
+
+function cancelEditExisting() {
+  editingNote.value = null
+  editContent.value = ''
 }
 
 /* ===================== 获取某日笔记：优先读缓存，缺失再拉取 ===================== */
@@ -406,10 +487,6 @@ function refreshData() {
 }
 defineExpose({ refreshData })
 
-const isWriting = ref(false) // 是否显示输入框
-const newNoteContent = ref('') // v-model
-const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
-
 // 打开输入框（并让列表滚回顶部）
 function startWriting() {
   isWriting.value = true
@@ -495,11 +572,24 @@ async function saveNewNote(content: string, weather: string | null) {
 <template>
   <div class="calendar-view">
     <div class="calendar-header" @click="handleHeaderClick">
-      <h2>日历</h2>
+      <div class="header-left">
+        <h2>日历</h2>
+        <!-- 打开系统滚轮式日期选择 -->
+        <button class="picker-btn" @click.stop="openNativeDatePicker">选择日期</button>
+        <!-- 隐藏但可触发的原生 date 输入（iOS 会是三列滚轮） -->
+        <input
+          ref="nativeDateInputRef"
+          type="date"
+          class="native-date-input"
+          :value="dateKeyStr(selectedDate)"
+          @change="onNativeDateChange"
+        >
+      </div>
+
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
-      <div v-show="!isWriting" class="calendar-container">
+      <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
           :attributes="attributes"
@@ -510,8 +600,8 @@ async function saveNewNote(content: string, weather: string | null) {
 
       <div class="notes-for-day-container">
         <!-- 工具行：写笔记按钮 -->
-        <div class="compose-row">
-          <button v-if="!isWriting" class="compose-btn" @click="startWriting">
+        <div v-if="!isWriting && !isEditingExisting" class="compose-row">
+          <button class="compose-btn" @click="startWriting">
             {{ composeButtonText }}
           </button>
         </div>
@@ -530,6 +620,25 @@ async function saveNewNote(content: string, weather: string | null) {
             :clear-draft-on-save="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
+            @focus="() => {}"
+            @blur="() => {}"
+          />
+        </div>
+
+        <!-- 编辑已有笔记（直接在日历内） -->
+        <div v-if="isEditingExisting" class="inline-editor">
+          <NoteEditor
+            v-model="editContent"
+            :is-editing="true"
+            :is-loading="false"
+            :max-note-length="20000"
+            placeholder="编辑这条笔记…"
+            :all-tags="[]"
+            :enable-drafts="true"
+            :draft-key="editDraftKey"
+            :clear-draft-on-save="true"
+            @save="saveExistingNote"
+            @cancel="cancelEditExisting"
             @focus="() => {}"
             @blur="() => {}"
           />
@@ -586,28 +695,59 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
+  /* 调小上下内边距 */
+  padding: calc(2px + var(--safe-top)) 12px 4px 12px;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
   position: sticky;
-  top: var(--safe-top);
+  top: 0;                /* 不再叠加 var(--safe-top)，上面那行已算进去 */
   z-index: 1;
 }
 .dark .calendar-header {
   border-bottom-color: #374151;
 }
 .calendar-header h2 {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
+  line-height: 1.2;
 }
-.close-btn {
-  font-size: 28px;
-  background: none;
-  border: none;
+.close-btn {                      /* 视觉上更协调一点 */
+  font-size: 24px;                /* 原 28px，也可保留 28px 按你喜好 */
+}
+/* 标题行左侧容器：标题 + 选择日期按钮 + 隐藏输入 */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 选择日期按钮（小巧扁平） */
+.picker-btn {
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: #f9fafb;
+  color: #333;
   cursor: pointer;
-  color: inherit;
+}
+.picker-btn:hover { background: #f3f4f6; }
+.dark .picker-btn {
+  border-color: rgba(255,255,255,0.18);
+  background: #2f2f33;
+  color: #f0f0f0;
+}
+.dark .picker-btn:hover { background: #3a3a3f; }
+/* 隐藏的原生日期输入 */
+.native-date-input {
+  position: absolute;
+  inset: auto auto 0 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 .calendar-body {
   flex: 1;
@@ -615,9 +755,12 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   overflow-y: auto;
   position: relative;
 }
+/* ===== 缩小日历区域与正文容器内边距 ===== */
 .calendar-container {
-  padding: 1rem;
+  /* 原来：padding: 1rem; */
+  padding: 8px 10px;              /* ⬅️ 更紧凑 */
   border-bottom: 1px solid #e5e7eb;
+  transition: height 0.2s ease, opacity 0.2s ease;
 }
 .dark .calendar-container {
   border-bottom-color: #374151;
@@ -632,7 +775,8 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   color: #f0f0f0;
 }
 .notes-for-day-container {
-  padding: 1rem 1.5rem;
+  /* 原来：padding: 1rem 1.5rem; */
+  padding: 10px 12px;             /* ⬅️ 更窄 */
 }
 .selected-date-header {
   font-weight: 600;
@@ -679,9 +823,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 }
 
 /* 写笔记按钮行 */
-.compose-row {
-  margin: 0 0 12px 0;
-}
+.compose-row { margin: 0 0 8px 0; }
 .compose-btn {
   background: #00b386;
   color: #fff;
