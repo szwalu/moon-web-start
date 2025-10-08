@@ -695,7 +695,7 @@ async function fetchAllTags() {
   }
   catch (err: any) {
     console.error('Error fetching tags via RPC:', err)
-    messageHook.error(`获取标签失败: ${err.message}`)
+  //  messageHook.error(`获取标签失败: ${err.message}`)
   }
 }
 

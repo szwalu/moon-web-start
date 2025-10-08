@@ -296,7 +296,7 @@ notes:
   delete_confirm_content: 确定要删除此笔记吗？
   confirm_delete: 确认删除
   cancel: 取消
-  fetch_error: 获取笔记失败
+  fetch_error: 离线模式
   saving: 保存中...
   export_confirm_title: 选择日期范围
   export_confirm_content: 即将导出符合条件的笔记。此操作可能需要一些时间
