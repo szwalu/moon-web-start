@@ -23,6 +23,7 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
+
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -31,6 +32,46 @@ const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
 const editContent = ref('') // 编辑框 v-model
 const isEditingExisting = computed(() => !!editingNote.value)
 const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
+
+const hideHeader = ref(false)
+
+function onEditorFocus() {
+  hideHeader.value = true
+}
+
+// 根容器 ref，限制只在日历弹层内部点击才触发
+const rootRef = ref<HTMLElement | null>(null)
+
+function onGlobalClickCapture(e: MouseEvent) {
+  // 仅在编辑/写作态下处理
+  if (!(isWriting.value || isEditingExisting.value))
+    return
+
+  const target = e.target as HTMLElement | null
+  if (!target)
+    return
+
+  // 只处理发生在当前日历弹层内的点击
+  const inThisOverlay = rootRef.value?.contains(target)
+  if (!inThisOverlay)
+    return
+
+  // 若点击发生在编辑器容器内，则忽略（不显现页眉）
+  const inInlineEditor = target.closest('.inline-editor')
+  if (inInlineEditor)
+    return
+
+  // 其它位置（空白、列表、日历等）都显现页眉
+  hideHeader.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onGlobalClickCapture, true) // capture 阶段
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onGlobalClickCapture, true)
+})
 
 /** 本地元信息键：最近一次同步时间戳 & 总数 */
 const CAL_LAST_SYNC_TS = 'calendar_last_sync_ts'
@@ -62,6 +103,7 @@ function handleEdit(note: any) {
   editContent.value = note?.content || ''
   isWriting.value = false
   expandedNoteId.value = null
+  hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -87,44 +129,6 @@ function handleHeaderClick() {
 }
 function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
-}
-
-// 是否为移动端（触屏）
-
-// 判断是否 iOS（用于决定是否覆盖标题为原生滚轮）
-const isIOS
-  = typeof navigator !== 'undefined'
-  && /iphone|ipad|ipod/i.test(navigator.userAgent)
-
-// 供 iOS 覆盖使用的透明 <input type="date">
-const monthInputRef = ref<HTMLInputElement | null>(null)
-
-// 生成 YYYY-MM
-function _monthKeyStr(date: Date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  return `${y}-${m}`
-}
-
-// iOS 原生 date 滚轮选择后：只取年/月，日保持当前 selectedDate 的日
-function _onIOSDateWheelChange(e: Event) {
-  const el = e.target as HTMLInputElement
-  if (!el)
-    return
-  const v = el.value
-  if (!v)
-    return
-
-  // v 形如 "2025-10-05"
-  const parts = v.split('-')
-  if (parts.length < 2)
-    return
-  const y = Number(parts[0])
-  const m = Number(parts[1])
-
-  const keepDay = selectedDate.value.getDate()
-  const dt = new Date(y, m - 1, keepDay)
-  fetchNotesForDate(dt)
 }
 
 /* ===================== 日历点（小圆点） ===================== */
@@ -240,11 +244,13 @@ async function saveExistingNote(content: string /* , _weather: string | null */)
   // 退出编辑器并清空
   editingNote.value = null
   editContent.value = ''
+  hideHeader.value = false
 }
 
 function cancelEditExisting() {
   editingNote.value = null
   editContent.value = ''
+  hideHeader.value = false
 }
 
 /* ===================== 获取某日笔记：优先读缓存，缺失再拉取 ===================== */
@@ -506,6 +512,7 @@ defineExpose({ refreshData })
 // 打开输入框（并让列表滚回顶部）
 function startWriting() {
   isWriting.value = true
+  hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -529,6 +536,7 @@ const composeButtonText = computed(() => {
 // 退出输入（不清草稿）
 function cancelWriting() {
   isWriting.value = false
+  hideHeader.value = false
 }
 
 // 把“日历选中的自然日 + 当前时分秒”合成 created_at
@@ -582,15 +590,14 @@ async function saveNewNote(content: string, weather: string | null) {
   // 4) 关输入框（NoteEditor 自带 clearDraftOnSave=true 会清草稿）
   isWriting.value = false
   newNoteContent.value = ''
+  hideHeader.value = false
 }
 </script>
 
 <template>
-  <div class="calendar-view">
-    <div class="calendar-header" @click="handleHeaderClick">
-      <div class="header-left">
-        <h2>日历</h2>
-      </div>
+  <div ref="rootRef" class="calendar-view">
+    <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
+      <h2>日历</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
@@ -600,27 +607,7 @@ async function saveNewNote(content: string, weather: string | null) {
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
-        >
-          <!-- 标题插槽：
-         - iOS：在标题上覆盖透明 <input type="date">，点标题即弹原生“年/月/日”滚轮；
-                我们只用年+月，日保持不变。
-         - 非 iOS：保持默认标题（不可点击）。 -->
-          <template #header-title="{ title }">
-            <span v-if="!isIOS">{{ title }}</span>
-
-            <span v-else class="vc-title-overlay">
-              {{ title }}
-              <input
-                ref="monthInputRef"
-                type="date"
-                class="native-ios-date-overlay"
-                :value="`${_monthKeyStr(selectedDate)}-${String(selectedDate.getDate()).padStart(2, '0')}`"
-                aria-label="选择月份（iOS）"
-                @change="_onIOSDateWheelChange"
-              >
-            </span>
-          </template>
-        </Calendar>
+        />
       </div>
 
       <div class="notes-for-day-container">
@@ -645,7 +632,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :clear-draft-on-save="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
-            @focus="() => {}"
+            @focus="onEditorFocus"
             @blur="() => {}"
           />
         </div>
@@ -664,7 +651,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :clear-draft-on-save="true"
             @save="saveExistingNote"
             @cancel="cancelEditExisting"
-            @focus="() => {}"
+            @focus="onEditorFocus"
             @blur="() => {}"
           />
         </div>
@@ -720,68 +707,28 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  /* 调小上下内边距 */
-  padding: calc(2px + var(--safe-top)) 12px 4px 12px;
+padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
   position: sticky;
-  top: 0;                /* 不再叠加 var(--safe-top)，上面那行已算进去 */
+  top: var(--safe-top);
   z-index: 1;
 }
 .dark .calendar-header {
   border-bottom-color: #374151;
 }
 .calendar-header h2 {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
   margin: 0;
-  line-height: 1.2;
 }
-.close-btn {                      /* 视觉上更协调一点 */
-  font-size: 24px;                /* 原 28px，也可保留 28px 按你喜好 */
-}
-/* 标题行左侧容器：标题 + 选择日期按钮 + 隐藏输入 */
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-/* 包裹：用于定位透明 input */
-.picker-wrap {
-  position: relative;
-  display: inline-block;
-}
-/* 选择日期按钮（小巧扁平） */
-.picker-btn {
-  font-size: 12px;
-  line-height: 1;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(0,0,0,0.12);
-  background: #f9fafb;
-  color: #333;
+.close-btn {
+  font-size: 28px;
+  background: none;
+  border: none;
   cursor: pointer;
-}
-.picker-btn:hover { background: #f3f4f6; }
-.dark .picker-btn {
-  border-color: rgba(255,255,255,0.18);
-  background: #2f2f33;
-  color: #f0f0f0;
-}
-.dark .picker-btn:hover { background: #3a3a3f; }
-/* 隐藏的原生日期输入 */
-.native-date-input {
-  position: absolute;
-  inset: 0;                 /* 覆盖整个按钮 */
-  width: 100%;
-  height: 100%;
-  opacity: 0;               /* 完全透明但仍可交互 */
-  border: 0;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
+  color: inherit;
 }
 .calendar-body {
   flex: 1;
@@ -789,12 +736,9 @@ async function saveNewNote(content: string, weather: string | null) {
   overflow-y: auto;
   position: relative;
 }
-/* ===== 缩小日历区域与正文容器内边距 ===== */
 .calendar-container {
-  /* 原来：padding: 1rem; */
-  padding: 8px 10px;              /* ⬅️ 更紧凑 */
+  padding: 1rem;
   border-bottom: 1px solid #e5e7eb;
-  transition: height 0.2s ease, opacity 0.2s ease;
 }
 .dark .calendar-container {
   border-bottom-color: #374151;
@@ -809,8 +753,7 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #f0f0f0;
 }
 .notes-for-day-container {
-  /* 原来：padding: 1rem 1.5rem; */
-  padding: 10px 12px;             /* ⬅️ 更窄 */
+  padding: 1rem 1.5rem;
 }
 .selected-date-header {
   font-weight: 600;
@@ -857,7 +800,9 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 
 /* 写笔记按钮行 */
-.compose-row { margin: 0 0 8px 0; }
+.compose-row {
+  margin: 0 0 12px 0;
+}
 .compose-btn {
   background: #00b386;
   color: #fff;
@@ -877,65 +822,5 @@ async function saveNewNote(content: string, weather: string | null) {
 /* 关键：当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
-}
-
-/* 让 Calendar 标题在移动端看起来和默认标题一致 */
-:deep(.vc-header) { position: relative; }
-.vc-title-button {
-  font: inherit;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: #f3f4f6;
-  color: inherit;
-  cursor: pointer;
-}
-.dark .vc-title-button {
-  border-color: rgba(255,255,255,0.15);
-  background: #2f2f33;
-}
-
-/* 隐形的 <input type="month">：可交互但不可见 */
-.native-month-input {
-  position: fixed;   /* 不占位 */
-  left: -9999px;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  border: 0;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-/* 标题容器：用于定位透明 input */
-.vc-title-overlay {
-  position: relative;
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: #f3f4f6;
-  font-weight: 600;
-}
-.dark .vc-title-overlay {
-  border-color: rgba(255,255,255,0.15);
-  background: #2f2f33;
-}
-
-/* 透明覆盖的原生 date 输入（iOS） */
-.native-ios-date-overlay {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;          /* 完全透明但可交互 */
-  border: 0;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
 }
 </style>
