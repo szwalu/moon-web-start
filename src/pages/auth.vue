@@ -102,6 +102,7 @@ let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 const isOffline = ref(false)
+let offlineToastShown = false
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -1053,20 +1054,38 @@ async function fetchNotes() {
       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
 
       // ✅ 写入 IndexedDB 快照（只读离线用）
-      //    这里用“当前可见列表”（即 notes.value），让断网冷启动能直接还原。
       try {
         await saveNotesSnapshot(notes.value)
       }
       catch (e) {
-        // 静默：IndexedDB 写入失败不影响在线逻辑
         console.warn('[offline] saveNotesSnapshot failed:', e)
       }
     }
 
     hasMoreNotes.value = to + 1 < totalNotes.value
+
+    // ✅ 拉取成功 => 复位“离线只弹一次”的开关
+    offlineToastShown = false
   }
-  catch (err) {
-    messageHook.error(t('notes.fetch_error'))
+  catch (err: any) {
+    // ⛔️ 离线 / 网络错误：只弹一次，并暂停无限下拉
+    const msg = String(err?.message || err)
+    const isOffline
+      = navigator.onLine === false
+      || /Failed to fetch|NetworkError|TypeError.*fetch/i.test(msg)
+
+    if (isOffline) {
+      if (!offlineToastShown) {
+        offlineToastShown = true
+        messageHook.error(t('notes.fetch_error'))
+      }
+      // 防止继续下拉触发一串失败
+      hasMoreNotes.value = false
+    }
+    else {
+      // 非离线错误：正常提示
+      messageHook.error(t('notes.fetch_error'))
+    }
   }
   finally {
     isLoadingNotes.value = false
