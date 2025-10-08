@@ -90,21 +90,24 @@ function toggleExpandInCalendar(noteId: string) {
 }
 
 // 是否为移动端（触屏）
-// 触屏判断（不要重复声明）
-const isMobile
-  = typeof window !== 'undefined'
-  && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0))
 
-// 隐形的 <input type="month">
+// 判断是否 iOS（用于决定是否覆盖标题为原生滚轮）
+const isIOS
+  = typeof navigator !== 'undefined'
+  && /iphone|ipad|ipod/i.test(navigator.userAgent)
+
+// 供 iOS 覆盖使用的透明 <input type="date">
 const monthInputRef = ref<HTMLInputElement | null>(null)
 
+// 生成 YYYY-MM
 function _monthKeyStr(date: Date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   return `${y}-${m}`
 }
 
-function _onNativeMonthChange(e: Event) {
+// iOS 原生 date 滚轮选择后：只取年/月，日保持当前 selectedDate 的日
+function _onIOSDateWheelChange(e: Event) {
   const el = e.target as HTMLInputElement
   if (!el)
     return
@@ -112,64 +115,15 @@ function _onNativeMonthChange(e: Event) {
   if (!v)
     return
 
+  // v 形如 "2025-10-05"
   const parts = v.split('-')
+  if (parts.length < 2)
+    return
   const y = Number(parts[0])
   const m = Number(parts[1])
-  const day = selectedDate.value.getDate()
-  const dt = new Date(y, m - 1, day)
 
-  fetchNotesForDate(dt)
-}
-
-function openMonthPickerFromTitle() {
-  if (!isMobile)
-    return
-  const el = monthInputRef.value
-  if (!el)
-    return
-
-  el.value = monthKeyStr(selectedDate.value)
-
-  const anyEl = el as unknown as { showPicker?: () => void }
-  const hasShowPicker = anyEl && typeof anyEl.showPicker === 'function'
-  if (hasShowPicker) {
-    try {
-      anyEl.showPicker()
-      return
-    }
-    catch (e) {
-      // noop
-    }
-  }
-
-  try {
-    el.focus()
-  }
-  catch (e) {
-    // noop
-  }
-
-  try {
-    el.click()
-  }
-  catch (e) {
-    // noop
-  }
-}
-
-function monthKeyStr(date: Date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  return `${y}-${m}`
-}
-
-function onNativeMonthChange(e: Event) {
-  const el = e.target as HTMLInputElement
-  if (!el?.value)
-    return
-  const [y, m] = el.value.split('-').map(Number)
-  const dt = new Date(y, m - 1, selectedDate.value.getDate())
-  // 用主界面现有的日历去选具体天
+  const keepDay = selectedDate.value.getDate()
+  const dt = new Date(y, m - 1, keepDay)
   fetchNotesForDate(dt)
 }
 
@@ -647,29 +601,26 @@ async function saveNewNote(content: string, weather: string | null) {
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
         >
-          <!-- ✅ 标题插槽（桌面端正常显示，移动端可点击弹出“年/月滚轮”） -->
+          <!-- 标题插槽：
+         - iOS：在标题上覆盖透明 <input type="date">，点标题即弹原生“年/月/日”滚轮；
+                我们只用年+月，日保持不变。
+         - 非 iOS：保持默认标题（不可点击）。 -->
           <template #header-title="{ title }">
-            <button
-              v-if="isMobile"
-              type="button"
-              class="vc-title-button"
-              @click.stop="openMonthPickerFromTitle"
-            >
+            <span v-if="!isIOS">{{ title }}</span>
+
+            <span v-else class="vc-title-overlay">
               {{ title }}
-            </button>
-            <span v-else>{{ title }}</span>
+              <input
+                ref="monthInputRef"
+                type="date"
+                class="native-ios-date-overlay"
+                :value="`${_monthKeyStr(selectedDate)}-${String(selectedDate.getDate()).padStart(2, '0')}`"
+                aria-label="选择月份（iOS）"
+                @change="_onIOSDateWheelChange"
+              >
+            </span>
           </template>
         </Calendar>
-
-        <!-- ✅ 隐形月份输入：移动端点击标题时弹出系统“年/月滚轮” -->
-        <input
-          ref="monthInputRef"
-          type="month"
-          class="native-month-input"
-          :value="monthKeyStr(selectedDate)"
-          aria-label="选择月份"
-          @change="onNativeMonthChange"
-        >
       </div>
 
       <div class="notes-for-day-container">
@@ -957,5 +908,34 @@ async function saveNewNote(content: string, weather: string | null) {
   background: transparent;
   appearance: none;
   -webkit-appearance: none;
+}
+
+/* 标题容器：用于定位透明 input */
+.vc-title-overlay {
+  position: relative;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: #f3f4f6;
+  font-weight: 600;
+}
+.dark .vc-title-overlay {
+  border-color: rgba(255,255,255,0.15);
+  background: #2f2f33;
+}
+
+/* 透明覆盖的原生 date 输入（iOS） */
+.native-ios-date-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;          /* 完全透明但可交互 */
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
 }
 </style>
