@@ -93,13 +93,52 @@ function toggleExpandInCalendar(noteId: string) {
 const nativeDateInputRef = ref<HTMLInputElement | null>(null)
 
 function openNativeDatePicker() {
-  // 优先使用 showPicker（现代浏览器），否则退回 click
   const el = nativeDateInputRef.value
   if (!el)
     return
-  // 同步当前选中日作为初始值
+
+  // 同步当前选中日作为默认值
   el.value = dateKeyStr(selectedDate.value)
-  ;(el as any).showPicker?.() ?? el.click()
+
+  // 1) 现代内核：showPicker
+  const anyEl = el as unknown as { showPicker?: () => void }
+  if (anyEl && typeof anyEl.showPicker === 'function') {
+    try {
+      anyEl.showPicker()
+      return
+    }
+    catch (e) {
+      // noop
+    }
+  }
+
+  // 2) iOS/部分安卓：需要在用户手势中 focus 再 click
+  try {
+    el.focus()
+  }
+  catch (e) {
+    // noop
+  }
+  try {
+    el.click()
+    return
+  }
+  catch (e) {
+    // 继续走兜底
+  }
+
+  // 3) 极端兜底：抖动 type 再触发
+  try {
+    const originalType = el.type
+    el.blur()
+    el.type = 'text'
+    el.type = originalType
+    el.focus()
+    el.click()
+  }
+  catch (e) {
+    // noop
+  }
 }
 
 function onNativeDateChange(e: Event) {
@@ -742,12 +781,13 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .picker-btn:hover { background: #3a3a3f; }
 /* 隐藏的原生日期输入 */
 .native-date-input {
-  position: absolute;
-  inset: auto auto 0 0;
-  width: 0;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
+  position: fixed;     /* 不影响布局 */
+  left: -9999px;       /* 屏幕外，但仍可交互 */
+  top: 0;
+  width: 1px;          /* 必须 > 0，部分内核才认为是可交互元素 */
+  height: 1px;
+  opacity: 0;          /* 对用户不可见 */
+  pointer-events: auto;/* 允许程序触发 click/focus */
 }
 .calendar-body {
   flex: 1;
