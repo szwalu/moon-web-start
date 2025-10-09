@@ -1,9 +1,17 @@
+// 文件位置: src/components/AccountModal.vue
+
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import { useDialog } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
+
+// ===================== 新增代码 START =====================
+import { CACHE_KEYS } from '@/utils/cacheKeys'
+
+// 引入您的缓存 Key 常量
+// ===================== 新增代码 END =======================
 
 // 定义该组件可以从父组件接收的数据 (props)
 const props = defineProps({
@@ -159,17 +167,36 @@ function openLogoutConfirm() {
   })
 }
 
+// ===================== 修改代码 START =====================
 async function doSignOut() {
   try {
+    // 1. 调用 Supabase 的登出方法
     await supabase.auth.signOut()
-    // 直接跳转首页（不依赖父组件）
+
+    // 2. 关键步骤：清理所有与用户相关的本地存储
+    localStorage.removeItem('last_known_user_id_v1')
+    localStorage.removeItem('pinned_tags_v1')
+    localStorage.removeItem('tag_icons_v1')
+    localStorage.removeItem(CACHE_KEYS.HOME)
+    localStorage.removeItem(CACHE_KEYS.HOME_META)
+    localStorage.removeItem('new_note_content_draft')
+
+    // 更彻底地清理所有标签和搜索结果的缓存
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith(CACHE_KEYS.TAG_PREFIX) || key.startsWith(CACHE_KEYS.SEARCH_PREFIX))
+        localStorage.removeItem(key)
+    })
+
+    // 3. 直接跳转首页并强制刷新，确保应用状态完全重置
     window.location.assign('/')
   }
-  catch {
-    // 即便失败也尝试刷新到首页
+  catch (e) {
+    console.error('登出时发生错误:', e)
+    // 即便清理缓存失败，也尝试刷新到首页
     window.location.assign('/')
   }
 }
+// ===================== 修改代码 END =======================
 </script>
 
 <template>

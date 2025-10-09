@@ -261,7 +261,7 @@ onMounted(() => {
             isLoadingNotes.value = false // 确保没有加载动画
             hasMoreNotes.value = false
             // 恢复后，再去获取标签等次要信息
-            fetchAllTags()
+            //  fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
           else if (savedSearchQuery) {
@@ -269,13 +269,13 @@ onMounted(() => {
             searchQuery.value = savedSearchQuery
             showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
             noteActionsRef.value?.executeSearch()
-            fetchAllTags()
+            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
           else if (savedTagFilter) {
             // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
             await fetchNotesByTag(savedTagFilter)
-            fetchAllTags()
+            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
           // ++ 路径E：那年今日
@@ -306,14 +306,14 @@ onMounted(() => {
             }
 
             // 附带拉取标签等
-            fetchAllTags()
+            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
           else {
             // 路径D：没有任何缓存，正常首次加载主页
             isLoadingNotes.value = true // 只有在这里才需要设置加载状态
             await fetchNotes() // fetchNotes内部会把加载状态设为false
-            fetchAllTags()
+            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
         })
@@ -1785,7 +1785,7 @@ function onCalendarUpdated(updated: any) {
     // noop
   }
 
-  fetchAllTags()
+  // fetchAllTags()
 
   // 异步快照：不阻塞，不抛错影响提交流程
   saveNotesSnapshot(notes.value).catch(() => {})

@@ -10,7 +10,7 @@ import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:'
 const TAG_ICON_MAP_KEY = 'tag_icons_v1'
-
+const LAST_KNOWN_USER_ID_KEY = 'last_known_user_id_v1'
 /** 无标签筛选的固定哨兵值 */
 const UNTAGGED_SENTINEL = '__UNTAGGED__'
 
@@ -270,20 +270,6 @@ async function getUserId(): Promise<string | null> {
   return data?.user?.id ?? null
 }
 
-/** 从 Supabase Auth.user_metadata 读取 pinned_tags（失败则返回 null） */
-async function loadPinnedFromAuth(): Promise<string[] | null> {
-  try {
-    const { data, error } = await supabase.auth.getUser()
-    if (error)
-      return null
-    const arr = (data?.user?.user_metadata as any)?.pinned_tags
-    return Array.isArray(arr) ? arr : []
-  }
-  catch {
-    return null
-  }
-}
-
 /** 写入 Supabase Auth.user_metadata 的 pinned_tags（成功返回 true） */
 async function savePinnedToAuth(pinned: string[]): Promise<boolean> {
   try {
@@ -297,20 +283,6 @@ async function savePinnedToAuth(pinned: string[]): Promise<boolean> {
   }
   catch {
     return false
-  }
-}
-
-/** 从 Auth.user_metadata 读取 tag_icons（失败则返回 null） */
-async function loadTagIconsFromAuth(): Promise<Record<string, string> | null> {
-  try {
-    const { data, error } = await supabase.auth.getUser()
-    if (error)
-      return null
-    const map = (data?.user?.user_metadata as any)?.tag_icons
-    return map && typeof map === 'object' ? map as Record<string, string> : {}
-  }
-  catch {
-    return null
   }
 }
 
@@ -536,6 +508,10 @@ export function useTagMenu(
 
   onMounted(async () => {
     ensureTagMenuInputFontFix()
+
+    // 1. 总是先从本地加载非用户相关的缓存（图标和置顶的 key 是全局的）
+    // 即使后面在线逻辑覆盖，也能保证离线时有基础数据
+    hydrateIconsFromLocal()
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
@@ -543,52 +519,73 @@ export function useTagMenu(
     catch {
       pinnedTags.value = []
     }
-    hydrateIconsFromLocal()
-    const serverPinned = await loadPinnedFromAuth()
-    if (serverPinned) {
-      pinnedTags.value = serverPinned
-      localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
-    }
-    const serverIcons = await loadTagIconsFromAuth()
-    if (serverIcons) {
-      tagIconMap.value = { ...tagIconMap.value, ...serverIcons }
-      localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
-    }
-    currentUserId.value = await getUserId()
-    if (currentUserId.value) {
-      // 📌 MODIFIED: 先从缓存加载，再请求更新
-      hydrateCountsFromLocal(currentUserId.value)
+
+    // 2. 进行一次集中的会话获取，判断在线状态
+    const { data: sessionData } = await supabase.auth.getSession()
+    const user = sessionData?.session?.user
+    const uid = user?.id
+
+    if (user && uid) {
+    // [在线 或 Session 有效] 逻辑
+      currentUserId.value = uid
+      localStorage.setItem(LAST_KNOWN_USER_ID_KEY, uid) // 保存当前成功的用户ID，供下次离线使用
+
+      // 用服务器数据更新或合并本地数据
+      const serverPinned = (user.user_metadata as any)?.pinned_tags
+      if (Array.isArray(serverPinned)) {
+        pinnedTags.value = serverPinned
+        localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
+      }
+
+      const serverIcons = (user.user_metadata as any)?.tag_icons
+      if (serverIcons && typeof serverIcons === 'object') {
+        tagIconMap.value = { ...tagIconMap.value, ...serverIcons }
+        localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
+      }
+
+      // 加载用户相关的标签列表缓存
+      hydrateCountsFromLocal(uid)
+
+      // 尝试从服务器刷新（离线会自动失败并跳过）
       refreshTagCountsFromServer().catch(() => {})
       refreshUntaggedCountFromServer(true).catch(() => {})
-    }
-    const uid = currentUserId.value
-    if (uid) {
+
+      // 设置实时数据订阅
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const content = payload?.new?.content as string | undefined
           if (content === undefined || contentHasAnyTag(content))
-            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
+            refreshTagCountsFromServer().catch(() => {})
           refreshUntaggedCountFromServer(true).catch(() => {})
-          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
+          invalidateAllTagCaches()
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const oldContent = payload?.old?.content as string | undefined
           if (oldContent === undefined || contentHasAnyTag(oldContent))
-            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
+            refreshTagCountsFromServer().catch(() => {})
           refreshUntaggedCountFromServer(true).catch(() => {})
-          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
+          invalidateAllTagCaches()
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const beforeContent = payload?.old?.content as string | undefined
           const afterContent = payload?.new?.content as string | undefined
           const unsure = beforeContent === undefined && afterContent === undefined
           if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
-            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
+            refreshTagCountsFromServer().catch(() => {})
           refreshUntaggedCountFromServer(true).catch(() => {})
-          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
+          invalidateAllTagCaches()
         })
         .subscribe()
+    }
+    else {
+    // [离线 且 Session 无效] 逻辑
+      const lastUid = localStorage.getItem(LAST_KNOWN_USER_ID_KEY)
+      if (lastUid) {
+        currentUserId.value = lastUid
+        // 在纯离线模式下，只加载用户相关的标签列表缓存，不做任何网络请求
+        hydrateCountsFromLocal(lastUid)
+      }
     }
   })
 
