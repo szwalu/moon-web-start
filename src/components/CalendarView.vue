@@ -115,9 +115,18 @@ function handlePin(note: any) {
 }
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
-  // 从当前列表移除
+
+  // 1) 从当前列表移除
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
-  // ✅ 删除后重新校准蓝点状态
+
+  // 2) 同步当天缓存：空则删除缓存，不空则覆盖
+  const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+  if (selectedDateNotes.value.length > 0)
+    localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
+  else
+    localStorage.removeItem(dayCacheKey)
+
+  // 3) 重新校准小蓝点
   refreshDotAfterDelete()
 }
 function handleDateUpdated() {
@@ -484,11 +493,14 @@ async function checkAndRefreshIncremental() {
 
 // 把这个函数恢复成下面的样子
 async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpdatedAt: number) {
+  // 先强制失效“选中日期”的本地缓存，避免读到过期数据
+  const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+  localStorage.removeItem(dayCacheKey)
+
   await fetchNotesForDate(selectedDate.value)
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
-
 /**
  * 当页面从后台切回前台时，主动触发一次增量刷新检查。
  * 这解决了在外部（如主页）删除了笔记后，回到日历视图数据不更新的问题。
