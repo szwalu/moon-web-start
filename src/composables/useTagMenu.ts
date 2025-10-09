@@ -1361,6 +1361,7 @@ export function useTagMenu(
     selectTag,
     tagMenuChildren,
     hierarchicalTags,
+    refreshTags: refreshTagCountsFromServer,
     // 新增导出：查询辅助
     buildSupabaseFilter,
     fetchNotesBySelection,

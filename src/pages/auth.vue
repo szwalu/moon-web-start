@@ -37,6 +37,7 @@ const {
   mainMenuVisible,
   tagMenuChildren,
   UNTAGGED_SENTINEL,
+  refreshTags,
 } = useTagMenu(allTags, onSelectTag, t)
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
@@ -624,7 +625,7 @@ async function saveNote(
 
     // 在线成功后，按你原有策略清理缓存/刷新标签
     invalidateCachesOnDataChange(savedNote)
-    await fetchAllTags()
+    await refreshTags()
 
     // 同步快照（保证冷启动的一致）
     try {
