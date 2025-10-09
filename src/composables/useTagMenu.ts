@@ -383,6 +383,8 @@ export function useTagMenu(
   const isRowMoreOpen = ref(false)
   let lastMoreClosedByOutside = false
   const dialogOpenCount = ref(0)
+  const NOTES_CACHE_TTL = 300_000 // 300 秒，可按需调整
+  const notesCache = new Map<string, { items: any[]; ts: number; sig: string | null }>()
 
   // —— 筛选状态（内建） —— //
   const selectedTag = ref<string | null>(null)
@@ -861,6 +863,11 @@ export function useTagMenu(
     if (uid && Array.isArray(v) && v.length > 0)
       saveAllTagsToLocal(uid, v)
   }, { deep: false })
+
+  watch(tagCountsSig, () => {
+  // 计数签名变化说明后端数据有更新：让笔记结果缓存失效
+    notesCache.clear()
+  })
 
   // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
@@ -1445,16 +1452,28 @@ export function useTagMenu(
     return (q as any).like('content', `%#${key}%`)
   }
 
-  /** 直接拉取“当前选中标签（含无标签）”的笔记列表 */
+  /** 直接拉取“当前选中标签（含无标签）”的笔记列表（带 300s 结果缓存） */
   async function fetchNotesBySelection(uid: string) {
     if (!uid)
       return []
+
+    // —— 计算缓存 key & 命中逻辑 —— //
+    const sel = selectedTag.value || '__ALL__'
+    const cacheKey = `${uid}:${sel}`
+    const sig = tagCountsSig.value
+    const now = Date.now()
+    const hit = notesCache.get(cacheKey)
+    if (hit && hit.sig === sig && (now - hit.ts) <= NOTES_CACHE_TTL)
+      return hit.items
+
+    // —— 真实拉取 —— //
     if (selectedTag.value === UNTAGGED_SENTINEL) {
-      // 优先尝试更精准的 RPC（如未创建则自动回退）
       try {
         const { data, error } = await supabase.rpc('get_untagged_notes', { p_user_id: uid })
-        if (!error && Array.isArray(data))
+        if (!error && Array.isArray(data)) {
+          notesCache.set(cacheKey, { items: data, ts: Date.now(), sig })
           return data
+        }
       }
       catch {}
       const { data, error } = await supabase
@@ -1466,14 +1485,19 @@ export function useTagMenu(
         .order('created_at', { ascending: false })
       if (error)
         throw error
-      return data || []
+      const items = data || []
+      notesCache.set(cacheKey, { items, ts: Date.now(), sig })
+      return items
     }
+
     let q = supabase.from('notes').select('*').eq('user_id', uid).order('created_at', { ascending: false })
     q = buildSupabaseFilter(q)
     const { data, error } = await q
     if (error)
       throw error
-    return data || []
+    const items = data || []
+    notesCache.set(cacheKey, { items, ts: Date.now(), sig })
+    return items
   }
 
   return {
