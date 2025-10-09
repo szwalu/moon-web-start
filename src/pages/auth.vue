@@ -1731,10 +1731,16 @@ async function fetchNotesByTag(tag: string) {
 
 function clearTagFilter() {
   activeTagFilter.value = null
-  notes.value = mainNotesCache
-  mainNotesCache = []
-  hasMoreNotes.value = notes.value.length < totalNotes.value
-  noteListKey.value++ // 还原后也刷新列表
+
+  // ✅ 核心修改：不再依赖 mainNotesCache，而是直接从主页缓存恢复
+  if (!restoreHomepageFromCache()) {
+    // 如果因故未能从缓存恢复，则从网络请求第一页作为兜底
+    currentPage.value = 1
+    fetchNotes()
+  }
+
+  mainNotesCache = [] // 清理旧的内存变量
+  noteListKey.value++ // 强制刷新列表
   headerCollapsed.value = false
 }
 
