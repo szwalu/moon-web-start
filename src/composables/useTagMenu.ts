@@ -20,6 +20,19 @@ function isOnline(): boolean {
   try { return typeof navigator !== 'undefined' ? navigator.onLine : true }
   catch { return true }
 }
+// 触屏环境判定（iOS/Android 等）
+const isTouchEnv = (() => {
+  if (typeof window === 'undefined')
+    return false
+  try {
+    // 粗粒度指针 or 有触摸事件
+    return window.matchMedia?.('(pointer: coarse)')?.matches
+      || 'ontouchstart' in window
+      || navigator.maxTouchPoints > 0
+  }
+  catch { return false }
+})()
+
 function isFresh(savedAt: number | null | undefined): boolean {
   if (!savedAt || !Number.isFinite(savedAt))
     return false
@@ -877,18 +890,42 @@ export function useTagMenu(
       return
     }
     if (action === 'rename') {
-      keepOpen() // 先保持打开，再弹重命名对话框
-      renameTag(tag)
+      if (isTouchEnv) {
+        // 触屏设备：彻底合上主菜单，避免遮挡/竞态
+        mainMenuVisible.value = false
+        // 等 Dropdown 完整收起后再起对话框（给 iOS 一点缓冲）
+        nextTick(() => requestAnimationFrame(() => setTimeout(() => renameTag(tag), 80)))
+      }
+      else {
+        // 桌面端保留原体验：保持常开
+        nextTick(() => { mainMenuVisible.value = true })
+        // 再起对话框
+        nextTick(() => renameTag(tag))
+      }
       return
     }
+
     if (action === 'remove') {
-      keepOpen()
-      removeTagCompletely(tag)
+      if (isTouchEnv) {
+        mainMenuVisible.value = false
+        nextTick(() => requestAnimationFrame(() => setTimeout(() => removeTagCompletely(tag), 80)))
+      }
+      else {
+        nextTick(() => { mainMenuVisible.value = true })
+        nextTick(() => removeTagCompletely(tag))
+      }
       return
     }
+
     if (action === 'change_icon') {
-      keepOpen()
-      changeTagIcon(tag)
+      if (isTouchEnv) {
+        mainMenuVisible.value = false
+        nextTick(() => requestAnimationFrame(() => setTimeout(() => changeTagIcon(tag), 80)))
+      }
+      else {
+        nextTick(() => { mainMenuVisible.value = true })
+        nextTick(() => changeTagIcon(tag))
+      }
     }
   }
 
@@ -1293,18 +1330,11 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-
+                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
-                    e.stopPropagation() // 关键：立即阻止事件冒泡到父级，防止触发 selectTag
-                    btnEl = e.currentTarget as HTMLElement
-                    if (showRef.value) {
-                      lastMoreClosedByOutside = false
-                      closeMenu()
-                    }
-                    else {
-                      placementRef.value = computeSmartPlacementStrict(btnEl)
-                      openMenu()
-                    }
+                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
@@ -1405,18 +1435,9 @@ export function useTagMenu(
                   ].join(''),
                   'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
-                  // ... in makeHeaderRow's h('button', ...)
                   'onClick': (e: MouseEvent) => {
-                    e.stopPropagation() // 关键：立即阻止事件冒泡到父级
-                    btnEl = e.currentTarget as HTMLElement
-                    if (showRef.value) {
-                      lastMoreClosedByOutside = false
-                      closeMenu()
-                    }
-                    else {
-                      placementRef.value = computeSmartPlacementStrict(btnEl)
-                      openMenu()
-                    }
+                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
