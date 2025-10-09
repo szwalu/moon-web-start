@@ -862,34 +862,36 @@ export function useTagMenu(
       saveAllTagsToLocal(uid, v)
   }, { deep: false })
 
-  // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
   // 这句可选：明确声明不是“外部点击”导致的关闭
     lastMoreClosedByOutside = false
 
-    // 关键：无论执行哪种操作，都立刻安排把主菜单保持为打开
-    // 用 nextTick 避免与 NDropdown 的收起事件“打架”
-    const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
-
+    // “置顶”操作不创建对话框，逻辑保持不变，确保菜单能重开。
     if (action === 'pin') {
       togglePin(tag)
-      keepOpen() // <— 保持汉堡菜单不关
-      return
-    }
-    if (action === 'rename') {
-      keepOpen() // 先保持打开，再弹重命名对话框
-      renameTag(tag)
-      return
-    }
-    if (action === 'remove') {
+      // 依然使用 nextTick 保证主菜单在状态更新后能恢复
+      const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
       keepOpen()
-      removeTagCompletely(tag)
       return
     }
-    if (action === 'change_icon') {
-      keepOpen()
-      changeTagIcon(tag)
-    }
+
+    // --- 针对所有创建对话框的操作 ---
+    // 我们使用 setTimeout 将操作推迟执行。
+    // 这会将创建对话框的逻辑“抛”出当前正在进行的、会导致组件销毁的事件循环。
+    setTimeout(() => {
+      if (action === 'rename')
+        renameTag(tag)
+
+      else if (action === 'remove')
+        removeTagCompletely(tag)
+
+      else if (action === 'change_icon')
+        changeTagIcon(tag)
+    }, 100) // 延迟100毫秒，确保UI已稳定（无论主菜单是关闭了还是被watch效果重开）
+
+  // 与此同时，我们依然依赖 watch(mainMenuVisible, ...) 的逻辑
+  // 在菜单关闭后，如果检测到 dialogOpenCount > 0，它会自动将菜单重新打开。
+  // 这一步无需我们手动干预。
   }
 
   function getRowMenuOptions(tag: string) {
@@ -1293,8 +1295,6 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e) => { e.preventDefault(); e.stopPropagation() },
-                  'onPointerdown': (e) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
                     e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
                     else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
@@ -1380,7 +1380,7 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
