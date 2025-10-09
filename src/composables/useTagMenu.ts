@@ -47,7 +47,6 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const spaceAbove = rect.top - MARGIN
   const spaceRight = vw - rect.right - MARGIN
   const spaceLeft = rect.left - MARGIN
-  const _reopenMenuAfterDialog = ref(false)
 
   let vertical: 'top' | 'bottom'
   if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
@@ -850,14 +849,10 @@ export function useTagMenu(
   // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
   watch(mainMenuVisible, (show) => {
     if (!show) {
-    // 菜单刚关闭：先别做首屏回填，等真正需要时再做，避免和弹框打架
+      onMainMenuOpen()
       isRowMoreOpen.value = false
-      // 只有在没有对话框时，才做轻量回填
-      if (dialogOpenCount.value === 0)
-        onMainMenuOpen()
     }
-    // 只在“行内 ⋯ 菜单仍被认为是打开”的情况下才强行重开主菜单
-    if (!show && isRowMoreOpen.value && !lastMoreClosedByOutside)
+    if (!show && (isRowMoreOpen.value || dialogOpenCount.value > 0) && !lastMoreClosedByOutside)
       nextTick(() => { mainMenuVisible.value = true })
   })
 
@@ -866,17 +861,6 @@ export function useTagMenu(
     if (uid && Array.isArray(v) && v.length > 0)
       saveAllTagsToLocal(uid, v)
   }, { deep: false })
-
-  const isIOSLike = typeof navigator !== 'undefined'
-  && (/iP(hone|ad|od)/i.test(navigator.userAgent) || /Macintosh;.*Mobile/i.test(navigator.userAgent))
-
-  function openAfterDropdownClose(fn: () => void) {
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        setTimeout(fn, isIOSLike ? 60 : 0)
-      })
-    })
-  }
 
   // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
@@ -893,22 +877,18 @@ export function useTagMenu(
       return
     }
     if (action === 'rename') {
-      // 对话框期间先不要强行重开主菜单
-      mainMenuVisible.value = false
-      reopenMenuAfterDialog.value = true
-      openAfterDropdownClose(() => renameTag(tag))
+      keepOpen() // 先保持打开，再弹重命名对话框
+      renameTag(tag)
       return
     }
     if (action === 'remove') {
-      mainMenuVisible.value = false
-      reopenMenuAfterDialog.value = true
-      openAfterDropdownClose(() => removeTagCompletely(tag))
+      keepOpen()
+      removeTagCompletely(tag)
       return
     }
     if (action === 'change_icon') {
-      mainMenuVisible.value = false
-      reopenMenuAfterDialog.value = true
-      openAfterDropdownClose(() => changeTagIcon(tag))
+      keepOpen()
+      changeTagIcon(tag)
     }
   }
 
@@ -1004,7 +984,6 @@ export function useTagMenu(
       action: null,
       onAfterLeave: () => {
         dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
-        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
       },
     })
   }
@@ -1037,10 +1016,7 @@ export function useTagMenu(
       positiveText: t('auth.confirm') || '确定',
       negativeText: t('auth.cancel') || '取消',
       maskClosable: false,
-      onAfterLeave: () => {
-        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
-        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
-      },
+      onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
       onPositiveClick: async () => {
         const nextName = renameState.next || ''
         const newTag = normalizeTag(nextName)
@@ -1098,10 +1074,7 @@ export function useTagMenu(
       positiveText: t('tags.delete_tag_confirm') || '删除标签',
       negativeText: t('notes.cancel') || '取消',
       maskClosable: false,
-      onAfterLeave: () => {
-        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
-        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
-      },
+      onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
       onPositiveClick: async () => {
         isBusy.value = true
         try {
@@ -1320,11 +1293,18 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
-                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
-                  'onClick': (e: MouseEvent) => {
-                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
-                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                  'onMousedown': (e: MouseEvent) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    btnEl = e.currentTarget as HTMLElement
+                    if (showRef.value) {
+                      lastMoreClosedByOutside = false
+                      closeMenu()
+                    }
+                    else {
+                      placementRef.value = computeSmartPlacementStrict(btnEl)
+                      openMenu()
+                    }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
@@ -1423,11 +1403,18 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
-                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
-                  'onClick': (e: MouseEvent) => {
-                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
-                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                  'onMousedown': (e: MouseEvent) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    btnEl = e.currentTarget as HTMLElement
+                    if (showRef.value) {
+                      lastMoreClosedByOutside = false
+                      closeMenu()
+                    }
+                    else {
+                      placementRef.value = computeSmartPlacementStrict(btnEl)
+                      openMenu()
+                    }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
