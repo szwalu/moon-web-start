@@ -11,21 +11,6 @@ const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:'
 const TAG_ICON_MAP_KEY = 'tag_icons_v1'
 
-// === 新增：离线与缓存新鲜度 ===
-const ALL_TAGS_CACHE_KEY_PREFIX = 'all_tags_v1:'
-const LAST_UID_KEY = 'last_uid_v1'
-const MAX_CACHE_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 天，可自行调整
-
-function isOnline(): boolean {
-  try { return typeof navigator !== 'undefined' ? navigator.onLine : true }
-  catch { return true }
-}
-function isFresh(savedAt: number | null | undefined): boolean {
-  if (!savedAt || !Number.isFinite(savedAt))
-    return false
-  return (Date.now() - Number(savedAt)) <= MAX_CACHE_AGE_MS
-}
-
 /** 无标签筛选的固定哨兵值 */
 const UNTAGGED_SENTINEL = '__UNTAGGED__'
 
@@ -141,14 +126,6 @@ function buildTagTree(tags: string[]): TagTreeNode {
     }
   }
   return root
-}
-
-/** 离线兜底：allTags 为空时，用计数里的 key + pinned 合成标签列表 */
-function synthesizeAllTagsFromCountsAndPinned(): string[] {
-  const keys = Object.keys(tagCounts.value || {}) // "#xxx"
-  const fromPinned = (pinnedTags.value || []).map(normalizeTag)
-  const set = new Set<string>([...keys, ...fromPinned])
-  return Array.from(set).filter(Boolean).sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
 }
 
 /** 统计一个节点（含所有后代）的总笔记数 */
@@ -293,29 +270,18 @@ async function getUserId(): Promise<string | null> {
   return data?.user?.id ?? null
 }
 
-/** 离线优先获取 uid：先 session->user->本地兜底 */
-async function getUserIdLocalFirst(): Promise<string | null> {
-  try {
-    const { data: sess } = await supabase.auth.getSession()
-    const uid1 = sess?.session?.user?.id
-    if (uid1)
-      return uid1
-  }
-  catch {}
+/** 从 Supabase Auth.user_metadata 读取 pinned_tags（失败则返回 null） */
+async function loadPinnedFromAuth(): Promise<string[] | null> {
   try {
     const { data, error } = await supabase.auth.getUser()
-    if (!error) {
-      const uid2 = data?.user?.id ?? null
-      if (uid2)
-        return uid2
-    }
+    if (error)
+      return null
+    const arr = (data?.user?.user_metadata as any)?.pinned_tags
+    return Array.isArray(arr) ? arr : []
   }
-  catch {}
-  try {
-    const uid3 = localStorage.getItem(LAST_UID_KEY)
-    return uid3 || null
+  catch {
+    return null
   }
-  catch { return null }
 }
 
 /** 写入 Supabase Auth.user_metadata 的 pinned_tags（成功返回 true） */
@@ -331,6 +297,20 @@ async function savePinnedToAuth(pinned: string[]): Promise<boolean> {
   }
   catch {
     return false
+  }
+}
+
+/** 从 Auth.user_metadata 读取 tag_icons（失败则返回 null） */
+async function loadTagIconsFromAuth(): Promise<Record<string, string> | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error)
+      return null
+    const map = (data?.user?.user_metadata as any)?.tag_icons
+    return map && typeof map === 'object' ? map as Record<string, string> : {}
+  }
+  catch {
+    return null
   }
 }
 
@@ -412,29 +392,6 @@ export function useTagMenu(
     )
   }
 
-  // === 新增：allTags 本地缓存 ===
-  function saveAllTagsToLocal(uid: string, tags: string[]) {
-    try {
-      localStorage.setItem(`${ALL_TAGS_CACHE_KEY_PREFIX}${uid}`, JSON.stringify({ items: tags, savedAt: Date.now() }))
-    }
-    catch {}
-  }
-  function hydrateAllTagsFromLocal(uid: string): number | null {
-    try {
-      const raw = localStorage.getItem(`${ALL_TAGS_CACHE_KEY_PREFIX}${uid}`)
-      if (!raw)
-        return null
-      const obj = JSON.parse(raw) as { items: string[]; savedAt: number }
-      if (!Array.isArray(obj.items) || obj.items.length === 0)
-        return null
-      if (!isFresh(obj.savedAt))
-        return null
-      allTags.value = obj.items.slice()
-      return obj.savedAt ?? null
-    }
-    catch { return null }
-  }
-
   function hydrateIconsFromLocal() {
     try {
       const raw = localStorage.getItem(TAG_ICON_MAP_KEY)
@@ -447,7 +404,6 @@ export function useTagMenu(
   async function saveIcons() {
     localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
     await saveTagIconsToAuth(tagIconMap.value)
-    localStorage.setItem(`${TAG_ICON_MAP_KEY}:updated_at`, String(Date.now()))
   }
 
   function hydrateCountsFromLocal(uid: string): number | null {
@@ -461,8 +417,6 @@ export function useTagMenu(
         items: Array<{ tag: string; cnt: number }>
         savedAt: number
       }
-      if (!isFresh(cached.savedAt))
-        return null // ★新增：过期则不用
       tagCountsSig.value = cached.sig
       const map: Record<string, number> = {}
       for (const it of cached.items) map[it.tag] = it.cnt
@@ -472,64 +426,6 @@ export function useTagMenu(
     catch {
       return null
     }
-  }
-  /** 仅取服务器端签名（last_updated），用于“有变更才刷新” */
-  async function fetchServerCountsSig(uid: string): Promise<string | null> {
-    try {
-    // 返回 text（上面 SQL 的返回类型），也可能是 { data: '...' }
-      const { data, error } = await supabase.rpc('get_tag_counts_sig', { p_user_id: uid })
-      if (error)
-        return null
-      // data 可能是 string 或 { last_updated: string }，你按自己 RPC 返回调整
-      if (typeof data === 'string')
-        return data
-      if (data && typeof (data as any).last_updated === 'string')
-        return (data as any).last_updated
-      return null
-    }
-    catch { return null }
-  }
-
-  /** 条件刷新 tagCounts：只有签名不同才真正拉取 */
-  async function ensureFreshTagCounts() {
-    if (!isOnline())
-      return
-    const uid = currentUserId.value || await getUserId()
-    if (!uid)
-      return
-    currentUserId.value = uid
-
-    // 1) 先用本地缓存“回填 UI”（已存在 hydrateCountsFromLocal）
-    hydrateCountsFromLocal(uid)
-
-    // 2) 询问服务器签名；一样就跳过重拉
-    const serverSig = await fetchServerCountsSig(uid)
-    const localSig = tagCountsSig.value
-    if (serverSig && localSig && serverSig === localSig) {
-    // 没变更：仅更新时间戳（可选）
-      return
-    }
-    // 3) 有变更或拿不到签名：再走旧的完整拉取
-    await refreshTagCountsFromServer(true)
-  }
-
-  /** 条件刷新“无标签数”：复用同一 sig（notes 有任何更新就可能影响无标签数） */
-  async function ensureFreshUntagged() {
-    if (!isOnline())
-      return
-    const uid = currentUserId.value || await getUserId()
-    if (!uid)
-      return
-    currentUserId.value = uid
-
-    // 不必每次都请求，先看看 sig 是否变了：
-    const serverSig = await fetchServerCountsSig(uid)
-    const localSig = tagCountsSig.value
-    if (serverSig && localSig && serverSig === localSig) {
-    // 认为无变化，直接使用现有的 untaggedCount（若你想加 TTL，可在这里判断 savedAt）
-      return
-    }
-    await refreshUntaggedCountFromServer(true)
   }
 
   async function refreshTagCountsFromServer(force = false) {
@@ -626,8 +522,6 @@ export function useTagMenu(
 
   onMounted(async () => {
     ensureTagMenuInputFontFix()
-
-    // 1) 本地快速回填 pinned / icons
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
@@ -636,98 +530,46 @@ export function useTagMenu(
       pinnedTags.value = []
     }
     hydrateIconsFromLocal()
-
-    // 2) 仅当远端更“新”时覆盖本地（避免每次都拉）
-    try {
-      const { data, error } = await supabase.auth.getUser()
-      if (!error && data?.user) {
-        const um = (data.user.user_metadata || {}) as any
-
-        // —— pinned 条件同步 —— //
-        const remotePinned = Array.isArray(um?.pinned_tags) ? (um.pinned_tags as string[]) : []
-        const remotePinnedAt
-        = typeof um?.pinned_tags_updated_at === 'string' ? Date.parse(um.pinned_tags_updated_at) : 0
-        const localPinnedAt = Number(localStorage.getItem(`${PINNED_TAGS_KEY}:updated_at`) || 0)
-        if (remotePinnedAt && remotePinnedAt > localPinnedAt) {
-          pinnedTags.value = remotePinned
-          localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(remotePinned))
-          localStorage.setItem(`${PINNED_TAGS_KEY}:updated_at`, String(remotePinnedAt))
-        }
-
-        // —— icons 条件同步 —— //
-        const remoteIcons
-        = um?.tag_icons && typeof um.tag_icons === 'object' ? (um.tag_icons as Record<string, string>) : {}
-        const remoteIconsAt
-        = typeof um?.tag_icons_updated_at === 'string' ? Date.parse(um.tag_icons_updated_at) : 0
-        const localIconsAt = Number(localStorage.getItem(`${TAG_ICON_MAP_KEY}:updated_at`) || 0)
-        if (remoteIconsAt && remoteIconsAt > localIconsAt) {
-          tagIconMap.value = { ...tagIconMap.value, ...remoteIcons }
-          localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
-          localStorage.setItem(`${TAG_ICON_MAP_KEY}:updated_at`, String(remoteIconsAt))
-        }
-      }
+    const serverPinned = await loadPinnedFromAuth()
+    if (serverPinned) {
+      pinnedTags.value = serverPinned
+      localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
     }
-    catch {
-    /* 静默 */
+    const serverIcons = await loadTagIconsFromAuth()
+    if (serverIcons) {
+      tagIconMap.value = { ...tagIconMap.value, ...serverIcons }
+      localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
     }
-
-    // 3) 使用“本地优先”的方式获取 uid，并把 uid 记到本地（离线兜底）
-    currentUserId.value = await getUserIdLocalFirst()
+    currentUserId.value = await getUserId()
     if (currentUserId.value) {
-      try { localStorage.setItem(LAST_UID_KEY, currentUserId.value) }
-      catch {}
+      refreshTagCountsFromServer(true).catch(() => {})
+      refreshUntaggedCountFromServer(true).catch(() => {})
     }
-
-    // 4) 首屏也先用本地 allTags 兜底（若还没有则不动）
-    if (currentUserId.value && allTags.value.length === 0)
-      hydrateAllTagsFromLocal(currentUserId.value)
-
-    // 5) tag counts 与无标签数：有变更才拉（ensure* 内部已做离线短路）
-    if (currentUserId.value) {
-      await ensureFreshTagCounts().catch(() => {})
-      await ensureFreshUntagged().catch(() => {})
-    }
-
-    // 6) 订阅 realtime（保持你原逻辑不变）
     const uid = currentUserId.value
     if (uid) {
-    // 计数也先用本地缓存兜底一次（仅当缓存新鲜时才会成功回填）
       hydrateCountsFromLocal(uid)
-
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const content = payload?.new?.content as string | undefined
-            if (content === undefined || contentHasAnyTag(content))
-              refreshTagCountsFromServer(true).catch(() => {})
-            refreshUntaggedCountFromServer(true).catch(() => {})
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const oldContent = payload?.old?.content as string | undefined
-            if (oldContent === undefined || contentHasAnyTag(oldContent))
-              refreshTagCountsFromServer(true).catch(() => {})
-            refreshUntaggedCountFromServer(true).catch(() => {})
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-          (payload: any) => {
-            const beforeContent = payload?.old?.content as string | undefined
-            const afterContent = payload?.new?.content as string | undefined
-            const unsure = beforeContent === undefined && afterContent === undefined
-            if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
-              refreshTagCountsFromServer(true).catch(() => {})
-            refreshUntaggedCountFromServer(true).catch(() => {})
-          },
-        )
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const content = payload?.new?.content as string | undefined
+          if (content === undefined || contentHasAnyTag(content))
+            refreshTagCountsFromServer(true).catch(() => {})
+          refreshUntaggedCountFromServer(true).catch(() => {})
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const oldContent = payload?.old?.content as string | undefined
+          if (oldContent === undefined || contentHasAnyTag(oldContent))
+            refreshTagCountsFromServer(true).catch(() => {})
+          refreshUntaggedCountFromServer(true).catch(() => {})
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
+          const beforeContent = payload?.old?.content as string | undefined
+          const afterContent = payload?.new?.content as string | undefined
+          const unsure = beforeContent === undefined && afterContent === undefined
+          if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
+            refreshTagCountsFromServer(true).catch(() => {})
+          refreshUntaggedCountFromServer(true).catch(() => {})
+        })
         .subscribe()
     }
   })
@@ -742,7 +584,6 @@ export function useTagMenu(
 
   async function savePinned() {
     localStorage.setItem(PINNED_TAGS_KEY, JSON.stringify(pinnedTags.value))
-    localStorage.setItem(`${PINNED_TAGS_KEY}:updated_at`, String(Date.now()))
     await savePinnedToAuth(pinnedTags.value)
   }
   function isPinned(tag: string) { return pinnedTags.value.includes(tag) }
@@ -820,30 +661,13 @@ export function useTagMenu(
   }
 
   async function onMainMenuOpen() {
-    const uid = await getUserIdLocalFirst()
-    // 每次打开重置展开状态
+    const uid = await getUserId()
+    if (!uid)
+      return
+    hydrateCountsFromLocal(uid)
+    refreshTagCountsFromServer(true).catch(() => {})
+    refreshUntaggedCountFromServer(true).catch(() => {})
     expandedGroups.value = {}
-
-    if (uid) {
-    // 先本地秒开计数（只有新鲜缓存才会回填成功）
-      const countsTs = hydrateCountsFromLocal(uid)
-
-      // allTags：优先本地缓存；若仍为空且计数是新鲜的，用计数+置顶合成
-      if (allTags.value.length === 0) {
-        hydrateAllTagsFromLocal(uid)
-        if (allTags.value.length === 0 && isFresh(countsTs)) {
-          const synthesized = synthesizeAllTagsFromCountsAndPinned()
-          if (synthesized.length > 0)
-            allTags.value = synthesized
-        }
-      }
-    }
-
-    // 在线再后台刷新（不 await，不阻塞 UI）；离线短路
-    if (isOnline()) {
-      ensureFreshTagCounts().catch(() => {})
-      ensureFreshUntagged().catch(() => {})
-    }
   }
 
   // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
@@ -856,42 +680,34 @@ export function useTagMenu(
       nextTick(() => { mainMenuVisible.value = true })
   })
 
-  watch(allTags, (v) => {
-    const uid = currentUserId.value
-    if (uid && Array.isArray(v) && v.length > 0)
-      saveAllTagsToLocal(uid, v)
-  }, { deep: false })
-
+  // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
   // 这句可选：明确声明不是“外部点击”导致的关闭
     lastMoreClosedByOutside = false
 
-    // “置顶”操作不创建对话框，逻辑保持不变，确保菜单能重开。
+    // 关键：无论执行哪种操作，都立刻安排把主菜单保持为打开
+    // 用 nextTick 避免与 NDropdown 的收起事件“打架”
+    const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
+
     if (action === 'pin') {
       togglePin(tag)
-      // 依然使用 nextTick 保证主菜单在状态更新后能恢复
-      const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
-      keepOpen()
+      keepOpen() // <— 保持汉堡菜单不关
       return
     }
-
-    // --- 针对所有创建对话框的操作 ---
-    // 我们使用 setTimeout 将操作推迟执行。
-    // 这会将创建对话框的逻辑“抛”出当前正在进行的、会导致组件销毁的事件循环。
-    setTimeout(() => {
-      if (action === 'rename')
-        renameTag(tag)
-
-      else if (action === 'remove')
-        removeTagCompletely(tag)
-
-      else if (action === 'change_icon')
-        changeTagIcon(tag)
-    }, 100) // 延迟100毫秒，确保UI已稳定（无论主菜单是关闭了还是被watch效果重开）
-
-  // 与此同时，我们依然依赖 watch(mainMenuVisible, ...) 的逻辑
-  // 在菜单关闭后，如果检测到 dialogOpenCount > 0，它会自动将菜单重新打开。
-  // 这一步无需我们手动干预。
+    if (action === 'rename') {
+      keepOpen() // 先保持打开，再弹重命名对话框
+      renameTag(tag)
+      return
+    }
+    if (action === 'remove') {
+      keepOpen()
+      removeTagCompletely(tag)
+      return
+    }
+    if (action === 'change_icon') {
+      keepOpen()
+      changeTagIcon(tag)
+    }
   }
 
   function getRowMenuOptions(tag: string) {
