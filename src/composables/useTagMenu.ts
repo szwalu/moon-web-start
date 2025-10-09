@@ -862,6 +862,18 @@ export function useTagMenu(
       saveAllTagsToLocal(uid, v)
   }, { deep: false })
 
+  const isIOSLike = typeof navigator !== 'undefined'
+  && (/iP(hone|ad|od)/i.test(navigator.userAgent) || /Macintosh;.*Mobile/i.test(navigator.userAgent))
+
+  function openAfterDropdownClose(fn: () => void) {
+  // 让 NDropdown 彻底收起、DOM 更新完，再开 dialog（iOS 给个极短缓冲）
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        setTimeout(fn, isIOSLike ? 60 : 0)
+      })
+    })
+  }
+
   // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
   // 这句可选：明确声明不是“外部点击”导致的关闭
@@ -877,18 +889,18 @@ export function useTagMenu(
       return
     }
     if (action === 'rename') {
-      keepOpen() // 先保持打开，再弹重命名对话框
-      renameTag(tag)
+      keepOpen()
+      openAfterDropdownClose(() => renameTag(tag))
       return
     }
     if (action === 'remove') {
       keepOpen()
-      removeTagCompletely(tag)
+      openAfterDropdownClose(() => removeTagCompletely(tag))
       return
     }
     if (action === 'change_icon') {
       keepOpen()
-      changeTagIcon(tag)
+      openAfterDropdownClose(() => changeTagIcon(tag))
     }
   }
 
@@ -1277,7 +1289,11 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
+                onSelect: (key: any) => {
+                  lastMoreClosedByOutside = false
+                  closeMenu() // 先让下拉彻底收起
+                  handleRowMenuSelect(tag, key) // 再处理动作（下面第 3 步会延迟到安全时机）
+                },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
@@ -1293,6 +1309,8 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
+                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
                     e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
                     else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
@@ -1378,7 +1396,11 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
+                onSelect: (key: any) => {
+                  lastMoreClosedByOutside = false
+                  closeMenu() // 先让下拉彻底收起
+                  handleRowMenuSelect(tag, key) // 再处理动作（下面第 3 步会延迟到安全时机）
+                },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
