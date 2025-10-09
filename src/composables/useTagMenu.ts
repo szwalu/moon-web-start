@@ -68,7 +68,7 @@ function ensureTagMenuInputFontFix() {
   style.textContent = `
     /* 只影响本组件里的两个搜索框 */
     .n-dropdown-menu .tag-search-row .n-input__input-el { font-size: 16px !important; }
-    .n-dialog .icon-picker-root .n-input__input-el     { font-size: 16px !important; }
+    .n-dialog .icon-picker-root .n-input__input-el      { font-size: 16px !important; }
   `
   document.head.appendChild(style)
 }
@@ -381,6 +381,7 @@ export function useTagMenu(
     expandedGroups.value[key] = !expandedGroups.value[key]
   }
 
+  // 📌 MODIFIED: 将标签列表 (allTags) 也存入缓存
   function saveCountsCacheToLocal() {
     const uid = currentUserId.value
     if (!uid)
@@ -388,7 +389,7 @@ export function useTagMenu(
     const items = Object.entries(tagCounts.value).map(([tag, cnt]) => ({ tag, cnt }))
     localStorage.setItem(
       `${TAG_COUNT_CACHE_KEY_PREFIX}${uid}`,
-      JSON.stringify({ sig: tagCountsSig.value, items, savedAt: Date.now() }),
+      JSON.stringify({ sig: tagCountsSig.value, tags: allTags.value, items, savedAt: Date.now() }),
     )
   }
 
@@ -406,6 +407,7 @@ export function useTagMenu(
     await saveTagIconsToAuth(tagIconMap.value)
   }
 
+  // 📌 MODIFIED: 从缓存中恢复标签列表 (allTags) 和数量
   function hydrateCountsFromLocal(uid: string): number | null {
     const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
     const cachedRaw = localStorage.getItem(cacheKey)
@@ -414,9 +416,13 @@ export function useTagMenu(
     try {
       const cached = JSON.parse(cachedRaw) as {
         sig: string | null
+        tags: string[]
         items: Array<{ tag: string; cnt: number }>
         savedAt: number
       }
+      if (Array.isArray(cached.tags))
+        allTags.value = cached.tags
+
       tagCountsSig.value = cached.sig
       const map: Record<string, number> = {}
       for (const it of cached.items) map[it.tag] = it.cnt
@@ -428,9 +434,10 @@ export function useTagMenu(
     }
   }
 
-  async function refreshTagCountsFromServer(force = false) {
+  // 📌 MODIFIED: 实现基于 "数据签名" 的缓存策略，避免不必要的请求
+  async function refreshTagCountsFromServer() {
     const now = Date.now()
-    if (!force && now - lastFetchAt < 700)
+    if (now - lastFetchAt < 700)
       return
     lastFetchAt = now
     if (isLoadingCounts.value)
@@ -447,20 +454,27 @@ export function useTagMenu(
       const cacheKey = TAG_COUNT_CACHE_KEY_PREFIX + uid
       if (Array.isArray(data) && data.length > 0) {
         const serverSig: string | null = data[0].last_updated
+
+        // 如果服务器签名与缓存签名一致，则数据未变，直接返回
+        if (serverSig && serverSig === tagCountsSig.value)
+          return
+
         const map: Record<string, number> = {}
-        const items: Array<{ tag: string; cnt: number }> = []
+        const newTags: string[] = []
         for (const row of data) {
           const tg = String(row.tag)
           const cnt = Number(row.cnt ?? 0)
           map[tg] = cnt
-          items.push({ tag: tg, cnt })
+          newTags.push(tg)
         }
+
+        allTags.value = newTags
         tagCounts.value = map
         tagCountsSig.value = serverSig || null
         saveCountsCacheToLocal()
-        localStorage.setItem(cacheKey, JSON.stringify({ sig: tagCountsSig.value, items, savedAt: Date.now() }))
       }
       else {
+        allTags.value = []
         tagCounts.value = {}
         tagCountsSig.value = null
         localStorage.removeItem(cacheKey)
@@ -542,33 +556,37 @@ export function useTagMenu(
     }
     currentUserId.value = await getUserId()
     if (currentUserId.value) {
-      refreshTagCountsFromServer(true).catch(() => {})
+      // 📌 MODIFIED: 先从缓存加载，再请求更新
+      hydrateCountsFromLocal(currentUserId.value)
+      refreshTagCountsFromServer().catch(() => {})
       refreshUntaggedCountFromServer(true).catch(() => {})
     }
     const uid = currentUserId.value
     if (uid) {
-      hydrateCountsFromLocal(uid)
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const content = payload?.new?.content as string | undefined
           if (content === undefined || contentHasAnyTag(content))
-            refreshTagCountsFromServer(true).catch(() => {})
+            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
           refreshUntaggedCountFromServer(true).catch(() => {})
+          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const oldContent = payload?.old?.content as string | undefined
           if (oldContent === undefined || contentHasAnyTag(oldContent))
-            refreshTagCountsFromServer(true).catch(() => {})
+            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
           refreshUntaggedCountFromServer(true).catch(() => {})
+          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const beforeContent = payload?.old?.content as string | undefined
           const afterContent = payload?.new?.content as string | undefined
           const unsure = beforeContent === undefined && afterContent === undefined
           if (unsure || contentHasAnyTag(beforeContent) || contentHasAnyTag(afterContent))
-            refreshTagCountsFromServer(true).catch(() => {})
+            refreshTagCountsFromServer().catch(() => {}) // 📌 MODIFIED: 移除 force=true
           refreshUntaggedCountFromServer(true).catch(() => {})
+          invalidateAllTagCaches() // 📌 MODIFIED: 笔记列表缓存失效
         })
         .subscribe()
     }
@@ -660,12 +678,13 @@ export function useTagMenu(
     }
   }
 
+  // 📌 MODIFIED: 优化菜单打开时的加载逻辑
   async function onMainMenuOpen() {
     const uid = await getUserId()
     if (!uid)
       return
     hydrateCountsFromLocal(uid)
-    refreshTagCountsFromServer(true).catch(() => {})
+    refreshTagCountsFromServer().catch(() => {})
     refreshUntaggedCountFromServer(true).catch(() => {})
     expandedGroups.value = {}
   }
@@ -863,7 +882,7 @@ export function useTagMenu(
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
-          await refreshTagCountsFromServer(true)
+          await refreshTagCountsFromServer()
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
@@ -911,7 +930,7 @@ export function useTagMenu(
           invalidateOneTagCache(tag)
           invalidateAllTagCaches()
           invalidateAllSearchCaches()
-          await refreshTagCountsFromServer(true)
+          await refreshTagCountsFromServer()
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
@@ -1273,35 +1292,60 @@ export function useTagMenu(
     return (q as any).like('content', `%#${key}%`)
   }
 
-  /** 直接拉取“当前选中标签（含无标签）”的笔记列表 */
+  /**
+   * 📌 MODIFIED: 拉取笔记列表时，实现“先读缓存，再请求”逻辑
+   */
   async function fetchNotesBySelection(uid: string) {
-    if (!uid)
+    if (!uid || !selectedTag.value)
       return []
-    if (selectedTag.value === UNTAGGED_SENTINEL) {
-      // 优先尝试更精准的 RPC（如未创建则自动回退）
+
+    const cacheKey = getTagCacheKey(selectedTag.value)
+    const cachedRaw = localStorage.getItem(cacheKey)
+    if (cachedRaw) {
       try {
-        const { data, error } = await supabase.rpc('get_untagged_notes', { p_user_id: uid })
-        if (!error && Array.isArray(data))
-          return data
+        return JSON.parse(cachedRaw)
       }
-      catch {}
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', uid)
-        .or('content.is.null,not(content).is.null')
-        .not('content', 'like', '%#%')
-        .order('created_at', { ascending: false })
+      catch {
+        // 缓存数据损坏，清除后继续执行请求
+        localStorage.removeItem(cacheKey)
+      }
+    }
+
+    // 封装原始的请求逻辑
+    const fetchFromServer = async () => {
+      if (selectedTag.value === UNTAGGED_SENTINEL) {
+        // 优先尝试更精准的 RPC（如未创建则自动回退）
+        try {
+          const { data, error } = await supabase.rpc('get_untagged_notes', { p_user_id: uid })
+          if (!error && Array.isArray(data))
+            return data
+        }
+        catch {}
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('user_id', uid)
+          .or('content.is.null,not(content).is.null')
+          .not('content', 'like', '%#%')
+          .order('created_at', { ascending: false })
+        if (error)
+          throw error
+        return data || []
+      }
+      let q = supabase.from('notes').select('*').eq('user_id', uid).order('created_at', { ascending: false })
+      q = buildSupabaseFilter(q)
+      const { data, error } = await q
       if (error)
         throw error
       return data || []
     }
-    let q = supabase.from('notes').select('*').eq('user_id', uid).order('created_at', { ascending: false })
-    q = buildSupabaseFilter(q)
-    const { data, error } = await q
-    if (error)
-      throw error
-    return data || []
+
+    const result = await fetchFromServer()
+
+    // 将请求结果存入缓存
+    localStorage.setItem(cacheKey, JSON.stringify(result))
+
+    return result
   }
 
   return {
