@@ -879,16 +879,26 @@ export function useTagMenu(
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
     lastMoreClosedByOutside = false
 
-    // 小工具：开启抑制，在 300ms 后自动解除
+    // 小工具：开启抑制，先关主菜单与行内层，然后等到下两帧再执行弹框，避免首帧被吃
     const withSuppress = (fn: () => void) => {
       suppressAutoReopen.value = true
-      setTimeout(() => { suppressAutoReopen.value = false }, 300)
-      // 让 NDropdown 先完成关闭动画/卸载，再挂对话框，避免竞态
-      nextTick(() => { setTimeout(fn, 0) })
+      // 先关主菜单（避免它和对话框抢焦点）
+      mainMenuVisible.value = false
+      // 保险：把“行内三点菜单打开状态”也清掉
+      isRowMoreOpen.value = false
+
+      // 等动画/卸载走完：两次 rAF 比 setTimeout(0) 更稳
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          fn()
+          // 给 Naive 的过渡/滚动锁一点收尾时间
+          setTimeout(() => { suppressAutoReopen.value = false }, 600)
+        })
+      })
     }
 
     if (action === 'pin') {
-    // “置顶/取消置顶”不需要弹框，可继续保持菜单打开（原体验不变）
+    // 置顶不弹框，保持你原先体验：菜单继续开
       togglePin(tag)
       nextTick(() => { mainMenuVisible.value = true })
       return
@@ -896,10 +906,8 @@ export function useTagMenu(
 
     if (action === 'rename')
       return withSuppress(() => renameTag(tag))
-
     if (action === 'remove')
       return withSuppress(() => removeTagCompletely(tag))
-
     if (action === 'change_icon')
       return withSuppress(() => changeTagIcon(tag))
   }
