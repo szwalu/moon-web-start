@@ -385,6 +385,7 @@ export function useTagMenu(
   const dialogOpenCount = ref(0)
   const NOTES_CACHE_TTL = 300_000 // 300 秒，可按需调整
   const notesCache = new Map<string, { items: any[]; ts: number; sig: string | null }>()
+  const suppressAutoReopen = ref(false)
 
   // —— 筛选状态（内建） —— //
   const selectedTag = ref<string | null>(null)
@@ -854,7 +855,12 @@ export function useTagMenu(
       onMainMenuOpen()
       isRowMoreOpen.value = false
     }
-    if (!show && (isRowMoreOpen.value || dialogOpenCount.value > 0) && !lastMoreClosedByOutside)
+    if (
+      !show
+    && (isRowMoreOpen.value || dialogOpenCount.value > 0)
+    && !lastMoreClosedByOutside
+    && !suppressAutoReopen.value // ← 新增：抑制开关
+    )
       nextTick(() => { mainMenuVisible.value = true })
   })
 
@@ -871,32 +877,31 @@ export function useTagMenu(
 
   // 用这个替换原来的 handleRowMenuSelect
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
-  // 这句可选：明确声明不是“外部点击”导致的关闭
     lastMoreClosedByOutside = false
 
-    // 关键：无论执行哪种操作，都立刻安排把主菜单保持为打开
-    // 用 nextTick 避免与 NDropdown 的收起事件“打架”
-    const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
+    // 小工具：开启抑制，在 300ms 后自动解除
+    const withSuppress = (fn: () => void) => {
+      suppressAutoReopen.value = true
+      setTimeout(() => { suppressAutoReopen.value = false }, 300)
+      // 让 NDropdown 先完成关闭动画/卸载，再挂对话框，避免竞态
+      nextTick(() => { setTimeout(fn, 0) })
+    }
 
     if (action === 'pin') {
+    // “置顶/取消置顶”不需要弹框，可继续保持菜单打开（原体验不变）
       togglePin(tag)
-      keepOpen() // <— 保持汉堡菜单不关
+      nextTick(() => { mainMenuVisible.value = true })
       return
     }
-    if (action === 'rename') {
-      keepOpen() // 先保持打开，再弹重命名对话框
-      renameTag(tag)
-      return
-    }
-    if (action === 'remove') {
-      keepOpen()
-      removeTagCompletely(tag)
-      return
-    }
-    if (action === 'change_icon') {
-      keepOpen()
-      changeTagIcon(tag)
-    }
+
+    if (action === 'rename')
+      return withSuppress(() => renameTag(tag))
+
+    if (action === 'remove')
+      return withSuppress(() => removeTagCompletely(tag))
+
+    if (action === 'change_icon')
+      return withSuppress(() => changeTagIcon(tag))
   }
 
   function getRowMenuOptions(tag: string) {
