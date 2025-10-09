@@ -47,6 +47,7 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
   const spaceAbove = rect.top - MARGIN
   const spaceRight = vw - rect.right - MARGIN
   const spaceLeft = rect.left - MARGIN
+  const _reopenMenuAfterDialog = ref(false)
 
   let vertical: 'top' | 'bottom'
   if (spaceBelow >= MENU_H && spaceAbove >= MENU_H)
@@ -849,10 +850,14 @@ export function useTagMenu(
   // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
   watch(mainMenuVisible, (show) => {
     if (!show) {
-      onMainMenuOpen()
+    // 菜单刚关闭：先别做首屏回填，等真正需要时再做，避免和弹框打架
       isRowMoreOpen.value = false
+      // 只有在没有对话框时，才做轻量回填
+      if (dialogOpenCount.value === 0)
+        onMainMenuOpen()
     }
-    if (!show && (isRowMoreOpen.value || dialogOpenCount.value > 0) && !lastMoreClosedByOutside)
+    // 只在“行内 ⋯ 菜单仍被认为是打开”的情况下才强行重开主菜单
+    if (!show && isRowMoreOpen.value && !lastMoreClosedByOutside)
       nextTick(() => { mainMenuVisible.value = true })
   })
 
@@ -866,7 +871,6 @@ export function useTagMenu(
   && (/iP(hone|ad|od)/i.test(navigator.userAgent) || /Macintosh;.*Mobile/i.test(navigator.userAgent))
 
   function openAfterDropdownClose(fn: () => void) {
-  // 让 NDropdown 彻底收起、DOM 更新完，再开 dialog（iOS 给个极短缓冲）
     nextTick(() => {
       requestAnimationFrame(() => {
         setTimeout(fn, isIOSLike ? 60 : 0)
@@ -889,17 +893,21 @@ export function useTagMenu(
       return
     }
     if (action === 'rename') {
-      keepOpen()
+      // 对话框期间先不要强行重开主菜单
+      mainMenuVisible.value = false
+      reopenMenuAfterDialog.value = true
       openAfterDropdownClose(() => renameTag(tag))
       return
     }
     if (action === 'remove') {
-      keepOpen()
+      mainMenuVisible.value = false
+      reopenMenuAfterDialog.value = true
       openAfterDropdownClose(() => removeTagCompletely(tag))
       return
     }
     if (action === 'change_icon') {
-      keepOpen()
+      mainMenuVisible.value = false
+      reopenMenuAfterDialog.value = true
       openAfterDropdownClose(() => changeTagIcon(tag))
     }
   }
@@ -996,6 +1004,7 @@ export function useTagMenu(
       action: null,
       onAfterLeave: () => {
         dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
       },
     })
   }
@@ -1028,7 +1037,10 @@ export function useTagMenu(
       positiveText: t('auth.confirm') || '确定',
       negativeText: t('auth.cancel') || '取消',
       maskClosable: false,
-      onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
+      onAfterLeave: () => {
+        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
+      },
       onPositiveClick: async () => {
         const nextName = renameState.next || ''
         const newTag = normalizeTag(nextName)
@@ -1086,7 +1098,10 @@ export function useTagMenu(
       positiveText: t('tags.delete_tag_confirm') || '删除标签',
       negativeText: t('notes.cancel') || '取消',
       maskClosable: false,
-      onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
+      onAfterLeave: () => {
+        dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1)
+        if (reopenMenuAfterDialog.value) { reopenMenuAfterDialog.value = false; nextTick(() => (mainMenuVisible.value = true)) }
+      },
       onPositiveClick: async () => {
         isBusy.value = true
         try {
@@ -1289,11 +1304,7 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => {
-                  lastMoreClosedByOutside = false
-                  closeMenu() // 先让下拉彻底收起
-                  handleRowMenuSelect(tag, key) // 再处理动作（下面第 3 步会延迟到安全时机）
-                },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
@@ -1396,11 +1407,7 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => {
-                  lastMoreClosedByOutside = false
-                  closeMenu() // 先让下拉彻底收起
-                  handleRowMenuSelect(tag, key) // 再处理动作（下面第 3 步会延迟到安全时机）
-                },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
