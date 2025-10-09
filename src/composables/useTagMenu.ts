@@ -1293,9 +1293,9 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e: MouseEvent) => {
-                    e.preventDefault()
-                    e.stopPropagation()
+
+                  'onClick': (e: MouseEvent) => {
+                    e.stopPropagation() // 关键：立即阻止事件冒泡到父级，防止触发 selectTag
                     btnEl = e.currentTarget as HTMLElement
                     if (showRef.value) {
                       lastMoreClosedByOutside = false
@@ -1403,9 +1403,11 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e: MouseEvent) => {
-                    e.preventDefault()
-                    e.stopPropagation()
+                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
+                  // ... in makeHeaderRow's h('button', ...)
+                  'onClick': (e: MouseEvent) => {
+                    e.stopPropagation() // 关键：立即阻止事件冒泡到父级
                     btnEl = e.currentTarget as HTMLElement
                     if (showRef.value) {
                       lastMoreClosedByOutside = false
