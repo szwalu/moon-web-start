@@ -381,7 +381,7 @@ export function useTagMenu(
 
   // —— 保持主菜单常开的辅助状态 —— //
   const isRowMoreOpen = ref(false)
-  let lastMoreClosedByOutside = false
+
   const dialogOpenCount = ref(0)
 
   // —— 筛选状态（内建） —— //
@@ -849,11 +849,13 @@ export function useTagMenu(
   // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
   watch(mainMenuVisible, (show) => {
     if (!show) {
-      onMainMenuOpen()
+    // 关闭时只做收尾，不再自动重开
       isRowMoreOpen.value = false
     }
-    if (!show && (isRowMoreOpen.value || dialogOpenCount.value > 0) && !lastMoreClosedByOutside)
-      nextTick(() => { mainMenuVisible.value = true })
+    else {
+    // 打开时做一次轻量回填
+      onMainMenuOpen()
+    }
   })
 
   watch(allTags, (v) => {
@@ -863,45 +865,25 @@ export function useTagMenu(
   }, { deep: false })
 
   // 用这个替换原来的 handleRowMenuSelect
-  // src/composables/useTagMenu.ts
-
-  // 找到 handleRowMenuSelect 函数，用下面的代码完整替换它
-
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
-  // 标记这不是一次由“点击外部”导致的关闭，这对于 watch 逻辑很重要
     lastMoreClosedByOutside = false
+    // 统一行为：选择任何项都先把主菜单关掉
+    mainMenuVisible.value = false
 
-    // “置顶”操作不涉及对话框，它只是一个简单的状态切换，可以立即执行。
-    // 执行后，我们用 nextTick 确保主菜单能恢复打开状态。
     if (action === 'pin') {
       togglePin(tag)
-      nextTick(() => {
-        mainMenuVisible.value = true
-      })
       return
     }
-
-    // --- 核心修复逻辑 ---
-    // 对于所有会弹出对话框的操作（重命名、删除、改图标）：
-
-    // 1. 强制主菜单保持打开状态。
-    //    即便 Naive UI 内部尝试因选项被选中而关闭它，我们在此立即把它设置回 true，
-    //    从而阻止组件被销毁。
-    mainMenuVisible.value = true
-
-    // 2. 将真正执行的操作推迟到下一个 tick。
-    //    此时，Vue 的状态已经稳定，`mainMenuVisible` 确定为 true，组件不会被销毁。
-    //    在这个安全的环境下，我们再调用函数来创建对话框。
-    nextTick(() => {
-      if (action === 'rename')
-        renameTag(tag)
-
-      else if (action === 'remove')
-        removeTagCompletely(tag)
-
-      else if (action === 'change_icon')
-        changeTagIcon(tag)
-    })
+    if (action === 'rename') {
+      renameTag(tag)
+      return
+    }
+    if (action === 'remove') {
+      removeTagCompletely(tag)
+      return
+    }
+    if (action === 'change_icon')
+      changeTagIcon(tag)
   }
 
   function getRowMenuOptions(tag: string) {
@@ -1289,7 +1271,7 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; closeMenu(); handleRowMenuSelect(tag, key) },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
@@ -1390,7 +1372,7 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
+                onSelect: (key: any) => { lastMoreClosedByOutside = false; closeMenu(); handleRowMenuSelect(tag, key) },
                 onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
               }, {
                 default: () => h('button', {
