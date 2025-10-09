@@ -20,19 +20,6 @@ function isOnline(): boolean {
   try { return typeof navigator !== 'undefined' ? navigator.onLine : true }
   catch { return true }
 }
-// 触屏环境判定（iOS/Android 等）
-const isTouchEnv = (() => {
-  if (typeof window === 'undefined')
-    return false
-  try {
-    // 粗粒度指针 or 有触摸事件
-    return window.matchMedia?.('(pointer: coarse)')?.matches
-      || 'ontouchstart' in window
-      || navigator.maxTouchPoints > 0
-  }
-  catch { return false }
-})()
-
 function isFresh(savedAt: number | null | undefined): boolean {
   if (!savedAt || !Number.isFinite(savedAt))
     return false
@@ -876,57 +863,45 @@ export function useTagMenu(
   }, { deep: false })
 
   // 用这个替换原来的 handleRowMenuSelect
+  // src/composables/useTagMenu.ts
+
+  // 找到 handleRowMenuSelect 函数，用下面的代码完整替换它
+
   function handleRowMenuSelect(tag: string, action: 'pin' | 'rename' | 'remove' | 'change_icon') {
-  // 这句可选：明确声明不是“外部点击”导致的关闭
+  // 标记这不是一次由“点击外部”导致的关闭，这对于 watch 逻辑很重要
     lastMoreClosedByOutside = false
 
-    // 关键：无论执行哪种操作，都立刻安排把主菜单保持为打开
-    // 用 nextTick 避免与 NDropdown 的收起事件“打架”
-    const keepOpen = () => nextTick(() => { mainMenuVisible.value = true })
-
+    // “置顶”操作不涉及对话框，它只是一个简单的状态切换，可以立即执行。
+    // 执行后，我们用 nextTick 确保主菜单能恢复打开状态。
     if (action === 'pin') {
       togglePin(tag)
-      keepOpen() // <— 保持汉堡菜单不关
-      return
-    }
-    if (action === 'rename') {
-      if (isTouchEnv) {
-        // 触屏设备：彻底合上主菜单，避免遮挡/竞态
-        mainMenuVisible.value = false
-        // 等 Dropdown 完整收起后再起对话框（给 iOS 一点缓冲）
-        nextTick(() => requestAnimationFrame(() => setTimeout(() => renameTag(tag), 80)))
-      }
-      else {
-        // 桌面端保留原体验：保持常开
-        nextTick(() => { mainMenuVisible.value = true })
-        // 再起对话框
-        nextTick(() => renameTag(tag))
-      }
+      nextTick(() => {
+        mainMenuVisible.value = true
+      })
       return
     }
 
-    if (action === 'remove') {
-      if (isTouchEnv) {
-        mainMenuVisible.value = false
-        nextTick(() => requestAnimationFrame(() => setTimeout(() => removeTagCompletely(tag), 80)))
-      }
-      else {
-        nextTick(() => { mainMenuVisible.value = true })
-        nextTick(() => removeTagCompletely(tag))
-      }
-      return
-    }
+    // --- 核心修复逻辑 ---
+    // 对于所有会弹出对话框的操作（重命名、删除、改图标）：
 
-    if (action === 'change_icon') {
-      if (isTouchEnv) {
-        mainMenuVisible.value = false
-        nextTick(() => requestAnimationFrame(() => setTimeout(() => changeTagIcon(tag), 80)))
-      }
-      else {
-        nextTick(() => { mainMenuVisible.value = true })
-        nextTick(() => changeTagIcon(tag))
-      }
-    }
+    // 1. 强制主菜单保持打开状态。
+    //    即便 Naive UI 内部尝试因选项被选中而关闭它，我们在此立即把它设置回 true，
+    //    从而阻止组件被销毁。
+    mainMenuVisible.value = true
+
+    // 2. 将真正执行的操作推迟到下一个 tick。
+    //    此时，Vue 的状态已经稳定，`mainMenuVisible` 确定为 true，组件不会被销毁。
+    //    在这个安全的环境下，我们再调用函数来创建对话框。
+    nextTick(() => {
+      if (action === 'rename')
+        renameTag(tag)
+
+      else if (action === 'remove')
+        removeTagCompletely(tag)
+
+      else if (action === 'change_icon')
+        changeTagIcon(tag)
+    })
   }
 
   function getRowMenuOptions(tag: string) {
@@ -1330,8 +1305,6 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
-                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
-                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
                     e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
                     else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
