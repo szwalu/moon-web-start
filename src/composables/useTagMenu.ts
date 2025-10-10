@@ -999,14 +999,18 @@ export function useTagMenu(
       .map(tag => makeTagRow(tag, compactLabelForPinned(tag)))
 
     const pinnedGroup = pinnedChildren.length > 0
-      ? [{
-          type: 'group' as const,
-          key: 'pinned-group',
-          label: () => h('div', {
-            style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`,
-          }, `⭐ ${t('notes.favorites') || '常用'}`),
-          children: pinnedChildren,
-        }]
+      ? [
+          // 使用一个自定义的、不可点击的 “render” 类型作为标题
+          {
+            key: 'pinned-header',
+            type: 'render' as const,
+            render: () => h('div', {
+              style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size: 12px; font-weight: bold; color: #888; padding: 4px 12px;`,
+            }, `⭐ ${t('notes.favorites') || '常用'}`),
+          },
+          // 将所有常用标签作为普通项直接展开，不再嵌套在 children 里
+          ...pinnedChildren,
+        ]
       : []
 
     const treeChildren = treeToDownwardGroups(

@@ -105,19 +105,21 @@ const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 
 function onSelectTag(tag: string) {
-  // 检查主输入框的内容是否为空（忽略前后空格）
-  if ((newNoteContent.value || '').trim() === '') {
-    // 如果为空，则将标签插入输入框，并聚焦
+  // 检查主输入框的内容在点击前是否为空
+  const isInputEmpty = (newNoteContent.value || '').trim() === ''
+
+  // 条件操作：仅当输入框为空时，才执行“填入标签”和“聚焦”的动作
+  if (isInputEmpty) {
     newNoteContent.value = `${tag} ` // 在标签后加一个空格，方便继续输入
     nextTick(() => {
       newNoteEditorRef.value?.focus()
     })
   }
-  else {
-    // 如果不为空，执行原来的筛选逻辑
-    fetchNotesByTag(tag)
-  }
+
+  // 无条件操作：无论输入框之前是否为空，最后总是执行筛选逻辑
+  fetchNotesByTag(tag)
 }
+
 // 组合式：放在 t / allTags 之后
 const {
   mainMenuVisible,
@@ -1569,26 +1571,9 @@ async function handleDeleteSelected() {
 }
 
 function handleMainMenuSelect(rawKey: string) {
-  // 统一规范：最终交给 fetchNotesByTag 的格式一律 "#xxx"
-  const toHashTag = (k: string) => {
-    let kk = k || ''
-    if (kk.startsWith('tag:'))
-      kk = kk.slice(4) // tag:work  -> work
-    kk = kk.trim()
-    if (!kk)
-      return ''
-    if (!kk.startsWith('#'))
-      kk = `#${kk}` // work      -> #work
-    return kk
-  }
-
   // 标签项（来自子菜单）
-  if (rawKey.startsWith('tag:') || rawKey.startsWith('#')) {
-    const tag = toHashTag(rawKey)
-    if (tag)
-      onSelectTag(tag) // 统一调用 onSelectTag
+  if (rawKey.startsWith('tag:') || rawKey.startsWith('#') || rawKey === UNTAGGED_SENTINEL)
     return
-  }
 
   // 其它一级菜单项
   switch (rawKey) {
