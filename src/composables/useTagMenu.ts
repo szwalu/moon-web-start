@@ -407,9 +407,9 @@ export function useTagMenu(
   }
 
   // 📌 MODIFIED: 实现基于 "数据签名" 的缓存策略，避免不必要的请求
-  async function refreshTagCountsFromServer() {
+  async function refreshTagCountsFromServer(force = false) {
     const now = Date.now()
-    if (now - lastFetchAt < 700)
+    if (!force && now - lastFetchAt < 700) // 在非强制模式下，才检查时间间隔
       return
     lastFetchAt = now
     if (isLoadingCounts.value)
@@ -427,8 +427,9 @@ export function useTagMenu(
       if (Array.isArray(data) && data.length > 0) {
         const serverSig: string | null = data[0].last_updated
 
-        // 如果服务器签名与缓存签名一致，则数据未变，直接返回
-        if (serverSig && serverSig === tagCountsSig.value)
+        // 修改这一行，增加 !force 条件
+        // 如果是强制刷新，则不检查签名
+        if (!force && serverSig && serverSig === tagCountsSig.value)
           return
 
         const map: Record<string, number> = {}
@@ -563,7 +564,8 @@ export function useTagMenu(
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
           const oldContent = payload?.old?.content as string | undefined
           if (oldContent === undefined || contentHasAnyTag(oldContent))
-            refreshTagCountsFromServer().catch(() => {})
+            refreshTagCountsFromServer(true).catch(() => {})
+          refreshTagCountsFromServer().catch(() => {})
           refreshUntaggedCountFromServer(true).catch(() => {})
           invalidateAllTagCaches()
         })
