@@ -328,6 +328,17 @@ onMounted(() => {
             // 路径D：没有任何缓存，正常首次加载主页
             isLoadingNotes.value = true // 只有在这里才需要设置加载状态
             await fetchNotes() // fetchNotes内部会把加载状态设为false
+            const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000 // 冷却时间：24小时
+            const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
+
+            if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
+              // 如果距离上次成功加载已超过24小时，则再次执行后台加载
+              fetchMoreNotesInBackground()
+            }
+            else {
+              // 否则，跳过本次加载
+              // console.log('距离上次后台加载时间较短，本次跳过。')
+            }
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
@@ -1085,6 +1096,69 @@ async function fetchNotes() {
   }
   finally {
     isLoadingNotes.value = false
+  }
+}
+
+async function fetchMoreNotesInBackground() {
+  // 如果正在加载，或者已经没有更多笔记了，就直接返回
+  if (isLoadingNotes.value || !hasMoreNotes.value)
+    return
+
+  const NOTES_TO_PRELOAD = 300
+  const pagesToPreload = Math.ceil(NOTES_TO_PRELOAD / notesPerPage)
+  let pagesLoaded = 0
+
+  // console.log('开始在后台静默加载更多笔记...')
+
+  // 循环加载，直到满足数量或没有更多
+  while (pagesLoaded < pagesToPreload && hasMoreNotes.value) {
+    currentPage.value++ // 准备加载下一页
+
+    try {
+      const from = (currentPage.value - 1) * notesPerPage
+      const to = from + notesPerPage - 1
+      const { data, error, count } = await supabase
+        .from('notes')
+        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+        .eq('user_id', user.value.id)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to)
+
+      if (error)
+        throw error
+
+      const newNotes = data || []
+      if (newNotes.length > 0) {
+        // 静默地将新笔记追加到现有列表
+        notes.value.push(...newNotes)
+      }
+
+      totalNotes.value = count || 0
+      hasMoreNotes.value = (currentPage.value * notesPerPage) < totalNotes.value
+      pagesLoaded++
+    }
+    catch (err) {
+      // 如果后台加载时出错（比如断网了），就在控制台打印一个错误，然后安靜地停止
+      console.error('后台笔记加载失败:', err)
+      hasMoreNotes.value = false // 停止后续尝试
+      break // 退出循环
+    }
+  }
+
+  // console.log(`后台加载完成，共预加载了 ${pagesLoaded * notesPerPage} 条笔记。`)
+
+  // 预加载完成后，更新本地的完整缓存，供离线使用
+  if (pagesLoaded > 0) {
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch (e) {
+      console.warn('后台加载后的快照保存失败:', e)
+    }
+    localStorage.setItem('notes_preload_timestamp', Date.now().toString())
   }
 }
 
