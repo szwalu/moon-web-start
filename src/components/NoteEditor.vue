@@ -15,6 +15,10 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 20000 },
   placeholder: { type: String, default: '写点什么...' },
   allTags: { type: Array as () => string[], default: () => [] },
+  tagCounts: {
+    type: Object as () => Record<string, number>,
+    default: () => ({}),
+  },
 
   // ===== 仅用于“简单自动草稿”的开关与键（新增）=====
   enableDrafts: { type: Boolean, default: false },
@@ -622,10 +626,19 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const filtered = props.allTags
     .filter(tag => tag.toLowerCase().startsWith(`#${searchTerm.toLowerCase()}`))
     .sort((a, b) => {
-      const ap = isPinned(a) ? 0 : 1
-      const bp = isPinned(b) ? 0 : 1
-      if (ap !== bp)
-        return ap - bp
+      // 优先级1：常用标签 (Pinned) 永远最前
+      const isAPinned = isPinned(a)
+      const isBPinned = isPinned(b)
+      if (isAPinned !== isBPinned)
+        return isAPinned ? -1 : 1
+
+      // 优先级2：按使用频率（笔记数量）降序排列
+      const countA = props.tagCounts[a] || 0
+      const countB = props.tagCounts[b] || 0
+      if (countA !== countB)
+        return countB - countA // 数量多的在前
+
+      // 优先级3：如果频率相同，按字母顺序作为最终排序
       return a.slice(1).toLowerCase().localeCompare(b.slice(1).toLowerCase())
     })
 
@@ -1195,7 +1208,10 @@ function insertImageLink() {
   })
 }
 
-defineExpose({ reset: triggerResize })
+defineExpose({
+  reset: triggerResize,
+  focus: () => textarea.value?.focus(),
+})
 
 let focusBoostTimer: number | null = null
 

@@ -30,16 +30,6 @@ const { t } = useI18n()
 // ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
 const allTags = ref<string[]>([])
 
-const onSelectTag = (tag: string) => fetchNotesByTag(tag)
-
-// 组合式：放在 t / allTags 之后
-const {
-  mainMenuVisible,
-  tagMenuChildren,
-  UNTAGGED_SENTINEL,
-  refreshTags,
-} = useTagMenu(allTags, onSelectTag, t)
-
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
@@ -113,6 +103,29 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 // ++ 新增：那年今日持久化键
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
+
+function onSelectTag(tag: string) {
+  // 检查主输入框的内容是否为空（忽略前后空格）
+  if ((newNoteContent.value || '').trim() === '') {
+    // 如果为空，则将标签插入输入框，并聚焦
+    newNoteContent.value = `${tag} ` // 在标签后加一个空格，方便继续输入
+    nextTick(() => {
+      newNoteEditorRef.value?.focus()
+    })
+  }
+  else {
+    // 如果不为空，执行原来的筛选逻辑
+    fetchNotesByTag(tag)
+  }
+}
+// 组合式：放在 t / allTags 之后
+const {
+  mainMenuVisible,
+  tagMenuChildren,
+  UNTAGGED_SENTINEL,
+  refreshTags,
+  tagCounts,
+} = useTagMenu(allTags, onSelectTag, t)
 
 watch(searchQuery, (newValue) => {
   if (newValue && newValue.trim()) {
@@ -1572,10 +1585,8 @@ function handleMainMenuSelect(rawKey: string) {
   // 标签项（来自子菜单）
   if (rawKey.startsWith('tag:') || rawKey.startsWith('#')) {
     const tag = toHashTag(rawKey)
-    if (tag) {
-      fetchNotesByTag(tag)
-      mainMenuVisible.value = false
-    }
+    if (tag)
+      onSelectTag(tag) // 统一调用 onSelectTag
     return
   }
 
@@ -1946,6 +1957,7 @@ function onCalendarUpdated(updated: any) {
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
+          :tag-counts="tagCounts"
           enable-drafts
           @save="handleCreateNote"
           @focus="onEditorFocus"

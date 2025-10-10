@@ -1348,23 +1348,20 @@ export function useTagMenu(
   }
 
   return {
-    // 状态
     mainMenuVisible,
     tagSearch,
     pinnedTags,
     selectedTag,
     isUntaggedSelected,
-    // 方法
     isPinned,
     togglePin,
     selectTag,
     tagMenuChildren,
     hierarchicalTags,
     refreshTags: refreshTagCountsFromServer,
-    // 新增导出：查询辅助
     buildSupabaseFilter,
     fetchNotesBySelection,
-    // 常量
     UNTAGGED_SENTINEL,
+    tagCounts,
   }
 }
