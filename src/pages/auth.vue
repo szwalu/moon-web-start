@@ -94,6 +94,9 @@ const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 const isOffline = ref(false)
 let offlineToastShown = false
+// 静默预取控制
+const isPrefetching = ref(false)
+const SILENT_PREFETCH_PAGES = 10 // 10 页 * 30 条 = 300 条
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -196,136 +199,142 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-// 文件位置: src/pages/auth.vue
-
-onMounted(async () => {
-  // 1. [重构] 移除 setTimeout，在 onMounted 开始时立即、同步地尝试从缓存加载数据
-  try {
-    const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
-    if (cachedData)
-      notes.value = JSON.parse(cachedData)
-
-    // 如果 localStorage 为空，再作为兜底尝试 IndexedDB
-    if (!notes.value || notes.value.length === 0) {
-      const local = await readNotesSnapshot()
-      if (local && local.length) {
-        notes.value = local
-        isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
+onMounted(() => {
+  // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
+  ;(async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (!error) {
+        const currentUser = data?.session?.user ?? null
+        if (authStore.user?.id !== currentUser?.id)
+          authStore.user = currentUser
       }
     }
-  }
-  catch (e) {
-    console.error('Failed to load notes from cache', e)
-    localStorage.removeItem(CACHE_KEYS.HOME)
-  }
+    catch {}
+  })()
+  // === [PATCH-3 END] ===
 
-  // 2. 添加必要的事件监听
+  // isLoadingNotes.value = true
+  const loadCache = async () => {
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
+      if (cachedData)
+        notes.value = JSON.parse(cachedData)
+    }
+    catch (e) {
+      console.error('Failed to load notes from cache', e)
+      localStorage.removeItem(CACHE_KEYS.HOME)
+    }
+  }
+  setTimeout(() => {
+    loadCache()
+  }, 0)
+
+  // ✅ IndexedDB 快照兜底（仅当上面的 localStorage 没恢复任何内容时才触发）
+  ;(async () => {
+    try {
+      // 等一帧，给 loadCache() 一个机会先把 localStorage 填进来
+      await Promise.resolve()
+      if (!notes.value || notes.value.length === 0) {
+        const local = await readNotesSnapshot()
+        if (local && local.length) {
+          notes.value = local
+          isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
+        }
+      }
+    }
+    catch {}
+  })()
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
-
-  // 3. 设置认证状态监听器，回调函数不再需要 nextTick
   const result = supabase.auth.onAuthStateChange(
-    async (event, session) => { // 回调函数变为 async
+    (event, session) => {
       const currentUser = session?.user ?? null
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
 
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-        // --- 重构后的逻辑 ---
-        const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
-        const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
-        const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
-        const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
-        const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
+        nextTick(async () => {
+          // --- 重构后的逻辑 ---
+          // 1. 优先检查所有可能的缓存状态
+          const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
+          const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
+          const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
+          // ++ 新增：那年今日缓存
+          const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
+          const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
 
-        // 根据缓存情况决定执行路径
-        if (savedSearchQuery && savedSearchResults) {
-          // 路径A：有完整的搜索缓存，直接恢复，不请求网络
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          try {
-            notes.value = JSON.parse(savedSearchResults)
-          }
-          catch (e) {
-            console.error('Failed to parse cached search results:', e)
-            sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-          }
-          isLoadingNotes.value = false
-          hasMoreNotes.value = false
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedSearchQuery) {
-          // 路径B：只有关键词，需要重新搜索
-          searchQuery.value = savedSearchQuery
-          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-          noteActionsRef.value?.executeSearch()
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedTagFilter) {
-          // 路径C：有标签筛选，执行标签筛选
-          await fetchNotesByTag(savedTagFilter)
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else if (savedAnnivActive) {
-          // 路径E：那年今日
-          isShowingSearchResults.value = false
-          activeTagFilter.value = null
-          showSearchBar.value = false
-
-          if (savedAnnivResults) {
+          // 2. 根据缓存情况决定执行路径
+          if (savedSearchQuery && savedSearchResults) {
+            // 路径A：有完整的搜索缓存，直接恢复，不请求网络
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
             try {
-              const parsed = JSON.parse(savedAnnivResults)
-              anniversaryNotes.value = parsed
-              isAnniversaryViewActive.value = true
-              hasMoreNotes.value = false
-              nextTick(() => {
-                anniversaryBannerRef.value?.setView(true)
-              })
+              notes.value = JSON.parse(savedSearchResults)
             }
-            catch {
-              anniversaryBannerRef.value?.loadAnniversaryNotes()
+            catch (e) {
+              console.error('Failed to parse cached search results:', e)
+              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
             }
-          }
-          else {
+            isLoadingNotes.value = false // 确保没有加载动画
+            hasMoreNotes.value = false
+            // 恢复后，再去获取标签等次要信息
+            //  fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
-
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
-        else {
-          // 路径D：没有任何会话状态，加载主页（已重构）
-          if (notes.value.length > notesPerPage) {
-            // 如果已有笔记数量大于一页（说明已存在丰富的缓存），则跳过初始的网络加载
-            // console.log(`从 localStorage 恢复了 ${notes.value.length} 条笔记，跳过初始网络加载。`)
-            isLoadingNotes.value = false
-            // 尝试从 meta 缓存中恢复 totalNotes，以正确计算 hasMoreNotes 状态
-            const metaRaw = localStorage.getItem(CACHE_KEYS.HOME_META)
-            if (metaRaw) {
-              try {
-                const meta = JSON.parse(metaRaw)
-                totalNotes.value = meta.totalNotes || 0
-              }
-              catch {}
-            }
-            hasMoreNotes.value = notes.value.length < totalNotes.value
+          else if (savedSearchQuery) {
+            // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
+            searchQuery.value = savedSearchQuery
+            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            noteActionsRef.value?.executeSearch()
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
-          else {
-            // 如果没有足够的缓存，执行“首次加载”流程
-            isLoadingNotes.value = true
-            await fetchNotes() // 加载前30条
+          else if (savedTagFilter) {
+            // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
+            await fetchNotesByTag(savedTagFilter)
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+          // ++ 路径E：那年今日
+          else if (savedAnnivActive) {
+            // 与搜索/标签互斥：确保只呈现那年今日
+            isShowingSearchResults.value = false
+            activeTagFilter.value = null
+            showSearchBar.value = false // 恢复时关闭搜索栏较合理
 
-            // 检查是否需要进行后台静默加载
-            const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000
-            const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
-
-            if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
-              fetchMoreNotesInBackground()
+            if (savedAnnivResults) {
+              try {
+                const parsed = JSON.parse(savedAnnivResults)
+                anniversaryNotes.value = parsed
+                isAnniversaryViewActive.value = true
+                hasMoreNotes.value = false
+                nextTick(() => {
+                  anniversaryBannerRef.value?.setView(true)
+                })
+              }
+              catch {
+                // 解析失败则让 Banner 重新加载
+                anniversaryBannerRef.value?.loadAnniversaryNotes()
+              }
             }
             else {
-              // console.log('距离上次后台加载时间较短，本次跳过。')
+              // 没存下具体结果：重新计算
+              anniversaryBannerRef.value?.loadAnniversaryNotes()
             }
+
+            // 附带拉取标签等
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
-          anniversaryBannerRef.value?.loadAnniversaryNotes()
-        }
+          else {
+            // 路径D：没有任何缓存，正常首次加载主页
+            isLoadingNotes.value = true // 只有在这里才需要设置加载状态
+            await fetchNotes() // fetchNotes内部会把加载状态设为false
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+          }
+        })
       }
       else if (event === 'SIGNED_OUT') {
         notes.value = []
@@ -338,12 +347,11 @@ onMounted(async () => {
         localStorage.removeItem(LOCAL_CONTENT_KEY)
       }
       else {
-        // 兜底：未知事件也同步一次 user
+        // [PATCH-4] 兜底：未知事件也同步一次 user，避免卡在未知态
         authStore.user = session?.user ?? null
       }
     },
   )
-
   authListener = result.data.subscription
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
@@ -1057,6 +1065,12 @@ async function fetchNotes() {
 
     // ✅ 拉取成功 => 复位“离线只弹一次”的开关
     offlineToastShown = false
+
+    // ⬇️⬇️⬇️ 新增：仅当是“首屏第一页成功”时，后台静默预取后续 10 页（≈300 条）
+    if (currentPage.value === 1 && hasMoreNotes.value) {
+      // 火并执行，不阻塞 UI
+      silentPrefetchMore()
+    }
   }
   catch (err: any) {
     // ⛔️ 离线 / 网络错误：只弹一次，并暂停无限下拉
@@ -1083,66 +1097,84 @@ async function fetchNotes() {
   }
 }
 
-async function fetchMoreNotesInBackground() {
-  // 如果正在加载，或者已经没有更多笔记了，就直接返回
-  if (isLoadingNotes.value || !hasMoreNotes.value)
+async function silentPrefetchMore() {
+  // 只在“主页列表”模式下预取；搜索/标签/那年今日时不预取
+  if (isPrefetching.value
+    || !user.value
+    || isAnniversaryViewActive.value
+    || activeTagFilter.value
+    || isShowingSearchResults.value)
     return
 
-  const NOTES_TO_PRELOAD = 300
-  const pagesToPreload = Math.ceil(NOTES_TO_PRELOAD / notesPerPage)
-  let pagesLoaded = 0
+  // 已经没有更多也不预取
+  if (!hasMoreNotes.value)
+    return
 
-  // console.log('开始在后台静默加载更多笔记...')
+  // 离线不预取
+  if (navigator.onLine === false)
+    return
 
-  // 循环加载，直到满足数量或没有更多
-  while (pagesLoaded < pagesToPreload && hasMoreNotes.value) {
-    currentPage.value++ // 准备加载下一页
+  isPrefetching.value = true
+  try {
+    let page = currentPage.value + 1
+    let fetchedPages = 0
 
-    try {
-      const from = (currentPage.value - 1) * notesPerPage
+    while (fetchedPages < SILENT_PREFETCH_PAGES) {
+      // 根据 totalNotes 估算是否还有数据
+      const from = (page - 1) * notesPerPage
       const to = from + notesPerPage - 1
-      const { data, error, count } = await supabase
+      if (totalNotes.value && from >= totalNotes.value)
+        break
+
+      // 与 fetchNotes 同样的查询，但不触发任何加载动画
+      const { data, error } = await supabase
         .from('notes')
-        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+        .select('id, content, weather, created_at, updated_at, is_pinned')
         .eq('user_id', user.value.id)
         .order('is_pinned', { ascending: false })
         .order('created_at', { ascending: false })
         .range(from, to)
 
       if (error)
-        throw error
+        break
+      const pageNotes = data || []
+      if (pageNotes.length === 0)
+        break
 
-      const newNotes = data || []
-      if (newNotes.length > 0) {
-        // 静默地将新笔记追加到现有列表
-        notes.value.push(...newNotes)
+      // 直接“默默地”并入现有列表（虚拟列表通常可承受 +300）
+      // 与你当前的去重/排序策略保持一致（这里假设后端排序稳定）
+      const existing = new Set(notes.value.map(n => n.id))
+      const toAppend = pageNotes.filter(n => !existing.has(n.id))
+      if (toAppend.length) {
+        notes.value = [...notes.value, ...toAppend]
+        // 更新本地缓存与快照（每一页都刷，简单可靠）
+        try {
+          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+          localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+          await saveNotesSnapshot(notes.value)
+        }
+        catch {}
       }
 
-      totalNotes.value = count || 0
-      hasMoreNotes.value = (currentPage.value * notesPerPage) < totalNotes.value
-      pagesLoaded++
+      // 把“已加载到第几页”的指针同步推进，
+      // 这样用户再次滚动时 nextPage() 会**从预取后的页码**继续，不会重复打网
+      currentPage.value = page
+      page++
+      fetchedPages++
+
+      // 这页不足 30，说明后面也没多少了
+      if (pageNotes.length < notesPerPage)
+        break
+
+      // 让主线程喘口气，避免长任务
+      await Promise.resolve()
     }
-    catch (err) {
-      // 如果后台加载时出错（比如断网了），就在控制台打印一个错误，然后安靜地停止
-      console.error('后台笔记加载失败:', err)
-      hasMoreNotes.value = false // 停止后续尝试
-      break // 退出循环
-    }
+
+    // 根据总数与当前已加载数量刷新 hasMore
+    hasMoreNotes.value = notes.value.length < (totalNotes.value || 0)
   }
-
-  // console.log(`后台加载完成，共预加载了 ${pagesLoaded * notesPerPage} 条笔记。`)
-
-  // 预加载完成后，更新本地的完整缓存，供离线使用
-  if (pagesLoaded > 0) {
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-    try {
-      await saveNotesSnapshot(notes.value)
-    }
-    catch (e) {
-      console.warn('后台加载后的快照保存失败:', e)
-    }
-    localStorage.setItem('notes_preload_timestamp', Date.now().toString())
+  finally {
+    isPrefetching.value = false
   }
 }
 
