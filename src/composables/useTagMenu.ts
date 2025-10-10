@@ -881,7 +881,7 @@ export function useTagMenu(
           invalidateOneTagCache(oldTag)
           invalidateOneTagCache(newTag)
           invalidateAllSearchCaches()
-          await refreshTagCountsFromServer()
+          await refreshTagCountsFromServer(true)
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('notes.update_success') || '重命名成功'}（${count}）`)
@@ -929,7 +929,7 @@ export function useTagMenu(
           invalidateOneTagCache(tag)
           invalidateAllTagCaches()
           invalidateAllSearchCaches()
-          await refreshTagCountsFromServer()
+          await refreshTagCountsFromServer(true)
           const count = typeof data === 'number' ? data : undefined
           if (typeof count === 'number')
             message.success(`${t('tags.delete_tag_success') || '已删除标签'}（${count}）个`)
