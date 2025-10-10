@@ -1069,25 +1069,41 @@ async function fetchNotes() {
     offlineToastShown = false
 
     // ⬇️⬇️⬇️ 新增：仅当是“首屏第一页成功”时，后台静默预取后续 10 页（≈300 条）
-    if (currentPage.value === 1 && hasMoreNotes.value) {
-      // ① 数量门槛：已有“首屏 + 预取量”≈ (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5 就不预取
-      const enoughCached = Array.isArray(notes.value)
-    && notes.value.length >= (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5
+    hasMoreNotes.value = to + 1 < totalNotes.value
+    offlineToastShown = false
 
-      // ② 时间门槛：距离上次预取未超过 TTL 则不预取
-      let fresh = false
+    if (currentPage.value === 1 && hasMoreNotes.value) {
+      // —— 目标阈值：首屏 + 预取页数（例如 1 + 10 页），并对齐总数上限
+      const TARGET = Math.min(
+        (totalNotes.value || Number.POSITIVE_INFINITY), (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5, // 留点冗余
+      )
+
+      // 当前内存里是否已足够
+      const enoughInMemory = Array.isArray(notes.value) && notes.value.length >= TARGET
+
+      // 读取上次预取元数据
+      let recentlyPrefetchedEnough = false
       try {
         const metaRaw = localStorage.getItem(PREFETCH_META_KEY)
         if (metaRaw) {
           const meta = JSON.parse(metaRaw)
-          fresh = (Date.now() - (meta.ts || 0)) < PREFETCH_TTL_MS
-          if (meta.totalNotesAtPrefetch && meta.totalNotesAtPrefetch !== (totalNotes.value || 0))
-            fresh = false
+          const fresh = (Date.now() - (meta.ts || 0)) < PREFETCH_TTL_MS
+
+          // 注意：只有“新鲜”且“当时加载量也达到目标阈值”，才算真正“够了”
+          const loadedCount = typeof meta.loadedCount === 'number' ? meta.loadedCount : 0
+
+          // 如果总数发生变化（新增/删除），不算“够”
+          const sameTotal = (meta.totalNotesAtPrefetch || 0) === (totalNotes.value || 0)
+
+          recentlyPrefetchedEnough = fresh && sameTotal && loadedCount >= TARGET
         }
       }
       catch {}
 
-      if (!enoughCached && !fresh)
+      // 只有当“内存已经够” 或 “最近预取且当时也够”之一成立时，才跳过静默加载
+      const skipPrefetch = enoughInMemory || recentlyPrefetchedEnough
+
+      if (!skipPrefetch)
         silentPrefetchMore()
     }
   }
