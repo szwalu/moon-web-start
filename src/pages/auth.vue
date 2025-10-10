@@ -328,18 +328,29 @@ onMounted(() => {
             // 路径D：没有任何缓存，正常首次加载主页
             isLoadingNotes.value = true // 只有在这里才需要设置加载状态
             await fetchNotes() // fetchNotes内部会把加载状态设为false
-            const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000 // 冷却时间：24小时
-            const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
 
-            if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
-              // 如果距离上次成功加载已超过24小时，则再次执行后台加载
-              fetchMoreNotesInBackground()
+            if (notes.value.length > notesPerPage) {
+              // 如果已有笔记数量大于一页（说明已存在丰富的缓存），则跳过初始的网络加载
+              // console.log(`从 localStorage 恢复了 ${notes.value.length} 条笔记，跳过初始网络加载。`)
+              isLoadingNotes.value = false // 确保没有加载动画
+              hasMoreNotes.value = notes.value.length < totalNotes.value
             }
             else {
-              // 否则，跳过本次加载
-              // console.log('距离上次后台加载时间较短，本次跳过。')
+              // 如果没有足够的缓存，执行“首次加载”流程
+              isLoadingNotes.value = true
+              await fetchNotes() // 加载前30条
+
+              // 检查是否需要进行后台静默加载
+              const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000
+              const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
+
+              if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
+                fetchMoreNotesInBackground()
+              }
+              else {
+                // console.log('距离上次后台加载时间较短，本次跳过。')
+              }
             }
-            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
         })
