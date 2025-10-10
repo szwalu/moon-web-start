@@ -196,164 +196,136 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-onMounted(() => {
-  // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
-  ;(async () => {
-    try {
-      const { data, error } = await supabase.auth.getSession()
-      if (!error) {
-        const currentUser = data?.session?.user ?? null
-        if (authStore.user?.id !== currentUser?.id)
-          authStore.user = currentUser
-      }
-    }
-    catch {}
-  })()
-  // === [PATCH-3 END] ===
+// 文件位置: src/pages/auth.vue
 
-  // isLoadingNotes.value = true
-  const loadCache = async () => {
-    try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
-      if (cachedData)
-        notes.value = JSON.parse(cachedData)
-    }
-    catch (e) {
-      console.error('Failed to load notes from cache', e)
-      localStorage.removeItem(CACHE_KEYS.HOME)
+onMounted(async () => {
+  // 1. [重构] 移除 setTimeout，在 onMounted 开始时立即、同步地尝试从缓存加载数据
+  try {
+    const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
+    if (cachedData)
+      notes.value = JSON.parse(cachedData)
+
+    // 如果 localStorage 为空，再作为兜底尝试 IndexedDB
+    if (!notes.value || notes.value.length === 0) {
+      const local = await readNotesSnapshot()
+      if (local && local.length) {
+        notes.value = local
+        isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
+      }
     }
   }
-  setTimeout(() => {
-    loadCache()
-  }, 0)
+  catch (e) {
+    console.error('Failed to load notes from cache', e)
+    localStorage.removeItem(CACHE_KEYS.HOME)
+  }
 
-  // ✅ IndexedDB 快照兜底（仅当上面的 localStorage 没恢复任何内容时才触发）
-  ;(async () => {
-    try {
-      // 等一帧，给 loadCache() 一个机会先把 localStorage 填进来
-      await Promise.resolve()
-      if (!notes.value || notes.value.length === 0) {
-        const local = await readNotesSnapshot()
-        if (local && local.length) {
-          notes.value = local
-          isOffline.value = typeof navigator !== 'undefined' && 'onLine' in navigator ? !navigator.onLine : false
-        }
-      }
-    }
-    catch {}
-  })()
-
+  // 2. 添加必要的事件监听
   document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  // 3. 设置认证状态监听器，回调函数不再需要 nextTick
   const result = supabase.auth.onAuthStateChange(
-    (event, session) => {
+    async (event, session) => { // 回调函数变为 async
       const currentUser = session?.user ?? null
       if (authStore.user?.id !== currentUser?.id)
         authStore.user = currentUser
 
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
-        nextTick(async () => {
-          // --- 重构后的逻辑 ---
-          // 1. 优先检查所有可能的缓存状态
-          const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
-          const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
-          const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
-          // ++ 新增：那年今日缓存
-          const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
-          const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
+        // --- 重构后的逻辑 ---
+        const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
+        const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
+        const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
+        const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
+        const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
 
-          // 2. 根据缓存情况决定执行路径
-          if (savedSearchQuery && savedSearchResults) {
-            // 路径A：有完整的搜索缓存，直接恢复，不请求网络
-            searchQuery.value = savedSearchQuery
-            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+        // 根据缓存情况决定执行路径
+        if (savedSearchQuery && savedSearchResults) {
+          // 路径A：有完整的搜索缓存，直接恢复，不请求网络
+          searchQuery.value = savedSearchQuery
+          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+          try {
+            notes.value = JSON.parse(savedSearchResults)
+          }
+          catch (e) {
+            console.error('Failed to parse cached search results:', e)
+            sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+          }
+          isLoadingNotes.value = false
+          hasMoreNotes.value = false
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
+        }
+        else if (savedSearchQuery) {
+          // 路径B：只有关键词，需要重新搜索
+          searchQuery.value = savedSearchQuery
+          showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+          noteActionsRef.value?.executeSearch()
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
+        }
+        else if (savedTagFilter) {
+          // 路径C：有标签筛选，执行标签筛选
+          await fetchNotesByTag(savedTagFilter)
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
+        }
+        else if (savedAnnivActive) {
+          // 路径E：那年今日
+          isShowingSearchResults.value = false
+          activeTagFilter.value = null
+          showSearchBar.value = false
+
+          if (savedAnnivResults) {
             try {
-              notes.value = JSON.parse(savedSearchResults)
+              const parsed = JSON.parse(savedAnnivResults)
+              anniversaryNotes.value = parsed
+              isAnniversaryViewActive.value = true
+              hasMoreNotes.value = false
+              nextTick(() => {
+                anniversaryBannerRef.value?.setView(true)
+              })
             }
-            catch (e) {
-              console.error('Failed to parse cached search results:', e)
-              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-            }
-            isLoadingNotes.value = false // 确保没有加载动画
-            hasMoreNotes.value = false
-            // 恢复后，再去获取标签等次要信息
-            //  fetchAllTags()
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
-          }
-          else if (savedSearchQuery) {
-            // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
-            searchQuery.value = savedSearchQuery
-            showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
-            noteActionsRef.value?.executeSearch()
-            // fetchAllTags()
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
-          }
-          else if (savedTagFilter) {
-            // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
-            await fetchNotesByTag(savedTagFilter)
-            // fetchAllTags()
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
-          }
-          // ++ 路径E：那年今日
-          else if (savedAnnivActive) {
-            // 与搜索/标签互斥：确保只呈现那年今日
-            isShowingSearchResults.value = false
-            activeTagFilter.value = null
-            showSearchBar.value = false // 恢复时关闭搜索栏较合理
-
-            if (savedAnnivResults) {
-              try {
-                const parsed = JSON.parse(savedAnnivResults)
-                anniversaryNotes.value = parsed
-                isAnniversaryViewActive.value = true
-                hasMoreNotes.value = false
-                nextTick(() => {
-                  anniversaryBannerRef.value?.setView(true)
-                })
-              }
-              catch {
-                // 解析失败则让 Banner 重新加载
-                anniversaryBannerRef.value?.loadAnniversaryNotes()
-              }
-            }
-            else {
-              // 没存下具体结果：重新计算
+            catch {
               anniversaryBannerRef.value?.loadAnniversaryNotes()
             }
-
-            // 附带拉取标签等
-            // fetchAllTags()
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
           else {
-            // 路径D：没有任何缓存，正常首次加载主页
-            isLoadingNotes.value = true // 只有在这里才需要设置加载状态
-            await fetchNotes() // fetchNotes内部会把加载状态设为false
-
-            if (notes.value.length > notesPerPage) {
-              // 如果已有笔记数量大于一页（说明已存在丰富的缓存），则跳过初始的网络加载
-              // console.log(`从 localStorage 恢复了 ${notes.value.length} 条笔记，跳过初始网络加载。`)
-              isLoadingNotes.value = false // 确保没有加载动画
-              hasMoreNotes.value = notes.value.length < totalNotes.value
-            }
-            else {
-              // 如果没有足够的缓存，执行“首次加载”流程
-              isLoadingNotes.value = true
-              await fetchNotes() // 加载前30条
-
-              // 检查是否需要进行后台静默加载
-              const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000
-              const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
-
-              if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
-                fetchMoreNotesInBackground()
-              }
-              else {
-                // console.log('距离上次后台加载时间较短，本次跳过。')
-              }
-            }
             anniversaryBannerRef.value?.loadAnniversaryNotes()
           }
-        })
+
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
+        }
+        else {
+          // 路径D：没有任何会话状态，加载主页（已重构）
+          if (notes.value.length > notesPerPage) {
+            // 如果已有笔记数量大于一页（说明已存在丰富的缓存），则跳过初始的网络加载
+            // console.log(`从 localStorage 恢复了 ${notes.value.length} 条笔记，跳过初始网络加载。`)
+            isLoadingNotes.value = false
+            // 尝试从 meta 缓存中恢复 totalNotes，以正确计算 hasMoreNotes 状态
+            const metaRaw = localStorage.getItem(CACHE_KEYS.HOME_META)
+            if (metaRaw) {
+              try {
+                const meta = JSON.parse(metaRaw)
+                totalNotes.value = meta.totalNotes || 0
+              }
+              catch {}
+            }
+            hasMoreNotes.value = notes.value.length < totalNotes.value
+          }
+          else {
+            // 如果没有足够的缓存，执行“首次加载”流程
+            isLoadingNotes.value = true
+            await fetchNotes() // 加载前30条
+
+            // 检查是否需要进行后台静默加载
+            const PRELOAD_COOLDOWN = 24 * 60 * 60 * 1000
+            const lastPreloadTime = Number.parseInt(localStorage.getItem('notes_preload_timestamp') || '0', 10)
+
+            if (Date.now() - lastPreloadTime > PRELOAD_COOLDOWN) {
+              fetchMoreNotesInBackground()
+            }
+            else {
+              // console.log('距离上次后台加载时间较短，本次跳过。')
+            }
+          }
+          anniversaryBannerRef.value?.loadAnniversaryNotes()
+        }
       }
       else if (event === 'SIGNED_OUT') {
         notes.value = []
@@ -366,11 +338,12 @@ onMounted(() => {
         localStorage.removeItem(LOCAL_CONTENT_KEY)
       }
       else {
-        // [PATCH-4] 兜底：未知事件也同步一次 user，避免卡在未知态
+        // 兜底：未知事件也同步一次 user
         authStore.user = session?.user ?? null
       }
     },
   )
+
   authListener = result.data.subscription
   const savedContent = localStorage.getItem(LOCAL_CONTENT_KEY)
   if (savedContent)
