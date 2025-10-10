@@ -2380,7 +2380,7 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 /* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
-    max-height: 70vh !important;
+    max-height: 70dvh !important;
   }
 }
 
