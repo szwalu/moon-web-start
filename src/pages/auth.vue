@@ -94,11 +94,8 @@ const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 const isOffline = ref(false)
 let offlineToastShown = false
-// 静默预取控制
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 10 // 10 页 * 30 条 = 300 条
-const PREFETCH_META_KEY = 'home_prefetch_meta_v1'
-const PREFETCH_TTL_MS = 24 * 60 * 60 * 1000 // 24 小时有效期（可改）
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -1068,44 +1065,23 @@ async function fetchNotes() {
     // ✅ 拉取成功 => 复位“离线只弹一次”的开关
     offlineToastShown = false
 
-    // ⬇️⬇️⬇️ 新增：仅当是“首屏第一页成功”时，后台静默预取后续 10 页（≈300 条）
-    hasMoreNotes.value = to + 1 < totalNotes.value
-    offlineToastShown = false
+    // 目标条数：首屏 + 10 页（300 条），对齐总数上限；留 5 条冗余
+    const TARGET = Math.min(
+      (totalNotes.value || Number.POSITIVE_INFINITY), (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5,
+    )
+    const loadedEnough = Array.isArray(notes.value) && notes.value.length >= TARGET
 
-    if (currentPage.value === 1 && hasMoreNotes.value) {
-      // —— 目标阈值：首屏 + 预取页数（例如 1 + 10 页），并对齐总数上限
-      const TARGET = Math.min(
-        (totalNotes.value || Number.POSITIVE_INFINITY), (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5, // 留点冗余
-      )
-
-      // 当前内存里是否已足够
-      const enoughInMemory = Array.isArray(notes.value) && notes.value.length >= TARGET
-
-      // 读取上次预取元数据
-      let recentlyPrefetchedEnough = false
-      try {
-        const metaRaw = localStorage.getItem(PREFETCH_META_KEY)
-        if (metaRaw) {
-          const meta = JSON.parse(metaRaw)
-          const fresh = (Date.now() - (meta.ts || 0)) < PREFETCH_TTL_MS
-
-          // 注意：只有“新鲜”且“当时加载量也达到目标阈值”，才算真正“够了”
-          const loadedCount = typeof meta.loadedCount === 'number' ? meta.loadedCount : 0
-
-          // 如果总数发生变化（新增/删除），不算“够”
-          const sameTotal = (meta.totalNotesAtPrefetch || 0) === (totalNotes.value || 0)
-
-          recentlyPrefetchedEnough = fresh && sameTotal && loadedCount >= TARGET
-        }
-      }
-      catch {}
-
-      // 只有当“内存已经够” 或 “最近预取且当时也够”之一成立时，才跳过静默加载
-      const skipPrefetch = enoughInMemory || recentlyPrefetchedEnough
-
-      if (!skipPrefetch)
-        silentPrefetchMore()
+    let fresh = false
+    try {
+      const tsRaw = localStorage.getItem(PREFETCH_LAST_TS_KEY)
+      const ts = tsRaw ? Number.parseInt(tsRaw, 10) : 0
+      fresh = ts > 0 && (Date.now() - ts) < PREFETCH_TTL_MS
     }
+    catch {}
+
+    // ✅ 只有“24h 内预取过”且“当前已够 10 页”才跳过；否则就预取
+    if (currentPage.value === 1 && hasMoreNotes.value && !(fresh && loadedEnough))
+      silentPrefetchMore()
   }
   catch (err: any) {
     // ⛔️ 离线 / 网络错误：只弹一次，并暂停无限下拉
@@ -1133,6 +1109,7 @@ async function fetchNotes() {
 }
 
 async function silentPrefetchMore() {
+  // 只在“主页列表”模式下预取；搜索/标签/那年今日时不预取
   if (isPrefetching.value
     || !user.value
     || isAnniversaryViewActive.value
@@ -1140,8 +1117,11 @@ async function silentPrefetchMore() {
     || isShowingSearchResults.value)
     return
 
+  // 已经没有更多也不预取
   if (!hasMoreNotes.value)
     return
+
+  // 离线不预取
   if (navigator.onLine === false)
     return
 
@@ -1151,11 +1131,13 @@ async function silentPrefetchMore() {
     let fetchedPages = 0
 
     while (fetchedPages < SILENT_PREFETCH_PAGES) {
+      // 根据 totalNotes 估算是否还有数据
       const from = (page - 1) * notesPerPage
       const to = from + notesPerPage - 1
       if (totalNotes.value && from >= totalNotes.value)
         break
 
+      // 与 fetchNotes 同样的查询，但不触发任何加载动画
       const { data, error } = await supabase
         .from('notes')
         .select('id, content, weather, created_at, updated_at, is_pinned')
@@ -1170,6 +1152,7 @@ async function silentPrefetchMore() {
       if (pageNotes.length === 0)
         break
 
+      // 直接“默默地”并入现有列表
       const existing = new Set(notes.value.map(n => n.id))
       const toAppend = pageNotes.filter(n => !existing.has(n.id))
       if (toAppend.length) {
@@ -1188,20 +1171,20 @@ async function silentPrefetchMore() {
 
       if (pageNotes.length < notesPerPage)
         break
-      await Promise.resolve() // 让主线程喘口气
+
+      await Promise.resolve()
     }
 
     hasMoreNotes.value = notes.value.length < (totalNotes.value || 0)
 
-    // 记录预取元数据（✅ 加上 catch）
-    try {
-      localStorage.setItem(PREFETCH_META_KEY, JSON.stringify({
-        ts: Date.now(),
-        totalNotesAtPrefetch: totalNotes.value || 0,
-        loadedCount: Array.isArray(notes.value) ? notes.value.length : 0,
-      }))
+    // ✅ 仅当确实抓到数据时，记录 24 小时冷却时间戳
+    if (fetchedPages > 0) {
+      try {
+        const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
+        localStorage.setItem(PREFETCH_LAST_TS_KEY, String(Date.now()))
+      }
+      catch {}
     }
-    catch {}
   }
   finally {
     isPrefetching.value = false
