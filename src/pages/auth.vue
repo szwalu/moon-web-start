@@ -4,7 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
+import { Bell, Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
+import { ensureServiceWorkerRegistered, requestNotifyPermission } from '@/utils/notify'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -167,6 +168,7 @@ const mainMenuOptions = computed(() => [
   { label: t('settings.font_title'), key: 'settings', icon: () => h(Settings, { size: 18 }) },
   { label: t('notes.export_all'), key: 'export', icon: () => h(Download, { size: 18 }) },
   { label: t('auth.account_title'), key: 'account', icon: () => h(User, { size: 18 }) },
+  { label: '开启系统通知', key: 'enableNotify', icon: () => h(Bell, { size: 18 }) },
   { label: '回收站', key: 'trash', icon: () => h(Trash2, { size: 18 }) },
 
   // —— 分界线 ——
@@ -1698,11 +1700,40 @@ function handleMainMenuSelect(rawKey: string) {
     case 'tags':
       // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
+    case 'enableNotify':
+      enableSystemNotifications()
+      break
     case 'trash':
       showTrashModal.value = true
       break
     default:
       break
+  }
+}
+
+async function enableSystemNotifications() {
+  try {
+    // 确保已注册 SW（/public/sw.js），否则部分浏览器下无法显示系统通知
+    await ensureServiceWorkerRegistered('/sw.js')
+    const res = await requestNotifyPermission()
+    if (res === 'granted')
+      messageHook.success('已开启系统通知')
+    else if (res === 'denied')
+      messageHook.warning('你拒绝了通知权限，可在系统设置或浏览器设置里重新开启')
+    else
+      messageHook.info('通知权限尚未决定，可以稍后再试')
+  }
+  catch (e: any) {
+    messageHook.error(`开启失败：${e?.message || '未知错误'}`)
+  }
+  finally {
+    // 友好：收起菜单（可选）
+    try {
+      (mainMenuVisible as any).value = false
+    }
+    catch (e) {
+      // ignore
+    }
   }
 }
 

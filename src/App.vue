@@ -1,21 +1,42 @@
-<script setup>
+<script setup lang="ts">
 import { RouterView } from 'vue-router'
 
-// --- 1. 新增: 导入 NConfigProvider, darkTheme, useDark 和 computed ---
-import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
+// Naive UI 组件与主题
+import {
+  NConfigProvider,
+  NDialogProvider,
+  NMessageProvider,
+  NNotificationProvider,
+  createDiscreteApi,
+  darkTheme,
+} from 'naive-ui'
+
+// 其它依赖
 import { useDark } from '@vueuse/core'
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
 // 启动令牌刷新
 useSupabaseTokenRefresh()
 
-// --- 2. 新增: 添加暗黑模式逻辑 ---
-// useDark() 会自动检测并响应系统的暗黑模式切换
+// 暗黑模式
 const isDark = useDark()
-
-// 创建一个计算属性，当 isDark 为 true 时，应用 darkTheme，否则不应用任何特定主题（即为亮色模式）
 const theme = computed(() => (isDark.value ? darkTheme : null))
+
+// 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
+onMounted(() => {
+  const { message } = createDiscreteApi(['message'])
+  const handler = () => {
+    try {
+      message.info('🔔 今日回顾：点这里打开你的复盘视图')
+    }
+    catch (e) {
+      /* no-op */
+    }
+  }
+  window.addEventListener('review-reminder', handler)
+  onUnmounted(() => window.removeEventListener('review-reminder', handler))
+})
 </script>
 
 <template>
