@@ -717,18 +717,17 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     const willPlaceAbove = spaceAboveInTextarea >= fiveItemsHeight
 
     // --- 🚀 新逻辑开始 ---
-    let newMaxHeight = fiveItemsHeight // 默认高度为5个标签
-    if (willPlaceAbove) {
-      // 如果朝上，且上方空间大于5个标签的高度，则拉伸至最多6个标签的高度
-      if (spaceAboveInTextarea > fiveItemsHeight) {
-        const sixItemsHeight = (singleItemHeight * 6) + verticalPadding
-        newMaxHeight = sixItemsHeight
-      }
-    }
-    else {
-      // 如果朝下，且下方空间大于5个标签的高度，则拉伸以填满下方可用空间
+    // 计算6个和10个标签的基准高度
+    const sixItemsHeight = (singleItemHeight * 6) + verticalPadding
+    const tenItemsHeight = (singleItemHeight * 10) + verticalPadding
+
+    let newMaxHeight = sixItemsHeight // 默认高度为6个标签
+
+    // 仅在朝下显示时应用特殊拉伸规则
+    if (!willPlaceAbove) {
+      // 如果朝下，且下方空间大于5个标签的高度，则拉伸至最多10个标签的高度
       if (spaceBelowInTextarea > fiveItemsHeight)
-        newMaxHeight = spaceBelowInTextarea
+        newMaxHeight = tenItemsHeight
     }
     panel.style.maxHeight = `${newMaxHeight}px`
     // --- 🚀 新逻辑结束 ---
