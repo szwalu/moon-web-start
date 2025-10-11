@@ -29,13 +29,6 @@ function setLastRemindToday() {
   localStorage.setItem(LAST_GLOBAL_REVIEW_KEY, today)
 }
 
-// 在 App.vue 顶部某处添加（<script setup> 里）
-if (typeof window !== 'undefined') {
-  const qs = new URLSearchParams(window.location.search)
-  if (qs.has('resetReminder'))
-    localStorage.removeItem('last_global_review_date') // 你项目里用的全局标记 key
-}
-
 // 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
 onMounted(() => {
   const { message } = createDiscreteApi(['message'])
