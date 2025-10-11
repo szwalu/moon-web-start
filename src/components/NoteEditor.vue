@@ -631,18 +631,17 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
       const isBPinned = isPinned(b)
       if (isAPinned !== isBPinned)
         return isAPinned ? -1 : 1
-
-      // 优先级2：按使用频率（笔记数量）降序排列
+      // 优先级2：按使用频率（笔记数量）降序
       const countA = props.tagCounts[a] || 0
       const countB = props.tagCounts[b] || 0
       if (countA !== countB)
-        return countB - countA // 数量多的在前
-
-      // 优先级3：如果频率相同，按字母顺序作为最终排序
+        return countB - countA
+      // 优先级3：频率相同则按字母序
       return a.slice(1).toLowerCase().localeCompare(b.slice(1).toLowerCase())
     })
 
   tagSuggestions.value = filtered
+  // --- 修复点 1 ---
   if (!tagSuggestions.value.length) {
     showTagSuggestions.value = false
     return
@@ -650,6 +649,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   // === 计算光标像素位置（相对 .editor-wrapper） ===
   const wrapper = el.parentElement as HTMLElement | null // .editor-wrapper（position: relative）
+  // --- 修复点 2 ---
   if (!wrapper) {
     showTagSuggestions.value = false
     return
@@ -672,9 +672,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   wrapper.appendChild(mirror)
 
   const selEnd = el.selectionEnd ?? el.value.length
-  const before = el.value.slice(0, selEnd)
-    .replace(/\n$/u, '\n ')
-    .replace(/ /g, '\u00A0')
+  const before = el.value.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
   const probe = document.createElement('span')
   probe.textContent = '\u200B' // 零宽探针当作光标点
   mirror.textContent = before
@@ -683,7 +681,6 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   const probeRect = probe.getBoundingClientRect()
   const wrapperRect = wrapper.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()
-
   const caretX = (probeRect.left - wrapperRect.left) - (el.scrollLeft || 0)
   const caretY = (probeRect.top - wrapperRect.top) - (el.scrollTop || 0)
   mirror.remove()
@@ -709,47 +706,45 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     if (!panel)
       return
 
-    // 基本尺寸
-    const panelW = panel.offsetWidth
-    let panelH = panel.offsetHeight
+    // 1. 计算基准高度和输入框内的可用空间
+    const firstItem = panel.querySelector('li')
+    const singleItemHeight = firstItem ? firstItem.offsetHeight : 28
+    const verticalPadding = 8
+    const fiveItemsHeight = (singleItemHeight * 5) + verticalPadding
 
-    // 水平防溢出：右侧不够则左收口（不越过 textarea 左边）
+    // 关键: 计算光标在 "输入框内部" 上下的空间
+    const spaceAboveInTextarea = caretY - textAreaBox.top - GAP
+    const spaceBelowInTextarea = textAreaBox.bottom - caretY - lineHeight - GAP
+
+    // 2. 决定面板的朝向（是向上还是向下）
+    const willPlaceAbove = spaceAboveInTextarea >= fiveItemsHeight
+
+    // 3. 根据新规则设置 maxHeight
+    let newMaxHeight = fiveItemsHeight // 默认高度为5个标签
+    if (willPlaceAbove) {
+      // 如果朝上，且上方空间大于5个标签的高度，则拉伸以填满上方空间
+      if (spaceAboveInTextarea > fiveItemsHeight)
+        newMaxHeight = spaceAboveInTextarea
+    }
+    else {
+      // 如果朝下，且下方空间大于5个标签的高度，则拉伸以填满下方空间
+      if (spaceBelowInTextarea > fiveItemsHeight)
+        newMaxHeight = spaceBelowInTextarea
+    }
+    panel.style.maxHeight = `${newMaxHeight}px`
+
+    // 4. 获取应用了 maxHeight 之后的最终面板尺寸
+    const panelH = panel.offsetHeight
+    const panelW = panel.offsetWidth
+
+    // 5. 水平位置防溢出
     if (left + panelW > textAreaBox.left + textAreaBox.width)
       left = Math.max(textAreaBox.left, textAreaBox.left + textAreaBox.width - panelW)
 
-    // 计算上下可用空间（相对 textarea 可视区）
-    const spaceBelow = (textAreaBox.bottom) - (caretY + lineHeight + GAP)
-    const spaceAbove = (caretY) - (textAreaBox.top) - GAP
-    const BUFFER = 8
-
-    let top: number
-
-    // 规则：优先完整放下方；否则完整放上方；否则选空间更大的一侧并限高
-    if (spaceBelow >= panelH + BUFFER) {
-      // ✅ 下方足够
-      top = caretY + lineHeight + GAP
-      panel.style.maxHeight = '' // 还原可能的历史限高
-    }
-    else if (spaceAbove >= panelH + BUFFER) {
-      // ✅ 上方足够
-      top = Math.max(textAreaBox.top, caretY - GAP - panelH)
-      panel.style.maxHeight = ''
-    }
-    else {
-      // 两侧都不够：选空间更大的一侧，设置 max-height
-      if (spaceBelow >= spaceAbove) {
-        const maxH = Math.max(100, spaceBelow - BUFFER)
-        panel.style.maxHeight = `${maxH}px`
-        panelH = panel.offsetHeight
-        top = caretY + lineHeight + GAP
-      }
-      else {
-        const maxH = Math.max(100, spaceAbove - BUFFER)
-        panel.style.maxHeight = `${maxH}px`
-        panelH = panel.offsetHeight
-        top = Math.max(textAreaBox.top, caretY - GAP - panelH)
-      }
-    }
+    // 6. 使用最终的面板高度(panelH)来计算最终的 top 位置
+    const top = willPlaceAbove
+      ? (caretY - GAP - panelH)
+      : (caretY + lineHeight + GAP)
 
     suggestionsStyle.value = { top: `${top}px`, left: `${left}px` }
   })
