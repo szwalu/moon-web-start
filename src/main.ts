@@ -154,15 +154,15 @@ async function setupApp() {
   // 3) 启动“每天 9:00”的提醒（系统通知 or 应用内回退）
   //    这里示例的应用内提醒：显示一个全局 Banner（可以替换为你自己的 Naive UI 提示）
   scheduleDailyReminder({
-    hour: 12, // 小时部分
-    minute: 59, // 分钟部分
-    title: '今日回顾',
-    body: '来看看今天/最近的卡片吧～',
+    hour: 14, // 小时部分
+    minute: 57, // 分钟部分
+    title: '那年今日回顾',
+    body: '来看看那年今日的卡片吧～',
     onInAppRemind: () => {
       try {
         // 替代 alert：改用控制台/全局事件/Naive UI message 等
         // 或：console.info('🔔 今日回顾：点这里打开你的复盘视图（示例）')
-        window.dispatchEvent(new CustomEvent('review-reminder'))
+        window.dispatchEvent(new CustomEvent('open-anniversary'))
       }
       catch (e) {
         // ignore
@@ -177,7 +177,7 @@ async function setupApp() {
     onInAppRemind: () => {
       try {
         // 或：console.info('🔔 今日回顾（补偿提醒）')
-        window.dispatchEvent(new CustomEvent('review-reminder'))
+        window.dispatchEvent(new CustomEvent('open-anniversary'))
       }
       catch (e) {
         // ignore

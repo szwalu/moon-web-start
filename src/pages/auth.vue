@@ -201,6 +201,15 @@ const showAnniversaryBanner = computed(() => {
 })
 
 onMounted(() => {
+  const openAnniversary = () => {
+    isAnniversaryViewActive.value = true
+    showCalendarView.value = false // 如果你希望互斥显示，可加这一句
+  }
+  window.addEventListener('open-anniversary', openAnniversary)
+  onUnmounted(() => window.removeEventListener('open-anniversary', openAnniversary))
+})
+
+onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
   ;(async () => {
     try {

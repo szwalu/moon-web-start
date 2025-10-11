@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterView, useRouter } from 'vue-router'
+import { RouterView } from 'vue-router'
 
 // Naive UI 组件与主题
 import {
@@ -29,18 +29,30 @@ function setLastRemindToday() {
   localStorage.setItem(LAST_GLOBAL_REVIEW_KEY, today)
 }
 
+// 在 App.vue 顶部某处添加（<script setup> 里）
+if (typeof window !== 'undefined') {
+  const qs = new URLSearchParams(window.location.search)
+  if (qs.has('resetReminder'))
+    localStorage.removeItem('last_global_review_date') // 你项目里用的全局标记 key
+}
+
 // 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
 onMounted(() => {
   const { message } = createDiscreteApi(['message'])
-  const router = useRouter()
+  // const router = useRouter()
 
   const handler = (_e: CustomEvent) => {
     message.info('🔔 今日回顾：点这里打开你的复盘视图', {
       duration: 0,
       closable: true,
       onClick: () => {
-        setLastRemindToday() // ✅ 点击时才标记今天已提醒
-        router.push('/calendar') // 可选：点击即跳转
+        // ✅ 点击时才记“今天已提醒”
+        setLastRemindToday()
+
+        // ✅ 打开“那年今日”
+        window.dispatchEvent(new CustomEvent('open-anniversary'))
+
+        // 关闭提示
         message.destroyAll()
       },
       onClose: () => {
