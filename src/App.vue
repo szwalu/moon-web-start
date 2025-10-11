@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { RouterView, useRouter } from 'vue-router'
 
 // Naive UI 组件与主题
 import {
@@ -26,14 +26,26 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 // 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
 onMounted(() => {
   const { message } = createDiscreteApi(['message'])
+  const router = useRouter() // ✅ 在这里拿到路由实例
+
   const handler = () => {
     try {
-      message.info('🔔 今日回顾：点这里打开你的复盘视图')
+      message.info('🔔 今日回顾：点这里打开你的复盘视图', {
+        duration: 0, // ⏰ 不自动消失
+        closable: true, // 🔘 有关闭按钮
+        onClick: () => {
+          // 🚀 点击提示时跳转到复盘页（你可以改成 /review 或其它）
+          router.push('/calendar')
+          // 手动关闭所有 message，防止残留
+          message.destroyAll()
+        },
+      })
     }
-    catch (e) {
+    catch {
       /* no-op */
     }
   }
+
   window.addEventListener('review-reminder', handler)
   onUnmounted(() => window.removeEventListener('review-reminder', handler))
 })
