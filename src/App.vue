@@ -23,31 +23,35 @@ useSupabaseTokenRefresh()
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
+const LAST_GLOBAL_REVIEW_KEY = 'last_global_review_date'
+function setLastRemindToday() {
+  const today = new Date().toISOString().slice(0, 10)
+  localStorage.setItem(LAST_GLOBAL_REVIEW_KEY, today)
+}
+
 // 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
 onMounted(() => {
   const { message } = createDiscreteApi(['message'])
-  const router = useRouter() // ✅ 在这里拿到路由实例
+  const router = useRouter()
 
-  const handler = () => {
-    try {
-      message.info('🔔 今日回顾：点这里打开你的复盘视图', {
-        duration: 0, // ⏰ 不自动消失
-        closable: true, // 🔘 有关闭按钮
-        onClick: () => {
-          // 🚀 点击提示时跳转到复盘页（你可以改成 /review 或其它）
-          router.push('/calendar')
-          // 手动关闭所有 message，防止残留
-          message.destroyAll()
-        },
-      })
-    }
-    catch {
-      /* no-op */
-    }
+  const handler = (_e: CustomEvent) => {
+    message.info('🔔 今日回顾：点这里打开你的复盘视图', {
+      duration: 0,
+      closable: true,
+      onClick: () => {
+        setLastRemindToday() // ✅ 点击时才标记今天已提醒
+        router.push('/calendar') // 可选：点击即跳转
+        message.destroyAll()
+      },
+      onClose: () => {
+        // 仅关闭不记账：用户手滑关了，还能再看到
+        // 如果你想“关闭也算确认”，就在这里也调用 setLastRemindToday()
+      },
+    })
   }
 
-  window.addEventListener('review-reminder', handler)
-  onUnmounted(() => window.removeEventListener('review-reminder', handler))
+  window.addEventListener('review-reminder', handler as EventListener)
+  onUnmounted(() => window.removeEventListener('review-reminder', handler as EventListener))
 })
 </script>
 
