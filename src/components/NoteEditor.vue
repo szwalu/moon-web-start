@@ -641,7 +641,6 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     })
 
   tagSuggestions.value = filtered
-  // --- 修复点 1 ---
   if (!tagSuggestions.value.length) {
     showTagSuggestions.value = false
     return
@@ -649,7 +648,6 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
 
   // === 计算光标像素位置（相对 .editor-wrapper） ===
   const wrapper = el.parentElement as HTMLElement | null // .editor-wrapper（position: relative）
-  // --- 修复点 2 ---
   if (!wrapper) {
     showTagSuggestions.value = false
     return
@@ -712,26 +710,28 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
     const verticalPadding = 8
     const fiveItemsHeight = (singleItemHeight * 5) + verticalPadding
 
-    // 关键: 计算光标在 "输入框内部" 上下的空间
     const spaceAboveInTextarea = caretY - textAreaBox.top - GAP
     const spaceBelowInTextarea = textAreaBox.bottom - caretY - lineHeight - GAP
 
     // 2. 决定面板的朝向（是向上还是向下）
     const willPlaceAbove = spaceAboveInTextarea >= fiveItemsHeight
 
-    // 3. 根据新规则设置 maxHeight
+    // --- 🚀 新逻辑开始 ---
     let newMaxHeight = fiveItemsHeight // 默认高度为5个标签
     if (willPlaceAbove) {
-      // 如果朝上，且上方空间大于5个标签的高度，则拉伸以填满上方空间
-      if (spaceAboveInTextarea > fiveItemsHeight)
-        newMaxHeight = spaceAboveInTextarea
+      // 如果朝上，且上方空间大于5个标签的高度，则拉伸至最多6个标签的高度
+      if (spaceAboveInTextarea > fiveItemsHeight) {
+        const sixItemsHeight = (singleItemHeight * 6) + verticalPadding
+        newMaxHeight = sixItemsHeight
+      }
     }
     else {
-      // 如果朝下，且下方空间大于5个标签的高度，则拉伸以填满下方空间
+      // 如果朝下，且下方空间大于5个标签的高度，则拉伸以填满下方可用空间
       if (spaceBelowInTextarea > fiveItemsHeight)
         newMaxHeight = spaceBelowInTextarea
     }
     panel.style.maxHeight = `${newMaxHeight}px`
+    // --- 🚀 新逻辑结束 ---
 
     // 4. 获取应用了 maxHeight 之后的最终面板尺寸
     const panelH = panel.offsetHeight
