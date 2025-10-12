@@ -86,7 +86,6 @@ const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
 const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
-let mainNotesCache: any[] = []
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 let authListener: any = null
@@ -389,6 +388,7 @@ function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
 
+  // 清除标签和日历缓存 (这部分逻辑保持不变)
   const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
   let match
   // eslint-disable-next-line no-cond-assign
@@ -402,8 +402,11 @@ function invalidateCachesOnDataChange(note: any) {
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
 
-  // 调用新的 localStorage 清理函数
+  // 清除 localStorage 中的搜索缓存
   invalidateAllSearchCaches()
+
+  // 【新增】同时清除 sessionStorage 中的搜索结果缓存，防止数据陈旧
+  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
 }
 
 /**
@@ -987,6 +990,7 @@ async function handlePinToggle(note: any) {
 
   // —— 在线分支：保持原逻辑不变 ——
   try {
+    // 步骤 1: 异步将状态变更推送到服务器
     const { error } = await supabase
       .from('notes')
       .update({ is_pinned: newPinStatus })
@@ -996,10 +1000,12 @@ async function handlePinToggle(note: any) {
     if (error)
       throw error
 
-    messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
+    // 步骤 2: 服务器成功后，立即在前端更新笔记状态并重新排序
+    const updatedNote = { ...note, is_pinned: newPinStatus }
+    // 调用我们已经完善的 updateNoteInList 函数来处理UI和缓存
+    updateNoteInList(updatedNote)
 
-    // 刷新主页列表（你原来的行为）
-    await fetchNotes()
+    messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
 
     // 如果日历视图是打开的，则调用它的刷新方法
     if (showCalendarView.value && calendarViewRef.value) {
@@ -1009,14 +1015,42 @@ async function handlePinToggle(note: any) {
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
+    // 可选：在这里添加回滚UI的逻辑，如果服务器更新失败
   }
 }
 
 function updateNoteInList(updatedNote: any) {
+  // 步骤 1: 无论如何，都先更新当前视图中的笔记，确保UI立即响应
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
+    // 对当前视图（可能是筛选后的）进行排序
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+  }
+
+  // 步骤 2: 智能地更新 LocalStorage 中的主缓存
+  if (activeTagFilter.value || isShowingSearchResults.value) {
+    // 如果当前在筛选或搜索视图中，则执行安全的“读取-修改-写回”操作
+    try {
+      const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+      if (homeCacheRaw) {
+        const homeCache = JSON.parse(homeCacheRaw)
+        const masterIndex = homeCache.findIndex((n: any) => n.id === updatedNote.id)
+
+        // 在主缓存中找到了这条笔记
+        if (masterIndex !== -1) {
+          homeCache[masterIndex] = { ...updatedNote }
+          // 将更新后的完整主缓存写回 LocalStorage
+          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(homeCache))
+        }
+      }
+    }
+    catch (e) {
+      console.error('未能安全地更新主笔记缓存:', e)
+    }
+  }
+  else {
+    // 如果当前就在主列表视图，直接保存即可，这是最安全且高效的
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
 }
@@ -1408,13 +1442,11 @@ async function triggerDeleteConfirmation(id: string) {
         totalNotes.value -= 1
         localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
-        if (activeTagFilter.value) {
-          mainNotesCache = mainNotesCache.filter(n => n.id !== id)
+        if (activeTagFilter.value)
           notes.value = notes.value.filter(n => n.id !== id)
-        }
-        else {
+
+        else
           notes.value = notes.value.filter(n => n.id !== id)
-        }
 
         messageHook.success(t('notes.delete_success'))
 
@@ -1812,7 +1844,6 @@ async function fetchNotesByTag(tag: string) {
   }
 
   // --- 如果没有缓存，才执行网络请求 ---
-  mainNotesCache = [...notes.value] // 缓存主列表
   notes.value = [] // 首次加载前清空
   currentPage.value = 1
   hasMoreNotes.value = true
@@ -1839,7 +1870,6 @@ function clearTagFilter() {
     fetchNotes()
   }
 
-  mainNotesCache = [] // 清理旧的内存变量
   noteListKey.value++ // 强制刷新列表
   headerCollapsed.value = false
 }
