@@ -4,8 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Bell, Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
-import { ensureServiceWorkerRegistered, requestNotifyPermission } from '@/utils/notify'
+import { Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -168,7 +167,6 @@ const mainMenuOptions = computed(() => [
   { label: t('settings.font_title'), key: 'settings', icon: () => h(Settings, { size: 18 }) },
   { label: t('notes.export_all'), key: 'export', icon: () => h(Download, { size: 18 }) },
   { label: t('auth.account_title'), key: 'account', icon: () => h(User, { size: 18 }) },
-  { label: '开启系统通知', key: 'enableNotify', icon: () => h(Bell, { size: 18 }) },
   { label: '回收站', key: 'trash', icon: () => h(Trash2, { size: 18 }) },
 
   // —— 分界线 ——
@@ -198,60 +196,6 @@ const showAnniversaryBanner = computed(() => {
 
   // 满足所有条件，才显示
   return true
-})
-
-onMounted(() => {
-  const openAnniversary = async () => {
-    try {
-      // 1) 关闭互斥视图/状态
-      showCalendarView.value = false
-      if (isSelectionModeActive.value)
-        finishSelectionMode()
-      if (activeTagFilter.value)
-        clearTagFilter()
-      if (searchQuery.value || isShowingSearchResults.value)
-        handleCancelSearch()
-      await nextTick()
-
-      // 2) 优先用 Banner 预计算的结果（sessionStorage 里）
-      let parsed: any[] | null = null
-      try {
-        const raw = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY) // 你文件顶部已定义这个常量
-        if (raw)
-          parsed = JSON.parse(raw)
-      }
-      catch {}
-
-      if (parsed) {
-        // 直接进入“那年今日”视图并带上数据
-        handleAnniversaryToggle(parsed)
-        return
-      }
-
-      // 3) 没有缓存：请求 Banner 计算一次，再回读结果
-      await anniversaryBannerRef.value?.loadAnniversaryNotes?.()
-      await Promise.resolve() // 等一拍，让 Banner 写入 sessionStorage
-
-      try {
-        const raw = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
-        if (raw) {
-          handleAnniversaryToggle(JSON.parse(raw))
-          return
-        }
-      }
-      catch {}
-
-      // 4) 兜底：至少把视图打开（即便没有数据也不会“空白卡住”）
-      isAnniversaryViewActive.value = true
-      nextTick(() => anniversaryBannerRef.value?.setView?.(true))
-    }
-    catch {
-      // 安静失败，不影响其他操作
-    }
-  }
-
-  window.addEventListener('open-anniversary', openAnniversary)
-  onUnmounted(() => window.removeEventListener('open-anniversary', openAnniversary))
 })
 
 onMounted(() => {
@@ -1754,40 +1698,11 @@ function handleMainMenuSelect(rawKey: string) {
     case 'tags':
       // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
-    case 'enableNotify':
-      enableSystemNotifications()
-      break
     case 'trash':
       showTrashModal.value = true
       break
     default:
       break
-  }
-}
-
-async function enableSystemNotifications() {
-  try {
-    // 确保已注册 SW（/public/sw.js），否则部分浏览器下无法显示系统通知
-    await ensureServiceWorkerRegistered('/sw.js')
-    const res = await requestNotifyPermission()
-    if (res === 'granted')
-      messageHook.success('已开启系统通知')
-    else if (res === 'denied')
-      messageHook.warning('你拒绝了通知权限，可在系统设置或浏览器设置里重新开启')
-    else
-      messageHook.info('通知权限尚未决定，可以稍后再试')
-  }
-  catch (e: any) {
-    messageHook.error(`开启失败：${e?.message || '未知错误'}`)
-  }
-  finally {
-    // 友好：收起菜单（可选）
-    try {
-      (mainMenuVisible as any).value = false
-    }
-    catch (e) {
-      // ignore
-    }
   }
 }
 

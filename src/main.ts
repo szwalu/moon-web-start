@@ -15,14 +15,6 @@ import App from './App.vue'
 import router from './router'
 import { setupI18n } from './utils'
 
-// 🔔 新增：导入通知/提醒工具（确保你已添加 src/utils/notify.ts 与 /public/sw.js）
-import {
-  ensureServiceWorkerRegistered,
-  // requestNotifyPermission, // 放在设置页按钮里调用更合适
-  scheduleDailyReminder,
-  setupVisibilityCompensation,
-} from '@/utils/notify'
-
 // 修正 iOS PWA 视口高度，消除底部“白条”
 (function fixAppVh() {
   const setVH = () => {
@@ -143,38 +135,6 @@ async function setupApp() {
   app.use(pinia)
   app.use(router)
   app.mount('#app')
-
-  // —— 🔔 启动提醒能力（集成你的代码）——
-  // 1) 注册 SW（尽早；这里放在 mount 后也可，已在入口阶段尽快执行）
-  ensureServiceWorkerRegistered('/sw.js')
-
-  // 2) 可在设置页/按钮触发权限请求（用户手势最好）：
-  //    await requestNotifyPermission()
-
-  // 3) 启动“每天 9:00”的提醒（系统通知 or 应用内回退）
-  //    这里示例的应用内提醒：显示一个全局 Banner（可以替换为你自己的 Naive UI 提示）
-  scheduleDailyReminder({
-    hour: 22,
-    minute: 27,
-    title: '那年今日',
-    body: '来看看那年今日卡片吧～',
-    onInAppRemind: () => {
-    // 打开“那年今日”
-      window.dispatchEvent(new CustomEvent('open-anniversary'))
-      // 同时弹出前台提示（点击后你在 App.vue 里会“记账”）
-      window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
-    },
-  })
-
-  // 4) 可见性补偿（避免错过当天 9:00）
-  // 页面重新可见时的补偿检查
-  setupVisibilityCompensation({
-    hour: 10,
-    minute: 40,
-    onInAppRemind: () => {
-      window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
-    },
-  })
 }
 
 setupApp()
