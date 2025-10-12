@@ -968,27 +968,40 @@ async function handlePinToggle(note: any) {
 
   const newPinStatus = !note.is_pinned
 
-  // —— 离线分支：本地删除 + 入队 outbox.delete ——
+  // --- 离线分支：修正为正确的“本地更新”+“入队更新”逻辑 ---
   if (!isOnline()) {
     try {
-    // 1) 先入队 delete（增强版会原子清理其它 outbox 项）
-      await queuePendingDelete(id)
+      const noteId = note.id
+      const updatedNote = { ...note, is_pinned: newPinStatus, updated_at: new Date().toISOString() }
 
-      // 2) 再应用本地 UI/缓存/快照删除（保持你现有实现）
-      await applyLocalDeletion([id])
+      // 1. 更新 UI 列表：找到笔记，更新状态，然后重新排序
+      const index = notes.value.findIndex(n => n.id === noteId)
+      if (index !== -1) {
+        notes.value[index] = updatedNote
+        // 重新排序，让置顶的笔记立刻出现在最前面
+        notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+      }
 
-      messageHook.success(t('notes.delete_success'))
+      // 2. 刷新本地缓存 (localStorage) 和 IndexedDB 快照
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      await saveNotesSnapshot(notes.value)
+
+      // 3. 将“更新”操作加入离线队列，而不是“删除”
+      await queuePendingUpdate(noteId, { is_pinned: newPinStatus, updated_at: updatedNote.updated_at, user_id: user.value.id })
+
+      // 4. 显示正确的成功提示
+      messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
       return
     }
     catch (e: any) {
-    // 极端情况下的兜底：提示并不改变现有列表（或可在此回滚 UI）
-      console.warn('[offline] delete failed:', e)
-      messageHook.error(`${t('notes.delete_error')}: ${e?.message || t('notes.try_again')}`)
+      console.warn('[offline] pin failed:', e)
+      // 显示通用的操作失败提示
+      messageHook.error(`${t('notes.operation_error')}: ${e?.message || t('notes.try_again')}`)
       return
     }
   }
 
-  // —— 在线分支：保持原逻辑不变 ——
+  // --- 在线分支 (使用我们之前优化过的版本) ---
   try {
     // 步骤 1: 异步将状态变更推送到服务器
     const { error } = await supabase
@@ -1000,9 +1013,8 @@ async function handlePinToggle(note: any) {
     if (error)
       throw error
 
-    // 步骤 2: 服务器成功后，立即在前端更新笔记状态并重新排序
+    // 步骤 2: 服务器成功后，调用 updateNoteInList 处理前端UI和缓存
     const updatedNote = { ...note, is_pinned: newPinStatus }
-    // 调用我们已经完善的 updateNoteInList 函数来处理UI和缓存
     updateNoteInList(updatedNote)
 
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
@@ -1015,10 +1027,8 @@ async function handlePinToggle(note: any) {
   }
   catch (err: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
-    // 可选：在这里添加回滚UI的逻辑，如果服务器更新失败
   }
 }
-
 function updateNoteInList(updatedNote: any) {
   // 步骤 1: 无论如何，都先更新当前视图中的笔记，确保UI立即响应
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
