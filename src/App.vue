@@ -23,12 +23,6 @@ useSupabaseTokenRefresh()
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
-const LAST_GLOBAL_REVIEW_KEY = 'last_global_review_date'
-function setLastRemindToday() {
-  const today = new Date().toISOString().slice(0, 10)
-  localStorage.setItem(LAST_GLOBAL_REVIEW_KEY, today)
-}
-
 // 🔔 全局监听“今日回顾”事件（独立于 Provider，避免解析/时序问题）
 onMounted(() => {
   const { message } = createDiscreteApi(['message'])
@@ -39,18 +33,9 @@ onMounted(() => {
       duration: 0,
       closable: true,
       onClick: () => {
-        // ✅ 点击时才记“今天已提醒”
-        setLastRemindToday()
-
-        // ✅ 打开“那年今日”
+        // 直接打开“那年今日”
         window.dispatchEvent(new CustomEvent('open-anniversary'))
-
-        // 关闭提示
         message.destroyAll()
-      },
-      onClose: () => {
-        // 仅关闭不记账：用户手滑关了，还能再看到
-        // 如果你想“关闭也算确认”，就在这里也调用 setLastRemindToday()
       },
     })
   }

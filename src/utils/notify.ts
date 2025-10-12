@@ -64,18 +64,6 @@ async function showSystemNotification(title: string, body: string) {
   }
 }
 
-/** 全局“当天已提醒”标记（仅用于判断；真正记账放在 App.vue 的点击回调里） */
-const LAST_GLOBAL_REVIEW_KEY = 'last_global_review_date'
-function isRemindedToday() {
-  try {
-    const today = new Date().toISOString().slice(0, 10)
-    return localStorage.getItem(LAST_GLOBAL_REVIEW_KEY) === today
-  }
-  catch {
-    return false
-  }
-}
-
 /** 应用内提醒的回调（由外部实现 UI，比如弹 Banner/Message） */
 export type InAppHandler = () => void
 
@@ -118,32 +106,22 @@ export async function scheduleDailyReminder(
   const canSystemNotify = !!(supported && swOk && permission === 'granted')
 
   const fireOnce = async () => {
-    // 当天已提醒过：不重复
-    if (isRemindedToday()) {
-      _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
-      return
-    }
-
     if (canSystemNotify) {
       const ok = await showSystemNotification(title, body)
       if (!ok) {
-        // 系统通知失败：走应用内提醒或事件
         if (onInAppRemind)
           onInAppRemind()
         else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
       }
     }
     else {
-      // 没权限：直接走应用内提醒或事件
       if (onInAppRemind)
         onInAppRemind()
       else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
     }
 
-    // 安排下一次
     _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
   }
-
   // 等到下一个 hh:mm 触发
   _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
 }
@@ -170,7 +148,7 @@ export function setupVisibilityCompensation(
     // 若已经过了目标时间，且今天还未提醒过，则补一次
     const now = new Date()
     const passed = now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute)
-    if (passed && !isRemindedToday()) {
+    if (passed) {
       if (onInAppRemind)
         onInAppRemind()
       else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))

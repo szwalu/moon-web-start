@@ -155,7 +155,7 @@ async function setupApp() {
   //    这里示例的应用内提醒：显示一个全局 Banner（可以替换为你自己的 Naive UI 提示）
   scheduleDailyReminder({
     hour: 22,
-    minute: 12,
+    minute: 27,
     title: '那年今日',
     body: '来看看那年今日卡片吧～',
     onInAppRemind: () => {
