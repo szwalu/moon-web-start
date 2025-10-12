@@ -41,7 +41,6 @@ function msUntilNext(hour: number, minute: number): number {
   next.setHours(hour, minute, 0, 0)
   if (next.getTime() <= now.getTime())
     next.setDate(next.getDate() + 1)
-
   return next.getTime() - now.getTime()
 }
 
@@ -53,7 +52,7 @@ async function showSystemNotification(title: string, body: string) {
   try {
     await reg.showNotification(title, {
       body,
-      icon: '/icon-192.png', // 你站点的图标（可改）
+      icon: '/icon-192.png', // 站点图标（按需调整）
       badge: '/icon-192.png',
       tag: 'daily-review', // 防止重复叠加
       renotify: true,
@@ -65,19 +64,19 @@ async function showSystemNotification(title: string, body: string) {
   }
 }
 
-/** 本地存上次提醒的日期（YYYY-MM-DD），用于应用内提醒防多次弹 */
-function _setLastInAppRemindToday(key = 'last_inapp_review_date') {
-  const d = new Date()
-  const mark = d.toISOString().slice(0, 10) // YYYY-MM-DD
-  localStorage.setItem(key, mark)
-}
-function _isInAppRemindedToday(key = 'last_inapp_review_date') {
-  const mark = localStorage.getItem(key) || ''
-  const today = new Date().toISOString().slice(0, 10)
-  return mark === today
+/** 全局“当天已提醒”标记（仅用于判断；真正记账放在 App.vue 的点击回调里） */
+const LAST_GLOBAL_REVIEW_KEY = 'last_global_review_date'
+function isRemindedToday() {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    return localStorage.getItem(LAST_GLOBAL_REVIEW_KEY) === today
+  }
+  catch {
+    return false
+  }
 }
 
-/** 应用内提醒的回调（由外部实现 UI，比如弹 Banner） */
+/** 应用内提醒的回调（由外部实现 UI，比如弹 Banner/Message） */
 export type InAppHandler = () => void
 
 let _timerId: number | null = null
@@ -86,6 +85,7 @@ let _timerId: number | null = null
  * 安排“每天固定时间”的提醒。
  * - 支持系统通知（如果权限允许）
  * - 否则回退为应用内提醒（仅在页面打开时）
+ * - 是否“记账”为当天已提醒：交给前端点击行为处理（App.vue）
  */
 export async function scheduleDailyReminder(
   opts: {
@@ -93,7 +93,7 @@ export async function scheduleDailyReminder(
     minute?: number
     title?: string
     body?: string
-    _onInAppRemind?: InAppHandler
+    onInAppRemind?: InAppHandler
   } = {},
 ) {
   const {
@@ -101,7 +101,7 @@ export async function scheduleDailyReminder(
     minute = 0,
     title = '今日回顾',
     body = '点一下，回顾一下今天（或最近）的卡片/笔记吧～',
-    _onInAppRemind,
+    onInAppRemind,
   } = opts
 
   // 清理旧定时器
@@ -115,9 +115,10 @@ export async function scheduleDailyReminder(
 
   const supported = isNotificationSupported()
   const permission = supported ? Notification.permission : 'denied'
-  const canSystemNotify = supported && swOk && permission === 'granted'
+  const canSystemNotify = !!(supported && swOk && permission === 'granted')
 
   const fireOnce = async () => {
+    // 当天已提醒过：不重复
     if (isRemindedToday()) {
       _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
       return
@@ -126,30 +127,36 @@ export async function scheduleDailyReminder(
     if (canSystemNotify) {
       const ok = await showSystemNotification(title, body)
       if (!ok) {
-      // 系统通知失败，改发站内事件
-        window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
+        // 系统通知失败：走应用内提醒或事件
+        if (onInAppRemind)
+          onInAppRemind()
+        else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
       }
     }
     else {
-    // 没权限：直接发站内事件
-      window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
+      // 没权限：直接走应用内提醒或事件
+      if (onInAppRemind)
+        onInAppRemind()
+      else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
     }
 
+    // 安排下一次
     _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
   }
-  // 先等到下一个 9:00（或你设置的时间）再触发
+
+  // 等到下一个 hh:mm 触发
   _timerId = window.setTimeout(fireOnce, msUntilNext(hour, minute))
 }
 
-/** 在页面重新可见时补偿检查（比如用户 9:00 之后才打开页面） */
+/** 在页面重新可见时的补偿检查（比如用户 9:00 之后才打开页面） */
 export function setupVisibilityCompensation(
   opts: {
     hour?: number
     minute?: number
-    _onInAppRemind?: InAppHandler
+    onInAppRemind?: InAppHandler
   } = {},
 ) {
-  const { hour = 9, minute = 0, _onInAppRemind } = opts
+  const { hour = 9, minute = 0, onInAppRemind } = opts
   const key = 'last_compensate_date'
 
   const handler = () => {
@@ -160,16 +167,19 @@ export function setupVisibilityCompensation(
     if (done)
       return
 
-    // 若已经过了目标时间，且今天还未应用内提醒过，则补一次
+    // 若已经过了目标时间，且今天还未提醒过，则补一次
     const now = new Date()
     const passed = now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute)
-    if (passed && !isRemindedToday())
-      window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
+    if (passed && !isRemindedToday()) {
+      if (onInAppRemind)
+        onInAppRemind()
+      else window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
+    }
 
     localStorage.setItem(key, today)
   }
 
   window.addEventListener('visibilitychange', handler)
-  // 可选：在卸载时移除（视框架而定）
+  // 返回卸载函数（按需调用）
   return () => window.removeEventListener('visibilitychange', handler)
 }
