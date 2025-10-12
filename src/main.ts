@@ -155,9 +155,9 @@ async function setupApp() {
   //    这里示例的应用内提醒：显示一个全局 Banner（可以替换为你自己的 Naive UI 提示）
   scheduleDailyReminder({
     hour: 21,
-    minute: 27,
-    title: '今日回顾',
-    body: '来看看今天/最近的卡片吧～',
+    minute: 45,
+    title: '那年今日',
+    body: '来看看今的那年今日卡片吧～',
     onInAppRemind: () => {
     // 打开“那年今日”
       window.dispatchEvent(new CustomEvent('open-anniversary'))
@@ -167,17 +167,12 @@ async function setupApp() {
   })
 
   // 4) 可见性补偿（避免错过当天 9:00）
+  // 页面重新可见时的补偿检查
   setupVisibilityCompensation({
-    hour: 9,
-    minute: 0,
+    hour: 10,
+    minute: 40,
     onInAppRemind: () => {
-      try {
-        // 或：console.info('🔔 今日回顾（补偿提醒）')
-        window.dispatchEvent(new CustomEvent('open-anniversary'))
-      }
-      catch (e) {
-        // ignore
-      }
+      window.dispatchEvent(new CustomEvent('review-reminder', { detail: { markOnClick: true } }))
     },
   })
 }
