@@ -12,7 +12,7 @@ import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
 
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated'])
-
+const allTags = ref<string[]>([])
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
@@ -27,6 +27,41 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+
+// --- 👇 新增：获取所有标签的函数 ---
+async function fetchAllTags() {
+  if (!user.value)
+    return
+  try {
+    // 为提高效率，我们只查询包含笔记内容的 content 字段
+    const { data, error } = await supabase
+      .from('notes')
+      .select('content')
+      .eq('user_id', user.value.id)
+
+    if (error)
+      throw error
+
+    const tagsSet = new Set<string>()
+    // 这个正则表达式会匹配所有以 # 开头且后面不含空格的字符串
+    const tagRegex = /#\S+/g
+
+    data?.forEach((note) => {
+      const matches = note.content.match(tagRegex)
+      if (matches) {
+        // 将找到的所有标签添加到 Set 中以自动去重
+        matches.forEach(tag => tagsSet.add(tag))
+      }
+    })
+
+    // 将去重后的标签转换为数组并排序，然后赋值给 ref
+    allTags.value = Array.from(tagsSet).sort()
+  }
+  catch (e) {
+    console.error('获取标签列表失败:', e)
+  }
+}
+// --- 👆 新增函数结束 ---
 
 const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
 const editContent = ref('') // 编辑框 v-model
@@ -512,6 +547,7 @@ function handleVisibilityChange() {
 
 /* ===================== 生命周期（先缓存再校验） ===================== */
 onMounted(async () => {
+  fetchAllTags()
   const hadCache = loadAllDatesFromCache()
   if (!hadCache && user.value) {
     try {
@@ -657,7 +693,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :is-loading="false"
             :max-note-length="20000"
             placeholder="在这里写点什么……"
-            :all-tags="[]"
+            :all-tags="allTags"
             :enable-drafts="true"
             :draft-key="writingKey"
             :clear-draft-on-save="true"
@@ -676,7 +712,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :is-loading="false"
             :max-note-length="20000"
             placeholder="编辑这条笔记…"
-            :all-tags="[]"
+            :all-tags="allTags"
             :enable-drafts="true"
             :draft-key="editDraftKey"
             :clear-draft-on-save="true"
