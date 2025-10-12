@@ -877,6 +877,32 @@ function addOrderedList() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
+function addTable() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 这是一个 3列 x 2行 的基础表格模板
+  const tableTemplate = '| Header 1 | Header 2 | Header 3 |\n|----------|----------|----------|\n|          |          |          |\n|          |          |          |'
+
+  const startPos = el.selectionStart
+  const textBefore = el.value.substring(0, startPos)
+
+  // 智能判断：如果光标不在段首，自动在表格前添加空行，确保表格格式正确
+  const prefix = (textBefore.length === 0 || textBefore.endsWith('\n\n'))
+    ? ''
+    : (textBefore.endsWith('\n') ? '\n' : '\n\n')
+
+  const textToInsert = `${prefix + tableTemplate}\n`
+
+  // 使用现有的 updateTextarea 工具函数来插入文本
+  const finalFullText = el.value.substring(0, startPos) + textToInsert + el.value.substring(el.selectionEnd)
+
+  // 插入后，将光标自动定位到第一个单元格（Header 1），方便立即开始编辑
+  const newCursorPos = startPos + prefix.length + 2 // `| ` 之后的位置
+  updateTextarea(finalFullText, newCursorPos)
+}
+
 function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
@@ -1422,7 +1448,6 @@ function handleBeforeInput(e: InputEvent) {
     >
       <div class="format-row">
         <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
-        <!-- 有序列表图标 -->
         <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
@@ -1435,7 +1460,6 @@ function handleBeforeInput(e: InputEvent) {
         </button>
         <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
         <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
-        <!-- 无序列表图标 -->
         <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="6" cy="7" r="2" fill="currentColor" />
@@ -1450,6 +1474,14 @@ function handleBeforeInput(e: InputEvent) {
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
             <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
+          </svg>
+        </button>
+        <button type="button" class="format-btn" title="插入表格" @click="handleFormat(addTable)">
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" />
+            <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" />
+            <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" />
           </svg>
         </button>
       </div>
