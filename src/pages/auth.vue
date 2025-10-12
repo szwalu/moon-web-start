@@ -201,10 +201,55 @@ const showAnniversaryBanner = computed(() => {
 })
 
 onMounted(() => {
-  const openAnniversary = () => {
-    isAnniversaryViewActive.value = true
-    showCalendarView.value = false // 如果你希望互斥显示，可加这一句
+  const openAnniversary = async () => {
+    try {
+      // 1) 关闭互斥视图/状态
+      showCalendarView.value = false
+      if (isSelectionModeActive.value)
+        finishSelectionMode()
+      if (activeTagFilter.value)
+        clearTagFilter()
+      if (searchQuery.value || isShowingSearchResults.value)
+        handleCancelSearch()
+      await nextTick()
+
+      // 2) 优先用 Banner 预计算的结果（sessionStorage 里）
+      let parsed: any[] | null = null
+      try {
+        const raw = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY) // 你文件顶部已定义这个常量
+        if (raw)
+          parsed = JSON.parse(raw)
+      }
+      catch {}
+
+      if (parsed) {
+        // 直接进入“那年今日”视图并带上数据
+        handleAnniversaryToggle(parsed)
+        return
+      }
+
+      // 3) 没有缓存：请求 Banner 计算一次，再回读结果
+      await anniversaryBannerRef.value?.loadAnniversaryNotes?.()
+      await Promise.resolve() // 等一拍，让 Banner 写入 sessionStorage
+
+      try {
+        const raw = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
+        if (raw) {
+          handleAnniversaryToggle(JSON.parse(raw))
+          return
+        }
+      }
+      catch {}
+
+      // 4) 兜底：至少把视图打开（即便没有数据也不会“空白卡住”）
+      isAnniversaryViewActive.value = true
+      nextTick(() => anniversaryBannerRef.value?.setView?.(true))
+    }
+    catch {
+      // 安静失败，不影响其他操作
+    }
   }
+
   window.addEventListener('open-anniversary', openAnniversary)
   onUnmounted(() => window.removeEventListener('open-anniversary', openAnniversary))
 })

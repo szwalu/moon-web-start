@@ -154,10 +154,10 @@ async function setupApp() {
   // 3) 启动“每天 9:00”的提醒（系统通知 or 应用内回退）
   //    这里示例的应用内提醒：显示一个全局 Banner（可以替换为你自己的 Naive UI 提示）
   scheduleDailyReminder({
-    hour: 21,
-    minute: 50,
+    hour: 22,
+    minute: 12,
     title: '那年今日',
-    body: '来看看今的那年今日卡片吧～',
+    body: '来看看那年今日卡片吧～',
     onInAppRemind: () => {
     // 打开“那年今日”
       window.dispatchEvent(new CustomEvent('open-anniversary'))
