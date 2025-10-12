@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+
+// 修改：导入 nextTick
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -24,6 +26,8 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
+const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
@@ -131,8 +135,8 @@ function dateFromKeyStr(key: string) {
 }
 
 /* ===================== 事件处理（逐行写法，避免 max-statements-per-line） ===================== */
-function handleEdit(note: any) {
-  // 直接在日历里编辑，不再跳回主页
+// 修改：将函数变为 async 并添加聚焦逻辑
+async function handleEdit(note: any) {
   editingNote.value = note
   editContent.value = note?.content || ''
   isWriting.value = false
@@ -140,6 +144,10 @@ function handleEdit(note: any) {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+
+  // 新增：等待 DOM 更新后，聚焦编辑器
+  await nextTick()
+  editNoteEditorRef.value?.focus()
 }
 function handleCopy(content: string) {
   emit('copy', content)
@@ -576,11 +584,16 @@ function refreshData() {
 defineExpose({ refreshData })
 
 // 打开输入框（并让列表滚回顶部）
-function startWriting() {
+// 修改：将函数变为 async 并添加聚焦逻辑
+async function startWriting() {
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+
+  // 新增：等待 DOM 更新后，聚焦编辑器
+  await nextTick()
+  newNoteEditorRef.value?.focus()
 }
 
 // ✅ 计算按钮文字（今日前→补写，今日/未来→写）
@@ -687,6 +700,7 @@ async function saveNewNote(content: string, weather: string | null) {
         <!-- 轻量输入框（显示时隐藏上面的日历） -->
         <div v-if="isWriting" class="inline-editor">
           <NoteEditor
+            ref="newNoteEditorRef"
             v-model="newNoteContent"
             :is-editing="false"
             :is-loading="false"
@@ -707,6 +721,7 @@ async function saveNewNote(content: string, weather: string | null) {
         <!-- 编辑已有笔记（直接在日历内） -->
         <div v-if="isEditingExisting" class="inline-editor">
           <NoteEditor
+            ref="editNoteEditorRef"
             v-model="editContent"
             :is-editing="true"
             :is-loading="false"

@@ -189,17 +189,28 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
+
+  // 如果点击的不是一个待办事项行，则直接返回
   if (!listItem)
     return
 
-  event.stopPropagation()
-  const noteCard = event.currentTarget as HTMLElement
-  const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
-  const itemIndex = allListItems.indexOf(listItem)
-  if (itemIndex !== -1)
-    emit('taskToggle', { noteId: props.note.id, itemIndex })
-}
+  // 判断点击的是否为复选框本身
+  const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
 
+  if (isCheckboxClick) {
+    // 如果是复选框，执行我们的打钩逻辑
+    event.stopPropagation()
+    const noteCard = event.currentTarget as HTMLElement
+    const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
+    const itemIndex = allListItems.indexOf(listItem)
+    if (itemIndex !== -1)
+      emit('taskToggle', { noteId: props.note.id, itemIndex })
+  }
+  else {
+    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
+    event.preventDefault()
+  }
+}
 async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
