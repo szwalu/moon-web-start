@@ -539,7 +539,7 @@ async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpda
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   localStorage.removeItem(dayCacheKey)
 
-  await fetchNotesForDate(selectedDate.value)
+  await fetchNotesForDate(selectedDate.value, true)
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
@@ -566,7 +566,7 @@ onMounted(async () => {
   }
 
   await fetchNotesForDate(new Date())
-  checkAndRefreshIncremental()
+  await checkAndRefreshIncremental()
 
   // 在组件挂载时，添加可见性变化的事件监听器
   document.addEventListener('visibilitychange', handleVisibilityChange)
