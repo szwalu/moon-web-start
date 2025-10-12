@@ -13,6 +13,7 @@ import NoteEditor from '@/components/NoteEditor.vue'
 
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated'])
 const allTags = ref<string[]>([])
+const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
@@ -29,36 +30,34 @@ const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
 // --- 👇 新增：获取所有标签的函数 ---
-async function fetchAllTags() {
+async function fetchTagData() {
   if (!user.value)
     return
   try {
-    // 为提高效率，我们只查询包含笔记内容的 content 字段
-    const { data, error } = await supabase
-      .from('notes')
-      .select('content')
-      .eq('user_id', user.value.id)
-
-    if (error)
-      throw error
-
-    const tagsSet = new Set<string>()
-    // 这个正则表达式会匹配所有以 # 开头且后面不含空格的字符串
-    const tagRegex = /#\S+/g
-
-    data?.forEach((note) => {
-      const matches = note.content.match(tagRegex)
-      if (matches) {
-        // 将找到的所有标签添加到 Set 中以自动去重
-        matches.forEach(tag => tagsSet.add(tag))
-      }
+    // 1. 调用 get_unique_tags 获取所有不重复的标签列表
+    const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', {
+      p_user_id: user.value.id,
     })
+    if (tagsError)
+      throw tagsError
+    allTags.value = tagsData || []
 
-    // 将去重后的标签转换为数组并排序，然后赋值给 ref
-    allTags.value = Array.from(tagsSet).sort()
+    // 2. 调用 get_tag_counts 获取每个标签的使用次数
+    const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', {
+      p_user_id: user.value.id,
+    })
+    if (countsError)
+      throw countsError
+
+    // 3. 将返回的数组 [{tag: '#a', cnt: 5}, ...] 转换为 NoteEditor 需要的对象格式 {'#a': 5, ...}
+    const countsObject = (countsData || []).reduce((acc, item) => {
+      acc[item.tag] = item.cnt
+      return acc
+    }, {} as Record<string, number>)
+    tagCounts.value = countsObject
   }
   catch (e) {
-    console.error('获取标签列表失败:', e)
+    console.error('从数据库获取标签数据失败:', e)
   }
 }
 // --- 👆 新增函数结束 ---
@@ -547,7 +546,7 @@ function handleVisibilityChange() {
 
 /* ===================== 生命周期（先缓存再校验） ===================== */
 onMounted(async () => {
-  fetchAllTags()
+  fetchTagData()
   const hadCache = loadAllDatesFromCache()
   if (!hadCache && user.value) {
     try {
@@ -694,6 +693,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :max-note-length="20000"
             placeholder="在这里写点什么……"
             :all-tags="allTags"
+            :tag-counts="tagCounts"
             :enable-drafts="true"
             :draft-key="writingKey"
             :clear-draft-on-save="true"
@@ -713,6 +713,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :max-note-length="20000"
             placeholder="编辑这条笔记…"
             :all-tags="allTags"
+            :tag-counts="tagCounts"
             :enable-drafts="true"
             :draft-key="editDraftKey"
             :clear-draft-on-save="true"
