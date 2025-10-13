@@ -82,6 +82,7 @@
     "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.60.0",
     "sharp": "^0.34.4",
+    "supabase": "^2.51.0",
     "typescript": "^5.0.4",
     "unocss": "^0.56.4",
     "unocss-preset-scalpel": "^1.2.6",
