@@ -1,5 +1,56 @@
-mkdir -p .github/workflows
-nano .github/workflows/daily-pwa-notify.yml   # 粘贴下面的内容保存
-git add .github/workflows/daily-pwa-notify.yml
-git commit -m "chore: add daily PWA notify workflow"
-git push origin master
+name: Daily PWA Notify (11:20 PT)
+
+on:
+  # 每 5 分钟跑一次，用 PT 本地时区判断是否 11:20
+  schedule:
+    - cron: "*/5 * * * *"
+  # 手动触发，方便你立刻测试
+  workflow_dispatch:
+  # 临时加上 push 触发（创建/修改此文件后就会跑一次，便于查看日志）
+  push:
+    paths:
+      - ".github/workflows/daily-pwa-notify.yml"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    # 用美国洛杉矶时区，自动处理夏令时
+    env:
+      TZ: America/Los_Angeles
+
+    steps:
+      - name: Show current time (PT)
+        run: |
+          echo "PT now: $(date -R)"
+          echo "Only send at 11:20 PT"
+
+      - name: Check Secrets presence
+        run: |
+          # 这里不会打印你的密钥，只检查是否存在
+          if [ -z "${{ secrets.SUPABASE_FUNCTION_URL }}" ]; then
+            echo "::error::Missing secret SUPABASE_FUNCTION_URL"; exit 1; fi
+          if [ -z "${{ secrets.SUPABASE_SERVICE_ROLE }}" ]; then
+            echo "::error::Missing secret SUPABASE_SERVICE_ROLE"; exit 1; fi
+          echo "Secrets exist ✅"
+
+      - name: Gate by local time (PT)
+        id: gate
+        run: |
+          NOW="$(date +'%H:%M')"
+          echo "Local time (PT): $NOW"
+          if [ "$NOW" = "11:20" ]; then
+            echo "run=1" >> $GITHUB_OUTPUT
+          else
+            echo "run=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Call send-notification (POST)
+        if: steps.gate.outputs.run == '1' || github.event_name != 'schedule'
+        run: |
+          set -e
+          echo "Calling ${{ secrets.SUPABASE_FUNCTION_URL }}"
+          curl -i -sS -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE }}" \
+            -d '{}' \
+            "${{ secrets.SUPABASE_FUNCTION_URL }}"
