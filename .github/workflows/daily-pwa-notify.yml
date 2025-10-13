@@ -1,0 +1,5 @@
+mkdir -p .github/workflows
+nano .github/workflows/daily-pwa-notify.yml   # 粘贴下面的内容保存
+git add .github/workflows/daily-pwa-notify.yml
+git commit -m "chore: add daily PWA notify workflow"
+git push origin master
