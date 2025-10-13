@@ -89,14 +89,14 @@ const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结�
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
-const PREFETCH_TTL_MS = 24 * 60 * 60 * 1000 // 24 小时
+const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
 const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
-const SILENT_PREFETCH_PAGES = 10 // 10 页 * 30 条 = 300 条
+const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -1085,7 +1085,7 @@ async function fetchNotes() {
     const to = from + notesPerPage - 1
     const { data, error, count } = await supabase
       .from('notes')
-      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'planned' })
       .eq('user_id', user.value.id)
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
@@ -1256,21 +1256,20 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
     const to = from + notesPerPage - 1
 
     if (isUntagged) {
-      // “无标签”逻辑
-      const { data: countData, error: countError } = await supabase.rpc('get_untagged_count', { p_user_id: user.value!.id })
-      if (countError)
-        throw countError
-      totalCount = typeof countData === 'number' ? countData : 0
-
-      const { data, error } = await supabase
-        .from('notes').select('id, content, weather, created_at, updated_at, is_pinned')
+      // “无标签”逻辑（用生成列 + 复合索引）
+      const { data, error, count } = await supabase
+        .from('notes')
+        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'planned' })
         .eq('user_id', user.value!.id)
-        .or('content.is.null,content.not.ilike.%#%')
-        .order('is_pinned', { ascending: false }).order('created_at', { ascending: false })
+        .eq('has_tag', false)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
         .range(from, to)
+
       if (error)
         throw error
-      notesData = data || []
+      notesData = data || [] // ✅ 直接赋值到外层变量
+      totalCount = count || 0 // ✅ 直接赋值到外层变量
     }
     else {
       // 普通标签逻辑
