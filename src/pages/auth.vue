@@ -88,6 +88,8 @@ const filteredNotesCount = ref(0)
 const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
+const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
+const PREFETCH_TTL_MS = 24 * 60 * 60 * 1000 // 24 小时
 let authListener: any = null
 const noteListKey = ref(0)
 const editorBottomPadding = ref(0)
@@ -266,7 +268,11 @@ onMounted(() => {
           if (savedSearchQuery && savedSearchResults) {
             // 路径A：有完整的搜索缓存，直接恢复，不请求网络
             searchQuery.value = savedSearchQuery
+            // 统一兜底：清理/还原搜索 UI 状态，避免残留
             showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            if (!showSearchBar.value)
+              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+
             try {
               notes.value = JSON.parse(savedSearchResults)
             }
@@ -283,7 +289,11 @@ onMounted(() => {
           else if (savedSearchQuery) {
             // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
             searchQuery.value = savedSearchQuery
+            // 统一兜底：清理/还原搜索 UI 状态，避免残留
             showSearchBar.value = sessionStorage.getItem(SESSION_SHOW_SEARCH_BAR_KEY) === 'true'
+            if (!showSearchBar.value)
+              sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+
             noteActionsRef.value?.executeSearch()
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
@@ -1224,7 +1234,6 @@ async function silentPrefetchMore() {
     // ✅ 仅当确实抓到数据时，记录 24 小时冷却时间戳
     if (fetchedPages > 0) {
       try {
-        const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
         localStorage.setItem(PREFETCH_LAST_TS_KEY, String(Date.now()))
       }
       catch {}
@@ -1808,7 +1817,7 @@ async function handleEditFromCalendar(noteToFind: any) {
     (noteListRef.value as any).focusAndEditNote(noteToFind.id)
 }
 
-const _fetchTagRequestId = 0 // 👈 在函数外定义（保持全局递增）
+useOfflineSync()
 
 async function fetchNotesByTag(tag: string) {
   // --- 状态清理逻辑保持不变 ---
@@ -2570,4 +2579,7 @@ html, body, #app {
 .selection-actions-banner {
   top: var(--header-height) !important;
 }
+
+:root { --app-bg: #fff; }         /* ✅ 浅色默认 */
+.dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
 </style>
