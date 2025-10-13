@@ -41,3 +41,4 @@ package-lock.json
 /dist/
 /src/auto-imports.d.ts
 /src/components.d.ts
+supabase/.temp/
