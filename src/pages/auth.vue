@@ -1992,6 +1992,98 @@ function onCalendarUpdated(updated: any) {
     )
   }
 }
+
+/* eslint-disable style/max-statements-per-line */
+// ===== 顶边轻点回到顶部（移动端） =====
+let _topTapStartY: number | null = null
+let _topTapStartT = 0
+
+function _getSafeTopPx() {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--safe-top') || '0px'
+  const n = Number.parseFloat(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function _shouldIgnoreTarget(el: EventTarget | null) {
+  if (!(el instanceof Element))
+    return false
+  const tag = el.tagName
+  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(tag))
+    return true
+  if (el.closest('.n-dropdown, .n-modal, .n-drawer'))
+    return true
+  return false
+}
+
+function _onTopEdgeTouchStart(e: TouchEvent) {
+  if (!matchMedia('(pointer: coarse)').matches)
+    return
+  if (_shouldIgnoreTarget(e.target))
+    return
+  const t = e.touches[0]
+  if (!t)
+    return
+  _topTapStartY = t.clientY
+  _topTapStartT = performance.now()
+}
+
+function _onTopEdgeTouchEnd(e: TouchEvent) {
+  if (_topTapStartY == null)
+    return
+  if (_shouldIgnoreTarget(e.target)) {
+    _topTapStartY = null
+    return
+  }
+  const t = e.changedTouches[0]
+  const endY = t?.clientY ?? _topTapStartY
+  const dy = Math.abs(endY - _topTapStartY)
+  const dt = performance.now() - _topTapStartT
+  const THRESH = Math.max(20, _getSafeTopPx() + 12)
+  const vv = (window as any).visualViewport as VisualViewport | undefined
+  if (vv && vv.height < window.innerHeight - 80) {
+    _topTapStartY = null
+    return
+  }
+  if (_topTapStartY <= THRESH && dy < 10 && dt < 350) {
+    try {
+      handleHeaderClick()
+    }
+    catch {}
+  }
+  _topTapStartY = null
+}
+
+onMounted(
+  () => {
+    window.addEventListener(
+      'touchstart',
+      _onTopEdgeTouchStart,
+      { passive: true, capture: true },
+    )
+    window.addEventListener(
+      'touchend',
+      _onTopEdgeTouchEnd,
+      { passive: true, capture: true },
+    )
+  },
+)
+
+onUnmounted(
+  () => {
+    window.removeEventListener(
+      'touchstart',
+      _onTopEdgeTouchStart,
+      { capture: true } as any,
+    )
+    window.removeEventListener(
+      'touchend',
+      _onTopEdgeTouchEnd,
+      { capture: true } as any,
+    )
+  },
+)
+// ===== 顶边轻点回到顶部（移动端）结束 =====
+/* eslint-enable style/max-statements-per-line */
 </script>
 
 <template>
@@ -2001,13 +2093,6 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <!-- 顶端点击热区：覆盖状态栏 + 一点额外高度，点击即回到顶部 -->
-      <div
-        class="statusbar-tap-hit"
-        aria-label="回到顶部"
-        role="button"
-        @click="handleHeaderClick"
-      />
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
@@ -2634,32 +2719,4 @@ html, body, #app {
 
 :root { --app-bg: #fff; }         /* ✅ 浅色默认 */
 .dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
-
-/* 顶端点击热区：固定在屏幕最上沿，覆盖刘海/状态栏上方一条细带 */
-.statusbar-tap-hit {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-
-  /* 热区高度 = 安全区 + 额外 24px（可按手感改 16~28） */
-  height: calc(env(safe-area-inset-top, 0px) + 24px);
-
-  /* 只负责“点一下”，不挡滚动手势 */
-  pointer-events: auto;
-  background: transparent;
-  z-index: 3200; /* 比 .page-header(3000) 高一点，但低于任何全屏弹层/抽屉即可 */
-}
-
-/* 桌面端缩小热区，避免误触：没有 safe-top 时只保留 12px 的细边可点 */
-@media (min-width: 768px) {
-  .statusbar-tap-hit {
-    height: 12px;
-  }
-}
-
-/* 如需只在触屏设备生效，可解注释下面这一段 */
-@media (hover: hover) and (pointer: fine) {
-  .statusbar-tap-hit { display: none; }
-}
 </style>
