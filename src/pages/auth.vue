@@ -16,18 +16,12 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
-// import { saveNotesSnapshot } from '@/utils/db'
-// 新增：离线数据库/队列
-// 把这行替换为包含 readNotesSnapshot
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
 const { manualSync: _manualSync } = useOfflineSync()
-
-// ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
-// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
 const allTags = ref<string[]>([])
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
@@ -35,10 +29,8 @@ const AccountModal = defineAsyncComponent(() => import('@/components/AccountModa
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
 const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
-
-// 避免 ESLint 误报这些异步组件“未使用”
 const TrashModal = defineAsyncComponent(() => import('@/components/TrashModal.vue'))
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal] // 把 TrashModal 追加进去
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal]
 const showTrashModal = ref(false)
 
 useDark()
@@ -85,7 +77,7 @@ const headerCollapsed = ref(false)
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
-const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
+const isShowingSearchResults = ref(false)
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
@@ -98,7 +90,6 @@ let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 
-// ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
 const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
