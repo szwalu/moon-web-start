@@ -2001,7 +2001,12 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <div
+        v-show="!isEditorActive"
+        class="header-click-wrapper"
+        @click="handleHeaderClick"
+      >
+        <div class="page-header" />
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -2243,36 +2248,61 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
-.page-header {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+/* 1. 新增包装层的样式 */
+.header-click-wrapper {
   position: -webkit-sticky;
   position: sticky;
-  top: 0;
-  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
-  background: white;
-  height: 44px;
-  padding-top: 0.75rem;
+  top: var(--safe-top); /* 整个区域粘在安全区顶部 */
+  z-index: 3000;
+
+  /* 关键：设置包装层的高度为您刚才调试好的总高度 */
+  /* 44px 是原来header的高度, 28px 是您觉得刚好的顶部区域高度 */
+  height: calc(44px + 28px);
+
+  /* 关键：让这个包装层本身不可见，但可以响应点击 */
+  background: transparent;
+
+  /* 把原来的 page-header 顶部内边距也移到这里，保持与页面左右的间距 */
+  padding: 0 1.5rem;
 }
+
+/* 2. 修改 .page-header 的样式 */
+.page-header {
+  /* 从 sticky 改为 absolute，相对于父包装层定位 */
+  position: absolute;
+  bottom: 0; /* 定位到父包装层的底部 */
+  left: 0;
+  right: 0;
+  width: 100%;
+
+  /* 高度还是原来的 44px */
+  height: 44px;
+
+  /* 背景色保留在这里，只给可见部分加背景 */
+  background: white;
+
+  /* 移除之前会影响布局的属性 */
+  top: auto; /* 不再需要 top */
+  z-index: auto; /* z-index 由父级管理 */
+  padding-top: 0.75rem; /* 这个也由父级管理或在这里微调对齐 */
+
+  /* 因为左右内边距已经加在了 wrapper 上，这里可能需要调整或清零 */
+  /* 如果您的按钮和标题位置不对了，请先移除下面的 padding */
+  padding: 0;
+}
+
+/* 3. 确保深色模式的背景也应用正确 */
 .dark .page-header {
   background: #1e1e1e;
 }
-.page-header::before {
-  content: '';
-  position: absolute;
 
-  /* --- 调试修改 --- */
-  top: -18px; /* 强制向上移动 30px */
-  height: 28px; /* 强制设置 30px 的高度 */
-  background: rgba(0, 0, 0, 0.5); /* 50%不透明的黑色，方便观察 */
-  z-index: 9999; /* 确保它在最顶层，防止被覆盖 */
-  /* --- 调试修改结束 --- */
+/* (调试) 如果想再次观察点击区，可以给 wrapper 加上背景色 */
 
-  left: 0;
-  right: 0;
+.header-click-wrapper {
+  background: rgba(0, 0, 0, 0.5);
 }
+
 .page-title {
   position: absolute;
   left: 50%;
