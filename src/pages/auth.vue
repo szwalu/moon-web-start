@@ -2255,12 +2255,37 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   background: white;
   height: 44px;
   padding-top: 0.75rem;
-  border-top: 28px solid transparent;
-  margin-top: -28px;
-  background-clip: padding-box;
 }
 .dark .page-header {
   background: #1e1e1e;
+}
+
+/* 让页眉的点击热区上扩到状态栏/安全区，模拟“点状态栏回顶” */
+.page-header::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+
+  /* 向上延伸：再抬 12px，并覆盖 safe-top（iOS PWA/刘海） */
+  top: calc(-1 * var(--safe-top) - 12px);
+
+  /* 热区高度 = safe-top + 额外 28px；无 safe-top 设备也有一条细边可点 */
+  height: calc(var(--safe-top) + 28px);
+
+  /* 关键：可点击，事件会落在 .page-header 上，触发你已有的 @click */
+  pointer-events: auto;
+  background: transparent;
+  /* 不要抢占视觉，也不遮住下方按钮，因为它在 header 上方那条细边 */
+  z-index: 1;
+}
+
+/* 避免这块热区在桌面端太夸张，移动端保留加成，桌面端缩小到 12px */
+@media (min-width: 768px) {
+  .page-header::before {
+    top: -12px;
+    height: 24px;
+  }
 }
 
 .page-title {
