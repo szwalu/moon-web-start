@@ -2259,6 +2259,21 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 .dark .page-header {
   background: #1e1e1e;
 }
+.page-header::before {
+  content: '';
+  position: absolute;
+  /* 关键部分：将伪元素的顶部移动到父元素(.page-header)的顶部之上 */
+  /* 移动的距离正好是安全区域的高度 */
+  top: calc(-1 * var(--safe-top, 0px));
+  left: 0;
+  right: 0;
+  /* 关键部分：伪元素的高度就等于安全区域的高度 */
+  /* 这样它就完美填充了状态栏的区域 */
+  height: var(--safe-top, 0px);
+
+  /* (可选) 调试时可以加上背景色来观察点击区域是否正确 */
+  /* background: rgba(255, 0, 0, 0.2); */
+}
 .page-title {
   position: absolute;
   left: 50%;
