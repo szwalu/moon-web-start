@@ -2264,8 +2264,8 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   position: absolute;
 
   /* --- 调试修改 --- */
-  top: -20px; /* 强制向上移动 30px */
-  height: 30px; /* 强制设置 30px 的高度 */
+  top: -18px; /* 强制向上移动 30px */
+  height: 28px; /* 强制设置 30px 的高度 */
   background: rgba(0, 0, 0, 0.5); /* 50%不透明的黑色，方便观察 */
   z-index: 9999; /* 确保它在最顶层，防止被覆盖 */
   /* --- 调试修改结束 --- */
