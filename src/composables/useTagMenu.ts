@@ -472,34 +472,25 @@ export function useTagMenu(
 
     try {
       isLoadingUntagged = true
-      const { data, error } = await supabase.rpc('get_untagged_count', { p_user_id: uid })
-      if (!error) {
-        const n = typeof data === 'number' ? data : Number((data as any)?.count ?? (data as any)?.cnt ?? 0)
-        untaggedCount.value = Number.isFinite(n) ? n : null
+
+      // ✅ 核心修正：
+      // 直接调用我们已经验证过100%正确的函数 `get_notes_without_tags_count`
+      // 并移除所有不必要的后备逻辑。
+      const { data, error } = await supabase.rpc('get_notes_without_tags_count', { p_user_id: uid })
+
+      if (error) {
+      // 如果这里还出错，说明数据库里的函数有问题
+        console.error('Failed to fetch untagged count from get_notes_without_tags_count:', error)
+        untaggedCount.value = null
         return
       }
-    }
-    catch {
-      // fall through
-    }
-    finally {
-      isLoadingUntagged = false
-    }
 
-    // fallback: 近似法
-    try {
-      isLoadingUntagged = true
-      const base = supabase.from('notes').select('id', { count: 'exact', head: true }).eq('user_id', uid)
-      const { count: total } = await base
-      const { count: withSharp } = await supabase
-        .from('notes')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .like('content', '%#%')
-      const n = (total ?? 0) - (withSharp ?? 0)
-      untaggedCount.value = n >= 0 ? n : 0
+      // 这个函数直接返回一个数字，我们可以安全地使用它
+      const n = typeof data === 'number' ? data : 0
+      untaggedCount.value = Number.isFinite(n) ? n : null
     }
-    catch {
+    catch (e) {
+      console.error('Error inside refreshUntaggedCountFromServer:', e)
       untaggedCount.value = null
     }
     finally {

@@ -16,12 +16,18 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
+// import { saveNotesSnapshot } from '@/utils/db'
+// 新增：离线数据库/队列
+// 把这行替换为包含 readNotesSnapshot
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
 
 const { manualSync: _manualSync } = useOfflineSync()
+
+// ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
+// ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
 const allTags = ref<string[]>([])
 
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
@@ -29,8 +35,10 @@ const AccountModal = defineAsyncComponent(() => import('@/components/AccountModa
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
 
 const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
+
+// 避免 ESLint 误报这些异步组件“未使用”
 const TrashModal = defineAsyncComponent(() => import('@/components/TrashModal.vue'))
-const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal]
+const _usedAsyncComponents = [SettingsModal, AccountModal, CalendarView, MobileDateRangePicker, TrashModal] // 把 TrashModal 追加进去
 const showTrashModal = ref(false)
 
 useDark()
@@ -77,7 +85,7 @@ const headerCollapsed = ref(false)
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
-const isShowingSearchResults = ref(false)
+const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
@@ -90,6 +98,7 @@ let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 
+// ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
 const SESSION_TAG_FILTER_KEY = 'session_tag_filter'
@@ -97,9 +106,6 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 // ++ 新增：那年今日持久化键
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
-
-const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整）
-const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
 
 function onSelectTag(tag: string) {
   // 检查主输入框的内容在点击前是否为空
@@ -401,6 +407,25 @@ function invalidateCachesOnDataChange(note: any) {
       const tag = `#${match[1]}`
       localStorage.removeItem(getTagCacheKey(tag))
     }
+  }
+  // 判断这篇笔记本身是否属于“无标签”类别
+  const isNoteUntagged = (() => {
+    // 1. 如果笔记没有内容，那它肯定是无标签的
+    if (!note.content)
+      return true
+
+    // 2. 使用与后端完全一致的、最精确的正则表达式来判断
+    const hasTagRegex = /#([a-zA-Z0-9\/]+)(?=\s|$)/
+
+    // 3. 如果内容里找不到任何有效的标签，那它也是无标签的
+    return !hasTagRegex.test(note.content)
+  })()
+
+  // 如果这篇笔记是无标签的，那么任何对它的增、删、改都会影响“无标签”筛选结果
+  if (isNoteUntagged) {
+    // 因此，我们必须清除“无标签”筛选的缓存
+    // console.log('Invalidating untagged notes cache...'); // 你可以保留这行来观察它是否被触发
+    localStorage.removeItem(getTagCacheKey(UNTAGGED_SENTINEL))
   }
   const noteDate = new Date(note.created_at)
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
@@ -828,51 +853,37 @@ async function handleBatchExport() {
     messageHook.error(t('auth.session_expired'))
     return
   }
-
   const dialogDateRange = ref<[number, number] | null>(null)
-
   dialog.info({
     title: t('notes.export_confirm_title'),
-    // 在对话框里附一段说明“必须选择日期 + 上限提示”
-    content: () => h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
-      h(MobileDateRangePicker, {
-        'modelValue': dialogDateRange.value,
-        'onUpdate:modelValue': (v: [number, number] | null) => { dialogDateRange.value = v },
-      }),
-      h('small', { style: 'opacity:.75;' }, `提示：必须选择日期范围；最多导出 ${EXPORT_MAX_ROWS} 条。`),
-    ]),
+    content: () => h(MobileDateRangePicker, {
+      'modelValue': dialogDateRange.value,
+      'onUpdate:modelValue': (v: [number, number] | null) => {
+        dialogDateRange.value = v
+      },
+    }),
     positiveText: t('notes.confirm_export'),
     negativeText: t('notes.cancel'),
-
-    // 关键：如果没选范围，阻止对话框关闭
     onPositiveClick: async () => {
-      if (!dialogDateRange.value) {
-        messageHook.warning('请先选择日期范围')
-        return false // 阻止关闭对话框
-      }
-
       isExporting.value = true
       messageHook.info(t('notes.export_preparing'), { duration: 5000 })
-
       try {
-        const [startDate, endDate] = dialogDateRange.value
+        const [startDate, endDate] = dialogDateRange.value || [null, null]
+        const BATCH_SIZE = 100
         let allNotes: any[] = []
         let page = 0
         let hasMore = true
-
-        while (hasMore && allNotes.length < EXPORT_MAX_ROWS) {
-          const from = page * EXPORT_BATCH_SIZE
-          const to = from + EXPORT_BATCH_SIZE - 1
-
+        while (hasMore) {
           let query = supabase
             .from('notes')
             .select('content, created_at')
             .eq('user_id', user.value!.id)
             .order('created_at', { ascending: false })
-            .range(from, to)
+            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
 
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
+
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
@@ -883,28 +894,22 @@ async function handleBatchExport() {
           if (error)
             throw error
 
-          const chunk = data || []
-          if (chunk.length === 0) {
-            hasMore = false
+          if (data && data.length > 0) {
+            allNotes = allNotes.concat(data)
+            page++
           }
           else {
-            allNotes = allNotes.concat(chunk)
-            page++
-            if (chunk.length < EXPORT_BATCH_SIZE)
-              hasMore = false
+            hasMore = false
           }
+          if (data && data.length < BATCH_SIZE)
+            hasMore = false
         }
-
-        // 上限裁剪（避免多抓几条）
-        if (allNotes.length > EXPORT_MAX_ROWS)
-          allNotes = allNotes.slice(0, EXPORT_MAX_ROWS)
 
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
 
-        // 导出 TXT
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
@@ -915,8 +920,9 @@ async function handleBatchExport() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-
-        const datePart = `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
+        const datePart = startDate && endDate
+          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
+          : 'all'
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
         document.body.appendChild(a)
@@ -925,12 +931,7 @@ async function handleBatchExport() {
           document.body.removeChild(a)
           URL.revokeObjectURL(url)
         }, 100)
-
-        // 成功提示（若触发了上限，提示里也说清）
-        if (allNotes.length >= EXPORT_MAX_ROWS)
-          messageHook.success(`已导出 ${allNotes.length} 条（已达到上限 ${EXPORT_MAX_ROWS} 条）`)
-        else
-          messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
+        messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
       }
       catch (error: any) {
         messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
@@ -1274,20 +1275,21 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
     const to = from + notesPerPage - 1
 
     if (isUntagged) {
-      // “无标签”逻辑（用生成列 + 复合索引）
-      const { data, error, count } = await supabase
-        .from('notes')
-        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'planned' })
-        .eq('user_id', user.value!.id)
-        .eq('has_tag', false)
-        .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false })
-        .range(from, to)
+      // 调用我们新建的 RPC 函数来获取无标签笔记
+      const { data: rpcData, error } = await supabase
+        .rpc('get_untagged_notes_paginated', {
+          p_user_id: user.value!.id,
+          p_limit: notesPerPage,
+          p_offset: from,
+        })
 
       if (error)
         throw error
-      notesData = data || [] // ✅ 直接赋值到外层变量
-      totalCount = count || 0 // ✅ 直接赋值到外层变量
+
+      // rpcData 是一个数组，每一项都包含了笔记数据和 total_count
+      notesData = rpcData || []
+      // 从返回的第一条记录中获取总数即可，如果没有记录则为0
+      totalCount = rpcData?.[0]?.total_count || 0
     }
     else {
       // 普通标签逻辑
