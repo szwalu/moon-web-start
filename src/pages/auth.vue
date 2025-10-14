@@ -2259,7 +2259,7 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   z-index: 3000;
 
   /* 总高度 = 可见页眉高度(44px) + 顶部热区高度(28px) */
-  height: calc(44px + 20px);
+  height: calc(44px + 0px);
   background: white;
 
   /* 关键修正①：使用Flexbox将内部的 .page-header 推向底部 */
