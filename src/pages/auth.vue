@@ -2001,12 +2001,7 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div
-        v-show="!isEditorActive"
-        class="header-click-wrapper"
-        @click="handleHeaderClick"
-      >
-        <div class="page-header" />
+      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
             v-model:show="mainMenuVisible"
@@ -2248,57 +2243,42 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
-
-/* 在 <style scoped> 中，用下面这整块代码替换之前的尝试 */
-
-/* 1. 包装层的样式 (现在负责背景和占位) */
-.header-click-wrapper {
-  position: -webkit-sticky;
-  position: sticky;
-  top: var(--safe-top);
-  z-index: 3000;
-
-  /* 总高度：您原来的44px + 您觉得合适的顶部热区高度(比如28px) */
-  /* 您可以根据手感微调 28px 这个值 */
-  height: calc(44px + 28px);
-
-  /* 关键修正：背景色应该在包装层上，这样才不会遮挡下方内容 */
-  background: white;
-
-  /* 移除内边距，交由内部的 .page-header 自己控制 */
-  padding: 0;
-}
-
-/* 深色模式的背景 */
-.dark .header-click-wrapper {
-  background: #1e1e1e;
-}
-
-/* 2. 内部 .page-header 的样式 (现在只负责内容布局) */
 .page-header {
-  /* 定位在包装层的底部 */
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 44px;
-
-  /* 关键修正：恢复您原来的 Flexbox 布局！*/
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-
-  /* 关键修正：恢复您原来的内边距，保证内容不贴边 */
-  padding: 0.75rem 1.5rem;
-
-  /* 背景现在是透明的，因为父级已经有了背景色 */
-  background: transparent;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
+  background: white;
+  height: 44px;
+  padding-top: 0.75rem;
+}
+.dark .page-header {
+  background: #1e1e1e;
 }
 
-/* (调试) 如果想观察，可以给 wrapper 加上半透明背景 */
+/* 请在 <style scoped> 中加入这段唯一的代码 */
+.page-header::before {
+  content: '';
+  position: absolute;
+  /* 关键 ①：将这个伪元素置于其父元素内容的“背后” */
+  z-index: -1;
 
-.header-click-wrapper {
-  background: rgba(0, 0, 0, 0.2);
+  /* 关键 ②：定义一个比父元素更高大的区域 */
+  /* top, left, right 为 0 表示和父元素顶部、左右对齐 */
+  top: 0;
+  left: 0;
+  right: 0;
+  /* bottom 为负值，表示它比父元素更高 */
+  /* 这个 28px 就是您想要的额外点击区高度 */
+  bottom: -28px;
+
+  /* 关键 ③：将这个更高大的“背后”区域，整体向上移动 */
+  /* 移动的距离正好是我们想扩展的高度，把它“顶”上去 */
+  transform: translateY(-28px);
 }
 
 .page-title {
