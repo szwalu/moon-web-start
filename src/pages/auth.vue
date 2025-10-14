@@ -2001,6 +2001,13 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user">
+      <!-- 顶端点击热区：覆盖状态栏 + 一点额外高度，点击即回到顶部 -->
+      <div
+        class="statusbar-tap-hit"
+        aria-label="回到顶部"
+        role="button"
+        @click="handleHeaderClick"
+      />
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
@@ -2259,35 +2266,6 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 .dark .page-header {
   background: #1e1e1e;
 }
-
-/* 让页眉的点击热区上扩到状态栏/安全区，模拟“点状态栏回顶” */
-.page-header::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-
-  /* 向上延伸：再抬 12px，并覆盖 safe-top（iOS PWA/刘海） */
-  top: calc(-1 * var(--safe-top) - 12px);
-
-  /* 热区高度 = safe-top + 额外 28px；无 safe-top 设备也有一条细边可点 */
-  height: calc(var(--safe-top) + 28px);
-
-  /* 关键：可点击，事件会落在 .page-header 上，触发你已有的 @click */
-  pointer-events: auto;
-  background: transparent;
-  /* 不要抢占视觉，也不遮住下方按钮，因为它在 header 上方那条细边 */
-  z-index: 1;
-}
-
-/* 避免这块热区在桌面端太夸张，移动端保留加成，桌面端缩小到 12px */
-@media (min-width: 768px) {
-  .page-header::before {
-    top: -12px;
-    height: 24px;
-  }
-}
-
 .page-title {
   position: absolute;
   left: 50%;
@@ -2656,4 +2634,32 @@ html, body, #app {
 
 :root { --app-bg: #fff; }         /* ✅ 浅色默认 */
 .dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
+
+/* 顶端点击热区：固定在屏幕最上沿，覆盖刘海/状态栏上方一条细带 */
+.statusbar-tap-hit {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+
+  /* 热区高度 = 安全区 + 额外 24px（可按手感改 16~28） */
+  height: calc(env(safe-area-inset-top, 0px) + 24px);
+
+  /* 只负责“点一下”，不挡滚动手势 */
+  pointer-events: auto;
+  background: transparent;
+  z-index: 3200; /* 比 .page-header(3000) 高一点，但低于任何全屏弹层/抽屉即可 */
+}
+
+/* 桌面端缩小热区，避免误触：没有 safe-top 时只保留 12px 的细边可点 */
+@media (min-width: 768px) {
+  .statusbar-tap-hit {
+    height: 12px;
+  }
+}
+
+/* 如需只在触屏设备生效，可解注释下面这一段 */
+@media (hover: hover) and (pointer: fine) {
+  .statusbar-tap-hit { display: none; }
+}
 </style>
