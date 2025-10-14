@@ -1992,98 +1992,6 @@ function onCalendarUpdated(updated: any) {
     )
   }
 }
-
-/* eslint-disable style/max-statements-per-line */
-// ===== 顶边轻点回到顶部（移动端） =====
-let _topTapStartY: number | null = null
-let _topTapStartT = 0
-
-function _getSafeTopPx() {
-  const v = getComputedStyle(document.documentElement).getPropertyValue('--safe-top') || '0px'
-  const n = Number.parseFloat(v)
-  return Number.isFinite(n) ? n : 0
-}
-
-function _shouldIgnoreTarget(el: EventTarget | null) {
-  if (!(el instanceof Element))
-    return false
-  const tag = el.tagName
-  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(tag))
-    return true
-  if (el.closest('.n-dropdown, .n-modal, .n-drawer'))
-    return true
-  return false
-}
-
-function _onTopEdgeTouchStart(e: TouchEvent) {
-  if (!matchMedia('(pointer: coarse)').matches)
-    return
-  if (_shouldIgnoreTarget(e.target))
-    return
-  const t = e.touches[0]
-  if (!t)
-    return
-  _topTapStartY = t.clientY
-  _topTapStartT = performance.now()
-}
-
-function _onTopEdgeTouchEnd(e: TouchEvent) {
-  if (_topTapStartY == null)
-    return
-  if (_shouldIgnoreTarget(e.target)) {
-    _topTapStartY = null
-    return
-  }
-  const t = e.changedTouches[0]
-  const endY = t?.clientY ?? _topTapStartY
-  const dy = Math.abs(endY - _topTapStartY)
-  const dt = performance.now() - _topTapStartT
-  const THRESH = Math.max(20, _getSafeTopPx() + 12)
-  const vv = (window as any).visualViewport as VisualViewport | undefined
-  if (vv && vv.height < window.innerHeight - 80) {
-    _topTapStartY = null
-    return
-  }
-  if (_topTapStartY <= THRESH && dy < 10 && dt < 350) {
-    try {
-      handleHeaderClick()
-    }
-    catch {}
-  }
-  _topTapStartY = null
-}
-
-onMounted(
-  () => {
-    window.addEventListener(
-      'touchstart',
-      _onTopEdgeTouchStart,
-      { passive: true, capture: true },
-    )
-    window.addEventListener(
-      'touchend',
-      _onTopEdgeTouchEnd,
-      { passive: true, capture: true },
-    )
-  },
-)
-
-onUnmounted(
-  () => {
-    window.removeEventListener(
-      'touchstart',
-      _onTopEdgeTouchStart,
-      { capture: true } as any,
-    )
-    window.removeEventListener(
-      'touchend',
-      _onTopEdgeTouchEnd,
-      { capture: true } as any,
-    )
-  },
-)
-// ===== 顶边轻点回到顶部（移动端）结束 =====
-/* eslint-enable style/max-statements-per-line */
 </script>
 
 <template>
@@ -2093,34 +2001,40 @@ onUnmounted(
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
-        <div class="dropdown-menu-container">
-          <NDropdown
-            v-model:show="mainMenuVisible"
-            trigger="click"
-            placement="bottom-start"
-            :options="mainMenuOptions"
-            :show-arrow="false"
-            :width="300"
-            @select="handleMainMenuSelect"
-          >
-            <button class="header-action-btn" @click.stop>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
-              </svg>
+      <div
+        v-show="!isEditorActive"
+        class="header-click-wrapper"
+        @click="handleHeaderClick"
+      >
+        <div class="page-header">
+          <div class="dropdown-menu-container">
+            <NDropdown
+              v-model:show="mainMenuVisible"
+              trigger="click"
+              placement="bottom-start"
+              :options="mainMenuOptions"
+              :show-arrow="false"
+              :width="300"
+              @select="handleMainMenuSelect"
+            >
+              <button class="header-action-btn" @click.stop>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
+                </svg>
+              </button>
+            </NDropdown>
+          </div>
+          <h1 class="page-title">{{ $t('notes.notes') }}</h1>
+          <div class="header-actions">
+            <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
+            <button
+              class="header-action-btn"
+              aria-label="前往网址站"
+              @click="goToLinksSite"
+            >
+              <X :size="18" />
             </button>
-          </NDropdown>
-        </div>
-        <h1 class="page-title">{{ $t('notes.notes') }}</h1>
-        <div class="header-actions">
-          <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <button
-            class="header-action-btn"
-            aria-label="前往网址站"
-            @click="goToLinksSite"
-          >
-            <X :size="18" />
-          </button>
+          </div>
         </div>
       </div>
 
@@ -2335,18 +2249,47 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
+/* 在 <style scoped> 中，使用这套最终代码 */
+
+/* 1. 包装层 (负责占位、背景、点击和定位其子项) */
+.header-click-wrapper {
+  position: -webkit-sticky;
+  position: sticky;
+  top: var(--safe-top);
+  z-index: 3000;
+
+  /* 总高度 = 可见页眉高度(44px) + 顶部热区高度(28px) */
+  height: calc(44px + 0px);
+  background: white;
+
+  /* 关键修正①：使用Flexbox将内部的 .page-header 推向底部 */
+  display: flex;
+  align-items: flex-end;
+}
+
+.dark .header-click-wrapper {
+  background: #1e1e1e;
+}
+
+/* 2. 内部 .page-header (负责内部内容的布局，与原始版本行为一致) */
 .page-header {
-  flex-shrink: 0;
+  /* 关键修正②：不再需要绝对定位，它是一个标准的Flex子元素 */
+  width: 100%;
+  height: 44px;
+
+  /* 关键修正③：添加 position: relative，确保您的绝对定位标题能正确居中 */
+  position: relative;
+
+  /* 关键修正④：恢复您原始的、能够正常工作的Flexbox布局 */
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
-  background: white;
-  height: 44px;
-  padding-top: 0.75rem;
+
+  /* 恢复内边距，让内容与屏幕边缘保持距离 */
+  padding: 0.75rem 1.5rem;
+
+  /* 背景透明，因为父级包装层已经提供了背景色 */
+  background: transparent;
 }
 .dark .page-header {
   background: #1e1e1e;
