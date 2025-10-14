@@ -2255,30 +2255,12 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   background: white;
   height: 44px;
   padding-top: 0.75rem;
+  border-top: 28px solid transparent;
+  margin-top: -28px;
+  background-clip: padding-box;
 }
 .dark .page-header {
   background: #1e1e1e;
-}
-
-/* 请在 <style scoped> 中加入这段唯一的代码 */
-.page-header::before {
-  content: '';
-  position: absolute;
-  /* 关键 ①：将这个伪元素置于其父元素内容的“背后” */
-  z-index: -1;
-
-  /* 关键 ②：定义一个比父元素更高大的区域 */
-  /* top, left, right 为 0 表示和父元素顶部、左右对齐 */
-  top: 0;
-  left: 0;
-  right: 0;
-  /* bottom 为负值，表示它比父元素更高 */
-  /* 这个 28px 就是您想要的额外点击区高度 */
-  bottom: -28px;
-
-  /* 关键 ③：将这个更高大的“背后”区域，整体向上移动 */
-  /* 移动的距离正好是我们想扩展的高度，把它“顶”上去 */
-  transform: translateY(-28px);
 }
 
 .page-title {
