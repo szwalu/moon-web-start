@@ -98,6 +98,9 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 
+const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整）
+const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
+
 function onSelectTag(tag: string) {
   // 检查主输入框的内容在点击前是否为空
   const isInputEmpty = (newNoteContent.value || '').trim() === ''
@@ -825,37 +828,51 @@ async function handleBatchExport() {
     messageHook.error(t('auth.session_expired'))
     return
   }
+
   const dialogDateRange = ref<[number, number] | null>(null)
+
   dialog.info({
     title: t('notes.export_confirm_title'),
-    content: () => h(MobileDateRangePicker, {
-      'modelValue': dialogDateRange.value,
-      'onUpdate:modelValue': (v: [number, number] | null) => {
-        dialogDateRange.value = v
-      },
-    }),
+    // 在对话框里附一段说明“必须选择日期 + 上限提示”
+    content: () => h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+      h(MobileDateRangePicker, {
+        'modelValue': dialogDateRange.value,
+        'onUpdate:modelValue': (v: [number, number] | null) => { dialogDateRange.value = v },
+      }),
+      h('small', { style: 'opacity:.75;' }, `提示：必须选择日期范围；最多导出 ${EXPORT_MAX_ROWS} 条。`),
+    ]),
     positiveText: t('notes.confirm_export'),
     negativeText: t('notes.cancel'),
+
+    // 关键：如果没选范围，阻止对话框关闭
     onPositiveClick: async () => {
+      if (!dialogDateRange.value) {
+        messageHook.warning('请先选择日期范围')
+        return false // 阻止关闭对话框
+      }
+
       isExporting.value = true
       messageHook.info(t('notes.export_preparing'), { duration: 5000 })
+
       try {
-        const [startDate, endDate] = dialogDateRange.value || [null, null]
-        const BATCH_SIZE = 100
+        const [startDate, endDate] = dialogDateRange.value
         let allNotes: any[] = []
         let page = 0
         let hasMore = true
-        while (hasMore) {
+
+        while (hasMore && allNotes.length < EXPORT_MAX_ROWS) {
+          const from = page * EXPORT_BATCH_SIZE
+          const to = from + EXPORT_BATCH_SIZE - 1
+
           let query = supabase
             .from('notes')
             .select('content, created_at')
             .eq('user_id', user.value!.id)
             .order('created_at', { ascending: false })
-            .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
+            .range(from, to)
 
           if (startDate)
             query = query.gte('created_at', new Date(startDate).toISOString())
-
           if (endDate) {
             const endOfDay = new Date(endDate)
             endOfDay.setHours(23, 59, 59, 999)
@@ -866,22 +883,28 @@ async function handleBatchExport() {
           if (error)
             throw error
 
-          if (data && data.length > 0) {
-            allNotes = allNotes.concat(data)
-            page++
+          const chunk = data || []
+          if (chunk.length === 0) {
+            hasMore = false
           }
           else {
-            hasMore = false
+            allNotes = allNotes.concat(chunk)
+            page++
+            if (chunk.length < EXPORT_BATCH_SIZE)
+              hasMore = false
           }
-          if (data && data.length < BATCH_SIZE)
-            hasMore = false
         }
+
+        // 上限裁剪（避免多抓几条）
+        if (allNotes.length > EXPORT_MAX_ROWS)
+          allNotes = allNotes.slice(0, EXPORT_MAX_ROWS)
 
         if (allNotes.length === 0) {
           messageHook.warning(t('notes.no_notes_to_export_in_range'))
           return
         }
 
+        // 导出 TXT
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
@@ -892,9 +915,8 @@ async function handleBatchExport() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        const datePart = startDate && endDate
-          ? `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
-          : 'all'
+
+        const datePart = `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
         a.download = `notes_export_${datePart}_${timestamp}.txt`
         document.body.appendChild(a)
@@ -903,7 +925,12 @@ async function handleBatchExport() {
           document.body.removeChild(a)
           URL.revokeObjectURL(url)
         }, 100)
-        messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
+
+        // 成功提示（若触发了上限，提示里也说清）
+        if (allNotes.length >= EXPORT_MAX_ROWS)
+          messageHook.success(`已导出 ${allNotes.length} 条（已达到上限 ${EXPORT_MAX_ROWS} 条）`)
+        else
+          messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
       }
       catch (error: any) {
         messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
