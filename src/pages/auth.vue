@@ -110,6 +110,7 @@ const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整
 const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
 // ++ 新增：用于控制“回到顶部”按钮的 ref 和计时器变量
 const showScrollTopButton = ref(false)
+const latestScrollTop = ref(0)
 let scrollTimer: any = null
 
 function onSelectTag(tag: string) {
@@ -839,37 +840,25 @@ function handleExportTrigger() {
   }
 }
 
-// ++ 修改：这是您已有的 onListScroll 函数，请用下面的版本替换它
 function onListScroll(top: number) {
-  // 🚧 不满足条件时，禁止折叠隐藏顶部，强制展开并返回 (这部分是您原有的逻辑，保留)
+  latestScrollTop.value = top
   if (!canHideTopChrome.value) {
     headerCollapsed.value = false
     return
   }
-  // 下滑一点就折叠 (这部分也是您原有的逻辑，保留)
   headerCollapsed.value = top > 8
-
-  // --- 新增逻辑从这里开始 ---
-
-  // 1. 如果没滚动多远（比如少于400px），始终隐藏按钮
-  if (top < 400) {
-    showScrollTopButton.value = false
-    return
-  }
-
-  // 2. 只要在滚动，就立即隐藏按钮，并重置计时器
   showScrollTopButton.value = false
   clearTimeout(scrollTimer)
-
-  // 3. 设置一个计时器，如果在250毫秒后没有新的滚动事件，就认为滚动停止了，显示按钮
   scrollTimer = setTimeout(() => {
-    showScrollTopButton.value = true
-  }, 250) // 250毫秒的延迟，您可以根据手感调整
+    if (latestScrollTop.value > 400)
+      showScrollTopButton.value = true
+  }, 250)
 }
 
 // ++ 新增：按钮的点击处理函数
 function handleScrollTopClick() {
   (noteListRef.value as any)?.scrollToTop?.()
+  showScrollTopButton.value = false
 }
 
 async function handleBatchExport() {
@@ -2627,6 +2616,17 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+/* ++ 新增：桌面端按钮位置修正 ++ */
+@media (min-width: 768px) {
+  .scroll-top-button {
+    /* 计算逻辑:
+      (100vw - 960px) / 2  ->  计算出内容区外侧，左右两边灰色区域的宽度
+      + 20px                 ->  在这个灰色区域内再向内偏移20px
+      这样就能保证它永远在内容区的右侧，并且离浏览器边缘的距离是合适的。
+    */
+    right: calc((100vw - 960px) / 2 + 20px);
+  }
 }
 </style>
 
