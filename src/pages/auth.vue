@@ -108,6 +108,9 @@ const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
 const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整）
 const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
+// ++ 新增：用于控制“回到顶部”按钮的 ref 和计时器变量
+const showScrollTopButton = ref(false)
+let scrollTimer: any = null
 
 function onSelectTag(tag: string) {
   // 检查主输入框的内容在点击前是否为空
@@ -836,14 +839,37 @@ function handleExportTrigger() {
   }
 }
 
+// ++ 修改：这是您已有的 onListScroll 函数，请用下面的版本替换它
 function onListScroll(top: number) {
-// 🚧 不满足条件时，禁止折叠隐藏顶部，强制展开并返回
+  // 🚧 不满足条件时，禁止折叠隐藏顶部，强制展开并返回 (这部分是您原有的逻辑，保留)
   if (!canHideTopChrome.value) {
-    headerCollapsed.value = false // 你的原有“是否折叠顶部”的布尔量
+    headerCollapsed.value = false
     return
   }
-  // 下滑一点就折叠；你也可以改成 0 或 16，看手感
+  // 下滑一点就折叠 (这部分也是您原有的逻辑，保留)
   headerCollapsed.value = top > 8
+
+  // --- 新增逻辑从这里开始 ---
+
+  // 1. 如果没滚动多远（比如少于400px），始终隐藏按钮
+  if (top < 400) {
+    showScrollTopButton.value = false
+    return
+  }
+
+  // 2. 只要在滚动，就立即隐藏按钮，并重置计时器
+  showScrollTopButton.value = false
+  clearTimeout(scrollTimer)
+
+  // 3. 设置一个计时器，如果在250毫秒后没有新的滚动事件，就认为滚动停止了，显示按钮
+  scrollTimer = setTimeout(() => {
+    showScrollTopButton.value = true
+  }, 250) // 250毫秒的延迟，您可以根据手感调整
+}
+
+// ++ 新增：按钮的点击处理函数
+function handleScrollTopClick() {
+  (noteListRef.value as any)?.scrollToTop?.()
 }
 
 async function handleBatchExport() {
@@ -2001,40 +2027,34 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user">
-      <div
-        v-show="!isEditorActive"
-        class="header-click-wrapper"
-        @click="handleHeaderClick"
-      >
-        <div class="page-header">
-          <div class="dropdown-menu-container">
-            <NDropdown
-              v-model:show="mainMenuVisible"
-              trigger="click"
-              placement="bottom-start"
-              :options="mainMenuOptions"
-              :show-arrow="false"
-              :width="300"
-              @select="handleMainMenuSelect"
-            >
-              <button class="header-action-btn" @click.stop>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
-                </svg>
-              </button>
-            </NDropdown>
-          </div>
-          <h1 class="page-title">{{ $t('notes.notes') }}</h1>
-          <div class="header-actions">
-            <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-            <button
-              class="header-action-btn"
-              aria-label="前往网址站"
-              @click="goToLinksSite"
-            >
-              <X :size="18" />
+      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+        <div class="dropdown-menu-container">
+          <NDropdown
+            v-model:show="mainMenuVisible"
+            trigger="click"
+            placement="bottom-start"
+            :options="mainMenuOptions"
+            :show-arrow="false"
+            :width="300"
+            @select="handleMainMenuSelect"
+          >
+            <button class="header-action-btn" @click.stop>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
+              </svg>
             </button>
-          </div>
+          </NDropdown>
+        </div>
+        <h1 class="page-title">{{ $t('notes.notes') }}</h1>
+        <div class="header-actions">
+          <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
+          <button
+            class="header-action-btn"
+            aria-label="前往网址站"
+            @click="goToLinksSite"
+          >
+            <X :size="18" />
+          </button>
         </div>
       </div>
 
@@ -2206,6 +2226,18 @@ function onCalendarUpdated(updated: any) {
           @delete="triggerDeleteConfirmation"
         />
       </Transition>
+      <Transition name="fade">
+        <button
+          v-if="showScrollTopButton"
+          class="scroll-top-button"
+          aria-label="回到顶部"
+          @click="handleScrollTopClick"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      </Transition>
     </template>
     <template v-else>
       <Authentication />
@@ -2249,47 +2281,18 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   padding-bottom: 1rem;
   flex-shrink: 0;
 }
-/* 在 <style scoped> 中，使用这套最终代码 */
-
-/* 1. 包装层 (负责占位、背景、点击和定位其子项) */
-.header-click-wrapper {
-  position: -webkit-sticky;
-  position: sticky;
-  top: var(--safe-top);
-  z-index: 3000;
-
-  /* 总高度 = 可见页眉高度(44px) + 顶部热区高度(28px) */
-  height: calc(44px + 0px);
-  background: white;
-
-  /* 关键修正①：使用Flexbox将内部的 .page-header 推向底部 */
-  display: flex;
-  align-items: flex-end;
-}
-
-.dark .header-click-wrapper {
-  background: #1e1e1e;
-}
-
-/* 2. 内部 .page-header (负责内部内容的布局，与原始版本行为一致) */
 .page-header {
-  /* 关键修正②：不再需要绝对定位，它是一个标准的Flex子元素 */
-  width: 100%;
-  height: 44px;
-
-  /* 关键修正③：添加 position: relative，确保您的绝对定位标题能正确居中 */
-  position: relative;
-
-  /* 关键修正④：恢复您原始的、能够正常工作的Flexbox布局 */
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-
-  /* 恢复内边距，让内容与屏幕边缘保持距离 */
-  padding: 0.75rem 1.5rem;
-
-  /* 背景透明，因为父级包装层已经提供了背景色 */
-  background: transparent;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 3000; /* [PATCH-Z] 提高层级，确保 X/菜单永远可点 */
+  background: white;
+  height: 44px;
+  padding-top: 0.75rem;
 }
 .dark .page-header {
   background: #1e1e1e;
@@ -2580,6 +2583,50 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   .auth-container {
     max-width: 960px;
   }
+}
+
+/* ++ 新增：“回到顶部”按钮的样式 ++ */
+.scroll-top-button {
+  position: fixed;
+  bottom: 30px;
+  right: 20px;
+  z-index: 5000;
+
+  width: 38px;
+  height: 38px;
+  border-radius: 50%; /* 圆形 */
+  border: none;
+
+  /* 半透明黑色背景，在浅色和深色模式下都适用 */
+  background-color: rgba(0, 0, 0, 0.2);
+  color: white;
+
+  /* Flexbox 居中图标 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.scroll-top-button:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.scroll-top-button:active {
+  transform: scale(0.95);
+}
+
+/* ++ 新增：按钮的淡入淡出效果 ++ */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
 
