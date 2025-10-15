@@ -221,10 +221,52 @@ onUnmounted(() => {
   }
 })
 
+function addNote(newNote: any) {
+  // 复用已有的 todayStr 函数来获取今天的日期字符串，例如 "2025-10-14"
+  const todayYmd = todayStr()
+
+  // 获取新笔记的日期字符串
+  const newNoteDate = new Date(newNote.created_at)
+  const y = newNoteDate.getFullYear()
+  const m = String(newNoteDate.getMonth() + 1).padStart(2, '0')
+  const day = String(newNoteDate.getDate()).padStart(2, '0')
+  const newNoteYmd = `${y}-${m}-${day}`
+
+  // 只有当新笔记是今天创建的，才执行操作
+  if (newNoteYmd === todayYmd) {
+    // 1. 更新内存中的列表 (UI会实时响应)
+    anniversaryNotes.value.unshift(newNote)
+
+    // 2. 将更新后的完整列表写回到 localStorage (这是关键的修复)
+    if (user.value)
+      writeResults(user.value.id, todayYmd, anniversaryNotes.value)
+  }
+}
+
+function removeNoteById(noteId: string) {
+  // 找到被删除笔记在当前列表中的位置
+  const index = anniversaryNotes.value.findIndex(n => n.id === noteId)
+
+  // 如果找到了，就将它从列表中移除
+  if (index !== -1) {
+    anniversaryNotes.value.splice(index, 1)
+
+    // 关键：移除后，必须立刻用更新后的、变短了的列表去覆盖旧的本地缓存
+    if (user.value)
+      writeResults(user.value.id, todayStr(), anniversaryNotes.value)
+
+    // 如果当前正处于“那年今日”视图，则需要通知父组件更新界面
+    if (isAnniversaryViewActive.value)
+      emit('toggleView', anniversaryNotes.value.length > 0 ? anniversaryNotes.value : null)
+  }
+}
+
 // 暴露方法
 defineExpose({
   setView,
   loadAnniversaryNotes,
+  addNote,
+  removeNoteById,
 })
 </script>
 

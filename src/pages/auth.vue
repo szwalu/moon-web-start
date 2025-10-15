@@ -1024,11 +1024,35 @@ function handleExportResults() {
 }
 
 function addNoteToList(newNote: any) {
-  if (!notes.value.some(note => note.id === newNote.id)) {
-    notes.value.unshift(newNote)
-    totalNotes.value += 1
+  if (notes.value.some(note => note.id === newNote.id))
+    return
+
+  // 1. 实时更新当前界面显示的列表 (这部分不变)
+  notes.value.unshift(newNote)
+  anniversaryBannerRef.value?.addNote(newNote)
+  totalNotes.value += 1
+  localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+  // 2. 智能更新主页的本地缓存
+  if (activeTagFilter.value || isShowingSearchResults.value) {
+    // 如果当前在筛选或搜索视图中，则执行安全的“读取-修改-写回”操作
+    try {
+      const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+      if (homeCacheRaw) {
+        const homeCache = JSON.parse(homeCacheRaw)
+        // 将新笔记添加到已缓存的完整列表的开头
+        homeCache.unshift(newNote)
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(homeCache))
+      }
+      // 如果 homeCache 不存在，我们就不操作，避免写入不完整的数据
+    }
+    catch (e) {
+      console.error('未能安全地更新主笔记缓存:', e)
+    }
+  }
+  else {
+    // 如果当前就在主列表视图，直接完整保存即可
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
   }
 }
 
@@ -1509,6 +1533,7 @@ async function triggerDeleteConfirmation(id: string) {
 
         if (error)
           throw new Error(error.message)
+        anniversaryBannerRef.value?.removeNoteById(id)
 
         // 更新本地缓存与 UI（保持原有逻辑）
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
@@ -1746,6 +1771,9 @@ async function handleDeleteSelected() {
 
         if (error)
           throw new Error(error.message)
+        idsToDelete.forEach((id) => {
+          anniversaryBannerRef.value?.removeNoteById(id)
+        })
 
         // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
         invalidateAllSearchCaches()
