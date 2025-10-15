@@ -113,12 +113,21 @@ const showScrollTopButton = ref(false)
 const latestScrollTop = ref(0)
 let scrollTimer: any = null
 
+// 组合式：放在 t / allTags 之后
+const {
+  mainMenuVisible,
+  tagMenuChildren,
+  UNTAGGED_SENTINEL,
+  refreshTags,
+  tagCounts,
+} = useTagMenu(allTags, onSelectTag, t)
+
 function onSelectTag(tag: string) {
   // 检查主输入框的内容在点击前是否为空
   const isInputEmpty = (newNoteContent.value || '').trim() === ''
 
   // 条件操作：仅当输入框为空时，才执行“填入标签”和“聚焦”的动作
-  if (isInputEmpty) {
+  if (isInputEmpty && tag !== UNTAGGED_SENTINEL) {
     newNoteContent.value = `${tag} ` // 在标签后加一个空格，方便继续输入
     nextTick(() => {
       newNoteEditorRef.value?.focus()
@@ -128,15 +137,6 @@ function onSelectTag(tag: string) {
   // 无条件操作：无论输入框之前是否为空，最后总是执行筛选逻辑
   fetchNotesByTag(tag)
 }
-
-// 组合式：放在 t / allTags 之后
-const {
-  mainMenuVisible,
-  tagMenuChildren,
-  UNTAGGED_SENTINEL,
-  refreshTags,
-  tagCounts,
-} = useTagMenu(allTags, onSelectTag, t)
 
 watch(searchQuery, (newValue) => {
   if (newValue && newValue.trim()) {
