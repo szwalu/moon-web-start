@@ -356,6 +356,33 @@ notes:
   filtering_by_tag: 正在筛选标签
   count_notes: 共 {count} 条笔记
   search_results_for: 搜索“{query}”的结果
+
+  trash:
+    aria_label: 回收站
+    title: 回收站（保留 30 天）
+    select_all: 全选
+    restore: 恢复
+    purge_forever: 彻底删除
+    loading: 加载中…
+    empty: 回收站为空
+    created_at_label: 创建于：
+    deleted_at_label: 删除于：
+    days_left: 剩余 {days} 天
+    restore_button_title: 恢复
+    back: 返回
+
+    restore_success_one: 已恢复 1 条笔记
+    restore_success_many: 已恢复 {count} 条笔记
+    fetch_failed_with_reason: 加载回收站失败：{reason}
+    restore_failed_with_reason: 恢复失败：{reason}
+    purge_success_many: 已彻底删除 {count} 条笔记
+    purge_failed_with_reason: 彻底删除失败：{reason}
+    unknown_error: 未知错误
+
+    purge_confirm_title: 删除确认
+    purge_confirm_content: 确定要彻底删除选中的 {count} 条笔记吗？此操作不可恢复。
+    cancel: 取消
+    confirm_delete: 确认删除
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？'

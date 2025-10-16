@@ -1157,6 +1157,7 @@ function updateNoteInList(updatedNote: any) {
     // 如果当前就在主列表视图，直接保存即可，这是最安全且高效的
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
+  anniversaryBannerRef.value?.updateNote(updatedNote)
 }
 
 async function fetchNotes() {
@@ -1989,26 +1990,9 @@ function goToLinksSite() {
 }
 
 function onCalendarCreated(note: any) {
-  try {
-    notes.value = [note, ...(notes.value || [])]
-  }
-  catch {
-    /* 忽略 */
-  }
-
-  try {
-    totalNotes.value = (totalNotes.value || 0) + 1
-  }
-  catch {
-    /* 忽略 */
-  }
-
-  try {
-    localStorage.removeItem('notes_first_page_cache_key')
-  }
-  catch {
-    /* 忽略 */
-  }
+  addNoteToList(note)
+  invalidateCachesOnDataChange(note)
+  refreshTags()
 }
 
 function onCalendarUpdated(updated: any) {

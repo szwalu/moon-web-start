@@ -261,12 +261,30 @@ function removeNoteById(noteId: string) {
   }
 }
 
+function updateNote(updatedNote: any) {
+  if (!updatedNote || !updatedNote.id)
+    return
+
+  // 1. 在内存中的 anniversaryNotes 数组里找到并更新对应的笔记
+  const index = anniversaryNotes.value.findIndex(n => n.id === updatedNote.id)
+
+  if (index !== -1) {
+    // 找到了，用新数据部分更新旧数据，以保持响应性
+    anniversaryNotes.value[index] = { ...anniversaryNotes.value[index], ...updatedNote }
+
+    // 2. 关键：将更新后的完整列表写回 localStorage，保持缓存同步
+    if (user.value)
+      writeResults(user.value.id, todayStr(), anniversaryNotes.value)
+  }
+}
+
 // 暴露方法
 defineExpose({
   setView,
   loadAnniversaryNotes,
   addNote,
   removeNoteById,
+  updateNote,
 })
 </script>
 

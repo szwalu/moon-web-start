@@ -358,6 +358,33 @@ notes:
   count_notes: 'Total {count} notes'
   search_results_for: 'Results for “{query}”'
 
+  trash:
+    aria_label: Trash
+    title: Trash (kept for 30 days)
+    select_all: Select All
+    restore: Restore
+    purge_forever: Delete Permanently
+    loading: Loading…
+    empty: Trash is empty
+    created_at_label: 'Created:'
+    deleted_at_label: 'Deleted:'
+    days_left: '{days} days left'
+    restore_button_title: Restore
+    back: Back
+
+    restore_success_one: Restored 1 note
+    restore_success_many: 'Restored {count} notes'
+    fetch_failed_with_reason: 'Failed to load trash: {reason}'
+    restore_failed_with_reason: 'Restore failed: {reason}'
+    purge_success_many: 'Permanently deleted {count} notes'
+    purge_failed_with_reason: 'Permanent delete failed: {reason}'
+    unknown_error: Unknown error
+
+    purge_confirm_title: Delete Confirmation
+    purge_confirm_content: 'Are you sure you want to permanently delete the selected {count} notes? This action cannot be undone.'
+    cancel: Cancel
+    confirm_delete: Delete  
+
 dialog:
   delete_note_title: Delete Note
   delete_note_content2: 'Are you sure you want to delete {count} notes?'

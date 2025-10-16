@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
+const { t, locale } = useI18n()
 const props = defineProps<{
   show: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'restored'): void
+  (e: 'restored', payload?: any[]): void
   (e: 'purged'): void
 }>()
 
@@ -79,7 +81,6 @@ async function initFromCacheThenMaybeRefresh() {
   const cached = loadCache(uid)
   if (cached)
     list.value = cached.items
-
   else
     list.value = []
 
@@ -135,7 +136,7 @@ async function fetchTrashFromServerAndCache() {
   }
   catch (err: any) {
     console.error(err)
-    message.error(`加载回收站失败：${err.message || '未知错误'}`)
+    message.error(t('notes.trash.fetch_failed_with_reason', { reason: err.message || t('notes.trash.unknown_error') }))
   }
   finally {
     loading.value = false
@@ -160,6 +161,21 @@ function daysLeft(n: TrashNote): number {
   return left > 0 ? left : 0
 }
 
+/** 多语言日期格式化（跟随当前 locale） */
+function formatDateTime(dt: string | number | Date): string {
+  const d = new Date(dt)
+  try {
+    // 使用当前语言地区；dateStyle/timeStyle 跨浏览器兼容性良好
+    return new Intl.DateTimeFormat(locale.value, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(d)
+  } catch {
+    // 兜底
+    return d.toLocaleString()
+  }
+}
+
 async function restoreOne(id: string) {
   try {
     const { error } = await supabase.rpc('restore_note', { p_note_id: id })
@@ -167,14 +183,12 @@ async function restoreOne(id: string) {
       throw error
     list.value = list.value.filter(n => n.id !== id)
     selected.value = selected.value.filter(s => s !== id)
-    message.success('已恢复 1 条笔记')
-
-    // ✅ 这里调用
+    message.success(t('notes.trash.restore_success_one'))
     emit('restored')
   }
   catch (err: any) {
     console.error(err)
-    message.error(`恢复失败：${err.message || '未知错误'}`)
+    message.error(t('notes.trash.restore_failed_with_reason', { reason: err.message || t('notes.trash.unknown_error') }))
   }
 }
 
@@ -194,18 +208,18 @@ async function restoreSelected() {
     if (user.value)
       saveCache(user.value.id, list.value)
 
-    // 关键：一次性查出这些恢复后的笔记
+    // 查出这些恢复后的笔记，向父组件回传（可选）
     const { data: restoredRows } = await supabase
       .from('notes')
       .select('*')
       .in('id', ids)
 
-    message.success(`已恢复 ${ids.length} 条笔记`)
+    message.success(t('notes.trash.restore_success_many', { count: ids.length }))
     emit('restored', Array.isArray(restoredRows) ? restoredRows : [])
   }
   catch (err: any) {
     console.error(err)
-    message.error(`恢复失败：${err.message || '未知错误'}`)
+    message.error(t('notes.trash.restore_failed_with_reason', { reason: err.message || t('notes.trash.unknown_error') }))
   }
   finally {
     loading.value = false
@@ -217,10 +231,10 @@ function openPurgeConfirm() {
     return
   const count = selected.value.length
   dialog.warning({
-    title: '删除确认',
-    content: `确定要彻底删除选中的 ${count} 条笔记吗？此操作不可恢复。`,
-    negativeText: '取消',
-    positiveText: '确认删除',
+    title: t('notes.trash.purge_confirm_title'),
+    content: t('notes.trash.purge_confirm_content', { count }),
+    negativeText: t('notes.trash.cancel'),
+    positiveText: t('notes.trash.confirm_delete'),
     onPositiveClick: async () => {
       await confirmPurge()
     },
@@ -248,12 +262,12 @@ async function confirmPurge() {
     // 更新缓存
     saveCache(user.value.id, list.value)
 
-    message.success(`已彻底删除 ${ids.length} 条笔记`)
+    message.success(t('notes.trash.purge_success_many', { count: ids.length }))
     emit('purged')
   }
   catch (err: any) {
     console.error(err)
-    message.error(`彻底删除失败：${err.message || '未知错误'}`)
+    message.error(t('notes.trash.purge_failed_with_reason', { reason: err.message || t('notes.trash.unknown_error') }))
   }
   finally {
     loading.value = false
@@ -277,9 +291,9 @@ onMounted(() => {
 <template>
   <Transition name="fade">
     <div v-if="show" class="modal-overlay" @click.self="emit('close')">
-      <div class="modal-content" role="dialog" aria-modal="true" aria-label="回收站">
+      <div class="modal-content" role="dialog" aria-modal="true" :aria-label="t('notes.trash.aria_label')">
         <div class="modal-header">
-          <h2 class="modal-title">回收站（保留 30 天）</h2>
+          <h2 class="modal-title">{{ t('notes.trash.title') }}</h2>
           <button class="close-button" @click="emit('close')">&times;</button>
         </div>
 
@@ -290,15 +304,19 @@ onMounted(() => {
               :checked="allChecked"
               @change="allChecked = ($event.target as HTMLInputElement).checked"
             >
-            <span>全选</span>
+            <span>{{ t('notes.trash.select_all') }}</span>
           </label>
           <div class="spacer" />
-          <button class="btn-secondary" :disabled="selected.length === 0 || loading" @click="restoreSelected">恢复</button>
-          <button class="btn-danger" :disabled="selected.length === 0 || loading" @click="openPurgeConfirm">彻底删除</button>
+          <button class="btn-secondary" :disabled="selected.length === 0 || loading" @click="restoreSelected">
+            {{ t('notes.trash.restore') }}
+          </button>
+          <button class="btn-danger" :disabled="selected.length === 0 || loading" @click="openPurgeConfirm">
+            {{ t('notes.trash.purge_forever') }}
+          </button>
         </div>
 
-        <div v-if="loading && list.length === 0" class="loading">加载中...</div>
-        <div v-else-if="list.length === 0" class="empty">回收站为空</div>
+        <div v-if="loading && list.length === 0" class="loading">{{ t('notes.trash.loading') }}</div>
+        <div v-else-if="list.length === 0" class="empty">{{ t('notes.trash.empty') }}</div>
 
         <div v-else class="trash-list">
           <div
@@ -322,20 +340,22 @@ onMounted(() => {
               <!-- 仅显示前三行 -->
               <div class="content">{{ n.content }}</div>
               <div class="meta">
-                <span>创建于：{{ new Date(n.created_at).toLocaleString('zh-CN') }}</span>
-                <span>删除于：{{ new Date(n.deleted_at).toLocaleString('zh-CN') }}</span>
-                <span class="left">剩余 {{ daysLeft(n) }} 天</span>
+                <span>{{ t('notes.trash.created_at_label') }}{{ formatDateTime(n.created_at) }}</span>
+                <span>{{ t('notes.trash.deleted_at_label') }}{{ formatDateTime(n.deleted_at) }}</span>
+                <span class="left">{{ t('notes.trash.days_left', { days: daysLeft(n) }) }}</span>
               </div>
             </div>
 
             <div class="item-actions">
-              <button class="btn-link" title="恢复" @click="restoreOne(n.id)">恢复</button>
+              <button class="btn-link" :title="t('notes.trash.restore_button_title')" @click="restoreOne(n.id)">
+                {{ t('notes.trash.restore') }}
+              </button>
             </div>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button class="btn-secondary wide" @click="emit('close')">返回</button>
+          <button class="btn-secondary wide" @click="emit('close')">{{ t('notes.trash.back') }}</button>
         </div>
       </div>
     </div>

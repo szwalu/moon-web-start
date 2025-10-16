@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
+import { useI18n } from 'vue-i18n'
 
 // ========== 轻量“日历内写笔记” ==========
 import NoteEditor from '@/components/NoteEditor.vue'
@@ -19,7 +20,7 @@ const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
-
+const { t, locale } = useI18n()
 const datesWithNotes = ref<Set<string>>(new Set())
 const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())

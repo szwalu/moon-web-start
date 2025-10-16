@@ -356,6 +356,33 @@ notes:
   filtering_by_tag: タグでフィルタリング中
   count_notes: '合計 {count} 件のメモ'
   search_results_for: '「{query}」の検索結果'
+  
+  trash:
+    aria_label: ゴミ箱
+    title: ゴミ箱（30日間保持）
+    select_all: すべて選択
+    restore: 復元
+    purge_forever: 完全に削除
+    loading: 読み込み中…
+    empty: ゴミ箱は空です
+    created_at_label: '作成日時:'
+    deleted_at_label: '削除日時:'
+    days_left: '残り {days} 日'
+    restore_button_title: 復元
+    back: 戻る
+
+    restore_success_one: 1件のノートを復元しました
+    restore_success_many: '{count} 件のノートを復元しました'
+    fetch_failed_with_reason: 'ゴミ箱の読み込みに失敗しました: {reason}'
+    restore_failed_with_reason: '復元に失敗しました: {reason}'
+    purge_success_many: '{count} 件のノートを完全に削除しました'
+    purge_failed_with_reason: '完全削除に失敗しました: {reason}'
+    unknown_error: 不明なエラー
+
+    purge_confirm_title: 削除の確認
+    purge_confirm_content: '選択した {count} 件のノートを完全に削除してもよろしいですか？この操作は元に戻せません。'
+    cancel: キャンセル
+    confirm_delete: 削除  
 
 dialog:
   delete_note_title: メモを削除
