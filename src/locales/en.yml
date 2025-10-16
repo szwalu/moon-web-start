@@ -3,16 +3,19 @@ common:
   edit: Edit
   cate: Category
   group: Group
-  site: Site
-  link: Link(Please enter the full link with https://)
+  site: Website
+  link: 'Link (please enter the full link starting with https://)'
   name: Name
   more: More
+
 time_units:
-  days: 'd ' # 加上空格以美化格式，例如 "10d "
-  hours: 'h ' # 例如 "5h "
-  minutes: 'm ' # 例如 "30m "
-  seconds: s # 末尾通常不加空格
-Alreadyrunning: 'WOabc Already running:'
+  days: Days
+  hours: Hours
+  minutes: Minutes
+  seconds: Seconds
+
+Alreadyrunning: 'My ABC is already running:'
+
 button:
   resetData: Reset Data
   importData: Import Data
@@ -21,19 +24,28 @@ button:
   confirm: Confirm
   cancel: Cancel
   delete: Delete
-  dataInSync: Data synchronizing
+  dataInSync: Data Syncing
   save: Save
   read: Read
-  stopSync: Stop synchronizing
+  stopSync: Stop Sync
   addCategory: Add Category
+
 settings:
   title: Settings
-  font_title: Font Settings
+  font_title: Font Size Settings
   font_size_label: Font Size
   font_size_small: Small
   font_size_medium: Medium
   font_size_large: Large
-  font_size_extra_large: extra large
+  font_size_extra_large: Extra Large
+  ui_font_title: UI Font Size
+  ui_font_follow_note: Follow Note Font Size
+  ui_font_xs: Extra Small
+  ui_font_sm: Small
+  ui_font_md: Medium
+  ui_font_lg: Large
+  ui_font_hint: 'Hint: UI font size affects drawers, dropdowns, dialogs, messages, etc. Enabling “Follow” will auto-select a suitable UI font size based on note font size.'
+
   theme:
     title: Theme
     earlySpring: Early Spring
@@ -42,11 +54,11 @@ settings:
     moonWhite: Moon White
   language:
     title: Website Language
-    system: System
+    system: Follow System
   sitePreference:
     title: Site Preference
     auto: Auto
-    chineseMainland: Chinese Mainland
+    chineseMainland: Mainland China
     global: Global
     customize: Customize
   searchEngine:
@@ -56,7 +68,7 @@ settings:
     google: Google
     sogou: Sogou
     wikipedia: Wikipedia
-    local: On-site Search
+    local: Local Search
   iconStyle:
     title: Icon Style
     vivid: Vivid
@@ -64,16 +76,16 @@ settings:
     gray: Gray
   linkStrategy:
     title: Link Strategy
-    currentTab: Current tab open
-    newTab: New tab open
+    currentTab: Open in Current Tab
+    newTab: Open in New Tab
   showTime:
     title: Show Time
   showDate:
     title: Show Date
   showSecond:
-    title: Show Second
+    title: Show Seconds
   showLunar:
-    title: Show Lunar
+    title: Show Lunar Calendar
   showFooter:
     title: Show Footer
   tagMode:
@@ -83,89 +95,98 @@ settings:
   showWeather:
     title: Show Weather
   showDailyQuote:
-    title: Quote
+    title: Show Daily Quote
   common:
     show: Show
     hide: Hide
+
 messages:
   tip: Tip
-  warnCustomize: Please set the site preference to "Customize" first
+  warnCustomize: 'Please set site preference to "Customize" first'
   warnInvalidImport: Please import a valid data file
-  warnResetData: Data cannot be recovered after reset, are you sure to reset data?
-  warn_logout_to_reset: Please log out of your account before resetting data.
+  warnResetData: Data cannot be recovered after reset. Are you sure to reset?
+  warn_logout_to_reset: Please log out before resetting data.
   exported: Exported~
-  imported: Imported successfully
+  imported: Import successful
   reset: Reset~
   loading: Loading...
-  warnSyncIdRequired: Please input ID
-  saving: Saving
+  warnSyncIdRequired: Please enter an ID
+  saving: Saving...
   saveSuccess: Saved successfully
-  reading: Reading
-  readingSuccess: Read successfully
-  readFailed: Failed to read
-  warnValidateId: The ID should be a combination of 5 to 20 digits, letters, or underscores
-  Request: Request Exception
-  noResultsPre: 'No results found for '
-  noResultsPost: ' on this site'
-iconLinkPlaceholder: Icon Link (optional)
-siteDescPlaceholder: Site Description (optional)
-inputIdPlaceholder: Input ID
+  reading: Reading...
+  readSuccess: Read successfully
+  readFailed: Read failed
+  warnValidateId: 'ID must be 5–20 characters: numbers, letters, or underscores'
+  Request: Request error
+  noResultsPre: No website found for “
+  noResultsPost: ” on this site
+
+iconLinkPlaceholder: Icon link (optional)
+siteDescPlaceholder: Website description (optional)
+inputIdPlaceholder: Enter ID
+
 navbar:
   apply: Apply
   links: Links
   about: About
-  auth: Register/Login
+  auth: Sign Up / Login
   logout: Logout
   account: My Account
   cloud_Notes: Cloud Notes
+
 footer:
-  disclaimer: The content on this site is sourced from the internet. If any content infringes on your rights, please contact the webmaster to delete the relevant content,
+  disclaimer: 'The content of this site comes from the Internet. If any content infringes rights, please contact us to remove it.'
   contactLink: Contact Us
-  friendlyLinksTitle: 'Links:'
+  friendlyLinksTitle: 'Friendly Links:'
   linkBqju: Benquju
-  linkWoabcNav: WOabc nav
-  linkAbcSite: TQabc site
+  linkWoabcNav: WoABC Navigation
+  linkAbcSite: TQabc Sites
+
 form:
-  title: Feedback
-  breadcrumb: Site Submission & Feedback
-  tip: Hello! Welcome to our site. If you'd like us to include your site, apply for a link exchange, or give feedback, please fill out the form below. Thank you!
-  selectLabel: Please choose
+  title: 'Suggestions & Feedback'
+  breadcrumb: 'Website Submission & Feedback'
+  tip: 'Hello! If you’d like your site included, apply for a link exchange, or submit feedback, please fill out the form below. Thank you!'
+  selectLabel: Please select
   selectPlaceholder: Select a type
   options:
-    applySite: Submit a website
-    applyLink: Apply for link exchange
+    applySite: Submit a Website
+    applyLink: Apply for Link Exchange
     feedback: Feedback
-  messageLabel: Your message
-  emailLabel: Contact email (optional)
+    applyinvitecode: Request Invite Code
+  messageLabel: Please enter
+  emailLabel: Contact Email (optional)
   submit: Submit
-  success: Submitted successfully, thank you for your feedback!
-  selectError: Please select an option
-  error: Submission failed. Please try again later.
+  success: 'Submitted successfully, thank you!'
+  selectError: Please select one item from the list
+  error: 'Submission failed, please try again later'
+
 about:
-  title: Features
-  efficientNav: Efficient Navigation - Minimalist design for quick access.
-  freedomEdit: Total Freedom - Freely add, delete, and modify sites with custom icons.
-  dragSort: Drag & Drop Sorting - Quickly rearrange the order of your websites.
-  smartSearch: Smart Search - Suggestions from multiple search engines like Google, Bing, and Baidu.
-  responsive: Responsive Layout - Displays perfectly on any device size.
-  themeSwitch: Theme Switching - Multiple built-in themes to switch between freely.
-  darkMode: Dark Mode - Easy on your eyes.
-  i18nSupport: I18n - Supports Simplified Chinese, English, and Japanese.
-  importExport: Three ways to store data (register and log in, input ID, import and export) - Sync your data across different devices.(In the registration login method, if you log out after logging in, you can automatically log in again by refreshing the webpage)
-  browserPlugin: Browser Extension - Open Moon in every new tab.
+  title: WoABC Navigation Features
+  efficientNav: '⚡ Efficient Navigation - Minimalist style, fast access'
+  freedomEdit: '🍎 Full Freedom - Add, delete, edit sites freely; custom icons supported'
+  dragSort: '🛫 Drag & Sort - Quickly adjust site order'
+  smartSearch: '🔍 Smart Search - Supports Bing, Google, Baidu, etc.'
+  responsive: 📱 Responsive Layout - Works on any device
+  themeSwitch: '🎨 Theme Switch - Multiple built-in themes, freely switchable'
+  darkMode: 🌙 Dark Mode - Protect your eyes
+  i18nSupport: '🌍 I18n - Supports Chinese, English, and Japanese'
+  importExport: '📤 Three data storage methods (Login, ID input, Import/Export) - Sync across devices'
+  browserPlugin: 📦 Browser Extension - Open Moon in new tab
   dockerSupport: |
-    Three methods to store your data:
-    📎 Register & Login:
-    Select "Register/Login" from the side navigation bar, or tap the "我abc" logo at the top of the page on mobile to enter the login screen. Follow the prompts to log in, or register first using your email.
-    After logging in, any changes to your homepage—adding, sorting websites, or changing settings—will be automatically saved to the cloud.
-    If you've edited your homepage on different devices, content will automatically merge after login.
-    If you log out, simply refresh the homepage to log in again automatically.
-    📎 Enter ID:
-    After logging in, click the settings button in the fixed header. Scroll down to the "Enter ID" field in the settings page, input a 5–20 character alphanumeric ID, and click "Save" to upload your current data to the cloud.
-    To restore, click "Load" and your cloud data will overwrite the local version. Please remember your ID.
-    📎 Import & Export:
-    On the settings page, click "Export Data" to save your data to a file on your computer or mobile device. Click "Import Data" to restore previously saved data.
+    ⚙️Details of the three storage methods:
+    📎Login:
+    Select “Sign Up / Login” from the sidebar or click the “WoABC” logo at the top (mobile) to enter the login page.
+    When logged in, “abc” in the logo is green; otherwise, it’s yellow.
+    Follow prompts to log in or register via email (invite code required for now).
+    After login, any edits to sites or settings are instantly saved to the cloud.
+    When editing on multiple devices, local and cloud data will auto-merge after login.
+    📎Enter ID:
+    Click the Settings button in the header → enter a 5–20 character ID in the “Enter ID” box.
+    Click “Save” to store data to cloud; “Read” to restore from cloud. Remember your ID!
+    📎Import/Export:
+    In Settings, click “Export Data” to save locally, or “Import Data” to restore previously saved data.
   thanks: Special Thanks
+
 auth:
   login: Login
   register: Register
@@ -176,139 +197,187 @@ auth:
   account_last_login_label: Last Login
   email: Email
   password: Password
-  prompt_to_register: Don't have an account?
-  Log_in_again_prefix: If you have logged in,
-  Log_in_again_link: 👉️Click here
-  Log_in_again_suffix: Refresh the page to log in again automatically
-  Log_in_again_link2: 👉️Click here
-  Log_in_again_setting: Go to settings
+  prompt_to_register: Don’t have an account?
+  Log_in_again_prefix: 'If you’ve logged in before,'
+  Log_in_again_link: 👉 Click here
+  Log_in_again_suffix: to refresh and log in again
+  Log_in_again_link2: 👉 Click here
+  Log_in_again_setting: Go to Settings
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
   email_placeholder: Please enter your email address
   forgot_password: Forgot Password?
   confirm: Confirm
   cancel: Cancel
-  return: return
+  return: Return
   reset_password: Reset Password
-  invalid_link: The reset link is invalid or has expired. Please request a new one.
-  enter_and_confirm: Please enter and confirm your new password.
-  mismatch: The two password entries do not match.
+  invalid_link: Password reset link is invalid or expired. Please request again.
+  enter_and_confirm: Please enter and confirm a new password.
+  mismatch: Passwords do not match.
   reset_failed: Reset failed
-  reset_success: Password has been reset successfully. Redirecting to home in 2 seconds...
+  reset_success: Password reset successfully. Redirecting in 2 seconds...
   enter_new_password: Enter new password
   confirm_new_password: Confirm new password
   submitting: Submitting...
   submit_new_password: Submit New Password
   account_last_backup_label: Last Backup
-  return_home: Back to Home
-  please_login: Please log in to your account first!
-  info_label: Note
+  return_home: Return Home
+  please_login: Please log in to save data in real time!
+  info_label: Notes
   note_placeholder: Write something...
   save: Save
   insert_emoji: Insert Emoji
   saved_message: Note saved
-  last_saved: Last saved
+  last_saved: Last Saved
+  session_restore_error: 'Cannot restore session, please log in again'
+  session_refresh_error: 'Session refresh failed, please log in again'
   invite_code: Invite Code
-  invite_code_placeholder: Please enter the 5-digit invite code
-  password_placeholder: Please enter 6 digits or letters
-  login_password_placeholder: Please enter a 6-digit numeric or alphabetic password
-  update_failed: Update failed
-  insert_failed_create_note: Unable to create new note
+  invite_code_placeholder: Please enter 5-digit invite code
+  password_placeholder: Please enter 6-character password
+  login_password_placeholder: Please enter 6-character password
+  session_expired: 'Session expired, please log in again'
+  update_failed: Update failed due to network issues
+  insert_failed_create_note: 'Network error, failed to create note'
+  Calendar: Calendar
+  trash: Trash
+  go_to_links: Go to Sites
+  back_to_top: Back to Top
   messages:
-    check_email_for_verification: ✅ Success! Please check your inbox (and spam folder) to verify your email.
-    check_email_or_login: 'This email may already be registered. Please check your inbox (and spam folder) to complete verification, or try logging in directly.'
-    user_already_registered: ❌ This email is already registered. Please log in directly or use password recovery.
-    email_not_confirmed: ❌ Please confirm your email first.
-    reset_success: Password reset email sent. Please check your inbox.
-    reset_failed: Failed to send
-    enter_email: Please enter your email address.
+    check_email_for_verification: ✅ Registration successful! Please check your inbox (including spam) to verify your email.
+    check_email_or_login: This email may already be registered. Check inbox (including spam) or try logging in directly.
+    user_already_registered: ❌ Email already registered. Please log in or reset password.
+    email_not_confirmed: ❌ Please verify your email first.
+    operation_failed: ❌ Operation failed.
+    passwords_do_not_match: ❌ Passwords do not match!
+    reset_success: Password reset email sent. Check your inbox.
+    reset_failed: Send failed
+    enter_email: Please enter your email
     enter_registered_email: 'Please enter your registered email:'
-    operation_failed: '❌ Operation failed: '
-    passwords_do_not_match: ❌ The passwords entered do not match!
     reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
     no_backup_yet: No backup yet
     invalid_invite_code: Invalid invite code
+
 autoSave:
-  restored: 'Welcome, {email}, your data has been restored ✨'
+  restored: 'Welcome, {email}, data restored ✨'
   parse_failed: Failed to parse cloud data
   load_failed: Error loading data
+
 index:
-  add_to_home: Add website shortcut to home screen
-  click_below: Tap the button below
-  choose_add_to_screen: Then choose “Add to Home Screen”
-  quote_prefix: 'Quote:'
+  add_to_home: Add Navigation to Home Screen
+  click_below: Click below
+  choose_add_to_screen: Then select “Add to Home Screen”
+  quote_prefix: 'Daily Quote:'
   weather_loading: Loading...
   weather_failed: Failed to load weather
+  refresh_weather: Refresh Weather
+
 notes:
-  notes: Notes
-  save_note: Save
-  more_notes: More Notes >>
+  notes: Cloud Notes
+  save_note: Save Note
+  more_notes: More Notes
   content_placeholder: Write something...
   add_success: Added successfully
-  add_error: Failed to add
+  add_error: Add failed
   update_success: Updated successfully
-  update_error: Failed to update
+  update_error: 'Network error, update failed'
   operation_error: Operation failed
-  delete_success: Deleted successfully
-  delete_error: Failed to delete
+  delete_success: 'Deleted successfully, moved to Trash'
+  delete_error: Delete failed
   update_note: Update Note
   loading: Loading...
-  no_notes: No notes
-  updated_at: Updated at
+  no_notes: No notes yet
+  updated_at: Updated At
   edit: Edit
   delete: Delete
   auto_saved_at: Auto-saved at
-  search_placeholder: Search 🔍
-  search_notes: search notes
+  search_placeholder: '🔍 Search notes or #tags'
+  search_notes: Search Notes
   next_page: Next Page
   previous_page: Previous Page
   auto_saved: Saved successfully
-  char_count: Character count
-  session_expired: Session expired. Please refresh or log in again
+  char_count: Characters
+  session_expired: 'Session expired, please refresh or log in again'
   delete_confirm_title: Delete Confirmation
   delete_confirm_content: Are you sure you want to delete this note?
   confirm_delete: Confirm Delete
   cancel: Cancel
-  export_all: Export All
-  exporting: Exporting...
-  export_confirm_title: Select a date range
-  export_confirm_content: This will export the notes that match your criteria. This operation may take some time.
-  confirm_export: Confirm & Export
-  export_preparing: Preparing the export file, please wait...
+  fetch_error: Offline Mode
+  saving: Saving...
+  export_confirm_title: Select Date Range
+  export_confirm_content: Notes within range will be exported. This may take time.
+  confirm_export: Confirm Export
+  export_preparing: 'Preparing export file, please wait...'
   export_all_success: 'Successfully exported {count} notes!'
   export_all_error: Error exporting notes
-  no_notes_to_export: You have no notes to export.
-  no_notes_to_export_in_range: No notes were found in the selected date range.
-  select_date_range_placeholder: Filter by date range for export
+  no_notes_to_export: No notes to export
+  no_notes_to_export_in_range: No notes found in selected date range
+  select_date_range_placeholder: Filter date range to export
   pin: Pin
   unpin: Unpin
   pinned_success: Note pinned
   unpinned_success: Note unpinned
-  expand: Expand >>
-  collapse: << Collapse
-  copy: Copy Content
-  copy_success: Note content copied to clipboard!
-  copy_error: Failed to copy
+  expand: Expand
+  collapse: Collapse
+  copy: Copy
+  copy_success: Note copied to clipboard!
+  copy_error: Copy failed
   word_count: 'Word count: {count}'
-  created_at: 'Created at: {time}'
-  anniversary_found: '📅 On this day, you wrote {count} notes'
-  anniversary_total: '{count} notes in total (Click to return)'
-  updated2_at: updated： {time}
-  export_results: Export Results
-  search_placeholder_tags: 'Search notes or #tags...'
+  anniversary_found: '📅 On this day, you recorded {count} notes'
+  anniversary_total: 'On this day there were {count} notes (click to return)'
+  created_at: 'Created: {time}'
+  updated2_at: 'Updated: {time}'
+  export_all: Export Notes
+  exporting: Exporting...
+  export_results: Export
+  search_placeholder_tags: '🔍 Search notes or #tags ...'
   total_notes: Total Notes
-  journaling_days_label: Journaling for
+  journaling_days_label: You have been journaling for
   journaling_days_value: '{count} days'
   select_notes: Select Notes
   cancel_selection: Cancel Selection
   items_selected: '{count} notes selected'
-  copy_success_multiple: 'Successfully copied {count} notes'
-  delete_success_multiple: 'Successfully deleted {count} notes'
+  copy_success_multiple: 'Copied {count} notes successfully'
+  delete_success_multiple: 'Deleted {count} notes, moved to Trash'
   delete_second_confirm_tip: 'You are about to permanently delete {count} notes.'
   delete_second_confirm_hint: This action cannot be undone. Please confirm again.
+  search_placeholder_enter: Press Enter to search...
+  search_tags: Search Tags
+  favorites: Favorites
+  unpin_favorites: Remove from Favorites
+  pin_favorites: Add to Favorites
+  max_length_exceeded: 'Character limit exceeded (max {max})'
+  offline_update_success: 'Updated offline, will sync when online.'
+  offline_save_success: 'Saved offline, will sync when online.'
+  offline_edit_pending: Currently offline; edit not yet synced. It will be queued for later sync.
+  export_date_range_hint: 'Hint: You must select a date range; up to {max} notes max.'
+  select_date_range_first: Please select a date range first
+  exporting_search_results: Preparing export of search results…
+  no_search_results_to_export: No search results to export.
+  created_at_label: Created At
+  filtering_by_tag: Filtering by tag
+  count_notes: 'Total {count} notes'
+  search_results_for: 'Results for “{query}”'
+
 dialog:
   delete_note_title: Delete Note
-  delete_note_content: Are you sure you want to delete this note? This action cannot be undone.
-  delete_note_content2: 'Are you sure you want to delete {count} notes? This action cannot be undone'
+  delete_note_content2: 'Are you sure you want to delete {count} notes?'
+  delete_note_content: Are you sure you want to delete this note?
   confirm_button: Confirm
   cancel_button: Cancel
+
+tags:
+  delete_tag_title: Delete Tag
+  delete_tag_content: 'This will remove tag {tag} from all your notes (only removes tag text, notes remain). This action cannot be undone.'
+  delete_tag_confirm: Delete Tag
+  delete_tag_success: 'Deleted {count} tags'
+  search_from_count: 'Search from {count} tags'
+  rename_tag: Rename
+  input_new_tag: Enter new tag name
+  remove_tag: Remove
+  more_actions: More Actions
+  change_icon: Change Icon
+  search_icon: Search Common Icons
+  clear_icon: Clear Icon
+  tip_icon_custom: You can also paste emoji or symbols above to search
+  no_icons_found: No icons found
+  untagged: Untagged

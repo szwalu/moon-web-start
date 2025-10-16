@@ -237,6 +237,10 @@ auth:
   session_expired: 会话已过期，请重新登录
   update_failed: 网络问题，更新失败
   insert_failed_create_note: 网络问题，无法创建新笔记
+  Calendar: 日历
+  trash: 回收站
+  go_to_links: 前往网址站
+  back_to_top: 回到顶部
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -323,7 +327,7 @@ notes:
   updated2_at: 更新： {time}
   export_all: 导出笔记
   exporting: 导出中...
-  export_results: 导出结果
+  export_results: 导出
   search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
   total_notes: 笔记总数
   journaling_days_label: 您已坚持记录
@@ -341,6 +345,17 @@ notes:
   unpin_favorites: 取消常用
   pin_favorites: 设为常用
   max_length_exceeded: '字数已超过上限（最多 {max} 字）'
+  offline_update_success: 已离线修改，联网后将自动同步。
+  offline_save_success: 已离线保存，联网后将自动同步。
+  offline_edit_pending: 当前离线，编辑暂未同步；我们会在后续步骤加入离线编辑队列。
+  export_date_range_hint: 提示：必须选择日期范围；最多导出 {max} 条。
+  select_date_range_first: 请先选择日期范围
+  exporting_search_results: 正在准备导出搜索结果…
+  no_search_results_to_export: 没有可导出的搜索结果。
+  created_at_label: 创建于
+  filtering_by_tag: 正在筛选标签
+  count_notes: 共 {count} 条笔记
+  search_results_for: 搜索“{query}”的结果
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？'

@@ -1,18 +1,21 @@
 common:
   add: 追加
   edit: 編集
-  cate: カテゴリー
+  cate: カテゴリ
   group: グループ
-  site: サイト
-  link: リンク(完全なリンクを https:// で入力してくださ)
+  site: ウェブサイト
+  link: 'リンク（https:// から始まる完全なリンクを入力してください）'
   name: 名前
-  more: もっと
+  more: もっと見る
+
 time_units:
   days: 日
   hours: 時間
   minutes: 分
   seconds: 秒
-Alreadyrunning: WOabc すでに実行中：
+
+Alreadyrunning: '私のABCはすでに実行中です:'
+
 button:
   resetData: データをリセット
   importData: データをインポート
@@ -23,26 +26,35 @@ button:
   delete: 削除
   dataInSync: データ同期中
   save: 保存
-  read: 読み取り
-  stopSync: 同期停止
-  addCategory: に追加
+  read: 読み込み
+  stopSync: 同期を停止
+  addCategory: カテゴリを追加
+
 settings:
   title: 設定
-  font_title: フォント設定
+  font_title: フォントサイズ設定
   font_size_label: フォントサイズ
   font_size_small: 小
   font_size_medium: 中
   font_size_large: 大
   font_size_extra_large: 特大
+  ui_font_title: UIフォントサイズ
+  ui_font_follow_note: ノートのフォントサイズに合わせる
+  ui_font_xs: 極小
+  ui_font_sm: 小さめ
+  ui_font_md: 標準
+  ui_font_lg: 大きめ
+  ui_font_hint: ヒント：UIフォントサイズはドロワー、ドロップダウン、ダイアログ、メッセージなどに影響します。「合わせる」を有効にするとノートのフォントサイズに基づいて自動的に最適なUIサイズを選択します。
+
   theme:
     title: テーマ
     earlySpring: 早春
-    vastOcean: 広大な海
-    endlessDesert: 果てしない砂漠
-    moonWhite: 月の白
+    vastOcean: 大海
+    endlessDesert: 砂漠
+    moonWhite: 月白
   language:
-    title: ウェブサイト言語
-    system: システム
+    title: サイト言語
+    system: システムに従う
   sitePreference:
     title: サイト設定
     auto: 自動
@@ -51,23 +63,23 @@ settings:
     customize: カスタマイズ
   searchEngine:
     title: 検索エンジン
-    bing: ビング
-    baidu: バイドゥ
-    google: グーグル
-    sogou: 搜狗
+    bing: Bing
+    baidu: Baidu
+    google: Google
+    sogou: Sogou
     wikipedia: ウィキペディア
-    local: ローカル検索
+    local: サイト内検索
   iconStyle:
     title: アイコンスタイル
-    vivid: 鮮やかな
+    vivid: 鮮やか
     plain: シンプル
-    gray: グレー
+    gray: グレイ
   linkStrategy:
-    title: リンク戦略
+    title: リンクの開き方
     currentTab: 現在のタブで開く
     newTab: 新しいタブで開く
   showTime:
-    title: 時刻を表示
+    title: 時間を表示
   showDate:
     title: 日付を表示
   showSecond:
@@ -81,233 +93,290 @@ settings:
     concise: 簡潔
     full: 完全
   showWeather:
-    title: 天気予報
+    title: 天気を表示
   showDailyQuote:
-    title: 佳句
+    title: 毎日の名言を表示
   common:
     show: 表示
     hide: 非表示
+
 messages:
   tip: ヒント
-  warnCustomize: サイトの好みを「カスタマイズ」に設定してください
-  warnInvalidImport: 正しいデータファイルをインポートしてください
-  warnResetData: リセット後はデータを復元できません。データをリセットしてもよろしいですか?
-  warn_logout_to_reset: データをリセットするには、まずアカウントからログアウトしてください。
-  exported: インポート成功
-  reset: リセットされました~
-  loading: ロード中...
+  warnCustomize: まずサイト設定を「カスタマイズ」にしてください
+  warnInvalidImport: 有効なデータファイルをインポートしてください
+  warnResetData: データをリセットすると元に戻せません。本当にリセットしますか？
+  warn_logout_to_reset: データをリセットする前にログアウトしてください。
+  exported: エクスポート完了~
+  imported: インポート成功
+  reset: リセット完了~
+  loading: 読み込み中...
   warnSyncIdRequired: IDを入力してください
-  saving: 保存中
-  saveSuccess: 正常に保存されました
-  reading: 読み込み中
-  readingSuccess: 読み込み成功
-  readFailed: 検索に失敗した
-  warnValidateId: IDは5～20文字の数字、英字、またはアンダースコアで構成される必要があります
-  Request: 例外要求
-  noResultsPre: に関する情報は見つからなかっ‘
-  noResultsPost: ’ウェブサイト
+  saving: 保存中...
+  saveSuccess: 保存しました
+  reading: 読み込み中...
+  readSuccess: 読み込み完了
+  readFailed: 読み込み失敗
+  warnValidateId: IDは5〜20文字の英数字またはアンダースコアで入力してください
+  Request: リクエストエラー
+  noResultsPre: 「
+  noResultsPost: 」に関するサイトは見つかりませんでした
+
 iconLinkPlaceholder: アイコンリンク（任意）
-siteDescPlaceholder: サイトの説明（任意）
-inputIdPlaceholder: 入力ID
+siteDescPlaceholder: サイト説明（任意）
+inputIdPlaceholder: IDを入力
+
 navbar:
-  apply: しがんしょ
+  apply: 申請
   links: リンク
-  about: に対して
-  auth: 新規登録 / ログイン
+  about: 概要
+  auth: 登録 / ログイン
   logout: ログアウト
   account: マイアカウント
   cloud_Notes: クラウドノート
+
 footer:
-  disclaimer: インターネットからこのサイトの内容は、任意のコンテンツの権利侵害がある場合は、該当するコンテンツを削除するには、管理者に連絡してください,
+  disclaimer: 当サイトの内容はインターネット上の情報を元にしています。権利を侵害する内容がある場合はご連絡ください。
   contactLink: お問い合わせ
-  friendlyLinksTitle: フレンドリーリンク：
-  linkBqju: 本曲州
-  linkWoabcNav: WOabcウェブサイト
-  linkAbcSite: TQabcウェブサイト
+  friendlyLinksTitle: 'フレンドリンク:'
+  linkBqju: Benquju
+  linkWoabcNav: WoABCナビ
+  linkAbcSite: TQabcサイト
+
 form:
-  title: ご意見・ご要望
-  breadcrumb: サイト登録申請 & フィードバック
-  tip: ようこそ。当サイトをご利用いただきありがとうございます。登録を希望するサイトや相互リンクの申請、ご意見がある場合は、以下のフォームにご記入ください。
+  title: ご意見・ご提案
+  breadcrumb: 'サイト登録申請 & フィードバック'
+  tip: こんにちは！サイト登録、相互リンク申請、またはフィードバックがある場合は、以下のフォームにご記入ください。ありがとうございます！
   selectLabel: 選択してください
-  selectPlaceholder: 種類を選択
+  selectPlaceholder: タイプを選択
   options:
     applySite: サイト登録申請
     applyLink: 相互リンク申請
-    feedback: ご意見・ご要望
-  messageLabel: メッセージを入力してください
+    feedback: フィードバック
+    applyinvitecode: 招待コードを申請
+  messageLabel: 入力してください
   emailLabel: 連絡用メール（任意）
   submit: 送信
-  success: 送信が完了しました。ご意見ありがとうございます！
-  selectError: リストから1つ選択してください
-  error: 送信に失敗しました。後ほど再試行してください。
+  success: 送信しました。ご意見ありがとうございます！
+  selectError: リストから1項目を選択してください
+  error: 送信に失敗しました。後でもう一度お試しください。
+
 about:
-  title: このナビサイトの特長
-  efficientNav: 効率的なナビゲーション - シンプルなデザインで、素早くアクセス。
-  freedomEdit: 思いのままに編集 - サイトの追加、削除、変更が自由自在。カスタムアイコンにも対応。
-  dragSort: ドラッグ＆ドロップで並び替え - ウェブサイトの順序を素早く調整。
-  smartSearch: 検索キーワード候補 - Google、Bing、Baiduなど複数の検索エンジンに対応。
-  responsive: レスポンシブデザイン - あらゆるデバイスサイズで正常に表示。
-  themeSwitch: テーマ切り替え - 複数の内蔵テーマを自由に切り替え可能。
-  darkMode: ダークモード - あなたの目を大切に。
-  i18nSupport: I18n - 中国語（簡体字）、英語、日本語に対応。
-  importExport: データを保存する3つの方法（登録とログイン、ID入力、インポートとエクスポート） - デバイス間でデータを同期<登録ログイン方式では、ログイン後にログアウトしても、ウェブページを更新すると自動的に再度ログインできます>
-  browserPlugin: ブラウザ拡張機能 - 新しいタブでMoonを開きます。
+  title: WoABCナビゲーションの特徴
+  efficientNav: ⚡ 高速ナビゲーション - シンプルデザインで素早くアクセス
+  freedomEdit: 🍎 自由編集 - サイトを自由に追加・削除・編集、アイコンカスタマイズ対応
+  dragSort: 🛫 ドラッグで並べ替え - 順序を素早く調整
+  smartSearch: 🔍 スマート検索 - Bing、Google、Baiduなどに対応
+  responsive: 📱 レスポンシブデザイン - どの端末でも最適表示
+  themeSwitch: 🎨 テーマ切替 - 複数のテーマを自由に選択
+  darkMode: 🌙 ダークモード - 目に優しい
+  i18nSupport: 🌍 多言語対応 - 中国語・英語・日本語をサポート
+  importExport: 📤 3つのデータ保存方法（ログイン / ID入力 / インポート・エクスポート）- デバイス間で同期
+  browserPlugin: 📦 ブラウザ拡張 - 新しいタブでMoonを開く
   dockerSupport: |
-    データを保存する3つの方法：
-    📎 登録とログイン：
-    サイドナビゲーションバーから「登録/ログイン」を選択するか、モバイル端末ではページ上部の「我abc」ロゴをタップしてログイン画面に移動します。指示に従ってログインするか、まずメールで登録してください。
-    ログイン後、ホームページでのウェブサイトの追加、並べ替え、設定変更などは自動的にクラウドに保存されます。
-    異なるデバイスでホームページを編集していた場合でも、ログイン後にローカルとクラウドの内容が自動的に統合されます。
-    ログアウトした後は、ホームページを再読み込みすれば自動的に再ログインされます。
-    📎 ID入力：
-    ログイン後、固定ヘッダーの設定ボタンをクリックし、設定画面の下部にある「IDを入力」の欄に5～20文字の英数字IDを入力します。「保存」をクリックすると現在のデータがクラウドに保存されます。
-    「読み込み」をクリックすると、クラウドのデータでローカルの内容が上書きされます。IDを忘れないようにしてください。
-    📎 インポートとエクスポート：
-    設定画面で「データをエクスポート」をクリックすると、データをパソコンやスマートフォンのフォルダに保存できます。「データをインポート」をクリックすると、保存したデータを復元できます。
-  thanks: スペシャルサンクス
+    ⚙️3つの保存方法の詳細：
+    📎ログイン：
+    サイドバーの「登録 / ログイン」またはモバイル版のロゴをクリックしてログイン画面に移動します。
+    ログイン中はロゴの「abc」が緑、未ログイン時は黄色になります。
+    メールで登録（招待コードが必要）し、ログイン後の編集は即座にクラウドに保存されます。
+    複数デバイスで編集しても自動的に統合されます。
+    📎ID入力：
+    ヘッダーの設定ボタンを押し、「IDを入力」欄に5〜20文字の英数字を入力します。
+    「保存」でクラウドに保存、「読み込み」でクラウドデータを復元します。IDを忘れないように！
+    📎インポート・エクスポート：
+    設定画面で「エクスポート」でローカルに保存、「インポート」で復元します。
+  thanks: 特別感謝
+
 auth:
   login: ログイン
-  register: 新規登録
+  register: 登録
   loading: 処理中...
   logout: ログアウト
   account_title: マイアカウント
-  account_email_label: アカウントメール
+  account_email_label: メールアドレス
   account_last_login_label: 最終ログイン
-  email: メールアドレス
+  email: メール
   password: パスワード
-  prompt_to_register: アカウントなし？
-  Log_in_again_prefix: ログインしている場合,
-  Log_in_again_link: 👉️ここをクリック
-  Log_in_again_suffix: 再読み込みすると自動的に再ログインされます
-  Log_in_again_link2: 👉️ここをクリック
+  prompt_to_register: アカウントをお持ちでないですか？
+  Log_in_again_prefix: 以前ログインしたことがある場合、
+  Log_in_again_link: 👉 こちらをクリック
+  Log_in_again_suffix: して再ログイン
+  Log_in_again_link2: 👉 こちらをクリック
   Log_in_again_setting: 設定画面へ
-  prompt_to_login: すでにアカウントをお持ちですか？
-  confirm_password: パスワードを再入力
+  prompt_to_login: すでにアカウントがありますか？
+  confirm_password: パスワード確認
   email_placeholder: メールアドレスを入力してください
-  forgot_password: パスワードを忘れた？
+  forgot_password: パスワードを忘れましたか？
   confirm: 確認
   cancel: キャンセル
   return: 戻る
-  reset_password: パスワードのリセット
-  invalid_link: リセットリンクが無効か期限切れです。再度リクエストしてください。
+  reset_password: パスワードをリセット
+  invalid_link: リンクが無効または期限切れです。再度リクエストしてください。
   enter_and_confirm: 新しいパスワードを入力して確認してください。
   mismatch: パスワードが一致しません。
-  reset_failed: リセットに失敗しました
-  reset_success: パスワードが正常にリセットされました。2秒後にホームへ移動します...
+  reset_failed: リセット失敗
+  reset_success: パスワードをリセットしました。2秒後にホームへ移動します...
   enter_new_password: 新しいパスワードを入力
-  confirm_new_password: 新しいパスワードを再入力
+  confirm_new_password: もう一度入力
   submitting: 送信中...
   submit_new_password: 新しいパスワードを送信
   account_last_backup_label: 最終バックアップ
   return_home: ホームに戻る
-  please_login: 最初にアカウントにログインしてください！
+  please_login: ログインするとリアルタイム保存が可能です！
   info_label: メモ
-  note_placeholder: 何かを書いてください...
-  save: 保存する
+  note_placeholder: 何か書いてください...
+  save: 保存
   insert_emoji: 絵文字を挿入
-  saved_message: メモが保存されました
-  last_saved: 最終保存
+  saved_message: メモを保存しました
+  last_saved: 前回の保存
+  session_restore_error: セッションを復元できません。再ログインしてください
+  session_refresh_error: セッション更新に失敗しました。再ログインしてください
   invite_code: 招待コード
-  invite_code_placeholder: 5桁の招待コードを入力してください
-  password_placeholder: 6桁の数字または文字を入力してください
-  login_password_placeholder: 6桁の数字または文字のパスワードを入力してください
-  update_failed: 更新に失敗しました
-  insert_failed_create_note: 挿入に失敗しました：新しいノートを作成できません
+  invite_code_placeholder: 5桁の招待コードを入力
+  password_placeholder: 6文字以上のパスワードを入力
+  login_password_placeholder: パスワードを入力
+  session_expired: セッションが期限切れです。再ログインしてください
+  update_failed: ネットワークエラーにより更新に失敗しました
+  insert_failed_create_note: ネットワークエラーで新しいメモを作成できません
+  Calendar: カレンダー
+  trash: ゴミ箱
+  go_to_links: リンクページへ
+  back_to_top: トップへ戻る
   messages:
-    check_email_for_verification: ✅ 登録成功！受信トレイ（迷惑メールフォルダもご確認ください）を確認して、メールアドレスを認証してください。
-    check_email_or_login: このメールアドレスは既に登録されている可能性があります。受信トレイ（迷惑メールフォルダもご確認ください）を確認して認証を完了するか、直接ログインをお試しください。
-    user_already_registered: ❌ このメールアドレスは既に登録されています。直接ログインするか、パスワードを再設定してください。
-    email_not_confirmed: ❌ 先にメールアドレスの確認をしてください。
-    operation_failed: ❌ 手術は失敗し。
-    passwords_do_not_match: ❌ 入力された2つのパスワードが一致しません！
-    reset_success: パスワードリセット用のメールを送信しました。メールをご確認ください。
+    check_email_for_verification: ✅ 登録成功！受信箱（迷惑メールを含む）で確認メールをご覧ください。
+    check_email_or_login: このメールはすでに登録済みの可能性があります。受信箱を確認するかログインしてください。
+    user_already_registered: ❌ このメールはすでに登録されています。ログインまたはパスワードリセットを行ってください。
+    email_not_confirmed: ❌ メールを確認してください。
+    operation_failed: ❌ 操作に失敗しました。
+    passwords_do_not_match: ❌ パスワードが一致しません！
+    reset_success: パスワードリセットメールを送信しました。メールを確認してください。
     reset_failed: 送信に失敗しました
-    enter_email: メールアドレスを入力してください。
-    enter_registered_email: 登録済みのメールアドレスを入力してください：
-    reset_success_redirect: ✅ パスワードが正常にリセットされました。ログインページにリダイレクトします...
+    enter_email: メールアドレスを入力してください
+    enter_registered_email: '登録済みメールアドレスを入力してください:'
+    reset_success_redirect: ✅ パスワードをリセットしました！ログインページへ移動します...
     no_backup_yet: バックアップなし
     invalid_invite_code: 無効な招待コードです
+
 autoSave:
-  restored: アカウント {email} で復元されました✨
+  restored: 'ようこそ {email} さん、データを復元しました ✨'
   parse_failed: クラウドデータの解析に失敗しました
   load_failed: データの読み込み中にエラーが発生しました
+
 index:
-  add_to_home: ホーム画面にウェブサイトのショートカットを追加
-  click_below: 下のボタンをタップ
+  add_to_home: ホーム画面にナビを追加
+  click_below: 下をクリック
   choose_add_to_screen: 「ホーム画面に追加」を選択
-  quote_prefix: 名言：
+  quote_prefix: '今日の名言:'
   weather_loading: 読み込み中...
-  weather_failed: 天気情報の取得に失敗しました
+  weather_failed: 天気の取得に失敗しました
+  refresh_weather: 天気を更新
+
 notes:
-  notes: ノート
-  save_note: 保存
-  more_notes: もっと見る >>
-  content_placeholder: 何かを書いてください…
-  add_success: 追加に成功しました
+  notes: クラウドノート
+  save_note: メモを保存
+  more_notes: もっと見る
+  content_placeholder: 何か書いてください...
+  add_success: 追加しました
   add_error: 追加に失敗しました
-  update_success: 更新に成功しました
-  update_error: 更新に失敗しました
+  update_success: 更新しました
+  update_error: 更新に失敗しました（ネットワークエラー）
   operation_error: 操作に失敗しました
-  delete_success: 削除に成功しました
+  delete_success: 削除しました。ゴミ箱に移動しました
   delete_error: 削除に失敗しました
-  update_note: ノートを更新
-  loading: 読み込み中…
-  no_notes: ノートがありません
+  update_note: メモを更新
+  loading: 読み込み中...
+  no_notes: メモがありません
   updated_at: 更新日時
   edit: 編集
   delete: 削除
-  auto_saved_at: 自動保存時刻
-  search_placeholder: 検索🔍
-  search_notes: 検索ノート
-  next_page: 次のページ
-  previous_page: 前のページ
+  auto_saved_at: 自動保存
+  search_placeholder: '🔍 メモや #タグ を検索'
+  search_notes: メモを検索
+  next_page: 次へ
+  previous_page: 前へ
   auto_saved: 保存しました
   char_count: 文字数
-  session_expired: セッションの有効期限が切れました。ページを再読み込みするか、再ログインしてください
+  session_expired: セッションが期限切れです。更新または再ログインしてください
   delete_confirm_title: 削除の確認
-  delete_confirm_content: このノートを削除してもよろしいですか？
+  delete_confirm_content: このメモを削除してもよろしいですか？
   confirm_delete: 削除を確認
   cancel: キャンセル
-  export_all: すべてエクスポート
-  exporting: エクスポート中...
+  fetch_error: オフラインモード
+  saving: 保存中...
   export_confirm_title: 日付範囲を選択
-  export_confirm_content: 条件に一致するノートをエクスポートします。この処理には時間がかかる場合があります。
+  export_confirm_content: 選択した範囲のメモをエクスポートします。時間がかかる場合があります。
   confirm_export: エクスポートを確認
-  export_preparing: エクスポートファイルを準備しています。しばらくお待ちください。
-  export_all_success: '{count}件のノートをエクスポートしました。'
-  export_all_error: ノートのエクスポート中にエラーが発生しました
-  no_notes_to_export: エクスポートできるノートがありません。
-  no_notes_to_export_in_range: 選択した日付範囲にノートが見つかりませんでした。
-  select_date_range_placeholder: エクスポートする日付範囲で絞り込む
-  pin: ピン留め
-  unpin: ピン留めを解除
-  pinned_success: ノートをピン留めしました
-  unpinned_success: ピン留めを解除しました
-  expand: 展開 >>
-  collapse: << 折りたたむ
-  copy: 内容をコピー
-  copy_success: ノートの内容をクリップボードにコピーしました
+  export_preparing: エクスポートファイルを準備中...
+  export_all_success: '{count} 件のメモをエクスポートしました！'
+  export_all_error: エクスポート中にエラーが発生しました
+  no_notes_to_export: エクスポートするメモがありません
+  no_notes_to_export_in_range: 選択範囲内にメモがありません
+  select_date_range_placeholder: エクスポートする日付範囲を選択
+  pin: 固定
+  unpin: 固定解除
+  pinned_success: メモを固定しました
+  unpinned_success: 固定を解除しました
+  expand: 展開
+  collapse: 折りたたみ
+  copy: コピー
+  copy_success: メモをクリップボードにコピーしました！
   copy_error: コピーに失敗しました
-  word_count: 文字数： {count}
-  created_at: 作成日時： {time}
-  anniversary_found: 📅 今日の日付で、過去に{count}件のメモを記録しました
-  anniversary_total: 合計{count}件のメモ（クリックして戻る）
-  updated2_at: 編集： {time}
-  export_results: 検索結果をエクスポート
-  search_placeholder_tags: ノートや#タグを検索...
-  total_notes: ノート総数
-  journaling_days_label: 継続日数
+  word_count: '文字数: {count}'
+  anniversary_found: '📅 この日に {count} 件のメモを記録しました'
+  anniversary_total: 'この日には合計 {count} 件のメモがあります（クリックで戻る）'
+  created_at: '作成日時: {time}'
+  updated2_at: '更新日時: {time}'
+  export_all: メモをエクスポート
+  exporting: エクスポート中...
+  export_results: エクスポート
+  search_placeholder_tags: '🔍 メモや #タグ を検索...'
+  total_notes: メモ総数
+  journaling_days_label: 記録を続けた日数
   journaling_days_value: '{count} 日'
-  select_notes: ノートを選択
+  select_notes: メモを選択
   cancel_selection: 選択をキャンセル
-  items_selected: '{count} 件のノートを選択しました'
-  copy_success_multiple: '{count} 件のノートをコピーしました'
-  delete_success_multiple: '{count} 件のノートを削除しました'
-  delete_second_confirm_tip: '{count} 件のノートを完全に削除しようとしています。'
-  delete_second_confirm_hint: この操作は元に戻せません。もう一度ご確認ください。
+  items_selected: '{count} 件のメモを選択しました'
+  copy_success_multiple: '{count} 件のメモをコピーしました'
+  delete_success_multiple: '{count} 件のメモを削除し、ゴミ箱に移動しました'
+  delete_second_confirm_tip: '{count} 件のメモを完全に削除しようとしています。'
+  delete_second_confirm_hint: この操作は元に戻せません。もう一度確認してください。
+  search_placeholder_enter: 入力後Enterキーで検索...
+  search_tags: タグを検索
+  favorites: お気に入り
+  unpin_favorites: お気に入りを解除
+  pin_favorites: お気に入りに設定
+  max_length_exceeded: '文字数が上限を超えました（最大 {max} 文字）'
+  offline_update_success: オフラインで更新しました。オンラインになると自動的に同期されます。
+  offline_save_success: オフラインで保存しました。オンラインになると自動的に同期されます。
+  offline_edit_pending: 現在オフラインのため、編集はまだ同期されていません。後でオフライン編集キューに追加されます。
+  export_date_range_hint: 'ヒント：日付範囲を選択する必要があります。最大 {max} 件までエクスポート可能。'
+  select_date_range_first: まず日付範囲を選択してください
+  exporting_search_results: 検索結果をエクスポート準備中…
+  no_search_results_to_export: エクスポートできる検索結果がありません。
+  created_at_label: 作成日
+  filtering_by_tag: タグでフィルタリング中
+  count_notes: '合計 {count} 件のメモ'
+  search_results_for: '「{query}」の検索結果'
+
 dialog:
-  delete_note_title: ノートを削除
-  delete_note_content: このノートを削除してもよろしいですか？この操作は元に戻せません
-  delete_note_content2: '{count} 件のノートを削除してもよろしいですか？この操作は元に戻せません'
+  delete_note_title: メモを削除
+  delete_note_content2: '{count} 件のメモを削除してもよろしいですか？'
+  delete_note_content: このメモを削除してもよろしいですか？
   confirm_button: 確認
   cancel_button: キャンセル
+
+tags:
+  delete_tag_title: タグを削除
+  delete_tag_content: 'この操作はすべてのメモからタグ {tag} を削除します（タグテキストのみ削除し、メモ自体は削除されません）。この操作は元に戻せません。'
+  delete_tag_confirm: タグを削除
+  delete_tag_success: '{count} 件のタグを削除しました'
+  search_from_count: '{count} 件のタグから検索'
+  rename_tag: 名前を変更
+  input_new_tag: 新しいタグ名を入力
+  remove_tag: 削除
+  more_actions: その他の操作
+  change_icon: アイコンを変更
+  search_icon: 一般的なアイコンを検索
+  clear_icon: アイコンをクリア
+  tip_icon_custom: 上の欄に絵文字や記号を貼り付けて検索することもできます
+  no_icons_found: アイコンが見つかりません
+  untagged: タグなし

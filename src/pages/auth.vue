@@ -163,7 +163,7 @@ watch(activeTagFilter, (newValue) => {
 })
 
 const mainMenuOptions = computed(() => [
-  { label: '日历', key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
+  { label: t('auth.Calendar'), key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
   {
     label: isSelectionModeActive.value
       ? t('notes.cancel_selection')
@@ -174,7 +174,7 @@ const mainMenuOptions = computed(() => [
   { label: t('settings.font_title'), key: 'settings', icon: () => h(Settings, { size: 18 }) },
   { label: t('notes.export_all'), key: 'export', icon: () => h(Download, { size: 18 }) },
   { label: t('auth.account_title'), key: 'account', icon: () => h(User, { size: 18 }) },
-  { label: '回收站', key: 'trash', icon: () => h(Trash2, { size: 18 }) },
+  { label: t('auth.trash'), key: 'trash', icon: () => h(Trash2, { size: 18 }) },
 
   // —— 分界线 ——
   { type: 'divider', key: 'div-tags' },
@@ -579,7 +579,7 @@ async function saveNote(
     }
 
     // 5) 友好提示，并返回更新后的对象（供调用方使用）
-    messageHook.success('已离线修改，联网后将自动同步。')
+    messageHook.success(t('notes.offline_update_success'))
     const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
     return updatedObj
   }
@@ -625,7 +625,7 @@ async function saveNote(
     }
 
     // 5) 友好提示
-    messageHook.success('已离线保存，联网后将自动同步。')
+    messageHook.success(t('notes.offline_save_success'))
 
     // 6) 返回这条本地记录（供调用方后续逻辑使用）
     return localNote
@@ -695,7 +695,7 @@ async function saveNote(
   catch (error: any) {
     // 如果是“离线编辑”触发到这里，给个更明确的提示（可选）
     if (!isOnline() && noteIdToUpdate) {
-      messageHook.error('当前离线，编辑暂未同步；我们会在后续步骤加入离线编辑队列。')
+      messageHook.error(t('notes.offline_edit_pending'))
       return null
     }
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
@@ -881,7 +881,7 @@ async function handleBatchExport() {
         'modelValue': dialogDateRange.value,
         'onUpdate:modelValue': (v: [number, number] | null) => { dialogDateRange.value = v },
       }),
-      h('small', { style: 'opacity:.75;' }, `提示：必须选择日期范围；最多导出 ${EXPORT_MAX_ROWS} 条。`),
+      h('small', {}, t('notes.export_date_range_hint', { max: EXPORT_MAX_ROWS })),
     ]),
     positiveText: t('notes.confirm_export'),
     negativeText: t('notes.cancel'),
@@ -889,7 +889,7 @@ async function handleBatchExport() {
     // 关键：如果没选范围，阻止对话框关闭
     onPositiveClick: async () => {
       if (!dialogDateRange.value) {
-        messageHook.warning('请先选择日期范围')
+        messageHook.warning(t('notes.select_date_range_first'))
         return false // 阻止关闭对话框
       }
 
@@ -950,7 +950,7 @@ async function handleBatchExport() {
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+          return `${separator}\n t('notes.created_at_label')： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
 
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
@@ -989,17 +989,17 @@ function handleExportResults() {
     return
 
   isExporting.value = true
-  messageHook.info('正在准备导出搜索结果...', { duration: 3000 })
+  messageHook.info(t('notes.exporting_search_results'), { duration: 3000 })
   try {
     const notesToExport = displayedNotes.value
     if (!notesToExport || notesToExport.length === 0) {
-      messageHook.warning('没有可导出的搜索结果。')
+      messageHook.warning(t('notes.no_search_results_to_export'))
       return
     }
     const textContent = notesToExport.map((note: any) => {
       const separator = '----------------------------------------'
       const date = new Date(note.created_at).toLocaleString('zh-CN')
-      return `${separator}\n创建于: ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+      return `${separator}\n t('notes.created_at_label')：${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
     }).join('')
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -1013,10 +1013,10 @@ function handleExportResults() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     }, 100)
-    messageHook.success(`成功导出 ${notesToExport.length} 条笔记。`)
+    messageHook.success(t('notes.export_all_success', { count: notesToExport.length }))
   }
   catch (error: any) {
-    messageHook.error(`导出失败: ${error.message}`)
+    messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
   }
   finally {
     isExporting.value = false
@@ -1593,7 +1593,7 @@ async function handleNoteContentClick({ noteId, itemIndex }: { noteId: string; i
   }
   catch (err: any) {
     noteToUpdate.content = originalContent
-    messageHook.error(`更新失败: ${err.message}`)
+    messageHook.error(`${t('notes.update_error')}: ${err.message}`)
   }
 }
 
@@ -2067,7 +2067,7 @@ function onCalendarUpdated(updated: any) {
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button
             class="header-action-btn"
-            aria-label="前往网址站"
+            aria-label="t('auth.go_to_links')"
             @click="goToLinksSite"
           >
             <X :size="18" />
@@ -2139,14 +2139,14 @@ function onCalendarUpdated(updated: any) {
       <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
-            正在筛选标签：<strong>{{ activeTagFilter === UNTAGGED_SENTINEL ? ($t('tags.untagged') || '∅ 无标签') : activeTagFilter }}</strong>
+            {{ t('notes.filtering_by_tag') }}：<strong>{{ activeTagFilter === UNTAGGED_SENTINEL ? ($t('tags.untagged') || '∅ 无标签') : activeTagFilter }}</strong>
           </span>
           <span class="banner-text-count">
-            共 {{ filteredNotesCount }} 条笔记
+            {{ t('notes.count_notes', { count: filteredNotesCount }) }}
           </span>
         </span>
         <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">导出</button>
+          <button class="export-results-btn" @click="handleExportTrigger">{{ t('notes.export_all') }}</button>
           <button class="clear-filter-btn" @click="clearTagFilter">×</button>
         </div>
       </div>
@@ -2154,15 +2154,15 @@ function onCalendarUpdated(updated: any) {
       <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
-            搜索“<strong>{{ searchQuery }}</strong>”的结果
+            {{ t('notes.search_results_for') }} <strong>{{ searchQuery }}</strong>
           </span>
           <span class="banner-text-count">
-            共 {{ notes.length }} 条笔记
+            {{ t('notes.count_notes', { count: notes.length }) }}
           </span>
         </span>
         <div class="banner-actions">
           <button class="export-results-btn" @click="handleExportTrigger">
-            导出
+            {{ t('notes.export_results') }}
           </button>
         </div>
       </div>
@@ -2247,7 +2247,7 @@ function onCalendarUpdated(updated: any) {
         <button
           v-if="showScrollTopButton"
           class="scroll-top-button"
-          aria-label="回到顶部"
+          aria-label="t('auth.back_to_top')"
           @click="handleScrollTopClick"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
