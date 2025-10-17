@@ -950,7 +950,7 @@ async function handleBatchExport() {
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n t('notes.created_at_label')： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+          return `${separator}\n${t('notes.created_at_label')}： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
 
         const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
@@ -999,7 +999,7 @@ function handleExportResults() {
     const textContent = notesToExport.map((note: any) => {
       const separator = '----------------------------------------'
       const date = new Date(note.created_at).toLocaleString('zh-CN')
-      return `${separator}\n t('notes.created_at_label')：${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
+      return `${separator}\n${t('notes.created_at_label')}： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
     }).join('')
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
