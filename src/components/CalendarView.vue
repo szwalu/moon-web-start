@@ -5,11 +5,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
-import { useI18n } from 'vue-i18n'
 
 // ========== 轻量“日历内写笔记” ==========
 import NoteEditor from '@/components/NoteEditor.vue'
@@ -20,7 +20,7 @@ const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const datesWithNotes = ref<Set<string>>(new Set())
 const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
@@ -609,8 +609,8 @@ const composeButtonText = computed(() => {
   const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
 
   if (selDay < today)
-    return `＋补写 ${labelDate} 笔记`
-  return `＋写 ${labelDate} 笔记`
+    return t('notes.calendar.compose_backfill', { date: labelDate })
+  return t('notes.calendar.compose_write', { date: labelDate })
 })
 
 // 退出输入（不清草稿）
@@ -677,7 +677,7 @@ async function saveNewNote(content: string, weather: string | null) {
 <template>
   <div ref="rootRef" class="calendar-view">
     <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
-      <h2>日历</h2>
+      <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
@@ -706,7 +706,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :is-editing="false"
             :is-loading="false"
             :max-note-length="20000"
-            placeholder="在这里写点什么……"
+            :placeholder="t('notes.calendar.placeholder_new')"
             :all-tags="allTags"
             :tag-counts="tagCounts"
             :enable-drafts="true"
@@ -727,7 +727,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :is-editing="true"
             :is-loading="false"
             :max-note-length="20000"
-            placeholder="编辑这条笔记…"
+            :placeholder="t('notes.calendar.placeholder_edit')"
             :all-tags="allTags"
             :tag-counts="tagCounts"
             :enable-drafts="true"
@@ -740,7 +740,7 @@ async function saveNewNote(content: string, weather: string | null) {
           />
         </div>
 
-        <div v-if="isLoadingNotes" class="loading-text">加载中...</div>
+        <div v-if="isLoadingNotes" class="loading-text">{{ t('notes.calendar.loading') }}</div>
 
         <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
           <div v-for="note in selectedDateNotes" :key="note.id">
@@ -761,7 +761,7 @@ async function saveNewNote(content: string, weather: string | null) {
           </div>
         </div>
 
-        <div v-else class="no-notes-text">这一天没有笔记。</div>
+        <div v-else class="no-notes-text">{{ t('notes.calendar.no_notes_for_day') }}</div>
       </div>
     </div>
   </div>

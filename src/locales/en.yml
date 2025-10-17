@@ -383,7 +383,16 @@ notes:
     purge_confirm_title: Delete Confirmation
     purge_confirm_content: 'Are you sure you want to permanently delete the selected {count} notes? This action cannot be undone.'
     cancel: Cancel
-    confirm_delete: Delete  
+    confirm_delete: Delete
+
+  calendar:
+    title: Calendar
+    compose_backfill: '+Add note for {date}'
+    compose_write: '+Write note for {date}'
+    placeholder_new: Write something here...
+    placeholder_edit: Edit this note...
+    loading: Loading...
+    no_notes_for_day: No notes for this day.
 
 dialog:
   delete_note_title: Delete Note

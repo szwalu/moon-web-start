@@ -383,6 +383,16 @@ notes:
     purge_confirm_content: 确定要彻底删除选中的 {count} 条笔记吗？此操作不可恢复。
     cancel: 取消
     confirm_delete: 确认删除
+
+  calendar:
+    title: 日历
+    compose_backfill: '＋补写 {date} 笔记'
+    compose_write: '＋写 {date} 笔记'
+    placeholder_new: 在这里写点什么...
+    placeholder_edit: 编辑这条笔记...
+    loading: 加载中...
+    no_notes_for_day: 这一天没有笔记。
+
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？'

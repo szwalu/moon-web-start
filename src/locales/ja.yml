@@ -356,7 +356,7 @@ notes:
   filtering_by_tag: タグでフィルタリング中
   count_notes: '合計 {count} 件のメモ'
   search_results_for: '「{query}」の検索結果'
-  
+
   trash:
     aria_label: ゴミ箱
     title: ゴミ箱（30日間保持）
@@ -382,7 +382,16 @@ notes:
     purge_confirm_title: 削除の確認
     purge_confirm_content: '選択した {count} 件のノートを完全に削除してもよろしいですか？この操作は元に戻せません。'
     cancel: キャンセル
-    confirm_delete: 削除  
+    confirm_delete: 削除
+
+  calendar:
+    title: カレンダー
+    compose_backfill: '＋{date} のノートを追記'
+    compose_write: '＋{date} のノートを書く'
+    placeholder_new: ここに何かを書いてください...
+    placeholder_edit: このノートを編集...
+    loading: 読み込み中...
+    no_notes_for_day: この日はノートがありません。
 
 dialog:
   delete_note_title: メモを削除
