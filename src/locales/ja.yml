@@ -393,6 +393,18 @@ notes:
     loading: 読み込み中...
     no_notes_for_day: この日はノートがありません。
 
+  card:
+    set_date: 日付を設定
+    date_update_success: ノートの日付を更新しました！
+    date_update_failed: '日付の更新に失敗しました：{reason}'
+    weekday_0: 日曜日
+    weekday_1: 月曜日
+    weekday_2: 火曜日
+    weekday_3: 水曜日
+    weekday_4: 木曜日
+    weekday_5: 金曜日
+    weekday_6: 土曜日
+
 dialog:
   delete_note_title: メモを削除
   delete_note_content2: '{count} 件のメモを削除してもよろしいですか？'

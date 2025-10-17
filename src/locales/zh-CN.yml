@@ -393,6 +393,18 @@ notes:
     loading: 加载中...
     no_notes_for_day: 这一天没有笔记。
 
+  card:
+    set_date: 设定日期
+    date_update_success: 笔记日期更新成功！
+    date_update_failed: '日期更新失败：{reason}'
+    weekday_0: 周日
+    weekday_1: 周一
+    weekday_2: 周二
+    weekday_3: 周三
+    weekday_4: 周四
+    weekday_5: 周五
+    weekday_6: 周六
+
 dialog:
   delete_note_title: 删除笔记
   delete_note_content2: '您确定要删除 {count} 条笔记吗？'

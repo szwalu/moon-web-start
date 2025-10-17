@@ -68,8 +68,7 @@ function formatDateWithWeekday(dateStr: string) {
   const day = d.getDate()
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  const weekdayMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  const weekday = weekdayMap[d.getDay()]
+  const weekday = t(`notes.card.weekday_${d.getDay()}`)
   return `<span class="date-day">${day}日</span> ${weekday} ${hh}:${mm}`
 }
 
@@ -140,7 +139,7 @@ function getDropdownOptions(note: any) {
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
     { label: t('notes.delete'), key: 'delete' },
-    { label: '设定日期', key: 'set_date' },
+    { label: t('notes.card.set_date'), key: 'set_date' },
     { key: 'divider-1', type: 'divider' },
     {
       key: 'info-block',
@@ -225,11 +224,11 @@ async function handleDateUpdate(newDate: Date) {
     if (error)
       throw error
 
-    messageHook.success('笔记日期更新成功！')
+    messageHook.success(t('notes.card.date_update_success'))
     emit('dateUpdated')
   }
   catch (err: any) {
-    messageHook.error(`日期更新失败: ${err.message}`)
+    messageHook.error(t('notes.card.date_update_failed', { reason: err.message }))
   }
 }
 </script>
@@ -245,7 +244,7 @@ async function handleDateUpdate(newDate: Date) {
       <div class="note-card-top-bar">
         <div class="note-meta-left">
           <span v-if="note.is_pinned" class="pinned-indicator">
-            {{ $t('notes.pin') }}
+            {{ t('notes.pin') }}
           </span>
 
           <!-- 日期（几日）加粗；时间/周几常规；天气同一行 -->
