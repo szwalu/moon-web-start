@@ -407,6 +407,17 @@ notes:
     day_suffix: ''
     date_format_no_day: '{weekday} {hh}:{mm}'
 
+  export_picker:
+    start_label: Start
+    end_label: End
+    date_input_placeholder: YYYY-MM-DD
+    fake_placeholder: YYYY/MM/DD
+    today: Today
+    recent_7: Last 7 days
+    recent_30: Last 30 days
+    all: All
+    hint_export_all: If no range is selected, all notes will be exported.
+
   list:
     month_label: '{month}/{year}'
   total_notes: Total notes

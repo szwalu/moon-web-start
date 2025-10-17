@@ -406,6 +406,17 @@ notes:
     day_suffix: 日
     date_format_no_day: '{weekday} {hh}:{mm}'
 
+  export_picker:
+    start_label: 開始
+    end_label: 終了
+    date_input_placeholder: YYYY-MM-DD
+    fake_placeholder: 年/月/日
+    today: 今日
+    recent_7: 過去7日
+    recent_30: 過去30日
+    all: すべて
+    hint_export_all: 期間を選択しない場合、すべてのノートがエクスポートされます。
+
   list:
     month_label: '{year}年{month}月'
   total_notes: ノート総数

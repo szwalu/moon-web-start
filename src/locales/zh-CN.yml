@@ -406,6 +406,17 @@ notes:
     day_suffix: 日
     date_format_no_day: '{weekday} {hh}:{mm}'
 
+  export_picker:
+    start_label: 开始
+    end_label: 结束
+    date_input_placeholder: YYYY-MM-DD
+    fake_placeholder: 年/月/日
+    today: 今天
+    recent_7: 最近7天
+    recent_30: 最近30天
+    all: 全部
+    hint_export_all: 未选择范围时将导出全部笔记。
+
   list:
     month_label: '{year}年{month}月'
   total_notes: 总笔记数

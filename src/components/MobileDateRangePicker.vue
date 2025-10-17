@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-
-type RangeTuple = [number, number] | null
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{ modelValue: RangeTuple }>()
+
 const emit = defineEmits<{ (e: 'update:modelValue', v: RangeTuple): void }>()
+
+const { t } = useI18n()
+
+type RangeTuple = [number, number] | null
 
 function toYmd(d: Date): string {
   const y = d.getFullYear()
@@ -134,7 +138,7 @@ function clearRange() {
 <template>
   <div class="mdrp">
     <div class="row">
-      <label class="label" for="startDate">开始</label>
+      <label class="label" for="startDate">{{ t('notes.export_picker.start_label') }}</label>
 
       <!-- 包一层，支持“假占位符” -->
       <div class="date-wrap">
@@ -159,7 +163,7 @@ function clearRange() {
           v-model="startStr"
           class="date-input"
           type="text"
-          placeholder="YYYY-MM-DD"
+          :placeholder="t('notes.export_picker.date_input_placeholder')"
           inputmode="numeric"
           pattern="\\d{4}-\\d{2}-\\d{2}"
           @blur="normalizeText('start')"
@@ -167,12 +171,12 @@ function clearRange() {
         <span
           v-if="!startStr && supportsDate && isMobile"
           class="fake-placeholder"
-        >年/月/日</span>
+        >{{ t('notes.export_picker.fake_placeholder') }}</span>
       </div>
     </div>
 
     <div class="row">
-      <label class="label" for="endDate">结束</label>
+      <label class="label" for="endDate">{{ t('notes.export_picker.end_label') }}</label>
 
       <div class="date-wrap">
         <input
@@ -195,7 +199,7 @@ function clearRange() {
           v-model="endStr"
           class="date-input"
           type="text"
-          placeholder="年/月/日"
+          :placeholder="t('notes.export_picker.date_input_placeholder')"
           inputmode="numeric"
           pattern="\\d{4}-\\d{2}-\\d{2}"
           @blur="normalizeText('end')"
@@ -203,18 +207,18 @@ function clearRange() {
         <span
           v-if="!endStr && supportsDate && isMobile"
           class="fake-placeholder"
-        >年/月/日</span>
+        >{{ t('notes.export_picker.fake_placeholder') }}</span>
       </div>
     </div>
 
     <div class="chips">
-      <button class="chip" type="button" @click="setToday">今天</button>
-      <button class="chip" type="button" @click="setRecent(7)">最近7天</button>
-      <button class="chip" type="button" @click="setRecent(30)">最近30天</button>
-      <button class="chip" type="button" @click="clearRange">全部</button>
+      <button class="chip" type="button" @click="setToday">{{ t('notes.export_picker.today') }}</button>
+      <button class="chip" type="button" @click="setRecent(7)">{{ t('notes.export_picker.recent_7') }}</button>
+      <button class="chip" type="button" @click="setRecent(30)">{{ t('notes.export_picker.recent_30') }}</button>
+      <button class="chip" type="button" @click="clearRange">{{ t('notes.export_picker.all') }}</button>
     </div>
 
-    <p class="hint">未选择范围时将导出全部笔记。</p>
+    <p class="hint">{{ t('notes.export_picker.hint_export_all') }}</p>
   </div>
 </template>
 
@@ -249,7 +253,7 @@ function clearRange() {
   font-size: 16px;
   line-height: 1.2;
   color: #9ca3af;
-  pointer-events: none; /* 不阻挡点击，点击仍会触发 input */
+  pointer-events: none;
 }
 .dark .fake-placeholder {
   color: #6b7280;
