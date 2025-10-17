@@ -69,7 +69,11 @@ function formatDateWithWeekday(dateStr: string) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   const weekday = t(`notes.card.weekday_${d.getDay()}`)
-  return `<span class="date-day">${day}日</span> ${weekday} ${hh}:${mm}`
+  const daySuffix = t('notes.card.day_suffix') // 例如：中文/日文是“日”，英文为空
+  const dayLabel = `${day}${daySuffix || ''}`
+  // 翻译里不含 HTML，只做文本格式；HTML 在这里拼
+  const tail = t('notes.card.date_format_no_day', { weekday, hh, mm })
+  return `<span class="date-day">${dayLabel}</span> ${tail}`
 }
 
 const weatherDisplay = computed(() => {

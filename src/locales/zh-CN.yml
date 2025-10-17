@@ -404,6 +404,43 @@ notes:
     weekday_4: 周四
     weekday_5: 周五
     weekday_6: 周六
+    day_suffix: 日
+    date_format_no_day: '{weekday} {hh}:{mm}'
+
+  list:
+    month_label: '{year}年{month}月'
+
+  editor:
+    char_limit_title: 字数超出限制
+    char_limit_content: '单条笔记不能超过 {max} 字，请删减后再保存。'
+    save:
+      button_save: 保存
+      button_cancel: 取消
+      success: 保存成功！
+      weather_fetch_failed: 获取天气信息失败，笔记将不带天气数据保存。
+    image_dialog:
+      title: 插入图片链接
+      positive: 插入
+      negative: 取消
+      placeholder: 'https://example.com/image.jpg 或微云分享链接'
+      error_empty: 请输入链接
+      error_protocol: 必须以 http:// 或 https:// 开头
+      image_direct: 图片（直链）
+      image_view: （点击查看图片）
+    format:
+      bold: 加粗
+      ordered_list: 数字列表
+      heading: 标题
+      underline: 下划线
+      bullet_list: 无序列表
+      highlight: 文本高亮
+      insert_table: 插入表格
+    toolbar:
+      add_tag: 添加标签
+      todo: 待办事项
+      styles: 样式
+      insert_image_link: 插入图片链接
+  ok: 确定
 
 dialog:
   delete_note_title: 删除笔记

@@ -86,7 +86,7 @@ function getMonthKeyAndLabel(note: any): { key: string; label: string } {
   const yyyy = d.getFullYear()
   const mm = d.getMonth() + 1
   const key = `${yyyy}-${String(mm).padStart(2, '0')}`
-  const label = `${yyyy}年${mm}月`
+  const label = t('notes.list.month_label', { year: yyyy, month: mm })
   return { key, label }
 }
 
@@ -206,7 +206,7 @@ const currentMonthLabel = computed(() => {
     return ''
 
   const [y, m] = currentMonthKey.value.split('-')
-  return `${Number(y)}年${Number(m)}月`
+  return t('notes.list.month_label', { year: Number(y), month: Number(m) })
 })
 const pushOffset = ref(0)
 
@@ -850,7 +850,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
         :style="collapseStyle"
         @click.stop.prevent="toggleExpand(expandedNote!)"
       >
-        收起
+        {{ t('notes.collapse') }}
       </button>
     </Transition>
   </div>

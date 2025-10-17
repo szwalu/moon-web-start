@@ -201,9 +201,9 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
   if (len > max && !overLimitWarned.value) {
     overLimitWarned.value = true
     dialog.warning({
-      title: '字数超出限制',
-      content: `单条笔记不能超过 ${max} 字，请删减后再保存。`,
-      positiveText: '确定',
+      title: t('notes.editor.char_limit_title'),
+      content: t('notes.editor.char_limit_content', { max }),
+      positiveText: t('notes.ok'),
       onAfterLeave: () => {},
     })
   }
@@ -508,7 +508,7 @@ async function handleSave() {
     catch (error) {
       // 如果获取天气失败，只在控制台打印一个警告，然后继续执行。
       // weather 的值将保持为 null，保存操作不会被中断。
-      console.warn('获取天气信息失败，笔记将不带天气数据保存:', error)
+      console.warn(t('notes.editor.save.weather_fetch_failed'), error)
     }
   }
 
@@ -1188,14 +1188,14 @@ function insertImageLink() {
   const valRef = ref(getLastPrefix())
   const errorRef = ref<string | null>(null)
   dialog.create({
-    title: '插入图片链接',
-    positiveText: '插入',
-    negativeText: '取消',
+    title: t('notes.editor.image_dialog.title'),
+    positiveText: t('notes.editor.image_dialog.positive'),
+    negativeText: t('notes.editor.image_dialog.negative'),
     content: () =>
       h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
         h(NInput, {
           'value': valRef.value,
-          'placeholder': 'https://example.com/image.jpg 或微云分享链接',
+          'placeholder': t('notes.editor.image_dialog.placeholder'),
           'onUpdate:value': (v: string) => {
             valRef.value = v
             errorRef.value = null
@@ -1211,17 +1211,19 @@ function insertImageLink() {
     onPositiveClick: () => {
       const raw = (valRef.value || '').trim()
       if (!raw) {
-        errorRef.value = '请输入链接'
+        errorRef.value = t('notes.editor.image_dialog.error_empty')
         return false
       }
       if (!/^https?:\/\//i.test(raw)) {
-        errorRef.value = '必须以 http:// 或 https:// 开头'
+        errorRef.value = t('notes.editor.image_dialog.error_protocol')
         return false
       }
       // 记忆前缀（增强规则）
       savePrefix(raw)
       // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
-      const text = looksLikeImage(raw) ? '图片（直链）' : '（点击查看图片）'
+      const text = looksLikeImage(raw)
+        ? t('notes.editor.image_dialog.image_direct')
+        : t('notes.editor.image_dialog.image_view')
       insertText(`[${text}](${raw})`)
       return true
     },
@@ -1353,7 +1355,7 @@ function handleBeforeInput(e: InputEvent) {
           <button
             type="button"
             class="toolbar-btn"
-            title="添加标签"
+            :title="t('notes.editor.toolbar.add_tag')"
             @mousedown.prevent
             @touchstart.prevent
             @pointerdown.prevent="openTagMenu"
@@ -1365,7 +1367,7 @@ function handleBeforeInput(e: InputEvent) {
           <button
             type="button"
             class="toolbar-btn"
-            title="待办事项"
+            :title="t('notes.editor.toolbar.todo')"
             @mousedown.prevent
             @touchstart.prevent
             @pointerdown.prevent="runToolbarAction(addTodo)"
@@ -1391,7 +1393,7 @@ function handleBeforeInput(e: InputEvent) {
             ref="formatBtnRef"
             type="button"
             class="toolbar-btn toolbar-btn-aa"
-            title="样式"
+            :title="t('notes.editor.toolbar.styles')"
             @mousedown.prevent
             @touchstart.prevent
             @pointerdown.prevent="toggleFormatPalette"
@@ -1403,7 +1405,7 @@ function handleBeforeInput(e: InputEvent) {
           <button
             type="button"
             class="toolbar-btn"
-            title="插入图片链接"
+            :title="t('notes.editor.toolbar.insert_image_link')"
             @mousedown.prevent
             @touchstart.prevent
             @pointerdown.prevent="insertImageLink"
@@ -1425,7 +1427,7 @@ function handleBeforeInput(e: InputEvent) {
       </div>
       <div class="actions">
         <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">
-          取消
+          {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
           type="button"
@@ -1433,7 +1435,7 @@ function handleBeforeInput(e: InputEvent) {
           :disabled="isLoading || isSubmitting || !contentModel"
           @click="handleSave"
         >
-          保存
+          {{ t('notes.editor.save.button_save') }}
         </button>
       </div>
     </div>
@@ -1447,8 +1449,8 @@ function handleBeforeInput(e: InputEvent) {
       @mousedown.prevent
     >
       <div class="format-row">
-        <button type="button" class="format-btn" title="加粗" @click="handleFormat(addBold)">B</button>
-        <button type="button" class="format-btn" title="数字列表" @click="handleFormat(addOrderedList)">
+        <button type="button" class="format-btn" :title="t('notes.editor.format.bold')" @click="handleFormat(addBold)">B</button>
+        <button type="button" class="format-btn" :title="t('notes.editor.format.ordered_list')" @click="handleFormat(addOrderedList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
             <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
@@ -1458,9 +1460,9 @@ function handleBeforeInput(e: InputEvent) {
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
         </button>
-        <button type="button" class="format-btn" title="标题" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" title="下划线" @click="handleFormat(addUnderline)">U</button>
-        <button type="button" class="format-btn" title="无序列表" @click="handleFormat(addBulletList)">
+        <button type="button" class="format-btn" :title="t('notes.editor.format.heading')" @click="handleFormat(addHeading)">H</button>
+        <button type="button" class="format-btn" :title="t('notes.editor.format.underline')" @click="handleFormat(addUnderline)">U</button>
+        <button type="button" class="format-btn" :title="t('notes.editor.format.bullet_list')" @click="handleFormat(addBulletList)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="6" cy="7" r="2" fill="currentColor" />
             <circle cx="6" cy="12" r="2" fill="currentColor" />
@@ -1470,13 +1472,13 @@ function handleBeforeInput(e: InputEvent) {
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
         </button>
-        <button type="button" class="format-btn" title="高亮（==文本==）" @click="handleFormat(addMarkHighlight)">
+        <button type="button" class="format-btn" :title="t('notes.editor.format.highlight')" @click="handleFormat(addMarkHighlight)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
             <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
           </svg>
         </button>
-        <button type="button" class="format-btn" title="插入表格" @click="handleFormat(addTable)">
+        <button type="button" class="format-btn" :title="t('notes.editor.format.insert_table')" @click="handleFormat(addTable)">
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" />
             <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" />

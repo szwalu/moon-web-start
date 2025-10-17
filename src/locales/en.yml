@@ -405,6 +405,43 @@ notes:
     weekday_4: Thursday
     weekday_5: Friday
     weekday_6: Saturday
+    day_suffix: ''
+    date_format_no_day: '{weekday} {hh}:{mm}'
+
+  list:
+    month_label: '{month}/{year}'
+
+  editor:
+    char_limit_title: Character limit exceeded
+    char_limit_content: 'A single note can''t exceed {max} characters. Please shorten it before saving.'
+    save:
+      button_save: Save
+      button_cancel: Cancel
+      success: Saved successfully!
+      weather_fetch_failed: Failed to fetch weather data. The note will be saved without weather information.
+    image_dialog:
+      title: Insert Image Link
+      positive: Insert
+      negative: Cancel
+      placeholder: 'https://example.com/image.jpg or a shared link'
+      error_empty: Please enter a link
+      error_protocol: Must start with http:// or https://
+      image_direct: Image (direct link)
+      image_view: (click to view image)
+    format:
+      bold: Bold
+      ordered_list: Numbered list
+      heading: Heading
+      underline: Underline
+      bullet_list: Bullet list
+      highlight: Highlight (==text==)
+      insert_table: Insert table
+    toolbar:
+      add_tag: Add tag
+      todo: To-do
+      styles: Styles
+      insert_image_link: Insert image link
+  ok: OK
 
 dialog:
   delete_note_title: Delete Note

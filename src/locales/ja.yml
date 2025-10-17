@@ -404,6 +404,43 @@ notes:
     weekday_4: 木曜日
     weekday_5: 金曜日
     weekday_6: 土曜日
+    day_suffix: 日
+    date_format_no_day: '{weekday} {hh}:{mm}'
+
+  list:
+    month_label: '{year}年{month}月'
+
+  editor:
+    char_limit_title: 文字数の上限を超えました
+    char_limit_content: '1つのノートは {max} 文字までです。保存前に短くしてください。'
+    save:
+      button_save: 保存
+      button_cancel: キャンセル
+      success: 保存が完了しました！
+      weather_fetch_failed: 天気情報の取得に失敗しました。天気データなしでノートを保存します。
+    image_dialog:
+      title: 画像リンクを挿入
+      positive: 挿入
+      negative: キャンセル
+      placeholder: 'https://example.com/image.jpg または共有リンク'
+      error_empty: リンクを入力してください
+      error_protocol: http:// または https:// で始まる必要があります
+      image_direct: 画像（直リンク）
+      image_view: （クリックして画像を表示）
+    format:
+      bold: 太字
+      ordered_list: 番号付きリスト
+      heading: 見出し
+      underline: 下線
+      bullet_list: 箇条書き
+      highlight: ハイライト（==テキスト==）
+      insert_table: 表を挿入
+    toolbar:
+      add_tag: タグを追加
+      todo: ToDo
+      styles: スタイル
+      insert_image_link: 画像リンクを挿入
+  ok: OK
 
 dialog:
   delete_note_title: メモを削除
