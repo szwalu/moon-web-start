@@ -6,60 +6,39 @@ import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import { useDialog } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
-
-// ===================== 新增代码 START =====================
 import { CACHE_KEYS } from '@/utils/cacheKeys'
 
-// 引入您的缓存 Key 常量
-// ===================== 新增代码 END =======================
-
-// 定义该组件可以从父组件接收的数据 (props)
 const props = defineProps({
-  show: {
-    type: Boolean,
-    required: true,
-  },
-  email: {
-    type: String,
-    default: '',
-  },
-  // 父组件传进来的总数保留，但不再作为唯一来源；我们会在本组件内自行查询更准确的 count
-  totalNotes: {
-    type: Number,
-    default: 0,
-  },
-  user: {
-    type: Object as () => User | null,
-    required: true,
-  },
+  show: { type: Boolean, required: true },
+  email: { type: String, default: '' },
+  // 父组件传进来的总数可作为兜底
+  totalNotes: { type: Number, default: 0 },
+  user: { type: Object as () => User | null, required: true },
 })
 
-// 定义该组件可以向父组件发送的事件
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()
 const dialog = useDialog()
 
-// 在组件内部创建自己的状态
 const journalingDays = ref(0)
 const journalingYears = ref(0)
 const journalingRemainderDays = ref(0)
 const firstNoteDateText = ref<string | null>(null)
 
-const hasFetched = ref(false) // 查询标记，确保只在第一次打开时查询
-
-// 本组件内实时查询的“笔记总数”
+const hasFetched = ref(false)
 const totalCount = ref<number | null>(null)
 
-// ===== 工具：格式化日期（中文：YYYY年M月D日）=====
-function formatDateZH(d: Date) {
-  const y = d.getFullYear()
-  const m = d.getMonth() + 1
-  const day = d.getDate()
-  return `${y}年${m}月${day}日`
+// 使用多语言的日期格式：{year}年{month}月{day}日
+function formatDateI18n(d: Date) {
+  return t('notes.account.date_format', {
+    year: d.getFullYear(),
+    month: d.getMonth() + 1,
+    day: d.getDate(),
+  })
 }
 
-// ===== 查询：最早笔记 & 坚持年天 =====
+// 查询：最早笔记 & 坚持年/天
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
@@ -77,15 +56,12 @@ async function fetchFirstNoteAndStreak() {
 
     if (data?.created_at) {
       const first = new Date(data.created_at)
-      firstNoteDateText.value = formatDateZH(first)
+      firstNoteDateText.value = formatDateI18n(first)
 
-      // 计算坚持年+天
       const today = new Date()
-      // 去掉时间部分，按自然日计算
       first.setHours(0, 0, 0, 0)
       today.setHours(0, 0, 0, 0)
 
-      // 先算满年的数量
       let years = today.getFullYear() - first.getFullYear()
       let anniversaryThisYear = new Date(first)
       anniversaryThisYear.setFullYear(first.getFullYear() + years)
@@ -96,21 +72,19 @@ async function fetchFirstNoteAndStreak() {
         anniversaryThisYear.setFullYear(first.getFullYear() + years)
       }
 
-      // 计算“剩余的天数”
       const diffMs = today.getTime() - anniversaryThisYear.getTime()
       const remainDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
       journalingYears.value = Math.max(0, years)
       journalingRemainderDays.value = Math.max(0, remainDays)
 
-      // 如果不足 1 年，journalingDays 作为兼容（旧显示）
       if (journalingYears.value === 0) {
         const diffTime = Math.abs(today.getTime() - first.getTime())
+        // +1 让“同一天首次记录”也显示为 1 天
         journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
       }
     }
     else {
-      // 没有任何笔记
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
@@ -118,11 +92,11 @@ async function fetchFirstNoteAndStreak() {
     }
   }
   catch (err) {
-    console.error('获取最早笔记日期失败:', err)
+    console.error(t('notes.account.errors.fetch_first_note_failed'), err)
   }
 }
 
-// ===== 查询：笔记总数（使用 head+count 更快）=====
+// 查询：笔记总数（head+count）
 async function fetchNotesCount() {
   if (!props.user) {
     totalCount.value = 0
@@ -136,16 +110,15 @@ async function fetchNotesCount() {
 
     if (error)
       throw error
-
     totalCount.value = typeof count === 'number' ? count : 0
   }
   catch (err) {
-    console.error('获取笔记总数失败:', err)
-    totalCount.value = props.totalNotes ?? 0 // 兜底使用父组件传值
+    console.error(t('notes.account.errors.fetch_notes_count_failed'), err)
+    totalCount.value = props.totalNotes ?? 0
   }
 }
 
-// 打开时执行一次查询（只在第一次打开时查）
+// 打开弹窗后首次查询
 watch(() => props.show, (visible) => {
   if (visible && !hasFetched.value) {
     fetchFirstNoteAndStreak()
@@ -154,26 +127,25 @@ watch(() => props.show, (visible) => {
   }
 })
 
-// ===== 退出确认（Naive UI 对话框） & 执行 =====
+// 登出确认（Naive UI）
 function openLogoutConfirm() {
   dialog.warning({
-    title: '确定要登出系统吗？',
-    content: '登出后需用密码重新登陆',
-    negativeText: '取消',
-    positiveText: '确定',
+    title: t('notes.account.logout_confirm.title'),
+    content: t('notes.account.logout_confirm.content'),
+    negativeText: t('notes.account.logout_confirm.negative'),
+    positiveText: t('notes.account.logout_confirm.positive'),
     async onPositiveClick() {
       await doSignOut()
     },
   })
 }
 
-// ===================== 修改代码 START =====================
+// 执行登出并清理缓存
 async function doSignOut() {
   try {
-    // 1. 调用 Supabase 的登出方法
     await supabase.auth.signOut()
 
-    // 2. 关键步骤：清理所有与用户相关的本地存储
+    // 清理本地缓存
     localStorage.removeItem('last_known_user_id_v1')
     localStorage.removeItem('pinned_tags_v1')
     localStorage.removeItem('tag_icons_v1')
@@ -181,22 +153,19 @@ async function doSignOut() {
     localStorage.removeItem(CACHE_KEYS.HOME_META)
     localStorage.removeItem('new_note_content_draft')
 
-    // 更彻底地清理所有标签和搜索结果的缓存
     Object.keys(localStorage).forEach((key) => {
       if (key.startsWith(CACHE_KEYS.TAG_PREFIX) || key.startsWith(CACHE_KEYS.SEARCH_PREFIX))
         localStorage.removeItem(key)
     })
 
-    // 3. 直接跳转首页并强制刷新，确保应用状态完全重置
+    // 跳转首页，重置应用状态
     window.location.assign('/')
   }
   catch (e) {
-    console.error('登出时发生错误:', e)
-    // 即便清理缓存失败，也尝试刷新到首页
+    console.error(t('notes.account.errors.signout_failed'), e)
     window.location.assign('/')
   }
 }
-// ===================== 修改代码 END =======================
 </script>
 
 <template>
@@ -205,7 +174,7 @@ async function doSignOut() {
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">
-            {{ t('auth.account_title') }}
+            {{ t('notes.account.title') }}
           </h2>
           <button class="close-button" @click="emit('close')">
             &times;
@@ -214,7 +183,7 @@ async function doSignOut() {
 
         <div class="modal-body">
           <div class="info-item">
-            <span class="info-label">{{ t('auth.account_email_label') }}</span>
+            <span class="info-label">{{ t('notes.account.email_label') }}</span>
             <span class="info-value">{{ email }}</span>
           </div>
 
@@ -224,23 +193,29 @@ async function doSignOut() {
           </div>
 
           <div class="info-item">
-            <span class="info-label">第一条笔记创建于</span>
+            <span class="info-label">{{ t('notes.account.first_note_created_at') }}</span>
             <span class="info-value">{{ firstNoteDateText ?? '—' }}</span>
           </div>
 
           <div v-if="journalingYears > 0" class="info-item">
-            <span class="info-label">您已坚持记录</span>
-            <span class="info-value">{{ journalingYears }} 年 {{ journalingRemainderDays }} 天</span>
+            <span class="info-label">{{ t('notes.account.streak_title') }}</span>
+            <span class="info-value">
+              {{ t('notes.account.streak_years_days', { years: journalingYears, days: journalingRemainderDays }) }}
+            </span>
           </div>
           <div v-else class="info-item">
-            <span class="info-label">您已坚持记录</span>
-            <span class="info-value">{{ journalingDays }} 天</span>
+            <span class="info-label">{{ t('notes.account.streak_title') }}</span>
+            <span class="info-value">
+              {{ t('notes.account.streak_days_only', { days: journalingDays }) }}
+            </span>
           </div>
         </div>
 
         <div class="modal-footer">
-          <a href="/" class="btn-green">前往网址站</a>
-          <button class="btn-grey" @click="openLogoutConfirm">登出</button>
+          <a href="/" class="btn-green">{{ t('notes.account.go_to_site') }}</a>
+          <button class="btn-grey" @click="openLogoutConfirm">
+            {{ t('notes.account.logout') }}
+          </button>
         </div>
       </div>
     </div>

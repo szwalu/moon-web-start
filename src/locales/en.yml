@@ -330,7 +330,6 @@ notes:
   exporting: Exporting...
   export_results: Export
   search_placeholder_tags: '🔍 Search notes or #tags ...'
-  total_notes: Total Notes
   journaling_days_label: You have been journaling for
   journaling_days_value: '{count} days'
   select_notes: Select Notes
@@ -410,6 +409,27 @@ notes:
 
   list:
     month_label: '{month}/{year}'
+  total_notes: Total notes
+
+  account:
+    title: My Account
+    email_label: Email
+    first_note_created_at: First note created on
+    streak_title: You've been journaling for
+    streak_years_days: '{years} years {days} days'
+    streak_days_only: '{days} days'
+    go_to_site: Go to Website
+    logout: Sign out
+    logout_confirm:
+      title: Sign out?
+      content: You'll need your password to sign in again.
+      positive: Sign out
+      negative: Cancel
+    errors:
+      fetch_first_note_failed: Failed to fetch first note date
+      fetch_notes_count_failed: Failed to fetch total notes
+      signout_failed: Error while signing out
+    date_format: '{year}/{month}/{day}'
 
   editor:
     char_limit_title: Character limit exceeded

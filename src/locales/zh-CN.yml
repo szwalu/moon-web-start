@@ -329,7 +329,6 @@ notes:
   exporting: 导出中...
   export_results: 导出
   search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
-  total_notes: 笔记总数
   journaling_days_label: 您已坚持记录
   journaling_days_value: '{count} 天'
   select_notes: 选择笔记
@@ -409,6 +408,27 @@ notes:
 
   list:
     month_label: '{year}年{month}月'
+  total_notes: 总笔记数
+
+  account:
+    title: 我的账户
+    email_label: 邮箱
+    first_note_created_at: 第一条笔记创建于
+    streak_title: 您已坚持记录
+    streak_years_days: '{years} 年 {days} 天'
+    streak_days_only: '{days} 天'
+    go_to_site: 前往网址站
+    logout: 登出
+    logout_confirm:
+      title: 确定要登出系统吗？
+      content: 登出后需用密码重新登陆
+      positive: 确定
+      negative: 取消
+    errors:
+      fetch_first_note_failed: 获取最早笔记日期失败
+      fetch_notes_count_failed: 获取笔记总数失败
+      signout_failed: 登出时发生错误
+    date_format: '{year}年{month}月{day}日'
 
   editor:
     char_limit_title: 字数超出限制

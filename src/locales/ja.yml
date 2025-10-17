@@ -329,7 +329,6 @@ notes:
   exporting: エクスポート中...
   export_results: エクスポート
   search_placeholder_tags: '🔍 メモや #タグ を検索...'
-  total_notes: メモ総数
   journaling_days_label: 記録を続けた日数
   journaling_days_value: '{count} 日'
   select_notes: メモを選択
@@ -409,6 +408,27 @@ notes:
 
   list:
     month_label: '{year}年{month}月'
+  total_notes: ノート総数
+
+  account:
+    title: アカウント
+    email_label: メール
+    first_note_created_at: 最初のノート作成日
+    streak_title: 継続記録
+    streak_years_days: '{years}年 {days}日'
+    streak_days_only: '{days}日'
+    go_to_site: ウェブサイトへ
+    logout: サインアウト
+    logout_confirm:
+      title: サインアウトしますか？
+      content: サインアウト後は再度パスワードでログインが必要です。
+      positive: サインアウト
+      negative: キャンセル
+    errors:
+      fetch_first_note_failed: 最初のノート作成日の取得に失敗しました
+      fetch_notes_count_failed: ノート総数の取得に失敗しました
+      signout_failed: サインアウト中にエラーが発生しました
+    date_format: '{year}年{month}月{day}日'
 
   editor:
     char_limit_title: 文字数の上限を超えました
