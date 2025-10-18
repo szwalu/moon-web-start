@@ -5,6 +5,7 @@ import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvid
 import { useDark } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
+import { subscribeAndSaveWebPush } from '@/composables/useWebPushSubscribe'
 
 // ✅ 启动 Supabase 令牌自动刷新
 useSupabaseTokenRefresh()
@@ -52,6 +53,7 @@ async function enablePushOnce() {
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-72.png',
     })
+    await subscribeAndSaveWebPush()
   }
   catch (e) {
     // 静默忽略
