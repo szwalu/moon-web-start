@@ -3,44 +3,64 @@
 import { RouterView } from 'vue-router'
 import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useDark } from '@vueuse/core'
-import { computed, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
-// ✅ 启动令牌自动刷新（必须放在 <script setup> 里而不是外面）
+// ✅ 启动 Supabase 令牌自动刷新
 useSupabaseTokenRefresh()
 
 // ✅ 暗黑主题
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
-// ✅ 第一步：注册 SW + 请求通知权限 + 本地测试一条通知
-onMounted(async () => {
+// ✅ 在 iOS PWA 独立模式下，用“用户手势”触发权限请求更稳
+const isStandalone
+  = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+  || ((navigator as any)?.standalone === true)
+
+const canAsk
+  = typeof Notification !== 'undefined'
+  && typeof window !== 'undefined'
+  && Notification.permission === 'default'
+
+const showAskNotif = ref(Boolean(isStandalone && canAsk))
+
+async function enablePushOnce() {
   try {
-    if ('serviceWorker' in navigator)
-      await navigator.serviceWorker.register('/sw.js')
-    else
-      return
-
-    if ('Notification' in window) {
-      const perm = await Notification.requestPermission()
-      if (perm !== 'granted')
-        return
-    }
-    else {
+    if (!('serviceWorker' in navigator)) {
+      showAskNotif.value = false
       return
     }
+    // 1) 确保 SW 已注册
+    await navigator.serviceWorker.register('/sw.js')
 
+    // 2) 用户手势里请求权限（iOS 更稳）
+    if (!('Notification' in window)) {
+      showAskNotif.value = false
+      return
+    }
+    const perm = await Notification.requestPermission()
+    if (perm !== 'granted') {
+      showAskNotif.value = false
+      return
+    }
+
+    // 3) 本地测试一条通知（验证通道）
     const reg = await navigator.serviceWorker.ready
     await reg.showNotification('云笔记 · 通知测试', {
-      body: '✅ 通道已打通！下一步我们再接入 Supabase + 定时。',
+      body: '✅ 已开启通知！后续我们再接入 Supabase + 定时。',
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-72.png',
     })
   }
   catch (e) {
-    console.warn('Notification test failed', e)
+    // 静默忽略
+    console.warn('enablePushOnce failed', e)
   }
-})
+  finally {
+    showAskNotif.value = false
+  }
+}
 </script>
 
 <template>
@@ -49,6 +69,20 @@ onMounted(async () => {
       <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
+            <!-- 仅在 iOS PWA 且尚未授权时出现的一次性按钮 -->
+            <div
+              v-if="showAskNotif"
+              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111; color:#fff; padding: 10px 14px; border-radius: 10px;"
+            >
+              <button
+                style="background: transparent; color:#fff; font-size: 14px;"
+                aria-label="允许通知（点击测试）"
+                @click="enablePushOnce"
+              >
+                允许通知（点击测试）
+              </button>
+            </div>
+
             <AppContainer>
               <RouterView />
             </AppContainer>
@@ -68,12 +102,15 @@ body, html {
   background-size: 25px 25px;
   transition: background-color 0.3s ease;
 }
+
 .dark body, .dark html {
   background-color: #1a1a1a;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
+
+/* 全局消息/通知容器位置微调 */
 .n-message-container,
 .n-notification-container {
   top: 10% !important;
