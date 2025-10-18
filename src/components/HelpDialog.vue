@@ -141,7 +141,6 @@ const { t } = useI18n()
         <section>
           <h3>{{ t('notes.HelpDialog.s9_title') }}</h3>
           <ul>
-            <li><strong>{{ t('notes.HelpDialog.export_current') }}</strong>{{ t('notes.HelpDialog.s9_i1_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.export_bulk') }}</strong>{{ t('notes.HelpDialog.s9_i2_tail') }}</li>
           </ul>
         </section>

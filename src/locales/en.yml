@@ -546,7 +546,7 @@ notes:
 
     s9_title: 9) Export
     s9_i1_tail: ': When viewing search or tag results, click ''Export'' in the banner.'
-    s9_i2_tail: ': From ''Export All'' in the main menu, choose a date range and export as TXT (max 1500 notes per batch).'
+    s9_i2_tail: ': From ''Export All'' in the main menu, choose a date range and export as MD (max 1500 notes per batch).'
 
     s10_title: 10) Login and Settings
     s10_i1: 'Open ''Settings → My Account'' from the main menu to view account info and stats.'
