@@ -1032,7 +1032,7 @@ async function handleBatchExport() {
 
         const datePart = `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-        a.download = `notes_export_${datePart}_${timestamp}.txt`
+        a.download = `notes_export_${datePart}_${timestamp}.md`
         document.body.appendChild(a)
         a.click()
         setTimeout(() => {
@@ -1078,7 +1078,7 @@ function handleExportResults() {
     const a = document.createElement('a')
     a.href = url
     const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-    a.download = `notes_search_results_${timestamp}.txt`
+    a.download = `notes_search_results_${timestamp}.md`
     document.body.appendChild(a)
     a.click()
     setTimeout(() => {
