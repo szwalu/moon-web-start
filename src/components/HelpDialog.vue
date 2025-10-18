@@ -37,8 +37,8 @@ const emit = defineEmits<{ (e: 'close'): void }>()
         <section>
           <h3>2) 新建 / 编辑 / 勾选任务</h3>
           <ul>
-            <li><strong>新建</strong>：输入 → 保存。</li>
-            <li><strong>编辑</strong>：在列表或日历进入笔记后修改并保存，界面即时更新。</li>
+            <li><strong>新建</strong>：输入 → 保存。支持离线保存</li>
+            <li><strong>编辑</strong>：在列表或日历进入笔记后修改并保存，界面即时更新。支持离线编辑</li>
             <li><strong>任务勾选</strong>：形如 <code>- [ ]</code> / <code>- [x]</code> 的条目可直接点击切换完成状态。</li>
           </ul>
         </section>
@@ -48,16 +48,17 @@ const emit = defineEmits<{ (e: 'close'): void }>()
           <ul>
             <li><strong>插入标签</strong>：从菜单选择标签；若输入框为空，会自动填入如 <code>#生活/购物</code> 并聚焦。</li>
             <li><strong>筛选笔记</strong>：点击菜单中的标签即可筛选；支持「无标签」筛选。</li>
-            <li><strong>互斥规则</strong>：搜索与标签筛选互斥；切换时自动清理对方状态。</li>
-            <li>清除筛选：横幅右侧「×」。</li>
+            <li><strong>选择筛选</strong>：筛选后可用菜单栏“选择笔记”来进行笔记选择。</li>
+            <li><strong>清除筛选</strong>：横幅右侧「×」。</li>
+            <li>标签支持置顶、重命名、更换图标和移除操作。</li>
           </ul>
         </section>
 
         <section>
           <h3>4) 搜索</h3>
           <ul>
-            <li>点击右上角 <span aria-hidden="true">🔍</span> 打开搜索栏，输入关键字后执行。</li>
-            <li>横幅展示「搜索结果」与匹配数量，支持直接导出当前结果。</li>
+            <li>点击右上角 <span aria-hidden="true">🔍</span> 打开搜索栏，输入关键字后回车执行。</li>
+            <li>横幅展示「搜索结果」与匹配数量。搜索后可用菜单栏“选择笔记”来进行笔记选择。</li>
             <li>清除搜索：点「取消」或清空关键字。</li>
           </ul>
         </section>
@@ -65,8 +66,9 @@ const emit = defineEmits<{ (e: 'close'): void }>()
         <section>
           <h3>5) 那年今日</h3>
           <ul>
+            <li>点击「那年今日」横幅可进入/退出视图，仅显示历史同日的笔记。</li>
+            <li>在「那年今日」视图下退出笔记，下次进入笔记时仍在「那年今日」视图。</li>
             <li>在未输入、未搜索、未筛选、未选择时显示「那年今日」横幅。</li>
-            <li>点击可进入/退出视图，仅显示历史同日的笔记；与搜索/标签互斥。</li>
           </ul>
         </section>
 
@@ -79,11 +81,12 @@ const emit = defineEmits<{ (e: 'close'): void }>()
         </section>
 
         <section>
-          <h3>7) 置顶 / 复制 / 删除</h3>
+          <h3>7)笔记的“ 置顶 / 复制 / 删除 /设定日期”操作</h3>
           <ul>
             <li><strong>置顶</strong>：列表项操作中切换（离线也生效，稍后自动同步）。</li>
             <li><strong>复制</strong>：将该条内容复制到剪贴板。</li>
             <li><strong>删除</strong>：支持单条与批量；相关标签/日历/搜索缓存会自动失效以保持一致。</li>
+            <li><strong>设定日期</strong>：修改笔记的创建日期。</li>
           </ul>
         </section>
 
@@ -91,7 +94,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
           <h3>8) 日历视图</h3>
           <ul>
             <li>在主菜单点击「日历」进入，按日期查看/创建/编辑/复制/置顶/删除。</li>
-            <li>从日历编辑保存后，主页会自动定位到该条（必要时自动分页加载直至找到）。</li>
+            <li>日历视图支持补写笔记或提前新建未来笔记。</li>
           </ul>
         </section>
 
@@ -106,8 +109,8 @@ const emit = defineEmits<{ (e: 'close'): void }>()
         <section>
           <h3>10) 登录与设置</h3>
           <ul>
-            <li>主菜单可打开「账户」查看账号信息与统计。</li>
-            <li>在「设置」里可调整字体等偏好。</li>
+            <li>主菜单可打开「设置」-「我的账户」查看账号信息与统计。</li>
+            <li>在「设置」里可调整字体等偏好及导出笔记等。</li>
           </ul>
         </section>
 
@@ -115,7 +118,6 @@ const emit = defineEmits<{ (e: 'close'): void }>()
           <h3>11) 离线与缓存</h3>
           <ul>
             <li><strong>离线可用</strong>：新建/编辑/置顶/删除在离线时即时更新界面与本地快照，上线后自动同步到服务器。</li>
-            <li><strong>错误提示节流</strong>：离线下拉加载仅提示一次错误并暂停，避免弹窗轰炸。</li>
             <li><strong>冷启动还原</strong>：若存在本地缓存/快照，将优先恢复。</li>
             <li><strong>静默预取</strong>：主页会在首屏后静默预取多页并写入缓存；24 小时内仅预取一次。</li>
           </ul>
@@ -125,14 +127,17 @@ const emit = defineEmits<{ (e: 'close'): void }>()
           <h3>12) 回收站</h3>
           <ul>
             <li>在主菜单打开「回收站」。可恢复（即时插回并排序）或清空（刷新数据与缓存）。</li>
+            <li>「回收站」数据保留30天，30天后自动彻底删除。</li>
           </ul>
         </section>
 
         <section>
           <h3>常见问题</h3>
           <details>
-            <summary>为什么搜索/标签/那年今日会互相“顶掉”？</summary>
-            <p>为避免多重过滤叠加导致困惑与性能开销，采取互斥策略：始终只保留一个视图。</p>
+            <summary>怎样进入笔记？</summary>
+            <p>在浏览器键入：https://www.woabc.com/auth，按提示注册登陆即可。</p>
+            <p>在手机浏览器界面选择“添加到主屏幕”后，即可像普通APP一样使用笔记。</p>
+            <p>在网址站中点击云笔记或移动端的Logo即可进入笔记；在笔记主界面点击右上角「x」键可返回网址站。</p>
           </details>
           <details>
             <summary>离线时的编辑/删除会丢吗？</summary>
@@ -145,6 +150,11 @@ const emit = defineEmits<{ (e: 'close'): void }>()
           <details>
             <summary>刷新后未保存的文本为什么还在？</summary>
             <p>主页输入框启用了本地草稿；正式保存后草稿自动清理。</p>
+          </details>
+          <details>
+            <summary>笔记只有中文版吗？</summary>
+            <p>笔记支持简体中文、英文和日文。会自动跟随系统切换这三种语言。</p>
+            <p>若要手动切换语言，请在网址站的「设置」-「网站语言」中进行。</p>
           </details>
         </section>
       </NScrollbar>
