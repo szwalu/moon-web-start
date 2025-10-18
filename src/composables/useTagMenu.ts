@@ -1150,7 +1150,7 @@ export function useTagMenu(
     const icon = tagIconMap.value[tagFull] || '#'
     const textLabel = total > 0 ? `${labelName}（${total}）` : `${labelName}`
     const fullTitle = `${icon} ${textLabel}`
-    const arrow = expanded ? '▼' : '▶'
+    const arrow = expanded ? '⌄' : '›'
 
     const MORE_DOT_SIZE = 20
     const placementRef = ref<SmartPlacement>('top-start')
