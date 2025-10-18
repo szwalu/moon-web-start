@@ -355,6 +355,7 @@ notes:
   filtering_by_tag: 正在筛选标签
   count_notes: 共 {count} 条笔记
   search_results_for: 搜索“{query}”的结果
+  help_title: 使用帮助
 
   trash:
     aria_label: 回收站

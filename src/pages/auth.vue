@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, Download, Settings, Trash2, User, X } from 'lucide-vue-next'
+import { Calendar, CheckSquare, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -22,6 +22,10 @@ import { useTagMenu } from '@/composables/useTagMenu'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
+
+import HelpDialog from '@/components/HelpDialog.vue'
+
+const showHelpDialog = ref(false)
 
 const { manualSync: _manualSync } = useOfflineSync()
 
@@ -97,6 +101,7 @@ const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
+const settingsExpanded = ref(false)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -163,23 +168,85 @@ watch(activeTagFilter, (newValue) => {
 })
 
 const mainMenuOptions = computed(() => [
+  // 顶层：日历
   { label: t('auth.Calendar'), key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
+
+  // 顶层：选择模式开关
   {
-    label: isSelectionModeActive.value
-      ? t('notes.cancel_selection')
-      : t('notes.select_notes'),
+    label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'),
     key: 'toggleSelection',
     icon: () => h(CheckSquare, { size: 18 }),
   },
-  { label: t('settings.font_title'), key: 'settings', icon: () => h(Settings, { size: 18 }) },
-  { label: t('notes.export_all'), key: 'export', icon: () => h(Download, { size: 18 }) },
-  { label: t('auth.account_title'), key: 'account', icon: () => h(User, { size: 18 }) },
+
+  // 顶层：「设置」（拦截点击，避免触发 select→收起）
+  {
+    key: 'settings-group-toggle',
+    icon: () => h(Settings, { size: 18 }), // 与其它一级项左对齐
+    label: () => h('span', null, t('settings.title') || t('settings.title') || '设置'),
+    props: {
+      onMousedown: (e: MouseEvent) => e.preventDefault(), // 避免焦点抖动
+      onClick: (e: MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        settingsExpanded.value = !settingsExpanded.value
+        mainMenuVisible.value = true // 保持 NDropdown 展开
+      },
+      onTouchend: (e: TouchEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        settingsExpanded.value = !settingsExpanded.value
+        mainMenuVisible.value = true
+      },
+    },
+  },
+
+  // —— 向下展开的“二级”选项（受 show 控制） —— //
+  { type: 'divider', key: 'div-settings', show: settingsExpanded.value },
+
+  {
+    key: 'settings',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Type, { size: 18 }),
+        h('span', null, t('settings.font_title')),
+      ]),
+  },
+  {
+    key: 'export',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Download, { size: 18 }),
+        h('span', null, t('notes.export_all')),
+      ]),
+  },
+  {
+    key: 'account',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(User, { size: 18 }),
+        h('span', null, t('auth.account_title')),
+      ]),
+  },
+  {
+    key: 'help',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(HelpCircle, { size: 18 }), // ← 图标为问号圆圈
+        h('span', null, t('notes.help_title') || '使用帮助'),
+      ]),
+  },
+
+  // 顶层：回收站（保持为一级）
   { label: t('auth.trash'), key: 'trash', icon: () => h(Trash2, { size: 18 }) },
 
-  // —— 分界线 ——
+  // —— 分界线 —— //
   { type: 'divider', key: 'div-tags' },
 
-  // —— 直接把标签分组“平铺”到根菜单中（包含常用分组、A-Z 分组、以及顶部搜索框 render） ——
+  // 标签子菜单（保持原样）
   ...tagMenuChildren.value,
 ])
 
@@ -1841,6 +1908,9 @@ function handleMainMenuSelect(rawKey: string) {
     case 'trash':
       showTrashModal.value = true
       break
+    case 'help':
+      showHelpDialog.value = true
+      break
     default:
       break
   }
@@ -2244,6 +2314,7 @@ function onCalendarUpdated(updated: any) {
       <Authentication />
     </template>
   </div>
+  <HelpDialog :show="showHelpDialog" @close="showHelpDialog = false" />
 </template>
 
 <style scoped>
