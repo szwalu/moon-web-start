@@ -3,7 +3,7 @@
 import { RouterView } from 'vue-router'
 import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useDark } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
 // ✅ 启动 Supabase 令牌自动刷新
@@ -141,6 +141,94 @@ async function enablePushOnce() {
     showAskNotif.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    // 1) 注册 SW（幂等）
+    if ('serviceWorker' in navigator)
+      await navigator.serviceWorker.register('/sw.js')
+    else
+      return
+
+    // 2) 如果权限已经是 granted，则自动执行 订阅→保存→提示
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const reg = await navigator.serviceWorker.ready
+
+      // 2.1 先给一个“自动检查”的可见反馈
+      await reg.showNotification('云笔记 · 自动检查', {
+        body: '✅ 权限已授予，正在确认订阅并保存到云端…',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-72.png',
+      })
+
+      // 2.2 订阅（复用已有，否则创建）
+      const sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        const { createPushSubscription } = await import('@/composables/useWebPushSubscribe')
+        const subJson = await createPushSubscription()
+        try {
+          const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
+          await savePushSubscription(subJson)
+          await reg.showNotification('云笔记 · 订阅已保存', {
+            body: '✅ 已写入 webpush_subscriptions（或待登录后自动写入）',
+            icon: '/icons/icon-192.png',
+          })
+        }
+        catch (e: any) {
+          const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
+          if (String(e?.message) === 'NEED_LOGIN') {
+            savePendingLocal(subJson)
+            await reg.showNotification('云笔记 · 待登录', {
+              body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
+              icon: '/icons/icon-192.png',
+            })
+          }
+          else {
+            await reg.showNotification('云笔记 · 保存失败', {
+              body: '❗保存订阅失败，请稍后再试',
+              icon: '/icons/icon-192.png',
+            })
+          }
+        }
+      }
+      else {
+        // 已有订阅：也尝试保存一次（避免之前没入库）
+        const subJson = sub.toJSON()
+        try {
+          const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
+          await savePushSubscription(subJson)
+          await reg.showNotification('云笔记 · 已确认', {
+            body: '✅ 订阅已存在并已写入云端',
+            icon: '/icons/icon-192.png',
+          })
+        }
+        catch (e: any) {
+          const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
+          if (String(e?.message) === 'NEED_LOGIN') {
+            savePendingLocal(subJson)
+            await reg.showNotification('云笔记 · 待登录', {
+              body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
+              icon: '/icons/icon-192.png',
+            })
+          }
+          else {
+            await reg.showNotification('云笔记 · 保存失败', {
+              body: '❗保存订阅失败，请稍后再试',
+              icon: '/icons/icon-192.png',
+            })
+          }
+        }
+      }
+
+      // 2.3 兜底：若之前曾暂存，登录后自动 flush
+      const { flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
+      await flushPendingSubscriptionIfAny()
+    }
+  }
+  catch {
+    // 静默忽略
+  }
+})
 </script>
 
 <template>
