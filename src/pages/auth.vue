@@ -128,18 +128,23 @@ const {
 } = useTagMenu(allTags, onSelectTag, t)
 
 function onSelectTag(tag: string) {
-  // 检查主输入框的内容在点击前是否为空
-  const isInputEmpty = (newNoteContent.value || '').trim() === ''
+  // 1. 获取并清理当前输入框内容
+  const trimmedContent = (newNoteContent.value || '').trim()
 
-  // 条件操作：仅当输入框为空时，才执行“填入标签”和“聚焦”的动作
-  if (isInputEmpty && tag !== UNTAGGED_SENTINEL) {
-    newNoteContent.value = `${tag} ` // 在标签后加一个空格，方便继续输入
+  // 2. 检查两个条件
+  const isInputEmpty = trimmedContent === ''
+  // 新增检查：内容是否以'#'开头，并且除了开头的'#'外不再包含任何空格
+  const isOnlyTag = trimmedContent.startsWith('#') && !trimmedContent.slice(1).includes(' ')
+
+  // 3. 如果输入框是空的，或者里面只有一个标签，就更新它
+  if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL) {
+    newNoteContent.value = `${tag} ` // 无论是新增还是替换，操作都是一样的
     nextTick(() => {
       newNoteEditorRef.value?.focus()
     })
   }
 
-  // 无条件操作：无论输入框之前是否为空，最后总是执行筛选逻辑
+  // 4. 无论如何，都执行筛选逻辑
   fetchNotesByTag(tag)
 }
 
@@ -1732,7 +1737,7 @@ function toggleSelectionMode() {
 
   if (willEnable) {
     // 进入选择模式：立刻隐藏搜索条（条幅将显示）
-    showSearchBar.value = false
+    // showSearchBar.value = false
   }
   else {
     // 退出选择模式：清空选择
@@ -2200,7 +2205,6 @@ function onCalendarUpdated(updated: any) {
           </span>
         </span>
         <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">{{ t('notes.export_all') }}</button>
           <button class="clear-filter-btn" @click="clearTagFilter">×</button>
         </div>
       </div>
@@ -2208,17 +2212,16 @@ function onCalendarUpdated(updated: any) {
       <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
-            {{ t('notes.search_results_for') }} <strong>{{ searchQuery }}</strong>
+            <i18n-t keypath="notes.search_results_for" tag="span">
+              <template #query>
+                <strong>{{ searchQuery }}</strong>
+              </template>
+            </i18n-t>
           </span>
           <span class="banner-text-count">
             {{ t('notes.count_notes', { count: notes.length }) }}
           </span>
         </span>
-        <div class="banner-actions">
-          <button class="export-results-btn" @click="handleExportTrigger">
-            {{ t('notes.export_results') }}
-          </button>
-        </div>
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->

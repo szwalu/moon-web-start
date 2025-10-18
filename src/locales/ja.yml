@@ -347,7 +347,7 @@ notes:
   offline_update_success: オフラインで更新しました。オンラインになると自動的に同期されます。
   offline_save_success: オフラインで保存しました。オンラインになると自動的に同期されます。
   offline_edit_pending: 現在オフラインのため、編集はまだ同期されていません。後でオフライン編集キューに追加されます。
-  export_date_range_hint: 'ヒント：日付範囲を選択する必要があります。最大 {max} 件までエクスポート可能。'
+  export_date_range_hint: 'ヒント：日付範囲を選択する必要があります。毎回最大 {max} 件までエクスポート可能。'
   select_date_range_first: まず日付範囲を選択してください
   exporting_search_results: 検索結果をエクスポート準備中…
   no_search_results_to_export: エクスポートできる検索結果がありません。
@@ -355,6 +355,7 @@ notes:
   filtering_by_tag: タグでフィルタリング中
   count_notes: '合計 {count} 件のメモ'
   search_results_for: '「{query}」の検索結果'
+  help_title: 説明書
 
   trash:
     aria_label: ゴミ箱
@@ -414,8 +415,6 @@ notes:
     today: 今日
     recent_7: 過去7日
     recent_30: 過去30日
-    all: すべて
-    hint_export_all: 期間を選択しない場合、すべてのノートがエクスポートされます。
 
   list:
     month_label: '{year}年{month}月'

@@ -347,7 +347,7 @@ notes:
   offline_update_success: 已离线修改，联网后将自动同步。
   offline_save_success: 已离线保存，联网后将自动同步。
   offline_edit_pending: 当前离线，编辑暂未同步；我们会在后续步骤加入离线编辑队列。
-  export_date_range_hint: 提示：必须选择日期范围；最多导出 {max} 条。
+  export_date_range_hint: 提示：必须选择日期范围；单次最多导出 {max} 条。
   select_date_range_first: 请先选择日期范围
   exporting_search_results: 正在准备导出搜索结果…
   no_search_results_to_export: 没有可导出的搜索结果。
@@ -355,7 +355,7 @@ notes:
   filtering_by_tag: 正在筛选标签
   count_notes: 共 {count} 条笔记
   search_results_for: 搜索“{query}”的结果
-  help_title: 使用帮助
+  help_title: 使用说明
 
   trash:
     aria_label: 回收站
@@ -415,8 +415,6 @@ notes:
     today: 今天
     recent_7: 最近7天
     recent_30: 最近30天
-    all: 全部
-    hint_export_all: 未选择范围时将导出全部笔记。
 
   list:
     month_label: '{year}年{month}月'

@@ -348,7 +348,7 @@ notes:
   offline_update_success: 'Updated offline, will sync when online.'
   offline_save_success: 'Saved offline, will sync when online.'
   offline_edit_pending: Currently offline; edit not yet synced. It will be queued for later sync.
-  export_date_range_hint: 'Hint: You must select a date range; up to {max} notes max.'
+  export_date_range_hint: 'Hint: You must select a date range; Every time up to {max} notes max.'
   select_date_range_first: Please select a date range first
   exporting_search_results: Preparing export of search results…
   no_search_results_to_export: No search results to export.
@@ -356,6 +356,7 @@ notes:
   filtering_by_tag: Filtering by tag
   count_notes: 'Total {count} notes'
   search_results_for: 'Results for “{query}”'
+  help_title: Instructions
 
   trash:
     aria_label: Trash
@@ -415,8 +416,6 @@ notes:
     today: Today
     recent_7: Last 7 days
     recent_30: Last 30 days
-    all: All
-    hint_export_all: If no range is selected, all notes will be exported.
 
   list:
     month_label: '{month}/{year}'

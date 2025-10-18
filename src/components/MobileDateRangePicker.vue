@@ -129,7 +129,7 @@ function setRecent(days: number) {
   startStr.value = toYmd(start)
   endStr.value = toYmd(end)
 }
-function clearRange() {
+function _clearRange() {
   startStr.value = ''
   endStr.value = ''
 }
@@ -215,10 +215,7 @@ function clearRange() {
       <button class="chip" type="button" @click="setToday">{{ t('notes.export_picker.today') }}</button>
       <button class="chip" type="button" @click="setRecent(7)">{{ t('notes.export_picker.recent_7') }}</button>
       <button class="chip" type="button" @click="setRecent(30)">{{ t('notes.export_picker.recent_30') }}</button>
-      <button class="chip" type="button" @click="clearRange">{{ t('notes.export_picker.all') }}</button>
     </div>
-
-    <p class="hint">{{ t('notes.export_picker.hint_export_all') }}</p>
   </div>
 </template>
 
