@@ -264,4 +264,10 @@ watch(() => settingsStore.noteFontSize, (noteSize) => {
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* 修改字号设置弹窗标题文字大小 */
+:deep(.n-card-header__main) {
+  font-size: 18px !important;
+  font-weight: 600; /* 可选 */
+}
 </style>

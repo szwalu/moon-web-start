@@ -242,7 +242,7 @@ const { t } = useI18n()
   flex: 0 0 auto;
 }
 .dark .help-header { border-bottom-color: rgba(255,255,255,.08); }
-.title { margin: 0; font-size: 18px; font-weight: 600; }
+.title { margin: 0; font-size: 18px !important; font-weight: 600; }
 .icon-btn {
   border: none; background: transparent; font-size: 18px; cursor: pointer;
   color: inherit; opacity: .8;

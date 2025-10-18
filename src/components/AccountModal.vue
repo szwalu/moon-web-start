@@ -263,7 +263,7 @@ async function doSignOut() {
 }
 
 .modal-title {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
 }
@@ -291,7 +291,7 @@ async function doSignOut() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .info-label {
@@ -308,7 +308,7 @@ async function doSignOut() {
   background-color: #f0f0f0;
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 14px;
   text-align: right;
   min-width: 80px;
 }

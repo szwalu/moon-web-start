@@ -5,17 +5,15 @@ import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
-const { t, locale } = useI18n()
 const props = defineProps<{
   show: boolean
 }>()
-
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'restored', payload?: any[]): void
   (e: 'purged'): void
 }>()
-
+const { t, locale } = useI18n()
 const dialog = useDialog()
 const message = useMessage()
 const authStore = useAuthStore()
@@ -170,7 +168,8 @@ function formatDateTime(dt: string | number | Date): string {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(d)
-  } catch {
+  }
+  catch {
     // 兜底
     return d.toLocaleString()
   }
@@ -391,7 +390,7 @@ onMounted(() => {
   border-bottom: 1px solid #eee;
 }
 .dark .modal-header { border-bottom-color: #444; }
-.modal-title { margin: 0; font-size: 20px; font-weight: 700; }
+.modal-title { margin: 0; font-size: 18px; font-weight: 600; }
 .close-button {
   background: none; border: 0; font-size: 28px; line-height: 1; cursor: pointer; color: #888;
 }

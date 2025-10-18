@@ -803,7 +803,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom-color: #374151;
 }
 .calendar-header h2 {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
 }
