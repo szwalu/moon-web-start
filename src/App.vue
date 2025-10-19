@@ -1,13 +1,129 @@
 <!-- src/App.vue -->
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
+import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme, useMessage } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
-// ✅ 启动 Supabase 令牌自动刷新
+import { supabase } from '@/utils/supabaseClient'
+import {
+  createPushSubscription,
+  flushPendingSubscriptionIfAny,
+  savePendingLocal,
+  savePushSubscription,
+} from '@/composables/useWebPushSubscribe'
+
 useSupabaseTokenRefresh()
+
+// Naive UI 全局消息
+const message = useMessage()
+
+// 仅在 iOS PWA 且权限已授予时显示“调试”按钮
+const showDebugBtn = ref(
+  (
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || (navigator as any).standalone === true
+  )
+  && typeof Notification !== 'undefined'
+  && Notification.permission === 'granted',
+)
+
+async function debugSubscribeNow() {
+  try {
+    if (!('serviceWorker' in navigator)) {
+      message.error('SW 不支持')
+      return
+    }
+    await navigator.serviceWorker.register('/sw.js')
+    const reg = await navigator.serviceWorker.ready
+    message.success('SW: ready')
+
+    // ① 检查公钥
+    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    message.info(`VAPID 公钥前 12 字符：${publicKey ? publicKey.slice(0, 12) : '缺失'}`)
+    if (!publicKey) {
+      await reg.showNotification('缺少公钥', {
+        body: '配置 VITE_VAPID_PUBLIC_KEY 后重试',
+        icon: '/icons/icon-192.png',
+      })
+      return
+    }
+
+    // ② 检查是否已登录
+    const { data: userData, error: userErr } = await supabase.auth.getUser()
+    if (userErr)
+      message.warning(`getUser error: ${userErr.message}`)
+
+    const uid = userData?.user?.id
+    message.info(`当前用户：${uid || '未登录'}`)
+
+    if (!uid) {
+      // 未登录也先建浏览器订阅并暂存
+      const exist = await reg.pushManager.getSubscription()
+      const subJson = exist?.toJSON() ?? await createPushSubscription()
+      savePendingLocal(subJson)
+      await reg.showNotification('待登录', {
+        body: '订阅已暂存，登录后会自动写入',
+        icon: '/icons/icon-192.png',
+      })
+      message.warning('未登录，已暂存订阅，登录后会自动写入')
+      return
+    }
+
+    // ③ 复用/创建订阅
+    const sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      const subJson = await createPushSubscription()
+      // 用 json 直接保存
+      try {
+        await savePushSubscription(subJson)
+        await reg.showNotification('订阅已保存', {
+          body: '✅ 写入成功',
+          icon: '/icons/icon-192.png',
+        })
+        message.success('写库成功 ✅，现在去 Supabase 表刷新看看')
+      }
+      catch (e: any) {
+        const msg = e?.message || String(e)
+        await reg.showNotification('写库失败', {
+          body: msg.slice(0, 120),
+          icon: '/icons/icon-192.png',
+        })
+        message.error(`写库失败：${msg}`)
+      }
+    }
+    else {
+      const subJson = sub.toJSON()
+      message.info(`订阅 endpoint 片段：${String(subJson?.endpoint || '').slice(0, 40)}`)
+      try {
+        await savePushSubscription(subJson)
+        await reg.showNotification('订阅已保存', {
+          body: '✅ 已确认写入云端',
+          icon: '/icons/icon-192.png',
+        })
+        message.success('写库成功 ✅')
+      }
+      catch (e: any) {
+        const msg = e?.message || String(e)
+        await reg.showNotification('写库失败', {
+          body: msg.slice(0, 120),
+          icon: '/icons/icon-192.png',
+        })
+        message.error(`写库失败：${msg}`)
+      }
+    }
+
+    // ④（可选）再试一次拉取本地暂存并上送
+    await flushPendingSubscriptionIfAny()
+  }
+  catch (e: any) {
+    message.error(`调试流程异常：${e?.message || String(e)}`)
+  }
+  finally {
+    showDebugBtn.value = true // 调试按钮保留，方便复测
+  }
+}
 
 // ✅ 暗黑主题
 const isDark = useDark()
@@ -15,7 +131,9 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 // ✅ 在 iOS PWA 独立模式下，用“用户手势”触发权限请求更稳
 const isStandalone
-  = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+  = (typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia('(display-mode: standalone)').matches)
   || ((navigator as any)?.standalone === true)
 
 const canAsk
@@ -67,11 +185,9 @@ async function enablePushOnce() {
     const ready = await navigator.serviceWorker.ready
     const sub = await ready.pushManager.getSubscription()
     if (!sub) {
-      const { createPushSubscription } = await import('@/composables/useWebPushSubscribe')
       const subJson = await createPushSubscription()
       // 保存
       try {
-        const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
         await savePushSubscription(subJson)
         await reg.showNotification('云笔记 · 订阅已保存', {
           body: '✅ 已写入 webpush_subscriptions（或待登录后自动写入）',
@@ -79,7 +195,6 @@ async function enablePushOnce() {
         })
       }
       catch (e: any) {
-        const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
           await reg.showNotification('云笔记 · 待登录', {
@@ -100,7 +215,6 @@ async function enablePushOnce() {
       // 已存在订阅：也尝试保存一次（避免之前没写入）
       const subJson = sub.toJSON()
       try {
-        const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
         await savePushSubscription(subJson)
         await reg.showNotification('云笔记 · 订阅已存在', {
           body: '✅ 已确认写入云端',
@@ -108,7 +222,6 @@ async function enablePushOnce() {
         })
       }
       catch (e: any) {
-        const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
           await reg.showNotification('云笔记 · 待登录', {
@@ -164,10 +277,8 @@ onMounted(async () => {
       // 2.2 订阅（复用已有，否则创建）
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
-        const { createPushSubscription } = await import('@/composables/useWebPushSubscribe')
         const subJson = await createPushSubscription()
         try {
-          const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
           await savePushSubscription(subJson)
           await reg.showNotification('云笔记 · 订阅已保存', {
             body: '✅ 已写入 webpush_subscriptions（或待登录后自动写入）',
@@ -175,7 +286,6 @@ onMounted(async () => {
           })
         }
         catch (e: any) {
-          const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
           if (String(e?.message) === 'NEED_LOGIN') {
             savePendingLocal(subJson)
             await reg.showNotification('云笔记 · 待登录', {
@@ -195,7 +305,6 @@ onMounted(async () => {
         // 已有订阅：也尝试保存一次（避免之前没入库）
         const subJson = sub.toJSON()
         try {
-          const { savePushSubscription } = await import('@/composables/useWebPushSubscribe')
           await savePushSubscription(subJson)
           await reg.showNotification('云笔记 · 已确认', {
             body: '✅ 订阅已存在并已写入云端',
@@ -203,11 +312,10 @@ onMounted(async () => {
           })
         }
         catch (e: any) {
-          const { savePendingLocal } = await import('@/composables/useWebPushSubscribe')
           if (String(e?.message) === 'NEED_LOGIN') {
             savePendingLocal(subJson)
             await reg.showNotification('云笔记 · 待登录', {
-              body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
+              body: 'ℹ️ 订阅已本地暂存，登录后会自动写入',
               icon: '/icons/icon-192.png',
             })
           }
@@ -221,7 +329,6 @@ onMounted(async () => {
       }
 
       // 2.3 兜底：若之前曾暂存，登录后自动 flush
-      const { flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
       await flushPendingSubscriptionIfAny()
     }
   }
@@ -237,6 +344,20 @@ onMounted(async () => {
       <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
+            <!-- ✅ 调试按钮：权限已授予时才出现；点击后会用 Naive UI 提示并尝试入库 -->
+            <div
+              v-if="showDebugBtn"
+              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 58px; background: #0069d9; color:#fff; padding: 10px 14px; border-radius: 10px;"
+            >
+              <button
+                style="background: transparent; color:#fff; font-size: 14px;"
+                aria-label="调试订阅保存"
+                @click="debugSubscribeNow"
+              >
+                调试订阅保存
+              </button>
+            </div>
+
             <!-- 仅在 iOS PWA 且尚未授权时出现的一次性按钮 -->
             <div
               v-if="showAskNotif"
