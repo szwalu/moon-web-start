@@ -1018,14 +1018,14 @@ async function handleBatchExport() {
           return
         }
 
-        // 导出 TXT
+        // 导出 md
         const textContent = allNotes.map((note) => {
           const separator = '----------------------------------------'
           const date = new Date(note.created_at).toLocaleString('zh-CN')
           return `${separator}\n${t('notes.created_at_label')}： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
         }).join('')
 
-        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+        const blob = new Blob([textContent], { type: 'text/markdown;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -1073,7 +1073,7 @@ function handleExportResults() {
       const date = new Date(note.created_at).toLocaleString('zh-CN')
       return `${separator}\n${t('notes.created_at_label')}： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
     }).join('')
-    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
+    const blob = new Blob([textContent], { type: 'text/markdown;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
