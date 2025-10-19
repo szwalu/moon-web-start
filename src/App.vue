@@ -1,49 +1,60 @@
-<!-- src/App.vue (No-Animation / No-Provider / No-SW 极简止抖版) -->
-<script setup lang="ts">
+<script setup>
 import { RouterView } from 'vue-router'
+
+// --- 1. 新增: 导入 NConfigProvider, darkTheme, useDark 和 computed ---
+import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
+import { useDark } from '@vueuse/core'
+import { computed } from 'vue'
+import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
+
+// 启动令牌刷新
+useSupabaseTokenRefresh()
+
+// --- 2. 新增: 添加暗黑模式逻辑 ---
+// useDark() 会自动检测并响应系统的暗黑模式切换
+const isDark = useDark()
+
+// 创建一个计算属性，当 isDark 为 true 时，应用 darkTheme，否则不应用任何特定主题（即为亮色模式）
+const theme = computed(() => (isDark.value ? darkTheme : null))
 </script>
 
 <template>
-  <div class="root">
-    <RouterView />
-  </div>
+  <NConfigProvider :theme="theme">
+    <NMessageProvider>
+      <NDialogProvider>
+        <NNotificationProvider>
+          <AppProvider>
+            <AppContainer>
+              <RouterView />
+            </AppContainer>
+          </AppProvider>
+        </NNotificationProvider>
+      </NDialogProvider>
+    </NMessageProvider>
+  </NConfigProvider>
 </template>
 
 <style>
-/* —— 视口锁定：防止 iOS 动态地址栏/安全区造成的高度抖动 —— */
-html, body, #app, .root {
-  margin: 0;
-  padding: 0;
-  height: 100dvh;         /* iOS 16+ 动态视口单位 */
-  width: 100%;
-  overflow: hidden;       /* 禁用橡皮筋 */
-  background: #f5f6f7;    /* 纯色背景，避免渐变导致重绘 */
+/* 您的样式代码保持不变 */
+body, html {
+  background-color: #e9ecef;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+  background-size: 25px 25px;
+  transition: background-color 0.3s ease;
 }
 
-/* 某些 iOS 旧版本对 100dvh 支持不好，兜底用 100vh */
-@supports (-webkit-touch-callout: none) {
-  html, body, #app, .root {
-    height: 100vh;
-  }
+.dark body, .dark html {
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
 
-/* —— 全局核平：禁用一切动画/过渡，阻止任何持续重绘 —— */
-*, *::before, *::after {
-  animation: none !important;
-  transition: none !important;
-  will-change: auto !important;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+/* 全局样式文件中 */
+.n-message-container,
+.n-notification-container {
+  top: 10% !important;
 }
-
-/* —— 禁用 iOS 弹性滚动与滚动捕获造成的抖动 —— */
-html, body {
-  overscroll-behavior: none;
-  -webkit-overflow-scrolling: auto !important;
-}
-
-/* 如页面仍抖，把你页面里最外层容器（例如 RouterView 渲染的页面根）加上以下类：
-  .page-root { height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; }
-  仅让内部可滚动，外层保持稳定
-*/
 </style>
