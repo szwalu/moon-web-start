@@ -2,37 +2,68 @@
 /* 纯本地每日提醒（无服务器版）
  * 说明：
  * - 仅在页面存活时计时；休眠/关闭期间不运行。
- * - 回到页面/唤醒时会“补发一次”（在宽限期内）并自动排到次日。
+ * - 取消了“唤醒补发”，避免打开应用就提醒。
+ * - 支持“每日多次提醒”：settings.times 优先，其次回退到单一 hour/minute。
  */
 import { onMounted, onUnmounted, ref } from 'vue'
 
+export interface LocalReminderTime {
+  hour: number // 0~23
+  minute: number // 0~59
+}
+
 export interface LocalReminderOptions {
-  hour: number // 本地时间-小时 0~23
-  minute: number // 本地时间-分钟 0~59
+  // 单次时间（向后兼容）
+  hour: number
+  minute: number
+  // 多次时间（优先）
+  times?: LocalReminderTime[]
+  // 通知文案
   title: string
   body: string
-  icon?: string // 可选：通知图标
-  badge?: string // 可选：通知角标
+  icon?: string
+  badge?: string
 }
 
 const STORAGE_KEY = 'local_reminder_v1'
-// 补发宽限期（默认 10 分钟）：仅当“错过的时间”在此范围内才补发
-const DEFAULT_CATCHUP_WINDOW_MS = 10 * 60 * 1000
 
-function calcNextFireTs(hour: number, minute: number): number {
-  const now = new Date()
-  const target = new Date()
-  target.setHours(hour, minute, 0, 0)
-  if (target.getTime() <= now.getTime())
-    target.setDate(target.getDate() + 1)
-  return target.getTime()
+function toTs(date: Date, h: number, m: number) {
+  const d = new Date(date)
+  d.setHours(h, m, 0, 0)
+  return d.getTime()
+}
+
+// 计算“从 now 起”的下一次触发时间戳（支持 times 多时段；若为空则回退到 hour/minute）
+function calcNextFireTsFromSettings(now: Date, settings: LocalReminderOptions): number {
+  const list: LocalReminderTime[]
+    = Array.isArray(settings.times) && settings.times.length > 0
+      ? settings.times
+      : [{ hour: settings.hour, minute: settings.minute }]
+
+  // 1) 先找“今天剩余”的最近一个
+  const nowMs = now.getTime()
+  let candidates: number[] = []
+  for (const t of list) {
+    const ts = toTs(now, t.hour, t.minute)
+    if (ts > nowMs)
+      candidates.push(ts)
+  }
+  if (candidates.length > 0)
+    return Math.min(...candidates)
+
+  // 2) 今天都过了：取“明天”的最早一个
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  candidates = list.map(t => toTs(tomorrow, t.hour, t.minute))
+  return Math.min(...candidates)
 }
 
 export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   const settings = Object.assign(
     {
       hour: 11,
-      minute: 10, // ← 不要写 02，避免“八进制字面量”错误
+      minute: 10, // 不要写 02，避免“八进制字面量”误读
+      times: undefined as LocalReminderOptions['times'],
       title: '那年今日',
       body: '来看看那年今日卡片吧～',
       icon: '/icons/android-chrome-192x192.png',
@@ -44,12 +75,6 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   const enabled = ref(false)
   const nextFireTs = ref<number | null>(null)
   const timerId = ref<number | null>(null)
-  const lastFireTs = ref<number | null>(null)
-
-  // 一次性：用于在“首次进入/启动”时跳过补发
-  const suppressCatchupOnce = ref(false)
-  // 可配置的宽限期
-  const catchupWindowMsRef = ref<number>(DEFAULT_CATCHUP_WINDOW_MS)
 
   function persist() {
     localStorage.setItem(
@@ -57,7 +82,6 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
       JSON.stringify({
         enabled: enabled.value,
         nextFireTs: nextFireTs.value,
-        lastFireTs: lastFireTs.value,
         settings,
       }),
     )
@@ -97,88 +121,51 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
             }),
           )
           .catch(() => {
-            // @ts-expect-error: Notification constructor may be missing/partial in some TS DOM libs
+            // @ts-expect-error: Some TS DOM lib versions may not include Notification constructor
             const n = new Notification(settings.title, {
               body: settings.body,
               icon: settings.icon,
               badge: settings.badge,
             })
-            // 避免 no-new/no-unused：挂一个空监听器即可视为已使用
+            // 防止 no-new/no-unused：显式使用
             n?.addEventListener?.('show', () => {})
           })
       }
       else {
-        // @ts-expect-error: Notification constructor may be missing/partial in some TS DOM libs
+        // @ts-expect-error: Some TS DOM lib versions may not include Notification constructor
         const n = new Notification(settings.title, {
           body: settings.body,
           icon: settings.icon,
           badge: settings.badge,
         })
-        // 同理，避免 no-new/no-unused
         n?.addEventListener?.('show', () => {})
       }
-      // 记录最近一次发送时间
-      lastFireTs.value = Date.now()
-      persist()
     }
     catch {
-      // 忽略所有通知失败（例如无权限/平台不支持）
+      // 忽略平台/权限等失败
     }
   }
 
-  function scheduleNext(forceToday = false) {
+  // 重新计算“下一次触发”，并挂定时器
+  function scheduleNext() {
     clearTimer()
-    const now = Date.now()
-
-    // 默认：若今天该时刻已过，则排到明天
-    let ts = calcNextFireTs(settings.hour, settings.minute)
-
-    // 若手动调整时间并要求今天触发，且“今天的目标时刻”还没过，就用今天的
-    if (forceToday) {
-      const target = new Date()
-      target.setHours(settings.hour, settings.minute, 0, 0)
-      const candidate = target.getTime()
-      if (candidate > now)
-        ts = candidate
-    }
-
+    const ts = calcNextFireTsFromSettings(new Date(), settings)
     nextFireTs.value = ts
     enabled.value = true
     persist()
 
-    const delay = Math.max(0, ts - now)
+    const delay = Math.max(0, ts - Date.now())
     timerId.value = window.setTimeout(() => {
       showLocalNotification()
-      // 发完按“明天同一时间”再排一次
-      scheduleNext(false)
+      // 触发后，立即排到下一次（支持每日多次）
+      scheduleNext()
     }, delay) as unknown as number
   }
 
   // 无论之前是否 enabled，都强制（重新）排班
-  async function start(options?: {
-    forceToday?: boolean
-    skipCatchupOnLoad?: boolean
-    catchupWindowMs?: number
-  }) {
-    const forceToday = options?.forceToday === true
-    suppressCatchupOnce.value = options?.skipCatchupOnLoad === true
-    if (Number.isFinite(options?.catchupWindowMs))
-      catchupWindowMsRef.value = Number(options!.catchupWindowMs)
-
+  async function start() {
     await ensurePermission().catch(() => {})
-    scheduleNext(forceToday)
-
-    // 若首次启动就已错过目标时刻（理论上不会，因为 scheduleNext 会取未来），
-    // 这里仍加一道保险逻辑（受 skipCatchupOnLoad 和宽限期控制）
-    if (nextFireTs.value && Date.now() >= nextFireTs.value) {
-      if (!suppressCatchupOnce.value) {
-        const missedFor = Date.now() - nextFireTs.value
-        if (missedFor <= catchupWindowMsRef.value)
-          showLocalNotification()
-      }
-      suppressCatchupOnce.value = false
-      scheduleNext(false)
-    }
+    scheduleNext()
   }
 
   function stop() {
@@ -188,25 +175,13 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     persist()
   }
 
+  // 仅在“回到前台”时做静默重排；不补发
   function handleVisibilityResume() {
-    if (!enabled.value || !nextFireTs.value)
+    if (!enabled.value)
       return
-
-    // 如果是“首次进入后”的第一次可见且要求跳过补发，则只清标志，不补发
-    if (suppressCatchupOnce.value) {
-      suppressCatchupOnce.value = false
-      return
-    }
-
-    const now = Date.now()
-    if (now >= nextFireTs.value) {
-      const missedFor = now - nextFireTs.value
-      const withinWindow = missedFor <= catchupWindowMsRef.value
-      if (withinWindow)
-        showLocalNotification()
-      // 不论是否补发，都排到下一次
-      scheduleNext(false)
-    }
+    // 如果已经过了原先的 nextFireTs（比如设备休眠/锁屏期间），不补发，只静默重排
+    if (nextFireTs.value && Date.now() >= nextFireTs.value)
+      scheduleNext()
   }
 
   onMounted(() => {
@@ -214,11 +189,8 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
       if (saved?.settings)
         Object.assign(settings, saved.settings)
-      if (typeof saved?.lastFireTs === 'number')
-        lastFireTs.value = saved.lastFireTs
       if (saved?.enabled) {
         enabled.value = true
-        // 仅重排，不在此处决定是否补发（补发交给 visibility 事件或 start 的保险逻辑）
         scheduleNext()
       }
     }
@@ -235,18 +207,36 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   })
 
   // ===== 运行时改时间 & 立即重排 =====
-  function reschedule(opts?: { forceToday?: boolean }) {
-    const forceToday = opts?.forceToday === true
-    scheduleNext(forceToday)
+  function reschedule() {
+    scheduleNext()
   }
 
-  function setTime(h: number, m: number, fireNow = false, opts?: { forceToday?: boolean }) {
+  // 单个时间（向后兼容）
+  function setTime(h: number, m: number, fireNow = false) {
+    settings.times = undefined // 清空多时段，回到单时段
     settings.hour = Math.max(0, Math.min(23, Math.trunc(h)))
     settings.minute = Math.max(0, Math.min(59, Math.trunc(m)))
     persist()
     if (fireNow)
       showLocalNotification()
-    reschedule(opts)
+    reschedule()
+  }
+
+  // 多个时间：例如 [{hour:9,minute:0},{hour:13,minute:30},{hour:21,minute:15}]
+  function setTimes(times: LocalReminderTime[], fireNow = false) {
+    const normalized = (Array.isArray(times) ? times : [])
+      .map(t => ({
+        hour: Math.max(0, Math.min(23, Math.trunc(t.hour))),
+        minute: Math.max(0, Math.min(59, Math.trunc(t.minute))),
+      }))
+      // 去重 + 排序（按小时、分钟）
+      .sort((a, b) => (a.hour - b.hour) || (a.minute - b.minute))
+
+    settings.times = normalized.length ? normalized : undefined
+    persist()
+    if (fireNow)
+      showLocalNotification()
+    reschedule()
   }
   // =======================================
 
@@ -256,8 +246,8 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     settings,
     enabled,
     nextFireTs,
-    // 新增导出
     reschedule,
     setTime,
+    setTimes, // ⭐ 新增：支持多时段
   }
 }

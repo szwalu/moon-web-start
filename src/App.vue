@@ -19,26 +19,9 @@ const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
 // --- 3. 纯本地每日提醒（无服务器）---
-// 说明：
-// - 首次调用 start() 将按 settings 排班到今天/明天；
-// - 之后会从 localStorage 自动恢复，无需重复调用；
-// - 你可以修改 hour/minute/title/body 后再次 start() 重排。
-const { start, setTime } = useLocalReminder({
-  hour: 12,
-  minute: 1,
-  title: '那年今日',
-  body: '来看看那年今日卡片吧～',
-})
-start({ forceToday: true, skipCatchupOnLoad: true })
-
-// 临时测试：1 分钟后弹一次，并重排到下一次（今天优先）
-{
-  const now = new Date()
-  const h = now.getHours()
-  const m = (now.getMinutes() + 1) % 60
-  // 若你刚加这行就锁屏，Web 无法后台计时；保持前台 1 分钟看它是否弹出
-  setTime(h, m, false, { forceToday: true })
-}
+const { start, setTimes } = useLocalReminder()
+setTimes([{ hour: 16, minute: 0 }, { hour: 16, minute: 10 }, { hour: 21, minute: 15 }])
+start()
 </script>
 
 <template>
