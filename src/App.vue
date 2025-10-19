@@ -6,6 +6,7 @@ import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvid
 import { useDark } from '@vueuse/core'
 import { computed } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
+import { useLocalReminder } from '@/composables/useLocalReminder'
 
 // 启动令牌刷新
 useSupabaseTokenRefresh()
@@ -16,6 +17,20 @@ const isDark = useDark()
 
 // 创建一个计算属性，当 isDark 为 true 时，应用 darkTheme，否则不应用任何特定主题（即为亮色模式）
 const theme = computed(() => (isDark.value ? darkTheme : null))
+
+// --- 3. 纯本地每日提醒（无服务器）---
+// 说明：
+// - 首次调用 start() 将按 settings 排班到今天/明天；
+// - 之后会从 localStorage 自动恢复，无需重复调用；
+// - 你可以修改 hour/minute/title/body 后再次 start() 重排。
+const { start, enabled } = useLocalReminder({
+  hour: 10,
+  minute: 35,
+  title: '那年今日',
+  body: '来看看那年今日卡片吧～',
+})
+if (!enabled.value)
+  start()
 </script>
 
 <template>
