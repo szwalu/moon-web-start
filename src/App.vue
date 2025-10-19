@@ -1,7 +1,7 @@
 <!-- src/App.vue -->
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme, useMessage } from 'naive-ui'
+import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
@@ -16,140 +16,36 @@ import {
 
 useSupabaseTokenRefresh()
 
-// Naive UI 全局消息
-const message = useMessage()
-
-// 仅在 iOS PWA 且权限已授予时显示“调试”按钮
-const showDebugBtn = ref(
-  (
-    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    || (navigator as any).standalone === true
-  )
-  && typeof Notification !== 'undefined'
-  && Notification.permission === 'granted',
-)
-
-async function debugSubscribeNow() {
-  try {
-    if (!('serviceWorker' in navigator)) {
-      message.error('SW 不支持')
-      return
-    }
-    await navigator.serviceWorker.register('/sw.js')
-    const reg = await navigator.serviceWorker.ready
-    message.success('SW: ready')
-
-    // ① 检查公钥
-    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
-    message.info(`VAPID 公钥前 12 字符：${publicKey ? publicKey.slice(0, 12) : '缺失'}`)
-    if (!publicKey) {
-      await reg.showNotification('缺少公钥', {
-        body: '配置 VITE_VAPID_PUBLIC_KEY 后重试',
-        icon: '/icons/icon-192.png',
-      })
-      return
-    }
-
-    // ② 检查是否已登录
-    const { data: userData, error: userErr } = await supabase.auth.getUser()
-    if (userErr)
-      message.warning(`getUser error: ${userErr.message}`)
-
-    const uid = userData?.user?.id
-    message.info(`当前用户：${uid || '未登录'}`)
-
-    if (!uid) {
-      // 未登录也先建浏览器订阅并暂存
-      const exist = await reg.pushManager.getSubscription()
-      const subJson = exist?.toJSON() ?? await createPushSubscription()
-      savePendingLocal(subJson)
-      await reg.showNotification('待登录', {
-        body: '订阅已暂存，登录后会自动写入',
-        icon: '/icons/icon-192.png',
-      })
-      message.warning('未登录，已暂存订阅，登录后会自动写入')
-      return
-    }
-
-    // ③ 复用/创建订阅
-    const sub = await reg.pushManager.getSubscription()
-    if (!sub) {
-      const subJson = await createPushSubscription()
-      // 用 json 直接保存
-      try {
-        await savePushSubscription(subJson)
-        await reg.showNotification('订阅已保存', {
-          body: '✅ 写入成功',
-          icon: '/icons/icon-192.png',
-        })
-        message.success('写库成功 ✅，现在去 Supabase 表刷新看看')
-      }
-      catch (e: any) {
-        const msg = e?.message || String(e)
-        await reg.showNotification('写库失败', {
-          body: msg.slice(0, 120),
-          icon: '/icons/icon-192.png',
-        })
-        message.error(`写库失败：${msg}`)
-      }
-    }
-    else {
-      const subJson = sub.toJSON()
-      message.info(`订阅 endpoint 片段：${String(subJson?.endpoint || '').slice(0, 40)}`)
-      try {
-        await savePushSubscription(subJson)
-        await reg.showNotification('订阅已保存', {
-          body: '✅ 已确认写入云端',
-          icon: '/icons/icon-192.png',
-        })
-        message.success('写库成功 ✅')
-      }
-      catch (e: any) {
-        const msg = e?.message || String(e)
-        await reg.showNotification('写库失败', {
-          body: msg.slice(0, 120),
-          icon: '/icons/icon-192.png',
-        })
-        message.error(`写库失败：${msg}`)
-      }
-    }
-
-    // ④（可选）再试一次拉取本地暂存并上送
-    await flushPendingSubscriptionIfAny()
-  }
-  catch (e: any) {
-    message.error(`调试流程异常：${e?.message || String(e)}`)
-  }
-  finally {
-    showDebugBtn.value = true // 调试按钮保留，方便复测
-  }
-}
-
-// ✅ 暗黑主题
+// 主题
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
-// ✅ 在 iOS PWA 独立模式下，用“用户手势”触发权限请求更稳
-const isStandalone
-  = (typeof window !== 'undefined'
-    && window.matchMedia
-    && window.matchMedia('(display-mode: standalone)').matches)
-  || ((navigator as any)?.standalone === true)
+// UI 状态（不要在顶层访问 window/navigator，先置为 false，mounted 再判断）
+const showAskNotif = ref(false)
+const showDebugBtn = ref(false)
 
-const canAsk
-  = typeof Notification !== 'undefined'
-  && typeof window !== 'undefined'
-  && Notification.permission === 'default'
+// 通知工具：所有可见反馈统一用系统通知（避免 no-alert / no-console）
+async function notify(title: string, body?: string) {
+  try {
+    if (!('serviceWorker' in navigator))
+      return
+    const reg = await navigator.serviceWorker.ready
+    await reg.showNotification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/badge-72.png',
+    })
+  }
+  catch {}
+}
 
-const showAskNotif = ref(Boolean(isStandalone && canAsk))
-
+// 允许通知（按钮触发）
 async function enablePushOnce() {
   try {
     if (!('serviceWorker' in navigator)) {
       showAskNotif.value = false
       return
     }
-    // 确保 SW 已注册
     await navigator.serviceWorker.register('/sw.js')
 
     if (!('Notification' in window)) {
@@ -162,173 +58,185 @@ async function enablePushOnce() {
       return
     }
 
-    // ✅ 先立即给出“通道已通”的可见反馈
-    const reg = await navigator.serviceWorker.ready
-    await reg.showNotification('云笔记 · 通知测试', {
-      body: '✅ 通道正常。接下来尝试订阅并保存到云端…',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/badge-72.png',
-    })
+    // 先给出通道已通
+    await notify('云笔记 · 通知测试', '✅ 通道正常。接下来尝试订阅并保存到云端…')
 
-    // ✅ 再做订阅 + 保存（任何失败都会再弹提示）
+    // 订阅 + 保存
     const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
     if (!publicKey) {
-      await reg.showNotification('云笔记 · 缺少公钥', {
-        body: '❗缺少 VITE_VAPID_PUBLIC_KEY，请在 .env.local 或 Vercel 环境变量中配置',
-        icon: '/icons/icon-192.png',
-      })
+      await notify('云笔记 · 缺少公钥', '❗请配置 VITE_VAPID_PUBLIC_KEY 后重试')
       showAskNotif.value = false
       return
     }
 
-    // 复用/创建订阅
-    const ready = await navigator.serviceWorker.ready
-    const sub = await ready.pushManager.getSubscription()
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
     if (!sub) {
       const subJson = await createPushSubscription()
-      // 保存
       try {
         await savePushSubscription(subJson)
-        await reg.showNotification('云笔记 · 订阅已保存', {
-          body: '✅ 已写入 webpush_subscriptions（或待登录后自动写入）',
-          icon: '/icons/icon-192.png',
-        })
+        await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
       }
       catch (e: any) {
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
-          await reg.showNotification('云笔记 · 待登录', {
-            body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
-            icon: '/icons/icon-192.png',
-          })
+          await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
         }
         else {
-          await reg.showNotification('云笔记 · 保存失败', {
-            body: '❗保存订阅到云端失败，请查看控制台',
-            icon: '/icons/icon-192.png',
-          })
-          console.warn('savePushSubscription error', e)
+          await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
         }
       }
     }
     else {
-      // 已存在订阅：也尝试保存一次（避免之前没写入）
       const subJson = sub.toJSON()
       try {
         await savePushSubscription(subJson)
-        await reg.showNotification('云笔记 · 订阅已存在', {
-          body: '✅ 已确认写入云端',
-          icon: '/icons/icon-192.png',
-        })
+        await notify('云笔记 · 订阅已存在', '✅ 已确认写入云端')
       }
       catch (e: any) {
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
-          await reg.showNotification('云笔记 · 待登录', {
-            body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
-            icon: '/icons/icon-192.png',
-          })
+          await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
         }
         else {
-          await reg.showNotification('云笔记 · 保存失败', {
-            body: '❗保存订阅到云端失败，请查看控制台',
-            icon: '/icons/icon-192.png',
-          })
-          console.warn('savePushSubscription error', e)
+          await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
         }
       }
     }
   }
-  catch (e) {
-    console.warn('enablePushOnce failed', e)
-    try {
-      const reg = await navigator.serviceWorker.ready
-      await reg.showNotification('云笔记 · 操作失败', {
-        body: '❗请查看控制台错误信息',
-        icon: '/icons/icon-192.png',
-      })
-    }
-    catch {}
+  catch {
+    await notify('云笔记 · 操作失败', '❗请稍后再试')
   }
   finally {
     showAskNotif.value = false
   }
 }
 
+// 调试按钮：逐步做检查并尽量写库（只用系统通知做反馈）
+async function debugSubscribeNow() {
+  try {
+    if (!('serviceWorker' in navigator)) {
+      await notify('调试', 'SW 不支持')
+      return
+    }
+    await navigator.serviceWorker.register('/sw.js')
+    const reg = await navigator.serviceWorker.ready
+    await notify('调试', 'SW: ready')
+
+    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    await notify('调试', `VAPID 公钥前 12：${publicKey ? publicKey.slice(0, 12) : '缺失'}`)
+    if (!publicKey) {
+      await notify('缺少公钥', '配置 VITE_VAPID_PUBLIC_KEY 后重试')
+      return
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
+    const uid = userData?.user?.id
+    await notify('调试', `当前用户：${uid || '未登录'}`)
+    if (!uid) {
+      const exist = await reg.pushManager.getSubscription()
+      const subJson = exist?.toJSON() ?? await createPushSubscription()
+      savePendingLocal(subJson)
+      await notify('待登录', '订阅已暂存，登录后会自动写入')
+      return
+    }
+
+    const sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      const subJson = await createPushSubscription()
+      try {
+        await savePushSubscription(subJson)
+        await notify('订阅已保存', '✅ 写库成功')
+      }
+      catch (e: any) {
+        await notify('写库失败', String(e?.message || e).slice(0, 120))
+      }
+    }
+    else {
+      const subJson = sub.toJSON()
+      try {
+        await savePushSubscription(subJson)
+        await notify('订阅已保存', '✅ 已确认写入云端')
+      }
+      catch (e: any) {
+        await notify('写库失败', String(e?.message || e).slice(0, 120))
+      }
+    }
+
+    await flushPendingSubscriptionIfAny()
+  }
+  catch (e) {
+    await notify('调试异常', '❗请稍后再试')
+  }
+  finally {
+    showDebugBtn.value = true
+  }
+}
+
+// 挂载后再做环境判断与自动检查（避免顶层访问 window/navigator）
 onMounted(async () => {
   try {
-    // 1) 注册 SW（幂等）
     if ('serviceWorker' in navigator)
       await navigator.serviceWorker.register('/sw.js')
     else
       return
 
-    // 2) 如果权限已经是 granted，则自动执行 订阅→保存→提示
+    // 环境判断放到运行期
+    const isStandalone
+      = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || ((navigator as any).standalone === true)
+
+    // 权限是 default 时展示引导按钮
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default' && isStandalone)
+      showAskNotif.value = true
+    else
+      showAskNotif.value = false
+
+    // 已授权时显示调试按钮
+    showDebugBtn.value
+      = typeof Notification !== 'undefined'
+      && Notification.permission === 'granted'
+      && isStandalone
+
+    // 自动检查：已授权则尝试订阅并保存
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       const reg = await navigator.serviceWorker.ready
+      await notify('云笔记 · 自动检查', '✅ 权限已授予，正在确认订阅并保存到云端…')
 
-      // 2.1 先给一个“自动检查”的可见反馈
-      await reg.showNotification('云笔记 · 自动检查', {
-        body: '✅ 权限已授予，正在确认订阅并保存到云端…',
-        icon: '/icons/icon-192.png',
-        badge: '/icons/badge-72.png',
-      })
-
-      // 2.2 订阅（复用已有，否则创建）
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
         const subJson = await createPushSubscription()
         try {
           await savePushSubscription(subJson)
-          await reg.showNotification('云笔记 · 订阅已保存', {
-            body: '✅ 已写入 webpush_subscriptions（或待登录后自动写入）',
-            icon: '/icons/icon-192.png',
-          })
+          await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
         }
         catch (e: any) {
           if (String(e?.message) === 'NEED_LOGIN') {
             savePendingLocal(subJson)
-            await reg.showNotification('云笔记 · 待登录', {
-              body: 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端',
-              icon: '/icons/icon-192.png',
-            })
+            await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
           }
           else {
-            await reg.showNotification('云笔记 · 保存失败', {
-              body: '❗保存订阅失败，请稍后再试',
-              icon: '/icons/icon-192.png',
-            })
+            await notify('云笔记 · 保存失败', '❗保存订阅失败，请稍后再试')
           }
         }
       }
       else {
-        // 已有订阅：也尝试保存一次（避免之前没入库）
         const subJson = sub.toJSON()
         try {
           await savePushSubscription(subJson)
-          await reg.showNotification('云笔记 · 已确认', {
-            body: '✅ 订阅已存在并已写入云端',
-            icon: '/icons/icon-192.png',
-          })
+          await notify('云笔记 · 已确认', '✅ 订阅已存在并已写入云端')
         }
         catch (e: any) {
           if (String(e?.message) === 'NEED_LOGIN') {
             savePendingLocal(subJson)
-            await reg.showNotification('云笔记 · 待登录', {
-              body: 'ℹ️ 订阅已本地暂存，登录后会自动写入',
-              icon: '/icons/icon-192.png',
-            })
+            await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动写入')
           }
           else {
-            await reg.showNotification('云笔记 · 保存失败', {
-              body: '❗保存订阅失败，请稍后再试',
-              icon: '/icons/icon-192.png',
-            })
+            await notify('云笔记 · 保存失败', '❗保存订阅失败，请稍后再试')
           }
         }
       }
 
-      // 2.3 兜底：若之前曾暂存，登录后自动 flush
       await flushPendingSubscriptionIfAny()
     }
   }
@@ -344,7 +252,7 @@ onMounted(async () => {
       <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
-            <!-- ✅ 调试按钮：权限已授予时才出现；点击后会用 Naive UI 提示并尝试入库 -->
+            <!-- 调试按钮（权限已授予 + PWA 独立模式时显示） -->
             <div
               v-if="showDebugBtn"
               style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 58px; background: #0069d9; color:#fff; padding: 10px 14px; border-radius: 10px;"
@@ -391,15 +299,12 @@ body, html {
   background-size: 25px 25px;
   transition: background-color 0.3s ease;
 }
-
 .dark body, .dark html {
   background-color: #1a1a1a;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
-
-/* 全局消息/通知容器位置微调 */
 .n-message-container,
 .n-notification-container {
   top: 10% !important;
