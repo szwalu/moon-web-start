@@ -6,25 +6,17 @@ import { useDark } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
-import { supabase } from '@/utils/supabaseClient'
-import {
-  createPushSubscription,
-  flushPendingSubscriptionIfAny,
-  savePendingLocal,
-  savePushSubscription,
-} from '@/composables/useWebPushSubscribe'
-
 useSupabaseTokenRefresh()
 
 // 主题
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
-// UI 状态（不要在顶层访问 window/navigator，先置为 false，mounted 再判断）
+// UI 状态（避免在模块顶层访问 window/navigator）
 const showAskNotif = ref(false)
 const showDebugBtn = ref(false)
 
-// 通知工具：所有可见反馈统一用系统通知（避免 no-alert / no-console）
+// 统一通知工具（系统通知）
 async function notify(title: string, body?: string) {
   try {
     if (!('serviceWorker' in navigator))
@@ -61,7 +53,7 @@ async function enablePushOnce() {
     // 先给出通道已通
     await notify('云笔记 · 通知测试', '✅ 通道正常。接下来尝试订阅并保存到云端…')
 
-    // 订阅 + 保存
+    // 订阅 + 保存（动态导入，避免构建期引用）
     const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
     if (!publicKey) {
       await notify('云笔记 · 缺少公钥', '❗请配置 VITE_VAPID_PUBLIC_KEY 后重试')
@@ -72,6 +64,7 @@ async function enablePushOnce() {
     const reg = await navigator.serviceWorker.ready
     const sub = await reg.pushManager.getSubscription()
     if (!sub) {
+      const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
       const subJson = await createPushSubscription()
       try {
         await savePushSubscription(subJson)
@@ -84,11 +77,13 @@ async function enablePushOnce() {
         }
         else {
           await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
+          console.warn('savePushSubscription error', e)
         }
       }
     }
     else {
       const subJson = sub.toJSON()
+      const { savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
       try {
         await savePushSubscription(subJson)
         await notify('云笔记 · 订阅已存在', '✅ 已确认写入云端')
@@ -100,6 +95,7 @@ async function enablePushOnce() {
         }
         else {
           await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
+          console.warn('savePushSubscription error', e)
         }
       }
     }
@@ -112,7 +108,7 @@ async function enablePushOnce() {
   }
 }
 
-// 调试按钮：逐步做检查并尽量写库（只用系统通知做反馈）
+// 调试按钮（仅系统通知反馈）
 async function debugSubscribeNow() {
   try {
     if (!('serviceWorker' in navigator)) {
@@ -130,11 +126,15 @@ async function debugSubscribeNow() {
       return
     }
 
+    // 动态导入 supabase（避免构建期引用）
+    const { supabase } = await import('@/utils/supabaseClient')
     const { data: userData } = await supabase.auth.getUser()
     const uid = userData?.user?.id
     await notify('调试', `当前用户：${uid || '未登录'}`)
+
     if (!uid) {
       const exist = await reg.pushManager.getSubscription()
+      const { createPushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
       const subJson = exist?.toJSON() ?? await createPushSubscription()
       savePendingLocal(subJson)
       await notify('待登录', '订阅已暂存，登录后会自动写入')
@@ -142,6 +142,8 @@ async function debugSubscribeNow() {
     }
 
     const sub = await reg.pushManager.getSubscription()
+    const { createPushSubscription, savePushSubscription } = await import('@/composables/useWebPushSubscribe')
+
     if (!sub) {
       const subJson = await createPushSubscription()
       try {
@@ -163,9 +165,10 @@ async function debugSubscribeNow() {
       }
     }
 
+    const { flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
     await flushPendingSubscriptionIfAny()
   }
-  catch (e) {
+  catch {
     await notify('调试异常', '❗请稍后再试')
   }
   finally {
@@ -173,7 +176,7 @@ async function debugSubscribeNow() {
   }
 }
 
-// 挂载后再做环境判断与自动检查（避免顶层访问 window/navigator）
+// 运行期再做环境判断与自动检查（避免顶层访问 window/navigator）
 onMounted(async () => {
   try {
     if ('serviceWorker' in navigator)
@@ -181,7 +184,6 @@ onMounted(async () => {
     else
       return
 
-    // 环境判断放到运行期
     const isStandalone
       = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || ((navigator as any).standalone === true)
@@ -205,6 +207,7 @@ onMounted(async () => {
 
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
+        const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
         const subJson = await createPushSubscription()
         try {
           await savePushSubscription(subJson)
@@ -222,6 +225,7 @@ onMounted(async () => {
       }
       else {
         const subJson = sub.toJSON()
+        const { savePushSubscription, savePendingLocal, flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
         try {
           await savePushSubscription(subJson)
           await notify('云笔记 · 已确认', '✅ 订阅已存在并已写入云端')
@@ -235,9 +239,8 @@ onMounted(async () => {
             await notify('云笔记 · 保存失败', '❗保存订阅失败，请稍后再试')
           }
         }
+        await flushPendingSubscriptionIfAny()
       }
-
-      await flushPendingSubscriptionIfAny()
     }
   }
   catch {
