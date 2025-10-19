@@ -1,81 +1,49 @@
-<!-- src/App.vue (Safe Mode，止抖动版) -->
+<!-- src/App.vue (No-Animation / No-Provider / No-SW 极简止抖版) -->
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
-import { useDark } from '@vueuse/core'
-import { computed, onMounted } from 'vue'
-import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
-
-useSupabaseTokenRefresh()
-
-// 主题（仅保留最小逻辑）
-const isDark = useDark()
-const theme = computed(() => (isDark.value ? darkTheme : null))
-
-// 仅注册 SW（无任何本地通知、无状态切换）
-onMounted(async () => {
-  try {
-    if ('serviceWorker' in navigator) {
-      // bump 版本号确保新 SW 生效
-      await navigator.serviceWorker.register('/sw.js?v=5')
-    }
-  }
-  catch {
-    // 静默
-  }
-})
 </script>
 
 <template>
-  <NConfigProvider :theme="theme">
-    <NMessageProvider>
-      <NDialogProvider>
-        <NNotificationProvider>
-          <AppProvider>
-            <AppContainer>
-              <RouterView />
-            </AppContainer>
-          </AppProvider>
-        </NNotificationProvider>
-      </NDialogProvider>
-    </NMessageProvider>
-  </NConfigProvider>
+  <div class="root">
+    <RouterView />
+  </div>
 </template>
 
 <style>
-/* —— 安全模式：彻底移除可能导致 iOS PWA 抖动的一切效果 —— */
-
-/* 固定纯色背景；不使用任何渐变/网格；不使用过渡动画 */
-html, body {
-  background-color: #f5f6f7; /* 稍浅的灰白，柔和不刺眼 */
-  background-image: none !important;
-  background-size: auto !important;
-  transition: none !important;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* —— 视口锁定：防止 iOS 动态地址栏/安全区造成的高度抖动 —— */
+html, body, #app, .root {
+  margin: 0;
+  padding: 0;
+  height: 100dvh;         /* iOS 16+ 动态视口单位 */
+  width: 100%;
+  overflow: hidden;       /* 禁用橡皮筋 */
+  background: #f5f6f7;    /* 纯色背景，避免渐变导致重绘 */
 }
 
-/* 暗色模式下亦保持纯色，避免渐变/网格 */
-.dark html, .dark body {
-  background-color: #121212 !important;
-  background-image: none !important;
-  transition: none !important;
-}
-
-/* iOS PWA 进一步兜底，禁用任何过渡与复杂绘制 */
+/* 某些 iOS 旧版本对 100dvh 支持不好，兜底用 100vh */
 @supports (-webkit-touch-callout: none) {
-  html, body {
-    background-image: none !important;
-    transition: none !important;
-    will-change: auto !important;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
+  html, body, #app, .root {
+    height: 100vh;
   }
 }
 
-/* 全局消息/通知容器位置（保持原样即可） */
-.n-message-container,
-.n-notification-container {
-  top: 10% !important;
+/* —— 全局核平：禁用一切动画/过渡，阻止任何持续重绘 —— */
+*, *::before, *::after {
+  animation: none !important;
+  transition: none !important;
+  will-change: auto !important;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
+
+/* —— 禁用 iOS 弹性滚动与滚动捕获造成的抖动 —— */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto !important;
+}
+
+/* 如页面仍抖，把你页面里最外层容器（例如 RouterView 渲染的页面根）加上以下类：
+  .page-root { height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; }
+  仅让内部可滚动，外层保持稳定
+*/
 </style>
