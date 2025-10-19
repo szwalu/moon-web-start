@@ -38,7 +38,7 @@ async function enablePushOnce() {
       showAskNotif.value = false
       return
     }
-    await navigator.serviceWorker.register('/sw.js')
+    await navigator.serviceWorker.register('/sw.js?v=2')
 
     if (!('Notification' in window)) {
       showAskNotif.value = false
@@ -115,7 +115,7 @@ async function debugSubscribeNow() {
       await notify('调试', 'SW 不支持')
       return
     }
-    await navigator.serviceWorker.register('/sw.js')
+    await navigator.serviceWorker.register('/sw.js?v=2')
     const reg = await navigator.serviceWorker.ready
     await notify('调试', 'SW: ready')
 
@@ -180,7 +180,7 @@ async function debugSubscribeNow() {
 onMounted(async () => {
   try {
     if ('serviceWorker' in navigator)
-      await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.register('/sw.js?v=2')
     else
       return
 
