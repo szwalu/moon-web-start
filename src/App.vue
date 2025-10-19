@@ -8,16 +8,21 @@ import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
 useSupabaseTokenRefresh()
 
-// 主题
+// ============== 主题 ==============
 const isDark = useDark()
 const theme = computed(() => (isDark.value ? darkTheme : null))
 
-// UI 状态（避免在模块顶层访问 window/navigator）
+// ============== UI 状态 ==============
 const showAskNotif = ref(false)
 const showDebugBtn = ref(false)
 
-// 统一通知工具（系统通知）
+// 是否显示本地系统级通知（调试用，默认关闭，避免页面闪动）
+const DEBUG_LOCAL_TOAST = false
+
+// 统一系统通知（受 DEBUG_LOCAL_TOAST 控制）
 async function notify(title: string, body?: string) {
+  if (!DEBUG_LOCAL_TOAST)
+    return
   try {
     if (!('serviceWorker' in navigator))
       return
@@ -26,19 +31,26 @@ async function notify(title: string, body?: string) {
       body,
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-72.png',
+      tag: 'daily-note',
+      renotify: false,
     })
   }
   catch {}
 }
 
-// 允许通知（按钮触发）
+// 统一获取 VAPID 公钥（优先环境变量，必要时可临时硬编码一串公钥）
+const PUBLIC_KEY
+  = import.meta.env.VITE_VAPID_PUBLIC_KEY
+  || '' // ← 如需临时硬编码公钥，在这里粘贴你的 VAPID Public Key（单行、无空格）；否则保持空串
+
+// ============== 允许通知（按钮触发） ==============
 async function enablePushOnce() {
   try {
     if (!('serviceWorker' in navigator)) {
       showAskNotif.value = false
       return
     }
-    await navigator.serviceWorker.register('/sw.js?v=2')
+    await navigator.serviceWorker.register('/sw.js?v=3')
 
     if (!('Notification' in window)) {
       showAskNotif.value = false
@@ -50,105 +62,98 @@ async function enablePushOnce() {
       return
     }
 
-    // 先给出通道已通
-    await notify('云笔记 · 通知测试', '✅ 通道正常。接下来尝试订阅并保存到云端…')
-
-    // 订阅 + 保存（动态导入，避免构建期引用）
-    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BNNQ4gUDHpKm97Zynibt52WCWmoMlyjs - I6LG23POMVgTGIxMxKsbF8oItgE_9F6xEhMrOby8sdbQjXn - ExQd0k'
-    if (!publicKey) {
-      await notify('云笔记 · 缺少公钥', '❗请配置 VITE_VAPID_PUBLIC_KEY 后重试')
+    // 订阅 + 保存（静默执行，不弹本地通知）
+    if (!PUBLIC_KEY) {
+      await notify('云笔记 · 缺少公钥', '请配置 VITE_VAPID_PUBLIC_KEY 后重试')
       showAskNotif.value = false
       return
     }
 
     const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.getSubscription()
-    if (!sub) {
+    const existing = await reg.pushManager.getSubscription()
+    if (!existing) {
       const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-      const subJson = await createPushSubscription(publicKey)
+      const subJson = await createPushSubscription(PUBLIC_KEY)
       try {
         await savePushSubscription(subJson)
-        await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
+        await notify('云笔记 · 订阅已保存', '已写入 webpush_subscriptions')
       }
       catch (e: any) {
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
-          await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
+          await notify('云笔记 · 待登录', '订阅已本地暂存，登录后会自动写入')
         }
         else {
-          await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
+          await notify('云笔记 · 保存失败', '保存订阅到云端失败，请稍后再试')
           console.warn('savePushSubscription error', e)
         }
       }
     }
     else {
-      const subJson = sub.toJSON()
+      const subJson = existing.toJSON()
       const { savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
       try {
         await savePushSubscription(subJson)
-        await notify('云笔记 · 订阅已存在', '✅ 已确认写入云端')
+        await notify('云笔记 · 订阅已存在', '已确认写入云端')
       }
       catch (e: any) {
         if (String(e?.message) === 'NEED_LOGIN') {
           savePendingLocal(subJson)
-          await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
+          await notify('云笔记 · 待登录', '订阅已本地暂存，登录后会自动写入')
         }
         else {
-          await notify('云笔记 · 保存失败', '❗保存订阅到云端失败，请稍后再试')
+          await notify('云笔记 · 保存失败', '保存订阅到云端失败，请稍后再试')
           console.warn('savePushSubscription error', e)
         }
       }
     }
   }
   catch {
-    await notify('云笔记 · 操作失败', '❗请稍后再试')
+    await notify('云笔记 · 操作失败', '请稍后再试')
   }
   finally {
     showAskNotif.value = false
   }
 }
 
-// 调试按钮（仅系统通知反馈）
+// ============== 调试按钮（手动触发入库） ==============
 async function debugSubscribeNow() {
   try {
     if (!('serviceWorker' in navigator)) {
       await notify('调试', 'SW 不支持')
       return
     }
-    await navigator.serviceWorker.register('/sw.js?v=2')
+    await navigator.serviceWorker.register('/sw.js?v=3')
     const reg = await navigator.serviceWorker.ready
     await notify('调试', 'SW: ready')
 
-    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    const publicKey = PUBLIC_KEY
     await notify('调试', `VAPID 公钥前 12：${publicKey ? publicKey.slice(0, 12) : '缺失'}`)
     if (!publicKey) {
       await notify('缺少公钥', '配置 VITE_VAPID_PUBLIC_KEY 后重试')
       return
     }
 
-    // 动态导入 supabase（避免构建期引用）
     const { supabase } = await import('@/utils/supabaseClient')
     const { data: userData } = await supabase.auth.getUser()
     const uid = userData?.user?.id
     await notify('调试', `当前用户：${uid || '未登录'}`)
 
+    const sub = await reg.pushManager.getSubscription()
+    const { createPushSubscription, savePushSubscription, savePendingLocal, flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
+
     if (!uid) {
-      const exist = await reg.pushManager.getSubscription()
-      const { createPushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-      const subJson = exist?.toJSON() ?? await createPushSubscription(publicKey)
+      const subJson = sub?.toJSON() ?? await createPushSubscription(publicKey)
       savePendingLocal(subJson)
       await notify('待登录', '订阅已暂存，登录后会自动写入')
       return
     }
 
-    const sub = await reg.pushManager.getSubscription()
-    const { createPushSubscription, savePushSubscription } = await import('@/composables/useWebPushSubscribe')
-
     if (!sub) {
       const subJson = await createPushSubscription(publicKey)
       try {
         await savePushSubscription(subJson)
-        await notify('订阅已保存', '✅ 写库成功')
+        await notify('订阅已保存', '写库成功')
       }
       catch (e: any) {
         await notify('写库失败', String(e?.message || e).slice(0, 120))
@@ -158,29 +163,28 @@ async function debugSubscribeNow() {
       const subJson = sub.toJSON()
       try {
         await savePushSubscription(subJson)
-        await notify('订阅已保存', '✅ 已确认写入云端')
+        await notify('订阅已保存', '已确认写入云端')
       }
       catch (e: any) {
         await notify('写库失败', String(e?.message || e).slice(0, 120))
       }
     }
 
-    const { flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
     await flushPendingSubscriptionIfAny()
   }
   catch {
-    await notify('调试异常', '❗请稍后再试')
+    await notify('调试异常', '请稍后再试')
   }
   finally {
     showDebugBtn.value = true
   }
 }
 
-// 运行期再做环境判断与自动检查（避免顶层访问 window/navigator）
+// ============== 自动初始化（静默，不弹本地通知） ==============
 onMounted(async () => {
   try {
     if ('serviceWorker' in navigator)
-      await navigator.serviceWorker.register('/sw.js?v=2')
+      await navigator.serviceWorker.register('/sw.js?v=3')
     else
       return
 
@@ -188,39 +192,35 @@ onMounted(async () => {
       = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || ((navigator as any).standalone === true)
 
-    // 权限是 default 时展示引导按钮
+    // 权限：default 才展示按钮引导
     if (typeof Notification !== 'undefined' && Notification.permission === 'default' && isStandalone)
       showAskNotif.value = true
     else
       showAskNotif.value = false
 
-    // 已授权时显示调试按钮
+    // 已授权时显示“调试订阅保存”按钮
     showDebugBtn.value
       = typeof Notification !== 'undefined'
       && Notification.permission === 'granted'
       && isStandalone
 
-    // 自动检查：已授权则尝试订阅并保存
+    // 已授权：静默确认订阅并入库（不弹本地通知，避免闪动）
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      if (!PUBLIC_KEY)
+        return
       const reg = await navigator.serviceWorker.ready
-      await notify('云笔记 · 自动检查', '✅ 权限已授予，正在确认订阅并保存到云端…')
-
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
         const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-        const subJson = await createPushSubscription(publicKey)
+        const subJson = await createPushSubscription(PUBLIC_KEY)
         try {
           await savePushSubscription(subJson)
-          await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
         }
         catch (e: any) {
-          if (String(e?.message) === 'NEED_LOGIN') {
+          if (String(e?.message) === 'NEED_LOGIN')
             savePendingLocal(subJson)
-            await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动保存到云端')
-          }
-          else {
-            await notify('云笔记 · 保存失败', '❗保存订阅失败，请稍后再试')
-          }
+          else
+            console.warn('savePushSubscription error', e)
         }
       }
       else {
@@ -228,16 +228,12 @@ onMounted(async () => {
         const { savePushSubscription, savePendingLocal, flushPendingSubscriptionIfAny } = await import('@/composables/useWebPushSubscribe')
         try {
           await savePushSubscription(subJson)
-          await notify('云笔记 · 已确认', '✅ 订阅已存在并已写入云端')
         }
         catch (e: any) {
-          if (String(e?.message) === 'NEED_LOGIN') {
+          if (String(e?.message) === 'NEED_LOGIN')
             savePendingLocal(subJson)
-            await notify('云笔记 · 待登录', 'ℹ️ 订阅已本地暂存，登录后会自动写入')
-          }
-          else {
-            await notify('云笔记 · 保存失败', '❗保存订阅失败，请稍后再试')
-          }
+          else
+            console.warn('savePushSubscription error', e)
         }
         await flushPendingSubscriptionIfAny()
       }

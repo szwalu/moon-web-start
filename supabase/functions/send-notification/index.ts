@@ -16,14 +16,14 @@ function json(status: number, obj: unknown) {
 }
 
 Deno.serve(async (req) => {
-  // 简单鉴权
+  // 0) 简单鉴权
   if (CRON_SECRET) {
     const h = req.headers.get('x-cron-secret')
     if (h !== CRON_SECRET)
       return json(401, { error: 'unauthorized: bad x-cron-secret' })
   }
 
-  // 校验 env
+  // 1) 校验 env
   const missing: string[] = []
   if (!SUPABASE_URL)
     missing.push('PROJECT_URL')
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   if (missing.length)
     return json(500, { error: 'env_missing', missing })
 
-  // 初始化
+  // 2) 初始化
   let supabase
   try {
     supabase = createClient(SUPABASE_URL!, SERVICE_ROLE_KEY!)
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     return json(500, { error: 'vapid_init_failed', message: String(e) })
   }
 
-  // 接收可选 payload
+  // 3) 解析 payload（title/body/url）
   let payload = { title: '云笔记 · 每日提醒', body: '来写点今天的笔记吧～', url: '/' }
   try {
     if (req.method === 'POST') {
@@ -65,19 +65,24 @@ Deno.serve(async (req) => {
       }
     }
   }
-  catch { /* ignore */ }
+  catch {
+    // ignore
+  }
 
-  // 取订阅
+  // 4) 拉订阅：为了避免重复推送，暂时只给“最新一条订阅”发送
   const { data: subs, error: selErr } = await supabase
     .from('webpush_subscriptions')
-    .select('endpoint, p256dh, auth')
+    .select('endpoint, p256dh, auth, created_at')
+    .order('created_at', { ascending: false })
+    .limit(1)
 
   if (selErr)
     return json(500, { error: 'select_failed', message: selErr.message })
-  if (!subs?.length)
+
+  if (!subs || subs.length === 0)
     return json(200, { ok: 0, fail: 0, removed: 0, subs: 0, details: [] })
 
-  // 发送
+  // 5) 发送
   let ok = 0
   let fail = 0
   let removed = 0
@@ -89,15 +94,22 @@ Deno.serve(async (req) => {
       const ep: string = s.endpoint || ''
       const isApple = ep.includes('web.push.apple.com')
 
-      // Apple 更偏好 {notification:{...}}；其他浏览器扁平即可
+      // Apple 更偏好 {notification:{...}}；其他浏览器扁平
       const body = isApple
         ? JSON.stringify({ notification: payload })
         : JSON.stringify(payload)
+
+      // 附加投递选项
+      const options: Record<string, unknown> = {
+        TTL: 60,
+        urgency: 'high',
+      }
 
       try {
         await webpush.sendNotification(
           { endpoint: ep, keys: { p256dh: s.p256dh, auth: s.auth } },
           body,
+          options,
         )
         ok++
         details.push({ endpoint: ep, code: 200 })
@@ -114,7 +126,11 @@ Deno.serve(async (req) => {
   )
 
   if (toDelete.length > 0) {
-    const delRes = await supabase.from('webpush_subscriptions').delete().in('endpoint', toDelete)
+    const delRes = await supabase
+      .from('webpush_subscriptions')
+      .delete()
+      .in('endpoint', toDelete)
+
     if (!delRes.error)
       removed = toDelete.length
   }

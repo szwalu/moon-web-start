@@ -1,8 +1,7 @@
-/* public/sw.js */
+/* public/sw.js v3 */
 globalThis.addEventListener('install', (event) => {
   event.waitUntil(globalThis.skipWaiting())
 })
-
 globalThis.addEventListener('activate', (event) => {
   event.waitUntil(globalThis.clients.claim())
 })
@@ -13,13 +12,8 @@ globalThis.addEventListener('push', (event) => {
     if (event.data)
       raw = event.data.json()
   }
-  catch {
-    raw = {}
-  }
+  catch { raw = {} }
 
-  // 同时兼容两种结构：
-  // 1) { title, body, url? }
-  // 2) { notification: { title, body, url? } }
   const n = raw.notification && typeof raw.notification === 'object' ? raw.notification : raw
   const title = n.title || '云笔记'
   const body = n.body || '来写点今天的笔记吧～'
@@ -30,6 +24,8 @@ globalThis.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/badge-72.png',
     data: { url },
+    tag: 'daily-note', // ✅ 相同 tag 会“覆盖”上一条，不会无限叠加
+    renotify: false, // ✅ 关闭“您有 X 条新通知”的再次提醒
   }
 
   event.waitUntil(globalThis.registration.showNotification(title, options))
