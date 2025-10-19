@@ -54,7 +54,7 @@ async function enablePushOnce() {
     await notify('云笔记 · 通知测试', '✅ 通道正常。接下来尝试订阅并保存到云端…')
 
     // 订阅 + 保存（动态导入，避免构建期引用）
-    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || BNNQ4gUDHpKm97Zynibt52WCWmoMlyjs - I6LG23POMVgTGIxMxKsbF8oItgE_9F6xEhMrOby8sdbQjXn - ExQd0k
     if (!publicKey) {
       await notify('云笔记 · 缺少公钥', '❗请配置 VITE_VAPID_PUBLIC_KEY 后重试')
       showAskNotif.value = false
