@@ -25,7 +25,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 // - 你可以修改 hour/minute/title/body 后再次 start() 重排。
 const { start, enabled } = useLocalReminder({
   hour: 10,
-  minute: 44,
+  minute: 48,
   title: '那年今日',
   body: '来看看那年今日卡片吧～',
 })

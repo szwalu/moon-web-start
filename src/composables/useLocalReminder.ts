@@ -29,8 +29,8 @@ function calcNextFireTs(hour: number, minute: number): number {
 export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   const settings = Object.assign(
     {
-      hour: 22,
-      minute: 27,
+      hour: 10,
+      minute: 48,
       title: '那年今日',
       body: '来看看那年今日卡片吧～',
       icon: '/icons/android-chrome-192x192.png',
