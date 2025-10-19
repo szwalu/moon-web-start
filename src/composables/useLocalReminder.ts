@@ -2,7 +2,7 @@
 /* 纯本地每日提醒（无服务器版）
  * 说明：
  * - 仅在页面存活时计时；休眠/关闭期间不运行。
- * - 回到页面/唤醒时会“补发一次”并自动排到次日。
+ * - 回到页面/唤醒时会“补发一次”（在宽限期内）并自动排到次日。
  */
 import { onMounted, onUnmounted, ref } from 'vue'
 
@@ -16,6 +16,8 @@ export interface LocalReminderOptions {
 }
 
 const STORAGE_KEY = 'local_reminder_v1'
+// 补发宽限期（默认 10 分钟）：仅当“错过的时间”在此范围内才补发
+const DEFAULT_CATCHUP_WINDOW_MS = 10 * 60 * 1000
 
 function calcNextFireTs(hour: number, minute: number): number {
   const now = new Date()
@@ -42,11 +44,22 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   const enabled = ref(false)
   const nextFireTs = ref<number | null>(null)
   const timerId = ref<number | null>(null)
+  const lastFireTs = ref<number | null>(null)
+
+  // 一次性：用于在“首次进入/启动”时跳过补发
+  const suppressCatchupOnce = ref(false)
+  // 可配置的宽限期
+  const catchupWindowMsRef = ref<number>(DEFAULT_CATCHUP_WINDOW_MS)
 
   function persist() {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ enabled: enabled.value, nextFireTs: nextFireTs.value, settings }),
+      JSON.stringify({
+        enabled: enabled.value,
+        nextFireTs: nextFireTs.value,
+        lastFireTs: lastFireTs.value,
+        settings,
+      }),
     )
   }
 
@@ -104,6 +117,9 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
         // 同理，避免 no-new/no-unused
         n?.addEventListener?.('show', () => {})
       }
+      // 记录最近一次发送时间
+      lastFireTs.value = Date.now()
+      persist()
     }
     catch {
       // 忽略所有通知失败（例如无权限/平台不支持）
@@ -139,10 +155,30 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   }
 
   // 无论之前是否 enabled，都强制（重新）排班
-  async function start(options?: { forceToday?: boolean }) {
+  async function start(options?: {
+    forceToday?: boolean
+    skipCatchupOnLoad?: boolean
+    catchupWindowMs?: number
+  }) {
     const forceToday = options?.forceToday === true
+    suppressCatchupOnce.value = options?.skipCatchupOnLoad === true
+    if (Number.isFinite(options?.catchupWindowMs))
+      catchupWindowMsRef.value = Number(options!.catchupWindowMs)
+
     await ensurePermission().catch(() => {})
     scheduleNext(forceToday)
+
+    // 若首次启动就已错过目标时刻（理论上不会，因为 scheduleNext 会取未来），
+    // 这里仍加一道保险逻辑（受 skipCatchupOnLoad 和宽限期控制）
+    if (nextFireTs.value && Date.now() >= nextFireTs.value) {
+      if (!suppressCatchupOnce.value) {
+        const missedFor = Date.now() - nextFireTs.value
+        if (missedFor <= catchupWindowMsRef.value)
+          showLocalNotification()
+      }
+      suppressCatchupOnce.value = false
+      scheduleNext(false)
+    }
   }
 
   function stop() {
@@ -155,9 +191,21 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   function handleVisibilityResume() {
     if (!enabled.value || !nextFireTs.value)
       return
-    if (Date.now() >= nextFireTs.value) {
-      showLocalNotification()
-      scheduleNext()
+
+    // 如果是“首次进入后”的第一次可见且要求跳过补发，则只清标志，不补发
+    if (suppressCatchupOnce.value) {
+      suppressCatchupOnce.value = false
+      return
+    }
+
+    const now = Date.now()
+    if (now >= nextFireTs.value) {
+      const missedFor = now - nextFireTs.value
+      const withinWindow = missedFor <= catchupWindowMsRef.value
+      if (withinWindow)
+        showLocalNotification()
+      // 不论是否补发，都排到下一次
+      scheduleNext(false)
     }
   }
 
@@ -166,8 +214,11 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
       if (saved?.settings)
         Object.assign(settings, saved.settings)
+      if (typeof saved?.lastFireTs === 'number')
+        lastFireTs.value = saved.lastFireTs
       if (saved?.enabled) {
         enabled.value = true
+        // 仅重排，不在此处决定是否补发（补发交给 visibility 事件或 start 的保险逻辑）
         scheduleNext()
       }
     }
@@ -183,7 +234,7 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     clearTimer()
   })
 
-  // ===== 新增：运行时改时间 & 立即重排 =====
+  // ===== 运行时改时间 & 立即重排 =====
   function reschedule(opts?: { forceToday?: boolean }) {
     const forceToday = opts?.forceToday === true
     scheduleNext(forceToday)

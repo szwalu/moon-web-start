@@ -24,12 +24,12 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 // - 之后会从 localStorage 自动恢复，无需重复调用；
 // - 你可以修改 hour/minute/title/body 后再次 start() 重排。
 const { start, setTime } = useLocalReminder({
-  hour: 11,
-  minute: 49,
+  hour: 12,
+  minute: 1,
   title: '那年今日',
   body: '来看看那年今日卡片吧～',
 })
-start({ forceToday: true }) // ← 若今天的 22:27 还没到，就按“今天”触发；否则排到明天
+start({ forceToday: true, skipCatchupOnLoad: true })
 
 // 临时测试：1 分钟后弹一次，并重排到下一次（今天优先）
 {
