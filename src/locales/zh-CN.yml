@@ -45,8 +45,6 @@ settings:
   ui_font_md: 适中
   ui_font_lg: 偏大
   ui_font_hint: 提示：系统字号影响抽屉、下拉、弹窗、消息等界面元素；开启“跟随”后将根据内容字号自动选择合适的系统字号。
-  add_calendar_reminder: 添加系统日历提醒（每日）
-  calendar_reminder_downloaded: 已生成日历提醒文件，请打开后添加到系统日历
 
   theme:
     title: 主题
