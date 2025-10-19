@@ -23,13 +23,22 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 // - 首次调用 start() 将按 settings 排班到今天/明天；
 // - 之后会从 localStorage 自动恢复，无需重复调用；
 // - 你可以修改 hour/minute/title/body 后再次 start() 重排。
-const { start } = useLocalReminder({
+const { start, setTime } = useLocalReminder({
   hour: 11,
-  minute: 10,
+  minute: 18,
   title: '那年今日',
   body: '来看看那年今日卡片吧～',
 })
-start()
+start({ forceToday: true }) // ← 若今天的 22:27 还没到，就按“今天”触发；否则排到明天
+
+// 临时测试：1 分钟后弹一次，并重排到下一次（今天优先）
+{
+  const now = new Date()
+  const h = now.getHours()
+  const m = (now.getMinutes() + 1) % 60
+  // 若你刚加这行就锁屏，Web 无法后台计时；保持前台 1 分钟看它是否弹出
+  setTime(h, m, false, { forceToday: true })
+}
 </script>
 
 <template>
