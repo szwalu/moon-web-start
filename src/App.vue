@@ -39,9 +39,7 @@ async function notify(title: string, body?: string) {
 }
 
 // 统一获取 VAPID 公钥（优先环境变量，必要时可临时硬编码一串公钥）
-const PUBLIC_KEY
-  = import.meta.env.VITE_VAPID_PUBLIC_KEY
-  || '' // ← 如需临时硬编码公钥，在这里粘贴你的 VAPID Public Key（单行、无空格）；否则保持空串
+const PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
 
 // ============== 允许通知（按钮触发） ==============
 async function enablePushOnce() {
@@ -50,7 +48,8 @@ async function enablePushOnce() {
       showAskNotif.value = false
       return
     }
-    await navigator.serviceWorker.register('/sw.js?v=3')
+    // 强制加载最新 SW，避免旧 SW 引起前端异常重绘
+    await navigator.serviceWorker.register('/sw.js?v=4')
 
     if (!('Notification' in window)) {
       showAskNotif.value = false
@@ -123,7 +122,7 @@ async function debugSubscribeNow() {
       await notify('调试', 'SW 不支持')
       return
     }
-    await navigator.serviceWorker.register('/sw.js?v=3')
+    await navigator.serviceWorker.register('/sw.js?v=4')
     const reg = await navigator.serviceWorker.ready
     await notify('调试', 'SW: ready')
 
@@ -183,10 +182,13 @@ async function debugSubscribeNow() {
 // ============== 自动初始化（静默，不弹本地通知） ==============
 onMounted(async () => {
   try {
-    if ('serviceWorker' in navigator)
-      await navigator.serviceWorker.register('/sw.js?v=3')
-    else
+    if ('serviceWorker' in navigator) {
+      // 强制版本号，确保新 SW 生效，避免旧 SW 造成重绘
+      await navigator.serviceWorker.register('/sw.js?v=4')
+    }
+    else {
       return
+    }
 
     const isStandalone
       = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
@@ -254,7 +256,7 @@ onMounted(async () => {
             <!-- 调试按钮（权限已授予 + PWA 独立模式时显示） -->
             <div
               v-if="showDebugBtn"
-              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 58px; background: #0069d9; color:#fff; padding: 10px 14px; border-radius: 10px;"
+              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 58px; background: #0069d9; color:#fff; padding: 10px 14px; border-radius: 10px; will-change: transform; -webkit-backface-visibility: hidden;"
             >
               <button
                 style="background: transparent; color:#fff; font-size: 14px;"
@@ -268,7 +270,7 @@ onMounted(async () => {
             <!-- 仅在 iOS PWA 且尚未授权时出现的一次性按钮 -->
             <div
               v-if="showAskNotif"
-              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111; color:#fff; padding: 10px 14px; border-radius: 10px;"
+              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111; color:#fff; padding: 10px 14px; border-radius: 10px; will-change: transform; -webkit-backface-visibility: hidden;"
             >
               <button
                 style="background: transparent; color:#fff; font-size: 14px;"
@@ -290,20 +292,31 @@ onMounted(async () => {
 </template>
 
 <style>
+/* —— 基础背景（移除过渡，减少 iOS PWA 闪屏） —— */
 body, html {
   background-color: #e9ecef;
   background-image:
     linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
   background-size: 25px 25px;
-  transition: background-color 0.3s ease;
+  /* transition: background-color 0.3s ease;  ← 去掉避免 iOS 渐隐闪屏 */
 }
+
 .dark body, .dark html {
   background-color: #1a1a1a;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
+
+/* —— iOS PWA 定向优化：禁用过渡与网格渐变，进一步止闪 —— */
+@supports (-webkit-touch-callout: none) {
+  html, body { transition: none !important; }
+  /* 如仍有闪动，可取消下面两行注释，彻底移除背景网格 */
+  /* body, html { background-image: none !important; } */
+}
+
+/* 全局消息/通知容器位置微调 */
 .n-message-container,
 .n-notification-container {
   top: 10% !important;
