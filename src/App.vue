@@ -23,14 +23,13 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 // - 首次调用 start() 将按 settings 排班到今天/明天；
 // - 之后会从 localStorage 自动恢复，无需重复调用；
 // - 你可以修改 hour/minute/title/body 后再次 start() 重排。
-const { start, enabled } = useLocalReminder({
-  hour: 10,
-  minute: 48,
+const { start } = useLocalReminder({
+  hour: 11,
+  minute: 10,
   title: '那年今日',
   body: '来看看那年今日卡片吧～',
 })
-if (!enabled.value)
-  start()
+start()
 </script>
 
 <template>

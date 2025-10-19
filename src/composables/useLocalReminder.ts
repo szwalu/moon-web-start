@@ -29,8 +29,8 @@ function calcNextFireTs(hour: number, minute: number): number {
 export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
   const settings = Object.assign(
     {
-      hour: 10,
-      minute: 48,
+      hour: 11,
+      minute: 10, // ← 不要写 02，避免“八进制字面量”错误
       title: '那年今日',
       body: '来看看那年今日卡片吧～',
       icon: '/icons/android-chrome-192x192.png',
@@ -68,7 +68,7 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     return perm === 'granted'
   }
 
-  // ✅ 移入到 hook 内部，避免“顶层未使用”
+  // 放在 hook 内部，避免“顶层未使用”
   function showLocalNotification() {
     try {
       const regPromise = navigator.serviceWorker?.ready
@@ -90,7 +90,7 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
               icon: settings.icon,
               badge: settings.badge,
             })
-            // ✅ 避免 no-void/no-unused：挂一个空监听器即可视为已使用
+            // 避免 no-new/no-unused：挂一个空监听器即可视为已使用
             n?.addEventListener?.('show', () => {})
           })
       }
@@ -101,7 +101,7 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
           icon: settings.icon,
           badge: settings.badge,
         })
-        // ✅ 同理，避免 no-void/no-unused
+        // 同理，避免 no-new/no-unused
         n?.addEventListener?.('show', () => {})
       }
     }
@@ -110,23 +110,39 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     }
   }
 
-  function scheduleNext() {
+  function scheduleNext(forceToday = false) {
     clearTimer()
-    const ts = calcNextFireTs(settings.hour, settings.minute)
+    const now = Date.now()
+
+    // 默认：若今天该时刻已过，则排到明天
+    let ts = calcNextFireTs(settings.hour, settings.minute)
+
+    // 若手动调整时间并要求今天触发，且“今天的目标时刻”还没过，就用今天的
+    if (forceToday) {
+      const target = new Date()
+      target.setHours(settings.hour, settings.minute, 0, 0)
+      const candidate = target.getTime()
+      if (candidate > now)
+        ts = candidate
+    }
+
     nextFireTs.value = ts
     enabled.value = true
     persist()
 
-    const delay = Math.max(0, ts - Date.now())
+    const delay = Math.max(0, ts - now)
     timerId.value = window.setTimeout(() => {
       showLocalNotification()
-      scheduleNext()
+      // 发完按“明天同一时间”再排一次
+      scheduleNext(false)
     }, delay) as unknown as number
   }
 
-  async function start() {
+  // 无论之前是否 enabled，都强制（重新）排班
+  async function start(options?: { forceToday?: boolean }) {
+    const forceToday = options?.forceToday === true
     await ensurePermission().catch(() => {})
-    scheduleNext()
+    scheduleNext(forceToday)
   }
 
   function stop() {
@@ -167,11 +183,30 @@ export function useLocalReminder(defaults?: Partial<LocalReminderOptions>) {
     clearTimer()
   })
 
+  // ===== 新增：运行时改时间 & 立即重排 =====
+  function reschedule(opts?: { forceToday?: boolean }) {
+    const forceToday = opts?.forceToday === true
+    scheduleNext(forceToday)
+  }
+
+  function setTime(h: number, m: number, fireNow = false, opts?: { forceToday?: boolean }) {
+    settings.hour = Math.max(0, Math.min(23, Math.trunc(h)))
+    settings.minute = Math.max(0, Math.min(59, Math.trunc(m)))
+    persist()
+    if (fireNow)
+      showLocalNotification()
+    reschedule(opts)
+  }
+  // =======================================
+
   return {
     start,
     stop,
     settings,
     enabled,
     nextFireTs,
+    // 新增导出
+    reschedule,
+    setTime,
   }
 }
