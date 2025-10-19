@@ -15,6 +15,7 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
+import { downloadDailyReminderICS } from '@/utils/downloadDailyReminderICS'
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
@@ -233,6 +234,15 @@ const mainMenuOptions = computed(() => [
       h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
         h(User, { size: 18 }),
         h('span', null, t('auth.account_title')),
+      ]),
+  },
+  {
+    key: 'addCalendarICS',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Calendar, { size: 18 }),
+        h('span', null, t('settings.add_calendar_reminder') || '添加系统日历提醒（每日）'),
       ]),
   },
   {
@@ -1907,6 +1917,37 @@ function handleMainMenuSelect(rawKey: string) {
     case 'account':
       showAccountModal.value = true
       break
+    case 'addCalendarICS': {
+      // 从本地提醒设置里取时间，取不到就用默认 22:27
+      const STORAGE_KEY = 'local_reminder_v1'
+      let hour = 11
+      let minute = 36
+      let title = '那年今日'
+      let description = '来看看那年今日卡片吧～'
+
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw) {
+          const saved = JSON.parse(raw)
+          if (saved?.settings) {
+            hour = Number.isFinite(saved.settings.hour) ? saved.settings.hour : hour
+            minute = Number.isFinite(saved.settings.minute) ? saved.settings.minute : minute
+            if (saved.settings.title)
+              title = saved.settings.title
+            if (saved.settings.body)
+              description = saved.settings.body
+          }
+        }
+      }
+      catch {}
+
+      // 生成并下载 ICS
+      downloadDailyReminderICS(hour, minute, title, description)
+      // 友好提示
+      messageHook.success(t('settings.calendar_reminder_downloaded') || '已生成日历提醒文件，请打开后添加到系统日历')
+      // 保持下拉不被意外关闭/或按你原交互让其关闭都可以，这里不强制处理
+      break
+    }
     case 'tags':
       // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
