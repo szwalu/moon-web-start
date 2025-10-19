@@ -65,7 +65,7 @@ async function enablePushOnce() {
     const sub = await reg.pushManager.getSubscription()
     if (!sub) {
       const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-      const subJson = await createPushSubscription()
+      const subJson = await createPushSubscription(publicKey)
       try {
         await savePushSubscription(subJson)
         await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
@@ -135,7 +135,7 @@ async function debugSubscribeNow() {
     if (!uid) {
       const exist = await reg.pushManager.getSubscription()
       const { createPushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-      const subJson = exist?.toJSON() ?? await createPushSubscription()
+      const subJson = exist?.toJSON() ?? await createPushSubscription(publicKey)
       savePendingLocal(subJson)
       await notify('待登录', '订阅已暂存，登录后会自动写入')
       return
@@ -145,7 +145,7 @@ async function debugSubscribeNow() {
     const { createPushSubscription, savePushSubscription } = await import('@/composables/useWebPushSubscribe')
 
     if (!sub) {
-      const subJson = await createPushSubscription()
+      const subJson = await createPushSubscription(publicKey)
       try {
         await savePushSubscription(subJson)
         await notify('订阅已保存', '✅ 写库成功')
@@ -208,7 +208,7 @@ onMounted(async () => {
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
         const { createPushSubscription, savePushSubscription, savePendingLocal } = await import('@/composables/useWebPushSubscribe')
-        const subJson = await createPushSubscription()
+        const subJson = await createPushSubscription(publicKey)
         try {
           await savePushSubscription(subJson)
           await notify('云笔记 · 订阅已保存', '✅ 已写入 webpush_subscriptions（或待登录后自动写入）')
