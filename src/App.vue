@@ -24,6 +24,20 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
       <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
+            <!-- ✅ 首次且仅在 PWA 独立模式下显示的“开启提醒”按钮（授权后不再出现） -->
+            <div
+              v-if="showEnableBtn"
+              style="position: fixed; z-index: 9999; left: 50%; transform: translateX(-50%); bottom: 18px; background: #111; color:#fff; padding: 8px 12px; border-radius: 10px; font-size: 14px;"
+            >
+              <button
+                style="background: transparent; color:#fff; font-size: 14px;"
+                aria-label="开启每日提醒"
+                @click="requestPermission"
+              >
+                开启每日提醒（每天 21:00）
+              </button>
+            </div>
+
             <AppContainer>
               <RouterView />
             </AppContainer>
@@ -34,6 +48,14 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
   </NConfigProvider>
 </template>
 
+// ✅ 新增：每日本地提醒（例：每天 21:00）
+import { useDailyLocalReminder } from '@/composables/useDailyLocalReminder'
+const { showEnableBtn, requestPermission } = useDailyLocalReminder({
+hour: 22,
+minute: 30,
+  title: '云笔记 · 每日提醒',
+  body: '来写点今天的笔记吧～',
+})
 <style>
 /* 您的样式代码保持不变 */
 body, html {
