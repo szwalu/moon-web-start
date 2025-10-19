@@ -1,20 +1,13 @@
 <script setup>
-import { RouterView } from 'vue-router'
-
-// --- 1. 新增: 导入 NConfigProvider, darkTheme, useDark 和 computed ---
 import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 import { computed } from 'vue'
-import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
-// 启动令牌刷新
-useSupabaseTokenRefresh()
+// 1. 导入我们即将创建的新组件
+import Main from './Main.vue'
 
-// --- 2. 新增: 添加暗黑模式逻辑 ---
-// useDark() 会自动检测并响应系统的暗黑模式切换
+// 暗黑模式逻辑保持不变
 const isDark = useDark()
-
-// 创建一个计算属性，当 isDark 为 true 时，应用 darkTheme，否则不应用任何特定主题（即为亮色模式）
 const theme = computed(() => (isDark.value ? darkTheme : null))
 </script>
 
@@ -23,11 +16,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
     <NMessageProvider>
       <NDialogProvider>
         <NNotificationProvider>
-          <AppProvider>
-            <AppContainer>
-              <RouterView />
-            </AppContainer>
-          </AppProvider>
+          <Main />
         </NNotificationProvider>
       </NDialogProvider>
     </NMessageProvider>
@@ -35,7 +24,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 </template>
 
 <style>
-/* 您的样式代码保持不变 */
+/* 你的全局样式保持不变 */
 body, html {
   background-color: #e9ecef;
   background-image:
@@ -52,7 +41,6 @@ body, html {
     linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
 
-/* 全局样式文件中 */
 .n-message-container,
 .n-notification-container {
   top: 10% !important;
