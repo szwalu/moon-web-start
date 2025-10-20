@@ -31,6 +31,9 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
     "@milkdown/core": "^7.15.5",
     "@milkdown/plugin-listener": "^7.15.5",
     "@milkdown/preset-commonmark": "^7.15.5",
@@ -83,6 +86,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "1.0.0-beta.18",
+    "@capacitor/cli": "^7.4.3",
     "@iconify-json/carbon": "^1.2.10",
     "@iconify/json": "^2.2.352",
     "@iconify/utils": "^2.1.5",

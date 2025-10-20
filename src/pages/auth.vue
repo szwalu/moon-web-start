@@ -4,7 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Bell, BellOff, Calendar, CheckSquare, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -15,6 +16,11 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
+
+// 👉 新增：Capacitor 与本地通知封装
+import { cancelDailyReminder, scheduleDailyReminder } from '@/native/localNotify'
+
+// 👉 新增：图标（和你现有风格一致）
 
 // import { saveNotesSnapshot } from '@/utils/db'
 // 新增：离线数据库/队列
@@ -102,6 +108,14 @@ let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
+// 👉 新增：原生每日提醒的默认配置（你可按需改）
+const NATIVE_REMINDER_DEFAULTS = {
+  id: 1001,
+  hour: 11,
+  minute: 10,
+  title: '那年今日',
+  body: '来看看那年今日卡片吧～',
+}
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -233,6 +247,25 @@ const mainMenuOptions = computed(() => [
       h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
         h(User, { size: 18 }),
         h('span', null, t('auth.account_title')),
+      ]),
+  },
+  // === 原生系统每日提醒（仅原生环境显示） ===
+  {
+    key: 'nativeReminderOn',
+    show: settingsExpanded.value && Capacitor.isNativePlatform(),
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Bell, { size: 18 }),
+        h('span', null, '开启系统每日提醒'),
+      ]),
+  },
+  {
+    key: 'nativeReminderOff',
+    show: settingsExpanded.value && Capacitor.isNativePlatform(),
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(BellOff, { size: 18 }),
+        h('span', null, '关闭系统每日提醒'),
       ]),
   },
   {
@@ -1907,6 +1940,41 @@ function handleMainMenuSelect(rawKey: string) {
     case 'account':
       showAccountModal.value = true
       break
+    case 'nativeReminderOn': {
+      // 保险：即便误触发，也给到友好提示
+      if (!Capacitor.isNativePlatform()) {
+        messageHook.warning('请在安装到手机的 App 内使用该功能')
+        break
+      }
+      try {
+        await scheduleDailyReminder({
+          id: NATIVE_REMINDER_DEFAULTS.id,
+          hour: NATIVE_REMINDER_DEFAULTS.hour,
+          minute: NATIVE_REMINDER_DEFAULTS.minute,
+          title: NATIVE_REMINDER_DEFAULTS.title,
+          body: NATIVE_REMINDER_DEFAULTS.body,
+        })
+        messageHook.success('已开启系统每日提醒（本机本地时区）')
+      }
+      catch (e: any) {
+        messageHook.error(`开启失败：${e?.message || '未知错误'}`)
+      }
+      break
+    }
+    case 'nativeReminderOff': {
+      if (!Capacitor.isNativePlatform()) {
+        messageHook.warning('请在安装到手机的 App 内使用该功能')
+        break
+      }
+      try {
+        await cancelDailyReminder(NATIVE_REMINDER_DEFAULTS.id)
+        messageHook.success('已关闭系统每日提醒')
+      }
+      catch (e: any) {
+        messageHook.error(`关闭失败：${e?.message || '未知错误'}`)
+      }
+      break
+    }
     case 'tags':
       // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
@@ -2348,7 +2416,8 @@ min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设�
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
-  overflow-y: hidden;
+  overflow-y: auto;               /* ✅ 允许滚动 */
+  -webkit-overflow-scrolling: touch; /* ✅ iOS 惯性滚动 */
   position: relative;
 }
 .new-note-editor-container {
@@ -2795,4 +2864,8 @@ html, body, #app {
 
 :root { --app-bg: #fff; }         /* ✅ 浅色默认 */
 .dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
+html, body, #app {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 </style>
