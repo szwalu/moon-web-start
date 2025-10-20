@@ -1918,7 +1918,7 @@ async function handleDeleteSelected() {
   })
 }
 
-function handleMainMenuSelect(rawKey: string) {
+async function handleMainMenuSelect(rawKey: string) {
   // 标签项（来自子菜单）
   if (rawKey.startsWith('tag:') || rawKey.startsWith('#') || rawKey === UNTAGGED_SENTINEL)
     return
@@ -1941,7 +1941,6 @@ function handleMainMenuSelect(rawKey: string) {
       showAccountModal.value = true
       break
     case 'nativeReminderOn': {
-      // 保险：即便误触发，也给到友好提示
       if (!Capacitor.isNativePlatform()) {
         messageHook.warning('请在安装到手机的 App 内使用该功能')
         break
@@ -1976,7 +1975,6 @@ function handleMainMenuSelect(rawKey: string) {
       break
     }
     case 'tags':
-      // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
     case 'trash':
       showTrashModal.value = true
