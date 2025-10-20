@@ -86,6 +86,8 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "1.0.0-beta.18",
+    "@babel/parser": "^7.25.9",
+    "@babel/types": "^7.25.9",
     "@capacitor/cli": "^7.4.3",
     "@iconify-json/carbon": "^1.2.10",
     "@iconify/json": "^2.2.352",

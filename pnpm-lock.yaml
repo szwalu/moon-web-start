@@ -168,6 +168,12 @@ importers:
       '@antfu/eslint-config':
         specifier: 1.0.0-beta.18
         version: 1.0.0-beta.18(eslint@8.57.1)(typescript@5.9.3)
+      '@babel/parser':
+        specifier: ^7.25.9
+        version: 7.28.4
+      '@babel/types':
+        specifier: ^7.25.9
+        version: 7.28.4
       '@capacitor/cli':
         specifier: ^7.4.3
         version: 7.4.3
