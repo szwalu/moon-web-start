@@ -17,9 +17,6 @@ importers:
       '@capacitor/ios':
         specifier: ^7.4.3
         version: 7.4.3(@capacitor/core@7.4.3)
-      '@capacitor/local-notifications':
-        specifier: ^7.0.3
-        version: 7.0.3(@capacitor/core@7.4.3)
       '@milkdown/core':
         specifier: ^7.15.5
         version: 7.17.1
@@ -167,9 +164,6 @@ importers:
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
-      yaml:
-        specifier: ^2.8.1
-        version: 2.8.1
     devDependencies:
       '@antfu/eslint-config':
         specifier: 1.0.0-beta.18
@@ -256,7 +250,7 @@ importers:
         specifier: ^0.25.2
         version: 0.25.2(@babel/parser@7.28.4)(rollup@2.79.2)(vue@3.5.22(typescript@5.9.3))
       unplugin-vue-macros:
-        specifier: ^2.14.5
+        specifier: ^2.6.1
         version: 2.14.5(@vueuse/core@10.11.1(vue@3.5.22(typescript@5.9.3)))(esbuild@0.18.20)(rollup@2.79.2)(typescript@5.9.3)(vite@4.5.14(@types/node@18.19.130)(sass@1.93.2)(terser@5.44.0))(vue@3.5.22(typescript@5.9.3))
       vite:
         specifier: ^4.4.11
@@ -806,11 +800,6 @@ packages:
     resolution: {integrity: sha512-VNm7cHODgh3KK/4ZC2rXU9gBlvHii/mYFLI+XMXwq24nhB679QxHhz+pUuI7PatYoM2q4MAL0NR/dRgehKCaSA==}
     peerDependencies:
       '@capacitor/core': ^7.4.0
-
-  '@capacitor/local-notifications@7.0.3':
-    resolution: {integrity: sha512-zVHZk5AYRiBwBDynaD7caPUROozgvwOG0L2SPFw1HBTWCscJvo0fsaE67NWW252jzel3PH0XogglJUYFx/jtHA==}
-    peerDependencies:
-      '@capacitor/core': '>=7.0.0'
 
   '@codemirror/autocomplete@6.19.0':
     resolution: {integrity: sha512-61Hfv3cF07XvUxNeC3E7jhG8XNi1Yom1G0lRC936oLnlF+jrbrv8rc/J98XlYzcsAoTVupfsf5fLej1aI8kyIg==}
@@ -6943,10 +6932,6 @@ snapshots:
       tslib: 2.8.1
 
   '@capacitor/ios@7.4.3(@capacitor/core@7.4.3)':
-    dependencies:
-      '@capacitor/core': 7.4.3
-
-  '@capacitor/local-notifications@7.0.3(@capacitor/core@7.4.3)':
     dependencies:
       '@capacitor/core': 7.4.3
 
