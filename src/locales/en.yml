@@ -425,14 +425,14 @@ notes:
     title: My Account
     email_label: Email
     first_note_created_at: First note created on
-    streak_title: You've been journaling for
+    streak_title: You have been journaling for
     streak_years_days: '{years} years {days} days'
     streak_days_only: '{days} days'
     go_to_site: Go to Website
     logout: Sign out
     logout_confirm:
       title: Sign out?
-      content: You'll need your password to sign in again.
+      content: You will need your password to sign in again.
       positive: Sign out
       negative: Cancel
     errors:
@@ -490,7 +490,7 @@ notes:
     silent_prefetch: Silent Prefetch
     trash: 'Open ''Trash'' from the main menu'
 
-    s1_title: 1) Quick Start
+    s1_title: 1 Quick Start
     s1_i1: Logged-in users go directly to the homepage; unauthenticated users will see the login component.
     s1_i2_before: The input box at the top of the homepage is for
     s1_i2_em: creating a new note
@@ -499,7 +499,7 @@ notes:
     s1_i3_after: characters.
     s1_i4: Drafts in the input box are automatically saved locally and won’t be lost on refresh; they are cleared once saved formally.
 
-    s2_title: 2) Create / Edit / Check Tasks
+    s2_title: 2 Create / Edit / Check Tasks
     s2_i1_label: Create
     s2_i1_tail: ': Type and save. Works offline.'
     s2_i2_label: Edit
@@ -508,7 +508,7 @@ notes:
     s2_i3_mid: and
     s2_i3_after: can be clicked to toggle completion.
 
-    s3_title: 3) Tags and Filters
+    s3_title: 3 Tags and Filters
     s3_i1_label: Insert Tag
     s3_i1_before: ': Select from the menu; if the input is empty, it auto-fills with something like'
     s3_i1_after: and focuses.
@@ -517,47 +517,47 @@ notes:
     s3_i4: 'Clear Filter: Click ''×'' on the banner’s right.'
     s3_i5: 'Tags support pinning, renaming, changing icons, and removal.'
 
-    s4_title: 4) Search
+    s4_title: 4 Search
     s4_i1_before: Click the upper-right
     s4_i1_after: 'icon to open the search bar, enter a keyword and press Enter.'
     s4_i2: 'The banner shows ''Search Results'' and match count. You can select notes after searching.'
     s4_i3: 'Clear search: click ''Cancel'' or clear the keyword.'
 
-    s5_title: 5) This Day in History
+    s5_title: 5 This Day in History
     s5_i1: 'Click the ''This Day in History'' banner to enter/exit the view, showing only notes from the same day in previous years.'
     s5_i2: 'When you exit a note in this view, reopening it will remain in ''This Day in History''.'
     s5_i3: 'The banner appears when not typing, searching, filtering, or selecting.'
 
-    s6_title: 6) Selection Mode (Batch)
+    s6_title: 6 Selection Mode (Batch)
     s6_i1: 'Choose ''Select Notes'' from the main menu; a batch toolbar will appear at the top.'
     s6_i2_before: Supports batch
     s6_i2_and: and
     s6_i2_after: '; click ''Done'' to exit.'
 
-    s7_title: 7) Pin / Copy / Delete / Set Date
+    s7_title: 7 Pin / Copy / Delete / Set Date
     s7_i1_tail: ': Toggle pinning in the list (works offline, syncs later).'
     s7_i2_tail: ': Copy note content to clipboard.'
     s7_i3_tail: ': Supports single or batch delete; tag/calendar/search caches will auto-refresh to stay consistent.'
     s7_i4_tail: ': Modify the note’s creation date.'
 
-    s8_title: 8) Calendar View
+    s8_title: 8 Calendar View
     s8_i1: 'Click ''Calendar'' in the main menu to view, create, edit, copy, pin, or delete notes by date.'
     s8_i2: You can write past or future notes in calendar view.
 
-    s9_title: 9) Export
+    s9_title: 9 Export
     s9_i1_tail: ': When viewing search or tag results, click ''Export'' in the banner.'
     s9_i2_tail: ': From ''Export All'' in the main menu, choose a date range and export as MD (max 1500 notes per batch).'
 
-    s10_title: 10) Login and Settings
+    s10_title: 10 Login and Settings
     s10_i1: 'Open ''Settings → My Account'' from the main menu to view account info and stats.'
     s10_i2: 'You can adjust font preferences and export notes in ''Settings''.'
 
-    s11_title: 11) Offline and Cache
+    s11_title: 11 Offline and Cache
     s11_i1_tail: ': Creating/editing/pinning/deleting works offline with immediate UI updates and local snapshots; syncs when back online.'
     s11_i2_tail: ': If a local cache/snapshot exists, it will be restored first.'
     s11_i3_tail: ': The homepage silently prefetches extra pages after load, once every 24 hours.'
 
-    s12_title: 12) Trash
+    s12_title: 12 Trash
     s12_i1_tail: . You can restore (instantly reinserts and sorts) or empty it (refreshes data and cache).
     s12_i2: '''Trash'' keeps data for 30 days, after which it’s permanently deleted.'
 

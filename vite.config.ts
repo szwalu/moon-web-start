@@ -1,3 +1,5 @@
+// vite.config.ts (最终修正版)
+
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
@@ -9,19 +11,16 @@ import Unocss from 'unocss/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
+
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: '/',
   plugins: [
-    // ✅ 修正：VueMacros 外包裹 Vue()
-    VueMacros({
-      plugins: {
-        vue: Vue(),
-      },
-    }),
+    Vue(),
     Unocss(),
     Pages(),
+    VueMacros(),
     AutoImport({
       imports: ['vue', 'vue-router', 'pinia', '@vueuse/core', 'vue/macros'],
       dts: 'src/auto-imports.d.ts',
@@ -45,12 +44,13 @@ export default defineConfig({
       fullInstall: true,
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
+    // ✅ PWA 插件（内联生成 manifest）
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',
-        start_url: '/auth',
+        start_url: '/auth', // ← 改这里
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
@@ -60,16 +60,13 @@ export default defineConfig({
           { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-        shortcuts: [{ name: '云笔记', short_name: 'Auth', url: '/auth' }],
+        shortcuts: [
+          { name: '云笔记', short_name: 'Auth', url: '/auth' },
+        ],
       },
       workbox: { navigateFallback: '/index.html' },
     }),
   ],
-  build: {
-    rollupOptions: {
-      external: ['@capacitor/local-notifications'],
-    },
-  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -79,5 +76,12 @@ export default defineConfig({
   server: {
     port: 1888,
     host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'http://localhost:1889',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api/, ''),
+      },
+    },
   },
 })

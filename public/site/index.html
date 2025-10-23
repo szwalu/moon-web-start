@@ -44,8 +44,10 @@
       });
     </script>
   </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<body>
+  <div id="app"></div>
+  <!-- ✅ 在 main.ts 之前先加载 env.js -->
+  <script src="/env.js"></script>
+  <script type="module" src="/src/main.ts"></script>
+</body>
 </html>

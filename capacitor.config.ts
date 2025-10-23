@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'com.moon.notes',
-  appName: 'Moon Notes',
+  appId: 'com.kunmingli.moonnotes',
+  appName: '云笔记',
   webDir: 'dist',
 }
 
