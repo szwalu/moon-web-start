@@ -1160,7 +1160,6 @@ export function useTagMenu(
       {
         'size': ICON_SIZE,
         'strokeWidth': ICON_STROKE,
-        'color': '#999',
         // 轻微下沉让视觉更居中
         'style': 'display:inline-block; transform: translateY(1px);',
         'aria-hidden': 'true',
