@@ -919,7 +919,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
 .month-header {
   height: 26px;
   padding: 0 8px;
-  margin: 0;                  /* 关键：不要用 margin 了 */
+  margin: 0;
   border-radius: 8px;
   font-weight: 600;
   font-size: 14px;
