@@ -2,6 +2,7 @@
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
+import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -1150,7 +1151,21 @@ export function useTagMenu(
     const icon = tagIconMap.value[tagFull] || '#'
     const textLabel = total > 0 ? `${labelName}（${total}）` : `${labelName}`
     const fullTitle = `${icon} ${textLabel}`
-    const arrow = expanded ? 'v' : '>'
+
+    // ✅ 用图标代替字符箭头
+    const ICON_SIZE = 18
+    const ICON_STROKE = 2.5
+    const arrowVNode = h(
+      expanded ? ChevronDown : ChevronRight,
+      {
+        'size': ICON_SIZE,
+        'strokeWidth': ICON_STROKE,
+        // 轻微下沉让视觉更居中
+        'style': 'display:inline-block; transform: translateY(1px);',
+        'aria-hidden': 'true',
+        'focusable': 'false',
+      },
+    )
 
     const MORE_DOT_SIZE = 20
     const placementRef = ref<SmartPlacement>('top-start')
@@ -1166,17 +1181,15 @@ export function useTagMenu(
       render: () =>
         h('div', {
           style: [
-            `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
-            'padding-right: 4px;',
-            'box-sizing: border-box;',
-            'width: 100%;',
-            'user-select: none;',
+          `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
+          'padding-right: 4px;',
+          'box-sizing: border-box;',
+          'width: 100%;',
+          'user-select: none;',
           ].join(''),
         }, [
-          h('div', {
-            style: 'display: table; width: 100%; table-layout: fixed;',
-          }, [
-            // Cell 1: Icon + Text (clickable, will truncate)
+          h('div', { style: 'display: table; width: 100%; table-layout: fixed;' }, [
+          // Cell 1: Icon + Text
             h('div', {
               style: 'display: table-cell; vertical-align: middle; overflow: hidden; white-space: nowrap; cursor: pointer;',
               title: fullTitle,
@@ -1187,11 +1200,14 @@ export function useTagMenu(
                 h('span', { style: 'margin-left: 6px;' }, textLabel),
               ]),
             ]),
-            // Cell 2: Arrow (clickable)
+            // Cell 2: Arrow (clickable) —— 用 Chevron 图标
             h('div', {
-              style: 'display: table-cell; width: 24px; vertical-align: middle; text-align: center; cursor: pointer;',
-              onClick: (e: MouseEvent) => { e.stopPropagation(); onToggle() },
-            }, arrow),
+              'style': 'display: table-cell; width: 24px; vertical-align: middle; text-align: center; cursor: pointer;',
+              'role': 'button',
+              'aria-label': expanded ? t('notes.collapse') || '收起' : t('notes.expand') || '展开',
+              'aria-expanded': String(expanded),
+              'onClick': (e: MouseEvent) => { e.stopPropagation(); onToggle() },
+            }, [arrowVNode]),
             // Cell 3: "More" button
             h('div', {
               style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;',
@@ -1219,17 +1235,21 @@ export function useTagMenu(
                     'background:none;border:none;cursor:pointer;',
                     'display:inline-flex;align-items:center;justify-content:center;',
                     'flex-shrink:0;',
-                    `width:${MORE_DOT_SIZE + 16}px !important;`,
-                    `height:${MORE_DOT_SIZE + 16}px !important;`,
-                    `font-size:${MORE_DOT_SIZE}px !important;`,
-                    `line-height:${MORE_DOT_SIZE + 16}px !important;`,
-                    'font-weight:600;border-radius:10px;opacity:0.95;',
+                  `width:${MORE_DOT_SIZE + 16}px !important;`,
+                  `height:${MORE_DOT_SIZE + 16}px !important;`,
+                  `font-size:${MORE_DOT_SIZE}px !important;`,
+                  `line-height:${MORE_DOT_SIZE + 16}px !important;`,
+                  'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
                   'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
-                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
-                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement
+                    if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    else {
+                      placementRef.value = computeSmartPlacementStrict(btnEl)
+                      nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) })
+                    }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
