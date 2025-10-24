@@ -341,7 +341,8 @@ notes:
   delete_second_confirm_hint: This action cannot be undone. Please confirm again.
   search_placeholder_enter: Press Enter to search...
   search_tags: Search Tags
-  favorites: Favorites
+  all_favorites: All tags
+  favorites: Favorites tags
   unpin_favorites: Remove from Favorites
   pin_favorites: Add to Favorites
   max_length_exceeded: 'Character limit exceeded (max {max})'

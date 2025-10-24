@@ -340,7 +340,8 @@ notes:
   delete_second_confirm_hint: 此操作无法撤销，请再次确认。
   search_placeholder_enter: 输入后按回车搜索...
   search_tags: 搜索标签
-  favorites: 常用
+  favorites: 常用标签
+  all_favorites: 全部标签
   unpin_favorites: 取消常用
   pin_favorites: 设为常用
   max_length_exceeded: '字数已超过上限（最多 {max} 字）'

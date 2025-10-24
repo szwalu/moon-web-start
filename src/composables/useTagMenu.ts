@@ -93,14 +93,6 @@ function splitTagPath(tag: string): string[] {
   return name.split('/').map(s => s.trim()).filter(Boolean)
 }
 
-/** 常用区的紧凑标签名：#一/二/三 -> "…/三"；单级仍显示本名 */
-function compactLabelForPinned(tag: string): string {
-  const parts = splitTagPath(tag) // ["一","二","三"]
-  if (parts.length >= 2)
-    return `…/${parts[parts.length - 1]}`
-  return parts[0] || tagKeyName(tag)
-}
-
 /** 多级标签树节点 */
 interface TagTreeNode {
   name: string
@@ -621,8 +613,8 @@ export function useTagMenu(
   const groupedTags = computed(() => {
     const groups: Record<string, string[]> = {}
     for (const tt of filteredTags.value) {
-      if (isPinned(tt))
-        continue
+      // if (isPinned(tt))
+      //  continue
       const name = tagKeyName(tt)
       const letter = /^[A-Za-z]/.test(name) ? name[0].toUpperCase() : '#'
       if (!groups[letter])
@@ -644,7 +636,7 @@ export function useTagMenu(
 
   /** 基于 filteredTags 的分层结果；不包含置顶标签 */
   const hierarchicalTags = computed(() => {
-    const list = filteredTags.value.filter(tt => !isPinned(tt))
+    const list = filteredTags.value
     return buildTagTree(list)
   })
 
@@ -988,7 +980,8 @@ export function useTagMenu(
         return tagKeyName(tag).toLowerCase().includes(q)
       })
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-      .map(tag => makeTagRow(tag, compactLabelForPinned(tag)))
+    // .map(tag => makeTagRow(tag, compactLabelForPinned(tag)))
+      .map(tag => makeTagRow(tag))
 
     const pinnedGroup = pinnedChildren.length > 0
       ? [
@@ -1030,7 +1023,7 @@ export function useTagMenu(
       ? [{
           key: 'separator',
           type: 'render' as const,
-          render: () => h('div', { style: `padding-left: ${FINAL_LEFT_PADDING}px; color: #ccc; font-weight: bold; padding-top: 4px; padding-bottom: 4px; user-select: none;` }, '#'),
+          render: () => h('div', { style: `padding-left: ${FINAL_LEFT_PADDING}px; color: #888; font-weight: bold; font-size: 12px; padding-top: 4px; padding-bottom: 4px; user-select: none;` }, t('notes.all_favorites')),
         }]
       : []
 
