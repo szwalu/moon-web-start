@@ -49,10 +49,14 @@ const collapseStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0p
 const expandedNote = ref<string | null>(null)
 const editingNoteId = ref<string | null>(null)
 const editingNoteContent = ref('')
-const isUpdating = ref(false)
-function draftKeyFor(id: string | number) {
-  return `note_draft_${id}`
-}
+// ==== 顶置编辑框：状态 ====
+const editingNoteTop = ref<any | null>(null) // 当前被编辑的笔记对象（顶置方式）
+const editTopContent = ref('') // 顶置编辑框的内容
+const isEditingTop = computed(() => !!editingNoteTop.value)
+const editTopDraftKey = computed(() =>
+  editingNoteTop.value ? `list_edit_${editingNoteTop.value.id}` : '',
+)
+const editTopEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
@@ -495,39 +499,47 @@ onUnmounted(() => {
   }
 })
 
-function startEdit(note: any) {
-  if (editingNoteId.value)
-    cancelEdit()
-
-  editingNoteId.value = note.id
-  editingNoteContent.value = note.content
-  expandedNote.value = null
-  nextTick(() => {
-    updateCollapsePos()
-    requestAnimationFrame(() => {
-      recomputeStickyState()
-    })
-  })
-}
-
-function cancelEdit() {
+// 进入“顶置编辑”模式
+async function handleEditTop(note: any) {
+  // 关闭卡片内编辑（如果在用原逻辑，可显式收起）
   editingNoteId.value = null
-  editingNoteContent.value = ''
-  requestAnimationFrame(() => {
-    recomputeStickyState()
-  })
+  expandedNote.value = null
+
+  editingNoteTop.value = note
+  editTopContent.value = note?.content || ''
+
+  // 滚到顶部，顶置编辑框更就手
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  if (scroller)
+    scroller.scrollTo({ top: 0, behavior: 'smooth' })
+
+  await nextTick()
+  editTopEditorRef.value?.focus()
 }
 
-async function handleUpdateNote() {
-  if (!editingNoteId.value)
+// 保存（顶置）
+function saveEditTop(content: string /* , _weather: string | null */) {
+  if (!editingNoteTop.value)
+    return
+  const id = editingNoteTop.value.id
+  const trimmed = (content || '').trim()
+  if (!trimmed)
     return
 
-  isUpdating.value = true
-  emit('updateNote', { id: editingNoteId.value, content: editingNoteContent.value }, (success: boolean) => {
-    isUpdating.value = false
-    if (success)
-      cancelEdit()
+  // 仍然沿用父组件的更新回调：{ id, content }, (success)=>{}
+  emit('updateNote', { id, content: trimmed }, (success: boolean) => {
+    if (!success)
+      return
+    // 成功后退出顶置编辑
+    editingNoteTop.value = null
+    editTopContent.value = ''
   })
+}
+
+// 取消（顶置）
+function cancelEditTop() {
+  editingNoteTop.value = null
+  editTopContent.value = ''
 }
 
 function _ensureCardVisible(noteId: string) {
@@ -752,6 +764,24 @@ defineExpose({ scrollToTop, focusAndEditNote })
       {{ t('notes.no_notes') }}
     </div>
 
+    <!-- 顶置编辑框（出现在列表顶部） -->
+    <div v-if="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
+      <NoteEditor
+        ref="editTopEditorRef"
+        v-model="editTopContent"
+        :is-editing="true"
+        :is-loading="false"
+        :max-note-length="maxNoteLength"
+        :placeholder="$t('notes.update_note')"
+        :all-tags="allTags"
+        enable-drafts
+        :draft-key="editTopDraftKey"
+        clear-draft-on-save
+        @save="saveEditTop"
+        @cancel="cancelEditTop"
+      />
+    </div>
+
     <DynamicScroller
       v-else
       ref="scrollerRef"
@@ -769,7 +799,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
           :active="active"
           :data-index="index"
           :size-dependencies="item.type === 'note'
-            ? [item.content, expandedNote === item.id, editingNoteId === item.id, item.updated_at, item.vid]
+            ? [item.content, expandedNote === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
           @resize="updateCollapsePos"
@@ -785,7 +815,7 @@ defineExpose({ scrollToTop, focusAndEditNote })
             </div>
           </div>
 
-          <!-- 笔记项：保持原有逻辑与结构 -->
+          <!-- 笔记项（已移除内联编辑器） -->
           <div
             v-else
             :ref="(el) => setNoteContainer(el, item.id)"
@@ -799,29 +829,16 @@ defineExpose({ scrollToTop, focusAndEditNote })
                 :class="{ selected: selectedNoteIds.includes(item.id) }"
               />
             </div>
+
             <div class="note-content-wrapper">
-              <NoteEditor
-                v-if="editingNoteId === item.id"
-                v-model="editingNoteContent"
-                :is-editing="true"
-                :is-loading="isUpdating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.update_note')"
-                :all-tags="allTags"
-                enable-drafts
-                :draft-key="draftKeyFor(item.id)"
-                clear-draft-on-save
-                @save="handleUpdateNote"
-                @cancel="cancelEdit"
-              />
+              <!-- 仅渲染卡片；编辑改为触发顶置编辑框 -->
               <NoteItem
-                v-else
                 :note="item"
                 :is-expanded="expandedNote === item.id"
                 :is-selection-mode-active="isSelectionModeActive"
                 :search-query="searchQuery"
                 @toggle-expand="toggleExpand"
-                @edit="startEdit"
+                @edit="handleEditTop(item)"
                 @copy="(content) => emit('copyNote', content)"
                 @pin="(note) => emit('pinNote', note)"
                 @delete="(id) => emit('deleteNote', id)"
