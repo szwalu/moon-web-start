@@ -57,6 +57,8 @@ const editTopDraftKey = computed(() =>
   editingNoteTop.value ? `list_edit_${editingNoteTop.value.id}` : '',
 )
 const editTopEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+// 退出顶置编辑后回到原卡片位置所需的锚点
+const topEditReturnAnchor = ref<{ noteId: string; scrollTop: number; topOffset: number } | null>(null)
 
 const noteContainers = ref<Record<string, HTMLElement>>({})
 
@@ -500,15 +502,42 @@ onUnmounted(() => {
 })
 
 // 进入“顶置编辑”模式
+// 进入“顶置编辑”模式
 async function handleEditTop(note: any) {
+  // —— 进入前：记录当前位置锚点（用于退出后恢复）——
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  const card = noteContainers.value?.[note.id] as HTMLElement | undefined
+  if (sc) {
+    if (card) {
+      const scRect = sc.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      topEditReturnAnchor.value = {
+        noteId: String(note.id),
+        scrollTop: sc.scrollTop,
+        topOffset: cardRect.top - scRect.top,
+      }
+    }
+    else {
+      topEditReturnAnchor.value = {
+        noteId: String(note.id),
+        scrollTop: sc.scrollTop,
+        topOffset: 0,
+      }
+    }
+  }
+  else {
+    topEditReturnAnchor.value = { noteId: String(note.id), scrollTop: 0, topOffset: 0 }
+  }
+
   // 关闭卡片内编辑（如果在用原逻辑，可显式收起）
   editingNoteId.value = null
   expandedNote.value = null
 
+  // 打开顶置编辑框
   editingNoteTop.value = note
   editTopContent.value = note?.content || ''
 
-  // 滚到顶部，顶置编辑框更就手
+  // 滚到顶部，顶置编辑框更就手（保留你原来行为）
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   if (scroller)
     scroller.scrollTo({ top: 0, behavior: 'smooth' })
@@ -518,7 +547,7 @@ async function handleEditTop(note: any) {
 }
 
 // 保存（顶置）
-function saveEditTop(content: string /* , _weather: string | null */) {
+async function saveEditTop(content: string /* , _weather: string | null */) {
   if (!editingNoteTop.value)
     return
   const id = editingNoteTop.value.id
@@ -526,20 +555,56 @@ function saveEditTop(content: string /* , _weather: string | null */) {
   if (!trimmed)
     return
 
-  // 仍然沿用父组件的更新回调：{ id, content }, (success)=>{}
-  emit('updateNote', { id, content: trimmed }, (success: boolean) => {
+  emit('updateNote', { id, content: trimmed }, async (success: boolean) => {
     if (!success)
       return
-    // 成功后退出顶置编辑
+    // 成功后关闭顶置编辑框
     editingNoteTop.value = null
     editTopContent.value = ''
+    // 恢复滚动位置
+    await restoreScrollAfterTopEdit()
   })
 }
 
 // 取消（顶置）
-function cancelEditTop() {
+async function cancelEditTop() {
   editingNoteTop.value = null
   editTopContent.value = ''
+  // 恢复滚动位置
+  await restoreScrollAfterTopEdit()
+}
+
+async function restoreScrollAfterTopEdit() {
+  const sc = scrollerRef.value?.$el as HTMLElement | undefined
+  const anchor = topEditReturnAnchor.value
+  if (!sc || !anchor)
+    return
+
+  // 等待虚拟列表/DOM稳定
+  await nextTick()
+  await new Promise(r => requestAnimationFrame(r))
+
+  // 优先几何对齐：让卡片回到“当时相对顶部的偏移”
+  const card = noteContainers.value?.[anchor.noteId] as HTMLElement | undefined
+  if (card) {
+    const scRect = sc.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const currentTopOffset = cardRect.top - scRect.top
+    const delta = currentTopOffset - anchor.topOffset
+    const target = sc.scrollTop + delta
+    const maxScroll = Math.max(0, sc.scrollHeight - sc.clientHeight)
+    sc.scrollTop = Math.min(Math.max(0, target), maxScroll)
+  }
+  else {
+    // 兜底：如果卡片不在可复用的 DOM 中，用索引定位
+    const idx = noteIdToMixedIndex.value[anchor.noteId]
+    if (idx != null)
+      scrollerRef.value?.scrollToItem(idx, { align: 'start' })
+    else
+      sc.scrollTop = anchor.scrollTop // 实在不行就回到原 scrollTop
+  }
+
+  topEditReturnAnchor.value = null
 }
 
 function _ensureCardVisible(noteId: string) {
