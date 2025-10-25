@@ -96,6 +96,32 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+// —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
+async function focusToEnd() {
+  await nextTick()
+  const el = textarea.value
+  if (!el)
+    return
+
+  el.focus()
+
+  const len = el.value.length
+  try {
+    el.setSelectionRange(len, len)
+  }
+  catch {}
+
+  try {
+    triggerResize?.()
+  }
+  catch {}
+
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  })
+}
+
 // ===== 简单自动草稿 =====
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
@@ -180,6 +206,18 @@ watch(() => contentModel.value, () => {
     saveDraft()
     draftTimer = null
   }, DRAFT_SAVE_DELAY) as unknown as number
+})
+
+// 进入编辑态：把光标移到末端并聚焦
+watch(() => props.isEditing, (v) => {
+  if (v)
+    focusToEnd()
+})
+
+// 如果组件一挂载就处于编辑态，也执行一次
+onMounted(() => {
+  if (props.isEditing)
+    focusToEnd()
 })
 
 // 组件卸载：收尾
@@ -1232,7 +1270,7 @@ function insertImageLink() {
 
 defineExpose({
   reset: triggerResize,
-  focus: () => textarea.value?.focus(),
+  focus: () => { focusToEnd() },
 })
 
 let focusBoostTimer: number | null = null
