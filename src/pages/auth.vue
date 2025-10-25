@@ -103,6 +103,8 @@ const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
 
+const showTopInput = ref(true)
+
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -2274,6 +2276,7 @@ function onCalendarUpdated(updated: any) {
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
           @scrolled="onListScroll"
+          @hide-top-input="showTopInput = false"
         />
       </div>
 

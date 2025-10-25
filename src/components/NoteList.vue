@@ -29,6 +29,7 @@ const emit = defineEmits([
   'toggleSelect',
   'dateUpdated',
   'scrolled',
+  'hideTopInput',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -504,6 +505,7 @@ onUnmounted(() => {
 const editSessionKey = ref(0)
 
 async function handleEditTop(note: any) {
+  emit('hideTopInput')
   editingNoteId.value = null
   expandedNote.value = null
 
@@ -787,8 +789,8 @@ async function restoreScrollIfNeeded() {
     <div v-show="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
       <NoteEditor
         ref="editTopEditorRef"
-        v-model="editTopContent"
         :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}`"
+        v-model="editTopContent"
         :is-editing="true"
         :is-loading="false"
         :max-note-length="maxNoteLength"
