@@ -29,7 +29,7 @@ const emit = defineEmits([
   'toggleSelect',
   'dateUpdated',
   'scrolled',
-  'hideTopInput',
+  'editingStateChange',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -505,7 +505,7 @@ onUnmounted(() => {
 const editSessionKey = ref(0)
 
 async function handleEditTop(note: any) {
-  emit('hideTopInput')
+  emit('editingStateChange', true)
   editingNoteId.value = null
   expandedNote.value = null
 
@@ -538,6 +538,7 @@ function saveEditTop(content: string /* , _weather: string | null */) {
       return
     editingNoteTop.value = null
     editTopContent.value = ''
+    emit('editingStateChange', false)
     await restoreScrollIfNeeded()
   })
 }
@@ -547,6 +548,7 @@ async function cancelEditTop() {
   editingNoteTop.value = null
   editTopContent.value = ''
   await restoreScrollIfNeeded()
+  emit('editingStateChange', false)
 }
 
 function _ensureCardVisible(noteId: string) {

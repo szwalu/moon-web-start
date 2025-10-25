@@ -103,7 +103,7 @@ const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
 
-const showTopInput = ref(true)
+const isTopEditing = ref(false)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -2228,7 +2228,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 主页输入框：选择模式时隐藏 -->
       <div
-        v-show="!isSelectionModeActive"
+        v-show="!isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
         class="new-note-editor-container"
         :class="{ collapsed: headerCollapsed }"
@@ -2276,7 +2276,7 @@ function onCalendarUpdated(updated: any) {
           @toggle-select="handleToggleSelect"
           @date-updated="fetchNotes"
           @scrolled="onListScroll"
-          @hide-top-input="showTopInput = false"
+          @editing-state-change="isTopEditing = $event"
         />
       </div>
 
