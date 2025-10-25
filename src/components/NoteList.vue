@@ -500,24 +500,23 @@ onUnmounted(() => {
   }
 })
 
-// 进入“顶置编辑”模式
+// 顶置编辑：增加一个会话 key，强制每次打开都 remount
+const editSessionKey = ref(0)
+
 async function handleEditTop(note: any) {
-  // 关闭卡片内编辑（如果在用原逻辑，可显式收起）
   editingNoteId.value = null
   expandedNote.value = null
 
   editingNoteTop.value = note
   editTopContent.value = note?.content || ''
 
-  // 滚到顶部，顶置编辑框更就手
+  // 🔑 每次进入编辑都自增，触发 :key 变化 → 组件 remount → 重置 isDirty 基线
+  editSessionKey.value++
+
+  // （可选）你原来的滚到顶部、聚焦等逻辑……
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   if (scroller)
-    editReturnScrollTop.value = scroller.scrollTop
-
-  // 若仍想把编辑框放到最顶方便输入，保留这一行即可
-  if (scroller)
     scroller.scrollTo({ top: 0, behavior: 'smooth' })
-
   await nextTick()
   editTopEditorRef.value?.focus()
 }
@@ -789,6 +788,7 @@ async function restoreScrollIfNeeded() {
       <NoteEditor
         ref="editTopEditorRef"
         v-model="editTopContent"
+        :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}`"
         :is-editing="true"
         :is-loading="false"
         :max-note-length="maxNoteLength"
@@ -796,7 +796,10 @@ async function restoreScrollIfNeeded() {
         :all-tags="allTags"
         enable-drafts
         :draft-key="editTopDraftKey"
+
         clear-draft-on-save
+        :original-content="editingNoteTop?.content || ''"
+
         @save="saveEditTop"
         @cancel="cancelEditTop"
       />
