@@ -238,6 +238,52 @@ const mainMenuOptions = computed(() => [
       ]),
   },
   {
+    key: 'subscribePush',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+      // 用现有图标库里的“铃铛”或你喜欢的图标
+        h(CheckSquare, { size: 18 }), // 你也可以换成 Bell 图标
+        h('span', null, '订阅通知'),
+      ]),
+  },
+  {
+    key: 'localNotifyTest',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Type, { size: 18 }),
+        h('span', null, '本机测试通知'),
+      ]),
+  },
+  {
+    key: 'edgePushTest',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Type, { size: 18 }),
+        h('span', null, '云端测试推送（push-test）'),
+      ]),
+  },
+  {
+    key: 'edgeCronTest',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Type, { size: 18 }),
+        h('span', null, '云端定时模拟（push-cron）'),
+      ]),
+  },
+  {
+    key: 'pushTime',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+        h(Type, { size: 18 }),
+        h('span', null, '提醒时间（每日）'),
+      ]),
+  },
+  {
     key: 'help',
     show: settingsExpanded.value,
     label: () =>
@@ -1915,6 +1961,44 @@ function handleMainMenuSelect(rawKey: string) {
     case 'trash':
       showTrashModal.value = true
       break
+    case 'subscribePush':
+      subscribePush()
+      break
+    case 'localNotifyTest':
+      triggerLocalTestNotification()
+      break
+    case 'edgePushTest':
+      triggerEdgePushTest()
+      break
+    case 'edgeCronTest':
+      triggerEdgeCronTest()
+      break
+    case 'pushTime':
+      (async () => {
+        // 简易输入：HH:MM（24 小时制）
+        // eslint-disable-next-line no-alert
+        const input = window.prompt('设置提醒时间（分钟）', defaultValue ?? '')
+        if (!input)
+          return
+        const m = input.match(/^(\d{1,2}):(\d{2})$/)
+        if (!m) {
+          messageHook.error('格式错误，应为 HH:MM（如 09:00 或 21:30）')
+          return
+        }
+        const hour = Number(m[1])
+        const minute = Number(m[2])
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+          messageHook.error('时间不合法')
+          return
+        }
+        const { error } = await supabase.rpc('set_push_time', { p_hour: hour, p_minute: minute })
+        if (error) {
+          messageHook.error(`保存失败：${error.message}`)
+          return
+        }
+        messageHook.success(`已设置为每日 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`)
+      })()
+      break
     case 'help':
       showHelpDialog.value = true
       break
@@ -2094,6 +2178,190 @@ function onCalendarUpdated(updated: any) {
     anniversaryNotes.value = anniversaryNotes.value.map(n =>
       n.id === updated.id ? { ...n, ...updated } : n,
     )
+  }
+}
+
+async function subscribePush() {
+  // —— 0) 基础能力检查 —— //
+  const supported
+    = typeof window !== 'undefined'
+    && 'Notification' in window
+    && 'serviceWorker' in navigator
+    && 'PushManager' in window
+
+  if (!supported) {
+    messageHook.error('当前环境不支持 Web Push（需要 SW / Notification / Push）')
+    return
+  }
+
+  // —— 1) 读取 VAPID 公钥 —— //
+  const vapid = import.meta.env?.VITE_VAPID_PUBLIC_KEY as string | undefined
+  if (!vapid || typeof vapid !== 'string') {
+    messageHook.error('缺少 VAPID 公钥（请在 .env 设置 VITE_VAPID_PUBLIC_KEY）')
+    return
+  }
+
+  // —— 2) 权限处理（必须基于用户点击触发）—— //
+  if (Notification.permission === 'denied') {
+    messageHook.error('系统已拒绝通知权限，请在系统设置中为「云笔记」开启通知')
+    return
+  }
+  if (Notification.permission === 'default') {
+    const perm = await Notification.requestPermission().catch(() => 'denied')
+    if (perm !== 'granted') {
+      messageHook.error('用户未授予通知权限')
+      return
+    }
+  }
+
+  // —— 3) Service Worker 就绪 —— //
+  let reg: ServiceWorkerRegistration
+  try {
+    reg = await navigator.serviceWorker.ready
+  }
+  catch {
+    messageHook.error('Service Worker 未就绪，请稍后重试')
+    return
+  }
+
+  // —— 4) 获取或创建浏览器订阅 —— //
+  let sub = await reg.pushManager.getSubscription()
+  try {
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapid),
+      })
+    }
+  }
+  catch {
+    messageHook.error('订阅失败：可能是 VAPID 公钥无效或被系统拦截')
+    return
+  }
+
+  // —— 5) 解析订阅字段（endpoint / keys）—— //
+  const endpoint = sub.endpoint
+  // @ts-expect-error – runtime branch allows null; upstream typing is stricter
+  const p256dhBuf: ArrayBuffer = sub.getKey('p256dh')
+  // @ts-expect-error - Safari 下 Notification.requestPermission 类型定义缺失
+  const authBuf: ArrayBuffer = sub.getKey('auth')
+
+  if (!endpoint || !p256dhBuf || !authBuf) {
+    messageHook.error('订阅对象不完整，无法保存')
+    return
+  }
+
+  const p256dh = ab2base64url(p256dhBuf)
+  const auth = ab2base64url(authBuf)
+
+  // —— 6) 采集用户时区 & 固定提醒时间（09:00）—— //
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const target_hour = 9
+  const target_minute = 0
+
+  // —— 7) 写入 Supabase（调用 RPC，而不是直接 insert）—— //
+  try {
+    const { error } = await supabase.rpc('upsert_web_push_subscription', {
+      p_endpoint: endpoint,
+      p_p256dh: p256dh,
+      p_auth: auth,
+      p_timezone: timezone,
+      p_target_hour: target_hour,
+      p_target_minute: target_minute,
+    })
+    if (error)
+      throw error
+  }
+  catch (e: any) {
+    messageHook.error(`保存订阅失败：${e?.message || '未知错误'}`)
+    return
+  }
+
+  // —— 8) 成功提示 —— //
+  messageHook.success('订阅成功！将于每天 09:00 推送「记得写笔记哟」')
+}
+
+// 把 VAPID 公钥（base64url 字符串）转 Uint8Array
+function urlBase64ToUint8Array(base64String: string) {
+  const pad = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + pad).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i)
+  return out
+}
+
+// 把 ArrayBuffer → base64url（用于 p256dh / auth 存库）
+function ab2base64url(buf: ArrayBuffer) {
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  const b64 = btoa(binary)
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+async function triggerLocalTestNotification() {
+  try {
+    if (Notification.permission === 'default') {
+      const p = await Notification.requestPermission()
+      if (p !== 'granted') {
+        messageHook.error('未授予通知权限')
+        return
+      }
+    }
+    const reg = await navigator.serviceWorker.ready
+    await reg.showNotification('测试通知 · 本机', {
+      body: '这条是本地触发，用来验证 SW 弹窗与点击跳转',
+      tag: 'daily-note',
+      renotify: true,
+      icon: '/icons/android-chrome-192x192.png',
+      badge: '/icons/badge-72.png',
+      data: { via: 'local-test' },
+    })
+    messageHook.success('已触发：请查看系统通知并点击验证跳转')
+  }
+  catch (e: any) {
+    messageHook.error(`触发失败：${e?.message || '未知错误'}`)
+  }
+}
+
+async function triggerEdgePushTest() {
+  try {
+    // 确认当前用户已登录
+    const { data: sess } = await supabase.auth.getSession()
+    if (!sess?.session?.access_token) {
+      messageHook.error('未登录，无法调用云端函数')
+      return
+    }
+
+    // 直接调用已经部署到 Supabase 云端的 push-test 函数
+    const { data, error } = await supabase.functions.invoke('push-test', {
+      method: 'POST',
+    })
+    if (error)
+      throw error
+
+    messageHook.success(`云端已发送：${data?.sent ?? 0} 条`)
+  }
+  catch (e: any) {
+    messageHook.error(`云端测试失败：${e?.message || '未知错误'}`)
+  }
+}
+
+async function triggerEdgeCronTest() {
+  try {
+    const { data: sess } = await supabase.auth.getSession()
+    if (!sess?.session?.access_token) {
+      messageHook.error('未登录，无法调用云端函数')
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('push-cron', { method: 'POST' })
+    if (error)
+      throw error
+    messageHook.success(`云端发送（push-cron）：已 ${data?.sent ?? 0} 条`)
+  }
+  catch (e: any) {
+    messageHook.error(`云端 cron 测试失败：${e?.message || '未知错误'}`)
   }
 }
 </script>

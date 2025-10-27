@@ -44,13 +44,32 @@ export default defineConfig({
       fullInstall: true,
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
-    // ✅ PWA 插件（内联生成 manifest）
+
+    // ✅ PWA 插件（injectManifest 使用我们自定义的 src/sw.ts）
     VitePWA({
+      // 关键：改为 injectManifest，这样 src/sw.ts 会被打包为最终的 SW
+      strategies: 'injectManifest',
+      injectManifest: {
+        swSrc: 'src/sw.ts',
+        swDest: 'sw.js',
+      },
+
+      // 自动注册（保持自动更新体验）
+      injectRegister: 'auto',
       registerType: 'autoUpdate',
+
+      // 开发环境启用自定义 SW（不是 dev-sw.js）
+      devOptions: {
+        enabled: true,
+        type: 'module',
+        navigateFallback: 'index.html',
+      },
+
+      // 你的 manifest 原样保留
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',
-        start_url: '/auth', // ← 改这里
+        start_url: '/auth',
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
@@ -64,7 +83,8 @@ export default defineConfig({
           { name: '云笔记', short_name: 'Auth', url: '/auth' },
         ],
       },
-      workbox: { navigateFallback: '/index.html' },
+
+      // ⚠️ 注：workbox 配置仅对 generateSW 生效；改为 injectManifest 后由 sw.ts 自主控制离线策略。
     }),
   ],
   resolve: {
