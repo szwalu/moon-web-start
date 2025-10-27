@@ -105,6 +105,30 @@ const settingsExpanded = ref(false)
 
 const isTopEditing = ref(false)
 
+// 作为控件当前值：用 "时间戳(毫秒)" 或 null（Naive UI NTimePicker 默认就是 number 毫秒）
+const remindTimeMs = ref<number | null>(null)
+
+// 给 TimePicker 一个兜底默认值（例如 09:00）
+const defaultValue = computed<number>(() => {
+  const d = new Date()
+  d.setHours(9, 0, 0, 0)
+  return d.getTime()
+})
+
+// 把毫秒格式化成 "HH:mm" 文本（避免出现 [object Object]）
+function formatHHmm(ms: number): string {
+  const d = new Date(ms)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+// 给界面用的显示文本（例如菜单右侧的时间）
+const remindTimeLabel = computed<string>(() => {
+  const ms = remindTimeMs.value ?? defaultValue.value
+  return formatHHmm(ms)
+})
+
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -281,6 +305,8 @@ const mainMenuOptions = computed(() => [
       h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
         h(Type, { size: 18 }),
         h('span', null, '提醒时间（每日）'),
+        // ➜ 右侧显示当前时间（例如 09:00）
+        h('span', { style: 'margin-left:auto;opacity:.7' }, remindTimeLabel.value),
       ]),
   },
   {
@@ -1976,21 +2002,31 @@ function handleMainMenuSelect(rawKey: string) {
     case 'pushTime':
       (async () => {
         // 简易输入：HH:MM（24 小时制）
+        // ✅ 默认值使用可读字符串（例如 09:00），避免 [object Object]
         // eslint-disable-next-line no-alert
-        const input = window.prompt('设置提醒时间（分钟）', defaultValue ?? '')
+        const input = window.prompt('设置提醒时间（24小时制，HH:MM）', remindTimeLabel.value)
         if (!input)
           return
-        const m = input.match(/^(\d{1,2}):(\d{2})$/)
+
+        const m = input.trim().match(/^(\d{1,2}):(\d{2})$/)
         if (!m) {
           messageHook.error('格式错误，应为 HH:MM（如 09:00 或 21:30）')
           return
         }
+
         const hour = Number(m[1])
         const minute = Number(m[2])
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
           messageHook.error('时间不合法')
           return
         }
+
+        // 本地状态也同步更新，立刻反映到菜单右侧展示
+        const d = new Date()
+        d.setHours(hour, minute, 0, 0)
+        remindTimeMs.value = d.getTime()
+
+        // 保存到后端（RPC）
         const { error } = await supabase.rpc('set_push_time', { p_hour: hour, p_minute: minute })
         if (error) {
           messageHook.error(`保存失败：${error.message}`)
