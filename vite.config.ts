@@ -1,3 +1,4 @@
+// vite.config.ts（修正版）
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
@@ -42,26 +43,28 @@ export default defineConfig({
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
 
-    // ✅ 仅使用 injectManifest，明确 sw 源文件为 src/sw.ts
+    // ✅ 用 injectManifest + 指明 srcDir/filename（不要再让它找 public/sw.js）
     VitePWA({
       strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      // 你没用 workbox 预缓存时，取消注入点，避免编译报错
       injectManifest: {
-        // 用绝对路径最稳，避免 CI 环境解析偏差
-        swSrc: path.resolve(__dirname, 'src/sw.ts'),
-        // 最终产物名（输出到 dist/）
-        swDest: 'sw.js',
+        injectionPoint: undefined,
       },
 
-      // 自动注册 + dev 用你的 sw.ts（非 dev-sw）
+      // 自动注册并自动更新
       injectRegister: 'auto',
       registerType: 'autoUpdate',
+
+      // 开发环境启用自定义 SW（非 dev-sw.js）
       devOptions: {
         enabled: true,
         type: 'module',
         navigateFallback: 'index.html',
       },
 
-      // 你的 manifest
+      // manifest 保持你的配置
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',
