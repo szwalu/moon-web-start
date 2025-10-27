@@ -1,5 +1,3 @@
-// vite.config.ts (最终修正版)
-
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
@@ -11,7 +9,6 @@ import Unocss from 'unocss/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
-
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
@@ -45,27 +42,26 @@ export default defineConfig({
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
 
-    // ✅ PWA 插件（injectManifest 使用我们自定义的 src/sw.ts）
+    // ✅ 仅使用 injectManifest，明确 sw 源文件为 src/sw.ts
     VitePWA({
-      // 关键：改为 injectManifest，这样 src/sw.ts 会被打包为最终的 SW
       strategies: 'injectManifest',
       injectManifest: {
-        swSrc: 'src/sw.ts',
+        // 用绝对路径最稳，避免 CI 环境解析偏差
+        swSrc: path.resolve(__dirname, 'src/sw.ts'),
+        // 最终产物名（输出到 dist/）
         swDest: 'sw.js',
       },
 
-      // 自动注册（保持自动更新体验）
+      // 自动注册 + dev 用你的 sw.ts（非 dev-sw）
       injectRegister: 'auto',
       registerType: 'autoUpdate',
-
-      // 开发环境启用自定义 SW（不是 dev-sw.js）
       devOptions: {
         enabled: true,
         type: 'module',
         navigateFallback: 'index.html',
       },
 
-      // 你的 manifest 原样保留
+      // 你的 manifest
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',
@@ -83,8 +79,6 @@ export default defineConfig({
           { name: '云笔记', short_name: 'Auth', url: '/auth' },
         ],
       },
-
-      // ⚠️ 注：workbox 配置仅对 generateSW 生效；改为 injectManifest 后由 sw.ts 自主控制离线策略。
     }),
   ],
   resolve: {
@@ -100,7 +94,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:1889',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api/, ''),
+        rewrite: p => p.replace(/^\/api/, ''),
       },
     },
   },
