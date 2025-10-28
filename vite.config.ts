@@ -1,4 +1,5 @@
-// vite.config.ts（修正版）
+// vite.config.ts (最终修正版)
+
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import Vue from '@vitejs/plugin-vue'
@@ -10,6 +11,7 @@ import Unocss from 'unocss/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
+
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
@@ -42,33 +44,13 @@ export default defineConfig({
       fullInstall: true,
       include: [path.resolve(__dirname, 'src/locales/**')],
     }),
-
-    // ✅ 用 injectManifest + 指明 srcDir/filename（不要再让它找 public/sw.js）
+    // ✅ PWA 插件（内联生成 manifest）
     VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.ts',
-      // 你没用 workbox 预缓存时，取消注入点，避免编译报错
-      injectManifest: {
-        injectionPoint: undefined,
-      },
-
-      // 自动注册并自动更新
-      injectRegister: 'auto',
       registerType: 'autoUpdate',
-
-      // 开发环境启用自定义 SW（非 dev-sw.js）
-      devOptions: {
-        enabled: true,
-        type: 'module',
-        navigateFallback: 'index.html',
-      },
-
-      // manifest 保持你的配置
       manifest: {
         name: '我abc网址导航',
         short_name: '云笔记',
-        start_url: '/auth',
+        start_url: '/auth', // ← 改这里
         scope: '/',
         display: 'standalone',
         background_color: '#111111',
@@ -82,6 +64,7 @@ export default defineConfig({
           { name: '云笔记', short_name: 'Auth', url: '/auth' },
         ],
       },
+      workbox: { navigateFallback: '/index.html' },
     }),
   ],
   resolve: {
@@ -97,7 +80,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:1889',
         changeOrigin: true,
-        rewrite: p => p.replace(/^\/api/, ''),
+        rewrite: path => path.replace(/^\/api/, ''),
       },
     },
   },

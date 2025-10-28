@@ -105,30 +105,6 @@ const settingsExpanded = ref(false)
 
 const isTopEditing = ref(false)
 
-// 作为控件当前值：用 "时间戳(毫秒)" 或 null（Naive UI NTimePicker 默认就是 number 毫秒）
-const remindTimeMs = ref<number | null>(null)
-
-// 给 TimePicker 一个兜底默认值（例如 09:00）
-const defaultValue = computed<number>(() => {
-  const d = new Date()
-  d.setHours(9, 0, 0, 0)
-  return d.getTime()
-})
-
-// 把毫秒格式化成 "HH:mm" 文本（避免出现 [object Object]）
-function formatHHmm(ms: number): string {
-  const d = new Date(ms)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${hh}:${mm}`
-}
-
-// 给界面用的显示文本（例如菜单右侧的时间）
-const remindTimeLabel = computed<string>(() => {
-  const ms = remindTimeMs.value ?? defaultValue.value
-  return formatHHmm(ms)
-})
-
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -197,37 +173,7 @@ watch(activeTagFilter, (newValue) => {
   else
     sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
 })
-// —— 开发期日志（生产环境静默）。仅此处豁免 no-console ——
-// eslint-disable-next-line no-console -- dev logging helper (silenced in production)
-function devLog(...a: any[]) {
-  if (import.meta.env.DEV)
-    devLog(...a)
-}
-// eslint-disable-next-line no-console -- dev logging helper (silenced in production)
-function devWarn(...a: any[]) {
-  if (import.meta.env.DEV)
-    devWarn(...a)
-}
-// eslint-disable-next-line no-console -- dev logging helper (silenced in production)
-function devError(...a: any[]) {
-  if (import.meta.env.DEV)
-    devError(...a)
-}
 
-function isIOSLike(): boolean {
-  const ua = navigator.userAgent || ''
-  // iPad/iPhone/iPod 或 带触控的 Mac（iPad 模式）
-  // 一些桌面 Safari 会暴露 MacIntel + 触点>1
-  // @ts-expect-error ua/platform checks vary across browsers; safe runtime guard
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
-}
-
-function isStandalonePWA(): boolean {
-  const inStandaloneDM = window.matchMedia?.('(display-mode: standalone)')?.matches ?? false
-  // @ts-expect-error safari-only: navigator.standalone exists when added to Home Screen (iOS)
-  const iosStandalone = !!(navigator as any).standalone
-  return inStandaloneDM || iosStandalone
-}
 const mainMenuOptions = computed(() => [
   // 顶层：日历
   { label: t('auth.Calendar'), key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
@@ -289,54 +235,6 @@ const mainMenuOptions = computed(() => [
       h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
         h(User, { size: 18 }),
         h('span', null, t('auth.account_title')),
-      ]),
-  },
-  {
-    key: 'subscribePush',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
-      // 用现有图标库里的“铃铛”或你喜欢的图标
-        h(CheckSquare, { size: 18 }), // 你也可以换成 Bell 图标
-        h('span', null, '订阅通知'),
-      ]),
-  },
-  {
-    key: 'localNotifyTest',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
-        h(Type, { size: 18 }),
-        h('span', null, '本机测试通知'),
-      ]),
-  },
-  {
-    key: 'edgePushTest',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
-        h(Type, { size: 18 }),
-        h('span', null, '云端测试推送（push-test）'),
-      ]),
-  },
-  {
-    key: 'edgeCronTest',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
-        h(Type, { size: 18 }),
-        h('span', null, '云端定时模拟（push-cron）'),
-      ]),
-  },
-  {
-    key: 'pushTime',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
-        h(Type, { size: 18 }),
-        h('span', null, '提醒时间（每日）'),
-        // ➜ 右侧显示当前时间（例如 09:00）
-        h('span', { style: 'margin-left:auto;opacity:.7' }, remindTimeLabel.value),
       ]),
   },
   {
@@ -404,7 +302,7 @@ onMounted(() => {
         notes.value = JSON.parse(cachedData)
     }
     catch (e) {
-      devError('Failed to load notes from cache', e)
+      console.error('Failed to load notes from cache', e)
       localStorage.removeItem(CACHE_KEYS.HOME)
     }
   }
@@ -459,7 +357,7 @@ onMounted(() => {
               notes.value = JSON.parse(savedSearchResults)
             }
             catch (e) {
-              devError('Failed to parse cached search results:', e)
+              console.error('Failed to parse cached search results:', e)
               sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
             }
             isLoadingNotes.value = false // 确保没有加载动画
@@ -743,7 +641,7 @@ async function saveNote(
       await saveNotesSnapshot(notes.value)
     }
     catch (e) {
-      devWarn('[offline] snapshot failed (update)', e)
+      console.warn('[offline] snapshot failed (update)', e)
     }
 
     // 4) 入队 outbox 的 update 操作（最小补丁）
@@ -751,7 +649,7 @@ async function saveNote(
       await queuePendingUpdate(noteIdToUpdate, { content: trimmed, updated_at: nowIso, user_id: user.value!.id })
     }
     catch (e) {
-      devWarn('[offline] queuePendingUpdate failed', e)
+      console.warn('[offline] queuePendingUpdate failed', e)
     }
 
     // 5) 友好提示，并返回更新后的对象（供调用方使用）
@@ -789,7 +687,7 @@ async function saveNote(
       await saveNotesSnapshot(notes.value)
     }
     catch (e) {
-      devWarn('[offline] snapshot failed', e)
+      console.warn('[offline] snapshot failed', e)
     }
 
     // 4) 入队 outbox，等上线后 flushOutbox 推送到服务端
@@ -797,7 +695,7 @@ async function saveNote(
       await queuePendingNote(localNote)
     }
     catch (e) {
-      devWarn('[offline] queuePendingNote failed', e)
+      console.warn('[offline] queuePendingNote failed', e)
     }
 
     // 5) 友好提示
@@ -1223,7 +1121,7 @@ function addNoteToList(newNote: any) {
       // 如果 homeCache 不存在，我们就不操作，避免写入不完整的数据
     }
     catch (e) {
-      devError('未能安全地更新主笔记缓存:', e)
+      console.error('未能安全地更新主笔记缓存:', e)
     }
   }
   else {
@@ -1264,7 +1162,7 @@ async function handlePinToggle(note: any) {
       return
     }
     catch (e: any) {
-      devWarn('[offline] pin failed:', e)
+      console.warn('[offline] pin failed:', e)
       // 显示通用的操作失败提示
       messageHook.error(`${t('notes.operation_error')}: ${e?.message || t('notes.try_again')}`)
       return
@@ -1326,7 +1224,7 @@ function updateNoteInList(updatedNote: any) {
       }
     }
     catch (e) {
-      devError('未能安全地更新主笔记缓存:', e)
+      console.error('未能安全地更新主笔记缓存:', e)
     }
   }
   else {
@@ -1371,7 +1269,7 @@ async function fetchNotes() {
         await saveNotesSnapshot(notes.value)
       }
       catch (e) {
-        devWarn('[offline] saveNotesSnapshot failed:', e)
+        console.warn('[offline] saveNotesSnapshot failed:', e)
       }
     }
 
@@ -1676,7 +1574,7 @@ async function applyLocalDeletion(idsToDelete: string[]) {
     await saveNotesSnapshot(notes.value)
   }
   catch (e) {
-    devWarn('[offline] saveNotesSnapshot failed after deletion:', e)
+    console.warn('[offline] saveNotesSnapshot failed after deletion:', e)
   }
 }
 
@@ -1907,7 +1805,7 @@ async function handleDeleteSelected() {
               await queuePendingDelete(id)
             }
             catch (e) {
-              devWarn('[offline] queuePendingDelete failed:', id, e)
+              console.warn('[offline] queuePendingDelete failed:', id, e)
             }
           }
 
@@ -2016,54 +1914,6 @@ function handleMainMenuSelect(rawKey: string) {
       break
     case 'trash':
       showTrashModal.value = true
-      break
-    case 'subscribePush':
-      subscribePush()
-      break
-    case 'localNotifyTest':
-      triggerLocalTestNotification()
-      break
-    case 'edgePushTest':
-      triggerEdgePushTest()
-      break
-    case 'edgeCronTest':
-      triggerEdgeCronTest()
-      break
-    case 'pushTime':
-      (async () => {
-        // 简易输入：HH:MM（24 小时制）
-        // ✅ 默认值使用可读字符串（例如 09:00），避免 [object Object]
-        // eslint-disable-next-line no-alert
-        const input = window.prompt('设置提醒时间（24小时制，HH:MM）', remindTimeLabel.value)
-        if (!input)
-          return
-
-        const m = input.trim().match(/^(\d{1,2}):(\d{2})$/)
-        if (!m) {
-          messageHook.error('格式错误，应为 HH:MM（如 09:00 或 21:30）')
-          return
-        }
-
-        const hour = Number(m[1])
-        const minute = Number(m[2])
-        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-          messageHook.error('时间不合法')
-          return
-        }
-
-        // 本地状态也同步更新，立刻反映到菜单右侧展示
-        const d = new Date()
-        d.setHours(hour, minute, 0, 0)
-        remindTimeMs.value = d.getTime()
-
-        // 保存到后端（RPC）
-        const { error } = await supabase.rpc('set_push_time', { p_hour: hour, p_minute: minute })
-        if (error) {
-          messageHook.error(`保存失败：${error.message}`)
-          return
-        }
-        messageHook.success(`已设置为每日 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`)
-      })()
       break
     case 'help':
       showHelpDialog.value = true
@@ -2244,215 +2094,6 @@ function onCalendarUpdated(updated: any) {
     anniversaryNotes.value = anniversaryNotes.value.map(n =>
       n.id === updated.id ? { ...n, ...updated } : n,
     )
-  }
-}
-
-async function subscribePush() {
-  devLog('[push] start, permission=', Notification.permission)
-
-  // —— A) iOS（需安装为 PWA 才支持 Web Push）——
-  if (isIOSLike() && !isStandalonePWA()) {
-    messageHook.warning('iOS 需“添加到主屏幕”后才支持推送，请先安装为 PWA。')
-    devWarn('[push] blocked: iOS Safari tab does not support Web Push — install PWA first.')
-    return
-  }
-
-  // —— B) 能力检查 —— //
-  const supported
-    = typeof window !== 'undefined'
-    && 'Notification' in window
-    && 'serviceWorker' in navigator
-    && 'PushManager' in window
-
-  if (!supported) {
-    messageHook.error('当前环境不支持 Web Push（需要 SW / Notification / Push）')
-    devError('[push] capability missing')
-    return
-  }
-
-  // —— C) VAPID 公钥 —— //
-  const vapid = import.meta.env?.VITE_VAPID_PUBLIC_KEY as string | undefined
-  if (!vapid || typeof vapid !== 'string') {
-    messageHook.error('缺少 VAPID 公钥（请在 .env 设置 VITE_VAPID_PUBLIC_KEY）')
-    devError('[push] VAPID public key missing')
-    return
-  }
-
-  // —— D) 请求权限 —— //
-  if (Notification.permission === 'denied') {
-    messageHook.error('系统已拒绝通知权限，请到系统设置为“云笔记”开启通知')
-    devWarn('[push] permission denied already')
-    return
-  }
-  if (Notification.permission === 'default') {
-    const perm = await Notification.requestPermission().catch(() => 'denied' as const)
-    devLog('[push] requestPermission ->', perm)
-    if (perm !== 'granted') {
-      messageHook.error('用户未授予通知权限')
-      return
-    }
-  }
-
-  // —— E) 等待 SW 就绪 —— //
-  let reg: ServiceWorkerRegistration
-  try {
-    reg = await navigator.serviceWorker.ready
-    devLog('[push] sw ready:', reg)
-  }
-  catch (e) {
-    messageHook.error('Service Worker 未就绪，请稍后重试')
-    devError('[push] sw not ready', e)
-    return
-  }
-
-  // —— F) 获取/创建订阅 —— //
-  let sub = await reg.pushManager.getSubscription()
-  devLog('[push] existing sub =', !!sub)
-  try {
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapid),
-      })
-      devLog('[push] new sub created')
-    }
-  }
-  catch (e) {
-    messageHook.error('订阅失败：可能是 VAPID 公钥无效或被系统拦截')
-    devError('[push] subscribe error', e)
-    return
-  }
-
-  // —— G) 解析订阅字段（endpoint / keys） —— //
-  const endpoint = sub?.endpoint
-
-  // @ts-expect-error -- Safari/iOS typing: PushSubscription.getKey may return ArrayBuffer | null
-  const p256dhBuf = sub?.getKey?.('p256dh') as ArrayBuffer | null
-  // @ts-expect-error -- Safari/iOS typing: PushSubscription.getKey may return ArrayBuffer | null
-  const authBuf = sub?.getKey?.('auth') as ArrayBuffer | null
-
-  if (!endpoint || !p256dhBuf || !authBuf) {
-    messageHook.error('订阅对象不完整，无法保存')
-    devError('[push] subscription missing fields', { endpoint, p256dhBuf: !!p256dhBuf, authBuf: !!authBuf })
-    return
-  }
-
-  const p256dh = ab2base64url(p256dhBuf)
-  const auth = ab2base64url(authBuf)
-
-  // —— H) 收集时区 & 默认时间（09:00） —— //
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  const target_hour = 9
-  const target_minute = 0
-
-  // —— I) 调用后端 RPC 保存 —— //
-  try {
-    const { error } = await supabase.rpc('upsert_web_push_subscription', {
-      p_endpoint: endpoint,
-      p_p256dh: p256dh,
-      p_auth: auth,
-      p_timezone: timezone,
-      p_target_hour: target_hour,
-      p_target_minute: target_minute,
-    })
-    if (error)
-      throw error
-  }
-  catch (e: any) {
-    messageHook.error(`保存订阅失败：${e?.message || '未知错误'}`)
-    devError('[push] upsert error', e)
-    return
-  }
-
-  devLog('[push] subscribed & saved:', {
-    endpoint: `${endpoint.slice(0, 48)}…`,
-    tz: timezone,
-    time: `${String(target_hour).padStart(2, '0')}:${String(target_minute).padStart(2, '0')}`,
-  })
-  messageHook.success('订阅成功：将于每天 09:00 推送「记得写笔记哟」')
-}
-
-// 把 VAPID 公钥（base64url 字符串）转 Uint8Array
-function urlBase64ToUint8Array(base64String: string) {
-  const pad = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + pad).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(base64)
-  const out = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i)
-  return out
-}
-
-// 把 ArrayBuffer → base64url（用于 p256dh / auth 存库）
-function ab2base64url(buf: ArrayBuffer) {
-  const bytes = new Uint8Array(buf)
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
-  const b64 = btoa(binary)
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-async function triggerLocalTestNotification() {
-  try {
-    if (Notification.permission === 'default') {
-      const p = await Notification.requestPermission()
-      if (p !== 'granted') {
-        messageHook.error('未授予通知权限')
-        return
-      }
-    }
-    const reg = await navigator.serviceWorker.ready
-    await reg.showNotification('测试通知 · 本机', {
-      body: '这条是本地触发，用来验证 SW 弹窗与点击跳转',
-      tag: 'daily-note',
-      renotify: true,
-      icon: '/icons/android-chrome-192x192.png',
-      badge: '/icons/badge-72.png',
-      data: { via: 'local-test' },
-    })
-    messageHook.success('已触发：请查看系统通知并点击验证跳转')
-  }
-  catch (e: any) {
-    messageHook.error(`触发失败：${e?.message || '未知错误'}`)
-  }
-}
-
-async function triggerEdgePushTest() {
-  try {
-    // 确认当前用户已登录
-    const { data: sess } = await supabase.auth.getSession()
-    if (!sess?.session?.access_token) {
-      messageHook.error('未登录，无法调用云端函数')
-      return
-    }
-
-    // 直接调用已经部署到 Supabase 云端的 push-test 函数
-    const { data, error } = await supabase.functions.invoke('push-test', {
-      method: 'POST',
-    })
-    if (error)
-      throw error
-
-    messageHook.success(`云端已发送：${data?.sent ?? 0} 条`)
-  }
-  catch (e: any) {
-    messageHook.error(`云端测试失败：${e?.message || '未知错误'}`)
-  }
-}
-
-async function triggerEdgeCronTest() {
-  try {
-    const { data: sess } = await supabase.auth.getSession()
-    if (!sess?.session?.access_token) {
-      messageHook.error('未登录，无法调用云端函数')
-      return
-    }
-    const { data, error } = await supabase.functions.invoke('push-cron', { method: 'POST' })
-    if (error)
-      throw error
-    messageHook.success(`云端发送（push-cron）：已 ${data?.sent ?? 0} 条`)
-  }
-  catch (e: any) {
-    messageHook.error(`云端 cron 测试失败：${e?.message || '未知错误'}`)
   }
 }
 </script>
