@@ -2377,10 +2377,10 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-min-height: 100lvh;
-min-height: 100dvh;
-min-height: 100svh;
-min-height: var(--vh, 1vh) * 100; /* 旧设备兜底 */
+  min-height: calc(100svh + var(--safe-bottom));
+min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
+min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
+min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
   overflow: visible;
   position: relative;
 }
@@ -2708,7 +2708,7 @@ min-height: var(--vh, 1vh) * 100; /* 旧设备兜底 */
 /* ++ 新增：“回到顶部”按钮的样式 ++ */
 .scroll-top-button {
   position: fixed;
-  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  bottom: 30px;
   right: 20px;
   z-index: 5000;
 
@@ -2815,8 +2815,9 @@ html, body, #app {
 
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-padding-top: calc(0.5rem + var(--safe-top)) !important;
-padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
