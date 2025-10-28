@@ -2377,9 +2377,7 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-min-height: calc(100lvh - var(--safe-bottom));
-min-height: calc(100dvh - var(--safe-bottom));
- min-height: calc(100svh - var(--safe-bottom));
+height: 100dvh;
   overflow: visible;
   position: relative;
 }
@@ -2815,7 +2813,7 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: var(--safe-bottom) !important;
+  padding-bottom: var(--safe-bottom) !important; /* 占位底部安全区 */
   margin-bottom: 0 !important;
   overscroll-behavior-y: contain;
   background: var(--app-bg);
