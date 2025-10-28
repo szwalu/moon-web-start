@@ -998,7 +998,6 @@ export function useTagMenu(
         ]
       : []
 
-    // === 原有：tree 分组（或字母分组） ===
     const treeChildren = treeToDownwardGroups(
       hierarchicalTags.value,
       tagCounts.value,
@@ -1018,53 +1017,21 @@ export function useTagMenu(
         children: tags.map(tag => makeTagRow(tag)),
       }))
 
-    // === 新增：热门（按使用频率排序，排除置顶与搜索场景） ===
-    const showPopular = !tagSearch.value.trim() // 仅在无搜索时展示“热门”
-    const popularChildren = showPopular
-      ? (filteredTags.value
-          .filter(tag => !pinnedTags.value.includes(tag)) // 不重复置顶
-          .sort((a, b) => {
-            const da = tagCounts.value[a] || 0
-            const db = tagCounts.value[b] || 0
-            // 次关键字：同次数时按名称
-            return db - da || tagKeyName(a).localeCompare(tagKeyName(b))
-          })
-          .map(tag => makeTagRow(tag)))
-      : []
+    const body = treeChildren.length > 0 ? treeChildren : letterGroups
 
-    const popularGroup = showPopular && popularChildren.length > 0
-      ? [
-          {
-            key: 'popular-header',
-            type: 'render' as const,
-            render: () => h('div', {
-              style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size: 12px; font-weight: bold; color: #888; padding: 4px 12px;`,
-            }, `🔥 ${t('tags.by_usage') || '按使用频率'}`),
-          },
-          ...popularChildren,
-        ]
-      : []
-
-    // 当展示“热门”时，不再重复展示树/字母分组；有搜索时用树/字母分组
-    const mainBody = showPopular
-      ? []
-      : (treeChildren.length > 0 ? treeChildren : letterGroups)
-
-    // 置顶与主体之间的分隔（如果没有主体但有热门，也加一个分隔）
-    const needDivider = (pinnedGroup.length > 0) && (popularGroup.length > 0 || mainBody.length > 0)
-    const separatorOption = needDivider
+    const separatorOption = (pinnedGroup.length > 0 && body.length > 0)
       ? [{
           key: 'separator',
           type: 'render' as const,
-          render: () => h('div', {
-            style: `padding-left: ${FINAL_LEFT_PADDING}px; color: #888; font-weight: bold; font-size: 12px; padding-top: 4px; padding-bottom: 4px; user-select: none;`,
-          }, t('notes.all_favorites') || ''),
+          render: () => h('div', { style: `padding-left: ${FINAL_LEFT_PADDING}px; color: #888; font-weight: bold; font-size: 12px; padding-top: 4px; padding-bottom: 4px; user-select: none;` }, t('notes.all_favorites')),
         }]
       : []
 
+    const mainBody = body
+
     // —— 底部追加 “∅ 无标签（N）” —— //
     const untaggedRow = makeUntaggedRow(0)
-    const bottomSpacer = (popularGroup.length > 0 || mainBody.length > 0)
+    const bottomSpacer = (mainBody.length > 0)
       ? [{
           key: 'sep-untagged',
           type: 'render' as const,
@@ -1072,8 +1039,7 @@ export function useTagMenu(
         }]
       : []
 
-    // 返回顺序：搜索框 → 置顶 → （分隔）→ 热门(按频次) / 或 树/字母 → 间隔 → 无标签
-    return [searchOption, ...pinnedGroup, ...separatorOption, ...popularGroup, ...mainBody, ...bottomSpacer, untaggedRow]
+    return [searchOption, ...pinnedGroup, ...separatorOption, ...mainBody, ...bottomSpacer, untaggedRow]
   })
 
   function makeTagRow(tag: string, labelName?: string, indentPx = 0) {
