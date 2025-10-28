@@ -119,7 +119,7 @@ const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100�
 const showScrollTopButton = ref(false)
 const latestScrollTop = ref(0)
 let scrollTimer: any = null
-
+const _TAG_CACHE_DIRTY_TS = 'tag_cache_dirty_ts'
 // 组合式：放在 t / allTags 之后
 const {
   mainMenuVisible,
@@ -478,44 +478,57 @@ function invalidateCachesOnDataChange(note: any) {
   if (!note || !note.content)
     return
 
-  // 清除标签和日历缓存 (这部分逻辑保持不变)
-  const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)/g
-  let match
-  // eslint-disable-next-line no-cond-assign
-  while ((match = tagRegex.exec(note.content)) !== null) {
-    if (match[1]) {
-      const tag = `#${match[1]}`
-      localStorage.removeItem(getTagCacheKey(tag))
+  // ✅ 宽松提取：允许中文/英文/数字/下划线/斜杠（兼容你现在的内容写法）
+  //    只要是 "#XXXX" 且后面是空白或结尾，就当作标签记一次
+  const tagRegex = /#([^\s#.,?!;:"'()\[\]{}]+)(?=\s|$)/g
+
+  const seen = new Set<string>()
+  let match: RegExpExecArray | null = tagRegex.exec(note.content)
+
+  while (match !== null) {
+    const full = match[1] // 例如 '运动/跑步' 或 '运动'
+    if (full) {
+      // a) 失效完整标签缓存：#运动/跑步
+      const fullTag = `#${full}`
+      if (!seen.has(fullTag)) {
+        localStorage.removeItem(getTagCacheKey(fullTag))
+        seen.add(fullTag)
+      }
+
+      // b) 失效所有祖先：#运动
+      const parts = full.split('/')
+      for (let i = 1; i < parts.length; i++) {
+        const ancestor = `#${parts.slice(0, i).join('/')}`
+        if (!seen.has(ancestor)) {
+          localStorage.removeItem(getTagCacheKey(ancestor))
+          seen.add(ancestor)
+        }
+      }
     }
+
+    // 放到循环尾部，避免 while 条件里的赋值
+    match = tagRegex.exec(note.content)
   }
-  // 判断这篇笔记本身是否属于“无标签”类别
-  const isNoteUntagged = (() => {
-    // 1. 如果笔记没有内容，那它肯定是无标签的
-    if (!note.content)
-      return true
 
-    // 2. 使用与后端完全一致的、最精确的正则表达式来判断
-    const hasTagRegex = /#([a-zA-Z0-9\/]+)(?=\s|$)/
-
-    // 3. 如果内容里找不到任何有效的标签，那它也是无标签的
-    return !hasTagRegex.test(note.content)
-  })()
-
-  // 如果这篇笔记是无标签的，那么任何对它的增、删、改都会影响“无标签”筛选结果
-  if (isNoteUntagged) {
-    // 因此，我们必须清除“无标签”筛选的缓存
-    // console.log('Invalidating untagged notes cache...'); // 你可以保留这行来观察它是否被触发
+  // ✅ “无标签”哨兵：如果这条笔记不含任何标签，则它的变化会影响无标签筛选
+  const isNoteUntagged = !/#([^\s#.,?!;:"'()\[\]{}]+)(?=\s|$)/.test(note.content)
+  if (isNoteUntagged)
     localStorage.removeItem(getTagCacheKey(UNTAGGED_SENTINEL))
-  }
+
+  // ✅ 日历相关
   const noteDate = new Date(note.created_at)
   localStorage.removeItem(getCalendarDateCacheKey(noteDate))
   localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
 
-  // 清除 localStorage 中的搜索缓存
+  // ✅ 搜索相关
   invalidateAllSearchCaches()
-
-  // 【新增】同时清除 sessionStorage 中的搜索结果缓存，防止数据陈旧
   sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+
+  // 标记“刚发生标签相关改动”，用于 3 秒内绕过旧缓存
+  try {
+    localStorage.setItem('tag_cache_dirty_ts', String(Date.now()))
+  }
+  catch {}
 }
 
 /**
@@ -1405,6 +1418,9 @@ async function silentPrefetchMore() {
 
 // ✨ 统一的标签分页加载器（支持有/无标签）
 async function fetchNotesByTagPage(hashTag: string, page = 1) {
+  // ✅ 使用局部固定键名，避免 TDZ
+  const KEY_TAG_CACHE_DIRTY = 'tag_cache_dirty_ts'
+
   isLoadingNotes.value = true
   try {
     const isUntagged = hashTag === UNTAGGED_SENTINEL
@@ -1414,55 +1430,81 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
     const from = (page - 1) * notesPerPage
     const to = from + notesPerPage - 1
 
+    // === 脏窗口：刚有标签相关改动 → 清掉本标签旧缓存，强制用新数据覆盖 ===
+    const cacheKey = getTagCacheKey(hashTag)
+    let hitDirtyBypass = false
+    try {
+      const tsRaw = localStorage.getItem(KEY_TAG_CACHE_DIRTY)
+      if (tsRaw && Date.now() - Number(tsRaw) < 3000) { // 3s 窗口
+        hitDirtyBypass = true
+        if (page === 1)
+          localStorage.removeItem(cacheKey)
+      }
+    }
+    catch { /* ignore */ }
+
     if (isUntagged) {
-      // 调用我们新建的 RPC 函数来获取无标签笔记
       const { data: rpcData, error } = await supabase
         .rpc('get_untagged_notes_paginated', {
           p_user_id: user.value!.id,
           p_limit: notesPerPage,
           p_offset: from,
         })
-
       if (error)
         throw error
 
-      // rpcData 是一个数组，每一项都包含了笔记数据和 total_count
       notesData = rpcData || []
-      // 从返回的第一条记录中获取总数即可，如果没有记录则为0
       totalCount = rpcData?.[0]?.total_count || 0
     }
     else {
-      // 普通标签逻辑
+      // 父标签能命中子标签：'#运动' 会命中包含 '#运动/跑步' 的内容
       const { data, error, count } = await supabase
-        .from('notes').select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+        .from('notes')
+        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
         .eq('user_id', user.value!.id)
         .ilike('content', `%${hashTag}%`)
-        .order('is_pinned', { ascending: false }).order('created_at', { ascending: false })
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
         .range(from, to)
+
       if (error)
         throw error
       notesData = data || []
       totalCount = count || 0
     }
 
-    // 更新UI状态
+    // 更新 UI
     notes.value = page === 1 ? notesData : [...notes.value, ...notesData]
     filteredNotesCount.value = totalCount
     hasMoreNotes.value = notes.value.length < totalCount
 
-    // --- 核心修改：将更新后的完整数据写入缓存 ---
-    const cacheKey = getTagCacheKey(hashTag)
+    // 覆盖写入“新鲜缓存”
     const cachePayload = {
       notes: notes.value,
       currentPage: page,
       totalCount,
       hasMore: hasMoreNotes.value,
+      _cachedAt: Date.now(),
     }
-    localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
+    }
+    catch {
+      /* ignore quota */
+    }
+
+    // 刷新过第一页后可移除脏标记（避免长期绕过缓存）
+    if (hitDirtyBypass && page === 1) {
+      try {
+        localStorage.removeItem(KEY_TAG_CACHE_DIRTY)
+      }
+      catch {
+        /* ignore */
+      }
+    }
   }
   catch (err: any) {
     messageHook.error(`${t('notes.fetch_error')}: ${err.message || err}`)
-    // 出错时不清空已有数据，体验更好
     hasMoreNotes.value = false
   }
   finally {
