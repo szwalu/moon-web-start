@@ -2813,8 +2813,8 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: var(--safe-bottom) !important; /* 占位底部安全区 */
-  margin-bottom: 0 !important;
+ padding-bottom: 0 !important;
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
