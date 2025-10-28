@@ -2377,7 +2377,10 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-height: 100dvh;
+  min-height: calc(100svh + var(--safe-bottom));
+min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
+min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
+min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
   overflow: visible;
   position: relative;
 }
@@ -2813,8 +2816,8 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
- padding-bottom: 0 !important;
-  margin-bottom: calc(-1 * var(--safe-bottom)) !important;
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;

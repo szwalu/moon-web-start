@@ -18,8 +18,6 @@ import { setupI18n } from './utils'
 // 修正 iOS PWA 视口高度，消除底部“白条”
 (function fixAppVh() {
   const setVH = () => {
-    const vh = (window.visualViewport?.height ?? window.innerHeight) * 0.01
-    document.documentElement.style.setProperty('--app-vh', `${vh}px`)
   }
   setVH()
   window.visualViewport?.addEventListener('resize', setVH)

@@ -57,4 +57,12 @@ body, html {
 .n-notification-container {
   top: 10% !important;
 }
+/* 仅 PWA 独立模式：根背景与应用背景保持一致，避免露底条 */
+@media (display-mode: standalone) {
+  html, body, #app {
+    background: var(--app-bg) !important;
+    background-image: none !important;
+    min-height: 100dvh; /* 根占满视口，防止露底 */
+  }
+}
 </style>
