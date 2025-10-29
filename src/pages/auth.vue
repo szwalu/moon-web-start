@@ -2830,7 +2830,7 @@ html, body, #app {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
   padding-bottom: 0 !important;                                  /* 不占位 */
   margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
-  overscroll-behavior-y: contain;
+  /* overscroll-behavior-y: contain; */
   background: var(--app-bg);
   position: relative;
   border-bottom-left-radius: 0 !important;
