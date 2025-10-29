@@ -135,5 +135,17 @@ async function setupApp() {
   app.mount('#app')
 }
 
+// 标记 iOS PWA（老 iOS 用 navigator.standalone，现代 WebApp 用 display-mode）
+(function markPwaIOS() {
+  const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || (typeof navigator !== 'undefined' && 'standalone' in navigator && (navigator as any).standalone)
+
+  // iOS 特征（-webkit-touch-callout）可选加强判断
+  const isIOS = typeof window !== 'undefined' && 'ontouchend' in window && CSS?.supports?.('-webkit-touch-callout', 'none')
+
+  if (isStandalone && isIOS)
+    document.documentElement.classList.add('pwa-ios')
+})()
+
 setupApp()
 registerSW({ immediate: true })
