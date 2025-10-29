@@ -2157,7 +2157,7 @@ function onCalendarUpdated(updated: any) {
 
 <template>
   <div
-    class="auth-container"
+    class="full-viewport auth-container"
     :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
   >
@@ -2392,10 +2392,7 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-  min-height: calc(100svh + var(--safe-bottom));
-min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
-min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
-min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
+  min-height: 100%;
   overflow: visible;
   position: relative;
 }

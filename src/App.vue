@@ -24,7 +24,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
       <NDialogProvider>
         <NNotificationProvider>
           <AppProvider>
-            <AppContainer>
+            <AppContainer class="full-viewport">
               <RouterView />
             </AppContainer>
           </AppProvider>
@@ -56,5 +56,27 @@ body, html {
 .n-message-container,
 .n-notification-container {
   top: 10% !important;
+}
+
+/* 让 html/body/#app 可被子元素 100% 高度继承 */
+html, body, #app { height: 100%; }
+
+/* 页面通用：真正铺到“最大视口”（含 home 指示条下方） */
+:root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
+
+.full-viewport {
+  /* 现代浏览器优先 */
+  height: 100lvh;
+  min-height: 100lvh;
+  padding-bottom: var(--safe-bottom);
+  box-sizing: border-box;
+}
+
+/* 旧 iOS / 老浏览器兜底 */
+@supports not (height: 100lvh) {
+  .full-viewport {
+    height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
 }
 </style>
