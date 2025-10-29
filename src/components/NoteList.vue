@@ -901,7 +901,7 @@ async function restoreScrollIfNeeded() {
 </template>
 
 <style scoped>
-notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px); }
+.notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
 .scroller { background-color: #e5e7eb; padding: 0.5rem; }
