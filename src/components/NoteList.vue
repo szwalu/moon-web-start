@@ -965,7 +965,7 @@ async function restoreScrollIfNeeded() {
   padding: 0 8px;
   margin: 0;
   border-radius: 8px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
   color: #374151;
   background: #eef2ff;
@@ -997,7 +997,7 @@ async function restoreScrollIfNeeded() {
   border: 1px solid #e5e7eb;
 
   /* 与 .month-header 一致的文字样式 */
-  font-weight: 600;
+  font-weight: 700;
   color: #374151;
 
   display: flex;
