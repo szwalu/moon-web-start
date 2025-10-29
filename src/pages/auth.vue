@@ -2324,6 +2324,7 @@ function onCalendarUpdated(updated: any) {
           :all-tags="allTags"
           :max-note-length="maxNoteLength"
           :search-query="searchQuery"
+          :bottom-inset="0"
           @load-more="nextPage"
           @update-note="handleUpdateNote"
           @delete-note="triggerDeleteConfirmation"
