@@ -904,7 +904,12 @@ async function restoreScrollIfNeeded() {
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
-.scroller { background-color: #e5e7eb; padding: 0.5rem; }
+.scroller {
+  background-color: #e5e7eb;
+  padding: 0.5rem;
+  /* 关键：给底部加上安全区内边距，让背景与内容都“铺到”home 指示条下面 */
+  padding-bottom: calc(0.5rem  env(safe-area-inset-bottom, 0px));
+}
 .dark .scroller { background-color: #0d1117; }
 /* 卡片 */
 .note-content-wrapper {
