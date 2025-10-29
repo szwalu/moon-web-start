@@ -18,6 +18,8 @@ import { setupI18n } from './utils'
 // 修正 iOS PWA 视口高度，消除底部“白条”
 (function fixAppVh() {
   const setVH = () => {
+    const vh = (window.visualViewport?.height ?? window.innerHeight) * 0.01
+    document.documentElement.style.setProperty('--app-vh', `${vh}px`)
   }
   setVH()
   window.visualViewport?.addEventListener('resize', setVH)
@@ -134,18 +136,6 @@ async function setupApp() {
   app.use(router)
   app.mount('#app')
 }
-
-// 标记 iOS PWA（老 iOS 用 navigator.standalone，现代 WebApp 用 display-mode）
-(function markPwaIOS() {
-  const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    || (typeof navigator !== 'undefined' && 'standalone' in navigator && (navigator as any).standalone)
-
-  // iOS 特征（-webkit-touch-callout）可选加强判断
-  const isIOS = typeof window !== 'undefined' && 'ontouchend' in window && CSS?.supports?.('-webkit-touch-callout', 'none')
-
-  if (isStandalone && isIOS)
-    document.documentElement.classList.add('pwa-ios')
-})()
 
 setupApp()
 registerSW({ immediate: true })

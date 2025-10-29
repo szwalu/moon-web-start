@@ -57,31 +57,4 @@ body, html {
 .n-notification-container {
   top: 10% !important;
 }
-/* —— 仅 iOS PWA 命中 —— */
-.pwa-ios html,
-.pwa-ios body,
-.pwa-ios #app {
-  /* 根层背景与应用一致，避免露出网格/浅灰 */
-  background-color: var(--app-bg) !important;
-  background-image: none !important;
-  height: 100%;
-  min-height: 100dvh !important;
-  overflow-x: hidden;
-}
-
-/* 关键覆盖：用固定定位的“底部涂层”完全盖住安全区
-   无论 bounce、滚动、容器阴影/圆角、甚至根层高度差，都看不到“白带” */
-.pwa-ios body::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: env(safe-area-inset-bottom, 0px);
-  background: var(--app-bg);     /* 和应用背景完全一致 */
-  pointer-events: none;
-  z-index: 2147483647;           /* 顶层，确保盖住一切 */
-}
-
-/* 如果你是深色主题，var(--app-bg) 会跟随 .dark :root 覆写，无需额外处理 */
 </style>
