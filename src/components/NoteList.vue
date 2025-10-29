@@ -904,14 +904,7 @@ async function restoreScrollIfNeeded() {
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
-.scroller {
-  background-color: #e5e7eb;
-  padding: 0.5rem;
-  /* ✅ 关键：把底部安全区也算进内边距，让灰色背景延伸到底部 */
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px)  24px);
-  /* 避免背景被裁剪，确保 padding 区域也是同色 */
-  background-clip: padding-box;
-}
+.scroller { background-color: #e5e7eb; padding: 0.5rem; }
 .dark .scroller { background-color: #0d1117; }
 /* 卡片 */
 .note-content-wrapper {
@@ -1018,4 +1011,22 @@ async function restoreScrollIfNeeded() {
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
+
+/* ✅ 给底部 safe-area 画同色背景，盖住“白带” */
+.notes-list-wrapper::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* iOS 多机型兼容：先 constant() 再 env()，谁有用谁生效 */
+  height: constant(safe-area-inset-bottom);
+  height: env(safe-area-inset-bottom);
+  background: #e5e7eb;        /* 浅色模式与 .scroller 背景一致 */
+  pointer-events: none;
+  z-index: 1;                  /* 低于你的收起按钮（z-index:10） */
+}
+.dark .notes-list-wrapper::after {
+  background: #0d1117;         /* 深色模式与 .scroller 背景一致 */
+}
 </style>
