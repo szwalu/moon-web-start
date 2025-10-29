@@ -104,6 +104,7 @@ const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
 
 const isTopEditing = ref(false)
+const authResolved = ref(false)
 
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
@@ -293,6 +294,10 @@ onMounted(() => {
     catch {}
   })()
   // === [PATCH-3 END] ===
+  setTimeout(() => {
+    if (!authResolved.value)
+      authResolved.value = true
+  }, 2500)
 
   // isLoadingNotes.value = true
   const loadCache = async () => {
@@ -365,6 +370,8 @@ onMounted(() => {
             // 恢复后，再去获取标签等次要信息
             //  fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
+
+            authResolved.value = true // ✅ 判定完成（路径A）
           }
           else if (savedSearchQuery) {
             // 路径B：只有关键词，需要重新搜索（函数内部会处理加载状态）
@@ -377,12 +384,16 @@ onMounted(() => {
             noteActionsRef.value?.executeSearch()
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
+
+            authResolved.value = true // ✅ 判定完成（路径B）
           }
           else if (savedTagFilter) {
             // 路径C：有标签筛选，执行标签筛选（函数内部会处理加载状态）
             await fetchNotesByTag(savedTagFilter)
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
+
+            authResolved.value = true // ✅ 判定完成（路径C）
           }
           // ++ 路径E：那年今日
           else if (savedAnnivActive) {
@@ -414,6 +425,8 @@ onMounted(() => {
             // 附带拉取标签等
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
+
+            authResolved.value = true // ✅ 判定完成（路径E）
           }
           else {
             // 路径D：没有任何缓存，正常首次加载主页
@@ -421,6 +434,8 @@ onMounted(() => {
             await fetchNotes() // fetchNotes内部会把加载状态设为false
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
+
+            authResolved.value = true // ✅ 判定完成（路径D）
           }
         })
       }
@@ -2146,7 +2161,7 @@ function onCalendarUpdated(updated: any) {
     :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
   >
-    <template v-if="user">
+    <template v-if="user || !authResolved">
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
         <div class="dropdown-menu-container">
           <NDropdown
