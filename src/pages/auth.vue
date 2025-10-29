@@ -2377,6 +2377,10 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
+  min-height: calc(100svh + var(--safe-bottom));
+min-height: calc(100dvh + var(--safe-bottom));   /* Safari 新版支持 dvh 时使用 */
+min-height: calc(100lvh + var(--safe-bottom));   /* 工具栏收起时也不露底 */
+min-height: calc(var(--vh, 1vh) * 100 + var(--safe-bottom)); /* 兜底：老设备 */
   overflow: visible;
   position: relative;
 }
@@ -2796,8 +2800,9 @@ function onCalendarUpdated(updated: any) {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --header-base: 44px; /* 头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
+  --app-bg: #fff; /* ✅ 浅色默认 */
 }
-.dark :root { --app-bg: #1e1e1e; }
+.dark :root { --app-bg: #1e1e1e; } /* ✅ 深色覆写 */
 
 /* 统一页面背景 */
 html, body, #app {
@@ -2812,8 +2817,7 @@ html, body, #app {
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;                                  /* 不占位 */
-  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
+  padding-bottom: 0 !important; /* 不占位 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
@@ -2833,7 +2837,4 @@ html, body, #app {
 .selection-actions-banner {
   top: var(--header-height) !important;
 }
-
-:root { --app-bg: #fff; }         /* ✅ 浅色默认 */
-.dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
 </style>
