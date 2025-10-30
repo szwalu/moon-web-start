@@ -724,6 +724,7 @@ function updateCollapsePos() {
   const visibleBottom = Math.min(cardRect.bottom, scrollerRect.bottom - margin)
   const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
   let topPx = visibleBottom - btnH
+  topPx -= 8
   if (topPx < visibleTop)
     topPx = visibleTop
 
