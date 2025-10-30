@@ -8,7 +8,6 @@ import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 
 import mark from 'markdown-it-mark'
-import linkAttrs from 'markdown-it-link-attributes'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
@@ -53,12 +52,44 @@ const md = new MarkdownIt({
   .use(taskLists, { enabled: true, label: true })
   .use(mark)
   .use(ins)
-  .use(linkAttrs, {
-    attrs: {
-      target: '_blank',
-      rel: 'noopener noreferrer',
-    },
-  })
+  // .use(linkAttrs, { ... }) // 我们不再需要 linkAttrs，用下面的规则替换它
+
+// +++ 新增：覆盖默认的链接渲染器 +++
+
+// 保存一份原始的 link_open 规则，以便内部链接（如 #hash）可以回退
+const defaultLinkOpenRender = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+  return self.renderToken(tokens, idx, options)
+}
+
+md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+  const token = tokens[idx]
+  const href = token.attrGet('href')
+
+  // 检查是否是外部链接
+  if (href && (href.startsWith('http') || href.startsWith('//'))) {
+    // 关键：不渲染 <a>, 渲染成 <span data-href="...">
+    // 我们给它一个 class "external-link" 来识别
+    // 并添加 "prose-link" 来模拟链接样式
+    return `<span class="external-link prose-link" data-href="${md.utils.escapeHtml(href)}">`
+  }
+
+  // 否则 (例如内部链接 #anchor), 正常渲染
+  return defaultLinkOpenRender(tokens, idx, options, env, self)
+}
+
+// 覆盖 link_close
+md.renderer.rules.link_close = function (tokens, idx /* , options, env, self */) {
+  // 检查对应的 link_open 是否被我们修改了
+  // link_open token 在 tokens[idx - 2]
+  if (tokens[idx - 2] && tokens[idx - 2].type === 'link_open') {
+    const token = tokens[idx - 2]
+    const href = token.attrGet('href')
+    if (href && (href.startsWith('http') || href.startsWith('//')))
+      return '</span>' // 关闭我们的 <span>
+  }
+
+  return '</a>' // 正常关闭 </a>
+}
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
@@ -190,30 +221,30 @@ function handleDropdownSelect(key: string) {
   }
 }
 
+// 用这个新版本完整替换
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // --- 1. 优先检查外部链接 ---
-  const link = target.closest('a')
-  if (link && link.target === '_blank' && link.href) {
-    // ✅ 关键：阻止 PWA 的默认导航
+  // --- 1. 优先检查 "假链接" (span.external-link) ---
+  const link = target.closest('span.external-link')
+
+  // 检查它是否有 data-href 属性
+  if (link && (link as HTMLElement).dataset.href) {
+    // 找到了我们的 <span>, 它不是一个真链接, 所以 PWA 不会拦截
     event.preventDefault()
     event.stopPropagation()
 
-    const href = link.href // 提前把链接存下来
+    const href = (link as HTMLElement).dataset.href as string // 从 data-href 获取 URL
 
     // ✅ 弹出你建议的对话框
     dialog.create({
-      title: t('notes.editor.link_dialog.title'), // 你可能需要添加这个翻译
+      title: t('notes.editor.link_dialog.title'), // "打开链接"
       content: t('notes.editor.link_dialog.content', { href }), // "是否在浏览器中打开此链接？"
       positiveText: t('notes.editor.link_dialog.positive'), // "在浏览器中打开"
       negativeText: t('notes.editor.link_dialog.negative'), // "取消"
       onPositiveClick: () => {
         // ✅ 在这个“受信任的”点击事件中打开链接
         window.open(href, '_blank', 'noopener,noreferrer')
-      },
-      onNegativeClick: () => {
-        // 什么也不做
       },
     })
 
@@ -225,7 +256,7 @@ function handleNoteContentClick(event: MouseEvent) {
   if (!listItem)
     return
 
-  // --- 3. 处理 task list item 内部的点击 ---
+  // --- 3. 处理 task list item 内部的点击 (保持不变) ---
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
 
   if (isCheckboxClick) {
@@ -269,7 +300,7 @@ async function handleDateUpdate(newDate: Date) {
       :data-note-id="note.id"
       class="note-card"
       :class="{ 'is-expanded': isExpanded }"
-      @click.capture="handleNoteContentClick"
+      @click="handleNoteContentClick"
     >
       <div class="note-card-top-bar">
         <div class="note-meta-left">
@@ -643,5 +674,13 @@ async function handleDateUpdate(newDate: Date) {
   display: inline;
   margin: 0;
   line-height: inherit;
+}
+:deep(.external-link.prose-link) {
+  color: #2563eb !important; /* 你的亮色链接色 */
+  text-decoration: underline !important;
+  cursor: pointer; /* 关键：显示“手型”光标 */
+}
+.dark :deep(.external-link.prose-link) {
+  color: #60a5fa !important; /* 你的暗色链接色 */
 }
 </style>
