@@ -1262,7 +1262,7 @@ function insertImageLink() {
       const text = looksLikeImage(raw)
         ? t('notes.editor.image_dialog.image_direct')
         : t('notes.editor.image_dialog.image_view')
-      insertText(`<a href="${raw}" target="_blank" rel="noopener noreferrer external" onclick="window.open(this.href, '_blank', 'noopener,noreferrer'); return false;">${text}</a>`)
+      insertText(`[${text}](${raw})`)
       return true
     },
   })

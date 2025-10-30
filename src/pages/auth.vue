@@ -913,6 +913,8 @@ function handleSearchCleared() {
 }
 
 async function handleVisibilityChange() {
+  if (sessionStorage.getItem('note_editor_resume_v1'))
+    return
   if (document.visibilityState === 'visible') {
     const { data, error } = await supabase.auth.getSession()
     if ((!data.session || error) && authStore.user) {
