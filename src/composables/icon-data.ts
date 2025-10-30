@@ -148,6 +148,7 @@ export const ICON_CATEGORIES: IconCategory[] = [
       { icon: '🪑', keywords: ['chair', 'seat', 'yizi', '椅子'] },
       { icon: '🚪', keywords: ['door', 'men', '门'] },
       { icon: '🛏️', keywords: ['bed', 'sleep', 'chuang', '床'] },
+      { icon: '#️⃣', keywords: ['hashtag', 'number sign', 'jinghao', '标签', '#'] },
     ]),
   },
   {
