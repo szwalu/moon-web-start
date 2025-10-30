@@ -357,6 +357,10 @@ onMounted(() => {
 
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(async () => {
+          if (sessionStorage.getItem('note_editor_resume_v1')) {
+            authResolved.value = true
+            return
+          }
           // --- 重构后的逻辑 ---
           // 1. 优先检查所有可能的缓存状态
           const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
