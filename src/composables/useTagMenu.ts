@@ -2,7 +2,7 @@
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
-import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { ChevronRight } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -156,7 +156,7 @@ function treeToDownwardGroups(
       continue
     }
 
-    rows.push(makeHeader(node1, tag1, name1, isExpanded(path1), () => toggle(path1), 0))
+    rows.push(makeHeader(node1, tag1, name1, () => isExpanded(path1), () => toggle(path1), 0))
 
     if (!isExpanded(path1))
       continue
@@ -173,7 +173,7 @@ function treeToDownwardGroups(
         continue
       }
 
-      rows.push(makeHeader(node2, tag2, name2, isExpanded(path2), () => toggle(path2), 16))
+      rows.push(makeHeader(node2, tag2, name2, () => isExpanded(path2), () => toggle(path2), 16))
 
       if (!isExpanded(path2))
         continue
@@ -1135,7 +1135,7 @@ export function useTagMenu(
     node: TagTreeNode,
     tagFull: string,
     labelName: string,
-    expanded: boolean,
+    getExpanded: () => boolean,
     onToggle: () => void,
     indentPx = 0,
   ) {
@@ -1145,35 +1145,38 @@ export function useTagMenu(
     const textLabel = total > 0 ? `${labelName}（${total}）` : `${labelName}`
     const fullTitle = `${icon} ${textLabel}`
 
-    // ✅ 用图标代替字符箭头
     const ICON_SIZE = 18
     const ICON_STROKE = 2.5
-    const arrowVNode = h(
-      expanded ? ChevronDown : ChevronRight,
-      {
-        'size': ICON_SIZE,
-        'strokeWidth': ICON_STROKE,
-        'color': '#999',
-        // 轻微下沉让视觉更居中
-        'style': 'display:inline-block; transform: translateY(1px);',
-        'aria-hidden': 'true',
-        'focusable': 'false',
-      },
-    )
-
     const MORE_DOT_SIZE = 20
     const placementRef = ref<SmartPlacement>('top-start')
     const showRef = ref(false)
     let btnEl: HTMLElement | null = null
 
-    const openMenu = () => { placementRef.value = computeSmartPlacementStrict(btnEl); showRef.value = true; isRowMoreOpen.value = true }
-    const closeMenu = () => { showRef.value = false; isRowMoreOpen.value = false }
+    const openMenu = () => {
+      placementRef.value = computeSmartPlacementStrict(btnEl)
+      showRef.value = true
+      isRowMoreOpen.value = true
+    }
+    const closeMenu = () => {
+      showRef.value = false
+      isRowMoreOpen.value = false
+    }
 
     return {
       key: `hdr-${tagFull}`,
       type: 'render' as const,
-      render: () =>
-        h('div', {
+      render: () => {
+        const expanded = getExpanded()
+        const arrowVNode = h(ChevronRight, {
+          'size': ICON_SIZE,
+          'strokeWidth': ICON_STROKE,
+          'color': '#999',
+          'style': `display:inline-block; transform: translateY(1px) rotate(${expanded ? 90 : 0}deg); transition: transform .15s ease;`,
+          'aria-hidden': 'true',
+          'focusable': 'false',
+        })
+
+        return h('div', {
           style: [
           `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
           'padding-right: 4px;',
@@ -1194,11 +1197,11 @@ export function useTagMenu(
                 h('span', { style: 'margin-left: 6px;' }, textLabel),
               ]),
             ]),
-            // Cell 2: Arrow (clickable) —— 用 Chevron 图标
+            // Cell 2: Arrow (single icon rotates)
             h('div', {
               'style': 'display: table-cell; width: 24px; vertical-align: middle; text-align: center; cursor: pointer;',
               'role': 'button',
-              'aria-label': expanded ? t('notes.collapse') || '收起' : t('notes.expand') || '展开',
+              'aria-label': expanded ? (t('notes.collapse') || '收起') : (t('notes.expand') || '展开'),
               'aria-expanded': String(expanded),
               'onClick': (e: MouseEvent) => { e.stopPropagation(); onToggle() },
             }, [arrowVNode]),
@@ -1215,12 +1218,17 @@ export function useTagMenu(
                 placement: placementRef.value,
                 to: 'body',
                 onUpdateShow: (show: boolean) => {
-                  showRef.value = show; isRowMoreOpen.value = show
+                  showRef.value = show
+                  isRowMoreOpen.value = show
                   if (show)
                     lastMoreClosedByOutside = false
                 },
                 onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
-                onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
+                onClickoutside: () => {
+                  lastMoreClosedByOutside = true
+                  closeMenu()
+                  setTimeout(() => { lastMoreClosedByOutside = false }, 0)
+                },
               }, {
                 default: () => h('button', {
                   'aria-label': t('tags.more_actions') || '更多操作',
@@ -1238,18 +1246,26 @@ export function useTagMenu(
                   'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
-                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement
-                    if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
+                    e.stopPropagation()
+                    btnEl = e.currentTarget as HTMLElement
+                    if (showRef.value) {
+                      lastMoreClosedByOutside = false
+                      closeMenu()
+                    }
                     else {
                       placementRef.value = computeSmartPlacementStrict(btnEl)
-                      nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) })
+                      nextTick(() => {
+                        openMenu()
+                        requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() })
+                      })
                     }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),
             ]),
           ]),
-        ]),
+        ])
+      },
     }
   }
 
