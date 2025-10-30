@@ -192,34 +192,38 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // --- 1. 新增：优先检查外部链接 ---
+  // --- 1. 优先检查外部链接 (新逻辑) ---
+  // 无论点击的是不是在 task list 内部，链接都优先处理
   const link = target.closest('a')
-  // 检查是否是一个合法的、带 target="_blank" 的链接
   if (link && link.target === '_blank' && link.href) {
     // 阻止 PWA 尝试在内部打开链接
     event.preventDefault()
-    // 阻止事件冒泡（例如，防止触发卡片展开/收起等）
+    // 阻止事件冒泡 (例如，防止触发卡片展开/收起)
     event.stopPropagation()
 
     // ✅ 使用 window.open() 来“弹出”到系统默认浏览器
     window.open(link.href, '_blank', 'noopener,noreferrer')
 
-    return // 处理完毕，退出函数
+    return // 链接已处理，退出
   }
 
-  // --- 2. 原有：检查待办事项 (保持不变) ---
+  // --- 2. 检查是否在 task list item 内部 (你原有的逻辑) ---
+  // (如果不是链接，才继续检查是否为待办事项)
   const listItem = target.closest('li.task-list-item')
 
-  // 如果点击的不是一个待办事项行，则直接返回
+  // 如果点击的既不是链接，也不是待办事项行，则什么也不做
   if (!listItem)
     return
+
+  // --- 3. 处理 task list item 内部的点击 ---
+  // (此时我们知道 listItem 存在，但 link 不存在)
 
   // 判断点击的是否为复选框本身
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
 
   if (isCheckboxClick) {
-    // 如果是复选框，执行我们的打钩逻辑
-    event.stopPropagation()
+    // A) 是复选框：执行我们的打钩逻辑
+    event.stopPropagation() // 阻止冒泡
     const noteCard = event.currentTarget as HTMLElement
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
     const itemIndex = allListItems.indexOf(listItem)
@@ -227,7 +231,7 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
+    // B) 是待办事项的文字：阻止 <label> 标签的默认行为 (防止它切换复选框)
     event.preventDefault()
   }
 }
