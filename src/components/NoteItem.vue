@@ -3,7 +3,7 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
-import { NDropdown, useMessage } from 'naive-ui'
+import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 
@@ -39,6 +39,7 @@ const emit = defineEmits([
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
+const dialog = useDialog()
 
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
@@ -192,38 +193,43 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // --- 1. 优先检查外部链接 (新逻辑) ---
-  // 无论点击的是不是在 task list 内部，链接都优先处理
+  // --- 1. 优先检查外部链接 ---
   const link = target.closest('a')
   if (link && link.target === '_blank' && link.href) {
-    // 阻止 PWA 尝试在内部打开链接
+    // ✅ 关键：阻止 PWA 的默认导航
     event.preventDefault()
-    // 阻止事件冒泡 (例如，防止触发卡片展开/收起)
     event.stopPropagation()
 
-    // ✅ 使用 window.open() 来“弹出”到系统默认浏览器
-    window.open(link.href, '_blank', 'noopener,noreferrer')
+    const href = link.href // 提前把链接存下来
+
+    // ✅ 弹出你建议的对话框
+    dialog.create({
+      title: t('notes.editor.link_dialog.title'), // 你可能需要添加这个翻译
+      content: t('notes.editor.link_dialog.content', { href }), // "是否在浏览器中打开此链接？"
+      positiveText: t('notes.editor.link_dialog.positive'), // "在浏览器中打开"
+      negativeText: t('notes.editor.link_dialog.negative'), // "取消"
+      onPositiveClick: () => {
+        // ✅ 在这个“受信任的”点击事件中打开链接
+        window.open(href, '_blank', 'noopener,noreferrer')
+      },
+      onNegativeClick: () => {
+        // 什么也不做
+      },
+    })
 
     return // 链接已处理，退出
   }
 
   // --- 2. 检查是否在 task list item 内部 (你原有的逻辑) ---
-  // (如果不是链接，才继续检查是否为待办事项)
   const listItem = target.closest('li.task-list-item')
-
-  // 如果点击的既不是链接，也不是待办事项行，则什么也不做
   if (!listItem)
     return
 
   // --- 3. 处理 task list item 内部的点击 ---
-  // (此时我们知道 listItem 存在，但 link 不存在)
-
-  // 判断点击的是否为复选框本身
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
 
   if (isCheckboxClick) {
-    // A) 是复选框：执行我们的打钩逻辑
-    event.stopPropagation() // 阻止冒泡
+    event.stopPropagation()
     const noteCard = event.currentTarget as HTMLElement
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
     const itemIndex = allListItems.indexOf(listItem)
@@ -231,7 +237,6 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // B) 是待办事项的文字：阻止 <label> 标签的默认行为 (防止它切换复选框)
     event.preventDefault()
   }
 }
