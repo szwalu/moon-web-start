@@ -191,6 +191,23 @@ function handleDropdownSelect(key: string) {
 
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
+
+  // --- 1. 新增：优先检查外部链接 ---
+  const link = target.closest('a')
+  // 检查是否是一个合法的、带 target="_blank" 的链接
+  if (link && link.target === '_blank' && link.href) {
+    // 阻止 PWA 尝试在内部打开链接
+    event.preventDefault()
+    // 阻止事件冒泡（例如，防止触发卡片展开/收起等）
+    event.stopPropagation()
+
+    // ✅ 使用 window.open() 来“弹出”到系统默认浏览器
+    window.open(link.href, '_blank', 'noopener,noreferrer')
+
+    return // 处理完毕，退出函数
+  }
+
+  // --- 2. 原有：检查待办事项 (保持不变) ---
   const listItem = target.closest('li.task-list-item')
 
   // 如果点击的不是一个待办事项行，则直接返回
