@@ -264,7 +264,7 @@ async function handleDateUpdate(newDate: Date) {
       :data-note-id="note.id"
       class="note-card"
       :class="{ 'is-expanded': isExpanded }"
-      @click="handleNoteContentClick"
+      @click.capture="handleNoteContentClick"
     >
       <div class="note-card-top-bar">
         <div class="note-meta-left">
