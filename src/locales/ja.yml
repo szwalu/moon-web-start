@@ -232,7 +232,7 @@ auth:
   session_refresh_error: セッション更新に失敗しました。再ログインしてください
   invite_code: 招待コード
   invite_code_placeholder: 5桁の招待コードを入力
-  password_placeholder: 6文字以上のパスワードを入力
+  password_placeholder: のパスワードを入力
   login_password_placeholder: パスワードを入力
   session_expired: セッションが期限切れです。再ログインしてください
   update_failed: ネットワークエラーにより更新に失敗しました

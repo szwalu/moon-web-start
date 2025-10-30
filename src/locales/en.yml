@@ -233,8 +233,8 @@ auth:
   session_refresh_error: 'Session refresh failed, please log in again'
   invite_code: Invite Code
   invite_code_placeholder: Please enter 5-digit invite code
-  password_placeholder: Please enter 6-character password
-  login_password_placeholder: Please enter 6-character password
+  password_placeholder: Please enter password
+  login_password_placeholder: Please enter password
   session_expired: 'Session expired, please log in again'
   update_failed: Update failed due to network issues
   insert_failed_create_note: 'Network error, failed to create note'
