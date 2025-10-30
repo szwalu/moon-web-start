@@ -724,6 +724,7 @@ function updateCollapsePos() {
   const visibleBottom = Math.min(cardRect.bottom, scrollerRect.bottom - margin)
   const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
   let topPx = visibleBottom - btnH
+  // 下面这个topPx -= 8是收起按钮的位置高度
   topPx -= 8
   if (topPx < visibleTop)
     topPx = visibleTop
