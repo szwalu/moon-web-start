@@ -1262,7 +1262,8 @@ function insertImageLink() {
       const text = looksLikeImage(raw)
         ? t('notes.editor.image_dialog.image_direct')
         : t('notes.editor.image_dialog.image_view')
-      insertText(`<a href="${raw}" target="_blank" rel="noopener noreferrer">${text}</a>`)
+      // insertImageLink() 里
+      insertText(`<a href="${raw}" target="_blank" rel="external noopener noreferrer">${text}</a>`)
       return true
     },
   })
