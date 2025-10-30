@@ -357,10 +357,6 @@ onMounted(() => {
 
       if ((event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && currentUser))) {
         nextTick(async () => {
-          if (sessionStorage.getItem('note_editor_resume_v1')) {
-            authResolved.value = true
-            return
-          }
           // --- 重构后的逻辑 ---
           // 1. 优先检查所有可能的缓存状态
           const savedSearchQuery = sessionStorage.getItem(SESSION_SEARCH_QUERY_KEY)
@@ -894,7 +890,7 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
   if (error) {
     messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
     notes.value = []
-    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY) //  搜索失败，清除缓存
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY) // ++ 搜索失败，清除缓存
     isShowingSearchResults.value = false
   }
   else {
@@ -917,8 +913,6 @@ function handleSearchCleared() {
 }
 
 async function handleVisibilityChange() {
-  if (sessionStorage.getItem('note_editor_resume_v1'))
-    return
   if (document.visibilityState === 'visible') {
     const { data, error } = await supabase.auth.getSession()
     if ((!data.session || error) && authStore.user) {
