@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -102,6 +102,7 @@ let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
+const settingMenuVisible = ref(false)
 
 const isTopEditing = ref(false)
 const authResolved = ref(false)
@@ -189,15 +190,31 @@ const mainMenuOptions = computed(() => [
   // 顶层：「设置」（拦截点击，避免触发 select→收起）
   {
     key: 'settings-group-toggle',
-    icon: () => h(Settings, { size: 18 }), // 与其它一级项左对齐
-    label: () => h('span', null, t('settings.title') || t('settings.title') || '设置'),
+    // 与其它一级项一致：图标放在 icon 栏位
+    icon: () => h(Settings, { size: 18 }),
+    // 文字 + 右侧箭头（不再给容器设 width:100%）
+    label: () =>
+      h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [
+        // 左侧文字（保持默认对齐，不加额外 margin/padding）
+        h('span', null, t('settings.title') || '设置'),
+        // 右侧箭头：用 margin-left:auto 推到最右侧
+        h(ChevronRight, {
+          'size': 18,
+          'strokeWidth': 2.2,
+          'color': '#888',
+          'class': settingsExpanded.value ? 'menu-caret rot90' : 'menu-caret',
+          'style': 'margin-left:auto;',
+          'aria-hidden': 'true',
+        }),
+      ]),
+    // 整行可点击（图标/文字/箭头效果一致）
     props: {
-      onMousedown: (e: MouseEvent) => e.preventDefault(), // 避免焦点抖动
+      onMousedown: (e: MouseEvent) => e.preventDefault(),
       onClick: (e: MouseEvent) => {
         e.preventDefault()
         e.stopPropagation()
         settingsExpanded.value = !settingsExpanded.value
-        mainMenuVisible.value = true // 保持 NDropdown 展开
+        mainMenuVisible.value = true
       },
       onTouchend: (e: TouchEvent) => {
         e.preventDefault()
@@ -215,7 +232,7 @@ const mainMenuOptions = computed(() => [
     key: 'settings',
     show: settingsExpanded.value,
     label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+      h('div', { class: 'submenu-inline' }, [
         h(Type, { size: 18 }),
         h('span', null, t('settings.font_title')),
       ]),
@@ -224,7 +241,7 @@ const mainMenuOptions = computed(() => [
     key: 'export',
     show: settingsExpanded.value,
     label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+      h('div', { class: 'submenu-inline' }, [
         h(Download, { size: 18 }),
         h('span', null, t('notes.export_all')),
       ]),
@@ -233,7 +250,7 @@ const mainMenuOptions = computed(() => [
     key: 'account',
     show: settingsExpanded.value,
     label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+      h('div', { class: 'submenu-inline' }, [
         h(User, { size: 18 }),
         h('span', null, t('auth.account_title')),
       ]),
@@ -242,7 +259,7 @@ const mainMenuOptions = computed(() => [
     key: 'help',
     show: settingsExpanded.value,
     label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;padding-left:0px;' }, [
+      h('div', { class: 'submenu-inline' }, [
         h(HelpCircle, { size: 18 }), // ← 图标为问号圆圈
         h('span', null, t('notes.help_title') || '使用帮助'),
       ]),
@@ -2172,6 +2189,7 @@ function onCalendarUpdated(updated: any) {
             :show-arrow="false"
             :width="300"
             @select="handleMainMenuSelect"
+            @update:show="(show:boolean) => { if (!show) settingMenuVisible = false }"
           >
             <button class="header-action-btn" @click.stop>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
@@ -2799,6 +2817,14 @@ function onCalendarUpdated(updated: any) {
   line-height: 1.2;
 }
 
+/* 让“设置”下面的二级菜单整体再向左挪一点 */
+.n-dropdown-menu .submenu-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: -9px; /* 调整这个数值大小以控制左移距离，比如 -6px/-10px */
+}
+
 /* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
@@ -2830,7 +2856,7 @@ html, body, #app {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
   padding-bottom: 0 !important;                                  /* 不占位 */
   margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
-  /* overscroll-behavior-y: contain; */
+  overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
   border-bottom-left-radius: 0 !important;
@@ -2852,4 +2878,13 @@ html, body, #app {
 
 :root { --app-bg: #fff; }         /* ✅ 浅色默认 */
 .dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
+
+.n-dropdown-menu .menu-caret {
+  display: inline-block;
+  transition: transform .15s ease;
+  transform: translateY(1px);
+}
+.n-dropdown-menu .menu-caret.rot90 {
+  transform: translateY(1px) rotate(90deg);
+}
 </style>
