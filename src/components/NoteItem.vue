@@ -435,14 +435,14 @@ async function handleDateUpdate(newDate: Date) {
 /* 默认：桌面端 */
 :deep(.prose) {
   font-size: 17px !important;
-  line-height: 2.0; /* 桌面端更宽松 */
+  line-height: 2.2; /* 桌面端更宽松 */
   overflow-wrap: break-word;
 }
 
 /* 移动端（屏幕宽度 <= 768px 时） */
 @media (max-width: 768px) {
   :deep(.prose) {
-    line-height: 1.7; /* 移动端稍紧凑 */
+    line-height: 1.8; /* 移动端稍紧凑 */
     overflow-wrap: break-word;
   }
 }
@@ -580,8 +580,8 @@ async function handleDateUpdate(newDate: Date) {
 
 /* 2) 普通段落的上下外边距略收紧（避免整体过稀） */
 .note-content :deep(p) {
-  margin-top: 0.4em;
-  margin-bottom: 0.4em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 /* 3) 关键：当“段落后面紧跟列表”时，把两者之间的间距进一步压小
