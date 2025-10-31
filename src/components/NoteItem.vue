@@ -43,6 +43,7 @@ const messageHook = useMessage()
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
+const RESUME_KEY = 'note_editor_resume_v1'
 
 const md = new MarkdownIt({
   html: false,
@@ -191,17 +192,25 @@ function handleDropdownSelect(key: string) {
 
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-  const listItem = target.closest('li.task-list-item')
 
-  // 如果点击的不是一个待办事项行，则直接返回
+  // ✅ 情况一：点击了正文中的链接（含图片链接包裹在 <a> 内）
+  const anchor = target.closest('a[href]') as HTMLAnchorElement | null
+  if (anchor) {
+    try {
+      sessionStorage.setItem(RESUME_KEY, JSON.stringify({ noteId: props.note.id }))
+    }
+    catch { /* ignore */ }
+    // 允许默认跳转行为，不要阻止
+    return
+  }
+
+  // ✅ 情况二：任务列表打勾（你的原逻辑保持）
+  const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
 
-  // 判断点击的是否为复选框本身
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
-
   if (isCheckboxClick) {
-    // 如果是复选框，执行我们的打钩逻辑
     event.stopPropagation()
     const noteCard = event.currentTarget as HTMLElement
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
@@ -210,7 +219,7 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
+    // 点击任务项的文字，阻止 <label> 触发默认切换（你的原逻辑）
     event.preventDefault()
   }
 }

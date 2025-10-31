@@ -103,7 +103,7 @@ const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
 const settingMenuVisible = ref(false)
-
+const RESUME_KEY = 'note_editor_resume_v1'
 const isTopEditing = ref(false)
 const authResolved = ref(false)
 
@@ -478,6 +478,21 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
+  setTimeout(async () => {
+    const raw = sessionStorage.getItem(RESUME_KEY)
+    if (!raw)
+      return
+    try {
+      const { noteId } = JSON.parse(raw) || {}
+      if (noteId) {
+        await nextTick() // 等列表/虚拟滚动稳定
+        ;(noteListRef.value as any)?.focusNote?.(noteId, { expand: false, align: 'center' })
+      }
+    }
+    finally {
+      sessionStorage.removeItem(RESUME_KEY)
+    }
+  }, 0)
 })
 
 onUnmounted(() => {

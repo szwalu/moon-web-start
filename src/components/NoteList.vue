@@ -750,11 +750,44 @@ async function focusAndEditNote(noteId: string) {
   }
 }
 
+async function focusNote(
+  noteId: string,
+  opts: { expand?: boolean; align?: 'center' | 'start' | 'nearest'; flashMs?: number } = {},
+) {
+  const idx = noteIdToMixedIndex.value[noteId]
+  if (idx === undefined)
+    return
+
+  const { expand = false, align = 'center', flashMs = 1200 } = opts
+
+  // 如果需要展开，仅设置 expandedNote，不触发编辑
+  if (expand) {
+    expandedNote.value = noteId
+    await nextTick()
+  }
+
+  // 滚动把它放到视口合适位置
+  await nextTick()
+  scrollerRef.value?.scrollToItem(idx, { align, behavior: 'auto' })
+  requestAnimationFrame(() => {
+    recomputeStickyState()
+  })
+
+  // 轻量高亮一下，方便目视确认
+  const cardWrap = noteContainers.value[noteId]
+  if (cardWrap && cardWrap.isConnected) {
+    cardWrap.classList.add('resume-flash')
+    window.setTimeout(() => {
+      cardWrap.classList.remove('resume-flash')
+    }, flashMs)
+  }
+}
+
 function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
-defineExpose({ scrollToTop, focusAndEditNote })
+defineExpose({ scrollToTop, focusAndEditNote, focusNote })
 
 async function restoreScrollIfNeeded() {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
@@ -1014,4 +1047,14 @@ async function restoreScrollIfNeeded() {
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
+
+/* 返回直达时的轻量高亮 */
+.note-selection-wrapper.resume-flash {
+  box-shadow: inset 0 0 0 2px #60a5fa;
+  animation: noteFlash 1.2s ease-out 1;
+}
+@keyframes noteFlash {
+  0%   { box-shadow: inset 0 0 0 6px rgba(96,165,250,0.75); }
+  100% { box-shadow: inset 0 0 0 0 rgba(96,165,250,0); }
+}
 </style>
