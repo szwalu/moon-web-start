@@ -8,6 +8,7 @@ import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 
 import mark from 'markdown-it-mark'
+import linkAttrs from 'markdown-it-link-attributes'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
@@ -38,7 +39,6 @@ const emit = defineEmits([
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
-// const dialog = useDialog()
 
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
@@ -52,44 +52,12 @@ const md = new MarkdownIt({
   .use(taskLists, { enabled: true, label: true })
   .use(mark)
   .use(ins)
-  // .use(linkAttrs, { ... }) // 我们不再需要 linkAttrs，用下面的规则替换它
-
-// +++ 新增：覆盖默认的链接渲染器 +++
-
-// 保存一份原始的 link_open 规则，以便内部链接（如 #hash）可以回退
-const defaultLinkOpenRender = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
-  return self.renderToken(tokens, idx, options)
-}
-
-md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  const token = tokens[idx]
-  const href = token.attrGet('href')
-
-  // 检查是否是外部链接
-  if (href && (href.startsWith('http') || href.startsWith('//'))) {
-    // 关键：不渲染 <a>, 渲染成 <span data-href="...">
-    // 我们给它一个 class "external-link" 来识别
-    // 并添加 "prose-link" 来模拟链接样式
-    return `<span class="external-link prose-link" data-href="${md.utils.escapeHtml(href)}">`
-  }
-
-  // 否则 (例如内部链接 #anchor), 正常渲染
-  return defaultLinkOpenRender(tokens, idx, options, env, self)
-}
-
-// 覆盖 link_close
-md.renderer.rules.link_close = function (tokens, idx /* , options, env, self */) {
-  // 检查对应的 link_open 是否被我们修改了
-  // link_open token 在 tokens[idx - 2]
-  if (tokens[idx - 2] && tokens[idx - 2].type === 'link_open') {
-    const token = tokens[idx - 2]
-    const href = token.attrGet('href')
-    if (href && (href.startsWith('http') || href.startsWith('//')))
-      return '</span>' // 关闭我们的 <span>
-  }
-
-  return '</a>' // 正常关闭 </a>
-}
+  .use(linkAttrs, {
+    attrs: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  })
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
@@ -221,48 +189,19 @@ function handleDropdownSelect(key: string) {
   }
 }
 
-// 用这个新版本完整替换
-// [NoteItem.vue]
-// 用这个新版本完整替换 handleNoteContentClick
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-
-  // --- 1. 优先检查 "假链接" (span.external-link) ---
-  const link = target.closest('span.external-link')
-
-  // 检查它是否有 data-href 属性
-  if (link && (link as HTMLElement).dataset.href) {
-    // 找到了我们的 <span>, 它不是一个真链接, 所以 PWA 不会拦截
-    event.preventDefault()
-    event.stopPropagation()
-
-    const href = (link as HTMLElement).dataset.href as string // 从 data-href 获取 URL
-
-    // --- ✅ 新的解决方案：复制链接到剪贴板 ---
-    try {
-      // 这是一个受信任的 API，PWA 会允许
-      navigator.clipboard.writeText(href)
-
-      // 使用你已有的 messageHook (在第 31 行定义)
-      messageHook.success(t('notes.editor.link_copied')) // "链接已复制到剪贴板"
-    }
-    catch (err) {
-      messageHook.error(t('notes.editor.link_copy_failed')) // "复制失败"
-    }
-
-    return // 链接已处理，退出
-  }
-
-  // --- 2. 检查是否在 task list item 内部 (你原有的逻辑) ---
-  // (如果不是链接，才继续检查是否为待办事项)
   const listItem = target.closest('li.task-list-item')
+
+  // 如果点击的不是一个待办事项行，则直接返回
   if (!listItem)
     return
 
-  // --- 3. 处理 task list item 内部的点击 (保持不变) ---
+  // 判断点击的是否为复选框本身
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
 
   if (isCheckboxClick) {
+    // 如果是复选框，执行我们的打钩逻辑
     event.stopPropagation()
     const noteCard = event.currentTarget as HTMLElement
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
@@ -271,6 +210,7 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
+    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
     event.preventDefault()
   }
 }
@@ -677,13 +617,5 @@ async function handleDateUpdate(newDate: Date) {
   display: inline;
   margin: 0;
   line-height: inherit;
-}
-:deep(.external-link.prose-link) {
-  color: #2563eb !important; /* 你的亮色链接色 */
-  text-decoration: underline !important;
-  cursor: pointer; /* 关键：显示“手型”光标 */
-}
-.dark :deep(.external-link.prose-link) {
-  color: #60a5fa !important; /* 你的暗色链接色 */
 }
 </style>
