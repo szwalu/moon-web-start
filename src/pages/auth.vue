@@ -104,6 +104,7 @@ const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
 const settingsExpanded = ref(false)
 const settingMenuVisible = ref(false)
 const RESUME_KEY = 'note_editor_resume_v1'
+let pendingResumeNoteId: string | null = null
 const isTopEditing = ref(false)
 const authResolved = ref(false)
 
@@ -478,20 +479,17 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
-  setTimeout(async () => {
-    const raw = sessionStorage.getItem(RESUME_KEY)
-    if (!raw)
-      return
+  setTimeout(() => {
     try {
+      const raw = sessionStorage.getItem(RESUME_KEY)
+      if (!raw)
+        return
       const { noteId } = JSON.parse(raw) || {}
-      if (noteId) {
-        await nextTick() // 等列表/虚拟滚动稳定
-        ;(noteListRef.value as any)?.focusNote?.(noteId, { expand: false, align: 'center' })
-      }
+      if (typeof noteId === 'string' && noteId)
+        pendingResumeNoteId = noteId
+      // 不要立刻 removeItem，等真正对焦成功后再清理
     }
-    finally {
-      sessionStorage.removeItem(RESUME_KEY)
-    }
+    catch {}
   }, 0)
 })
 
@@ -863,6 +861,40 @@ const notesCount = computed(() => {
 
 // 统一规则：只有当可见笔记数 ≥ 6 时才允许隐藏（主页 / 那年今日 / 标签 / 搜索 全部适用）
 const canHideTopChrome = computed(() => notesCount.value >= MIN_NOTES_FOR_HIDE)
+
+// 【新增】稳定对焦：等数据/虚拟列表稳定后再对焦，并用“双 RAF + setTimeout 0”抵消回弹
+watch(
+  () => [authResolved.value, Array.isArray(displayedNotes.value) ? displayedNotes.value.length : 0],
+  async () => {
+    if (!authResolved.value || !pendingResumeNoteId)
+      return
+    if (!noteListRef.value?.focusNote)
+      return
+    if (!Array.isArray(displayedNotes.value) || displayedNotes.value.length === 0)
+      return
+
+    // 等一帧，给 DOM/虚拟列表一次布局机会
+    await nextTick()
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+    const id = pendingResumeNoteId
+    // 第一次定位（居中）
+    ;(noteListRef.value as any).focusNote(id, { align: 'center' })
+
+    // 用一个“零延时”宏任务再补一次，压过后续可能的回弹
+    setTimeout(() => {
+      (noteListRef.value as any)?.focusNote?.(id, { align: 'center' })
+    }, 0)
+
+    // 清理标记 & 清掉 sessionStorage
+    pendingResumeNoteId = null
+    try {
+      sessionStorage.removeItem(RESUME_KEY)
+    }
+    catch {}
+  },
+  { immediate: true },
+)
 
 // —— 视图切换 / 列表变化时，若不满足门槛则钉住展开 ——
 watch([notesCount, isAnniversaryViewActive, isShowingSearchResults, activeTagFilter], () => {
@@ -1593,6 +1625,16 @@ async function handleTrashPurged() {
   // 可选：不用刷新主页，但你如果想同步总数，可轻量刷新一次元数据
   // 例如保持当前页不动，只更新 totalNotes：
   await fetchNotes()
+}
+
+function onTrashRestoredOnce() {
+  invalidateAllTagCaches()
+  handleTrashRestored()
+}
+
+function onTrashPurgedOnce() {
+  invalidateAllTagCaches()
+  handleTrashPurged()
 }
 
 function handleHeaderClick() {
@@ -2375,8 +2417,8 @@ function onCalendarUpdated(updated: any) {
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="invalidateAllTagCaches(); handleTrashRestored()"
-        @purged="invalidateAllTagCaches(); handleTrashPurged()"
+        @restored="onTrashRestoredOnce"
+        @purged="onTrashPurgedOnce"
       />
 
       <!-- （原底部 selection-actions-popup 已移除） -->

@@ -750,44 +750,31 @@ async function focusAndEditNote(noteId: string) {
   }
 }
 
-async function focusNote(
-  noteId: string,
-  opts: { expand?: boolean; align?: 'center' | 'start' | 'nearest'; flashMs?: number } = {},
-) {
-  const idx = noteIdToMixedIndex.value[noteId]
-  if (idx === undefined)
-    return
-
-  const { expand = false, align = 'center', flashMs = 1200 } = opts
-
-  // 如果需要展开，仅设置 expandedNote，不触发编辑
-  if (expand) {
-    expandedNote.value = noteId
-    await nextTick()
-  }
-
-  // 滚动把它放到视口合适位置
-  await nextTick()
-  scrollerRef.value?.scrollToItem(idx, { align, behavior: 'auto' })
-  requestAnimationFrame(() => {
-    recomputeStickyState()
-  })
-
-  // 轻量高亮一下，方便目视确认
-  const cardWrap = noteContainers.value[noteId]
-  if (cardWrap && cardWrap.isConnected) {
-    cardWrap.classList.add('resume-flash')
-    window.setTimeout(() => {
-      cardWrap.classList.remove('resume-flash')
-    }, flashMs)
-  }
-}
-
 function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
 defineExpose({ scrollToTop, focusAndEditNote, focusNote })
+
+async function focusNote(noteId: string, opts?: { align?: 'start' | 'center' | 'end' }) {
+  const idx = noteIdToMixedIndex.value[noteId]
+  if (idx == null)
+    return
+
+  // 第一次滚动
+  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
+  await nextTick()
+
+  // 双 RAF 等布局稳定
+  await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+  // 再滚一次，抵消虚拟列表的复用/回弹
+  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
+
+  // 轻微抖动时再稳一帧（可选）
+  await new Promise<void>(r => requestAnimationFrame(r))
+  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
+}
 
 async function restoreScrollIfNeeded() {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined

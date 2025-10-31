@@ -115,6 +115,26 @@ onMounted(() => {
       checkIfNoteOverflows()
     })
   }
+  const el = contentRef.value as HTMLElement | null
+  if (!el)
+    return
+
+  const onClick = (e: MouseEvent) => {
+    const a = (e.target as HTMLElement)?.closest?.('a') as HTMLAnchorElement | null
+    if (!a || !a.href)
+      return
+    // 仅处理 http(s) 外链
+    if (!/^https?:\/\//i.test(a.href))
+      return
+
+    try {
+      sessionStorage.setItem('note_editor_resume_v1', JSON.stringify({ noteId: props.note.id }))
+    }
+    catch {}
+  }
+  el.addEventListener('click', onClick, { passive: true } as any)
+
+  onUnmounted(() => el.removeEventListener('click', onClick as any))
 })
 onUnmounted(() => {
   if (observer)
