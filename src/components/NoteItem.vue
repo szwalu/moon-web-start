@@ -3,7 +3,7 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
-import { NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, useMessage } from 'naive-ui'
 import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 
@@ -38,7 +38,7 @@ const emit = defineEmits([
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
-const dialog = useDialog()
+// const dialog = useDialog()
 
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
@@ -222,6 +222,8 @@ function handleDropdownSelect(key: string) {
 }
 
 // 用这个新版本完整替换
+// [NoteItem.vue]
+// 用这个新版本完整替换 handleNoteContentClick
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
@@ -236,22 +238,23 @@ function handleNoteContentClick(event: MouseEvent) {
 
     const href = (link as HTMLElement).dataset.href as string // 从 data-href 获取 URL
 
-    // ✅ 弹出你建议的对话框
-    dialog.create({
-      title: t('notes.editor.link_dialog.title'), // "打开链接"
-      content: t('notes.editor.link_dialog.content', { href }), // "是否在浏览器中打开此链接？"
-      positiveText: t('notes.editor.link_dialog.positive'), // "在浏览器中打开"
-      negativeText: t('notes.editor.link_dialog.negative'), // "取消"
-      onPositiveClick: () => {
-        // ✅ 在这个“受信任的”点击事件中打开链接
-        window.open(href, '_blank', 'noopener,noreferrer')
-      },
-    })
+    // --- ✅ 新的解决方案：复制链接到剪贴板 ---
+    try {
+      // 这是一个受信任的 API，PWA 会允许
+      navigator.clipboard.writeText(href)
+
+      // 使用你已有的 messageHook (在第 31 行定义)
+      messageHook.success(t('notes.editor.link_copied')) // "链接已复制到剪贴板"
+    }
+    catch (err) {
+      messageHook.error(t('notes.editor.link_copy_failed')) // "复制失败"
+    }
 
     return // 链接已处理，退出
   }
 
   // --- 2. 检查是否在 task list item 内部 (你原有的逻辑) ---
+  // (如果不是链接，才继续检查是否为待办事项)
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
