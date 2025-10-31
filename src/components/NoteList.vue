@@ -754,27 +754,7 @@ function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
-defineExpose({ scrollToTop, focusAndEditNote, focusNote })
-
-async function focusNote(noteId: string, opts?: { align?: 'start' | 'center' | 'end' }) {
-  const idx = noteIdToMixedIndex.value[noteId]
-  if (idx == null)
-    return
-
-  // 第一次滚动
-  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
-  await nextTick()
-
-  // 双 RAF 等布局稳定
-  await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
-
-  // 再滚一次，抵消虚拟列表的复用/回弹
-  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
-
-  // 轻微抖动时再稳一帧（可选）
-  await new Promise<void>(r => requestAnimationFrame(r))
-  scrollerRef.value?.scrollToItem(idx, { align: opts?.align ?? 'center', behavior: 'auto' })
-}
+defineExpose({ scrollToTop, focusAndEditNote })
 
 async function restoreScrollIfNeeded() {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
@@ -1034,14 +1014,4 @@ async function restoreScrollIfNeeded() {
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
-
-/* 返回直达时的轻量高亮 */
-.note-selection-wrapper.resume-flash {
-  box-shadow: inset 0 0 0 2px #60a5fa;
-  animation: noteFlash 1.2s ease-out 1;
-}
-@keyframes noteFlash {
-  0%   { box-shadow: inset 0 0 0 6px rgba(96,165,250,0.75); }
-  100% { box-shadow: inset 0 0 0 0 rgba(96,165,250,0); }
-}
 </style>

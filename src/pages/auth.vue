@@ -106,18 +106,7 @@ const settingMenuVisible = ref(false)
 
 const isTopEditing = ref(false)
 const authResolved = ref(false)
-const displayedNotes = computed(() => {
-  // 1. 最高优先级：如果正在显示搜索结果，则必须返回 notes 数组（它此刻装着搜索结果）
-  if (isShowingSearchResults.value)
-    return notes.value
 
-  // 2. 第二优先级：如果不在搜索模式，但在“那年今日”视图，则返回那年今日的笔记
-  if (isAnniversaryViewActive.value)
-    return anniversaryNotes.value
-
-  // 3. 默认情况：返回主列表的笔记
-  return notes.value
-})
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -126,15 +115,12 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 // ++ 新增：那年今日持久化键
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
-// 放在其他 SESSION_* 常量旁边
-const RESUME_KEY = 'resume_focus_note'
 const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整）
 const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
 // ++ 新增：用于控制“回到顶部”按钮的 ref 和计时器变量
 const showScrollTopButton = ref(false)
 const latestScrollTop = ref(0)
 let scrollTimer: any = null
-let pendingResumeNoteId: string | null = null
 const _TAG_CACHE_DIRTY_TS = 'tag_cache_dirty_ts'
 // 组合式：放在 t / allTags 之后
 const {
@@ -413,6 +399,8 @@ onMounted(() => {
               sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
 
             noteActionsRef.value?.executeSearch()
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
 
             authResolved.value = true // ✅ 判定完成（路径B）
           }
@@ -490,7 +478,6 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
-  tryResumeFocus()
 })
 
 onUnmounted(() => {
@@ -507,50 +494,6 @@ watch(newNoteContent, (val) => {
       localStorage.removeItem(LOCAL_CONTENT_KEY)
   }
 })
-
-function loadResumeNoteIdFromSession() {
-  if (pendingResumeNoteId)
-    return
-  const raw = sessionStorage.getItem(RESUME_KEY)
-  if (!raw)
-    return
-  try {
-    const parsed = JSON.parse(raw)
-    pendingResumeNoteId = parsed?.noteId || null
-  }
-  catch {}
-}
-
-async function tryResumeFocus() {
-  loadResumeNoteIdFromSession()
-  const id = pendingResumeNoteId
-  if (!id)
-    return
-
-  const hasNote = () => Array.isArray(displayedNotes.value) && displayedNotes.value.some(n => n.id === id)
-  const canFocus = () => !!(noteListRef.value as any)?.focusNote
-
-  let attempts = 0
-  const maxAttempts = 40 // ~0.6–0.8s
-
-  const tick = () => {
-    attempts++
-    if (hasNote() && canFocus()) {
-      ;(noteListRef.value as any).focusNote(id, { align: 'center' })
-      pendingResumeNoteId = null
-      try {
-        sessionStorage.removeItem(RESUME_KEY)
-      }
-      catch {}
-      return
-    }
-    if (attempts < maxAttempts)
-      requestAnimationFrame(tick)
-  }
-
-  await nextTick()
-  requestAnimationFrame(tick)
-}
 
 // ✨ 2. 添加一个新的函数，用于遍历并清除所有 localStorage 中的搜索缓存
 function invalidateAllSearchCaches() {
@@ -879,6 +822,19 @@ async function saveNote(
   }
 }
 
+const displayedNotes = computed(() => {
+  // 1. 最高优先级：如果正在显示搜索结果，则必须返回 notes 数组（它此刻装着搜索结果）
+  if (isShowingSearchResults.value)
+    return notes.value
+
+  // 2. 第二优先级：如果不在搜索模式，但在“那年今日”视图，则返回那年今日的笔记
+  if (isAnniversaryViewActive.value)
+    return anniversaryNotes.value
+
+  // 3. 默认情况：返回主列表的笔记
+  return notes.value
+})
+
 const MIN_NOTES_FOR_HIDE = 6
 
 // —— 安全的计数：兼容 ref 和非 ref，避免 TDZ 和形态判断散落各处 ——
@@ -950,10 +906,7 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 
 function handleSearchCleared() {
   isShowingSearchResults.value = false
-  if (restoreHomepageFromCache()) {
-    tryResumeFocus() // ✅ 命中缓存后立刻尝试恢复焦点
-  }
-  else {
+  if (!restoreHomepageFromCache()) {
     currentPage.value = 1
     fetchNotes()
   }
@@ -1410,7 +1363,6 @@ async function fetchNotes() {
   }
   finally {
     isLoadingNotes.value = false
-    tryResumeFocus()
   }
 }
 
@@ -2171,10 +2123,8 @@ function clearTagFilter() {
   activeTagFilter.value = null
 
   // ✅ 核心修改：不再依赖 mainNotesCache，而是直接从主页缓存恢复
-  if (restoreHomepageFromCache()) {
-    tryResumeFocus() // ✅ 命中缓存后立刻尝试恢复焦点
-  }
-  else {
+  if (!restoreHomepageFromCache()) {
+    // 如果因故未能从缓存恢复，则从网络请求第一页作为兜底
     currentPage.value = 1
     fetchNotes()
   }
