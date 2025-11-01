@@ -59,8 +59,36 @@ const md = new MarkdownIt({
     },
   })
 
+// 给所有 Markdown 图片添加 lazy/async 属性（优化加载）
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  tokens[idx].attrSet('loading', 'lazy')
+  tokens[idx].attrSet('decoding', 'async')
+  // 兜底样式：保证图片等比缩放
+  const style = tokens[idx].attrGet('style')
+  tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
+  return self.renderToken(tokens, idx, options)
+}
+
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+
+function attachImgLoadListener(root: Element | null) {
+  if (!root)
+    return
+  const imgs = Array.from(root.querySelectorAll('img'))
+  if (!imgs.length)
+    return
+  imgs.forEach((img) => {
+    if ((img as HTMLImageElement).complete) {
+      // 已经加载完成也触发一次
+      checkIfNoteOverflows()
+    }
+    else {
+      img.addEventListener('load', checkIfNoteOverflows, { once: true })
+      img.addEventListener('error', checkIfNoteOverflows, { once: true })
+    }
+  })
+}
 
 // ✅ 仅“几日”加粗，其余（时间/周几）常规
 function formatDateWithWeekday(dateStr: string) {
@@ -112,6 +140,7 @@ onMounted(() => {
     // 确保初始状态正确
     nextTick(() => {
       checkIfNoteOverflows()
+      attachImgLoadListener(contentRef.value)
     })
   }
 })
@@ -124,6 +153,7 @@ onUnmounted(() => {
 watch(() => props.note.content, () => {
   nextTick(() => {
     checkIfNoteOverflows()
+    attachImgLoadListener(contentRef.value)
   })
 })
 
@@ -131,6 +161,7 @@ watch(() => props.note.content, () => {
 watch(() => props.isExpanded, () => {
   nextTick(() => {
     checkIfNoteOverflows()
+    attachImgLoadListener(contentRef.value)
   })
 })
 
@@ -617,5 +648,20 @@ async function handleDateUpdate(newDate: Date) {
   display: inline;
   margin: 0;
   line-height: inherit;
+}
+
+/* 自适应：图片不再按原始像素撑出容器，等比缩放到 100% 宽 */
+.note-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;   /* 防止拉伸 */
+  border-radius: 6px;    /* 可选：圆角 */
+  margin: 6px 0;         /* 可选：上下留白 */
+}
+
+/* （可选）在收起预览时限制一下超高图片的高度，避免占满卡片 */
+.line-clamp-3.note-content :deep(img) {
+  max-height: 40vh;
 }
 </style>

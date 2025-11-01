@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
-import { NInput, useDialog } from 'naive-ui'
+import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
+import { supabase } from '@/utils/supabaseClient'
 
 // —— 天气映射（用于城市名映射与图标）——
 import { cityMap, weatherMap } from '@/utils/weatherMap'
@@ -160,6 +161,102 @@ function loadDraft() {
   catch (e) {
     console.warn('[NoteEditor] 读取草稿失败：', e)
   }
+}
+
+// ========== 图片压缩与上传：纯前端，无第三方库 ==========
+
+// 读取 File -> HTMLImageElement
+async function fileToImage(file: File): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image()
+      i.onload = () => resolve(i)
+      i.onerror = reject
+      i.src = url
+    })
+    return img
+  }
+  finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+// 以最大边限制 + 质量压缩为 WebP（默认最长边 1600，质量 0.82）
+async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.82): Promise<Blob> {
+  const img = await fileToImage(file)
+
+  const { width, height } = img
+  const ratio = Math.min(maxW / width, maxH / height, 1) // 只缩小不放大
+  const targetW = Math.round(width * ratio)
+  const targetH = Math.round(height * ratio)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = targetW
+  canvas.height = targetH
+  const ctx = canvas.getContext('2d', { alpha: true })
+  if (!ctx)
+    throw new Error('Canvas 2D context not available')
+  // 在一些移动端上抗锯齿更稳
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, targetW, targetH)
+
+  const webp = await new Promise<Blob>((resolve, reject) => {
+    // iOS 14+ / 现代浏览器均支持 webp；若极端环境不支持，会返回 null
+    canvas.toBlob((blob) => {
+      if (!blob)
+        return reject(new Error('Failed to encode WebP (browser may not support)'))
+      resolve(blob)
+    }, 'image/webp', quality)
+  })
+  return webp
+}
+
+// 生成存储路径：按用户与年月分目录，避免单目录过多文件
+function buildImagePath(userId: string) {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const ts = d.getTime()
+  const rand = Math.random().toString(36).slice(2, 8)
+  return `${userId}/${y}/${m}/${ts}_${rand}.webp`
+}
+
+// 上传到 Supabase Storage（bucket: note-images）并返回可用 URL（公有或签名）
+async function uploadWebpToSupabase(webp: Blob): Promise<string> {
+  // 取当前用户（用于分目录）
+  const { data: userData, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !userData?.user)
+    throw new Error('请先登录后再上传图片')
+  const userId = userData.user.id
+
+  const filePath = buildImagePath(userId)
+  const bucket = 'note-images'
+
+  const { error: upErr } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, webp, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
+  if (upErr)
+    throw upErr
+
+  // 若 bucket 设置为 Public，可直接取 public URL
+  const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  if (pub?.publicUrl)
+    return pub.publicUrl
+
+  // 如果不是 Public bucket，退回生成长签名 URL（例如 1 年）
+  const { data: signed, error: sErr } = await supabase
+    .storage
+    .from(bucket)
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 年（秒）
+  if (sErr || !signed?.signedUrl)
+    throw new Error('获取图片 URL 失败')
+  return signed.signedUrl
 }
 
 function saveDraft() {
@@ -1190,7 +1287,7 @@ onUnmounted(() => {
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
 const LAST_IMAGE_URL_PREFIX_KEY = 'note_image_url_prefix_v1'
-function getLastPrefix() {
+function _getLastPrefix() {
   try {
     const v = localStorage.getItem(LAST_IMAGE_URL_PREFIX_KEY)
     return v || 'https://'
@@ -1202,7 +1299,7 @@ function getLastPrefix() {
 function looksLikeImage(urlText: string) {
   return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(urlText)
 }
-function savePrefix(urlText: string) {
+function _savePrefix(urlText: string) {
   try {
     const u = new URL(urlText)
     let prefix = ''
@@ -1222,50 +1319,72 @@ function savePrefix(urlText: string) {
     // 不是合法 URL 就不记忆
   }
 }
-function insertImageLink() {
-  const valRef = ref(getLastPrefix())
-  const errorRef = ref<string | null>(null)
-  dialog.create({
-    title: t('notes.editor.image_dialog.title'),
-    positiveText: t('notes.editor.image_dialog.positive'),
-    negativeText: t('notes.editor.image_dialog.negative'),
-    content: () =>
-      h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
-        h(NInput, {
-          'value': valRef.value,
-          'placeholder': t('notes.editor.image_dialog.placeholder'),
-          'onUpdate:value': (v: string) => {
-            valRef.value = v
-            errorRef.value = null
-          },
-          'autofocus': true,
-          'clearable': true,
-          'inputProps': { style: 'font-size:16px;' }, // ✅ iOS 防止放大（末尾不要逗号）
-        }),
-        errorRef.value
-          ? h('div', { style: 'color:#dc2626;font-size:12px;' }, errorRef.value)
-          : null,
-      ]),
-    onPositiveClick: () => {
-      const raw = (valRef.value || '').trim()
-      if (!raw) {
-        errorRef.value = t('notes.editor.image_dialog.error_empty')
-        return false
+// —— 选择图片 → 压缩为 WebP → 上传 → 插入 Markdown 图片
+async function insertImageLink() {
+  try {
+    // 1) 创建隐形文件选择器（支持拍照/相册）
+    const inputEl = document.createElement('input')
+    inputEl.type = 'file'
+    inputEl.accept = 'image/*'
+    // 可按需决定是否加 capture（可能会干扰相册选择）
+    // inputEl.capture = 'environment' as any
+
+    const picked = await new Promise<File | null>((resolve) => {
+      inputEl.onchange = () => {
+        const f = inputEl.files && inputEl.files[0] ? inputEl.files[0] : null
+        resolve(f)
       }
-      if (!/^https?:\/\//i.test(raw)) {
-        errorRef.value = t('notes.editor.image_dialog.error_protocol')
-        return false
-      }
-      // 记忆前缀（增强规则）
-      savePrefix(raw)
-      // 统一插入为可点击链接；渲染端 markdown-it-link-attributes 已设置新开页
-      const text = looksLikeImage(raw)
-        ? t('notes.editor.image_dialog.image_direct')
-        : t('notes.editor.image_dialog.image_view')
-      insertText(`[${text}](${raw})`)
-      return true
-    },
-  })
+      inputEl.click()
+    })
+    if (!picked)
+      return
+
+    // 2) 进行简单的“源头大小兜底”（原图非常大时给个友好限制）
+    const MAX_ORIGIN_MB = 25 // 过大的原图往往是误选的原始照片
+    if (picked.size > MAX_ORIGIN_MB * 1024 * 1024) {
+      dialog.warning({
+        title: '图片过大',
+        content: `原图超过 ${MAX_ORIGIN_MB} MB，请先在系统里裁剪或压缩。`,
+        positiveText: '好的',
+      })
+      return
+    }
+
+    // 3) 压缩成 WebP（默认最长边 1600，质量 0.82；你可按需调整）
+    const webp = await compressToWebp(picked, 1600, 1600, 0.82)
+
+    // 4) 再做一次“结果体积兜底”——例如控制在 2MB 内
+    const MAX_FINAL_MB = 2
+    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
+      dialog.warning({
+        title: '压缩后仍偏大',
+        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
+        positiveText: '知道了',
+      })
+      return
+    }
+
+    // 5) 上传到 Supabase
+    const url = await uploadWebpToSupabase(webp)
+
+    // 6) 插入到光标处（Markdown 图片语法）
+    insertText(`![](${url})`, '')
+
+    // 7) 轻微 UX 提示
+    dialog.success({
+      title: '上传成功',
+      content: '图片已插入到光标位置。',
+      positiveText: '好的',
+    })
+  }
+  catch (e: any) {
+    console.error('[image upload] failed:', e)
+    dialog.error({
+      title: '上传失败',
+      content: e?.message || '请稍后重试',
+      positiveText: '好的',
+    })
+  }
 }
 
 defineExpose({
@@ -1443,7 +1562,7 @@ function handleBeforeInput(e: InputEvent) {
           <button
             type="button"
             class="toolbar-btn"
-            :title="t('notes.editor.toolbar.insert_image_link')"
+            :title="t('notes.editor.toolbar.upload_image')"
             @mousedown.prevent
             @touchstart.prevent
             @pointerdown.prevent="insertImageLink"

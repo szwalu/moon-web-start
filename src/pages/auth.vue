@@ -51,6 +51,11 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const noteListRef = ref(null)
+// === 图片加载后，通知 NoteList 触发 DynamicScroller 的 remeasure ===
+function handleMdImageLoad() {
+  // NoteList 里暴露了 forceUpdate（见第3步备注）
+  (noteListRef.value as any)?.forceUpdate?.()
+}
 const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
@@ -478,12 +483,14 @@ onMounted(() => {
     newNoteContent.value = savedContent
 
   isReady.value = true
+  window.addEventListener('md-img-load', handleMdImageLoad)
 })
 
 onUnmounted(() => {
   if (authListener)
     authListener.unsubscribe()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('md-img-load', handleMdImageLoad)
 })
 
 watch(newNoteContent, (val) => {
