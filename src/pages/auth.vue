@@ -589,7 +589,8 @@ const STORAGE_BUCKET = 'note-images' // 如你的桶名不同，改这里即可
 function extractStoragePathsFromContent(content: string | null | undefined): string[] {
   if (!content)
     return []
-  // 兼容：public URL / signed URL / 反向代理，统一截 note-images/ 之后的相对路径
+
+  // 统一截 note-images/ 之后的相对路径；兼容 public/signed/proxy URL
   const rx = /https?:\/\/[^\s)"]+\/note-images\/([^)\s"']+)/g
   const set = new Set<string>()
   let m: RegExpExecArray | null = null
@@ -598,7 +599,23 @@ function extractStoragePathsFromContent(content: string | null | undefined): str
     m = rx.exec(content)
     if (m === null)
       break
-    const rel = m[1]?.trim()
+
+    let rel = (m[1] || '').trim()
+    if (!rel)
+      continue
+
+    // 去掉查询/锚点，去重、去前导斜杠并尝试解码
+    rel = rel.split(/[?#]/)[0]
+    if (rel.startsWith('/'))
+      rel = rel.slice(1)
+
+    try {
+      rel = decodeURIComponent(rel)
+    }
+    catch {
+      // ignore decode errors
+    }
+
     if (rel)
       set.add(rel)
   }
@@ -612,6 +629,26 @@ function collectImagePathsFromNotes(notesArr: any[]): string[] {
     extractStoragePathsFromContent(n?.content).forEach(p => set.add(p))
 
   return Array.from(set)
+}
+
+async function deleteNoteImagesForNotes(notesToProcess: Array<{ content?: string | null }>) {
+  // 收集所有待删路径，去重
+  const paths = Array.from(
+    notesToProcess.reduce((acc, n) => {
+      for (const p of extractStoragePathsFromContent(n?.content ?? '')) acc.add(p)
+      return acc
+    }, new Set<string>()),
+  )
+
+  if (paths.length === 0)
+    return
+
+  // Supabase 一次 remove 支持批量；如有超大批量可再分片，这里通常足够
+  const { error } = await supabase.storage.from('note-images').remove(paths)
+  if (error) {
+    // 若没有删除权限（存储策略问题）或路径不匹配，会报错
+    messageHook.warning(`部分图片未能删除：${error.message}`)
+  }
 }
 
 async function _reloadNotes() {
@@ -1723,6 +1760,9 @@ async function triggerDeleteConfirmation(id: string) {
           throw new Error(error.message)
         anniversaryBannerRef.value?.removeNoteById(id)
 
+        if (noteToDelete)
+          await deleteNoteImagesForNotes([noteToDelete])
+
         // === [ADD] 同步删除 Storage 里的图片 ===
         if (imagePathsForThisNote.length > 0) {
           const { error: storageError } = await supabase
@@ -1964,6 +2004,8 @@ async function handleDeleteSelected() {
         const notesToDelete = notes.value.filter(n => idsToDelete.includes(n.id))
         const imagePathsForBatch = collectImagePathsFromNotes(notesToDelete)
 
+        const notesToDeleteNow = notes.value.filter(n => idsToDelete.includes(n.id))
+
         // 步骤 2: 执行数据库批量删除操作
         const { error } = await supabase
           .from('notes')
@@ -1977,7 +2019,7 @@ async function handleDeleteSelected() {
         idsToDelete.forEach((id) => {
           anniversaryBannerRef.value?.removeNoteById(id)
         })
-
+        await deleteNoteImagesForNotes(notesToDeleteNow)
         // === [ADD] 删库成功后，同步删除 Storage 里的图片
         if (imagePathsForBatch.length > 0) {
           try {
