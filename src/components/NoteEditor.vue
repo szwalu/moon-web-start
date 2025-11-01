@@ -194,28 +194,15 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // 2) 压缩成 WebP（最长边 1600，质量 0.6 起步）
-    // ------------------------------------------------
-    let quality = 0.6
-    let webp = await compressToWebp(file, 1600, 1600, quality)
+    // 2) 压缩成 WebP（最长边 1600，质量 0.82）
+    const webp = await compressToWebp(file, 1280, 1280, 0.6)
 
-    // 自动重试：逐步降低质量，直到 ≤ 2MB 或质量降到 0.3
+    // 3) 压缩后体积兜底
     const MAX_FINAL_MB = 2
-    const MAX_FINAL_BYTES = MAX_FINAL_MB * 1024 * 1024
-    let attempts = 0
-
-    while (webp.size > MAX_FINAL_BYTES && quality > 0.3 && attempts < 5) {
-      quality -= 0.1
-      attempts++
-      // console.log(`[compress] retry #${attempts}, quality=${quality.toFixed(2)}`)
-      webp = await compressToWebp(file, 1600, 1600, quality)
-    }
-
-    // 3) 压缩后体积兜底检查
-    if (webp.size > MAX_FINAL_BYTES) {
+    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
       dialog.warning({
         title: '压缩后仍偏大',
-        content: `已多次尝试压缩，仍超过 ${MAX_FINAL_MB} MB，请裁剪图片或选择更小尺寸再试。`,
+        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
         positiveText: '知道了',
       })
       return
