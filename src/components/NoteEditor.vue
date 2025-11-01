@@ -58,25 +58,6 @@ const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || n
 const UA = navigator.userAgent.toLowerCase()
 const isIOS = /iphone|ipad|ipod/.test(UA)
 
-// 建议放在现有 isMobile / isAndroid / isIOS 判定附近
-const isTouchDevice
-  = typeof window !== 'undefined'
-  && (('ontouchstart' in window) || navigator.maxTouchPoints > 0)
-
-function onToolbarImagePointerDown() {
-  // 触屏端：用 pointerdown 同步触发
-  if (!isTouchDevice)
-    return
-  onPickImageSync()
-}
-
-function onToolbarImageClick() {
-  // 桌面端：用 click，同步触发
-  if (isTouchDevice)
-    return
-  onPickImageSync()
-}
-
 // iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
 const iosFirstInputLatch = ref(false)
 
@@ -1593,9 +1574,10 @@ function handleBeforeInput(e: InputEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.toolbar.upload_image')"
-            @pointerdown="onToolbarImagePointerDown"
-            @click="onToolbarImageClick"
+            @pointerdown="onPickImageSync"
+            @click="onPickImageSync"
           >
+            >
             <!-- Image icon -->
             <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
