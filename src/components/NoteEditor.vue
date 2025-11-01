@@ -29,6 +29,7 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
     return null
@@ -162,7 +163,78 @@ function loadDraft() {
     console.warn('[NoteEditor] 读取草稿失败：', e)
   }
 }
+// --- 安全触发文件选择 ---
+const imageInputRef = ref<HTMLInputElement | null>(null)
 
+function onPickImageSync() {
+  // 👇 一定要同步执行，不要有 await / setTimeout / nextTick 在它前面
+  const el = imageInputRef.value
+  if (!el)
+    return
+  // 允许连续选择同一文件
+  el.value = ''
+  el.click()
+}
+
+async function onImageChosen(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input?.files?.[0]
+  if (!file)
+    return
+
+  try {
+    // 1) 原图体积兜底（可按需调整）
+    const MAX_ORIGIN_MB = 25
+    if (file.size > MAX_ORIGIN_MB * 1024 * 1024) {
+      dialog.warning({
+        title: '图片过大',
+        content: `原图超过 ${MAX_ORIGIN_MB} MB，请先在系统里裁剪或压缩。`,
+        positiveText: '好的',
+      })
+      return
+    }
+
+    // 2) 压缩成 WebP（最长边 1600，质量 0.82）
+    const webp = await compressToWebp(file, 1600, 1600, 0.82)
+
+    // 3) 压缩后体积兜底
+    const MAX_FINAL_MB = 2
+    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
+      dialog.warning({
+        title: '压缩后仍偏大',
+        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
+        positiveText: '知道了',
+      })
+      return
+    }
+
+    // 4) 上传到 Supabase
+    const url = await uploadWebpToSupabase(webp)
+
+    // 5) 插入到光标处（Markdown 图片）
+    insertText(`![](${url})`, '')
+
+    // 6) 成功提示
+    dialog.success({
+      title: '上传成功',
+      content: '图片已插入到光标位置。',
+      positiveText: '好的',
+    })
+  }
+  catch (err: any) {
+    console.error('[image upload] failed:', err)
+    dialog.error({
+      title: '上传失败',
+      content: err?.message || '请稍后重试',
+      positiveText: '好的',
+    })
+  }
+  finally {
+    // 允许连续选择同一张图
+    if (imageInputRef.value)
+      imageInputRef.value.value = ''
+  }
+}
 // ========== 图片压缩与上传：纯前端，无第三方库 ==========
 
 // 读取 File -> HTMLImageElement
@@ -329,7 +401,6 @@ onUnmounted(() => {
 const charCount = computed(() => contentModel.value.length)
 
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
-const dialog = useDialog()
 const overLimitWarned = ref(false)
 
 watch([charCount, () => props.maxNoteLength], ([len, max]) => {
@@ -1319,73 +1390,6 @@ function _savePrefix(urlText: string) {
     // 不是合法 URL 就不记忆
   }
 }
-// —— 选择图片 → 压缩为 WebP → 上传 → 插入 Markdown 图片
-async function insertImageLink() {
-  try {
-    // 1) 创建隐形文件选择器（支持拍照/相册）
-    const inputEl = document.createElement('input')
-    inputEl.type = 'file'
-    inputEl.accept = 'image/*'
-    // 可按需决定是否加 capture（可能会干扰相册选择）
-    // inputEl.capture = 'environment' as any
-
-    const picked = await new Promise<File | null>((resolve) => {
-      inputEl.onchange = () => {
-        const f = inputEl.files && inputEl.files[0] ? inputEl.files[0] : null
-        resolve(f)
-      }
-      inputEl.click()
-    })
-    if (!picked)
-      return
-
-    // 2) 进行简单的“源头大小兜底”（原图非常大时给个友好限制）
-    const MAX_ORIGIN_MB = 25 // 过大的原图往往是误选的原始照片
-    if (picked.size > MAX_ORIGIN_MB * 1024 * 1024) {
-      dialog.warning({
-        title: '图片过大',
-        content: `原图超过 ${MAX_ORIGIN_MB} MB，请先在系统里裁剪或压缩。`,
-        positiveText: '好的',
-      })
-      return
-    }
-
-    // 3) 压缩成 WebP（默认最长边 1600，质量 0.82；你可按需调整）
-    const webp = await compressToWebp(picked, 1600, 1600, 0.82)
-
-    // 4) 再做一次“结果体积兜底”——例如控制在 2MB 内
-    const MAX_FINAL_MB = 2
-    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
-      dialog.warning({
-        title: '压缩后仍偏大',
-        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
-        positiveText: '知道了',
-      })
-      return
-    }
-
-    // 5) 上传到 Supabase
-    const url = await uploadWebpToSupabase(webp)
-
-    // 6) 插入到光标处（Markdown 图片语法）
-    insertText(`![](${url})`, '')
-
-    // 7) 轻微 UX 提示
-    dialog.success({
-      title: '上传成功',
-      content: '图片已插入到光标位置。',
-      positiveText: '好的',
-    })
-  }
-  catch (e: any) {
-    console.error('[image upload] failed:', e)
-    dialog.error({
-      title: '上传失败',
-      content: e?.message || '请稍后重试',
-      positiveText: '好的',
-    })
-  }
-}
 
 defineExpose({
   reset: triggerResize,
@@ -1487,6 +1491,13 @@ function handleBeforeInput(e: InputEvent) {
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
       />
+      <input
+        ref="imageInputRef"
+        type="file"
+        accept="image/*"
+        style="display:none"
+        @change="onImageChosen"
+      >
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
         class="tag-suggestions"
@@ -1563,9 +1574,7 @@ function handleBeforeInput(e: InputEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.toolbar.upload_image')"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="insertImageLink"
+            @pointerdown.prevent="onPickImageSync"
           >
             <!-- Image icon -->
             <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
