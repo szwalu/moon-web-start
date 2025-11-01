@@ -583,6 +583,37 @@ function invalidateAllTagCaches() {
   }
 }
 
+// === [ADD] 提取笔记内容中的 Storage 文件相对路径 ===
+const STORAGE_BUCKET = 'note-images' // 如你的桶名不同，改这里即可
+
+function extractStoragePathsFromContent(content: string | null | undefined): string[] {
+  if (!content)
+    return []
+  // 兼容：public URL / signed URL / 反向代理，统一截 note-images/ 之后的相对路径
+  const rx = /https?:\/\/[^\s)"]+\/note-images\/([^)\s"']+)/g
+  const set = new Set<string>()
+  let m: RegExpExecArray | null = null
+
+  while (true) {
+    m = rx.exec(content)
+    if (m === null)
+      break
+    const rel = m[1]?.trim()
+    if (rel)
+      set.add(rel)
+  }
+
+  return Array.from(set)
+}
+
+function collectImagePathsFromNotes(notesArr: any[]): string[] {
+  const set = new Set<string>()
+  for (const n of notesArr || [])
+    extractStoragePathsFromContent(n?.content).forEach(p => set.add(p))
+
+  return Array.from(set)
+}
+
 async function _reloadNotes() {
   const { data, error } = await supabase
     .from('notes')
@@ -1664,6 +1695,7 @@ async function triggerDeleteConfirmation(id: string) {
     return
 
   const noteToDelete = notes.value.find(note => note.id === id)
+  const imagePathsForThisNote = noteToDelete ? extractStoragePathsFromContent(noteToDelete.content) : []
 
   dialog.warning({
     title: t('notes.delete_confirm_title'),
@@ -1690,6 +1722,16 @@ async function triggerDeleteConfirmation(id: string) {
         if (error)
           throw new Error(error.message)
         anniversaryBannerRef.value?.removeNoteById(id)
+
+        // === [ADD] 同步删除 Storage 里的图片 ===
+        if (imagePathsForThisNote.length > 0) {
+          const { error: storageError } = await supabase
+            .storage
+            .from(STORAGE_BUCKET)
+            .remove(imagePathsForThisNote)
+          if (storageError)
+            console.warn('[storage] remove failed:', storageError.message)
+        }
 
         // 更新本地缓存与 UI（保持原有逻辑）
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
@@ -1918,6 +1960,10 @@ async function handleDeleteSelected() {
           }
         })
 
+        // === [ADD] 在删库之前，批量收集这些笔记里引用的 Storage 图片路径
+        const notesToDelete = notes.value.filter(n => idsToDelete.includes(n.id))
+        const imagePathsForBatch = collectImagePathsFromNotes(notesToDelete)
+
         // 步骤 2: 执行数据库批量删除操作
         const { error } = await supabase
           .from('notes')
@@ -1927,9 +1973,25 @@ async function handleDeleteSelected() {
 
         if (error)
           throw new Error(error.message)
+
         idsToDelete.forEach((id) => {
           anniversaryBannerRef.value?.removeNoteById(id)
         })
+
+        // === [ADD] 删库成功后，同步删除 Storage 里的图片
+        if (imagePathsForBatch.length > 0) {
+          try {
+            const { error: storageError } = await supabase
+              .storage
+              .from(STORAGE_BUCKET) // 例如 'note-images'
+              .remove(imagePathsForBatch)
+            if (storageError)
+              console.warn('[storage] batch remove failed:', storageError.message)
+          }
+          catch (e: any) {
+            console.warn('[storage] batch remove exception:', e?.message || e)
+          }
+        }
 
         // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
         invalidateAllSearchCaches()
