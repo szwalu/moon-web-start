@@ -1459,6 +1459,13 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
+    <input
+      ref="imageInputRef"
+      type="file"
+      accept="image/*"
+      style="display:none"
+      @change="onImageChosen"
+    >
     <div class="editor-wrapper">
       <textarea
         ref="textarea"
@@ -1491,13 +1498,6 @@ function handleBeforeInput(e: InputEvent) {
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
       />
-      <input
-        ref="imageInputRef"
-        type="file"
-        accept="image/*"
-        style="display:none"
-        @change="onImageChosen"
-      >
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
         class="tag-suggestions"
@@ -1574,7 +1574,8 @@ function handleBeforeInput(e: InputEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.toolbar.upload_image')"
-            @pointerdown.prevent="onPickImageSync"
+            @pointerdown="onPickImageSync"
+            @click="onPickImageSync"
           >
             <!-- Image icon -->
             <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
