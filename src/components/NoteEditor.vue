@@ -195,7 +195,7 @@ async function onImageChosen(e: Event) {
     }
 
     // 2) 压缩成 WebP（最长边 1600，质量 0.82）
-    const webp = await compressToWebp(file, 1600, 1600, 0.82)
+    const webp = await compressToWebp(file, 1600, 1600, 0.6)
 
     // 3) 压缩后体积兜底
     const MAX_FINAL_MB = 2
