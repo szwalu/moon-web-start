@@ -672,7 +672,11 @@ async function handleCreateNote(content: string, weather?: string | null) {
       newNoteContent.value = ''
       nextTick(() => {
         (newNoteEditorRef.value as any)?.reset?.()
+        ;(newNoteEditorRef.value as any)?.blur?.()
       })
+      isEditorActive.value = false
+      compactWhileTyping.value = false
+      headerCollapsed.value = false
     }
   }
   finally {
