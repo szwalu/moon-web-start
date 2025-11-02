@@ -36,14 +36,17 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 <style>
 /* 您的样式代码保持不变 */
-body, html {
-  background-color: #e9ecef;
-  background-image:
-    linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
-  background-size: 25px 25px;
-  transition: background-color 0.3s ease;
-}
+ body, html {
+   background-color: #e9ecef;
+   background-image:
+     linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
+     linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+   background-size: 25px 25px;
+ }
+ /* 仅在非静默期才允许背景过渡，避免回到 PWA 时那一下闪 */
+ html:not(.restoring), body:not(.restoring) {
+   transition: background-color 0.3s ease;
+ }
 
 .dark body, .dark html {
   background-color: #1a1a1a;

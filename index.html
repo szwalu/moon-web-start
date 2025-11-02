@@ -46,6 +46,36 @@
   </head>
   <body>
     <div id="app"></div>
+    **
+ * 目标：在从外部网页“完成”返回 PWA 的那一刻，最先（早于 Vue 挂载）
+ * 给 <html> 加 .restoring，短暂关闭所有动画/过渡，避免闪。
+ */
+(function () {
+  function addRestoring() {
+    // 立刻进入静默期
+    document.documentElement.classList.add('restoring');
+    // 150~200ms 后退出静默（给布局/绘制一个首帧窗口）
+    setTimeout(function () {
+      document.documentElement.classList.remove('restoring');
+    }, 180);
+  }
+
+  // 标记：即将离开当前页面（多用于从 PWA 外跳）
+  window.addEventListener('pagehide', function () {
+    try { sessionStorage.setItem('__returning_from_external', '1'); } catch {}
+  });
+
+  // 唤醒：如果是“外部返回”，立即静默
+  window.addEventListener('pageshow', function () {
+    try {
+      if (sessionStorage.getItem('__returning_from_external') === '1') {
+        sessionStorage.removeItem('__returning_from_external');
+        addRestoring();
+      }
+    } catch {}
+  });
+})();
+    
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
