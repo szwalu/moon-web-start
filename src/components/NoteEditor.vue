@@ -1634,7 +1634,7 @@ function handleBeforeInput(e: InputEvent) {
           <button
             type="button"
             class="toolbar-btn"
-            :title="t('notes.editor.toolbar.upload_image')"
+            :title="t('notes.editor.image_dialog.title')"
             @pointerdown="onPickImageSync"
             @click="onPickImageSync"
           >

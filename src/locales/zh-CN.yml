@@ -450,7 +450,7 @@ notes:
       success: 保存成功！
       weather_fetch_failed: 获取天气信息失败，笔记将不带天气数据保存。
     image_dialog:
-      title: 插入图片链接
+      title: 插入图片
       positive: 插入
       negative: 取消
       placeholder: 'https://example.com/image.jpg 或微云分享链接'
