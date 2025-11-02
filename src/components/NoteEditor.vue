@@ -194,51 +194,32 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // === 统一阈值：2MB（字节） ===
-    const MAX_FINAL_MB = 2
-    const MAX_FINAL_BYTES = Math.round(MAX_FINAL_MB * 1024 * 1024)
+    // === 判断是否需要压缩：<=150KB 原图直传，否则压缩为 WebP ===
+    const MAX_SKIP_BYTES = 150 * 1024 // 150 KB
+    let finalBlob: Blob
 
-    // 第1轮：先按「1600、q=0.6」
-    let webp = await compressToWebp(file, 1600, 1600, 0.6)
-
-    if (webp.size > MAX_FINAL_BYTES) {
-      // 逐步“降维 + 降质”收敛；每一步都用更小者覆盖 webp
-      const candidates: Array<[number, number, number]> = [
-        [1400, 1400, 0.50],
-        [1200, 1200, 0.42],
-        [1000, 1000, 0.35],
-        [800, 800, 0.30],
-      ]
-
-      for (const [w, h, q] of candidates) {
-        const tmp = await compressToWebp(file, w, h, q)
-        // 保护：只要更小就替换（避免偶发编码抖动）
-        if (tmp.size < webp.size)
-          webp = tmp
-        if (webp.size <= MAX_FINAL_BYTES)
-          break
-      }
+    if (file.size <= MAX_SKIP_BYTES) {
+      // 小图：直接使用原图
+      finalBlob = file
+    }
+    else {
+      // 大图：压缩为 WebP（1080px, q=0.6）
+      finalBlob = await compressToWebp(file, 1080, 1080, 0.6)
     }
 
-    if (webp.size > MAX_FINAL_BYTES) {
-      // 小工具：转成带一位小数的 MB（不引入 console，避免 lint）
-      const toMB = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 10) / 10
-
+    // 3) 压缩后体积兜底
+    const MAX_FINAL_MB = 2
+    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
       dialog.warning({
         title: '压缩后仍偏大',
-        content: `结果约 ${toMB(webp.size)} MB，超过 ${MAX_FINAL_MB} MB。`
-           + '请尝试裁剪图片或降低分辨率后再试。',
+        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
         positiveText: '知道了',
       })
       return
     }
 
-    // ✅ 到这里说明满足 2MB 阈值 —— 后续继续你的上传逻辑
-    // const url = await uploadWebpToSupabase(webp)
-    // insertText(`![](${url})`, '')
-
     // 4) 上传到 Supabase
-    const url = await uploadWebpToSupabase(webp)
+    const url = await uploadWebpToSupabase(finalBlob)
 
     // 5) 插入到光标处（Markdown 图片）
     insertText(`![](${url})`, '')
