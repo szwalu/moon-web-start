@@ -73,15 +73,27 @@ const md = new MarkdownIt({
   })
 
 // 给所有 Markdown 图片添加 lazy/async 属性（优化加载）
+// 右键/长按可直接保存：用 <a download> 包一层（如果本来不在链接中）
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
-  // 兜底样式：保证图片等比缩放
   const style = tokens[idx].attrGet('style')
   tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
-  return self.renderToken(tokens, idx, options)
-}
 
+  const imgHtml = self.renderToken(tokens, idx, options)
+  const src = tokens[idx].attrGet('src') || ''
+  const alt = tokens[idx].content || ''
+
+  // 若图片已在 Markdown 链接里（如 [![...](src)](link) ），避免嵌套 <a>
+  const prev = tokens[idx - 1]?.type
+  const next = tokens[idx + 1]?.type
+  const alreadyLinked = prev === 'link_open' && next === 'link_close'
+  if (alreadyLinked)
+    return imgHtml
+
+  // 用 <a download> 包裹，这样左键会触发下载；右键依然有“另存为”
+  return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
+}
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
