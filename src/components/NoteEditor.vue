@@ -251,7 +251,7 @@ async function onImageChosen(e: Event) {
     // 4) 上传（沿用你现有的 upload 方法）
     // 如果你根据扩展名决定路径，可把 finalExt 传进去；
     // 若路径固定 .webp，需要改为按 finalExt 生成，避免扩展名/类型不一致。
-    const url = await uploadWebpToSupabase(finalBlob) // 如果这个函数名固定为 WebP，可重命名为更通用的 uploadBlobToSupabase
+    const url = await uploadImageToSupabase(finalBlob, finalExt, finalType) // 如果这个函数名固定为 WebP，可重命名为更通用的 uploadBlobToSupabase
     insertText(`![](${url})`, '')
     dialog.success({ title: '上传成功', content: '图片已插入到光标位置。', positiveText: '好的' })
   }
@@ -363,7 +363,7 @@ function buildImagePath(userId: string, ext = 'webp') {
 }
 
 // 上传// 通用上传：根据传入的 contentType 与扩展名保存
-async function _uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
+async function uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error('请先登录后再上传图片')
