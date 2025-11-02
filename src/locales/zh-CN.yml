@@ -460,13 +460,8 @@ notes:
       weather_fetch_failed: 获取天气信息失败，笔记将不带天气数据保存。
     image_dialog:
       title: 插入图片
-      positive: 插入
-      negative: 取消
-      placeholder: 'https://example.com/image.jpg 或微云分享链接'
-      error_empty: 请输入链接
-      error_protocol: 必须以 http:// 或 https:// 开头
-      image_direct: 图片（直链）
-      image_view: （点击查看图片）
+      image_direct: 含图片
+
     format:
       bold: 加粗
       ordered_list: 数字列表
@@ -479,7 +474,7 @@ notes:
       add_tag: 添加标签
       todo: 待办事项
       styles: 样式
-      insert_image_link: 插入图片链接
+      insert_image_link: 插入图片
   ok: 确定
 
   HelpDialog:

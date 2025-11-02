@@ -346,8 +346,8 @@ async function handleDateUpdate(newDate: Date) {
           <span
             v-if="!isExpanded && containsImage"
             class="img-flag"
-            aria-label="含图片"
-            title="含图片"
+            :aria-label="t('notes.editor.image_dialog.image_direct')"
+            :title="t('notes.editor.image_dialog.image_direct')"
           >🖼️</span>
           <div
             v-if="noteOverflowStatus"

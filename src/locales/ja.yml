@@ -460,13 +460,8 @@ notes:
       weather_fetch_failed: 天気情報の取得に失敗しました。天気データなしでノートを保存します。
     image_dialog:
       title: 画像リンクを挿入
-      positive: 挿入
-      negative: キャンセル
-      placeholder: 'https://example.com/image.jpg または共有リンク'
-      error_empty: リンクを入力してください
-      error_protocol: http:// または https:// で始まる必要があります
       image_direct: 画像（直リンク）
-      image_view: （クリックして画像を表示）
+
     format:
       bold: 太字
       ordered_list: 番号付きリスト

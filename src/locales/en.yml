@@ -460,14 +460,9 @@ notes:
       success: Saved successfully!
       weather_fetch_failed: Failed to fetch weather data. The note will be saved without weather information.
     image_dialog:
-      title: Insert Image Link
-      positive: Insert
-      negative: Cancel
-      placeholder: 'https://example.com/image.jpg or a shared link'
-      error_empty: Please enter a link
-      error_protocol: Must start with http:// or https://
-      image_direct: Image (direct link)
-      image_view: (click to view image)
+      title: Insert Image
+      image_direct: Image
+
     format:
       bold: Bold
       ordered_list: Numbered list
