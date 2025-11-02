@@ -194,59 +194,64 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // === 体积阈值：<=150KB 直传原图；否则进行候选比较 ===
-    const MAX_SKIP_BYTES = 150 * 1024
-    const shouldSkip = file.size <= MAX_SKIP_BYTES
+    // 0) 150 KB 以下：直接用原图
+    const BYTES_150K = 150 * 1024
+    const useOriginalDirectly = picked.size <= BYTES_150K
 
-    let candidateOriginal: { blob: Blob; ext: string; type: string } | null = null
-    let candidateWebp: { blob: Blob; ext: string; type: string } | null = null
-    let candidateJpeg: { blob: Blob; ext: string; type: string } | null = null
+    let finalBlob: Blob = picked
+    let finalType = picked.type || 'image/jpeg'
+    let finalExt = (() => {
+      const n = (picked.name || '').toLowerCase()
+      if (n.endsWith('.png'))
+        return 'png'
+      if (n.endsWith('.webp'))
+        return 'webp'
+      if (n.endsWith('.jpg') || n.endsWith('.jpeg'))
+        return 'jpg'
+      return 'jpg'
+    })()
 
-    // 原图候选（总是可用）
-    candidateOriginal = { blob: file, ext: (file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'bin'), type: file.type || 'application/octet-stream' }
+    if (!useOriginalDirectly) {
+      // 1) 生成候选：原图 / WebP / JPEG
+      const webp = await compressToWebp(picked, 1080, 1080, 0.6)
+      const jpeg = await compressToJpeg(picked, 1080, 1080, 0.82)
 
-    if (!shouldSkip) {
-      // 尝试 WebP
-      const webpBlob = await compressToWebp(file, 1080, 1080, 0.6)
-      candidateWebp = { blob: webpBlob, ext: 'webp', type: 'image/webp' }
+      // 2) 逐一比较体积，选择最小者
+      let bestBlob: Blob = picked
+      let bestType = finalType
+      let bestExt = finalExt
 
-      // 若 WebP 不够小，再尝试 JPEG（仅在照片场景更有效）
-      const origType = (file.type || '').toLowerCase()
-      const photoLike = origType.includes('jpeg') || origType.includes('jpg') || origType.includes('webp')
-      if (photoLike) {
-        const jpegBlob = await compressToJpeg(file, 1080, 1080, 0.82)
-        candidateJpeg = { blob: jpegBlob, ext: 'jpg', type: 'image/jpeg' }
+      if (webp && webp.size < bestBlob.size) {
+        bestBlob = webp
+        bestType = 'image/webp'
+        bestExt = 'webp'
       }
+      if (jpeg && jpeg.size < bestBlob.size) {
+        bestBlob = jpeg
+        bestType = 'image/jpeg'
+        bestExt = 'jpg'
+      }
+
+      finalBlob = bestBlob
+      finalType = bestType
+      finalExt = bestExt
     }
 
-    // 选择最小体积的候选（保证不比原图更大）
-    const candidates = [candidateOriginal, candidateWebp, candidateJpeg].filter(Boolean) as { blob: Blob; ext: string; type: string }[]
-    let best = candidates[0]
-    for (let i = 1; i < candidates.length; i++) {
-      const c = candidates[i]
-      if (c.blob.size < best.blob.size)
-        best = c
-    }
-
-    // 最终兜底：如果压缩后的最小候选仍比原图大（或几乎不小于原图），就用原图
-    const notWorthIt = best.blob.size >= candidateOriginal!.blob.size * 0.98
-    if (notWorthIt)
-      best = candidateOriginal!
-
-    // 体积上限（2MB）
+    // 3) 压缩后体积兜底（2 MB）
     const MAX_FINAL_MB = 2
-    const maxBytes = MAX_FINAL_MB * 1024 * 1024
-    if (best.blob.size > maxBytes) {
+    if (finalBlob.size > MAX_FINAL_MB * 1024 * 1024) {
       dialog.warning({
         title: '压缩后仍偏大',
-        content: `压缩/重编码后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试。`,
+        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
         positiveText: '知道了',
       })
       return
     }
 
-    // 上传并插入
-    const url = await uploadImageToSupabase(best.blob, best.ext, best.type)
+    // 4) 上传（沿用你现有的 upload 方法）
+    // 如果你根据扩展名决定路径，可把 finalExt 传进去；
+    // 若路径固定 .webp，需要改为按 finalExt 生成，避免扩展名/类型不一致。
+    const url = await uploadWebpToSupabase(finalBlob) // 如果这个函数名固定为 WebP，可重命名为更通用的 uploadBlobToSupabase
     insertText(`![](${url})`, '')
     dialog.success({ title: '上传成功', content: '图片已插入到光标位置。', positiveText: '好的' })
   }
@@ -358,7 +363,7 @@ function buildImagePath(userId: string, ext = 'webp') {
 }
 
 // 上传// 通用上传：根据传入的 contentType 与扩展名保存
-async function uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
+async function _uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error('请先登录后再上传图片')
