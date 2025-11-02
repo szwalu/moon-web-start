@@ -359,6 +359,15 @@ notes:
   search_results_for: 'Results for “{query}”'
   help_title: Instructions
 
+  upload:
+    too_large_title: File Still Too Large After Compression
+    too_large_content: 'The file still exceeds {max} MB after compression. Please try cropping the image or reducing quality.'
+    success_title: Upload Successful
+    success_content: The image has been inserted at the cursor position.
+    error_title: Upload Failed
+    error_content: Please try again later.
+    ok: OK
+
   trash:
     aria_label: Trash
     title: Trash (kept for 30 days)

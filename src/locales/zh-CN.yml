@@ -358,6 +358,15 @@ notes:
   search_results_for: 搜索“{query}”的结果
   help_title: 使用说明
 
+  upload:
+    too_large_title: 压缩后仍偏大
+    too_large_content: '压缩后仍超过 {max} MB，请尝试裁剪后再试或降低清晰度。'
+    success_title: 上传成功
+    success_content: 图片已插入到光标位置。
+    error_title: 上传失败
+    error_content: 请稍后重试
+    ok: 好的
+
   trash:
     aria_label: 回收站
     title: 回收站（保留 30 天）

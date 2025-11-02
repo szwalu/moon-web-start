@@ -358,6 +358,15 @@ notes:
   search_results_for: '「{query}」の検索結果'
   help_title: 説明書
 
+  upload:
+    too_large_title: 圧縮後もサイズが大きすぎます
+    too_large_content: '圧縮後も {max} MB を超えています。トリミングするか画質を下げてお試しください。'
+    success_title: アップロード成功
+    success_content: 画像がカーソル位置に挿入されました。
+    error_title: アップロード失敗
+    error_content: 後でもう一度お試しください。
+    ok: はい
+
   trash:
     aria_label: ゴミ箱
     title: ゴミ箱（30日間保持）

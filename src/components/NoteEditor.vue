@@ -212,9 +212,9 @@ async function onImageChosen(e: Event) {
     const maxBytes = MAX_FINAL_MB * 1024 * 1024
     if (finalBlob.size > maxBytes) {
       dialog.warning({
-        title: '压缩后仍偏大',
-        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
-        positiveText: '知道了',
+        title: t('notes.upload.too_large_title'),
+        content: t('notes.upload.too_large_content', { max: MAX_FINAL_MB }),
+        positiveText: t('notes.upload.ok'),
       })
       return
     }
@@ -227,17 +227,17 @@ async function onImageChosen(e: Event) {
     insertText(`![](${url})`, '')
 
     dialog.success({
-      title: '上传成功',
-      content: '图片已插入到光标位置。',
-      positiveText: '好的',
+      title: t('notes.upload.success_title'),
+      content: t('notes.upload.success_content'),
+      positiveText: t('notes.upload.ok'),
     })
   }
   catch (err: any) {
     console.error('[image upload] failed:', err)
     dialog.error({
-      title: '上传失败',
-      content: err?.message || '请稍后重试',
-      positiveText: '好的',
+      title: t('notes.upload.error_title'),
+      content: err?.message || t('notes.upload.error_content'),
+      positiveText: t('notes.upload.ok'),
     })
   }
   finally {
