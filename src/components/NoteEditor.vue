@@ -207,9 +207,10 @@ async function onImageChosen(e: Event) {
       finalBlob = await compressToWebp(file, 1080, 1080, 0.6)
     }
 
-    // 3) 压缩后体积兜底
+    // === 体积兜底（2MB）===
     const MAX_FINAL_MB = 2
-    if (webp.size > MAX_FINAL_MB * 1024 * 1024) {
+    const maxBytes = MAX_FINAL_MB * 1024 * 1024
+    if (finalBlob.size > maxBytes) {
       dialog.warning({
         title: '压缩后仍偏大',
         content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
@@ -218,13 +219,13 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // 4) 上传到 Supabase
+    // === 上传并插入 ===
+    // 说明：为保持最小改动，沿用 uploadWebpToSupabase(finalBlob)
+    // 如果直传原图，content-type 仍会按函数内部的 'image/webp' 上传，通常不影响访问；
+    // 若以后要严格区分类型，可把该函数改成接收 contentType 的泛用版本。
     const url = await uploadWebpToSupabase(finalBlob)
-
-    // 5) 插入到光标处（Markdown 图片）
     insertText(`![](${url})`, '')
 
-    // 6) 成功提示
     dialog.success({
       title: '上传成功',
       content: '图片已插入到光标位置。',
@@ -265,7 +266,7 @@ async function fileToImage(file: File): Promise<HTMLImageElement> {
 }
 
 // 以最大边限制 + 质量压缩为 WebP（默认最长边 1600，质量 0.82）
-async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.82): Promise<Blob> {
+async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.6): Promise<Blob> {
   const img = await fileToImage(file)
 
   const { width, height } = img
