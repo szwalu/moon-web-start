@@ -194,51 +194,61 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // === 判断是否需要压缩：<=150KB 原图直传，否则压缩为 WebP ===
-    const MAX_SKIP_BYTES = 150 * 1024 // 150 KB
-    let finalBlob: Blob
+    // === 体积阈值：<=150KB 直传原图；否则进行候选比较 ===
+    const MAX_SKIP_BYTES = 150 * 1024
+    const shouldSkip = file.size <= MAX_SKIP_BYTES
 
-    if (file.size <= MAX_SKIP_BYTES) {
-      // 小图：直接使用原图
-      finalBlob = file
-    }
-    else {
-      // 大图：压缩为 WebP（1080px, q=0.6）
-      finalBlob = await compressToWebp(file, 1080, 1080, 0.6)
+    let candidateOriginal: { blob: Blob; ext: string; type: string } | null = null
+    let candidateWebp: { blob: Blob; ext: string; type: string } | null = null
+    let candidateJpeg: { blob: Blob; ext: string; type: string } | null = null
+
+    // 原图候选（总是可用）
+    candidateOriginal = { blob: file, ext: (file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'bin'), type: file.type || 'application/octet-stream' }
+
+    if (!shouldSkip) {
+      // 尝试 WebP
+      const webpBlob = await compressToWebp(file, 1080, 1080, 0.6)
+      candidateWebp = { blob: webpBlob, ext: 'webp', type: 'image/webp' }
+
+      // 若 WebP 不够小，再尝试 JPEG（仅在照片场景更有效）
+      const origType = (file.type || '').toLowerCase()
+      const photoLike = origType.includes('jpeg') || origType.includes('jpg') || origType.includes('webp')
+      if (photoLike) {
+        const jpegBlob = await compressToJpeg(file, 1080, 1080, 0.82)
+        candidateJpeg = { blob: jpegBlob, ext: 'jpg', type: 'image/jpeg' }
+      }
     }
 
-    // === 体积兜底（2MB）===
+    // 选择最小体积的候选（保证不比原图更大）
+    const candidates = [candidateOriginal, candidateWebp, candidateJpeg].filter(Boolean) as { blob: Blob; ext: string; type: string }[]
+    let best = candidates[0]
+    for (let i = 1; i < candidates.length; i++) {
+      const c = candidates[i]
+      if (c.blob.size < best.blob.size)
+        best = c
+    }
+
+    // 最终兜底：如果压缩后的最小候选仍比原图大（或几乎不小于原图），就用原图
+    const notWorthIt = best.blob.size >= candidateOriginal!.blob.size * 0.98
+    if (notWorthIt)
+      best = candidateOriginal!
+
+    // 体积上限（2MB）
     const MAX_FINAL_MB = 2
     const maxBytes = MAX_FINAL_MB * 1024 * 1024
-    if (finalBlob.size > maxBytes) {
+    if (best.blob.size > maxBytes) {
       dialog.warning({
         title: '压缩后仍偏大',
-        content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
+        content: `压缩/重编码后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试。`,
         positiveText: '知道了',
       })
       return
     }
 
-    // === 上传并插入 ===
-    // 说明：为保持最小改动，沿用 uploadWebpToSupabase(finalBlob)
-    // 如果直传原图，content-type 仍会按函数内部的 'image/webp' 上传，通常不影响访问；
-    // 若以后要严格区分类型，可把该函数改成接收 contentType 的泛用版本。
-    const url = await uploadWebpToSupabase(finalBlob)
+    // 上传并插入
+    const url = await uploadImageToSupabase(best.blob, best.ext, best.type)
     insertText(`![](${url})`, '')
-
-    dialog.success({
-      title: '上传成功',
-      content: '图片已插入到光标位置。',
-      positiveText: '好的',
-    })
-  }
-  catch (err: any) {
-    console.error('[image upload] failed:', err)
-    dialog.error({
-      title: '上传失败',
-      content: err?.message || '请稍后重试',
-      positiveText: '好的',
-    })
+    dialog.success({ title: '上传成功', content: '图片已插入到光标位置。', positiveText: '好的' })
   }
   finally {
     // 允许连续选择同一张图
@@ -296,47 +306,69 @@ async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.
   return webp
 }
 
-// 生成存储路径：按用户与年月分目录，避免单目录过多文件
-function buildImagePath(userId: string) {
+// 以最大边限制 + 质量压缩为 JPEG（默认最长边 1080，质量 0.82）
+async function compressToJpeg(file: File, maxW = 1080, maxH = 1080, quality = 0.82): Promise<Blob> {
+  const img = await fileToImage(file)
+  const width = img.width
+  const height = img.height
+  const ratio = Math.min(maxW / width, maxH / height, 1)
+  const targetW = Math.round(width * ratio)
+  const targetH = Math.round(height * ratio)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = targetW
+  canvas.height = targetH
+  const ctx = canvas.getContext('2d', { alpha: true })
+  if (!ctx)
+    throw new Error('Canvas 2D context not available')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, targetW, targetH)
+
+  const jpeg = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob)
+        return reject(new Error('Failed to encode JPEG'))
+      resolve(blob)
+    }, 'image/jpeg', quality)
+  })
+  return jpeg
+}
+
+function buildImagePath(userId: string, ext = 'webp') {
   const d = new Date()
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const ts = d.getTime()
   const rand = Math.random().toString(36).slice(2, 8)
-  return `${userId}/${y}/${m}/${ts}_${rand}.webp`
+  return `${userId}/${y}/${m}/${ts}_${rand}.${ext}`
 }
 
-// 上传到 Supabase Storage（bucket: note-images）并返回可用 URL（公有或签名）
-async function uploadWebpToSupabase(webp: Blob): Promise<string> {
-  // 取当前用户（用于分目录）
+// 上传// 通用上传：根据传入的 contentType 与扩展名保存
+async function uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error('请先登录后再上传图片')
   const userId = userData.user.id
 
-  const filePath = buildImagePath(userId)
+  const filePath = buildImagePath(userId, ext)
   const bucket = 'note-images'
 
   const { error: upErr } = await supabase
     .storage
     .from(bucket)
-    .upload(filePath, webp, {
-      contentType: 'image/webp',
-      upsert: false,
-    })
+    .upload(filePath, blob, { contentType, upsert: false })
   if (upErr)
     throw upErr
 
-  // 若 bucket 设置为 Public，可直接取 public URL
   const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath)
   if (pub?.publicUrl)
     return pub.publicUrl
 
-  // 如果不是 Public bucket，退回生成长签名 URL（例如 1 年）
   const { data: signed, error: sErr } = await supabase
     .storage
     .from(bucket)
-    .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 年（秒）
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365)
   if (sErr || !signed?.signedUrl)
     throw new Error('获取图片 URL 失败')
   return signed.signedUrl
