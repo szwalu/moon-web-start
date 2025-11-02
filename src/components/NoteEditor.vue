@@ -307,6 +307,8 @@ async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.
 }
 
 // 以最大边限制 + 质量压缩为 JPEG（默认最长边 1080，质量 0.82）
+// 以最大边限制 + 质量压缩为 JPEG（默认最长边 1080，质量 0.82）
+// 如果压缩后体积 >= 原图体积，则返回原图（防止反向膨胀）
 async function compressToJpeg(file: File, maxW = 1080, maxH = 1080, quality = 0.82): Promise<Blob> {
   const img = await fileToImage(file)
   const width = img.width
@@ -321,18 +323,29 @@ async function compressToJpeg(file: File, maxW = 1080, maxH = 1080, quality = 0.
   const ctx = canvas.getContext('2d', { alpha: true })
   if (!ctx)
     throw new Error('Canvas 2D context not available')
+
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, targetW, targetH)
 
-  const jpeg = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob)
-        return reject(new Error('Failed to encode JPEG'))
-      resolve(blob)
-    }, 'image/jpeg', quality)
+  const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob)
+          reject(new Error('Failed to encode JPEG'))
+        else
+          resolve(blob)
+      },
+      'image/jpeg',
+      quality,
+    )
   })
-  return jpeg
+
+  // ✅ 如果压缩后体积 >= 原图，说明无收益，直接返回原图
+  if (jpegBlob.size >= file.size)
+    return file
+
+  return jpegBlob
 }
 
 function buildImagePath(userId: string, ext = 'webp') {
