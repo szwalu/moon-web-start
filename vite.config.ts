@@ -64,7 +64,38 @@ export default defineConfig({
           { name: '云笔记', short_name: 'Auth', url: '/auth' },
         ],
       },
-      workbox: { navigateFallback: '/index.html' },
+      workbox: {
+        navigateFallback: '/index.html',
+        // ⬇️ 新增：运行时缓存图片（CacheFirst）
+        runtimeCaching: [
+          // 1) Supabase Storage 公网地址（替换成你的项目域名即可通配）
+          {
+            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/note-images\/.+/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'note-images',
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 天
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          // 2) 如果你把图片反代到同域（如 https://woabc.com/note-images/...），也缓存
+          {
+            urlPattern: /\/note-images\/.+/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'note-images-same-origin',
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
     }),
   ],
   resolve: {
