@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { PropType } from 'vue'
 import Favicon from './Favicon.vue'
 import type { Site, TagMode } from '@/types'
@@ -26,6 +27,15 @@ defineProps({
     default: '_blank',
   },
 })
+
+// 在 PWA 独立模式下强制外链用 _blank，返回更稳（不触发站内路由或整页刷新）
+const isStandalone
+  = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+  // 兼容旧 iOS
+  // @ts-expect-error - iOS Safari 特性
+  || (typeof navigator !== 'undefined' && navigator.standalone === true)
+
+const effectiveTarget = computed(() => (isStandalone ? '_blank' : undefined))
 </script>
 
 <template>
@@ -33,7 +43,9 @@ defineProps({
     v-if="type === 'Concise'"
     class="site__handle"
     :class="{ 'site--setting': isSetting, 'hover:bg-$site-hover-c': !isDragging }"
-    :href="site.url" :target="target"
+    :href="site.url"
+    :target="effectiveTarget ?? target"
+    rel="noopener external nofollow"
     inline-flex cursor-pointer items-center gap-x-8 px-12 transition-300 h-40 max-w-100p
   >
     <Favicon class="shrink-0" :site="site" />
@@ -43,7 +55,9 @@ defineProps({
     v-else
     class="site__handle"
     :class="{ 'site--setting': isSetting, 'hover:bg-$site-hover-c': !isDragging }"
-    :href="site.url" :target="target"
+    :href="site.url"
+    :target="effectiveTarget ?? target"
+    rel="noopener external nofollow"
     bg="white dark:dark-800"
     w-full inline-flex cursor-pointer items-center gap-x-8 transition-300 p-10
   >

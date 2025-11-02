@@ -79,4 +79,10 @@ html, body, #app { height: 100%; }
     min-height: -webkit-fill-available;
   }
 }
+
+/* 恢复首帧临时去动画，避免猛烈闪一下 */
+.restoring * {
+  transition: none !important;
+  animation: none !important;
+}
 </style>

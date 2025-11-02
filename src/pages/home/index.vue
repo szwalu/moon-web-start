@@ -11,6 +11,7 @@ import SiteContainer from './components/SiteContainer.vue'
 import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
 import shareIconPath from './1122.jpg'
+import { usePageResume } from '@/composables/usePageResume'
 
 // 删除了 supabase 的直接引入，因为 store 已经处理了相关逻辑
 import 'sweetalert2/dist/sweetalert2.min.css'
@@ -24,6 +25,8 @@ import quotes from '@/utils/daily_quotes_zh.json'
 defineOptions({
   name: 'HomePage',
 })
+
+usePageResume({ storageKey: 'woabc-home-v1' /* , scrollSelector: '.main-content-area' */ })
 
 // --- 初始化 & 状态定义 ---
 const { t } = useI18n()

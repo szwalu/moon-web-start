@@ -126,4 +126,12 @@ async function setupApp() {
 }
 
 setupApp()
-registerSW({ immediate: true })
+registerSW({
+  immediate: false,
+  onNeedRefresh() {
+    // 这里你可用 Naive UI 给个“有更新，点我刷新”的提示；用户点击时再调用 updateSW(true)
+  },
+  onOfflineReady() {
+    // 可选：首次离线就绪提示
+  },
+})
