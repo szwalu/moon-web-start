@@ -36,6 +36,19 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
+// NoteItem.vue <script setup> 顶部已有 props
+const containsImage = computed(() => {
+  const c = (props.note?.content || '').toString()
+
+  // 命中三类：Markdown 图片、HTML <img>、以及指向你桶的 note-images 链接（含签名 URL）
+  const mdImage = /!\[[^\]]*]\([^)]+\)/i.test(c) // 基本判断
+  const htmlImg = /<img\s[^>]*src=/i.test(c)
+  const storageHit = /\/note-images\//i.test(c) // 无扩展名也能命中
+  const extImage = /https?:\/\/[^\s)'"<>]+?\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(c)
+
+  return mdImage || htmlImg || storageHit || extImage
+})
+
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
@@ -329,6 +342,13 @@ async function handleDateUpdate(newDate: Date) {
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
+          <!-- ✅ 新增：收起状态下如果包含图片，显示小图标 -->
+          <span
+            v-if="!isExpanded && containsImage"
+            class="img-flag"
+            aria-label="含图片"
+            title="含图片"
+          >🖼️</span>
           <div
             v-if="noteOverflowStatus"
             class="toggle-button-row"
@@ -663,5 +683,15 @@ async function handleDateUpdate(newDate: Date) {
 /* （可选）在收起预览时限制一下超高图片的高度，避免占满卡片 */
 .line-clamp-3.note-content :deep(img) {
   max-height: 40vh;
+}
+
+.img-flag {
+  margin-left: 0.3rem;
+  opacity: 0.7;
+  font-size: 0.9em;
+  vertical-align: text-bottom;
+}
+.dark .img-flag {
+  opacity: 0.8;
 }
 </style>
