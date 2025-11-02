@@ -118,11 +118,42 @@ async function fetchNotesCount() {
   }
 }
 
+const totalChars = ref<number | null>(null)
+
+// 查询：总字数（统计所有 content 长度）
+async function fetchTotalChars() {
+  if (!props.user) {
+    totalChars.value = 0
+    return
+  }
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('content')
+      .eq('user_id', props.user.id)
+
+    if (error)
+      throw error
+
+    // 统计字数
+    totalChars.value = data?.reduce((sum, n) => {
+      if (n.content)
+        sum += n.content.length
+      return sum
+    }, 0) ?? 0
+  }
+  catch (err) {
+    console.error(t('notes.account.errors.fetch_total_chars_failed'), err)
+    totalChars.value = 0
+  }
+}
+
 // 打开弹窗后首次查询
 watch(() => props.show, (visible) => {
   if (visible && !hasFetched.value) {
     fetchFirstNoteAndStreak()
     fetchNotesCount()
+    fetchTotalChars()
     hasFetched.value = true
   }
 })
@@ -190,6 +221,10 @@ async function doSignOut() {
           <div class="info-item">
             <span class="info-label">{{ t('notes.total_notes') }}</span>
             <span class="info-value">{{ totalCount ?? '—' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">{{ t('notes.total_chars') }}</span>
+            <span class="info-value">{{ totalChars ?? '—' }}</span>
           </div>
 
           <div class="info-item">
@@ -319,7 +354,7 @@ async function doSignOut() {
 
 .modal-footer {
   display: grid;
-  grid-template-columns: 5fr 1fr; /* 按 5:1 比例分配 */
+  grid-template-columns: 5fr 2fr; /* 按 5:2 比例分配 */
   gap: 0.9rem;
   margin-top: 1.25rem;
 }

@@ -430,6 +430,8 @@ notes:
     month_label: '{year}年{month}月'
   total_notes: 总笔记数
 
+  total_chars: 总字数
+
   account:
     title: 我的账户
     email_label: 邮箱
@@ -447,6 +449,7 @@ notes:
     errors:
       fetch_first_note_failed: 获取最早笔记日期失败
       fetch_notes_count_failed: 获取笔记总数失败
+      fetch_total_chars_failed: 获取总字数失败
       signout_failed: 登出时发生错误
     date_format: '{year}年{month}月{day}日'
 

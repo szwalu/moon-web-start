@@ -430,6 +430,7 @@ notes:
   list:
     month_label: '{month}/{year}'
   total_notes: Total notes
+  total_chars: Total Characters
 
   account:
     title: My Account
@@ -448,6 +449,7 @@ notes:
     errors:
       fetch_first_note_failed: Failed to fetch first note date
       fetch_notes_count_failed: Failed to fetch total notes
+      fetch_total_chars_failed: Failed to fetch total character count
       signout_failed: Error while signing out
     date_format: '{year}/{month}/{day}'
 

@@ -429,6 +429,7 @@ notes:
   list:
     month_label: '{year}年{month}月'
   total_notes: ノート総数
+  total_chars: 総語数
 
   account:
     title: アカウント
@@ -447,6 +448,7 @@ notes:
     errors:
       fetch_first_note_failed: 最初のノート作成日の取得に失敗しました
       fetch_notes_count_failed: ノート総数の取得に失敗しました
+      fetch_total_chars_failed: 総語数を取得できませんでした
       signout_failed: サインアウト中にエラーが発生しました
     date_format: '{year}年{month}月{day}日'
 
