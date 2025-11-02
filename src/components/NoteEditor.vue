@@ -194,52 +194,23 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // 0) 150 KB 以下：直接用原图
-    const BYTES_150K = 150 * 1024
-    const useOriginalDirectly = picked.size <= BYTES_150K
+    // === 判断是否需要压缩：<=150KB 原图直传，否则压缩为 WebP ===
+    const MAX_SKIP_BYTES = 150 * 1024 // 150 KB
+    let finalBlob: Blob
 
-    let finalBlob: Blob = picked
-    let finalType = picked.type || 'image/jpeg'
-    let finalExt = (() => {
-      const n = (picked.name || '').toLowerCase()
-      if (n.endsWith('.png'))
-        return 'png'
-      if (n.endsWith('.webp'))
-        return 'webp'
-      if (n.endsWith('.jpg') || n.endsWith('.jpeg'))
-        return 'jpg'
-      return 'jpg'
-    })()
-
-    if (!useOriginalDirectly) {
-      // 1) 生成候选：原图 / WebP / JPEG
-      const webp = await compressToWebp(picked, 1080, 1080, 0.6)
-      const jpeg = await compressToJpeg(picked, 1080, 1080, 0.82)
-
-      // 2) 逐一比较体积，选择最小者
-      let bestBlob: Blob = picked
-      let bestType = finalType
-      let bestExt = finalExt
-
-      if (webp && webp.size < bestBlob.size) {
-        bestBlob = webp
-        bestType = 'image/webp'
-        bestExt = 'webp'
-      }
-      if (jpeg && jpeg.size < bestBlob.size) {
-        bestBlob = jpeg
-        bestType = 'image/jpeg'
-        bestExt = 'jpg'
-      }
-
-      finalBlob = bestBlob
-      finalType = bestType
-      finalExt = bestExt
+    if (file.size <= MAX_SKIP_BYTES) {
+      // 小图：直接使用原图
+      finalBlob = file
+    }
+    else {
+      // 大图：压缩为 WebP（1080px, q=0.6）
+      finalBlob = await compressToWebp(file, 1080, 1080, 0.6)
     }
 
-    // 3) 压缩后体积兜底（2 MB）
+    // === 体积兜底（2MB）===
     const MAX_FINAL_MB = 2
-    if (finalBlob.size > MAX_FINAL_MB * 1024 * 1024) {
+    const maxBytes = MAX_FINAL_MB * 1024 * 1024
+    if (finalBlob.size > maxBytes) {
       dialog.warning({
         title: '压缩后仍偏大',
         content: `压缩后仍超过 ${MAX_FINAL_MB} MB，请尝试裁剪后再试或降低清晰度。`,
@@ -248,12 +219,26 @@ async function onImageChosen(e: Event) {
       return
     }
 
-    // 4) 上传（沿用你现有的 upload 方法）
-    // 如果你根据扩展名决定路径，可把 finalExt 传进去；
-    // 若路径固定 .webp，需要改为按 finalExt 生成，避免扩展名/类型不一致。
-    const url = await uploadImageToSupabase(finalBlob, finalExt, finalType) // 如果这个函数名固定为 WebP，可重命名为更通用的 uploadBlobToSupabase
+    // === 上传并插入 ===
+    // 说明：为保持最小改动，沿用 uploadWebpToSupabase(finalBlob)
+    // 如果直传原图，content-type 仍会按函数内部的 'image/webp' 上传，通常不影响访问；
+    // 若以后要严格区分类型，可把该函数改成接收 contentType 的泛用版本。
+    const url = await uploadWebpToSupabase(finalBlob)
     insertText(`![](${url})`, '')
-    dialog.success({ title: '上传成功', content: '图片已插入到光标位置。', positiveText: '好的' })
+
+    dialog.success({
+      title: '上传成功',
+      content: '图片已插入到光标位置。',
+      positiveText: '好的',
+    })
+  }
+  catch (err: any) {
+    console.error('[image upload] failed:', err)
+    dialog.error({
+      title: '上传失败',
+      content: err?.message || '请稍后重试',
+      positiveText: '好的',
+    })
   }
   finally {
     // 允许连续选择同一张图
@@ -311,82 +296,47 @@ async function compressToWebp(file: File, maxW = 1600, maxH = 1600, quality = 0.
   return webp
 }
 
-// 以最大边限制 + 质量压缩为 JPEG（默认最长边 1080，质量 0.82）
-// 以最大边限制 + 质量压缩为 JPEG（默认最长边 1080，质量 0.82）
-// 如果压缩后体积 >= 原图体积，则返回原图（防止反向膨胀）
-async function compressToJpeg(file: File, maxW = 1080, maxH = 1080, quality = 0.82): Promise<Blob> {
-  const img = await fileToImage(file)
-  const width = img.width
-  const height = img.height
-  const ratio = Math.min(maxW / width, maxH / height, 1)
-  const targetW = Math.round(width * ratio)
-  const targetH = Math.round(height * ratio)
-
-  const canvas = document.createElement('canvas')
-  canvas.width = targetW
-  canvas.height = targetH
-  const ctx = canvas.getContext('2d', { alpha: true })
-  if (!ctx)
-    throw new Error('Canvas 2D context not available')
-
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(img, 0, 0, targetW, targetH)
-
-  const jpegBlob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob)
-          reject(new Error('Failed to encode JPEG'))
-        else
-          resolve(blob)
-      },
-      'image/jpeg',
-      quality,
-    )
-  })
-
-  // ✅ 如果压缩后体积 >= 原图，说明无收益，直接返回原图
-  if (jpegBlob.size >= file.size)
-    return file
-
-  return jpegBlob
-}
-
-function buildImagePath(userId: string, ext = 'webp') {
+// 生成存储路径：按用户与年月分目录，避免单目录过多文件
+function buildImagePath(userId: string) {
   const d = new Date()
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const ts = d.getTime()
   const rand = Math.random().toString(36).slice(2, 8)
-  return `${userId}/${y}/${m}/${ts}_${rand}.${ext}`
+  return `${userId}/${y}/${m}/${ts}_${rand}.webp`
 }
 
-// 上传// 通用上传：根据传入的 contentType 与扩展名保存
-async function uploadImageToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
+// 上传到 Supabase Storage（bucket: note-images）并返回可用 URL（公有或签名）
+async function uploadWebpToSupabase(webp: Blob): Promise<string> {
+  // 取当前用户（用于分目录）
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error('请先登录后再上传图片')
   const userId = userData.user.id
 
-  const filePath = buildImagePath(userId, ext)
+  const filePath = buildImagePath(userId)
   const bucket = 'note-images'
 
   const { error: upErr } = await supabase
     .storage
     .from(bucket)
-    .upload(filePath, blob, { contentType, upsert: false })
+    .upload(filePath, webp, {
+      contentType: 'image/webp',
+      upsert: false,
+    })
   if (upErr)
     throw upErr
 
+  // 若 bucket 设置为 Public，可直接取 public URL
   const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath)
   if (pub?.publicUrl)
     return pub.publicUrl
 
+  // 如果不是 Public bucket，退回生成长签名 URL（例如 1 年）
   const { data: signed, error: sErr } = await supabase
     .storage
     .from(bucket)
-    .createSignedUrl(filePath, 60 * 60 * 24 * 365)
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 年（秒）
   if (sErr || !signed?.signedUrl)
     throw new Error('获取图片 URL 失败')
   return signed.signedUrl
