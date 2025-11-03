@@ -21,54 +21,20 @@ import { setupI18n } from './utils'
   const RELOAD_COOLDOWN_MS = 2 * 60 * 1000 // 2 分钟冷却，避免连环刷新
   const LAST_RELOAD_KEY = '__last_forced_reload_ts__'
 
-  // ⬇️ 新增：回到窗口的“宽限期” 1.5s，避免刚 pageshow 时误判强刷
-  const RESUME_MUTE_MS = 1500
-  const LAST_PAGESHOW_KEY = '__last_pageshow_ts'
-
   const now = () => Date.now()
-
   const canReloadNow = () => {
     const last = Number(localStorage.getItem(LAST_RELOAD_KEY) || 0)
     return now() - last > RELOAD_COOLDOWN_MS
   }
 
-  const markReload = () => {
-    localStorage.setItem(LAST_RELOAD_KEY, String(now()))
-  }
-
-  // 记录 pageshow 时间戳（若你在 index.html 里已写入，这里只是补强，不冲突）
-  const touchPageshowTs = () => {
-    try {
-      sessionStorage.setItem(LAST_PAGESHOW_KEY, String(now()))
-    }
-    catch {}
-  }
-  window.addEventListener('pageshow', touchPageshowTs)
-
-  const justResumed = (): boolean => {
-    try {
-      const ts = Number(sessionStorage.getItem(LAST_PAGESHOW_KEY) || 0)
-      if (!ts)
-        return false
-      return now() - ts <= RESUME_MUTE_MS
-    }
-    catch {
-      return false
-    }
-  }
+  const markReload = () => localStorage.setItem(LAST_RELOAD_KEY, String(now()))
 
   const triggerReloadSafely = () => {
-    if (reloading)
-      return
-    if (!canReloadNow())
-      return
-
-    // ⬇️ 新增：刚从外链/后台回到页面的前 1.5s 内，不触发强刷
-    if (justResumed())
+    if (reloading || !canReloadNow())
       return
 
     // 如果离线，先别刷新，等线上线再刷新
-    if (typeof navigator !== 'undefined' && 'onLine' in navigator && navigator.onLine === false) {
+    if (typeof navigator !== 'undefined' && navigator && 'onLine' in navigator && navigator.onLine === false) {
       const onBackOnline = () => {
         window.removeEventListener('online', onBackOnline)
         triggerReloadSafely()
@@ -85,7 +51,7 @@ import { setupI18n } from './utils'
       // @ts-expect-error caches 可能在 TS DOM 类型里缺失
       if (window.caches?.keys) {
         // @ts-expect-error same as above
-        caches.keys().then((keys: string[]) => keys.forEach(k => caches.delete(k)))
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)))
       }
       if (navigator.serviceWorker?.getRegistrations) {
         navigator.serviceWorker.getRegistrations().then((regs) => {
@@ -120,19 +86,19 @@ import { setupI18n } from './utils'
 
   // 1) 浏览器层 error（含模块脚本加载失败）
   window.addEventListener('error', (e: ErrorEvent) => {
-    if (!justResumed() && isChunkLoadError(e.error || e.message))
+    if (isChunkLoadError(e.error || e.message))
       triggerReloadSafely()
   }, true)
 
   // 2) 未处理的 Promise 拒绝（动态 import 大多走这里）
   window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-    if (!justResumed() && isChunkLoadError(e.reason))
+    if (isChunkLoadError(e.reason))
       triggerReloadSafely()
   })
 
   // 3) 路由懒加载失败
   router.onError((err) => {
-    if (!justResumed() && isChunkLoadError(err))
+    if (isChunkLoadError(err))
       triggerReloadSafely()
   })
 })()
@@ -160,7 +126,6 @@ async function setupApp() {
 }
 
 setupApp()
-
 registerSW({
   immediate: false,
   onNeedRefresh() {

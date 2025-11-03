@@ -36,8 +36,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 <style>
 /* 您的样式代码保持不变 */
- body:not(.booting):not(.restoring),
- html:not(.booting):not(.restoring) {
+body, html {
    background-color: #e9ecef;
    background-image:
      linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
@@ -46,8 +45,7 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
    transition: background-color 0.3s ease;
  }
 
-.dark body:not(.booting):not(.restoring),
-.dark html:not(.booting):not(.restoring) {
+.dark body, .dark html {
   background-color: #1a1a1a;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),

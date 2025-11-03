@@ -28,50 +28,6 @@
       content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。"
     />
 
-<!-- ① 首帧内联关键 CSS：先把背景铺好、关掉全局动画/过渡 -->
-<style>
-  /* 立刻有背景色，避免还未加载 app 样式时的白闪 */
-  html, body { background:#e9ecef; }
-  /* 暗黑模式用户可用更深色兜底（你也可以改成 #1a1a1a） */
-  @media (prefers-color-scheme: dark) {
-    html, body { background:#1a1a1a; }
-  }
-  /* booting/restoring 期间，彻底禁动画/过渡 */
-  .booting *, .restoring * { transition:none !important; animation:none !important; }
-</style>
-
-<!-- ② 最早标记“booting”，并在 pageshow 后 200ms 自动解除；若是外站返回，先加 restoring -->
-<script>
-  (function () {
-    // 启动即进入 booting（在 Vue 挂载前就生效）
-    document.documentElement.classList.add('booting');
-
-    // 记录“将要外跳”
-    window.addEventListener('pagehide', function () {
-      try { sessionStorage.setItem('__returning_from_external', '1'); } catch {}
-    });
-
-    // 回来时：如果是外跳返回，立即进入 restoring（更严的静默）
-    window.addEventListener('pageshow', function () {
-      try {
-        if (sessionStorage.getItem('__returning_from_external') === '1') {
-          sessionStorage.removeItem('__returning_from_external');
-          document.documentElement.classList.add('restoring');
-          setTimeout(function () {
-            document.documentElement.classList.remove('restoring');
-          }, 200);
-        }
-      } catch {}
-      // 无论如何，200ms 后解除 booting
-      setTimeout(function () {
-        document.documentElement.classList.remove('booting');
-      }, 200);
-      // 打个时间戳，供 main.ts 的“强刷守卫”参考
-      try { sessionStorage.setItem('__last_pageshow_ts', String(Date.now())); } catch {}
-    });
-  })();
-</script>
-
     <!-- 首屏视口兜底：把可见高度写入 --vh，配合 CSS 使用 calc(var(--vh) * 100) -->
     <script>
       (function setVH() {
