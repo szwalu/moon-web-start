@@ -39,6 +39,7 @@
         }
         </script><!DOCTYPE html>
 <html lang="zh">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
@@ -260,6 +261,62 @@
             }
         }
     </style>
+    
+    <style id="pwa-dark-style">
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #777777;
+    --border: #AAAAAA;
+  }
+  html[data-theme="dark"]{
+    --bg: #0f1115;
+    --fg: #eaeaea;
+    --muted: #b9b9b9;
+    --border: #3a3f44;
+  }
+  /* 全局（不覆盖你原有的） */
+  body { background: var(--bg); color: var(--fg); }
+  article { color: var(--muted); }
+  label { color: var(--fg); }
+  canvas { border-color: var(--border); }
+  select, input[type="text"], input[type="range"], input[type="file"]{
+    color: var(--fg);
+    background: transparent;
+  }
+
+  /* 顶部工具条（仅 PWA 时注入） */
+  .pwa-header {
+    position: sticky; /* 不抢你布局流；较老机型可改 fixed */
+    top: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .pwa-header .title {
+    font-size: 14px;
+    opacity: .8;
+    margin-left: .25rem;
+  }
+  .pwa-header .spacer { flex: 1; }
+  .pwa-btn {
+    padding: .4rem .8rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .pwa-btn.primary { border-color: #2196F3; }
+  .pwa-btn:active { transform: translateY(1px); }
+</style>
 </head>
 <body>
 <div id="container">
@@ -606,5 +663,110 @@
         });
     </script>
 </div>
+<script id="pwa-bridge">
+(function () {
+  // —— 兼容检测：是否处于 PWA（独立显示） ——
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                     || window.navigator.standalone === true;
+
+  // —— 主题：读取/应用/监听系统偏好 ——
+  const THEME_KEY = 'watermark_theme';
+  function applyTheme(theme){
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  function getSavedTheme(){
+    return localStorage.getItem(THEME_KEY);
+  }
+  function getSystemTheme(){
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function initTheme(){
+    const saved = getSavedTheme();
+    applyTheme(saved || getSystemTheme());
+  }
+  initTheme();
+  try {
+    // 跟随系统改变
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        const saved = getSavedTheme();
+        if (!saved) applyTheme(e.matches ? 'dark' : 'light');
+      });
+    }
+  } catch {}
+
+  // —— PWA 顶部工具条：仅在 PWA 时注入，避免影响普通网页 ——
+  if (isStandalone) {
+    const bar = document.createElement('div');
+    bar.className = 'pwa-header';
+    bar.innerHTML = `
+      <button class="pwa-btn" data-action="close">关闭</button>
+      <button class="pwa-btn primary" data-action="done">完成</button>
+      <span class="title">离线图片水印</span>
+      <span class="spacer"></span>
+      <button class="pwa-btn" data-action="theme">主题</button>
+    `;
+    // 插入到 body 顶部
+    document.body.insertBefore(bar, document.body.firstChild);
+
+    // 防止工具条遮挡内容：对于 sticky 一般不必，但保险起见可在容器加一点顶内边距
+    const container = document.getElementById('container');
+    if (container && getComputedStyle(container).paddingTop === '0px') {
+      container.style.paddingTop = '8px';
+    }
+
+    // —— 交互逻辑（不改你现有函数名） ——
+    function navigateBackOrHome(){
+      // 优先返回；退无可退时，跳转到站点首页或上一层
+      if (history.length > 1) history.back();
+      else if (document.referrer) location.replace(document.referrer);
+      else location.assign('/');
+    }
+
+    // *关闭*：单纯返回
+    bar.querySelector('[data-action="close"]').addEventListener('click', () => {
+      navigateBackOrHome();
+    });
+
+    // *完成*：先触发你已有的批量下载，再返回
+    bar.querySelector('[data-action="done"]').addEventListener('click', async () => {
+      try {
+        if (typeof downloadAllPic === 'function') {
+          await Promise.resolve(downloadAllPic());
+        }
+      } catch (e) {
+        console.warn('downloadAllPic 发生异常（已忽略以保证可返回）：', e);
+      } finally {
+        // 给一点点时间让下载触发
+        setTimeout(navigateBackOrHome, 200);
+      }
+    });
+
+    // *主题*：在浅色/深色之间切换（再次点击可恢复跟随系统）
+    bar.querySelector('[data-action="theme"]').addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      // 记忆选择；再次点击同一按钮三秒内连击三次可清除记忆（恢复跟随系统）
+      localStorage.setItem(THEME_KEY, next);
+      // 小彩蛋：快速三击清除手动选择
+      let clicks = 0;
+      const btn = bar.querySelector('[data-action="theme"]');
+      const once = () => {
+        clicks++;
+        if (clicks >= 3) {
+          clicks = 0;
+          localStorage.removeItem(THEME_KEY);
+          applyTheme(getSystemTheme());
+          btn.removeEventListener('click', once, true);
+          setTimeout(() => btn.addEventListener('click', once, true), 10); // 重新挂载
+        }
+        setTimeout(() => { clicks = 0; }, 1200);
+      };
+      btn.addEventListener('click', once, true);
+    }, { once: true });
+  }
+})();
+</script>
 </body>
 </html>
