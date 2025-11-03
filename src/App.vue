@@ -36,19 +36,18 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 <style>
 /* 您的样式代码保持不变 */
- body, html {
+ body:not(.booting):not(.restoring),
+ html:not(.booting):not(.restoring) {
    background-color: #e9ecef;
    background-image:
      linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
      linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
    background-size: 25px 25px;
- }
- /* 仅在非静默期才允许背景过渡，避免回到 PWA 时那一下闪 */
- html:not(.restoring), body:not(.restoring) {
    transition: background-color 0.3s ease;
  }
 
-.dark body, .dark html {
+.dark body:not(.booting):not(.restoring),
+.dark html:not(.booting):not(.restoring) {
   background-color: #1a1a1a;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
