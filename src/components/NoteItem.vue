@@ -643,9 +643,11 @@ async function handleDateUpdate(newDate: Date) {
 
 /* 2) 普通段落的上下外边距略收紧（避免整体过稀） */
 .note-content :deep(p) {
-  margin-top: 0.5em;
-  margin-bottom: 0.5em;
+  margin-top: 0.85em;
+  margin-bottom: 0.85em;
 }
+
+note-content :deep(p + p) { margin-top: 1.1em; }
 
 /* 3) 关键：当“段落后面紧跟列表”时，把两者之间的间距进一步压小
    - 现代浏览器（含新 iOS Safari）支持 :has，精准只影响相邻场景 */
