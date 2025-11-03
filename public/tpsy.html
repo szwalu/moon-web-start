@@ -292,7 +292,14 @@
   html[data-theme="dark"] .mini-fab{ background:rgba(255,255,255,0.06); }
 
   /* 左上“×”关闭钮（如果你已经加过可忽略） */
-  .close-x{ top:10px; left:10px; }
+  .close-x{
+  top:4px;         /* 往上移 */
+  left:6px;        /* 可稍微左移一点 */
+  width:28px;      /* 缩小尺寸 */
+  height:28px;
+  font-size:18px;  /* 调整字号 */
+  line-height:28px;
+}
 
   /* 右上主题按钮 */
   .theme-toggle{ top:10px; right:10px; }
