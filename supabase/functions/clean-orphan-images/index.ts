@@ -58,12 +58,13 @@ Deno.serve(async (req) => {
 
     // 2) 列出该桶所有对象（名字就是相对路径）
     //    为了效率，直接从 storage.objects 查询（单次 SQL），避免分页列目录
-    // 切到 storage schema 再查 objects 表
-    const { data: allObjs, error: objErr } = await admin
-      .schema('storage')
-      .from('objects')
-      .select('name, created_at')
-      .eq('bucket_id', BUCKET)
+    // ✅ 改为调用新建的 SQL 函数 rpc_list_storage_objects
+    const { data: allObjs, error: objErr } = await admin.rpc(
+      'rpc_list_storage_objects',
+      { p_bucket: BUCKET },
+    )
+    if (objErr)
+      throw objErr
 
     if (objErr)
       throw objErr
