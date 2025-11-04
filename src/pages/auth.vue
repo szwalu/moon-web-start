@@ -146,12 +146,12 @@ function onSelectTag(tag: string) {
   const isOnlyTag = trimmedContent.startsWith('#') && !trimmedContent.slice(1).includes(' ')
 
   // 3. 如果输入框是空的，或者里面只有一个标签，就更新它
-  if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL) {
+  if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL)
     newNoteContent.value = `${tag} ` // 无论是新增还是替换，操作都是一样的
-    nextTick(() => {
-      newNoteEditorRef.value?.focus()
-    })
-  }
+    // 若要强制聚焦，去掉下面三行注释
+    // nextTick(() => {
+  //  newNoteEditorRef.value?.focus()
+    // })
 
   // 4. 无论如何，都执行筛选逻辑
   fetchNotesByTag(tag)
