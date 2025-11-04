@@ -157,10 +157,10 @@ function onSelectTag(tag: string) {
   // 3. 如果输入框是空的，或者里面只有一个标签，就更新它
   if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL)
     newNoteContent.value = `${tag} ` // 无论是新增还是替换，操作都是一样的
-    // 若要强制聚焦，去掉下面三行注释
-    // nextTick(() => {
-  //  newNoteEditorRef.value?.focus()
-    // })
+    // 若要强制不聚焦，下面三行加注释
+  nextTick(() => {
+    newNoteEditorRef.value?.focus()
+  })
 
   // 4. 无论如何，都执行筛选逻辑
   fetchNotesByTag(tag)
@@ -2962,10 +2962,12 @@ function openEditor() {
 }
 
 /* 透明遮罩盖住页面，但不改变布局 */
-.editor-backdrop{
-  position: fixed; inset: 0;
-  background: transparent;
+.editor-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35); /* 半透明暗背景，可换白色 */
   z-index: 3000;
+  backdrop-filter: blur(4px);       /* 可选：柔化背景 */
 }
 
 /* 把输入框容器做成底部抽屉：默认在视口外，用 transform 推出来 */
