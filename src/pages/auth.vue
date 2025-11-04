@@ -3003,8 +3003,8 @@ function openEditor() {
 
 /* 控制编辑器本体的滚动与最大高度（子组件根加了 .note-editor 后可用） */
 .fixed-sheet .note-editor {
-  max-height: 60vh;   /* 输入区域最大高度 */
-  min-height: 120px;  /* 初始高度 */
+  max-height: 80vh;   /* 输入区域最大高度 */
+  min-height: 180px;  /* 初始高度 */
   overflow-y: auto;
 }
 </style>
