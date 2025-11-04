@@ -2301,6 +2301,13 @@ function onCalendarUpdated(updated: any) {
     )
   }
 }
+
+function openEditor() {
+  showEditor.value = true
+  nextTick(() => {
+    (newNoteEditorRef.value as any)?.focus?.()
+  })
+}
 </script>
 
 <template>
@@ -2528,7 +2535,7 @@ function onCalendarUpdated(updated: any) {
       <button
         v-if="!showEditor && !isSelectionModeActive && !isEditorActive"
         class="floating-add-btn"
-        @click="showEditor = true"
+        @click="openEditor"
       >
         +
       </button>
