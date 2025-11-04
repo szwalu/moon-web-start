@@ -157,10 +157,10 @@ function onSelectTag(tag: string) {
   // 3. 如果输入框是空的，或者里面只有一个标签，就更新它
   if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL)
     newNoteContent.value = `${tag} ` // 无论是新增还是替换，操作都是一样的
-    // 若要强制不聚焦，下面三行加注释
-  nextTick(() => {
-    newNoteEditorRef.value?.focus()
-  })
+    // 若要强制聚焦，下面三行不加注释
+  // nextTick(() => {
+  //  newNoteEditorRef.value?.focus()
+  // })
 
   // 4. 无论如何，都执行筛选逻辑
   fetchNotesByTag(tag)
@@ -2993,6 +2993,20 @@ function openEditor() {
 
 /* 避免旧的“折叠”动画跟本抽屉冲突（可保留，不影响） */
 .new-note-editor-container.closing { transition: none !important; }
+
+/* 抽屉整体高度（父容器） */
+.fixed-sheet {
+  max-height: 80vh;   /* 想露出多少就调这里 */
+  min-height: 180px;  /* 初始高度 */
+  overflow: hidden;
+}
+
+/* 控制编辑器本体的滚动与最大高度（子组件根加了 .note-editor 后可用） */
+.fixed-sheet .note-editor {
+  max-height: 60vh;   /* 输入区域最大高度 */
+  min-height: 120px;  /* 初始高度 */
+  overflow-y: auto;
+}
 </style>
 
 <style>

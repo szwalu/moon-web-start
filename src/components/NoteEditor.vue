@@ -1534,7 +1534,8 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor note-editor-reborn"
+    :class="[isEditing ? 'editing-viewport' : '']"
   >
     <input
       ref="imageInputRef"
