@@ -368,9 +368,8 @@ onMounted(() => {
           const savedSearchResults = sessionStorage.getItem(SESSION_SEARCH_RESULTS_KEY)
           const savedTagFilter = sessionStorage.getItem(SESSION_TAG_FILTER_KEY)
           // ++ 新增：那年今日缓存
-          const savedAnnivActive = sessionStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
-          const savedAnnivResults = sessionStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
-
+          const savedAnnivActive = localStorage.getItem(SESSION_ANNIV_ACTIVE_KEY) === 'true'
+          const savedAnnivResults = localStorage.getItem(SESSION_ANNIV_RESULTS_KEY)
           // 2. 根据缓存情况决定执行路径
           if (savedSearchQuery && savedSearchResults) {
             // 路径A：有完整的搜索缓存，直接恢复，不请求网络
@@ -1878,9 +1877,9 @@ function handleAnniversaryToggle(data: any[] | null) {
     hasMoreNotes.value = false
 
     // ++ 新增：持久化“那年今日”状态与结果
-    sessionStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
+    localStorage.setItem(SESSION_ANNIV_ACTIVE_KEY, 'true')
     try {
-      sessionStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
+      localStorage.setItem(SESSION_ANNIV_RESULTS_KEY, JSON.stringify(data))
     }
     catch {
       // 若超出容量，仅保留激活标记
@@ -1894,8 +1893,8 @@ function handleAnniversaryToggle(data: any[] | null) {
     hasMoreNotes.value = notes.value.length < totalNotes.value
 
     // ++ 新增：清理持久化
-    sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-    sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+    localStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+    localStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
   }
 }
 
@@ -2191,8 +2190,8 @@ async function fetchNotesByTag(tag: string) {
   isShowingSearchResults.value = false
   showSearchBar.value = false
   searchQuery.value = ''
-  sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
-  sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
+  localStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+  localStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
 
   activeTagFilter.value = hashTag
   isLoadingNotes.value = true
