@@ -1328,6 +1328,14 @@ function updateNoteInList(updatedNote: any) {
     // 对当前视图（可能是筛选后的）进行排序
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
   }
+  // —— 保证当前标签筛选的缓存不会陈旧 —— //
+  if (activeTagFilter.value) {
+    try {
+      const key = getTagCacheKey(activeTagFilter.value)
+      localStorage.removeItem(key)
+    }
+    catch { /* ignore */ }
+  }
 
   // 步骤 2: 智能地更新 LocalStorage 中的主缓存
   if (activeTagFilter.value || isShowingSearchResults.value) {
