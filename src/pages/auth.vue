@@ -3064,7 +3064,7 @@ html, body, #app {
   min-height: 100svh;
   min-height: 100dvh;
   min-height: 100lvh;
-
+  min-height: calc(var(--vh, 1vh) * 100);
   margin: 0;
   background: var(--app-bg);
 }
@@ -3104,5 +3104,12 @@ html, body, #app {
 }
 .n-dropdown-menu .menu-caret.rot90 {
   transform: translateY(1px) rotate(90deg);
+}
+
+/* 让浏览器在把输入框滚进可视区时，预留出 sticky 头部的高度 */
+.search-bar-container input,
+.search-bar-container textarea,
+.search-bar-container [contenteditable="true"] {
+  scroll-margin-top: var(--header-height);
 }
 </style>
