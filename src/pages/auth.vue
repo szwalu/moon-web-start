@@ -3064,7 +3064,7 @@ html, body, #app {
   min-height: 100svh;
   min-height: 100dvh;
   min-height: 100lvh;
-  min-height: calc(var(--vh, 1vh) * 100);
+
   margin: 0;
   background: var(--app-bg);
 }
