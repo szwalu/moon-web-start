@@ -85,13 +85,73 @@ const isSelectionModeActive = ref(false)
 const showComposer = ref(false)
 function openComposer() {
   showComposer.value = true
-  // 先在同一手势里试一次
+  startKeyboardTracking() // ✅ 新增：开始追踪键盘
   focusComposer()
-  // 过一帧再兜底（兼容过渡动画 / 子组件挂载）
-  nextTick(() => focusComposer())
+  nextTick(() => {
+    focusComposer()
+    computeKeyboardInset()
+  })
 }
 function closeComposer() {
   showComposer.value = false
+  stopKeyboardTracking() // ✅ 新增：停止追踪键盘
+}
+const editorBottomPadding = ref(0)
+// === 键盘避让：并联 visualViewport 与 NoteEditor 的 bottom-safe ===
+const keyboardInset = ref(0) // 从 visualViewport 计算出的遮挡高度
+const effectiveBottom = computed(() =>
+  Math.max(Number(editorBottomPadding.value || 0), keyboardInset.value),
+)
+
+let _vvBound = false
+const _vvOnResize = () => computeKeyboardInset()
+const _vvOnScroll = () => computeKeyboardInset()
+const _onOrientation = () => setTimeout(computeKeyboardInset, 120)
+
+function computeKeyboardInset() {
+  try {
+    const vv = window.visualViewport
+    if (!vv) {
+      keyboardInset.value = 0
+      return
+    }
+    // 视口被键盘压缩的高度 = (布局视口高度 - 可视视口高度 - 可视视口顶部偏移)
+    const occluded = Math.max(0, Math.round((window.innerHeight - vv.height - vv.offsetTop)))
+    // 再与 safe-area-bottom 叠加（iOS Home条），这里不直接相加，交给样式中的 calc 处理
+    keyboardInset.value = occluded
+  }
+  catch {
+    keyboardInset.value = 0
+  }
+}
+
+function startKeyboardTracking() {
+  if (_vvBound)
+    return
+  const vv = window.visualViewport
+  if (vv) {
+    vv.addEventListener('resize', _vvOnResize, { passive: true })
+    vv.addEventListener('scroll', _vvOnScroll, { passive: true })
+  }
+  window.addEventListener('orientationchange', _onOrientation, { passive: true })
+  _vvBound = true
+  // 初次进入面板立刻测一次，并延时复测几次（覆盖动画/挂载延迟）
+  computeKeyboardInset()
+  setTimeout(computeKeyboardInset, 60)
+  setTimeout(computeKeyboardInset, 180)
+}
+
+function stopKeyboardTracking() {
+  if (!_vvBound)
+    return
+  const vv = window.visualViewport
+  if (vv) {
+    vv.removeEventListener('resize', _vvOnResize)
+    vv.removeEventListener('scroll', _vvOnScroll)
+  }
+  window.removeEventListener('orientationchange', _onOrientation)
+  _vvBound = false
+  keyboardInset.value = 0
 }
 // 放在 openComposer/closeComposer 附近
 function focusComposer() {
@@ -132,7 +192,7 @@ const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
 const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
 const noteListKey = ref(0)
-const editorBottomPadding = ref(0)
+
 const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
@@ -2464,9 +2524,8 @@ function onCalendarUpdated(updated: any) {
             role="dialog"
             aria-modal="true"
             :style="{
-              /* ✅ 关键：面板整体抬升，完全避开输入法覆盖区 */
-              bottom: `calc(var(--safe-bottom) + ${editorBottomPadding || 0}px)`,
-              /* 底部只保留一个小内边距用于视觉留白 */
+              /* ✅ 关键：整块面板抬升到安全高度（IME 遮挡与 Home 条都避开） */
+              bottom: `calc(var(--safe-bottom) + ${effectiveBottom}px)`,
               paddingBottom: '8px',
             }"
           >
