@@ -2463,18 +2463,15 @@ function onCalendarUpdated(updated: any) {
             class="sheet-panel"
             role="dialog"
             aria-modal="true"
-            :style="{ paddingBottom: `calc(max(8px, var(--safe-bottom)) + ${editorBottomPadding || 0}px)` }"
+            :style="{
+              /* ✅ 关键：面板整体抬升，完全避开输入法覆盖区 */
+              bottom: `calc(var(--safe-bottom) + ${editorBottomPadding || 0}px)`,
+              /* 底部只保留一个小内边距用于视觉留白 */
+              paddingBottom: '8px',
+            }"
           >
             <div class="sheet-grabber" aria-hidden="true" />
-            <div
-              class="sheet-body"
-              :style="{
-                /* 给可滚动区再加一点底部缓冲，避免工具栏/输入法遮住最后一行 */
-                paddingBottom: `${(editorBottomPadding || 0) + 12}px`,
-                /* 视口高度减去避让值，保证内容区真实可见高度被动调整 */
-                maxHeight: `calc(min(78dvh, 640px) - ${(editorBottomPadding || 0)}px)`,
-              }"
-            >
+            <div class="sheet-body">
               <NoteEditor
                 ref="newNoteEditorRef"
                 v-model="newNoteContent"
