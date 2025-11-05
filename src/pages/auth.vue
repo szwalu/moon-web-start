@@ -2548,8 +2548,8 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-  min-height: 100%;
-  overflow: visible;
+height: 100%;     /* 替换 min-height: 100%; */
+  overflow: hidden;  /* 替换 overflow: visible; */
   position: relative;
 }
 .dark .auth-container {
@@ -3034,10 +3034,11 @@ function onCalendarUpdated(updated: any) {
 
 /* 统一页面背景 */
 html, body, #app {
-  min-height: 100svh;
-  min-height: 100dvh;
-  min-height: 100lvh;
-  min-height: calc(var(--vh, 1vh) * 100);
+height: 100svh;
+  height: 100dvh;
+  height: 100lvh;
+  height: calc(var(--vh, 1vh) * 100);
+  overflow: hidden; /* 关键：禁止 body 滚动 */
   margin: 0;
   background: var(--app-bg);
 }
