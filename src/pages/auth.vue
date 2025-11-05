@@ -56,7 +56,12 @@ function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
   (noteListRef.value as any)?.forceUpdate?.()
 }
+const showEditor = ref(false)
 const newNoteEditorContainerRef = ref(null)
+
+onClickOutside(newNoteEditorContainerRef, () => {
+  showEditor.value = false
+})
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
@@ -2424,11 +2429,14 @@ function onCalendarUpdated(updated: any) {
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
+      <!-- 透明遮罩：点外面关闭 -->
+      <div v-if="showEditor" class="editor-backdrop" @click="showEditor = false" />
+
       <div
         v-show="!isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
-        class="new-note-editor-container"
-        :class="{ collapsed: headerCollapsed }"
+        class="new-note-editor-container fixed-sheet"
+        :class="{ 'sheet-open': showEditor }"
       >
         <NoteEditor
           ref="newNoteEditorRef"
@@ -2512,6 +2520,14 @@ function onCalendarUpdated(updated: any) {
           </svg>
         </button>
       </Transition>
+      <!-- 右下角 “+” 按钮 -->
+      <button
+        v-if="!showEditor && !isSelectionModeActive && !isEditorActive"
+        class="floating-add-btn"
+        @click="showEditor = true"
+      >
+        +
+      </button>
     </template>
     <template v-else>
       <Authentication />
@@ -2911,6 +2927,59 @@ function onCalendarUpdated(updated: any) {
     right: calc((100vw - 960px) / 2 + 20px);
   }
 }
+
+.floating-add-btn,
+.floating-close-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: 28px;
+  border: none;
+  cursor: pointer;
+  color: white;
+  background-color: #6366f1;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  transition: background-color 0.2s ease;
+  z-index: 5000;
+}
+.floating-add-btn:hover,
+.floating-close-btn:hover {
+  background-color: #4f46e5;
+}
+
+/* 透明遮罩盖住页面，但不改变布局 */
+.editor-backdrop{
+  position: fixed; inset: 0;
+  background: transparent;
+  z-index: 3000;
+}
+
+/* 把输入框容器做成底部抽屉：默认在视口外，用 transform 推出来 */
+.fixed-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 3001;                 /* 比遮罩高 */
+  background: var(--app-bg);     /* 与页面同底色 */
+  box-shadow: 0 -6px 20px rgba(0,0,0,.12);
+  transform: translateY(100%);   /* 默认藏在底部外 */
+  transition: transform .18s ease;
+  will-change: transform;
+  /* 保留你原来容器的内边距 */
+  padding-top: 0.5rem;
+  padding-bottom: 1rem;
+}
+.dark .fixed-sheet { background: #1e1e1e; }
+
+/* 打开时滑上来 */
+.fixed-sheet.sheet-open {
+  transform: translateY(0);
+}
+
+/* 避免旧的“折叠”动画跟本抽屉冲突（可保留，不影响） */
+.new-note-editor-container.closing { transition: none !important; }
 </style>
 
 <style>
