@@ -2466,7 +2466,15 @@ function onCalendarUpdated(updated: any) {
             :style="{ paddingBottom: `calc(max(8px, var(--safe-bottom)) + ${editorBottomPadding || 0}px)` }"
           >
             <div class="sheet-grabber" aria-hidden="true" />
-            <div class="sheet-body">
+            <div
+              class="sheet-body"
+              :style="{
+                /* 给可滚动区再加一点底部缓冲，避免工具栏/输入法遮住最后一行 */
+                paddingBottom: `${(editorBottomPadding || 0) + 12}px`,
+                /* 视口高度减去避让值，保证内容区真实可见高度被动调整 */
+                maxHeight: `calc(min(78dvh, 640px) - ${(editorBottomPadding || 0)}px)`,
+              }"
+            >
               <NoteEditor
                 ref="newNoteEditorRef"
                 v-model="newNoteContent"
