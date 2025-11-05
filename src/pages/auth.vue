@@ -2979,7 +2979,7 @@ function onCalendarUpdated(updated: any) {
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 .fab-add:hover { transform: translateY(-2px); }
 .fab-add:active { transform: scale(0.96); }
