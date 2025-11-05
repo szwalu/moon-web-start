@@ -56,12 +56,6 @@ function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
   (noteListRef.value as any)?.forceUpdate?.()
 }
-const showEditor = ref(false)
-const newNoteEditorContainerRef = ref(null)
-
-onClickOutside(newNoteEditorContainerRef, () => {
-  showEditor.value = false
-})
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
@@ -87,6 +81,17 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const isEditorActive = ref(false)
 const isSelectionModeActive = ref(false)
+// === 新建笔记弹层（替代卡片式输入区） ===
+const showNewNote = ref(false)
+
+function openNewNoteEditor() {
+  showNewNote.value = true
+  nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
+}
+function closeNewNoteEditor() {
+  if (!isCreating.value)
+    showNewNote.value = false
+}
 const selectedNoteIds = ref<string[]>([])
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
 const anniversaryNotes = ref<any[] | null>(null)
@@ -681,6 +686,7 @@ async function handleCreateNote(content: string, weather?: string | null) {
       isEditorActive.value = false
       compactWhileTyping.value = false
       headerCollapsed.value = false
+      showNewNote.value = false
     }
   }
   finally {
@@ -2429,31 +2435,6 @@ function onCalendarUpdated(updated: any) {
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
-      <!-- 透明遮罩：点外面关闭 -->
-      <div v-if="showEditor" class="editor-backdrop" @click="showEditor = false" />
-
-      <div
-        v-show="!isSelectionModeActive && !isTopEditing"
-        ref="newNoteEditorContainerRef"
-        class="new-note-editor-container fixed-sheet"
-        :class="{ 'sheet-open': showEditor }"
-      >
-        <NoteEditor
-          ref="newNoteEditorRef"
-          v-model="newNoteContent"
-          :is-editing="false"
-          :is-loading="isCreating"
-          :max-note-length="maxNoteLength"
-          :placeholder="$t('notes.content_placeholder')"
-          :all-tags="allTags"
-          :tag-counts="tagCounts"
-          enable-drafts
-          @save="handleCreateNote"
-          @focus="onEditorFocus"
-          @blur="onEditorBlur"
-          @bottom-safe-change="val => (editorBottomPadding = val)"
-        />
-      </div>
 
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
@@ -2508,6 +2489,60 @@ function onCalendarUpdated(updated: any) {
           @delete="triggerDeleteConfirmation"
         />
       </Transition>
+
+      <!-- 右下角 + 号按钮（呼出新建输入弹层） -->
+      <Transition name="fade">
+        <button
+          v-if="!isSelectionModeActive && !isEditorActive"
+          class="fab-add"
+          aria-label="new note"
+          @click="openNewNoteEditor"
+        >
+          +
+        </button>
+      </Transition>
+
+      <!-- 新建笔记弹层（点击遮罩空白处关闭） -->
+      <Transition name="slide-up-fade">
+        <div
+          v-if="showNewNote"
+          class="new-note-modal"
+          role="dialog"
+          aria-modal="true"
+          @click.self="closeNewNoteEditor"
+        >
+          <div class="new-note-sheet">
+            <div class="sheet-header">
+              <span>{{ $t('notes.new_note') || '新建笔记' }}</span>
+              <button class="sheet-close" @click="closeNewNoteEditor">×</button>
+            </div>
+            <div class="sheet-body">
+              <NoteEditor
+                ref="newNoteEditorRef"
+                v-model="newNoteContent"
+                :is-editing="false"
+                :is-loading="isCreating"
+                :max-note-length="maxNoteLength"
+                :placeholder="$t('notes.content_placeholder')"
+                :all-tags="allTags"
+                :tag-counts="tagCounts"
+                enable-drafts
+                @save="handleCreateNote"
+                @focus="onEditorFocus"
+                @blur="onEditorBlur"
+                @bottom-safe-change="val => (editorBottomPadding = val)"
+              />
+            </div>
+            <!-- iOS 安全区垫片：仅在键盘撑起时出现 -->
+            <div
+              v-show="editorBottomPadding > 0"
+              :style="{ height: `${editorBottomPadding}px` }"
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+      </Transition>
+
       <Transition name="fade">
         <button
           v-if="showScrollTopButton"
@@ -2520,14 +2555,6 @@ function onCalendarUpdated(updated: any) {
           </svg>
         </button>
       </Transition>
-      <!-- 右下角 “+” 按钮 -->
-      <button
-        v-if="!showEditor && !isSelectionModeActive && !isEditorActive"
-        class="floating-add-btn"
-        @click="showEditor = true"
-      >
-        +
-      </button>
     </template>
     <template v-else>
       <Authentication />
@@ -2548,8 +2575,8 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-height: 100%;     /* 替换 min-height: 100%; */
-  overflow: hidden;  /* 替换 overflow: visible; */
+  min-height: 100%;
+  overflow: visible;
   position: relative;
 }
 .dark .auth-container {
@@ -2928,58 +2955,96 @@ height: 100%;     /* 替换 min-height: 100%; */
   }
 }
 
-.floating-add-btn,
-.floating-close-btn {
+/* 右下角 “+” 悬浮按钮（与回到顶部按钮错位，避免遮挡） */
+.fab-add {
   position: fixed;
-  bottom: 80px;
+  bottom: 86px;   /* 回到顶部是 30px，这里高一些 */
   right: 20px;
-  width: 48px;
-  height: 48px;
+  z-index: 5100;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  font-size: 28px;
   border: none;
   cursor: pointer;
-  color: white;
-  background-color: #6366f1;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-  transition: background-color 0.2s ease;
-  z-index: 5000;
+  background: #6366f1;
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
+  transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
 }
-.floating-add-btn:hover,
-.floating-close-btn:hover {
-  background-color: #4f46e5;
+.fab-add:hover { transform: scale(1.03); }
+.fab-add:active { transform: scale(0.97); }
+.dark .fab-add { background: #818cf8; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+
+@media (min-width: 768px) {
+  .fab-add { right: calc((100vw - 960px) / 2 + 20px); }
 }
 
-/* 透明遮罩盖住页面，但不改变布局 */
-.editor-backdrop{
-  position: fixed; inset: 0;
-  background: transparent;
-  z-index: 3000;
-}
-
-/* 把输入框容器做成底部抽屉：默认在视口外，用 transform 推出来 */
-.fixed-sheet {
+/* 新建弹层：全屏遮罩 + 底部弹出面板（移动端优先） */
+.new-note-modal {
   position: fixed;
-  left: 0; right: 0; bottom: 0;
-  z-index: 3001;                 /* 比遮罩高 */
-  background: var(--app-bg);     /* 与页面同底色 */
-  box-shadow: 0 -6px 20px rgba(0,0,0,.12);
-  transform: translateY(100%);   /* 默认藏在底部外 */
-  transition: transform .18s ease;
-  will-change: transform;
-  /* 保留你原来容器的内边距 */
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-}
-.dark .fixed-sheet { background: #1e1e1e; }
-
-/* 打开时滑上来 */
-.fixed-sheet.sheet-open {
-  transform: translateY(0);
+  inset: 0;
+  z-index: 5200;
+  background: rgba(0,0,0,.38);
+  display: flex;
+  align-items: flex-end;   /* 移动端：从底部升起 */
+  justify-content: center;
+  padding-bottom: var(--safe-bottom);
 }
 
-/* 避免旧的“折叠”动画跟本抽屉冲突（可保留，不影响） */
-.new-note-editor-container.closing { transition: none !important; }
+/* 面板主体：移动端占满宽度；桌面端居中卡片 */
+.new-note-sheet {
+  width: 100%;
+  max-height: 90dvh;
+  background: var(--app-bg, #fff);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 18px rgba(0,0,0,.25);
+  overflow: hidden;
+}
+.dark .new-note-sheet { background: #1e1e1e; }
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.dark .sheet-header { border-bottom-color: rgba(255,255,255,.08); }
+
+.sheet-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  opacity: .8;
+}
+.sheet-close:hover { opacity: 1; }
+
+.sheet-body {
+  padding: 10px 12px 12px;
+  max-height: calc(90dvh - 44px);
+  overflow: auto;
+}
+
+/* 桌面端：改为居中卡片弹窗风格 */
+@media (min-width: 768px) {
+  .new-note-modal { align-items: center; }
+  .new-note-sheet {
+    width: min(720px, 92vw);
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.28);
+  }
+}
 </style>
 
 <style>
@@ -3034,11 +3099,10 @@ height: 100%;     /* 替换 min-height: 100%; */
 
 /* 统一页面背景 */
 html, body, #app {
-height: 100svh;
-  height: 100dvh;
-  height: 100lvh;
-  height: calc(var(--vh, 1vh) * 100);
-  overflow: hidden; /* 关键：禁止 body 滚动 */
+  min-height: 100svh;
+  min-height: 100dvh;
+  min-height: 100lvh;
+  min-height: calc(var(--vh, 1vh) * 100);
   margin: 0;
   background: var(--app-bg);
 }
