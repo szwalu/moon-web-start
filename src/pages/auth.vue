@@ -96,11 +96,52 @@ function closeComposer() {
   showComposer.value = false
   stopKeyboardTracking() // ✅ 新增：停止追踪键盘
 }
+
 const editorBottomPadding = ref(0)
+
 // === 键盘避让：并联 visualViewport 与 NoteEditor 的 bottom-safe ===
 const keyboardInset = ref(0) // 从 visualViewport 计算出的遮挡高度
 const effectiveBottom = computed(() =>
   Math.max(Number(editorBottomPadding.value || 0), keyboardInset.value),
+)
+
+// --- 平滑后的最终值（用于模板）：上升立即生效，下降需“幅度≥阈值 且 稳定≥时长” ---
+const smoothEffectiveBottom = ref(0)
+let _lastDecreaseCheckAt = Date.now()
+let _lastStableVal = 0
+const HYSTERESIS = 24 // 下降触发的最小像素差（可按需 16~32 调整）
+const DECR_DELAY = 220 // 下降前需保持稳定的时间（毫秒）
+
+watch(
+  effectiveBottom,
+  (val) => {
+    const now = Date.now()
+
+    // 面板未显示或编辑未激活时，直接同步，避免残留抬升
+    if (!showComposer.value /* || !isEditorActive.value */) {
+      smoothEffectiveBottom.value = val
+      _lastStableVal = val
+      _lastDecreaseCheckAt = now
+      return
+    }
+
+    if (val >= smoothEffectiveBottom.value) {
+      // 上升：立即跟随，光标首字/候选条抬升不会被延迟
+      smoothEffectiveBottom.value = val
+      _lastStableVal = val
+      _lastDecreaseCheckAt = now
+    }
+    else {
+      // 下降：需要幅度足够且稳定一段时间，过滤抖动
+      if ((_lastStableVal - val) >= HYSTERESIS && (now - _lastDecreaseCheckAt) >= DECR_DELAY) {
+        smoothEffectiveBottom.value = val
+        _lastStableVal = val
+        _lastDecreaseCheckAt = now
+      }
+      // 否则保持不变，避免闪动
+    }
+  },
+  { immediate: true },
 )
 
 let _vvBound = false
@@ -117,7 +158,7 @@ function computeKeyboardInset() {
     }
     // 视口被键盘压缩的高度 = (布局视口高度 - 可视视口高度 - 可视视口顶部偏移)
     const occluded = Math.max(0, Math.round((window.innerHeight - vv.height - vv.offsetTop)))
-    // 再与 safe-area-bottom 叠加（iOS Home条），这里不直接相加，交给样式中的 calc 处理
+    // occluded 只是原始采样，真正给模板的是 smoothEffectiveBottom（经 watch 平滑后）
     keyboardInset.value = occluded
   }
   catch {
@@ -152,7 +193,9 @@ function stopKeyboardTracking() {
   window.removeEventListener('orientationchange', _onOrientation)
   _vvBound = false
   keyboardInset.value = 0
+  smoothEffectiveBottom.value = 0 // ✅ 收起时复位，避免下次残留
 }
+
 // 放在 openComposer/closeComposer 附近
 function focusComposer() {
   // 尽量在同一次用户手势里完成一次尝试
@@ -2524,8 +2567,7 @@ function onCalendarUpdated(updated: any) {
             role="dialog"
             aria-modal="true"
             :style="{
-              /* ✅ 关键：整块面板抬升到安全高度（IME 遮挡与 Home 条都避开） */
-              bottom: `calc(var(--safe-bottom) + ${effectiveBottom}px)`,
+              bottom: `calc(var(--safe-bottom) + ${smoothEffectiveBottom}px)`,
               paddingBottom: '8px',
             }"
           >
