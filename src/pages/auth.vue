@@ -2537,7 +2537,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 右下角 “+” 悬浮按钮：仅在未展开输入框时显示 -->
       <button
-        v-if="!showComposer && !isTopEditing"
+        v-if="!showComposer && !isTopEditing && !showCalendarView"
         class="fab-add"
         aria-label="新建笔记"
         @click="openComposer"
