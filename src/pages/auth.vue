@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { onClickOutside, useDark } from '@vueuse/core'
+import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
@@ -56,16 +56,7 @@ function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
   (noteListRef.value as any)?.forceUpdate?.()
 }
-const showEditor = ref(false)
 const newNoteEditorContainerRef = ref(null)
-// 一定要在 newNoteEditorContainerRef、showEditor 定义之后再调用！
-onClickOutside(newNoteEditorContainerRef, (e) => {
-  // 忽略点击右下角 + / × 按钮
-  const target = e.target as HTMLElement
-  if (target.closest('.floating-add-btn') || target.closest('.floating-close-btn'))
-    return
-  showEditor.value = false
-})
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
@@ -157,10 +148,10 @@ function onSelectTag(tag: string) {
   // 3. 如果输入框是空的，或者里面只有一个标签，就更新它
   if ((isInputEmpty || isOnlyTag) && tag !== UNTAGGED_SENTINEL)
     newNoteContent.value = `${tag} ` // 无论是新增还是替换，操作都是一样的
-    // 若要强制聚焦，下面三行不加注释
-  // nextTick(() => {
+    // 若要强制聚焦，去掉下面三行注释
+    // nextTick(() => {
   //  newNoteEditorRef.value?.focus()
-  // })
+    // })
 
   // 4. 无论如何，都执行筛选逻辑
   fetchNotesByTag(tag)
@@ -2301,13 +2292,6 @@ function onCalendarUpdated(updated: any) {
     )
   }
 }
-
-function openEditor() {
-  showEditor.value = true
-  nextTick(() => {
-    (newNoteEditorRef.value as any)?.focus?.()
-  })
-}
 </script>
 
 <template>
@@ -2440,14 +2424,11 @@ function openEditor() {
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
-      <!-- 透明遮罩：点外面关闭 -->
-      <div v-if="showEditor" class="editor-backdrop" @click="showEditor = false" />
-
       <div
         v-show="!isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
-        class="new-note-editor-container fixed-sheet"
-        :class="{ 'sheet-open': showEditor }"
+        class="new-note-editor-container"
+        :class="{ collapsed: headerCollapsed }"
       >
         <NoteEditor
           ref="newNoteEditorRef"
@@ -2531,14 +2512,6 @@ function openEditor() {
           </svg>
         </button>
       </Transition>
-      <!-- 右下角 “+” 按钮 -->
-      <button
-        v-if="!showEditor && !isSelectionModeActive && !isEditorActive"
-        class="floating-add-btn"
-        @click="openEditor"
-      >
-        +
-      </button>
     </template>
     <template v-else>
       <Authentication />
@@ -2938,75 +2911,6 @@ function openEditor() {
     right: calc((100vw - 960px) / 2 + 20px);
   }
 }
-
-.floating-add-btn,
-.floating-close-btn {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  font-size: 28px;
-  border: none;
-  cursor: pointer;
-  color: white;
-  background-color: #6366f1;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-  transition: background-color 0.2s ease;
-  z-index: 5000;
-}
-.floating-add-btn:hover,
-.floating-close-btn:hover {
-  background-color: #4f46e5;
-}
-
-/* 透明遮罩盖住页面，但不改变布局 */
-.editor-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35); /* 半透明暗背景，可换白色 */
-  z-index: 3000;
-  backdrop-filter: blur(4px);       /* 可选：柔化背景 */
-}
-
-/* 把输入框容器做成底部抽屉：默认在视口外，用 transform 推出来 */
-.fixed-sheet {
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  z-index: 3001;                 /* 比遮罩高 */
-  background: var(--app-bg);     /* 与页面同底色 */
-  box-shadow: 0 -6px 20px rgba(0,0,0,.12);
-  transform: translateY(100%);   /* 默认藏在底部外 */
-  transition: transform .18s ease;
-  will-change: transform;
-  /* 保留你原来容器的内边距 */
-  padding-top: 0.5rem;
-  padding-bottom: 1rem;
-}
-.dark .fixed-sheet { background: #1e1e1e; }
-
-/* 打开时滑上来 */
-.fixed-sheet.sheet-open {
-  transform: translateY(0);
-}
-
-/* 避免旧的“折叠”动画跟本抽屉冲突（可保留，不影响） */
-.new-note-editor-container.closing { transition: none !important; }
-
-/* 抽屉整体高度（父容器） */
-.fixed-sheet {
-  max-height: 80vh;   /* 想露出多少就调这里 */
-  min-height: 180px;  /* 初始高度 */
-  overflow: hidden;
-}
-
-/* 控制编辑器本体的滚动与最大高度（子组件根加了 .note-editor 后可用） */
-.fixed-sheet .note-editor {
-  max-height: 80vh;   /* 输入区域最大高度 */
-  min-height: 180px;  /* 初始高度 */
-  overflow-y: auto;
-}
 </style>
 
 <style>
@@ -3104,12 +3008,5 @@ html, body, #app {
 }
 .n-dropdown-menu .menu-caret.rot90 {
   transform: translateY(1px) rotate(90deg);
-}
-
-/* 让浏览器在把输入框滚进可视区时，预留出 sticky 头部的高度 */
-.search-bar-container input,
-.search-bar-container textarea,
-.search-bar-container [contenteditable="true"] {
-  scroll-margin-top: var(--header-height);
 }
 </style>
