@@ -2963,18 +2963,19 @@ function onCalendarUpdated(updated: any) {
 .fab-add {
   position: fixed;
   right: 20px;
-  bottom: 88px; /* 避开 .scroll-top-button 的 30px / 38px 尺寸 */
+  bottom: 88px;
   z-index: 5000;
 
   width: 48px;
   height: 48px;
   border-radius: 50%;
   border: none;
-  font-size: 28px;
-  line-height: 1;
+  font-size: 30px;           /* 略大一点更协调 */
+  line-height: 48px;         /* 与高度一致确保垂直居中 */
+  text-align: center;        /* 水平居中 */
   cursor: pointer;
 
-  background: #6366f1; /* indigo */
+  background: #6366f1;
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
