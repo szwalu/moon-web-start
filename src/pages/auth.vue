@@ -2979,8 +2979,9 @@ function onCalendarUpdated(updated: any) {
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+  transform: translateY(-1px);
 }
-.fab-add:hover { transform: translateY(-1px); }
+.fab-add:hover { transform: translateY(-2px); }
 .fab-add:active { transform: scale(0.96); }
 
 /* 桌面端右侧对齐方式与回到顶部按钮一致（内容区 960px） */
