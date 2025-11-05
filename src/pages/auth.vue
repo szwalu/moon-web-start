@@ -56,6 +56,7 @@ function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
   (noteListRef.value as any)?.forceUpdate?.()
 }
+const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
@@ -81,141 +82,6 @@ const isExporting = ref(false)
 const isReady = ref(false)
 const isEditorActive = ref(false)
 const isSelectionModeActive = ref(false)
-// === Bottom Sheet：开关 & 控制 ===
-const showComposer = ref(false)
-function openComposer() {
-  showComposer.value = true
-  startKeyboardTracking() // ✅ 新增：开始追踪键盘
-  focusComposer()
-  nextTick(() => {
-    focusComposer()
-    computeKeyboardInset()
-  })
-}
-function closeComposer() {
-  showComposer.value = false
-  stopKeyboardTracking() // ✅ 新增：停止追踪键盘
-}
-
-const editorBottomPadding = ref(0)
-
-// === 键盘避让：并联 visualViewport 与 NoteEditor 的 bottom-safe ===
-const keyboardInset = ref(0) // 从 visualViewport 计算出的遮挡高度
-const effectiveBottom = computed(() =>
-  Math.max(Number(editorBottomPadding.value || 0), keyboardInset.value),
-)
-
-// --- 平滑后的最终值（用于模板）：上升立即生效，下降需“幅度≥阈值 且 稳定≥时长” ---
-const smoothEffectiveBottom = ref(0)
-let _lastDecreaseCheckAt = Date.now()
-let _lastStableVal = 0
-const HYSTERESIS = 24 // 下降触发的最小像素差（可按需 16~32 调整）
-const DECR_DELAY = 220 // 下降前需保持稳定的时间（毫秒）
-
-watch(
-  effectiveBottom,
-  (val) => {
-    const now = Date.now()
-
-    // 面板未显示或编辑未激活时，直接同步，避免残留抬升
-    if (!showComposer.value /* || !isEditorActive.value */) {
-      smoothEffectiveBottom.value = val
-      _lastStableVal = val
-      _lastDecreaseCheckAt = now
-      return
-    }
-
-    if (val >= smoothEffectiveBottom.value) {
-      // 上升：立即跟随，光标首字/候选条抬升不会被延迟
-      smoothEffectiveBottom.value = val
-      _lastStableVal = val
-      _lastDecreaseCheckAt = now
-    }
-    else {
-      // 下降：需要幅度足够且稳定一段时间，过滤抖动
-      if ((_lastStableVal - val) >= HYSTERESIS && (now - _lastDecreaseCheckAt) >= DECR_DELAY) {
-        smoothEffectiveBottom.value = val
-        _lastStableVal = val
-        _lastDecreaseCheckAt = now
-      }
-      // 否则保持不变，避免闪动
-    }
-  },
-  { immediate: true },
-)
-
-let _vvBound = false
-const _vvOnResize = () => computeKeyboardInset()
-const _vvOnScroll = () => computeKeyboardInset()
-const _onOrientation = () => setTimeout(computeKeyboardInset, 120)
-
-function computeKeyboardInset() {
-  try {
-    const vv = window.visualViewport
-    if (!vv) {
-      keyboardInset.value = 0
-      return
-    }
-    // 视口被键盘压缩的高度 = (布局视口高度 - 可视视口高度 - 可视视口顶部偏移)
-    const occluded = Math.max(0, Math.round((window.innerHeight - vv.height - vv.offsetTop)))
-    // occluded 只是原始采样，真正给模板的是 smoothEffectiveBottom（经 watch 平滑后）
-    keyboardInset.value = occluded
-  }
-  catch {
-    keyboardInset.value = 0
-  }
-}
-
-function startKeyboardTracking() {
-  if (_vvBound)
-    return
-  const vv = window.visualViewport
-  if (vv) {
-    vv.addEventListener('resize', _vvOnResize, { passive: true })
-    vv.addEventListener('scroll', _vvOnScroll, { passive: true })
-  }
-  window.addEventListener('orientationchange', _onOrientation, { passive: true })
-  _vvBound = true
-  // 初次进入面板立刻测一次，并延时复测几次（覆盖动画/挂载延迟）
-  computeKeyboardInset()
-  setTimeout(computeKeyboardInset, 60)
-  setTimeout(computeKeyboardInset, 180)
-}
-
-function stopKeyboardTracking() {
-  if (!_vvBound)
-    return
-  const vv = window.visualViewport
-  if (vv) {
-    vv.removeEventListener('resize', _vvOnResize)
-    vv.removeEventListener('scroll', _vvOnScroll)
-  }
-  window.removeEventListener('orientationchange', _onOrientation)
-  _vvBound = false
-  keyboardInset.value = 0
-  smoothEffectiveBottom.value = 0 // ✅ 收起时复位，避免下次残留
-}
-
-// 放在 openComposer/closeComposer 附近
-function focusComposer() {
-  // 尽量在同一次用户手势里完成一次尝试
-  tryFocusEditor(6, 60) // 最多重试 6 次，每次间隔 60ms（~360ms）
-}
-
-function tryFocusEditor(retries = 4, delay = 50) {
-  const focusOnce = () => (newNoteEditorRef.value as any)?.focus?.()
-  // 先立即试一次（若已经挂载且可聚焦，这一步能使用“受信任的手势”）
-  focusOnce()
-  if (retries <= 0)
-    return
-  let count = 0
-  const timer = setInterval(() => {
-    focusOnce()
-    count++
-    if (count >= retries)
-      clearInterval(timer)
-  }, delay)
-}
 const selectedNoteIds = ref<string[]>([])
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
 const anniversaryNotes = ref<any[] | null>(null)
@@ -235,7 +101,7 @@ const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
 const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
 const noteListKey = ref(0)
-
+const editorBottomPadding = ref(0)
 const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
@@ -810,7 +676,6 @@ async function handleCreateNote(content: string, weather?: string | null) {
       isEditorActive.value = false
       compactWhileTyping.value = false
       headerCollapsed.value = false
-      showComposer.value = false // 提交成功后收起面板（可删）
     }
   }
   finally {
@@ -2558,41 +2423,30 @@ function onCalendarUpdated(updated: any) {
         </span>
       </div>
 
-      <!-- Bottom Sheet：新建输入框（固定在底部），其余逻辑不变 -->
-      <Transition name="sheet-fade" @after-enter="focusComposer">
-        <div v-if="showComposer" class="sheet-root">
-          <div class="sheet-backdrop" @click="closeComposer" />
-          <div
-            class="sheet-panel"
-            role="dialog"
-            aria-modal="true"
-            :style="{
-              bottom: `calc(var(--safe-bottom) + ${smoothEffectiveBottom}px)`,
-              paddingBottom: '8px',
-            }"
-          >
-            <div class="sheet-grabber" aria-hidden="true" />
-            <div class="sheet-body">
-              <NoteEditor
-                ref="newNoteEditorRef"
-                v-model="newNoteContent"
-                :is-editing="false"
-                :is-loading="isCreating"
-                :max-note-length="maxNoteLength"
-                :placeholder="$t('notes.content_placeholder')"
-                :all-tags="allTags"
-                :tag-counts="tagCounts"
-                enable-drafts
-                @save="handleCreateNote"
-                @focus="onEditorFocus"
-                @blur="onEditorBlur"
-                @bottom-safe-change="val => (editorBottomPadding = val)"
-              />
-            </div>
-            <button class="sheet-close" aria-label="Close" @click="closeComposer">×</button>
-          </div>
-        </div>
-      </Transition>
+      <!-- 主页输入框：选择模式时隐藏 -->
+      <div
+        v-show="!isSelectionModeActive && !isTopEditing"
+        ref="newNoteEditorContainerRef"
+        class="new-note-editor-container"
+        :class="{ collapsed: headerCollapsed }"
+      >
+        <NoteEditor
+          ref="newNoteEditorRef"
+          v-model="newNoteContent"
+          :is-editing="false"
+          :is-loading="isCreating"
+          :max-note-length="maxNoteLength"
+          :placeholder="$t('notes.content_placeholder')"
+          :all-tags="allTags"
+          :tag-counts="tagCounts"
+          enable-drafts
+          @save="handleCreateNote"
+          @focus="onEditorFocus"
+          @blur="onEditorBlur"
+          @bottom-safe-change="val => (editorBottomPadding = val)"
+        />
+      </div>
+
       <div
         v-show="isEditorActive && editorBottomPadding > 0"
         :style="{ height: `${editorBottomPadding}px` }"
@@ -2664,19 +2518,6 @@ function onCalendarUpdated(updated: any) {
     </template>
   </div>
   <HelpDialog :show="showHelpDialog" @close="showHelpDialog = false" />
-
-  <!-- 右下角 + 浮动按钮：仅在非选择模式时展示 -->
-  <button
-    v-show="!isSelectionModeActive"
-    class="fab-plus"
-    aria-label="New note"
-    @click="openComposer"
-  >
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  </button>
 </template>
 
 <style scoped>
@@ -3070,120 +2911,6 @@ function onCalendarUpdated(updated: any) {
     right: calc((100vw - 960px) / 2 + 20px);
   }
 }
-
-/* === Bottom Sheet === */
-.sheet-root {
-  position: fixed;
-  inset: 0;
-  z-index: 6000; /* 高于 header / 下拉菜单 / 回到顶部按钮 */
-}
-
-.sheet-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,.35);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
-}
-
-.sheet-panel {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 0;
-  width: 100%;
-  max-width: 960px;              /* 与桌面最大宽度对齐 */
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
-  background: var(--app-bg, #fff);
-  box-shadow: 0 -8px 24px rgba(0,0,0,.25);
-  padding-bottom: max(8px, var(--safe-bottom));
-  overflow: hidden;
-}
-
-/* 顶部小横条（手势提示） */
-.sheet-grabber {
-  width: 44px;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(0,0,0,.2);
-  margin: 10px auto 6px;
-}
-.dark .sheet-grabber { background: rgba(255,255,255,.25); }
-
-.sheet-body {
-  padding: 8px 12px 12px;
-  max-height: min(78dvh, 640px); /* 限高：避免全屏遮蔽列表 */
-  overflow: auto;
-}
-
-/* 右上角关闭按钮 */
-.sheet-close {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: .7;
-}
-.sheet-close:hover { opacity: 1; }
-
-/* Sheet 动画 */
-.sheet-fade-enter-active,
-.sheet-fade-leave-active {
-  transition: opacity .18s ease;
-}
-.sheet-fade-enter-from,
-.sheet-fade-leave-to {
-  opacity: 0;
-}
-.sheet-fade-enter-active .sheet-panel,
-.sheet-fade-leave-active .sheet-panel {
-  transition: transform .24s ease;
-}
-.sheet-fade-enter-from .sheet-panel,
-.sheet-fade-leave-to .sheet-panel {
-  transform: translateX(-50%) translateY(12px);
-}
-
-/* === 右下角 + 浮动按钮 === */
-.fab-plus {
-  position: fixed;
-  right: 20px;
-  bottom: calc(20px + var(--safe-bottom));
-  z-index: 5500;
-  width: 56px;
-  height: 56px;
-  border-radius: 999px;
-  border: none;
-  background: #6366f1; /* indigo-500 */
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 20px rgba(0,0,0,.18);
-  cursor: pointer;
-  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
-}
-.fab-plus:active { transform: scale(.98); }
-.fab-plus:hover  { box-shadow: 0 12px 24px rgba(0,0,0,.22); }
-
-/* 桌面端：对齐内容右边缘（与你已实现的回到顶部按钮相同策略） */
-@media (min-width: 768px) {
-  .fab-plus {
-    right: calc((100vw - 960px) / 2 + 20px);
-  }
-}
-
-/* 深色适配 */
-.dark .sheet-panel { background: #1e1e1e; }
 </style>
 
 <style>
