@@ -85,10 +85,33 @@ const isSelectionModeActive = ref(false)
 const showComposer = ref(false)
 function openComposer() {
   showComposer.value = true
-  nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
+  // 先在同一手势里试一次
+  focusComposer()
+  // 过一帧再兜底（兼容过渡动画 / 子组件挂载）
+  nextTick(() => focusComposer())
 }
 function closeComposer() {
   showComposer.value = false
+}
+// 放在 openComposer/closeComposer 附近
+function focusComposer() {
+  // 尽量在同一次用户手势里完成一次尝试
+  tryFocusEditor(6, 60) // 最多重试 6 次，每次间隔 60ms（~360ms）
+}
+
+function tryFocusEditor(retries = 4, delay = 50) {
+  const focusOnce = () => (newNoteEditorRef.value as any)?.focus?.()
+  // 先立即试一次（若已经挂载且可聚焦，这一步能使用“受信任的手势”）
+  focusOnce()
+  if (retries <= 0)
+    return
+  let count = 0
+  const timer = setInterval(() => {
+    focusOnce()
+    count++
+    if (count >= retries)
+      clearInterval(timer)
+  }, delay)
 }
 const selectedNoteIds = ref<string[]>([])
 const anniversaryBannerRef = ref<InstanceType<typeof AnniversaryBanner> | null>(null)
@@ -2433,10 +2456,15 @@ function onCalendarUpdated(updated: any) {
       </div>
 
       <!-- Bottom Sheet：新建输入框（固定在底部），其余逻辑不变 -->
-      <Transition name="sheet-fade">
+      <Transition name="sheet-fade" @after-enter="focusComposer">
         <div v-if="showComposer" class="sheet-root">
           <div class="sheet-backdrop" @click="closeComposer" />
-          <div class="sheet-panel" role="dialog" aria-modal="true">
+          <div
+            class="sheet-panel"
+            role="dialog"
+            aria-modal="true"
+            :style="{ paddingBottom: `calc(max(8px, var(--safe-bottom)) + ${editorBottomPadding || 0}px)` }"
+          >
             <div class="sheet-grabber" aria-hidden="true" />
             <div class="sheet-body">
               <NoteEditor
