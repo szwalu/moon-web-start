@@ -91,6 +91,18 @@ const lastSavedId = ref<string | null>(null)
 const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
 const headerCollapsed = ref(false)
+// === 新增：控制“+”唤起输入框的开关 ===
+const showComposer = ref(false)
+
+function openComposer() {
+  showComposer.value = true
+  headerCollapsed.value = false
+  nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
+}
+function closeComposer() {
+  showComposer.value = false
+}
+
 const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
@@ -676,6 +688,7 @@ async function handleCreateNote(content: string, weather?: string | null) {
       isEditorActive.value = false
       compactWhileTyping.value = false
       headerCollapsed.value = false
+      showComposer.value = false
     }
   }
   finally {
@@ -2425,9 +2438,9 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 主页输入框：选择模式时隐藏 -->
       <div
-        v-show="!isSelectionModeActive && !isTopEditing"
+        v-show="showComposer && !isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
-        class="new-note-editor-container"
+        class="new-note-editor-container composer-active"
         :class="{ collapsed: headerCollapsed }"
       >
         <NoteEditor
@@ -2512,6 +2525,23 @@ function onCalendarUpdated(updated: any) {
           </svg>
         </button>
       </Transition>
+      <!-- 毛玻璃遮罩：点击空白处关闭输入框 -->
+      <div
+        v-if="showComposer"
+        class="composer-overlay"
+        aria-hidden="true"
+        @click="closeComposer"
+      />
+
+      <!-- 右下角 “+” 悬浮按钮：仅在未展开输入框时显示 -->
+      <button
+        v-if="!showComposer"
+        class="fab-add"
+        aria-label="新建笔记"
+        @click="openComposer"
+      >
+        +
+      </button>
     </template>
     <template v-else>
       <Authentication />
@@ -2911,6 +2941,56 @@ function onCalendarUpdated(updated: any) {
     right: calc((100vw - 960px) / 2 + 20px);
   }
 }
+
+/* 让输入框容器在遮罩之上（header z-index 是 3000，这里更高） */
+.composer-active {
+  position: relative;
+  z-index: 3600;
+}
+
+/* 毛玻璃遮罩：盖在页面内容与输入框之间，点击即可关闭 */
+.composer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3500;
+  /* 轻微暗化 + 毛玻璃 */
+  background: rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* 右下角 “+” 悬浮按钮（不与回到顶部按钮冲突，略高一点） */
+.fab-add {
+  position: fixed;
+  right: 20px;
+  bottom: 88px; /* 避开 .scroll-top-button 的 30px / 38px 尺寸 */
+  z-index: 5000;
+
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+
+  background: #6366f1; /* indigo */
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.fab-add:hover { transform: translateY(-1px); }
+.fab-add:active { transform: scale(0.96); }
+
+/* 桌面端右侧对齐方式与回到顶部按钮一致（内容区 960px） */
+@media (min-width: 768px) {
+  .fab-add {
+    right: calc((100vw - 960px) / 2 + 20px);
+  }
+}
+
+/* 深色模式下的微调 */
+.dark .fab-add { background: #818cf8; color: #111; }
 </style>
 
 <style>
