@@ -499,7 +499,7 @@ notes:
 
     s1_title: 1 Quick Start
     s1_i1: Logged-in users go directly to the homepage; unauthenticated users will see the login component.
-    s1_i2_before: The input box at the top of the homepage is for
+    s1_i2_before: The "+" button in the bottom right corner of the homepage is used for
     s1_i2_em: creating a new note
     s1_i2_after: ', which will appear in the list after saving.'
     s1_i3_before: 'The list is sorted by ''Pinned first + Newest created''; each note can be up to about'
