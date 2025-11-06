@@ -2453,7 +2453,7 @@ function onCalendarUpdated(updated: any) {
           :all-tags="allTags"
           :tag-counts="tagCounts"
           enable-drafts
-          :draft-key="LOCAL_CONTENT_KEY"
+          :draft-key="`${LOCAL_CONTENT_KEY}:editor-v2`"
           :clear-draft-on-save="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"
