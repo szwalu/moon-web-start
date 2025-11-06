@@ -2970,7 +2970,7 @@ function onCalendarUpdated(updated: any) {
 .fab-add {
   position: fixed;
   right: 20px;
-  bottom: 60px;
+  bottom: 40px;
   z-index: 5000;
 
   width: 48px;
