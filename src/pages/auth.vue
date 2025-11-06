@@ -93,9 +93,8 @@ const cachedNotes = ref<any[]>([])
 const headerCollapsed = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
-const composer = ref('')
+
 function openComposer() {
-  composer.value = ''
   showComposer.value = true
   headerCollapsed.value = false
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
