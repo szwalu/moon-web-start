@@ -2453,6 +2453,8 @@ function onCalendarUpdated(updated: any) {
           :all-tags="allTags"
           :tag-counts="tagCounts"
           enable-drafts
+          :draft-key="LOCAL_CONTENT_KEY"
+          :clear-draft-on-save="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
