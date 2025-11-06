@@ -2407,7 +2407,7 @@ function onCalendarUpdated(updated: any) {
       </Transition>
 
       <AnniversaryBanner
-        v-show="showAnniversaryBanner && !headerCollapsed"
+        v-show="showAnniversaryBanner"
         ref="anniversaryBannerRef"
         @toggle-view="handleAnniversaryToggle"
       />
