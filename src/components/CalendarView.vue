@@ -101,6 +101,8 @@ function onGlobalClickCapture(e: MouseEvent) {
     return
 
   // 其它位置（空白、列表、日历等）都显现页眉
+  isWriting.value = false
+  editingNote.value = null
   hideHeader.value = false
 }
 
