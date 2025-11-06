@@ -2438,7 +2438,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 主页输入框：选择模式时隐藏 -->
       <div
-        v-show="showComposer && !isSelectionModeActive && !isTopEditing"
+        v-if="showComposer && !isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
         class="new-note-editor-container composer-active"
         :class="{ collapsed: headerCollapsed }"
