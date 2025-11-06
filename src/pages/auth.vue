@@ -2897,7 +2897,7 @@ function onCalendarUpdated(updated: any) {
 /* ++ 新增：“回到顶部”按钮的样式 ++ */
 .scroll-top-button {
   position: fixed;
-  bottom: 98px;
+  bottom: 118px;
   right: 20px;
   z-index: 5000;
 
@@ -2970,7 +2970,7 @@ function onCalendarUpdated(updated: any) {
 .fab-add {
   position: fixed;
   right: 20px;
-  bottom: 30px;
+  bottom: 60px;
   z-index: 5000;
 
   width: 48px;
