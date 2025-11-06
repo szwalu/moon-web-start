@@ -123,6 +123,7 @@ const settingMenuVisible = ref(false)
 
 const isTopEditing = ref(false)
 const authResolved = ref(false)
+
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
@@ -2437,7 +2438,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 主页输入框：选择模式时隐藏 -->
       <div
-        v-if="showComposer && !isSelectionModeActive && !isTopEditing"
+        v-show="showComposer && !isSelectionModeActive && !isTopEditing"
         ref="newNoteEditorContainerRef"
         class="new-note-editor-container composer-active"
         :class="{ collapsed: headerCollapsed }"
@@ -2452,8 +2453,6 @@ function onCalendarUpdated(updated: any) {
           :all-tags="allTags"
           :tag-counts="tagCounts"
           enable-drafts
-          :draft-key="LOCAL_CONTENT_KEY"
-          :clear-draft-on-save="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
@@ -2536,7 +2535,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 右下角 “+” 悬浮按钮：仅在未展开输入框时显示 -->
       <button
-        v-if="!showComposer && !isTopEditing && !showCalendarView"
+        v-if="!showComposer && !isTopEditing"
         class="fab-add"
         aria-label="新建笔记"
         @click="openComposer"
