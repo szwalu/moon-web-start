@@ -97,10 +97,15 @@ const showComposer = ref(false)
 function openComposer() {
   showComposer.value = true
   headerCollapsed.value = false
+  // 关键：像 CalendarView 一样，先隐藏头部再聚焦，避免首行被顶到页眉/安全区外
+  isEditorActive.value = true
+  compactWhileTyping.value = true
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
 }
 function closeComposer() {
   showComposer.value = false
+  isEditorActive.value = false
+  compactWhileTyping.value = false
 }
 
 const calendarViewRef = ref(null)
