@@ -93,8 +93,9 @@ const cachedNotes = ref<any[]>([])
 const headerCollapsed = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
-
+const composer = ref('')
 function openComposer() {
+  composer.value = ''
   showComposer.value = true
   headerCollapsed.value = false
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
@@ -123,7 +124,6 @@ const settingMenuVisible = ref(false)
 
 const isTopEditing = ref(false)
 const authResolved = ref(false)
-
 // ++ 新增：定义用于sessionStorage的键
 const SESSION_SEARCH_QUERY_KEY = 'session_search_query'
 const SESSION_SHOW_SEARCH_BAR_KEY = 'session_show_search_bar'
