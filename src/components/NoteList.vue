@@ -905,11 +905,6 @@ async function restoreScrollIfNeeded() {
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
-.scroller {
-  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动，避免到端点停滞 */
-  touch-action: pan-y;               /* 明确允许纵向滑动手势传递 */
-  overscroll-behavior-y: contain;    /* 阻断继续把滚动传到更外层视图，防止“反弹”干扰 */
-}
 /* 背景 */
 .scroller { background-color: #e5e7eb; padding: 0.5rem; }
 .dark .scroller { background-color: #0d1117; }
