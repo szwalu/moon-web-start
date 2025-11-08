@@ -98,6 +98,7 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -499,6 +500,69 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
 const isComposing = ref(false)
 const isSubmitting = ref(false)
 const suppressNextBlur = ref(false)
+// 保证这行在前面：const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+
+// === SUPER-SIMPLE SCROLL BLUR PATCH ===
+let __scrollRefocusTimer: number | null = null
+let __scrollLastCaret = 0
+
+function __onScrollGesture() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 仅当 textarea 正在聚焦时才处理
+  if (document.activeElement === el) {
+    // 记住光标
+    try {
+      __scrollLastCaret = el.selectionStart ?? 0
+    }
+    catch {
+      __scrollLastCaret = 0
+    }
+
+    // 避免 onBlur 里做“收起面板”等副作用
+    suppressNextBlur.value = true
+
+    // 临时失焦，解除浏览器的“光标粘性”
+    el.blur()
+  }
+
+  // 停止滚动 200ms 后无感恢复焦点与光标
+  if (__scrollRefocusTimer)
+    window.clearTimeout(__scrollRefocusTimer)
+
+  __scrollRefocusTimer = window.setTimeout(() => {
+    const t = textarea.value
+    if (!t)
+      return
+
+    try {
+      ;(t as any).focus?.({ preventScroll: true })
+    }
+    catch {
+      t.focus()
+    }
+    try {
+      t.setSelectionRange(__scrollLastCaret, __scrollLastCaret)
+    }
+    catch {}
+
+    // 这一轮 blur 是我们触发的，不执行 onBlur 的“收起”等副作用
+    suppressNextBlur.value = false
+  }, 200) as unknown as number
+}
+
+onMounted(() => {
+  // 只监听会冒泡到 window 的“滚动手势”，不要绑 scroll（scroll 不冒泡）
+  window.addEventListener('wheel', __onScrollGesture, { passive: true, capture: true })
+  window.addEventListener('touchmove', __onScrollGesture, { passive: true, capture: true })
+})
+onUnmounted(() => {
+  window.removeEventListener('wheel', __onScrollGesture as any, true)
+  window.removeEventListener('touchmove', __onScrollGesture as any, true)
+})
+// === SUPER-SIMPLE SCROLL BLUR PATCH END ===
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
@@ -1970,8 +2034,7 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height: none;
-  overflow-y: visible;
+  max-height:75dvh;
 }
 
 /* tag 面板样式增强 */
