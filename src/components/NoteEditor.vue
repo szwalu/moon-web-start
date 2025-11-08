@@ -526,6 +526,8 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
+  if (true)
+    return
   if (isFreezingBottom.value)
     return
   const el = textarea.value
