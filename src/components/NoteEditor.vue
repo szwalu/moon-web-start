@@ -577,86 +577,6 @@ function getFooterHeight(): number {
   return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
 
-// === MOBILE TOUCH SCROLL PATCH (no blur, no refocus, minimal) ===
-let __ts_active = false
-let __ts_startY = 0
-let __ts_startScroll = 0
-let __ts_id: number | null = null
-
-function __ts_onStart(e: TouchEvent) {
-  const el = textarea.value
-  if (!el)
-    return
-
-  if (e.touches.length === 0)
-    return
-
-  const t = e.touches[0]
-  __ts_active = true
-  __ts_id = t.identifier ?? null
-  __ts_startY = t.clientY
-  __ts_startScroll = el.scrollTop
-}
-
-function __ts_onMove(e: TouchEvent) {
-  if (!__ts_active)
-    return
-
-  const el = textarea.value
-  if (!el)
-    return
-
-  if (e.touches.length === 0)
-    return
-
-  // 取同一根手指（避免多指缩放等误差）
-  let t = e.touches[0]
-  if (__ts_id != null) {
-    const hit = Array.from(e.touches).find(x => x.identifier === __ts_id)
-    if (hit)
-      t = hit
-  }
-  const dy = t.clientY - __ts_startY
-
-  const prev = el.scrollTop
-  // 手动滚：上划（dy<0） => scrollTop 增大
-  el.scrollTop = __ts_startScroll - dy
-
-  // 只要确实发生了滚动，就拦截默认，避免浏览器“光标粘性”回拉
-  if (el.scrollTop !== prev) {
-    e.preventDefault()
-    e.stopPropagation()
-  }
-}
-
-function __ts_onEnd() {
-  __ts_active = false
-  __ts_id = null
-}
-
-onMounted(() => {
-  const el = textarea.value
-  if (!el)
-    return
-
-  // 关键：touchmove 必须 passive:false 才能 preventDefault
-  el.addEventListener('touchstart', __ts_onStart, { passive: true, capture: true })
-  el.addEventListener('touchmove', __ts_onMove, { passive: false, capture: true })
-  el.addEventListener('touchend', __ts_onEnd, { passive: true, capture: true })
-  el.addEventListener('touchcancel', __ts_onEnd, { passive: true, capture: true })
-})
-onUnmounted(() => {
-  const el = textarea.value
-  if (!el)
-    return
-
-  el.removeEventListener('touchstart', __ts_onStart as any, true)
-  el.removeEventListener('touchmove', __ts_onMove as any, true)
-  el.removeEventListener('touchend', __ts_onEnd as any, true)
-  el.removeEventListener('touchcancel', __ts_onEnd as any, true)
-})
-// === MOBILE TOUCH SCROLL PATCH END ===
-
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
@@ -2091,11 +2011,5 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
-}
-
-/* 仅编辑态：交给我们“手动滚动”，避免系统粘性干预 */
-.note-editor-reborn.editing-viewport .editor-textarea {
-  -webkit-overflow-scrolling: auto; /* 关掉弹性加速，避免干预 */
-  touch-action: none;                /* iOS/Android：允许我们拦截 touchmove */
 }
 </style>
