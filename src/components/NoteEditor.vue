@@ -79,12 +79,6 @@ function onTextPointerMove() {
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  requestAnimationFrame(() => {
-    recomputeBottomSafePadding()
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -526,8 +520,6 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
-  if (true)
-    return
   if (isFreezingBottom.value)
     return
   const el = textarea.value
@@ -820,7 +812,7 @@ function onDocSelectionChange() {
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     // ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    // recomputeBottomSafePadding()
   }, 80)
 }
 
@@ -1493,7 +1485,7 @@ function startFocusBoost() {
   focusBoostTimer = window.setInterval(() => {
     ticks++
     // ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    // recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
     if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
