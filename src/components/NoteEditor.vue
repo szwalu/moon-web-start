@@ -1770,8 +1770,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75vh;   /* 兜底 */
-  max-height: 75dvh;  /* 现代设备优先：跟随可视区动态高度 */
+  max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -1968,6 +1967,11 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
+
+/* 新增：编辑模式下，允许 textarea 无限增高 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  max-height:75dvh;
+}
 
 /* tag 面板样式增强 */
 .tag-suggestions li {
