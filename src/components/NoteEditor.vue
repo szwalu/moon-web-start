@@ -65,38 +65,6 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
 
-// —— 用户手动滚动保护闩（防止光标可见逻辑“抢滚动”）——
-const manualScrollLatch = ref(false)
-let manualScrollTimer: number | null = null
-// let programmaticScrollMark = 0 // 标记由代码触发的滚动时间戳
-
-function beginManualScrollLatch(ms = 480) {
-  manualScrollLatch.value = true
-  if (manualScrollTimer) {
-    clearTimeout(manualScrollTimer)
-    manualScrollTimer = null
-  }
-  manualScrollTimer = window.setTimeout(() => {
-    manualScrollLatch.value = false
-    manualScrollTimer = null
-  }, ms) as unknown as number
-}
-
-function markProgrammaticScroll() {
-  // 记录程序触发滚动的时间窗口（160ms内）
-  const now = performance.now ? performance.now() : Date.now()
-  programmaticScrollMarkExpires = now + 160
-}
-
-// 来自用户的滚动（非程序触发）时，拉起保护闩
-function onTextareaScroll() {
-  const now = performance.now ? performance.now() : Date.now()
-  // 48ms 内的滚动认为是“程序刚刚设置 scrollTop”导致，忽略
-  if (now <= programmaticScrollMarkExpires)
-    return
-  beginManualScrollLatch(520) // 稍长一点，保证用户能继续滚
-}
-
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
@@ -583,17 +551,10 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
-    markProgrammaticScroll()
-    el.scrollTop = Math.min(
-      caretDesiredBottom - el.clientHeight,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop) {
-    markProgrammaticScroll()
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1594,7 +1555,6 @@ function handleBeforeInput(e: InputEvent) {
         autocapitalize="sentences"
         inputmode="text"
         enterkeyhint="done"
-        @scroll="onTextareaScroll"
         @beforeinput="handleBeforeInput"
         @focus="handleFocus"
         @blur="onBlur"
