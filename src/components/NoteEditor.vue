@@ -78,10 +78,7 @@ function onTextPointerMove() {
 
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
-  // isFreezingBottom.value = false
-  window.setTimeout(() => {
-    isFreezingBottom.value = false
-  }, 150) // 150ms 足够让惯性滚动开始，且大于 80ms 的 timer
+  isFreezingBottom.value = false
   // requestAnimationFrame(() => {
   //  recomputeBottomSafePadding()
   // })
@@ -501,6 +498,25 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
 const isSubmitting = ref(false)
+
+const isScrolling = ref(false)
+let scrollEndTimer: number | null = null
+
+function onTextareaScroll() {
+  // 1. 只要在滚动，就设置标志位
+  isScrolling.value = true
+  // 2. 清除上一个“滚动结束”的计时器
+  if (scrollEndTimer)
+    window.clearTimeout(scrollEndTimer)
+
+  // 3. 设置一个新的计时器。
+  //    如果在 150ms 内没有新的滚动事件，我们就认为滚动“已结束”。
+  scrollEndTimer = window.setTimeout(() => {
+    isScrolling.value = false
+    scrollEndTimer = null
+  }, 150)
+}
+
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
@@ -813,6 +829,8 @@ function onDocSelectionChange() {
   if (!el)
     return
   if (document.activeElement !== el)
+    return
+  if (isScrolling.value)
     return
   if (isFreezingBottom.value)
     return
@@ -1432,6 +1450,9 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
+  if (scrollEndTimer) { // <--- 🚀 把清理逻辑加在这里
+    window.clearTimeout(scrollEndTimer)
+  }
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -1575,6 +1596,7 @@ function handleBeforeInput(e: InputEvent) {
         @touchmove.passive="onTextPointerMove"
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
+        @scroll.passive="onTextareaScroll"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
