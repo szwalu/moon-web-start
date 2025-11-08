@@ -79,12 +79,12 @@ function onTextPointerMove() {
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  // requestAnimationFrame(() => {
-  //  recomputeBottomSafePadding()
-  // })
-  // window.setTimeout(() => {
-  //  recomputeBottomSafePadding()
-  // }, 120)
+  requestAnimationFrame(() => {
+    recomputeBottomSafePadding()
+  })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -1391,17 +1391,15 @@ onUnmounted(() => {
 
 onMounted(() => {
   const vv = window.visualViewport
-  if (vv) {
+  if (vv)
     vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
-  }
+  // vv.addEventListener('scroll', recomputeBottomSafePadding)
 })
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (vv) {
+  if (vv)
     vv.removeEventListener('resize', recomputeBottomSafePadding)
-    vv.removeEventListener('scroll', recomputeBottomSafePadding)
-  }
+  // vv.removeEventListener('scroll', recomputeBottomSafePadding)
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
