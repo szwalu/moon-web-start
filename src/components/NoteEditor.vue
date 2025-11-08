@@ -68,7 +68,7 @@ const isFreezingBottom = ref(false)
 // —— 用户手动滚动保护闩（防止光标可见逻辑“抢滚动”）——
 const manualScrollLatch = ref(false)
 let manualScrollTimer: number | null = null
-let programmaticScrollMark = 0 // 标记由代码触发的滚动时间戳
+// let programmaticScrollMark = 0 // 标记由代码触发的滚动时间戳
 
 function beginManualScrollLatch(ms = 480) {
   manualScrollLatch.value = true
@@ -83,14 +83,16 @@ function beginManualScrollLatch(ms = 480) {
 }
 
 function markProgrammaticScroll() {
-  programmaticScrollMark = performance.now ? performance.now() : Date.now()
+  // 记录程序触发滚动的时间窗口（160ms内）
+  const now = performance.now ? performance.now() : Date.now()
+  programmaticScrollMarkExpires = now + 160
 }
 
 // 来自用户的滚动（非程序触发）时，拉起保护闩
 function onTextareaScroll() {
   const now = performance.now ? performance.now() : Date.now()
   // 48ms 内的滚动认为是“程序刚刚设置 scrollTop”导致，忽略
-  if (now - programmaticScrollMark <= 48)
+  if (now <= programmaticScrollMarkExpires)
     return
   beginManualScrollLatch(520) // 稍长一点，保证用户能继续滚
 }
