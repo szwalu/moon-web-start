@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useTextareaAutosize } from '@vueuse/core'
+
+// import { useTextareaAutosize } from '@vueuse/core' // ✅ 不再需要（contenteditable）
 import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -28,19 +29,22 @@ const props = defineProps({
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
-// 新增：内部键盘补偿 px
-const kbPad = ref(0)
-
 const dialog = useDialog()
+// ===== 自动草稿使用的存储键（必须先定义再使用）=====
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
     return null
-  // 优先使用父组件传入的 draftKey；否则根据 isEditing 给一个稳定的默认值
+  // 优先用父传入的 draftKey；否则按是否编辑态给一个稳定默认值
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
+
+// ============== v-model（必须在任何使用它的代码之前定义） ==============
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => { emit('update:modelValue', value) },
+})
+
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -57,6 +61,132 @@ onMounted(() => {
   }
 })
 
+const editable = ref<HTMLElement | null>(null)
+
+// 把富文本中的换行 <div><br></div> / <br> 统一成 \n 的纯文本
+function getPlainTextFromEditable(el: HTMLElement) {
+  // 最稳妥的方式：把 <div> 视为换行，其余剥离标签
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+  let out = ''
+  let prevWasBlockBreak = false
+
+  function pushBreak() {
+    if (!prevWasBlockBreak) {
+      out += '\n'
+      prevWasBlockBreak = true
+    }
+  }
+
+  while (walker.nextNode()) {
+    const n = walker.currentNode as any
+    if (n.nodeType === Node.TEXT_NODE) {
+      out += n.nodeValue || ''
+      prevWasBlockBreak = false
+    }
+    else if (n.nodeType === Node.ELEMENT_NODE) {
+      const tag = n.tagName
+      if (tag === 'DIV' || tag === 'P')
+        pushBreak()
+      if (tag === 'BR') {
+        out += '\n'
+        prevWasBlockBreak = true
+      }
+    }
+  }
+  return out.replace(/\u00A0/g, ' ') // nbsp -> space
+}
+
+function setEditableFromText(el: HTMLElement, text: string) {
+  // 把 \n 渲染成 <div> 行；空行用 <div><br></div>
+  const lines = text.split('\n')
+  el.innerHTML = lines
+    .map(l => l.length ? l.replace(/&/g, '&amp;').replace(/</g, '&lt;') : '<br>')
+    .map(s => `<div>${s}</div>`)
+    .join('')
+}
+
+/**
+ * ========= 适配 contenteditable 的“确保光标可见” =========
+ * 名称保持为 ensureCaretVisibleInTextarea（兼容你后续旧调用）
+ * 逻辑：取当前选区末端 range 的矩形，与 editable 的可视盒做比较，必要时调 el.scrollTop
+ */
+function ensureCaretVisibleInTextarea() {
+  const el = editable.value
+  if (!el)
+    return
+  const sel = document.getSelection?.()
+  if (!sel || sel.rangeCount === 0)
+    return
+
+  // 取末端 range
+  const range = sel.getRangeAt(0).cloneRange()
+  range.collapse(false)
+
+  // 在内容为空或结尾处可能拿不到 rect，插入零宽占位再测
+  let rect = range.getBoundingClientRect()
+  if (!(rect && (rect.width || rect.height))) {
+    const probe = document.createElement('span')
+    probe.textContent = '\u200B'
+    range.insertNode(probe)
+    rect = probe.getBoundingClientRect()
+    // 清理占位
+    const parent = probe.parentNode
+    if (parent)
+      parent.removeChild(probe)
+    sel.removeAllRanges()
+    sel.addRange(range) // 复原
+  }
+
+  const hostRect = el.getBoundingClientRect()
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+
+  const caretTopInContent = (rect.top - hostRect.top) + el.scrollTop
+  const caretBottomInContent = (rect.bottom - hostRect.top) + el.scrollTop
+
+  const linePad = 24 // 预留一行缓冲
+  let targetScroll: number | null = null
+
+  if (caretBottomInContent + linePad > viewBottom) {
+    targetScroll = Math.min(
+      caretBottomInContent + linePad - el.clientHeight,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  else if (caretTopInContent - linePad < viewTop) {
+    targetScroll = Math.max(caretTopInContent - linePad, 0)
+  }
+
+  if (targetScroll != null && Math.abs(targetScroll - el.scrollTop) > 1)
+    el.scrollTop = targetScroll
+}
+
+onMounted(() => {
+  const el = editable.value
+  if (el)
+    setEditableFromText(el, contentModel.value || '')
+})
+
+watch(contentModel, (v) => {
+  const el = editable.value
+  if (!el)
+    return
+  // 只有当外部变更与内部实际 DOM 文本不一致时才刷新，避免打断光标
+  const cur = getPlainTextFromEditable(el)
+  if (cur !== (v || ''))
+    setEditableFromText(el, v || '')
+})
+
+function onEditableInput(_e: Event) {
+  const el = editable.value
+  if (!el)
+    return
+  const plain = getPlainTextFromEditable(el)
+  emit('update:modelValue', plain)
+  captureCaret?.()
+  ensureCaretVisibleInTextarea()
+  recomputeBottomSafePadding?.()
+}
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
 // 平台判定（尽量保守）
@@ -76,7 +206,7 @@ function onTextPointerDown() {
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
-function onTextPointerMove() {
+function _onTextPointerMove() {
   // 保持监听，避免在拖动过程中触发布局重算；
   // 不需要显式 return，防止 no-useless-return
 }
@@ -85,22 +215,15 @@ function onTextPointerMove() {
 function onTextPointerUp() {
   isFreezingBottom.value = false
   requestAnimationFrame(() => {
-    recomputeBottomSafePadding()
+    recomputeBottomSafePadding?.()
   })
   window.setTimeout(() => {
-    recomputeBottomSafePadding()
+    recomputeBottomSafePadding?.()
   }, 120)
 }
 // ============== Store ==============
-const settingsStore = useSettingStore()
-
+const _settingsStore = useSettingStore()
 // ============== v-model ==============
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => {
-    emit('update:modelValue', value)
-  },
-})
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
@@ -136,7 +259,7 @@ const DRAFT_SAVE_DELAY = 400 // ms
 function loadDraft() {
   if (!props.enableDrafts)
     return
-  const key = draftStorageKey.value
+  const key = draftStorageKey?.value
   if (!key)
     return
 
@@ -155,13 +278,9 @@ function loadDraft() {
     }
     if (text && text !== contentModel.value) {
       emit('update:modelValue', text)
-      // 如果你用了 autosize，触发一下
-      try {
-        triggerResize?.()
-      }
-      catch {
-        // noop
-      }
+      // contenteditable 无需 triggerResize；若你仍保留了可忽略
+      try { /* triggerResize?.() */ }
+      catch {}
     }
   }
   catch (e) {
@@ -529,39 +648,6 @@ watch(() => props.isLoading, (newValue) => {
     isSubmitting.value = false
 })
 
-// ============== 滚动校准 ==============
-function ensureCaretVisibleInTextarea() {
-  if (isFreezingBottom.value)
-    return
-  const el = textarea.value
-  if (!el)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
-}
-
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
@@ -683,28 +769,33 @@ function recomputeBottomSafePadding() {
   // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // ===== 新版：优先把补偿落到 textarea 内部，不再推页面 =====
-  const el2 = textarea.value
-  if (!el2) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  // 1) 设置 textarea 内部补偿：把需要像素作为 padding-bottom 注入（但限幅）
-  const INTERNAL_CAP = 420 // 防止过大
-  kbPad.value = Math.min(Math.max(need, 0), INTERNAL_CAP)
-  el2.style.setProperty('--kb-pad', String(kbPad.value))
-
-  // 2) 如果 textarea 自身已经可滚，就不要给外层 padding，也不要推页面
-  const canSelfScroll = el2.scrollHeight > el2.clientHeight + 1
-  if (canSelfScroll) {
-    emit('bottomSafeChange', 0) // 外层不再补偿，避免双重抬升
-    _hasPushedPage = false // 明确关闭“轻推页面”状态机
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        window.scrollBy(0, delta)
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0)
+          window.scrollBy(0, delta)
+      }
+      _hasPushedPage = true
+      window.setTimeout(() => {
+        _hasPushedPage = false
+        recomputeBottomSafePadding()
+      }, 140)
+    }
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
   }
   else {
-  // 只有在内层还不可滚时，才把需要像素交给外层兜底
-    emit('bottomSafeChange', need)
+    _hasPushedPage = false
   }
 }
 
@@ -1032,7 +1123,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   })
 }
 
-function handleInput(event: Event) {
+function _handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
 
   // 允许这一轮输入重新触发“轻推一次”
@@ -1186,7 +1277,7 @@ function addTable() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-function handleEnterKey(event: KeyboardEvent) {
+function _handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
 
@@ -1544,36 +1635,23 @@ function handleBeforeInput(e: InputEvent) {
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
-      <textarea
-        ref="textarea"
-        v-model="input"
-        class="editor-textarea"
-        :class="`font-size-${settingsStore.noteFontSize}`"
-        :placeholder="placeholder"
-        autocomplete="off"
-        autocorrect="on"
-        autocapitalize="sentences"
-        inputmode="text"
-        enterkeyhint="done"
+      <div
+        ref="editable"
+        class="editor-surface"
+        contenteditable="true"
+        :data-placeholder="placeholder"
         @beforeinput="handleBeforeInput"
+        @input="onEditableInput"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
         @keydown="captureCaret"
         @keyup="captureCaret"
-        @mouseup="captureCaret"
-        @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
-        @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
         @pointercancel="onTextPointerUp"
-        @touchstart.passive="onTextPointerDown"
-        @touchmove.passive="onTextPointerMove"
-        @touchend.passive="onTextPointerUp"
-        @touchcancel.passive="onTextPointerUp"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -1767,25 +1845,34 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
-.editor-textarea {
+.editor-surface {
   width: 100%;
   min-height: 360px;
-  max-height: 56vh;
+  max-height: 75vh;
+  max-height: 75dvh; /* 现代浏览器动态视口高度 */
   overflow-y: auto;
   padding: 12px 8px calc(8px + var(--kb-pad, 0px)) 16px;
   border: none;
-  background-color: transparent;
+  background: transparent;
   color: inherit;
   line-height: 1.6;
-  resize: none;
   outline: 0;
   box-sizing: border-box;
-  font-family: inherit;
+  font: inherit;
   caret-color: currentColor;
+  -webkit-user-modify: read-write-plaintext-only; /* iOS: 纯文本编辑模式，防止花样粘贴 */
+  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
+  overscroll-behavior: contain;      /* 阻止滚动冒泡给外层 */
+  touch-action: pan-y;               /* 仅允许纵向滑动 */
+  white-space: pre-wrap;
+  word-break: break-word;
   scrollbar-gutter: stable both-edges;
--webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
-overscroll-behavior: contain;      /* 阻止滚动冒泡给外层 */
-touch-action: pan-y;                /* 明确只允许纵向手势 */
+}
+
+/* placeholder 效果（contenteditable 没有原生 placeholder） */
+.editor-surface:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
