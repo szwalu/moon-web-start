@@ -811,7 +811,7 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
-    // ensureCaretVisibleInTextarea()
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
