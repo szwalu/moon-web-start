@@ -28,7 +28,12 @@ const props = defineProps({
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
 })
+
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+
+// 新增：内部键盘补偿 px
+const kbPad = ref(0)
+
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -678,33 +683,28 @@ function recomputeBottomSafePadding() {
   // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        window.scrollBy(0, delta)
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0)
-          window.scrollBy(0, delta)
-      }
-      _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
-    }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
+  // ===== 新版：优先把补偿落到 textarea 内部，不再推页面 =====
+  const el2 = textarea.value
+  if (!el2) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  // 1) 设置 textarea 内部补偿：把需要像素作为 padding-bottom 注入（但限幅）
+  const INTERNAL_CAP = 420 // 防止过大
+  kbPad.value = Math.min(Math.max(need, 0), INTERNAL_CAP)
+  el2.style.setProperty('--kb-pad', String(kbPad.value))
+
+  // 2) 如果 textarea 自身已经可滚，就不要给外层 padding，也不要推页面
+  const canSelfScroll = el2.scrollHeight > el2.clientHeight + 1
+  if (canSelfScroll) {
+    emit('bottomSafeChange', 0) // 外层不再补偿，避免双重抬升
+    _hasPushedPage = false // 明确关闭“轻推页面”状态机
   }
   else {
-    _hasPushedPage = false
+  // 只有在内层还不可滚时，才把需要像素交给外层兜底
+    emit('bottomSafeChange', need)
   }
 }
 
@@ -1772,7 +1772,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
+  padding: 12px 8px calc(8px + var(--kb-pad, 0px)) 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -1783,6 +1783,9 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+-webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
+overscroll-behavior: contain;      /* 阻止滚动冒泡给外层 */
+touch-action: pan-y;                /* 明确只允许纵向手势 */
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
