@@ -29,6 +29,20 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+// 放在<script setup>中其它 ref 附近
+const isUserScrolling = ref(false)
+let scrollIdleTimer: number | null = null
+
+function onTextareaScroll() {
+  isUserScrolling.value = true
+  if (scrollIdleTimer)
+    window.clearTimeout(scrollIdleTimer)
+  // 用户停止滚动 150ms 后再恢复“自动对齐”
+  scrollIdleTimer = window.setTimeout(() => {
+    isUserScrolling.value = false
+  }, 150) as unknown as number
+}
+
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -528,6 +542,8 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
+  if (isUserScrolling.value)
+    return
   const el = textarea.value
   if (!el)
     return
@@ -812,6 +828,8 @@ function onDocSelectionChange() {
   if (document.activeElement !== el)
     return
   if (isFreezingBottom.value)
+    return
+  if (isUserScrolling.value)
     return
   if (selectionIdleTimer)
     window.clearTimeout(selectionIdleTimer)
@@ -1568,12 +1586,12 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
+        @scroll="onTextareaScroll"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
