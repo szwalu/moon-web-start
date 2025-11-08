@@ -803,6 +803,31 @@ async function handleSave() {
 }
 
 // ============== 基础事件 ==============
+let selectionIdleTimer: number | null = null
+
+function onDocSelectionChange() {
+  const el = textarea.value
+  if (!el)
+    return
+  if (document.activeElement !== el)
+    return
+  if (isFreezingBottom.value)
+    return
+  if (selectionIdleTimer)
+    window.clearTimeout(selectionIdleTimer)
+  selectionIdleTimer = window.setTimeout(() => {
+    captureCaret()
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  }, 80)
+}
+
+onMounted(() => {
+  document.addEventListener('selectionchange', onDocSelectionChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('selectionchange', onDocSelectionChange)
+})
 
 function handleFocus() {
   emit('focus')
@@ -1945,7 +1970,8 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:75dvh;
+  max-height: none;
+  overflow-y: visible;
 }
 
 /* tag 面板样式增强 */
