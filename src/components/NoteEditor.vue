@@ -79,12 +79,6 @@ function onTextPointerMove() {
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  requestAnimationFrame(() => {
-    recomputeBottomSafePadding()
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -817,7 +811,7 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
-    ensureCaretVisibleInTextarea()
+    // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
