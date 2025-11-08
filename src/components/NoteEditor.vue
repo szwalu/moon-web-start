@@ -98,7 +98,6 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
-
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -500,69 +499,6 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
 const isComposing = ref(false)
 const isSubmitting = ref(false)
 const suppressNextBlur = ref(false)
-// 保证这行在前面：const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
-
-// === SUPER-SIMPLE SCROLL BLUR PATCH ===
-let __scrollRefocusTimer: number | null = null
-let __scrollLastCaret = 0
-
-function __onScrollGesture() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  // 仅当 textarea 正在聚焦时才处理
-  if (document.activeElement === el) {
-    // 记住光标
-    try {
-      __scrollLastCaret = el.selectionStart ?? 0
-    }
-    catch {
-      __scrollLastCaret = 0
-    }
-
-    // 避免 onBlur 里做“收起面板”等副作用
-    suppressNextBlur.value = true
-
-    // 临时失焦，解除浏览器的“光标粘性”
-    el.blur()
-  }
-
-  // 停止滚动 200ms 后无感恢复焦点与光标
-  if (__scrollRefocusTimer)
-    window.clearTimeout(__scrollRefocusTimer)
-
-  __scrollRefocusTimer = window.setTimeout(() => {
-    const t = textarea.value
-    if (!t)
-      return
-
-    try {
-      ;(t as any).focus?.({ preventScroll: true })
-    }
-    catch {
-      t.focus()
-    }
-    try {
-      t.setSelectionRange(__scrollLastCaret, __scrollLastCaret)
-    }
-    catch {}
-
-    // 这一轮 blur 是我们触发的，不执行 onBlur 的“收起”等副作用
-    suppressNextBlur.value = false
-  }, 200) as unknown as number
-}
-
-onMounted(() => {
-  // 只监听会冒泡到 window 的“滚动手势”，不要绑 scroll（scroll 不冒泡）
-  window.addEventListener('wheel', __onScrollGesture, { passive: true, capture: true })
-  window.addEventListener('touchmove', __onScrollGesture, { passive: true, capture: true })
-})
-onUnmounted(() => {
-  window.removeEventListener('wheel', __onScrollGesture as any, true)
-  window.removeEventListener('touchmove', __onScrollGesture as any, true)
-})
-// === SUPER-SIMPLE SCROLL BLUR PATCH END ===
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
 const tagSuggestions = ref<string[]>([])
@@ -640,6 +576,86 @@ function getFooterHeight(): number {
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
+
+// === MOBILE TOUCH SCROLL PATCH (no blur, no refocus, minimal) ===
+let __ts_active = false
+let __ts_startY = 0
+let __ts_startScroll = 0
+let __ts_id: number | null = null
+
+function __ts_onStart(e: TouchEvent) {
+  const el = textarea.value
+  if (!el)
+    return
+
+  if (e.touches.length === 0)
+    return
+
+  const t = e.touches[0]
+  __ts_active = true
+  __ts_id = t.identifier ?? null
+  __ts_startY = t.clientY
+  __ts_startScroll = el.scrollTop
+}
+
+function __ts_onMove(e: TouchEvent) {
+  if (!__ts_active)
+    return
+
+  const el = textarea.value
+  if (!el)
+    return
+
+  if (e.touches.length === 0)
+    return
+
+  // 取同一根手指（避免多指缩放等误差）
+  let t = e.touches[0]
+  if (__ts_id != null) {
+    const hit = Array.from(e.touches).find(x => x.identifier === __ts_id)
+    if (hit)
+      t = hit
+  }
+  const dy = t.clientY - __ts_startY
+
+  const prev = el.scrollTop
+  // 手动滚：上划（dy<0） => scrollTop 增大
+  el.scrollTop = __ts_startScroll - dy
+
+  // 只要确实发生了滚动，就拦截默认，避免浏览器“光标粘性”回拉
+  if (el.scrollTop !== prev) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+}
+
+function __ts_onEnd() {
+  __ts_active = false
+  __ts_id = null
+}
+
+onMounted(() => {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 关键：touchmove 必须 passive:false 才能 preventDefault
+  el.addEventListener('touchstart', __ts_onStart, { passive: true, capture: true })
+  el.addEventListener('touchmove', __ts_onMove, { passive: false, capture: true })
+  el.addEventListener('touchend', __ts_onEnd, { passive: true, capture: true })
+  el.addEventListener('touchcancel', __ts_onEnd, { passive: true, capture: true })
+})
+onUnmounted(() => {
+  const el = textarea.value
+  if (!el)
+    return
+
+  el.removeEventListener('touchstart', __ts_onStart as any, true)
+  el.removeEventListener('touchmove', __ts_onMove as any, true)
+  el.removeEventListener('touchend', __ts_onEnd as any, true)
+  el.removeEventListener('touchcancel', __ts_onEnd as any, true)
+})
+// === MOBILE TOUCH SCROLL PATCH END ===
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
@@ -2075,5 +2091,11 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
+
+/* 仅编辑态：交给我们“手动滚动”，避免系统粘性干预 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  -webkit-overflow-scrolling: auto; /* 关掉弹性加速，避免干预 */
+  touch-action: none;                /* iOS/Android：允许我们拦截 touchmove */
 }
 </style>
