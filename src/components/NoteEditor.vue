@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-
-// import { useTextareaAutosize } from '@vueuse/core' // ✅ 不再需要（contenteditable）
+import { useTextareaAutosize } from '@vueuse/core'
 import { useDialog } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -31,20 +30,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const dialog = useDialog()
-// ===== 自动草稿使用的存储键（必须先定义再使用）=====
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
     return null
-  // 优先用父传入的 draftKey；否则按是否编辑态给一个稳定默认值
+  // 优先使用父组件传入的 draftKey；否则根据 isEditing 给一个稳定的默认值
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
-
-// ============== v-model（必须在任何使用它的代码之前定义） ==============
-const contentModel = computed({
-  get: () => props.modelValue,
-  set: (value) => { emit('update:modelValue', value) },
-})
-
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -61,132 +52,6 @@ onMounted(() => {
   }
 })
 
-const editable = ref<HTMLElement | null>(null)
-
-// 把富文本中的换行 <div><br></div> / <br> 统一成 \n 的纯文本
-function getPlainTextFromEditable(el: HTMLElement) {
-  // 最稳妥的方式：把 <div> 视为换行，其余剥离标签
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
-  let out = ''
-  let prevWasBlockBreak = false
-
-  function pushBreak() {
-    if (!prevWasBlockBreak) {
-      out += '\n'
-      prevWasBlockBreak = true
-    }
-  }
-
-  while (walker.nextNode()) {
-    const n = walker.currentNode as any
-    if (n.nodeType === Node.TEXT_NODE) {
-      out += n.nodeValue || ''
-      prevWasBlockBreak = false
-    }
-    else if (n.nodeType === Node.ELEMENT_NODE) {
-      const tag = n.tagName
-      if (tag === 'DIV' || tag === 'P')
-        pushBreak()
-      if (tag === 'BR') {
-        out += '\n'
-        prevWasBlockBreak = true
-      }
-    }
-  }
-  return out.replace(/\u00A0/g, ' ') // nbsp -> space
-}
-
-function setEditableFromText(el: HTMLElement, text: string) {
-  // 把 \n 渲染成 <div> 行；空行用 <div><br></div>
-  const lines = text.split('\n')
-  el.innerHTML = lines
-    .map(l => l.length ? l.replace(/&/g, '&amp;').replace(/</g, '&lt;') : '<br>')
-    .map(s => `<div>${s}</div>`)
-    .join('')
-}
-
-/**
- * ========= 适配 contenteditable 的“确保光标可见” =========
- * 名称保持为 ensureCaretVisibleInTextarea（兼容你后续旧调用）
- * 逻辑：取当前选区末端 range 的矩形，与 editable 的可视盒做比较，必要时调 el.scrollTop
- */
-function ensureCaretVisibleInTextarea() {
-  const el = editable.value
-  if (!el)
-    return
-  const sel = document.getSelection?.()
-  if (!sel || sel.rangeCount === 0)
-    return
-
-  // 取末端 range
-  const range = sel.getRangeAt(0).cloneRange()
-  range.collapse(false)
-
-  // 在内容为空或结尾处可能拿不到 rect，插入零宽占位再测
-  let rect = range.getBoundingClientRect()
-  if (!(rect && (rect.width || rect.height))) {
-    const probe = document.createElement('span')
-    probe.textContent = '\u200B'
-    range.insertNode(probe)
-    rect = probe.getBoundingClientRect()
-    // 清理占位
-    const parent = probe.parentNode
-    if (parent)
-      parent.removeChild(probe)
-    sel.removeAllRanges()
-    sel.addRange(range) // 复原
-  }
-
-  const hostRect = el.getBoundingClientRect()
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-
-  const caretTopInContent = (rect.top - hostRect.top) + el.scrollTop
-  const caretBottomInContent = (rect.bottom - hostRect.top) + el.scrollTop
-
-  const linePad = 24 // 预留一行缓冲
-  let targetScroll: number | null = null
-
-  if (caretBottomInContent + linePad > viewBottom) {
-    targetScroll = Math.min(
-      caretBottomInContent + linePad - el.clientHeight,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretTopInContent - linePad < viewTop) {
-    targetScroll = Math.max(caretTopInContent - linePad, 0)
-  }
-
-  if (targetScroll != null && Math.abs(targetScroll - el.scrollTop) > 1)
-    el.scrollTop = targetScroll
-}
-
-onMounted(() => {
-  const el = editable.value
-  if (el)
-    setEditableFromText(el, contentModel.value || '')
-})
-
-watch(contentModel, (v) => {
-  const el = editable.value
-  if (!el)
-    return
-  // 只有当外部变更与内部实际 DOM 文本不一致时才刷新，避免打断光标
-  const cur = getPlainTextFromEditable(el)
-  if (cur !== (v || ''))
-    setEditableFromText(el, v || '')
-})
-
-function onEditableInput(_e: Event) {
-  const el = editable.value
-  if (!el)
-    return
-  const plain = getPlainTextFromEditable(el)
-  emit('update:modelValue', plain)
-  captureCaret?.()
-  ensureCaretVisibleInTextarea()
-  recomputeBottomSafePadding?.()
-}
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
 // 平台判定（尽量保守）
@@ -200,13 +65,43 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
 
+// —— 用户手动滚动保护闩（防止光标可见逻辑“抢滚动”）——
+const manualScrollLatch = ref(false)
+let manualScrollTimer: number | null = null
+let programmaticScrollMark = 0 // 标记由代码触发的滚动时间戳
+
+function beginManualScrollLatch(ms = 480) {
+  manualScrollLatch.value = true
+  if (manualScrollTimer) {
+    clearTimeout(manualScrollTimer)
+    manualScrollTimer = null
+  }
+  manualScrollTimer = window.setTimeout(() => {
+    manualScrollLatch.value = false
+    manualScrollTimer = null
+  }, ms) as unknown as number
+}
+
+function markProgrammaticScroll() {
+  programmaticScrollMark = performance.now ? performance.now() : Date.now()
+}
+
+// 来自用户的滚动（非程序触发）时，拉起保护闩
+function onTextareaScroll() {
+  const now = performance.now ? performance.now() : Date.now()
+  // 48ms 内的滚动认为是“程序刚刚设置 scrollTop”导致，忽略
+  if (now - programmaticScrollMark <= 48)
+    return
+  beginManualScrollLatch(520) // 稍长一点，保证用户能继续滚
+}
+
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
-function _onTextPointerMove() {
+function onTextPointerMove() {
   // 保持监听，避免在拖动过程中触发布局重算；
   // 不需要显式 return，防止 no-useless-return
 }
@@ -215,15 +110,22 @@ function _onTextPointerMove() {
 function onTextPointerUp() {
   isFreezingBottom.value = false
   requestAnimationFrame(() => {
-    recomputeBottomSafePadding?.()
+    recomputeBottomSafePadding()
   })
   window.setTimeout(() => {
-    recomputeBottomSafePadding?.()
+    recomputeBottomSafePadding()
   }, 120)
 }
 // ============== Store ==============
-const _settingsStore = useSettingStore()
+const settingsStore = useSettingStore()
+
 // ============== v-model ==============
+const contentModel = computed({
+  get: () => props.modelValue,
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
+})
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
@@ -259,7 +161,7 @@ const DRAFT_SAVE_DELAY = 400 // ms
 function loadDraft() {
   if (!props.enableDrafts)
     return
-  const key = draftStorageKey?.value
+  const key = draftStorageKey.value
   if (!key)
     return
 
@@ -278,9 +180,13 @@ function loadDraft() {
     }
     if (text && text !== contentModel.value) {
       emit('update:modelValue', text)
-      // contenteditable 无需 triggerResize；若你仍保留了可忽略
-      try { /* triggerResize?.() */ }
-      catch {}
+      // 如果你用了 autosize，触发一下
+      try {
+        triggerResize?.()
+      }
+      catch {
+        // noop
+      }
     }
   }
   catch (e) {
@@ -647,6 +553,46 @@ watch(() => props.isLoading, (newValue) => {
   if (newValue === false)
     isSubmitting.value = false
 })
+
+// ============== 滚动校准 ==============
+function ensureCaretVisibleInTextarea() {
+  if (isFreezingBottom.value)
+    return
+  const el = textarea.value
+  if (!el)
+    return
+
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  document.body.removeChild(mirror)
+
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+
+  if (caretDesiredBottom > viewBottom) {
+    markProgrammaticScroll()
+    el.scrollTop = Math.min(
+      caretDesiredBottom - el.clientHeight,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  else if (caretDesiredTop < viewTop) {
+    markProgrammaticScroll()
+    el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
+}
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
@@ -1123,7 +1069,7 @@ function computeAndShowTagSuggestions(el: HTMLTextAreaElement) {
   })
 }
 
-function _handleInput(event: Event) {
+function handleInput(event: Event) {
   const el = event.target as HTMLTextAreaElement
 
   // 允许这一轮输入重新触发“轻推一次”
@@ -1277,7 +1223,7 @@ function addTable() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
-function _handleEnterKey(event: KeyboardEvent) {
+function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
 
@@ -1635,23 +1581,37 @@ function handleBeforeInput(e: InputEvent) {
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
-      <div
-        ref="editable"
-        class="editor-surface"
-        contenteditable="true"
-        :data-placeholder="placeholder"
+      <textarea
+        ref="textarea"
+        v-model="input"
+        class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
+        :placeholder="placeholder"
+        autocomplete="off"
+        autocorrect="on"
+        autocapitalize="sentences"
+        inputmode="text"
+        enterkeyhint="done"
+        @scroll="onTextareaScroll"
         @beforeinput="handleBeforeInput"
-        @input="onEditableInput"
         @focus="handleFocus"
         @blur="onBlur"
         @click="handleClick"
         @keydown="captureCaret"
         @keyup="captureCaret"
+        @mouseup="captureCaret"
+        @keydown.enter="handleEnterKey"
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
+        @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
+
         @pointercancel="onTextPointerUp"
+        @touchstart.passive="onTextPointerDown"
+        @touchmove.passive="onTextPointerMove"
+        @touchend.passive="onTextPointerUp"
+        @touchcancel.passive="onTextPointerUp"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
@@ -1845,34 +1805,22 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
-.editor-surface {
+.editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75vh;
-  max-height: 75dvh; /* 现代浏览器动态视口高度 */
+  max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 8px calc(8px + var(--kb-pad, 0px)) 16px;
+  padding: 12px 8px 8px 16px;
   border: none;
-  background: transparent;
+  background-color: transparent;
   color: inherit;
   line-height: 1.6;
+  resize: none;
   outline: 0;
   box-sizing: border-box;
-  font: inherit;
+  font-family: inherit;
   caret-color: currentColor;
-  -webkit-user-modify: read-write-plaintext-only; /* iOS: 纯文本编辑模式，防止花样粘贴 */
-  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
-  overscroll-behavior: contain;      /* 阻止滚动冒泡给外层 */
-  touch-action: pan-y;               /* 仅允许纵向滑动 */
-  white-space: pre-wrap;
-  word-break: break-word;
   scrollbar-gutter: stable both-edges;
-}
-
-/* placeholder 效果（contenteditable 没有原生 placeholder） */
-.editor-surface:empty::before {
-  content: attr(data-placeholder);
-  color: #9ca3af;
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
