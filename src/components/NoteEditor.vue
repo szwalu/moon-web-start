@@ -817,7 +817,7 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
-    ensureCaretVisibleInTextarea()
+    // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
@@ -1490,7 +1490,7 @@ function startFocusBoost() {
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    ensureCaretVisibleInTextarea()
+    // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
