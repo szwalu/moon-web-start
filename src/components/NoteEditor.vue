@@ -1385,17 +1385,15 @@ onUnmounted(() => {
 
 onMounted(() => {
   const vv = window.visualViewport
-  if (vv) {
+  if (vv)
     vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
-  }
+    // vv.addEventListener('scroll', recomputeBottomSafePadding)
 })
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (vv) {
+  if (vv)
     vv.removeEventListener('resize', recomputeBottomSafePadding)
-    vv.removeEventListener('scroll', recomputeBottomSafePadding)
-  }
+  // vv.removeEventListener('scroll', recomputeBottomSafePadding)
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
