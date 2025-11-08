@@ -78,7 +78,10 @@ function onTextPointerMove() {
 
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
-  isFreezingBottom.value = false
+  // isFreezingBottom.value = false
+  window.setTimeout(() => {
+    isFreezingBottom.value = false
+  }, 150) // 150ms 足够让惯性滚动开始，且大于 80ms 的 timer
   // requestAnimationFrame(() => {
   //  recomputeBottomSafePadding()
   // })
