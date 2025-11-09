@@ -82,9 +82,9 @@ function onTextPointerUp() {
   // requestAnimationFrame(() => {
   // recomputeBottomSafePadding()
   // })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 120)
+  // window.setTimeout(() => {
+  // recomputeBottomSafePadding()
+  // }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
