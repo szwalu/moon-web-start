@@ -835,6 +835,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :enable-drafts="true"
             :draft-key="writingKey"
             :clear-draft-on-save="true"
+            :disable-page-push-in-embedded="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
             @focus="onEditorFocus"

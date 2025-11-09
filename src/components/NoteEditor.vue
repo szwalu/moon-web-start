@@ -27,6 +27,7 @@ const props = defineProps({
   draftKey: { type: String, default: '' },
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
+  disablePagePushInEmbedded: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const dialog = useDialog()
@@ -679,20 +680,30 @@ function recomputeBottomSafePadding() {
   emit('bottomSafeChange', need)
 
   // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
-    if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        window.scrollBy(0, delta)
+    if (!props.disablePagePushInEmbedded) { // ✅ 新增：日历里禁用 window 轻推
+      if (!_hasPushedPage) {
+        if (isAndroid) {
+          const ratio = 1.6
+          const cap = 420
+          const delta = Math.min(Math.ceil(need * ratio), cap)
+          window.scrollBy(0, delta)
+        }
+        else {
+          const ratio = 0.35
+          const cap = 80
+          const delta = Math.min(Math.ceil(need * ratio), cap)
+          if (delta > 0)
+            window.scrollBy(0, delta)
+        }
+        _hasPushedPage = true
+        window.setTimeout(() => {
+          _hasPushedPage = false
+          recomputeBottomSafePadding()
+        }, 140)
       }
-      // iOS：不再轻推，完全交给 bottomSafe 垫片
-      _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
     }
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
