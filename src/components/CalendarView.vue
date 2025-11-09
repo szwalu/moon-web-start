@@ -33,6 +33,21 @@ const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+const newEditorBottomSafe = ref(0) // 日历中新建输入框需要的底部安全空间
+
+function onNewEditorBottomSafe(n: number) {
+  newEditorBottomSafe.value = Math.max(0, n)
+  // 轻触发一次重排，帮助滚动容器在键盘动画期间把底部露出来
+  requestAnimationFrame(() => {
+    const el = scrollBodyRef.value
+    if (!el)
+      return
+    // 若已接近底部，轻推 1px 触发行高/视口刷新（不会可见）
+    const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (remain < n + 24)
+      el.scrollTo({ top: el.scrollTop + 1 })
+  })
+}
 
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
@@ -682,7 +697,11 @@ async function saveNewNote(content: string, weather: string | null) {
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
-    <div ref="scrollBodyRef" class="calendar-body">
+    <div
+      ref="scrollBodyRef"
+      class="calendar-body"
+      :style="isWriting ? { paddingBottom: `${newEditorBottomSafe}px` } : null"
+    >
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
@@ -718,6 +737,7 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelWriting"
             @focus="onEditorFocus"
             @blur="() => {}"
+            @bottom-safe-change="onNewEditorBottomSafe"
           />
         </div>
 
