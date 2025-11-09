@@ -55,17 +55,43 @@ function isTargetOurEditor(t: EventTarget | null) {
   return false
 }
 
+// ===== 固定在键盘上缘：忽略 offsetTop，并加开合滞后 =====
+let lastKb = 0
+let opened = false
+
 function updateKeyboardInset() {
   const vv = window.visualViewport
   if (!vv) {
     document.documentElement.style.setProperty('--kb', '0px')
     imeVisible.value = false
+    lastKb = 0
+    opened = false
     return
   }
-  const kb = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  const opened = kb > 60 // 阈值，可按需调整
-  document.documentElement.style.setProperty('--kb', opened ? `${kb}px` : '0px')
-  // 只有当前编辑器获取焦点时才显示
+
+  // ✅ 键盘高度只用 innerHeight - vv.height，忽略 offsetTop
+  const kb = Math.max(0, window.innerHeight - vv.height)
+
+  // 小抖动过滤（iOS 输入时 vv.height 微动）
+  const DIFF_EPSILON = 8 // px
+  const CHG = Math.abs(kb - lastKb)
+
+  // 开关阈值（避免频闪）
+  const OPEN_TH = 60 // 认为“键盘已打开”的阈值
+  const CLOSE_TH = 40 // 认为“键盘已关闭”的阈值（略低于打开阈值形成回差）
+
+  // 只有跨过阈值或变化明显时才更新 CSS 变量
+  if (CHG > DIFF_EPSILON) {
+    document.documentElement.style.setProperty('--kb', `${kb}px`)
+    lastKb = kb
+  }
+
+  if (!opened && kb > OPEN_TH)
+    opened = true
+  if (opened && kb < CLOSE_TH)
+    opened = false
+
+  // 只有当前编辑器聚焦 & 键盘判定为开启时显示
   const active = document.activeElement
   const isOurs = isTargetOurEditor(active)
   imeVisible.value = opened && isOurs
@@ -2125,8 +2151,9 @@ function handleBeforeInput(e: InputEvent) {
   position: fixed;
   left: 0;
   right: 0;
-  /* 紧贴键盘上缘：--kb 来自 JS 写入，叠加底部安全区 */
-  bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom));
+  /* ✅ 只用 --kb：键盘高度多少，就抬多高 */
+  bottom: var(--kb, 0px);
+  /* 其余不变 */
   display: flex;
   gap: 10px;
   padding: 8px 12px;
@@ -2135,9 +2162,15 @@ function handleBeforeInput(e: InputEvent) {
   background: rgba(28,28,30,0.98);
   border-top: 1px solid rgba(255,255,255,0.12);
   z-index: 9999;
-  /* 轻微毛玻璃（可选） */
   -webkit-backdrop-filter: saturate(180%) blur(8px);
   backdrop-filter: saturate(180%) blur(8px);
+}
+
+/* 当键盘收起（--kb=0）时，仍然要避开 iPhone 底部安全区，可选加一条媒体查询： */
+@supports (bottom: max(0px)) {
+  .ime-bar {
+    bottom: max(var(--kb, 0px), env(safe-area-inset-bottom));
+  }
 }
 
 .dark .ime-bar {
