@@ -29,9 +29,6 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-let isUserTouching = false
-let userScrollCoolDownTimer: number | null = null
-
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -71,7 +68,6 @@ const isFreezingBottom = ref(false)
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
-  isUserTouching = true
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
@@ -80,16 +76,15 @@ function onTextPointerMove() {
   // 不需要显式 return，防止 no-useless-return
 }
 
+// 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-
-  // 结束触摸后，给 iOS 惯性滚动一个“冷却期”，期间不主动改滚动
-  if (userScrollCoolDownTimer)
-    clearTimeout(userScrollCoolDownTimer)
-  userScrollCoolDownTimer = window.setTimeout(() => {
-    isUserTouching = false
-    recomputeBottomSafePadding() // 滚动完全停下后再补算一次
-  }, 180) as unknown as number
+  // requestAnimationFrame(() => {
+  // recomputeBottomSafePadding()
+  // })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -605,9 +600,6 @@ function recomputeBottomSafePadding() {
     _hasPushedPage = false
     return
   }
-  // 🚫 iOS 保护：滚动/惯性滚动中禁止执行任何 scroll 改写
-  if (isIOS && (isUserTouching || userScrollCoolDownTimer))
-    return
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
@@ -1397,40 +1389,17 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
-let vvScrollIdleTimer: number | null = null
-
-function onVvScrollDebounced() {
-  if (vvScrollIdleTimer)
-    clearTimeout(vvScrollIdleTimer)
-  vvScrollIdleTimer = window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 120) as unknown as number
-}
-
 onMounted(() => {
   const vv = window.visualViewport
-  if (!vv)
-    return
-  vv.addEventListener('resize', recomputeBottomSafePadding) // resize 保留
-  if (isIOS) {
-    // ⛔ 不再实时跟随 scroll；等滚动停下来 120ms 再算
-    vv.addEventListener('scroll', onVvScrollDebounced, { passive: true })
-  }
-  else {
-    // 安卓/桌面保持原逻辑（若你愿意也可以用同样的防抖）
-    vv.addEventListener('scroll', recomputeBottomSafePadding, { passive: true })
-  }
+  if (vv)
+    vv.addEventListener('resize', recomputeBottomSafePadding)
+  // vv.addEventListener('scroll', recomputeBottomSafePadding)
 })
-
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (!vv)
-    return
-  vv.removeEventListener('resize', recomputeBottomSafePadding)
-  if (isIOS)
-    vv.removeEventListener('scroll', onVvScrollDebounced as any)
-  else
-    vv.removeEventListener('scroll', recomputeBottomSafePadding as any)
+  if (vv)
+    vv.removeEventListener('resize', recomputeBottomSafePadding)
+  // vv.removeEventListener('scroll', recomputeBottomSafePadding)
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
