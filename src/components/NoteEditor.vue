@@ -8,8 +8,6 @@ import { supabase } from '@/utils/supabaseClient'
 // —— 天气映射（用于城市名映射与图标）——
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
-// ====== IME 工具条结束 ======
-
 // ============== Props & Emits ==============
 const props = defineProps({
   modelValue: { type: String, required: true },
@@ -34,68 +32,6 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
-// ====== IME 工具条：仅用 vv.resize 监听键盘开合 ======
-const imeBarRef = ref<HTMLElement | null>(null)
-const imeVisible = ref(false)
-
-function isTargetOurEditor(t: EventTarget | null) {
-  const root = rootRef.value
-  if (!root)
-    return false
-  const node = t as Node | null
-  if (!node)
-    return false
-  // 仅当焦点在本组件内的 textarea（或后续你切换 CE 时的 contenteditable）才显示
-  if (node instanceof HTMLElement) {
-    if (node.tagName === 'TEXTAREA' && root.contains(node))
-      return true
-    if (node.isContentEditable && root.contains(node))
-      return true
-  }
-  return false
-}
-
-// ===== 固定在键盘上缘：忽略 offsetTop，并加开合滞后 =====
-let lastKb = 0
-let opened = false
-
-function updateKeyboardInset() {
-  const vv = window.visualViewport
-  if (!vv) {
-    document.documentElement.style.setProperty('--kb', '0px')
-    imeVisible.value = false
-    lastKb = 0
-    opened = false
-    return
-  }
-
-  // ✅ 键盘高度只用 innerHeight - vv.height，忽略 offsetTop
-  const kb = Math.max(0, window.innerHeight - vv.height)
-
-  // 小抖动过滤（iOS 输入时 vv.height 微动）
-  const DIFF_EPSILON = 8 // px
-  const CHG = Math.abs(kb - lastKb)
-
-  // 开关阈值（避免频闪）
-  const OPEN_TH = 60 // 认为“键盘已打开”的阈值
-  const CLOSE_TH = 40 // 认为“键盘已关闭”的阈值（略低于打开阈值形成回差）
-
-  // 只有跨过阈值或变化明显时才更新 CSS 变量
-  if (CHG > DIFF_EPSILON) {
-    document.documentElement.style.setProperty('--kb', `${kb}px`)
-    lastKb = kb
-  }
-
-  if (!opened && kb > OPEN_TH)
-    opened = true
-  if (opened && kb < CLOSE_TH)
-    opened = false
-
-  // 只有当前编辑器聚焦 & 键盘判定为开启时显示
-  const active = document.activeElement
-  const isOurs = isTargetOurEditor(active)
-  imeVisible.value = opened && isOurs
-}
 
 function onGlobalFocusIn(e: FocusEvent) {
   // 焦点进入：若目标在本组件内，联动键盘高度显示工具条
@@ -603,7 +539,9 @@ const showFormatPalette = ref(false)
 const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
-
+const imeBarRef = ref<HTMLElement | null>(null)
+// 让 eslint 识别这个 ref 被读取过
+const _imeBarRefUsed = computed(() => !!imeBarRef.value)
 // 根节点 + 光标缓存
 function captureCaret() {
   const el = textarea.value
@@ -1775,45 +1713,45 @@ function handleBeforeInput(e: InputEvent) {
     </div>
 
     <!-- ===== 键盘上方工具条（IME Bar） ===== -->
-    <div
-      v-show="imeVisible"
-      ref="imeBarRef"
-      class="ime-bar"
-      @mousedown.prevent
-      @touchstart.prevent
-      @pointerdown.prevent
-    >
-      <!-- 示例：粗体 -->
-      <button
-        type="button"
-        class="ime-btn"
-        :title="t('notes.editor.format.bold')"
-        @pointerdown.prevent="runToolbarAction(addBold)"
-      >
-        B
-      </button>
+    <!-- 让 eslint 看到 ref -->
+    <div v-show="imeVisible">
+      <teleport to="body">
+        <div
+          ref="imeBarRef"
+          class="ime-bar"
+          :style="imeStyle"
+          @mousedown.prevent
+          @touchstart.prevent
+          @pointerdown.prevent
+        >
+          <button
+            type="button"
+            class="ime-btn"
+            :title="t('notes.editor.format.bold')"
+            @pointerdown.prevent="runToolbarAction(addBold)"
+          >
+            B
+          </button>
 
-      <!-- 示例：待办 -->
-      <button
-        type="button"
-        class="ime-btn"
-        :title="t('notes.editor.toolbar.todo')"
-        @pointerdown.prevent="runToolbarAction(addTodo)"
-      >
-        [ ]
-      </button>
+          <button
+            type="button"
+            class="ime-btn"
+            :title="t('notes.editor.toolbar.todo')"
+            @pointerdown.prevent="runToolbarAction(addTodo)"
+          >
+            [ ]
+          </button>
 
-      <!-- 示例：标签 -->
-      <button
-        type="button"
-        class="ime-btn"
-        :title="t('notes.editor.toolbar.add_tag')"
-        @pointerdown.prevent="openTagMenu()"
-      >
-        #
-      </button>
-
-      <!-- 你还可以继续加：有序/无序、下划线、表格等 -->
+          <button
+            type="button"
+            class="ime-btn"
+            :title="t('notes.editor.toolbar.add_tag')"
+            @pointerdown.prevent="openTagMenu()"
+          >
+            #
+          </button>
+        </div>
+      </teleport>
     </div>
     <!-- ===== 键盘上方工具条结束 ===== -->
 
@@ -2149,11 +2087,7 @@ function handleBeforeInput(e: InputEvent) {
 /* ===== IME 键盘上方工具条 ===== */
 .ime-bar {
   position: fixed;
-  left: 0;
-  right: 0;
-  /* ✅ 只用 --kb：键盘高度多少，就抬多高 */
-  bottom: var(--kb, 0px);
-  /* 其余不变 */
+  /* 不要 bottom 了；用内联 top/left/width 来定位 */
   display: flex;
   gap: 10px;
   padding: 8px 12px;
@@ -2161,16 +2095,8 @@ function handleBeforeInput(e: InputEvent) {
   justify-content: flex-start;
   background: rgba(28,28,30,0.98);
   border-top: 1px solid rgba(255,255,255,0.12);
-  z-index: 9999;
   -webkit-backdrop-filter: saturate(180%) blur(8px);
   backdrop-filter: saturate(180%) blur(8px);
-}
-
-/* 当键盘收起（--kb=0）时，仍然要避开 iPhone 底部安全区，可选加一条媒体查询： */
-@supports (bottom: max(0px)) {
-  .ime-bar {
-    bottom: max(var(--kb, 0px), env(safe-area-inset-bottom));
-  }
 }
 
 .dark .ime-bar {
@@ -2195,7 +2121,5 @@ function handleBeforeInput(e: InputEvent) {
   cursor: pointer;
 }
 
-.ime-btn:hover {
-  background: rgba(255,255,255,0.08);
-}
+.ime-btn:hover { background: rgba(255,255,255,0.08); }
 </style>
