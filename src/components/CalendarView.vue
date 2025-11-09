@@ -35,89 +35,113 @@ const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
 const newEditorBottomSafe = ref(0)
-let _targetBottomSafe = 0
-let _rafId: number | null = null
-let firstBoostHandled = false // 首次 bottom-safe 已处理过？
-let firstBoostSquelchUntil = 0 // 抑制期截止时间戳（performance.now）
+const _targetBottomSafe = 0
+const _rafId: number | null = null
+
+let _kbLockUntil = 0 // 首开“锁定期”截止时间
+let _kbLockedOnce = false // 是否已进行过首开一次性生效
+let _rafId2: number | null = null // 本函数私有的 rAF id（避免和你现有 _rafId 混淆）
 
 function onNewEditorBottomSafe(n: number) {
-  const targetVal = Math.max(0, n + 16)
+  // 统一加一点冗余（照顾输入法候选栏）
+  const now = performance.now()
+  const target = Math.max(0, n + 16)
 
-  // ===== 首开分支：只让“第一次”生效，其后 ~300ms 直接忽略 =====
-  if (firstBoostPending.value && targetVal > 0) {
-    const now = performance.now()
+  // —— 第一次首开：一次性生效 + 锁定 360ms，只允许单向增高（不降）
+  if (!_kbLockedOnce && target > 0) {
+    _kbLockedOnce = true
+    _kbLockUntil = now + 360
 
-    // ① 第一次进来：瞬时设值 + 等量滚补 + 立即校正；并开启 300ms 抑制期
-    if (!firstBoostHandled) {
-      firstBoostHandled = true
-      firstBoostSquelchUntil = now + 300
+    const scroller = scrollBodyRef.value
+    const inc0 = target - newEditorBottomSafe.value
 
-      _targetBottomSafe = targetVal
+    newEditorBottomSafe.value = target
+    if (scroller && inc0 > 0)
+      scroller.scrollTop += inc0
 
-      const scroller = scrollBodyRef.value
-      const delta0 = targetVal - newEditorBottomSafe.value
+    // 立即校正一次可见性（非 smooth）
+    requestAnimationFrame(() => {
+      ensureActiveElVisible(20, false)
+    })
 
-      // 直接生效（不平滑），避免动画参与导致抖
-      newEditorBottomSafe.value = targetVal
-      if (scroller && delta0 > 0)
-        scroller.scrollTop += delta0
-
-      // 仅一次“瞬时”可见性校正（不使用 smooth）
-      requestAnimationFrame(() => {
-        ensureActiveElVisible(20, false)
-      })
-
-      // 稍后关闭首开模式（不再禁用过渡/scroll anchoring）
-      setTimeout(() => {
-        firstBoostPending.value = false
-      }, 260)
-
-      return
-    }
-
-    // ② 抑制期内：忽略重复 bottom-safe 事件，避免反复推拉导致抖动
-    if (now < firstBoostSquelchUntil)
-      return
-    // ③ 抑制期过了，后续就走“正常平滑分支”（下面你的原逻辑）……
+    return
   }
 
-  // ===== 下面保持你现有的“死区 + 平滑 + 等量滚补”逻辑 =====
-  if (Math.abs(targetVal - _targetBottomSafe) < 10)
-    return
-
-  _targetBottomSafe = targetVal
-  if (_rafId != null)
-    return
-
-  const step = () => {
+  // —— 锁定期内：只允许“单向增高”，并做阶梯化（避免细碎波动）
+  if (now < _kbLockUntil) {
     const cur = newEditorBottomSafe.value
-    const delta = _targetBottomSafe - cur
-    const mag = Math.abs(delta)
+    const inc = target - cur
 
-    if (mag <= 1) {
+    // 小抖动门限（不动）
+    if (Math.abs(inc) < 12)
+      return
+
+    // 不允许降低，只允许升
+    if (inc > 0) {
+      const step = Math.min(14, inc) // 每次最多加 14px
+      const after = cur + step
+      newEditorBottomSafe.value = after
+
       const scroller = scrollBodyRef.value
-      const finalDelta = _targetBottomSafe - newEditorBottomSafe.value
-      newEditorBottomSafe.value = _targetBottomSafe
-      if (scroller && finalDelta > 0)
-        scroller.scrollTop += finalDelta
-      _rafId = null
-      requestAnimationFrame(() => ensureActiveElVisible(16))
+      if (scroller)
+        scroller.scrollTop += step // 等量滚补，视觉不被“顶一下”
+    }
+
+    return
+  }
+
+  // —— 锁定期结束：温和跟随（允许升降，但做死区 + 小步推进）
+  const cur = newEditorBottomSafe.value
+  const delta = target - cur
+  const mag = Math.abs(delta)
+
+  // 死区：≤10px 直接忽略，避免抖
+  if (mag <= 10)
+    return
+
+  // 如果已有帧在跑，避免叠加
+  if (_rafId2 != null)
+    return
+
+  const stepRun = () => {
+    const cur2 = newEditorBottomSafe.value
+    const d = target - cur2
+    const m = Math.abs(d)
+
+    if (m <= 1) {
+      const scroller2 = scrollBodyRef.value
+      const finalDelta = target - newEditorBottomSafe.value
+
+      newEditorBottomSafe.value = target
+
+      if (scroller2 && finalDelta > 0)
+        scroller2.scrollTop += finalDelta
+
+      _rafId2 = null
+
+      requestAnimationFrame(() => {
+        ensureActiveElVisible(16)
+      })
+
       return
     }
 
     const maxStep = 12
-    const inc = Math.sign(delta) * Math.min(maxStep, mag)
+    const inc2 = Math.sign(d) * Math.min(maxStep, m)
+    const after2 = cur2 + inc2
 
-    const scroller = scrollBodyRef.value
-    const before = newEditorBottomSafe.value
-    const after = before + inc
-    newEditorBottomSafe.value = after
-    if (scroller && inc > 0)
-      scroller.scrollTop += inc
+    newEditorBottomSafe.value = after2
 
-    _rafId = requestAnimationFrame(step)
+    if (inc2 > 0) {
+      const scroller3 = scrollBodyRef.value
+      if (scroller3)
+        scroller3.scrollTop += inc2
+    }
+
+    _rafId2 = requestAnimationFrame(stepRun)
   }
-  _rafId = requestAnimationFrame(step)
+
+  _rafId2 = requestAnimationFrame(stepRun)
 }
 
 function ensureActiveElVisible(extra = 16, smooth = true) {
@@ -708,9 +732,6 @@ async function startWriting() {
   firstBoostPending.value = true // ✅ 标记：首次键盘抬起需要更激进的兜底
   newEditorBottomSafe.value = 0
 
-  // ✅ 新增：初始化“首开消抖闸”
-  firstBoostHandled = false
-  firstBoostSquelchUntil = 0
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   newNoteEditorRef.value?.focus()
