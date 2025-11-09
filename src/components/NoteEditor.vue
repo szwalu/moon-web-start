@@ -1782,7 +1782,7 @@ function handleBeforeInput(e: InputEvent) {
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 }
-.editor-textarea { background-color: #fff; }
+
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
 .editor-textarea.font-size-large { font-size: 20px; }
