@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 // 修改：导入 nextTick
 import { useDark } from '@vueuse/core'
@@ -27,13 +27,20 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
-const rootRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+
+const bottomSafePx = ref(0)
+
+function onBottomSafeChange(px: number) {
+  bottomSafePx.value = Math.max(0, Number(px) || 0)
+  // 同时把值写到滚动容器的 CSS 变量，便于用 padding-bottom 让位（可选）
+  scrollBodyRef.value?.style.setProperty('--bottom-safe', `${bottomSafePx.value}px`)
+}
 
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
@@ -71,79 +78,6 @@ async function fetchTagData() {
 const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
 const editContent = ref('') // 编辑框 v-model
 const isEditingExisting = computed(() => !!editingNote.value)
-
-// === Keyboard inset (VisualViewport) with no-jank anchoring ===
-const kbInset = ref(0) // 当前键盘占用高度(px)
-let vvResizeHandler: (() => void) | null = null
-
-function applyKbInset(px: number) {
-  kbInset.value = Math.max(0, px)
-  // 仅作用于当前日历弹层
-  rootRef.value?.style.setProperty('--kb-inset', `${kbInset.value}px`)
-}
-
-/** 当 padding-bottom 因键盘变化而调整时，保持“底锚定”，避免视图抖动 */
-function anchorScrollWhileChangingInset(changeFn: () => void) {
-  const sc = scrollBodyRef.value
-  if (!sc) {
-    changeFn()
-    return
-  }
-  // 记录调整前的“距底距离”
-  const prevBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight
-  changeFn()
-  // 用 rAF 等待布局完成，再回填 scrollTop，保证无抖动
-  requestAnimationFrame(() => {
-    const nextBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight
-    const delta = nextBottom - prevBottom
-    if (Math.abs(delta) > 0)
-      sc.scrollTop += delta
-  })
-}
-
-/** 监听 VisualViewport，计算键盘高度（只在输入态时启用） */
-function installViewportInsetWatcher() {
-  const vv = (window as any).visualViewport as VisualViewport | undefined
-  if (!vv) {
-    // 没有 VisualViewport（部分桌面/老设备），兜底为 0
-    applyKbInset(0)
-    return
-  }
-  const compute = () => {
-    // 键盘高度 ~ window.innerHeight - vv.height - vv.offsetTop
-    const raw = window.innerHeight - vv.height - vv.offsetTop
-    // 仅在“有明显压缩”且“处于输入态”时启用
-    const active = isWriting.value || isEditingExisting.value
-    const next = active && raw > 30 ? raw : 0
-    anchorScrollWhileChangingInset(() => applyKbInset(next))
-  }
-  vvResizeHandler = compute
-  vv.addEventListener('resize', compute)
-  vv.addEventListener('scroll', compute) // 有些浏览器键盘浮动会触发 viewport scroll
-  // 初始化一次
-  compute()
-}
-
-function removeViewportInsetWatcher() {
-  const vv = (window as any).visualViewport as VisualViewport | undefined
-  if (vv && vvResizeHandler) {
-    vv.removeEventListener('resize', vvResizeHandler)
-    vv.removeEventListener('scroll', vvResizeHandler)
-  }
-  vvResizeHandler = null
-  applyKbInset(0)
-}
-
-// 在输入态切换时启停监听器（避免常驻监听带来抖动与无谓开销）
-watch([isWriting, isEditingExisting], ([w, e], [pw, pe]) => {
-  const active = w || e
-  const wasActive = pw || pe
-  if (active && !wasActive)
-    installViewportInsetWatcher()
-  if (!active && wasActive)
-    removeViewportInsetWatcher()
-})
-
 const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
 
 const hideHeader = ref(false)
@@ -153,6 +87,7 @@ function onEditorFocus() {
 }
 
 // 根容器 ref，限制只在日历弹层内部点击才触发
+const rootRef = ref<HTMLElement | null>(null)
 
 function onGlobalClickCapture(e: MouseEvent) {
   // 仅在编辑/写作态下处理
@@ -185,7 +120,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
-  removeViewportInsetWatcher()
 })
 
 /** 本地元信息键：最近一次同步时间戳 & 总数 */
@@ -225,7 +159,6 @@ async function handleEdit(note: any) {
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   editNoteEditorRef.value?.focus()
-  ;(window as any).visualViewport && vvResizeHandler && vvResizeHandler()
 }
 function handleCopy(content: string) {
   emit('copy', content)
@@ -672,7 +605,6 @@ async function startWriting() {
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   newNoteEditorRef.value?.focus()
-  ;(window as any).visualViewport && vvResizeHandler && vvResizeHandler()
 }
 
 // ✅ 计算按钮文字（今日前→补写，今日/未来→写）
@@ -794,6 +726,7 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelWriting"
             @focus="onEditorFocus"
             @blur="() => {}"
+            @bottom-safe-change="onBottomSafeChange"
           />
         </div>
 
@@ -815,6 +748,7 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelEditExisting"
             @focus="onEditorFocus"
             @blur="() => {}"
+            @bottom-safe-change="onBottomSafeChange"
           />
         </div>
 
@@ -840,6 +774,7 @@ async function saveNewNote(content: string, weather: string | null) {
         </div>
 
         <div v-else class="no-notes-text">{{ t('notes.calendar.no_notes_for_day') }}</div>
+        <div class="kb-spacer" :style="{ height: `${bottomSafePx}px` }" />
       </div>
     </div>
   </div>
@@ -897,6 +832,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  padding-bottom: calc(var(--safe-bottom, 0px) + var(--bottom-safe, 0px));
 }
 .calendar-container {
   padding: 1rem;
@@ -950,16 +886,6 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 编辑：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
-}
-
-.calendar-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  position: relative;
-  /* 新增：为底部让出“安全区 + 键盘占用” */
-  padding-bottom: calc(var(--safe-bottom, 0px) + var(--kb-inset, 0px));
-  overscroll-behavior: contain; /* 防止橡皮筋回弹带来的多余滚动 */
 }
 </style>
 
