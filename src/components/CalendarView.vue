@@ -34,14 +34,6 @@ const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
-const bottomSafePx = ref(0)
-
-function onBottomSafeChange(px: number) {
-  bottomSafePx.value = Math.max(0, Number(px) || 0)
-  // 同时把值写到滚动容器的 CSS 变量，便于用 padding-bottom 让位（可选）
-  scrollBodyRef.value?.style.setProperty('--bottom-safe', `${bottomSafePx.value}px`)
-}
-
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
@@ -726,7 +718,6 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelWriting"
             @focus="onEditorFocus"
             @blur="() => {}"
-            @bottom-safe-change="onBottomSafeChange"
           />
         </div>
 
@@ -748,7 +739,6 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelEditExisting"
             @focus="onEditorFocus"
             @blur="() => {}"
-            @bottom-safe-change="onBottomSafeChange"
           />
         </div>
 
@@ -774,7 +764,6 @@ async function saveNewNote(content: string, weather: string | null) {
         </div>
 
         <div v-else class="no-notes-text">{{ t('notes.calendar.no_notes_for_day') }}</div>
-        <div class="kb-spacer" :style="{ height: `${bottomSafePx}px` }" />
       </div>
     </div>
   </div>
@@ -832,7 +821,6 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  padding-bottom: calc(var(--safe-bottom, 0px) + var(--bottom-safe, 0px));
 }
 .calendar-container {
   padding: 1rem;

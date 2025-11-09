@@ -1764,7 +1764,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75dvh;
+  max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
