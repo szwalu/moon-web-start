@@ -29,147 +29,11 @@ const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
-const firstBoostPending = ref(false) // ✅ 首次新建时的一次性 Boost
+
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
-const newEditorBottomSafe = ref(0)
-const _targetBottomSafe = 0
-const _rafId: number | null = null
-
-let _kbLockUntil = 0 // 首开“锁定期”截止时间
-let _kbLockedOnce = false // 是否已进行过首开一次性生效
-let _rafId2: number | null = null // 本函数私有的 rAF id（避免和你现有 _rafId 混淆）
-
-function onNewEditorBottomSafe(n: number) {
-  // 统一加一点冗余（照顾输入法候选栏）
-  const now = performance.now()
-  const target = Math.max(0, n + 16)
-
-  // —— 第一次首开：一次性生效 + 锁定 360ms，只允许单向增高（不降）
-  if (!_kbLockedOnce && target > 0) {
-    _kbLockedOnce = true
-    _kbLockUntil = now + 360
-
-    const scroller = scrollBodyRef.value
-    const inc0 = target - newEditorBottomSafe.value
-
-    newEditorBottomSafe.value = target
-    if (scroller && inc0 > 0)
-      scroller.scrollTop += inc0
-
-    // 立即校正一次可见性（非 smooth）
-    requestAnimationFrame(() => {
-      ensureActiveElVisible(20, false)
-    })
-
-    return
-  }
-
-  // —— 锁定期内：只允许“单向增高”，并做阶梯化（避免细碎波动）
-  if (now < _kbLockUntil) {
-    const cur = newEditorBottomSafe.value
-    const inc = target - cur
-
-    // 小抖动门限（不动）
-    if (Math.abs(inc) < 12)
-      return
-
-    // 不允许降低，只允许升
-    if (inc > 0) {
-      const step = Math.min(14, inc) // 每次最多加 14px
-      const after = cur + step
-      newEditorBottomSafe.value = after
-
-      const scroller = scrollBodyRef.value
-      if (scroller)
-        scroller.scrollTop += step // 等量滚补，视觉不被“顶一下”
-    }
-
-    return
-  }
-
-  // —— 锁定期结束：温和跟随（允许升降，但做死区 + 小步推进）
-  const cur = newEditorBottomSafe.value
-  const delta = target - cur
-  const mag = Math.abs(delta)
-
-  // 死区：≤10px 直接忽略，避免抖
-  if (mag <= 10)
-    return
-
-  // 如果已有帧在跑，避免叠加
-  if (_rafId2 != null)
-    return
-
-  const stepRun = () => {
-    const cur2 = newEditorBottomSafe.value
-    const d = target - cur2
-    const m = Math.abs(d)
-
-    if (m <= 1) {
-      const scroller2 = scrollBodyRef.value
-      const finalDelta = target - newEditorBottomSafe.value
-
-      newEditorBottomSafe.value = target
-
-      if (scroller2 && finalDelta > 0)
-        scroller2.scrollTop += finalDelta
-
-      _rafId2 = null
-
-      requestAnimationFrame(() => {
-        ensureActiveElVisible(16)
-      })
-
-      return
-    }
-
-    const maxStep = 12
-    const inc2 = Math.sign(d) * Math.min(maxStep, m)
-    const after2 = cur2 + inc2
-
-    newEditorBottomSafe.value = after2
-
-    if (inc2 > 0) {
-      const scroller3 = scrollBodyRef.value
-      if (scroller3)
-        scroller3.scrollTop += inc2
-    }
-
-    _rafId2 = requestAnimationFrame(stepRun)
-  }
-
-  _rafId2 = requestAnimationFrame(stepRun)
-}
-
-function ensureActiveElVisible(extra = 16, smooth = true) {
-  const activeEl = document.activeElement as HTMLElement | null
-  const scroller = scrollBodyRef.value
-  if (!activeEl || !scroller)
-    return
-
-  const rect = activeEl.getBoundingClientRect()
-  const viewH = window.visualViewport?.height ?? window.innerHeight
-  const covered = rect.bottom > viewH - extra
-  if (covered) {
-    const delta = rect.bottom - (viewH - extra)
-    scroller.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' })
-  }
-}
-// --- 关键补丁：在更新完占位高度后，轻推滚动确保光标露出 ---
-requestAnimationFrame(() => {
-  const activeEl = document.activeElement as HTMLElement | null
-  const scroller = scrollBodyRef.value
-  if (!activeEl || !scroller)
-    return
-  const rect = activeEl.getBoundingClientRect()
-  const viewH = window.visualViewport?.height ?? window.innerHeight
-  const covered = rect.bottom > viewH - 16 // 被键盘挡住？
-  if (covered)
-    scroller.scrollBy({ top: rect.bottom - (viewH - 8), behavior: 'smooth' })
-})
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
@@ -729,8 +593,6 @@ async function startWriting() {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-  firstBoostPending.value = true // ✅ 标记：首次键盘抬起需要更激进的兜底
-  newEditorBottomSafe.value = 0
 
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
@@ -820,11 +682,7 @@ async function saveNewNote(content: string, weather: string | null) {
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
-    <div
-      ref="scrollBodyRef"
-      class="calendar-body"
-      :class="{ 'no-anchor': firstBoostPending }"
-    >
+    <div ref="scrollBodyRef" class="calendar-body">
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
@@ -856,20 +714,12 @@ async function saveNewNote(content: string, weather: string | null) {
             :enable-drafts="true"
             :draft-key="writingKey"
             :clear-draft-on-save="true"
-            :disable-page-push-in-embedded="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
             @focus="onEditorFocus"
             @blur="() => {}"
-            @bottom-safe-change="onNewEditorBottomSafe"
           />
         </div>
-        <div
-          v-if="isWriting"
-          class="kb-spacer"
-          :class="{ 'no-trans': firstBoostPending }"
-          :style="{ height: `${newEditorBottomSafe}px` }"
-        />
 
         <!-- 编辑已有笔记（直接在日历内） -->
         <div v-if="isEditingExisting" class="inline-editor">
@@ -1025,18 +875,6 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
 }
-.kb-spacer {
-  flex: 0 0 auto;
-  height: 0;
-  transition: height 120ms ease-out; /* 轻微过渡，进一步抑制跳变感 */
-}
-.calendar-body.no-anchor { overflow-anchor: none; }
-.kb-spacer {
-  flex: 0 0 auto;
-  height: 0;
-  transition: height 120ms ease-out; /* 平时有轻微过渡 */
-}
-.kb-spacer.no-trans { transition: none; } /* 首开关闭过渡，防抖 */
 </style>
 
 <style>
