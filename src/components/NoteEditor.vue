@@ -8,6 +8,8 @@ import { supabase } from '@/utils/supabaseClient'
 // —— 天气映射（用于城市名映射与图标）——
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
+// ====== IME 工具条结束 ======
+
 // ============== Props & Emits ==============
 const props = defineProps({
   modelValue: { type: String, required: true },
@@ -29,6 +31,72 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+// 根节点 + 光标缓存
+const rootRef = ref<HTMLElement | null>(null)
+const lastSelectionStart = ref<number>(0)
+// ====== IME 工具条：仅用 vv.resize 监听键盘开合 ======
+const imeBarRef = ref<HTMLElement | null>(null)
+const imeVisible = ref(false)
+
+function isTargetOurEditor(t: EventTarget | null) {
+  const root = rootRef.value
+  if (!root)
+    return false
+  const node = t as Node | null
+  if (!node)
+    return false
+  // 仅当焦点在本组件内的 textarea（或后续你切换 CE 时的 contenteditable）才显示
+  if (node instanceof HTMLElement) {
+    if (node.tagName === 'TEXTAREA' && root.contains(node))
+      return true
+    if (node.isContentEditable && root.contains(node))
+      return true
+  }
+  return false
+}
+
+function updateKeyboardInset() {
+  const vv = window.visualViewport
+  if (!vv) {
+    document.documentElement.style.setProperty('--kb', '0px')
+    imeVisible.value = false
+    return
+  }
+  const kb = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  const opened = kb > 60 // 阈值，可按需调整
+  document.documentElement.style.setProperty('--kb', opened ? `${kb}px` : '0px')
+  // 只有当前编辑器获取焦点时才显示
+  const active = document.activeElement
+  const isOurs = isTargetOurEditor(active)
+  imeVisible.value = opened && isOurs
+}
+
+function onGlobalFocusIn(e: FocusEvent) {
+  // 焦点进入：若目标在本组件内，联动键盘高度显示工具条
+  if (isTargetOurEditor(e.target))
+    updateKeyboardInset()
+}
+
+function onGlobalFocusOut() {
+  // 焦点离开：隐藏
+  imeVisible.value = false
+}
+
+onMounted(() => {
+  const vv = window.visualViewport
+  if (vv)
+    vv.addEventListener('resize', updateKeyboardInset, { passive: true })
+  window.addEventListener('focusin', onGlobalFocusIn, { capture: true })
+  window.addEventListener('focusout', onGlobalFocusOut, { capture: true })
+})
+
+onUnmounted(() => {
+  const vv = window.visualViewport
+  if (vv)
+    vv.removeEventListener('resize', updateKeyboardInset as any)
+  window.removeEventListener('focusin', onGlobalFocusIn as any, { capture: true } as any)
+  window.removeEventListener('focusout', onGlobalFocusOut as any, { capture: true } as any)
+})
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -511,8 +579,6 @@ const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
 
 // 根节点 + 光标缓存
-const rootRef = ref<HTMLElement | null>(null)
-const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
   if (el && typeof el.selectionStart === 'number')
@@ -1682,6 +1748,49 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <!-- ===== 键盘上方工具条（IME Bar） ===== -->
+    <div
+      v-show="imeVisible"
+      ref="imeBarRef"
+      class="ime-bar"
+      @mousedown.prevent
+      @touchstart.prevent
+      @pointerdown.prevent
+    >
+      <!-- 示例：粗体 -->
+      <button
+        type="button"
+        class="ime-btn"
+        :title="t('notes.editor.format.bold')"
+        @pointerdown.prevent="runToolbarAction(addBold)"
+      >
+        B
+      </button>
+
+      <!-- 示例：待办 -->
+      <button
+        type="button"
+        class="ime-btn"
+        :title="t('notes.editor.toolbar.todo')"
+        @pointerdown.prevent="runToolbarAction(addTodo)"
+      >
+        [ ]
+      </button>
+
+      <!-- 示例：标签 -->
+      <button
+        type="button"
+        class="ime-btn"
+        :title="t('notes.editor.toolbar.add_tag')"
+        @pointerdown.prevent="openTagMenu()"
+      >
+        #
+      </button>
+
+      <!-- 你还可以继续加：有序/无序、下划线、表格等 -->
+    </div>
+    <!-- ===== 键盘上方工具条结束 ===== -->
+
     <!-- 样式弹层（更小、更贴合 Aa） -->
     <div
       v-if="showFormatPalette"
@@ -2009,5 +2118,51 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
+
+/* ===== IME 键盘上方工具条 ===== */
+.ime-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* 紧贴键盘上缘：--kb 来自 JS 写入，叠加底部安全区 */
+  bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px;
+  align-items: center;
+  justify-content: flex-start;
+  background: rgba(28,28,30,0.98);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  z-index: 9999;
+  /* 轻微毛玻璃（可选） */
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+}
+
+.dark .ime-bar {
+  background: rgba(22,22,24,0.98);
+  border-top-color: rgba(255,255,255,0.16);
+}
+
+.ime-btn {
+  min-width: 34px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: transparent;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.ime-btn:hover {
+  background: rgba(255,255,255,0.08);
 }
 </style>
