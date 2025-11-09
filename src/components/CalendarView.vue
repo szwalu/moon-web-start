@@ -34,23 +34,22 @@ const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
-const newEditorBottomSafe = ref(0) // 实际用于渲染的平滑值
+const newEditorBottomSafe = ref(0)
 let _targetBottomSafe = 0
 let _rafId: number | null = null
 
 function onNewEditorBottomSafe(n: number) {
-  // 目标值（不直接渲染）
-  const next = Math.max(0, n)
+  // 原来的 const next -> 改名，避免与已有的 next 冲突
+  const targetVal = Math.max(0, n + 12)
 
-  // --- 死区：小于 10px 的变化直接忽略，防抖 ---
-  if (Math.abs(next - _targetBottomSafe) < 10)
+  // 死区：小于 10px 的变化忽略
+  if (Math.abs(targetVal - _targetBottomSafe) < 10)
     return
 
-  _targetBottomSafe = next
+  _targetBottomSafe = targetVal
   if (_rafId != null)
     return
 
-  // --- 平滑拉近：每帧最多改 12px，直到接近目标 ---
   const step = () => {
     const cur = newEditorBottomSafe.value
     const delta = _targetBottomSafe - cur
@@ -62,7 +61,7 @@ function onNewEditorBottomSafe(n: number) {
       return
     }
 
-    const maxStep = 12 // 每帧最大变化像素
+    const maxStep = 12
     const inc = Math.sign(delta) * Math.min(maxStep, mag)
     newEditorBottomSafe.value = cur + inc
 
