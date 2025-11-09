@@ -70,6 +70,18 @@ function onNewEditorBottomSafe(n: number) {
   _rafId = requestAnimationFrame(step)
 }
 
+// --- 关键补丁：在更新完占位高度后，轻推滚动确保光标露出 ---
+requestAnimationFrame(() => {
+  const activeEl = document.activeElement as HTMLElement | null
+  const scroller = scrollBodyRef.value
+  if (!activeEl || !scroller)
+    return
+  const rect = activeEl.getBoundingClientRect()
+  const viewH = window.visualViewport?.height ?? window.innerHeight
+  const covered = rect.bottom > viewH - 16 // 被键盘挡住？
+  if (covered)
+    scroller.scrollBy({ top: rect.bottom - (viewH - 8), behavior: 'smooth' })
+})
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
