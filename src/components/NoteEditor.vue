@@ -29,6 +29,9 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+let isUserTouching = false
+let userScrollCoolDownTimer: number | null = null
+
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -68,6 +71,7 @@ const isFreezingBottom = ref(false)
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
+  isUserTouching = true
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
@@ -76,15 +80,16 @@ function onTextPointerMove() {
   // 不需要显式 return，防止 no-useless-return
 }
 
-// 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  // requestAnimationFrame(() => {
-  //  recomputeBottomSafePadding()
-  // })
-  // window.setTimeout(() => {
-  //   recomputeBottomSafePadding()
-  // }, 120)
+
+  // 结束触摸后，给 iOS 惯性滚动一个“冷却期”，期间不主动改滚动
+  if (userScrollCoolDownTimer)
+    clearTimeout(userScrollCoolDownTimer)
+  userScrollCoolDownTimer = window.setTimeout(() => {
+    isUserTouching = false
+    recomputeBottomSafePadding() // 滚动完全停下后再补算一次
+  }, 180) as unknown as number
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -498,25 +503,6 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
 const isSubmitting = ref(false)
-
-const isScrolling = ref(false)
-let scrollEndTimer: number | null = null
-
-function onTextareaScroll() {
-  // 1. 只要在滚动，就设置标志位
-  isScrolling.value = true
-  // 2. 清除上一个“滚动结束”的计时器
-  if (scrollEndTimer)
-    window.clearTimeout(scrollEndTimer)
-
-  // 3. 设置一个新的计时器。
-  //    如果在 150ms 内没有新的滚动事件，我们就认为滚动“已结束”。
-  scrollEndTimer = window.setTimeout(() => {
-    isScrolling.value = false
-    scrollEndTimer = null
-  }, 150)
-}
-
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
@@ -619,6 +605,9 @@ function recomputeBottomSafePadding() {
     _hasPushedPage = false
     return
   }
+  // 🚫 iOS 保护：滚动/惯性滚动中禁止执行任何 scroll 改写
+  if (isIOS && (isUserTouching || userScrollCoolDownTimer))
+    return
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
@@ -829,8 +818,6 @@ function onDocSelectionChange() {
   if (!el)
     return
   if (document.activeElement !== el)
-    return
-  if (isScrolling.value)
     return
   if (isFreezingBottom.value)
     return
@@ -1410,17 +1397,40 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
+let vvScrollIdleTimer: number | null = null
+
+function onVvScrollDebounced() {
+  if (vvScrollIdleTimer)
+    clearTimeout(vvScrollIdleTimer)
+  vvScrollIdleTimer = window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120) as unknown as number
+}
+
 onMounted(() => {
   const vv = window.visualViewport
-  if (vv)
-    vv.addEventListener('resize', recomputeBottomSafePadding)
-  // vv.addEventListener('scroll', recomputeBottomSafePadding)
+  if (!vv)
+    return
+  vv.addEventListener('resize', recomputeBottomSafePadding) // resize 保留
+  if (isIOS) {
+    // ⛔ 不再实时跟随 scroll；等滚动停下来 120ms 再算
+    vv.addEventListener('scroll', onVvScrollDebounced, { passive: true })
+  }
+  else {
+    // 安卓/桌面保持原逻辑（若你愿意也可以用同样的防抖）
+    vv.addEventListener('scroll', recomputeBottomSafePadding, { passive: true })
+  }
 })
+
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (vv)
-    vv.removeEventListener('resize', recomputeBottomSafePadding)
-  // vv.removeEventListener('scroll', recomputeBottomSafePadding)
+  if (!vv)
+    return
+  vv.removeEventListener('resize', recomputeBottomSafePadding)
+  if (isIOS)
+    vv.removeEventListener('scroll', onVvScrollDebounced as any)
+  else
+    vv.removeEventListener('scroll', recomputeBottomSafePadding as any)
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
@@ -1450,9 +1460,6 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
-  if (scrollEndTimer) { // <--- 🚀 把清理逻辑加在这里
-    window.clearTimeout(scrollEndTimer)
-  }
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -1596,7 +1603,6 @@ function handleBeforeInput(e: InputEvent) {
         @touchmove.passive="onTextPointerMove"
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
-        @scroll.passive="onTextareaScroll"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
