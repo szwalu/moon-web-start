@@ -675,6 +675,11 @@ function recomputeBottomSafePadding() {
 
   _lastBottomNeed = need
 
+  // === 限幅：抬升不超过真实键盘高度（去掉一点余量）===
+  const MAX_NEED = Math.max(0, keyboardHeight - safeInset - 10) // 10px 缓冲
+  if (need > MAX_NEED)
+    need = MAX_NEED
+
   // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
@@ -1520,7 +1525,9 @@ function handleBeforeInput(e: InputEvent) {
   // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, isAndroid ? 180 : 120)
-  emit('bottomSafeChange', prelift)
+  const vv = window.visualViewport
+  const kh = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0
+  emit('bottomSafeChange', vv ? Math.min(prelift, Math.max(0, kh - 10)) : prelift)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
