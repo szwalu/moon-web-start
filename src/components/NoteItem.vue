@@ -392,7 +392,7 @@ async function handleDateUpdate(newDate: Date) {
   border-radius: 0.5rem;
   background-color: #ffffff;
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-  padding: 5rem;
+  padding: 4rem;
   margin-bottom: 0.75rem;
 }
 .dark .note-card {
