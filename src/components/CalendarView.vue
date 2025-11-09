@@ -42,12 +42,16 @@ function onNewEditorBottomSafe(n: number) {
   // 目标值：给一点冗余，避免只露半行
   const targetVal = Math.max(0, n + 16)
 
-  // ✅ 首次新建：激进兜底——直接赋值 + 双重校正滚动，然后关闭首开模式
   if (firstBoostPending.value && targetVal > 0) {
-  // ✅ 一行只放一个语句，避免 max-statements-per-line
     firstBoostPending.value = true
     _targetBottomSafe = targetVal
+
+    // 等量滚补：把即将增加的高度转为同等的 scrollTop，避免被“顶一下”
+    const scroller = scrollBodyRef.value
+    const delta0 = targetVal - newEditorBottomSafe.value
     newEditorBottomSafe.value = targetVal
+    if (scroller && delta0 > 0)
+      scroller.scrollTop += delta0
 
     requestAnimationFrame(() => {
       ensureActiveElVisible(20, false)
@@ -55,7 +59,6 @@ function onNewEditorBottomSafe(n: number) {
     setTimeout(() => {
       ensureActiveElVisible(20, false)
     }, 120)
-
     setTimeout(() => {
       firstBoostPending.value = false
     }, 240)
@@ -77,16 +80,29 @@ function onNewEditorBottomSafe(n: number) {
     const mag = Math.abs(delta)
 
     if (mag <= 1) {
+      const scroller = scrollBodyRef.value
+      const finalDelta = _targetBottomSafe - newEditorBottomSafe.value
       newEditorBottomSafe.value = _targetBottomSafe
+      // 终帧补一次，确保完全对齐
+      if (scroller && finalDelta > 0)
+        scroller.scrollTop += finalDelta
+
       _rafId = null
-      // 每次达成目标后再校正一次，防漏
       requestAnimationFrame(() => ensureActiveElVisible(16))
       return
     }
 
     const maxStep = 12
     const inc = Math.sign(delta) * Math.min(maxStep, mag)
-    newEditorBottomSafe.value = cur + inc
+
+    const scroller = scrollBodyRef.value
+    const before = newEditorBottomSafe.value
+    const after = before + inc
+    newEditorBottomSafe.value = after
+
+    // 等量滚补：高度 ↑inc，则 scrollTop 同步 ↑inc，视觉不抖
+    if (scroller && inc > 0)
+      scroller.scrollTop += inc
 
     _rafId = requestAnimationFrame(step)
   }
