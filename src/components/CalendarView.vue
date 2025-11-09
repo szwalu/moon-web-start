@@ -29,7 +29,7 @@ const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
-
+const firstBoostPending = ref(false) // ✅ 首次新建时的一次性 Boost
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -39,10 +39,21 @@ let _targetBottomSafe = 0
 let _rafId: number | null = null
 
 function onNewEditorBottomSafe(n: number) {
-  // 原来的 const next -> 改名，避免与已有的 next 冲突
-  const targetVal = Math.max(0, n + 12)
+  // 目标值：给一点冗余，避免只露半行
+  const targetVal = Math.max(0, n + 16)
 
-  // 死区：小于 10px 的变化忽略
+  // ✅ 首次新建：激进兜底——直接赋值 + 双重校正滚动，然后关闭首开模式
+  if (firstBoostPending.value && targetVal > 0) {
+    firstBoostPending.value = false
+    _targetBottomSafe = targetVal
+    newEditorBottomSafe.value = targetVal // 直接生效，不走平滑
+    // 立刻与稍后都校正一次（覆盖键盘动画/viewport 延迟）
+    requestAnimationFrame(() => ensureActiveElVisible(20))
+    setTimeout(() => ensureActiveElVisible(20), 160)
+    return
+  }
+
+  // 之后：走你原来的“死区 + 平滑”
   if (Math.abs(targetVal - _targetBottomSafe) < 10)
     return
 
@@ -58,6 +69,8 @@ function onNewEditorBottomSafe(n: number) {
     if (mag <= 1) {
       newEditorBottomSafe.value = _targetBottomSafe
       _rafId = null
+      // 每次达成目标后再校正一次，防漏
+      requestAnimationFrame(() => ensureActiveElVisible(16))
       return
     }
 
@@ -70,6 +83,20 @@ function onNewEditorBottomSafe(n: number) {
   _rafId = requestAnimationFrame(step)
 }
 
+function ensureActiveElVisible(extra = 16) {
+  const activeEl = document.activeElement as HTMLElement | null
+  const scroller = scrollBodyRef.value
+  if (!activeEl || !scroller)
+    return
+
+  const rect = activeEl.getBoundingClientRect()
+  const viewH = window.visualViewport?.height ?? window.innerHeight
+  const covered = rect.bottom > viewH - extra
+  if (covered) {
+    const delta = rect.bottom - (viewH - extra)
+    scroller.scrollBy({ top: delta, behavior: 'smooth' })
+  }
+}
 // --- 关键补丁：在更新完占位高度后，轻推滚动确保光标露出 ---
 requestAnimationFrame(() => {
   const activeEl = document.activeElement as HTMLElement | null
@@ -641,7 +668,8 @@ async function startWriting() {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
+  firstBoostPending.value = true // ✅ 标记：首次键盘抬起需要更激进的兜底
+  newEditorBottomSafe.value = 0
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   newNoteEditorRef.value?.focus()
