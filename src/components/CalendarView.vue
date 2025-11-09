@@ -866,9 +866,14 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   margin-bottom: 0;
 }
 
-/* 只影响“日历里的内联输入框”，不影响主页的编辑器 */
-:deep(.inline-editor .note-editor-reborn .editor-textarea) {
-  max-height: 56vh;
+/* 新建：NoteEditor 根节点没有 .editing-viewport */
+:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
+  max-height: 56vh !important;
+}
+
+/* 编辑：NoteEditor 根节点带有 .editing-viewport */
+:deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
+  max-height: 75dvh !important;
 }
 </style>
 
