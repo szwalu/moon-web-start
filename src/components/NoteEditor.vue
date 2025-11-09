@@ -29,36 +29,6 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-// 根节点 + 光标缓存
-const rootRef = ref<HTMLElement | null>(null)
-const lastSelectionStart = ref<number>(0)
-
-function onGlobalFocusIn(e: FocusEvent) {
-  // 焦点进入：若目标在本组件内，联动键盘高度显示工具条
-  if (isTargetOurEditor(e.target))
-    updateKeyboardInset()
-}
-
-function onGlobalFocusOut() {
-  // 焦点离开：隐藏
-  imeVisible.value = false
-}
-
-onMounted(() => {
-  const vv = window.visualViewport
-  if (vv)
-    vv.addEventListener('resize', updateKeyboardInset, { passive: true })
-  window.addEventListener('focusin', onGlobalFocusIn, { capture: true })
-  window.addEventListener('focusout', onGlobalFocusOut, { capture: true })
-})
-
-onUnmounted(() => {
-  const vv = window.visualViewport
-  if (vv)
-    vv.removeEventListener('resize', updateKeyboardInset as any)
-  window.removeEventListener('focusin', onGlobalFocusIn as any, { capture: true } as any)
-  window.removeEventListener('focusout', onGlobalFocusOut as any, { capture: true } as any)
-})
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -539,10 +509,10 @@ const showFormatPalette = ref(false)
 const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
-const imeBarRef = ref<HTMLElement | null>(null)
-// 让 eslint 识别这个 ref 被读取过
-const _imeBarRefUsed = computed(() => !!imeBarRef.value)
+
 // 根节点 + 光标缓存
+const rootRef = ref<HTMLElement | null>(null)
+const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
   if (el && typeof el.selectionStart === 'number')
@@ -1712,49 +1682,6 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <!-- ===== 键盘上方工具条（IME Bar） ===== -->
-    <!-- 让 eslint 看到 ref -->
-    <div v-show="imeVisible">
-      <teleport to="body">
-        <div
-          ref="imeBarRef"
-          class="ime-bar"
-          :style="imeStyle"
-          @mousedown.prevent
-          @touchstart.prevent
-          @pointerdown.prevent
-        >
-          <button
-            type="button"
-            class="ime-btn"
-            :title="t('notes.editor.format.bold')"
-            @pointerdown.prevent="runToolbarAction(addBold)"
-          >
-            B
-          </button>
-
-          <button
-            type="button"
-            class="ime-btn"
-            :title="t('notes.editor.toolbar.todo')"
-            @pointerdown.prevent="runToolbarAction(addTodo)"
-          >
-            [ ]
-          </button>
-
-          <button
-            type="button"
-            class="ime-btn"
-            :title="t('notes.editor.toolbar.add_tag')"
-            @pointerdown.prevent="openTagMenu()"
-          >
-            #
-          </button>
-        </div>
-      </teleport>
-    </div>
-    <!-- ===== 键盘上方工具条结束 ===== -->
-
     <!-- 样式弹层（更小、更贴合 Aa） -->
     <div
       v-if="showFormatPalette"
@@ -1843,7 +1770,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
+  padding: 12px 10px 8px 22px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -2083,43 +2010,4 @@ function handleBeforeInput(e: InputEvent) {
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
 }
-
-/* ===== IME 键盘上方工具条 ===== */
-.ime-bar {
-  position: fixed;
-  /* 不要 bottom 了；用内联 top/left/width 来定位 */
-  display: flex;
-  gap: 10px;
-  padding: 8px 12px;
-  align-items: center;
-  justify-content: flex-start;
-  background: rgba(28,28,30,0.98);
-  border-top: 1px solid rgba(255,255,255,0.12);
-  -webkit-backdrop-filter: saturate(180%) blur(8px);
-  backdrop-filter: saturate(180%) blur(8px);
-}
-
-.dark .ime-bar {
-  background: rgba(22,22,24,0.98);
-  border-top-color: rgba(255,255,255,0.16);
-}
-
-.ime-btn {
-  min-width: 34px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: transparent;
-  color: #fff;
-  font-weight: 600;
-  font-size: 14px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  cursor: pointer;
-}
-
-.ime-btn:hover { background: rgba(255,255,255,0.08); }
 </style>
