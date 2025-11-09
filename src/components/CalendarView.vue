@@ -37,36 +37,51 @@ const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.valu
 const newEditorBottomSafe = ref(0)
 let _targetBottomSafe = 0
 let _rafId: number | null = null
+let firstBoostHandled = false // 首次 bottom-safe 已处理过？
+let firstBoostSquelchUntil = 0 // 抑制期截止时间戳（performance.now）
 
 function onNewEditorBottomSafe(n: number) {
-  // 目标值：给一点冗余，避免只露半行
   const targetVal = Math.max(0, n + 16)
 
+  // ===== 首开分支：只让“第一次”生效，其后 ~300ms 直接忽略 =====
   if (firstBoostPending.value && targetVal > 0) {
-    firstBoostPending.value = true
-    _targetBottomSafe = targetVal
+    const now = performance.now()
 
-    // 等量滚补：把即将增加的高度转为同等的 scrollTop，避免被“顶一下”
-    const scroller = scrollBodyRef.value
-    const delta0 = targetVal - newEditorBottomSafe.value
-    newEditorBottomSafe.value = targetVal
-    if (scroller && delta0 > 0)
-      scroller.scrollTop += delta0
+    // ① 第一次进来：瞬时设值 + 等量滚补 + 立即校正；并开启 300ms 抑制期
+    if (!firstBoostHandled) {
+      firstBoostHandled = true
+      firstBoostSquelchUntil = now + 300
 
-    requestAnimationFrame(() => {
-      ensureActiveElVisible(20, false)
-    })
-    setTimeout(() => {
-      ensureActiveElVisible(20, false)
-    }, 120)
-    setTimeout(() => {
-      firstBoostPending.value = false
-    }, 240)
+      _targetBottomSafe = targetVal
 
-    return
+      const scroller = scrollBodyRef.value
+      const delta0 = targetVal - newEditorBottomSafe.value
+
+      // 直接生效（不平滑），避免动画参与导致抖
+      newEditorBottomSafe.value = targetVal
+      if (scroller && delta0 > 0)
+        scroller.scrollTop += delta0
+
+      // 仅一次“瞬时”可见性校正（不使用 smooth）
+      requestAnimationFrame(() => {
+        ensureActiveElVisible(20, false)
+      })
+
+      // 稍后关闭首开模式（不再禁用过渡/scroll anchoring）
+      setTimeout(() => {
+        firstBoostPending.value = false
+      }, 260)
+
+      return
+    }
+
+    // ② 抑制期内：忽略重复 bottom-safe 事件，避免反复推拉导致抖动
+    if (now < firstBoostSquelchUntil)
+      return
+    // ③ 抑制期过了，后续就走“正常平滑分支”（下面你的原逻辑）……
   }
 
-  // 之后：走你原来的“死区 + 平滑”
+  // ===== 下面保持你现有的“死区 + 平滑 + 等量滚补”逻辑 =====
   if (Math.abs(targetVal - _targetBottomSafe) < 10)
     return
 
@@ -83,10 +98,8 @@ function onNewEditorBottomSafe(n: number) {
       const scroller = scrollBodyRef.value
       const finalDelta = _targetBottomSafe - newEditorBottomSafe.value
       newEditorBottomSafe.value = _targetBottomSafe
-      // 终帧补一次，确保完全对齐
       if (scroller && finalDelta > 0)
         scroller.scrollTop += finalDelta
-
       _rafId = null
       requestAnimationFrame(() => ensureActiveElVisible(16))
       return
@@ -99,8 +112,6 @@ function onNewEditorBottomSafe(n: number) {
     const before = newEditorBottomSafe.value
     const after = before + inc
     newEditorBottomSafe.value = after
-
-    // 等量滚补：高度 ↑inc，则 scrollTop 同步 ↑inc，视觉不抖
     if (scroller && inc > 0)
       scroller.scrollTop += inc
 
@@ -696,6 +707,10 @@ async function startWriting() {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
   firstBoostPending.value = true // ✅ 标记：首次键盘抬起需要更激进的兜底
   newEditorBottomSafe.value = 0
+
+  // ✅ 新增：初始化“首开消抖闸”
+  firstBoostHandled = false
+  firstBoostSquelchUntil = 0
   // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   newNoteEditorRef.value?.focus()
