@@ -34,6 +34,9 @@ const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
+// ✅ 新增：承接主编辑器的键盘安全区像素
+const bottomSafe = ref(0)
+
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
@@ -54,7 +57,7 @@ async function fetchTagData() {
     if (countsError)
       throw countsError
 
-    // 3. 将返回的数组 [{tag: '#a', cnt: 5}, ...] 转换为 NoteEditor 需要的对象格式 {'#a': 5, ...}
+    // 3. 数组转对象 {'#a': 5, ...}
     const countsObject = (countsData || []).reduce((acc, item) => {
       acc[item.tag] = item.cnt
       return acc
@@ -278,7 +281,7 @@ function loadAllDatesFromCache(): boolean {
   }
 }
 
-async function saveExistingNote(content: string /* , _weather: string | null */) {
+async function saveExistingNote(content: string, _weather?: string | null) {
   if (!user.value || !editingNote.value)
     return
   const id = editingNote.value.id
@@ -327,7 +330,6 @@ function cancelEditExisting() {
 }
 
 /* ===================== 获取某日笔记：优先读缓存，缺失再拉取 ===================== */
-// 用这个新函数完整替换掉旧的 fetchNotesForDate 函数
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
@@ -336,20 +338,18 @@ async function fetchNotesForDate(date: Date) {
   expandedNoteId.value = null
   const cacheKey = getCalendarDateCacheKey(date)
 
-  // --- 开始重写逻辑 ---
-
-  // 阶段一：获取当天的笔记，优先用缓存
+  // 阶段一：缓存
   const cachedData = localStorage.getItem(cacheKey)
   if (cachedData) {
     try {
       selectedDateNotes.value = JSON.parse(cachedData)
     }
     catch {
-      localStorage.removeItem(cacheKey) // 清除无效缓存，以便后续从网络获取
+      localStorage.removeItem(cacheKey)
     }
   }
 
-  // 如果缓存不存在或无效，则从网络获取
+  // 阶段二：网络
   if (!localStorage.getItem(cacheKey)) {
     isLoadingNotes.value = true
     try {
@@ -372,33 +372,27 @@ async function fetchNotesForDate(date: Date) {
     }
     catch (err) {
       console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
-      selectedDateNotes.value = [] // 失败时确保列表为空
+      selectedDateNotes.value = []
     }
     finally {
       isLoadingNotes.value = false
     }
   }
 
-  // 阶段二：【核心修正】在笔记列表确定后，无论来源是哪，都强制校准小蓝点
+  // 阶段三：强制校准小蓝点
   const key = dateKeyStr(date)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
-
-  // 如果笔记状态和蓝点状态不一致，则进行修正
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
-    else
-      datesWithNotes.value.delete(key)
-
-    // 触发响应式更新，并更新总缓存
+    else datesWithNotes.value.delete(key)
     datesWithNotes.value = new Set(datesWithNotes.value)
     localStorage.setItem(
       CACHE_KEYS.CALENDAR_ALL_DATES,
       JSON.stringify(Array.from(datesWithNotes.value)),
     )
   }
-  // --- 结束重写逻辑 ---
 }
 
 /** 在删除后重新校准当前日期的蓝点状态 */
@@ -500,7 +494,7 @@ async function checkAndRefreshIncremental() {
         throw error
 
       const affectedDateKeys = new Set<string>()
-      let added = false // ✅ 新增：记录是否真的往集合里加了新日期
+      let added = false
 
       for (const row of (data || [])) {
         const key = toDateKeyStrFromISO(row.created_at)
@@ -511,13 +505,12 @@ async function checkAndRefreshIncremental() {
         }
       }
 
-      // ✅ 关键：替换成一个新的 Set 实例，触发 Vue 响应
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
 
-      // 清理这些日期的日缓存（使用本地无歧义还原）
+      // 清理这些日期的日缓存
       affectedDateKeys.forEach((keyStr) => {
-        const partsDate = dateFromKeyStr(keyStr) // ✅ 本地时区安全
+        const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
@@ -542,7 +535,7 @@ async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpda
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   localStorage.removeItem(dayCacheKey)
 
-  await fetchNotesForDate(selectedDate.value, true)
+  await fetchNotesForDate(selectedDate.value)
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
@@ -571,11 +564,9 @@ onMounted(async () => {
   await fetchNotesForDate(new Date())
   await checkAndRefreshIncremental()
 
-  // 在组件挂载时，添加可见性变化的事件监听器
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
-// 在组件卸载时，清理事件监听器，防止内存泄漏
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
@@ -701,7 +692,11 @@ async function saveNewNote(content: string, weather: string | null) {
         </div>
 
         <!-- 轻量输入框（显示时隐藏上面的日历） -->
-        <div v-if="isWriting" class="inline-editor">
+        <div
+          v-if="isWriting"
+          class="inline-editor"
+          :style="{ paddingBottom: bottomSafe ? `${bottomSafe}px` : '' }"
+        >
           <NoteEditor
             ref="newNoteEditorRef"
             v-model="newNoteContent"
@@ -718,11 +713,16 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelWriting"
             @focus="onEditorFocus"
             @blur="() => {}"
+            @bottom-safe-change="bottomSafe = $event"
           />
         </div>
 
         <!-- 编辑已有笔记（直接在日历内） -->
-        <div v-if="isEditingExisting" class="inline-editor">
+        <div
+          v-if="isEditingExisting"
+          class="inline-editor"
+          :style="{ paddingBottom: bottomSafe ? `${bottomSafe}px` : '' }"
+        >
           <NoteEditor
             ref="editNoteEditorRef"
             v-model="editContent"
@@ -739,6 +739,7 @@ async function saveNewNote(content: string, weather: string | null) {
             @cancel="cancelEditExisting"
             @focus="onEditorFocus"
             @blur="() => {}"
+            @bottom-safe-change="bottomSafe = $event"
           />
         </div>
 
@@ -781,9 +782,9 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   flex-direction: column;
   color: #333;
-   /* 关键：整体让出顶部/底部安全区 */
-   padding-top: var(--safe-top);
-   padding-bottom: var(--safe-bottom);
+  /* 关键：整体让出顶部/底部安全区 */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -793,7 +794,7 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
+  padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
