@@ -44,12 +44,22 @@ function onNewEditorBottomSafe(n: number) {
 
   // ✅ 首次新建：激进兜底——直接赋值 + 双重校正滚动，然后关闭首开模式
   if (firstBoostPending.value && targetVal > 0) {
-    firstBoostPending.value = false
+  // ✅ 一行只放一个语句，避免 max-statements-per-line
+    firstBoostPending.value = true
     _targetBottomSafe = targetVal
-    newEditorBottomSafe.value = targetVal // 直接生效，不走平滑
-    // 立刻与稍后都校正一次（覆盖键盘动画/viewport 延迟）
-    requestAnimationFrame(() => ensureActiveElVisible(20))
-    setTimeout(() => ensureActiveElVisible(20), 160)
+    newEditorBottomSafe.value = targetVal
+
+    requestAnimationFrame(() => {
+      ensureActiveElVisible(20, false)
+    })
+    setTimeout(() => {
+      ensureActiveElVisible(20, false)
+    }, 120)
+
+    setTimeout(() => {
+      firstBoostPending.value = false
+    }, 240)
+
     return
   }
 
@@ -83,7 +93,7 @@ function onNewEditorBottomSafe(n: number) {
   _rafId = requestAnimationFrame(step)
 }
 
-function ensureActiveElVisible(extra = 16) {
+function ensureActiveElVisible(extra = 16, smooth = true) {
   const activeEl = document.activeElement as HTMLElement | null
   const scroller = scrollBodyRef.value
   if (!activeEl || !scroller)
@@ -94,7 +104,7 @@ function ensureActiveElVisible(extra = 16) {
   const covered = rect.bottom > viewH - extra
   if (covered) {
     const delta = rect.bottom - (viewH - extra)
-    scroller.scrollBy({ top: delta, behavior: 'smooth' })
+    scroller.scrollBy({ top: delta, behavior: smooth ? 'smooth' : 'auto' })
   }
 }
 // --- 关键补丁：在更新完占位高度后，轻推滚动确保光标露出 ---
@@ -761,6 +771,7 @@ async function saveNewNote(content: string, weather: string | null) {
     <div
       ref="scrollBodyRef"
       class="calendar-body"
+      :class="{ 'no-anchor': firstBoostPending }"
     >
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
@@ -800,7 +811,12 @@ async function saveNewNote(content: string, weather: string | null) {
             @bottom-safe-change="onNewEditorBottomSafe"
           />
         </div>
-        <div v-if="isWriting" class="kb-spacer" :style="{ height: `${newEditorBottomSafe}px` }" />
+        <div
+          v-if="isWriting"
+          class="kb-spacer"
+          :class="{ 'no-trans': firstBoostPending }"
+          :style="{ height: `${newEditorBottomSafe}px` }"
+        />
 
         <!-- 编辑已有笔记（直接在日历内） -->
         <div v-if="isEditingExisting" class="inline-editor">
@@ -961,6 +977,13 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   height: 0;
   transition: height 120ms ease-out; /* 轻微过渡，进一步抑制跳变感 */
 }
+.calendar-body.no-anchor { overflow-anchor: none; }
+.kb-spacer {
+  flex: 0 0 auto;
+  height: 0;
+  transition: height 120ms ease-out; /* 平时有轻微过渡 */
+}
+.kb-spacer.no-trans { transition: none; } /* 首开关闭过渡，防抖 */
 </style>
 
 <style>
