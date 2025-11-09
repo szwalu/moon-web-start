@@ -33,20 +33,42 @@ const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
-const newEditorBottomSafe = ref(0) // 日历中新建输入框需要的底部安全空间
+
+const newEditorBottomSafe = ref(0) // 实际用于渲染的平滑值
+let _targetBottomSafe = 0
+let _rafId: number | null = null
 
 function onNewEditorBottomSafe(n: number) {
-  newEditorBottomSafe.value = Math.max(0, n)
-  // 轻触发一次重排，帮助滚动容器在键盘动画期间把底部露出来
-  requestAnimationFrame(() => {
-    const el = scrollBodyRef.value
-    if (!el)
+  // 目标值（不直接渲染）
+  const next = Math.max(0, n)
+
+  // --- 死区：小于 10px 的变化直接忽略，防抖 ---
+  if (Math.abs(next - _targetBottomSafe) < 10)
+    return
+
+  _targetBottomSafe = next
+  if (_rafId != null)
+    return
+
+  // --- 平滑拉近：每帧最多改 12px，直到接近目标 ---
+  const step = () => {
+    const cur = newEditorBottomSafe.value
+    const delta = _targetBottomSafe - cur
+    const mag = Math.abs(delta)
+
+    if (mag <= 1) {
+      newEditorBottomSafe.value = _targetBottomSafe
+      _rafId = null
       return
-    // 若已接近底部，轻推 1px 触发行高/视口刷新（不会可见）
-    const remain = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (remain < n + 24)
-      el.scrollTo({ top: el.scrollTop + 1 })
-  })
+    }
+
+    const maxStep = 12 // 每帧最大变化像素
+    const inc = Math.sign(delta) * Math.min(maxStep, mag)
+    newEditorBottomSafe.value = cur + inc
+
+    _rafId = requestAnimationFrame(step)
+  }
+  _rafId = requestAnimationFrame(step)
 }
 
 // --- 👇 新增：获取所有标签的函数 ---
@@ -700,7 +722,6 @@ async function saveNewNote(content: string, weather: string | null) {
     <div
       ref="scrollBodyRef"
       class="calendar-body"
-      :style="isWriting ? { paddingBottom: `${newEditorBottomSafe}px` } : null"
     >
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
@@ -740,6 +761,7 @@ async function saveNewNote(content: string, weather: string | null) {
             @bottom-safe-change="onNewEditorBottomSafe"
           />
         </div>
+        <div v-if="isWriting" class="kb-spacer" :style="{ height: `${newEditorBottomSafe}px` }" />
 
         <!-- 编辑已有笔记（直接在日历内） -->
         <div v-if="isEditingExisting" class="inline-editor">
@@ -894,6 +916,11 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 编辑：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
+}
+.kb-spacer {
+  flex: 0 0 auto;
+  height: 0;
+  transition: height 120ms ease-out; /* 轻微过渡，进一步抑制跳变感 */
 }
 </style>
 
