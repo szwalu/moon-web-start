@@ -1770,7 +1770,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 56vh;
   overflow-y: auto;
-  padding: 12px 10px 8px 22px;
+  padding: 12px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
