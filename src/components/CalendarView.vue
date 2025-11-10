@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -28,7 +28,6 @@ const user = computed(() => authStore.user)
 
 const allTags = ref<string[]>([])
 const tagCounts = ref<Record<string, number>>({})
-
 const datesWithNotes = ref<Set<string>>(new Set())
 const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
@@ -39,6 +38,10 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
+/* iOS 专用锚点：在行内编辑器底部放一个不可见元素，滚动它以确保“末行+键盘”可见 */
+const anchorNewRef = ref<HTMLDivElement | null>(null)
+const anchorEditRef = ref<HTMLDivElement | null>(null)
+
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -46,7 +49,7 @@ const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.valu
 const editingNote = ref<any | null>(null)
 const editContent = ref('')
 const isEditingExisting = computed(() => !!editingNote.value)
-const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
+const editDraftKey = computed(() => (editingNote.value ? `calendar_edit_${editingNote.value.id}` : ''))
 
 const hideHeader = ref(false)
 function onEditorFocus() {
@@ -79,33 +82,71 @@ onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
 })
 
-/* ====== 与主界面一致的“键盘底部安全区”，并对日历场景做偏置 ====== */
+/* ====== 键盘底部安全区：iOS 场景偏置 + 锚点滚动 ====== */
 const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const IS_ANDROID = /Android|Adr/i.test(UA)
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
 
-/** 额外抬升（约 3 行字高），只用于日历弹层的 iOS */
-const IOS_EXTRA = 64
+/* 调高到 ~5 行字高（22px*5≈110） */
+const IOS_EXTRA = 110
 
 const bottomSafeRaw = ref(0)
 const bottomSafeApplied = computed(() => {
   const v = bottomSafeRaw.value
   if (IS_IOS && v > 0)
     return v + IOS_EXTRA
-
   return v
 })
 
-/** 将 NoteEditor 的 bottomSafe 传导到本层，并做平台修正与“轻推滚动” */
+/* 让 scrollIntoView 认识底部留白 */
+function applyScrollPaddingBottom(px: number) {
+  const el = scrollBodyRef.value
+  if (!el)
+    return
+  const v = Math.max(0, px | 0)
+  el.style.setProperty('--kb-pad', `${v}px`)
+  el.style.scrollPaddingBottom = `${v}px`
+}
+
+/* Android 轻推去抖 */
 let lastAndroidPushAt = 0
 let lastAppliedSent = 0
+
+function iosNudgeToAnchor() {
+  if (!IS_IOS)
+    return
+
+  const container = scrollBodyRef.value
+  if (!container)
+    return
+
+  const anchor = isWriting.value ? anchorNewRef.value : anchorEditRef.value
+  if (!anchor)
+    return
+
+  /* 多帧滚到锚点，覆盖 visualViewport 延迟与弹出动画 */
+  const tryScroll = () => {
+    anchor.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' })
+  }
+
+  tryScroll()
+  requestAnimationFrame(tryScroll)
+  window.setTimeout(tryScroll, 120)
+  window.setTimeout(tryScroll, 240)
+}
+
 function onBottomSafeChange(px: number) {
   const v = Math.max(0, Number(px) || 0)
   bottomSafeRaw.value = v
 
   const applied = bottomSafeApplied.value
+  applyScrollPaddingBottom(applied)
 
-  // 限制发送频率，避免 Android 抖动
+  /* iOS：每次抬升都把锚点滚到视窗底部 */
+  if (IS_IOS && applied > 0)
+    iosNudgeToAnchor()
+
+  /* Android：仅在增长且跨阈值、冷却到时，轻推一把，减抖 */
   const now = Date.now()
   const changedEnough = Math.abs(applied - lastAppliedSent) >= (IS_ANDROID ? 18 : 8)
   const timeOk = now - lastAndroidPushAt >= (IS_ANDROID ? 140 : 60)
@@ -124,25 +165,37 @@ function onBottomSafeChange(px: number) {
   lastAppliedSent = applied
 }
 
+/* 初次进入写作/编辑 或切换时，也做一次 iOS 锚点滚动 */
+watch([isWriting, isEditingExisting], () => {
+  if (IS_IOS && bottomSafeApplied.value > 0)
+    iosNudgeToAnchor()
+})
+
+/* 进入写作/编辑后首次聚焦时做一轮“多帧 nudge” */
+function nudgeAfterFocus() {
+  if (!IS_IOS)
+    return
+
+  const fn = () => iosNudgeToAnchor()
+  requestAnimationFrame(fn)
+  window.setTimeout(fn, 100)
+  window.setTimeout(fn, 200)
+  window.setTimeout(fn, 320)
+}
+
 /* ===================== 标签数据 ===================== */
 async function fetchTagData() {
   if (!user.value)
     return
-
   try {
-    const { data: tagsData, error: tagsError } = await supabase.rpc(
-      'get_unique_tags',
-      { p_user_id: user.value.id },
-    )
+    const { data: tagsData, error: tagsError } = await supabase
+      .rpc('get_unique_tags', { p_user_id: user.value.id })
     if (tagsError)
       throw tagsError
-
     allTags.value = tagsData || []
 
-    const { data: countsData, error: countsError } = await supabase.rpc(
-      'get_tag_counts',
-      { p_user_id: user.value.id },
-    )
+    const { data: countsData, error: countsError } = await supabase
+      .rpc('get_tag_counts', { p_user_id: user.value.id })
     if (countsError)
       throw countsError
 
@@ -184,12 +237,16 @@ async function handleEdit(note: any) {
   isWriting.value = false
   expandedNoteId.value = null
   hideHeader.value = true
+
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
   await nextTick()
-  if (editNoteEditorRef.value)
+
+  if (editNoteEditorRef.value) {
     editNoteEditorRef.value.focus()
+    nudgeAfterFocus()
+  }
 }
 function handleCopy(content: string) {
   emit('copy', content)
@@ -199,7 +256,9 @@ function handlePin(note: any) {
 }
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
+
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
+
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
@@ -219,16 +278,16 @@ function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
 }
 
-/* ===================== 日历点（小圆点） ===================== */
+/* ===================== 日历点 ===================== */
 const attributes = computed(() => {
   const attrs: any[] = []
-  for (const key of datesWithNotes.value) {
+  datesWithNotes.value.forEach((key) => {
     attrs.push({
       key: `note-${key}`,
       dot: true,
       dates: dateFromKeyStr(key),
     })
-  }
+  })
   const today = new Date()
   attrs.push({
     key: 'today-highlight',
@@ -242,7 +301,7 @@ const attributes = computed(() => {
   return attrs
 })
 
-/* ===================== 获取所有有笔记的日期集合（分页） ===================== */
+/* ===================== 所有日期集合 ===================== */
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
@@ -251,6 +310,7 @@ async function fetchAllNoteDatesFull() {
   let from = 0
   let to = PAGE - 1
   const acc = new Set<string>()
+
   while (true) {
     const { data, error } = await supabase
       .from('notes')
@@ -258,20 +318,23 @@ async function fetchAllNoteDatesFull() {
       .eq('user_id', user.value.id)
       .order('created_at', { ascending: false })
       .range(from, to)
+
     if (error)
       throw error
 
-    const list = data || []
-    list.forEach((n) => {
+    const rows = data || []
+    rows.forEach((n) => {
       acc.add(toDateKeyStrFromISO(n.created_at))
     })
-    const isLast = !data || data.length < PAGE
-    if (isLast)
+
+    const last = !data || data.length < PAGE
+    if (last)
       break
 
     from += PAGE
     to += PAGE
   }
+
   datesWithNotes.value = new Set(acc)
   localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(acc)))
 }
@@ -287,11 +350,9 @@ function loadAllDatesFromCache(): boolean {
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
         return s
-
       const d = new Date(s)
       if (Number.isNaN(d.getTime()))
         return s
-
       return dateKeyStr(d)
     })
     datesWithNotes.value = new Set(normalized)
@@ -323,20 +384,19 @@ async function saveExistingNote(content: string, _weather?: string | null) {
       .eq('user_id', user.value.id)
       .select('*')
       .single()
+
     if (error)
       throw error
 
     selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? data : n))
-    localStorage.setItem(
-      getCalendarDateCacheKey(selectedDate.value),
-      JSON.stringify(selectedDateNotes.value),
-    )
+    localStorage.setItem(getCalendarDateCacheKey(selectedDate.value), JSON.stringify(selectedDateNotes.value))
     emit('updated', data)
   }
   catch (e) {
     console.error('更新笔记失败：', e)
     return
   }
+
   editingNote.value = null
   editContent.value = ''
   hideHeader.value = false
@@ -354,8 +414,10 @@ async function fetchNotesForDate(date: Date) {
 
   selectedDate.value = date
   expandedNoteId.value = null
+
   const cacheKey = getCalendarDateCacheKey(date)
   const cachedData = localStorage.getItem(cacheKey)
+
   if (cachedData) {
     try {
       selectedDateNotes.value = JSON.parse(cachedData)
@@ -364,12 +426,14 @@ async function fetchNotesForDate(date: Date) {
       localStorage.removeItem(cacheKey)
     }
   }
+
   const hasCache = !!localStorage.getItem(cacheKey)
   if (!hasCache) {
     isLoadingNotes.value = true
     try {
       const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
       const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+
       const { data, error } = await supabase
         .from('notes')
         .select('*')
@@ -377,6 +441,7 @@ async function fetchNotesForDate(date: Date) {
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: false })
+
       if (error)
         throw error
 
@@ -391,9 +456,11 @@ async function fetchNotesForDate(date: Date) {
       isLoadingNotes.value = false
     }
   }
+
   const key = dateKeyStr(date)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
+
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
@@ -401,28 +468,23 @@ async function fetchNotesForDate(date: Date) {
       datesWithNotes.value.delete(key)
 
     datesWithNotes.value = new Set(datesWithNotes.value)
-    localStorage.setItem(
-      CACHE_KEYS.CALENDAR_ALL_DATES,
-      JSON.stringify(Array.from(datesWithNotes.value)),
-    )
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
 }
 
-/** 删除后校准蓝点 */
+/* 删除后校准蓝点 */
 function refreshDotAfterDelete() {
   const key = dateKeyStr(selectedDate.value)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
+
   if (hasNotes && !hasDot)
     datesWithNotes.value.add(key)
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
 
   datesWithNotes.value = new Set(datesWithNotes.value)
-  localStorage.setItem(
-    CACHE_KEYS.CALENDAR_ALL_DATES,
-    JSON.stringify(Array.from(datesWithNotes.value)),
-  )
+  localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
 }
 
 /* ===================== 轻量校验 & 增量刷新 ===================== */
@@ -439,6 +501,7 @@ async function checkAndRefreshIncremental() {
       .from('notes')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.value.id)
+
     if (error)
       throw error
 
@@ -458,6 +521,7 @@ async function checkAndRefreshIncremental() {
       .order('updated_at', { ascending: false })
       .limit(1)
       .single()
+
     if (error && (error as any).code !== 'PGRST116')
       throw error
 
@@ -488,18 +552,20 @@ async function checkAndRefreshIncremental() {
   try {
     if (serverMaxUpdatedAt > lastSync) {
       const sinceISO = new Date(lastSync || 0).toISOString()
+
       const { data, error } = await supabase
         .from('notes')
         .select('id, created_at, updated_at')
         .eq('user_id', user.value.id)
         .gt('updated_at', sinceISO)
+
       if (error)
         throw error
 
       const affectedDateKeys = new Set<string>()
       let added = false
-      const list = data || []
-      list.forEach((row) => {
+
+      ;(data || []).forEach((row) => {
         const key = toDateKeyStrFromISO(row.created_at)
         affectedDateKeys.add(key)
         if (!datesWithNotes.value.has(key)) {
@@ -507,6 +573,7 @@ async function checkAndRefreshIncremental() {
           added = true
         }
       })
+
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
 
@@ -515,10 +582,8 @@ async function checkAndRefreshIncremental() {
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
-      localStorage.setItem(
-        CACHE_KEYS.CALENDAR_ALL_DATES,
-        JSON.stringify(Array.from(datesWithNotes.value)),
-      )
+
+      localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
     }
   }
   catch (e) {
@@ -574,12 +639,16 @@ defineExpose({ refreshData })
 async function startWriting() {
   isWriting.value = true
   hideHeader.value = true
+
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
   await nextTick()
-  if (newNoteEditorRef.value)
+
+  if (newNoteEditorRef.value) {
     newNoteEditorRef.value.focus()
+    nudgeAfterFocus()
+  }
 }
 
 const composeButtonText = computed(() => {
@@ -588,6 +657,7 @@ const composeButtonText = computed(() => {
   const selDay = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate())
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
 
@@ -622,26 +692,25 @@ async function saveNewNote(content: string, weather: string | null) {
     })
     .select('*')
     .single()
+
   if (error) {
     console.error('保存失败：', error)
     return
   }
+
   selectedDateNotes.value = [data, ...selectedDateNotes.value]
+
   const key = dateKeyStr(selectedDate.value)
   const hasDot = datesWithNotes.value.has(key)
   if (!hasDot) {
     datesWithNotes.value.add(key)
     datesWithNotes.value = new Set(datesWithNotes.value)
-    localStorage.setItem(
-      CACHE_KEYS.CALENDAR_ALL_DATES,
-      JSON.stringify(Array.from(datesWithNotes.value)),
-    )
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
-  localStorage.setItem(
-    getCalendarDateCacheKey(selectedDate.value),
-    JSON.stringify(selectedDateNotes.value),
-  )
+
+  localStorage.setItem(getCalendarDateCacheKey(selectedDate.value), JSON.stringify(selectedDateNotes.value))
   emit('created', data)
+
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false
@@ -650,27 +719,18 @@ async function saveNewNote(content: string, weather: string | null) {
 
 <template>
   <div ref="rootRef" class="calendar-view">
-    <div
-      v-show="!hideHeader"
-      class="calendar-header"
-      @click="handleHeaderClick"
-    >
+    <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
 
-    <!-- 把 bottomSafe 作用到内部滚动容器（双保险） -->
+    <!-- 给滚动容器设置 scroll-padding-bottom，配合锚点滚动 -->
     <div
       ref="scrollBodyRef"
       class="calendar-body"
-      :style="{
-        paddingBottom: bottomSafeApplied ? `${bottomSafeApplied + 12}px` : '',
-      }"
+      :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied + 12}px` : '' }"
     >
-      <div
-        v-show="!isWriting && !isEditingExisting"
-        class="calendar-container"
-      >
+      <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
           :attributes="attributes"
@@ -680,16 +740,13 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
 
       <div class="notes-for-day-container">
-        <div
-          v-if="!isWriting && !isEditingExisting"
-          class="compose-row"
-        >
+        <div v-if="!isWriting && !isEditingExisting" class="compose-row">
           <button class="compose-btn" @click="startWriting">
             {{ composeButtonText }}
           </button>
         </div>
 
-        <!-- 新建：行内编辑器 + 本地 spacer -->
+        <!-- 新建态：内层 spacer + 锚点 -->
         <div
           v-if="isWriting"
           class="inline-editor"
@@ -713,14 +770,11 @@ async function saveNewNote(content: string, weather: string | null) {
             @blur="() => {}"
             @bottom-safe-change="onBottomSafeChange"
           />
-          <div
-            v-if="bottomSafeApplied"
-            class="kb-spacer"
-            :style="{ height: `${bottomSafeApplied}px` }"
-          />
+          <div v-if="bottomSafeApplied" class="kb-spacer" :style="{ height: `${bottomSafeApplied}px` }" />
+          <div ref="anchorNewRef" class="kb-anchor" />
         </div>
 
-        <!-- 编辑：行内编辑器 + 本地 spacer -->
+        <!-- 编辑态：内层 spacer + 锚点 -->
         <div
           v-if="isEditingExisting"
           class="inline-editor"
@@ -744,24 +798,15 @@ async function saveNewNote(content: string, weather: string | null) {
             @blur="() => {}"
             @bottom-safe-change="onBottomSafeChange"
           />
-          <div
-            v-if="bottomSafeApplied"
-            class="kb-spacer"
-            :style="{ height: `${bottomSafeApplied}px` }"
-          />
+          <div v-if="bottomSafeApplied" class="kb-spacer" :style="{ height: `${bottomSafeApplied}px` }" />
+          <div ref="anchorEditRef" class="kb-anchor" />
         </div>
 
-        <div
-          v-if="isLoadingNotes"
-          class="loading-text"
-        >
+        <div v-if="isLoadingNotes" class="loading-text">
           {{ t('notes.calendar.loading') }}
         </div>
 
-        <div
-          v-else-if="selectedDateNotes.length > 0"
-          class="notes-list"
-        >
+        <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
           <div v-for="note in selectedDateNotes" :key="note.id">
             <NoteItem
               :note="note"
@@ -780,19 +825,12 @@ async function saveNewNote(content: string, weather: string | null) {
           </div>
         </div>
 
-        <div
-          v-else
-          class="no-notes-text"
-        >
+        <div v-else class="no-notes-text">
           {{ t('notes.calendar.no_notes_for_day') }}
         </div>
 
-        <!-- 全局兜底 spacer：确保滚动容器底部始终有高度 -->
-        <div
-          v-if="bottomSafeApplied"
-          class="kb-spacer-global"
-          :style="{ height: `${bottomSafeApplied}px` }"
-        />
+        <!-- 全局兜底 spacer -->
+        <div v-if="bottomSafeApplied" class="kb-spacer-global" :style="{ height: `${bottomSafeApplied}px` }" />
       </div>
     </div>
   </div>
@@ -829,14 +867,8 @@ async function saveNewNote(content: string, weather: string | null) {
   top: var(--safe-top);
   z-index: 1;
 }
-.dark .calendar-header {
-  border-bottom-color: #374151;
-}
-.calendar-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-}
+.dark .calendar-header { border-bottom-color: #374151; }
+.calendar-header h2 { font-size: 18px; font-weight: 600; margin: 0; }
 .close-btn {
   font-size: 28px;
   background: none;
@@ -852,92 +884,46 @@ async function saveNewNote(content: string, weather: string | null) {
   position: relative;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* 让 scrollIntoView 认识底部留白 */
+  scroll-padding-bottom: var(--kb-pad, 0px);
 }
 
 .calendar-container {
   padding: 1rem;
   border-bottom: 1px solid #e5e7eb;
 }
-.dark .calendar-container {
-  border-bottom-color: #374151;
-}
-:deep(.vc-container) {
-  border: none;
-  font-family: inherit;
-  width: 100%;
-}
-.dark :deep(.vc-container) {
-  background: transparent;
-  color: #f0f0f0;
-}
+.dark .calendar-container { border-bottom-color: #374151; }
+:deep(.vc-container) { border: none; font-family: inherit; width: 100%; }
+.dark :deep(.vc-container) { background: transparent; color: #f0f0f0; }
 
-.notes-for-day-container {
-  padding: 1rem 1.5rem;
-}
-.selected-date-header {
-  font-weight: 600;
-  margin-bottom: 1rem;
-}
-.loading-text,
-.no-notes-text {
-  text-align: center;
-  color: #888;
-  padding: 2rem;
-}
-.dark .loading-text,
-.dark .no-notes-text {
-  color: #aaa;
-}
-.notes-list {
-  display: flex;
-  flex-direction: column;
-}
-.notes-list > div {
-  margin-bottom: 1.5rem;
-}
-.notes-list > div:last-child {
-  margin-bottom: 0;
-}
+.notes-for-day-container { padding: 1rem 1.5rem; }
+.selected-date-header { font-weight: 600; margin-bottom: 1rem; }
+.loading-text, .no-notes-text { text-align: center; color: #888; padding: 2rem; }
+.dark .loading-text, .dark .no-notes-text { color: #aaa; }
+.notes-list { display: flex; flex-direction: column; }
+.notes-list > div { margin-bottom: 1.5rem; }
+.notes-list > div:last-child { margin-bottom: 0; }
 
-/* 新建态：NoteEditor 根节点没有 .editing-viewport */
+/* 新建态/编辑态下的 textarea 最大高度（和你主页一致） */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
   max-height: 56vh !important;
 }
-/* 编辑态：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
 }
 
-/* 占位块仅提供高度，不需要可见 */
-.kb-spacer,
-.kb-spacer-global {
-  width: 100%;
-  pointer-events: none;
-}
+/* spacer 与锚点 */
+.kb-spacer, .kb-spacer-global { width: 100%; pointer-events: none; }
+.kb-anchor { width: 1px; height: 1px; margin-top: 0; }
 </style>
 
 <style>
-.n-dialog__mask,
-.n-modal-mask {
-  z-index: 6002 !important;
-}
-.n-dialog,
-.n-dialog__container,
-.n-modal,
-.n-modal-container {
-  z-index: 6003 !important;
-}
-.n-message-container,
-.n-notification-container,
-.n-popover,
-.n-dropdown {
-  z-index: 6004 !important;
-}
+.n-dialog__mask, .n-modal-mask { z-index: 6002 !important; }
+.n-dialog, .n-dialog__container, .n-modal, .n-modal-container { z-index: 6003 !important; }
+.n-message-container, .n-notification-container, .n-popover, .n-dropdown { z-index: 6004 !important; }
 
 /* 写笔记按钮行 */
-.compose-row {
-  margin: 0 0 12px 0;
-}
+.compose-row { margin: 0 0 12px 0; }
 .compose-btn {
   background: #00b386;
   color: #fff;
@@ -947,17 +933,11 @@ async function saveNewNote(content: string, weather: string | null) {
   font-size: 14px;
   cursor: pointer;
 }
-.compose-btn:hover {
-  background: #009a74;
-}
+.compose-btn:hover { background: #009a74; }
 
 /* 输入框容器与间距 */
-.inline-editor {
-  margin-bottom: 16px;
-}
+.inline-editor { margin-bottom: 16px; }
 
-/* 当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
-.calendar-container {
-  transition: height 0.2s ease, opacity 0.2s ease;
-}
+/* 隐藏/显示日历的过渡 */
+.calendar-container { transition: height 0.2s ease, opacity 0.2s ease; }
 </style>
