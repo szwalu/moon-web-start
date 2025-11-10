@@ -692,7 +692,8 @@ function recomputeBottomSafePadding() {
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (delta > 0)
-          window.scrollBy(0, delta)
+          ; // scroll push disabled
+        // window.scrollBy(0, delta)
       }
       _hasPushedPage = true
       window.setTimeout(() => {
