@@ -20,7 +20,7 @@ const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 const isDark = useDark()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const datesWithNotes = ref<Set<string>>(new Set())
 const selectedDateNotes = ref<any[]>([])
 const selectedDate = ref(new Date())
@@ -604,11 +604,15 @@ const composeButtonText = computed(() => {
   const sel = selectedDate.value
   const now = new Date()
 
-  // 归零时分秒，保证仅比较日期
   const selDay = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate())
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-  const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+  // ✅ 使用当前语言自动本地化“月 日”
+  const labelDate = new Intl.DateTimeFormat(
+    // locale.value 可能是 'en', 'zh-CN', 'ja', ...；为空时交给系统默认
+    locale.value || undefined,
+    { month: 'long', day: 'numeric' },
+  ).format(sel)
 
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
