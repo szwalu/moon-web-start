@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -29,7 +29,7 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
-// ===== 写作 / 编辑状态 =====
+/* ===== 写作 / 编辑状态 ===== */
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -39,114 +39,49 @@ const editContent = ref('')
 const isEditingExisting = computed(() => !!editingNote.value)
 const editDraftKey = computed(() => (editingNote.value ? `calendar_edit_${editingNote.value.id}` : ''))
 
-/* 锚点：放在行内编辑器底部，滚它来确保末行+键盘可见 */
-const anchorNewRef = ref<HTMLDivElement | null>(null)
-const anchorEditRef = ref<HTMLDivElement | null>(null)
-
-/* 行内编辑器容器：用于“末尾对齐” */
+/* 行内编辑器容器：用于“轻量确保在可视区内” */
 const wrapNewRef = ref<HTMLElement | null>(null)
 const wrapEditRef = ref<HTMLElement | null>(null)
 
-/* ============ 视觉/滚动核心 ============ */
-const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-const IS_ANDROID = /Android|Adr/i.test(UA)
-const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
-
-/* 调参区（已为 iPhone 13/15 实测调整更稳） */
-const IOS_EXTRA = 120
-const IOS_SMALL_DELTA = 18
-const IOS_NUDGE_COOLDOWN_MS = 360
-const LOWER_THR = 48
-const UPPER_THR = 48
-const EFFECTIVE_PAD_MAX_RATIO = 0.85
-const EXTRA_SAFE_PAD = 40
-const SCROLL_SUPPRESS_MS = 320
-
-const bottomSafeRaw = ref(0)
-const bottomSafeApplied = computed(() => {
-  const v = bottomSafeRaw.value
-  if (IS_IOS && v > 0)
-    return v + IOS_EXTRA
-
-  return v
-})
-
-function applyScrollPaddingBottom(px: number) {
+/* ===== 仅保留最小父职责：写 CSS 变量 ===== */
+function setKbPad(px: number) {
   const el = scrollBodyRef.value
   if (!el)
     return
-
-  const v = Math.max(0, px | 0)
+  const v = Math.max(0, Math.floor(Number(px) || 0))
   el.style.setProperty('--kb-pad', `${v}px`)
 }
 
-/* 有效补偿：把键盘高度计入可视高度，且上限不超过视高 85% */
-function effectivePad(el: HTMLElement) {
-  const cap = Math.floor(el.clientHeight * EFFECTIVE_PAD_MAX_RATIO)
-  const pad = Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
-  return pad
+/* 交给 NoteEditor 的回调：不再做任何二次补偿或主动滚动 */
+function onEditorBottomSafeChange(px: number) {
+  setKbPad(px)
 }
 
-/* 统一的程序性滚动，附带抑制标记，避免连环触发 */
-let lastProgScrollAt = 0
-function progScrollTo(targetTop: number) {
-  const el = scrollBodyRef.value
-  if (!el)
-    return
-
-  const y = Math.max(0, targetTop | 0)
-  lastProgScrollAt = Date.now()
-  el.scrollTo({ top: y, behavior: 'auto' })
-}
-function progScrollBy(delta: number) {
-  const el = scrollBodyRef.value
-  if (!el)
-    return
-
-  const y = Math.max(0, el.scrollTop + (delta | 0))
-  lastProgScrollAt = Date.now()
-  el.scrollTo({ top: y, behavior: 'auto' })
-}
-
-/* 当前行内编辑器在容器内可见（考虑键盘留白） */
-function ensureInlineEditorVisible() {
-  const container = scrollBodyRef.value
-  if (!container)
-    return
-
-  const wrapEl = isWriting.value ? wrapNewRef.value : (isEditingExisting.value ? wrapEditRef.value : null)
-  if (!wrapEl)
-    return
-
-  const since = Date.now() - lastProgScrollAt
-  if (since < SCROLL_SUPPRESS_MS)
-    return
-
-  const extraPadding = 16
-  const pad = effectivePad(container)
-  const effectiveViewH = Math.max(0, container.clientHeight - pad)
-  const wrapBottom = wrapEl.offsetTop + wrapEl.offsetHeight
-  const viewBottom = container.scrollTop + effectiveViewH - extraPadding
-  if (wrapBottom > viewBottom) {
-    const neededTop = wrapBottom - effectiveViewH + extraPadding
-    progScrollTo(neededTop)
-  }
-}
-
+/* 焦点时仅隐藏头部，不主动滚动 */
 const hideHeader = ref(false)
 function onEditorFocus() {
   hideHeader.value = true
 }
 
-function onNewEditorFocus() {
-  onEditorFocus()
-  ensureInlineEditorVisible()
-  nudgeAfterFocus()
-}
-function onEditEditorFocus() {
-  onEditorFocus()
-  ensureInlineEditorVisible()
-  nudgeAfterFocus()
+/* 轻量“确保行内编辑器在可视区内”（非强制） */
+function ensureInlineEditorVisible() {
+  const container = scrollBodyRef.value
+  const wrapper = isWriting.value ? wrapNewRef.value : (isEditingExisting.value ? wrapEditRef.value : null)
+  if (!container || !wrapper)
+    return
+
+  const cTop = container.scrollTop
+  const cH = container.clientHeight
+  const pad = Number.parseFloat(getComputedStyle(container).getPropertyValue('--kb-pad')) || 0
+  const viewBottom = cTop + Math.max(0, cH - pad) - 8 // 略留 8px 余量
+
+  const wTop = wrapper.offsetTop
+  const wBottom = wTop + wrapper.offsetHeight
+
+  if (wBottom > viewBottom)
+    container.scrollTo({ top: wBottom - (cH - pad) + 8, behavior: 'auto' })
+  else if (wTop < cTop)
+    container.scrollTo({ top: wTop - 8, behavior: 'auto' })
 }
 
 /* 点击日历浮层外部时退出写作/编辑 */
@@ -154,14 +89,11 @@ const rootRef = ref<HTMLElement | null>(null)
 function onGlobalClickCapture(e: MouseEvent) {
   if (!isWriting.value && !isEditingExisting.value)
     return
-
   const target = e.target as HTMLElement | null
   if (!target)
     return
-
   if (!rootRef.value?.contains(target))
     return
-
   if (target.closest('.inline-editor'))
     return
 
@@ -176,135 +108,6 @@ onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
 })
 
-/* ====== 键盘补偿去抖与锚点轻推 ====== */
-let lastAndroidPushAt = 0
-let lastAppliedSent = 0
-let lastIosNudgeAt = 0
-let iosNudgeQueued = false
-let padRaf = 0
-let pendingPad = -1
-let lastNudgeKey = ''
-let typingTimer = 0
-
-function requestApplyPad(applied: number) {
-  pendingPad = applied
-  if (padRaf)
-    return
-
-  padRaf = requestAnimationFrame(() => {
-    applyScrollPaddingBottom(pendingPad + EXTRA_SAFE_PAD)
-    padRaf = 0
-  })
-}
-
-function scheduleIosNudge() {
-  if (!IS_IOS)
-    return
-
-  const now = Date.now()
-  if (now - lastIosNudgeAt < IOS_NUDGE_COOLDOWN_MS)
-    return
-
-  if (iosNudgeQueued)
-    return
-
-  iosNudgeQueued = true
-  requestAnimationFrame(() => {
-    iosNudgeQueued = false
-    lastIosNudgeAt = Date.now()
-    iosNudgeToAnchor()
-  })
-}
-
-/* 单次、最小必要的锚点滚动（非贴底，仅越界补滚，扣除键盘补偿） */
-function iosNudgeToAnchor() {
-  const container = scrollBodyRef.value
-  if (!container)
-    return
-
-  const anchor = isWriting.value ? anchorNewRef.value : anchorEditRef.value
-  if (!anchor)
-    return
-
-  const since = Date.now() - lastProgScrollAt
-  if (since < SCROLL_SUPPRESS_MS)
-    return
-
-  const pad = effectivePad(container)
-  const viewTop = container.scrollTop
-  const viewBottom = viewTop + Math.max(0, container.clientHeight - pad)
-  const anchorTop = anchor.offsetTop
-
-  const lowerGap = anchorTop - (viewBottom - LOWER_THR)
-  const upperGap = (viewTop + UPPER_THR) - anchorTop
-
-  const key = `${isWriting.value ? 'w' : 'e'}#${anchorTop}|${viewBottom}`
-  if (key === lastNudgeKey && lowerGap <= 0 && upperGap <= 0)
-    return
-
-  if (lowerGap > 0) {
-    progScrollBy(lowerGap)
-    lastNudgeKey = key
-    return
-  }
-  if (upperGap > 0) {
-    progScrollBy(-upperGap)
-    lastNudgeKey = key
-  }
-}
-
-function onBottomSafeChange(px: number) {
-  const v = Math.max(0, Number(px) || 0)
-  bottomSafeRaw.value = v
-
-  const applied = bottomSafeApplied.value
-  const deltaApplied = Math.abs(applied - lastAppliedSent)
-
-  // iOS：细小变化直接忽略；若为“下降”且变化不大，也忽略，避免来回顶
-  if (IS_IOS && lastAppliedSent > 0 && deltaApplied < IOS_SMALL_DELTA)
-    return
-
-  if (IS_IOS && applied < lastAppliedSent && deltaApplied < 28)
-    return
-
-  requestApplyPad(applied)
-
-  if (IS_IOS && applied > lastAppliedSent)
-    scheduleIosNudge()
-
-  const now = Date.now()
-  const changedEnough = Math.abs(applied - lastAppliedSent) >= (IS_ANDROID ? 18 : 8)
-  const timeOk = now - lastAndroidPushAt >= (IS_ANDROID ? 140 : 60)
-  if (IS_ANDROID && applied > lastAppliedSent && changedEnough && timeOk) {
-    const ratio = 1.2
-    const cap = 240
-    const delta = Math.min(Math.ceil((applied - lastAppliedSent) * ratio), cap)
-    progScrollBy(delta)
-    lastAndroidPushAt = now
-  }
-
-  lastAppliedSent = applied
-}
-
-/* 输入进行时：轻量“锚点轻推”，并合并 60ms 防连环 */
-function onEditorTyping() {
-  if (!IS_IOS)
-    return
-
-  if (typingTimer)
-    window.clearTimeout(typingTimer)
-
-  typingTimer = window.setTimeout(() => {
-    scheduleIosNudge()
-  }, 60)
-}
-
-/* 切换写作/编辑状态后，如已抬升则补一次 nudge（带冷却） */
-watch([isWriting, isEditingExisting], () => {
-  if (IS_IOS && bottomSafeApplied.value > 0)
-    scheduleIosNudge()
-})
-
 /* ===================== 标签数据 ===================== */
 async function fetchTagData() {
   if (!user.value)
@@ -314,7 +117,6 @@ async function fetchTagData() {
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
     if (tagsError)
       throw tagsError
-
     allTags.value = tagsData || []
 
     const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', { p_user_id: user.value.id })
@@ -360,8 +162,7 @@ async function handleEdit(note: any) {
   expandedNoteId.value = null
   hideHeader.value = true
 
-  if (scrollBodyRef.value)
-    progScrollTo(0)
+  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'auto' })
 
   await nextTick()
   ensureInlineEditorVisible()
@@ -374,8 +175,6 @@ async function handleEdit(note: any) {
 
   if (editNoteEditorRef.value)
     safeFocusEditor(editNoteEditorRef.value)
-
-  nudgeAfterFocus()
 }
 function handleCopy(content: string) {
   emit('copy', content)
@@ -390,7 +189,6 @@ async function handleDelete(noteId: string) {
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
-
   else
     localStorage.removeItem(dayCacheKey)
 
@@ -400,8 +198,7 @@ function handleDateUpdated() {
   refreshData()
 }
 function handleHeaderClick() {
-  if (scrollBodyRef.value)
-    progScrollTo(0)
+  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'auto' })
 }
 function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
@@ -448,7 +245,6 @@ async function fetchAllNoteDatesFull() {
     const last = !data || data.length < PAGE
     if (last)
       break
-
     from += PAGE
     to += PAGE
   }
@@ -467,11 +263,9 @@ function loadAllDatesFromCache(): boolean {
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
         return s
-
       const d = new Date(s)
       if (Number.isNaN(d.getTime()))
         return s
-
       return dateKeyStr(d)
     })
     datesWithNotes.value = new Set(normalized)
@@ -578,7 +372,6 @@ async function fetchNotesForDate(date: Date) {
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
-
     else
       datesWithNotes.value.delete(key)
 
@@ -594,7 +387,6 @@ function refreshDotAfterDelete() {
   const hasDot = datesWithNotes.value.has(key)
   if (hasNotes && !hasDot)
     datesWithNotes.value.add(key)
-
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
 
@@ -618,7 +410,6 @@ async function checkAndRefreshIncremental() {
       .eq('user_id', user.value.id)
     if (error)
       throw error
-
     serverTotal = count || 0
   }
   catch (e) {
@@ -637,7 +428,6 @@ async function checkAndRefreshIncremental() {
       .single()
     if (error && (error as any).code !== 'PGRST116')
       throw error
-
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
@@ -744,21 +534,14 @@ defineExpose({ refreshData })
 async function startWriting() {
   isWriting.value = true
   hideHeader.value = true
-  if (scrollBodyRef.value)
-    progScrollTo(0)
+  scrollBodyRef.value?.scrollTo({ top: 0, behavior: 'auto' })
 
   await nextTick()
   ensureInlineEditorVisible()
-  requestAnimationFrame(() => {
-    ensureInlineEditorVisible()
-  })
-  window.setTimeout(() => {
-    ensureInlineEditorVisible()
-  }, 120)
+  requestAnimationFrame(() => ensureInlineEditorVisible())
+  window.setTimeout(() => ensureInlineEditorVisible(), 120)
   if (newNoteEditorRef.value)
     safeFocusEditor(newNoteEditorRef.value)
-
-  nudgeAfterFocus()
 }
 
 const composeButtonText = computed(() => {
@@ -769,7 +552,6 @@ const composeButtonText = computed(() => {
   const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
-
   return t('notes.calendar.compose_write', { date: labelDate })
 })
 
@@ -822,35 +604,18 @@ async function saveNewNote(content: string, weather: string | null) {
   hideHeader.value = false
 }
 
-/* ===================== 输入监听（保持光标可见） ===================== */
-watch(newNoteContent, () => {
-  if (isWriting.value)
-    onEditorTyping()
-})
-watch(editContent, () => {
-  if (isEditingExisting.value)
-    onEditorTyping()
-})
-
+/* ===================== 输入监听（无需主动 nudge） ===================== */
+/* 保留空壳，便于后续接回调试；当前不做任何操作 */
 function safeFocusEditor(comp: any) {
   try {
     comp?.focus?.({ preventScroll: true })
   }
   catch {}
+
   try {
     comp?.$el?.querySelector?.('textarea')?.focus({ preventScroll: true })
   }
   catch {}
-}
-
-function nudgeAfterFocus() {
-  if (!IS_IOS)
-    return
-
-  scheduleIosNudge()
-  window.setTimeout(() => {
-    scheduleIosNudge()
-  }, 120)
 }
 </script>
 
@@ -861,11 +626,8 @@ function nudgeAfterFocus() {
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
 
-    <!-- 给滚动容器设置 scroll-padding-bottom，配合锚点滚动 -->
-    <div
-      ref="scrollBodyRef"
-      class="calendar-body"
-    >
+    <!-- 滚动容器：仅由 --kb-pad 控制补偿 -->
+    <div ref="scrollBodyRef" class="calendar-body">
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
@@ -882,12 +644,8 @@ function nudgeAfterFocus() {
           </button>
         </div>
 
-        <!-- 新建态：锚点 -->
-        <div
-          v-if="isWriting"
-          ref="wrapNewRef"
-          class="inline-editor"
-        >
+        <!-- 新建态 -->
+        <div v-if="isWriting" ref="wrapNewRef" class="inline-editor">
           <NoteEditor
             ref="newNoteEditorRef"
             v-model="newNoteContent"
@@ -902,19 +660,13 @@ function nudgeAfterFocus() {
             :clear-draft-on-save="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
-            @blur="() => {}"
-            @bottom-safe-change="onBottomSafeChange"
-            @focus="onNewEditorFocus"
+            @bottom-safe-change="onEditorBottomSafeChange"
+            @focus="onEditorFocus"
           />
-          <div ref="anchorNewRef" class="kb-anchor" />
         </div>
 
-        <!-- 编辑态：锚点 -->
-        <div
-          v-if="isEditingExisting"
-          ref="wrapEditRef"
-          class="inline-editor"
-        >
+        <!-- 编辑态 -->
+        <div v-if="isEditingExisting" ref="wrapEditRef" class="inline-editor">
           <NoteEditor
             ref="editNoteEditorRef"
             v-model="editContent"
@@ -929,11 +681,9 @@ function nudgeAfterFocus() {
             :clear-draft-on-save="true"
             @save="saveExistingNote"
             @cancel="cancelEditExisting"
-            @blur="() => {}"
-            @bottom-safe-change="onBottomSafeChange"
-            @focus="onEditEditorFocus"
+            @bottom-safe-change="onEditorBottomSafeChange"
+            @focus="onEditorFocus"
           />
-          <div ref="anchorEditRef" class="kb-anchor" />
         </div>
 
         <div v-if="isLoadingNotes" class="loading-text">
@@ -963,8 +713,8 @@ function nudgeAfterFocus() {
           {{ t('notes.calendar.no_notes_for_day') }}
         </div>
 
-        <!-- 统一由 --kb-pad 控制底部补偿（含 EXTRA_SAFE_PAD） -->
-        <div class="kb-spacer-global" style="height: calc(var(--kb-pad, 0px));" />
+        <!-- 统一由 --kb-pad 控制底部补偿 -->
+        <div class="kb-spacer-global" />
       </div>
     </div>
   </div>
@@ -986,6 +736,7 @@ function nudgeAfterFocus() {
   padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view { background: #1e1e1e; color: #f0f0f0; }
+
 .calendar-header {
   display: flex;
   justify-content: space-between;
@@ -1009,7 +760,9 @@ function nudgeAfterFocus() {
   position: relative;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  scroll-padding-bottom: calc(var(--kb-pad, 0px) + 8px);
+  /* ✅ 关键：由 NoteEditor 提供的像素，父容器只负责消费 */
+  --kb-pad: 0px;
+  scroll-padding-bottom: var(--kb-pad);
 }
 
 .calendar-container { padding: 1rem; border-bottom: 1px solid #e5e7eb; }
@@ -1029,15 +782,15 @@ function nudgeAfterFocus() {
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) { max-height: 56vh !important; }
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) { max-height: 75dvh !important; }
 
-/* spacer 与锚点 */
-.kb-spacer-global { width: 100%; pointer-events: none; }
-.kb-anchor { width: 1px; height: 1px; margin-top: 0; }
-</style>
+/* spacer：高度由 --kb-pad 控制 */
+.kb-spacer-global {
+  width: 100%;
+  height: var(--kb-pad);
+  pointer-events: none;
+}
 
-<style>
-.n-dialog__mask, .n-modal-mask { z-index: 6002 !important; }
-.n-dialog, .n-dialog__container, .n-modal, .n-modal-container { z-index: 6003 !important; }
-.n-message-container, .n-notification-container, .n-popover, .n-dropdown { z-index: 6004 !important; }
+/* 输入框容器与间距 */
+.inline-editor { margin-bottom: 16px; }
 
 /* 写笔记按钮行 */
 .compose-row { margin: 0 0 12px 0; }
@@ -1052,9 +805,12 @@ function nudgeAfterFocus() {
 }
 .compose-btn:hover { background: #009a74; }
 
-/* 输入框容器与间距 */
-.inline-editor { margin-bottom: 16px; }
-
 /* 隐藏/显示日历的过渡 */
 .calendar-container { transition: height 0.2s ease, opacity 0.2s ease; }
+</style>
+
+<style>
+.n-dialog__mask, .n-modal-mask { z-index: 6002 !important; }
+.n-dialog, .n-dialog__container, .n-modal, .n-modal-container { z-index: 6003 !important; }
+.n-message-container, .n-notification-container, .n-popover, .n-dropdown { z-index: 6004 !important; }
 </style>
