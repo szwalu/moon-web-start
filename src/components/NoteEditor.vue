@@ -79,12 +79,12 @@ function onTextPointerMove() {
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  // requestAnimationFrame(() => {
-  // recomputeBottomSafePadding()
-  // })
-  // window.setTimeout(() => {
-  // recomputeBottomSafePadding()
-  // }, 120)
+  requestAnimationFrame(() => {
+    recomputeBottomSafePadding()
+  })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -687,7 +687,13 @@ function recomputeBottomSafePadding() {
         const delta = Math.min(Math.ceil(need * ratio), cap)
         window.scrollBy(0, delta)
       }
-      // iOS：不再轻推，完全交给 bottomSafe 垫片
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0)
+          window.scrollBy(0, delta)
+      }
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
@@ -831,7 +837,7 @@ function handleFocus() {
   _hasPushedPage = false
 
   // 用真实 footer 高度“临时托起”，不等 vv
-  emit('bottomSafeChange', 24)
+  emit('bottomSafeChange', getFooterHeight())
 
   // 立即一轮计算
   requestAnimationFrame(() => {
@@ -1385,15 +1391,17 @@ onUnmounted(() => {
 
 onMounted(() => {
   const vv = window.visualViewport
-  if (vv)
+  if (vv) {
     vv.addEventListener('resize', recomputeBottomSafePadding)
-  // vv.addEventListener('scroll', recomputeBottomSafePadding)
+    vv.addEventListener('scroll', recomputeBottomSafePadding)
+  }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (vv)
+  if (vv) {
     vv.removeEventListener('resize', recomputeBottomSafePadding)
-  // vv.removeEventListener('scroll', recomputeBottomSafePadding)
+    vv.removeEventListener('scroll', recomputeBottomSafePadding)
+  }
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
@@ -1514,9 +1522,7 @@ function handleBeforeInput(e: InputEvent) {
   // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, isAndroid ? 180 : 120)
-  const vv = window.visualViewport
-  const kh = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0
-  emit('bottomSafeChange', vv ? Math.min(prelift, Math.max(0, kh - 8)) : prelift)
+  emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
@@ -1764,7 +1770,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75dvh;
+  max-height: 56vh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
