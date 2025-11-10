@@ -51,14 +51,13 @@ function ensureInlineEditorVisible() {
   const container = scrollBodyRef.value
   if (!container)
     return
-
   const wrapEl = isWriting.value ? wrapNewRef.value : (isEditingExisting.value ? wrapEditRef.value : null)
   if (!wrapEl)
     return
 
   const extraPadding = 16
   const pad = effectivePad(container)
-  const effectiveViewH = container.clientHeight - pad
+  const effectiveViewH = Math.max(0, container.clientHeight - pad)
   const wrapBottom = wrapEl.offsetTop + wrapEl.offsetHeight
   const viewBottom = container.scrollTop + effectiveViewH - extraPadding
   if (wrapBottom > viewBottom) {
@@ -90,17 +89,13 @@ const rootRef = ref<HTMLElement | null>(null)
 function onGlobalClickCapture(e: MouseEvent) {
   if (!isWriting.value && !isEditingExisting.value)
     return
-
   const target = e.target as HTMLElement | null
   if (!target)
     return
-
   if (!rootRef.value?.contains(target))
     return
-
   if (target.closest('.inline-editor'))
     return
-
   isWriting.value = false
   editingNote.value = null
   hideHeader.value = false
@@ -117,17 +112,16 @@ const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const IS_ANDROID = /Android|Adr/i.test(UA)
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
 
-/* iPhone 15 抖动的根因是细小抬升反复触发；增大死区 + 统一节流 */
-const IOS_EXTRA = 176
+/* 较温和的“额外留白”，并提高冷却时间减少临界抖动 */
+const IOS_EXTRA = 128
 const IOS_SMALL_DELTA = 18
-const IOS_NUDGE_COOLDOWN_MS = 180
+const IOS_NUDGE_COOLDOWN_MS = 260
 
 const bottomSafeRaw = ref(0)
 const bottomSafeApplied = computed(() => {
   const v = bottomSafeRaw.value
   if (IS_IOS && v > 0)
     return v + IOS_EXTRA
-
   return v
 })
 
@@ -135,12 +129,11 @@ function applyScrollPaddingBottom(px: number) {
   const el = scrollBodyRef.value
   if (!el)
     return
-
   const v = Math.max(0, px | 0)
   el.style.setProperty('--kb-pad', `${v}px`)
 }
 
-// 计算有效补偿：把键盘高度参与到可见高度里，且上限不超过视高的 85%
+/* 有效补偿：把键盘高度计入可视高度，上限不超过视高 85% */
 function effectivePad(el: HTMLElement) {
   const cap = Math.floor(el.clientHeight * 0.85)
   return Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
@@ -159,28 +152,41 @@ function safeFocusEditor(comp: any) {
 }
 
 /* 单次、最小必要的锚点滚动（非贴底，仅越界补滚，扣除键盘补偿） */
+let lastNudgeKey = ''
 function iosNudgeToAnchor() {
   const container = scrollBodyRef.value
   if (!container)
     return
-
   const anchor = isWriting.value ? anchorNewRef.value : anchorEditRef.value
   if (!anchor)
     return
 
   const pad = effectivePad(container)
   const viewTop = container.scrollTop
-  const viewBottom = viewTop + container.clientHeight - pad
+  const viewBottom = viewTop + Math.max(0, container.clientHeight - pad)
   const anchorTop = anchor.offsetTop
 
-  const lowerGap = anchorTop - (viewBottom - 24)
-  const upperGap = (viewTop + 24) - anchorTop
+  // 只有明显越界才滚动，阈值 36px
+  const LOWER_THR = 36
+  const UPPER_THR = 36
 
-  if (lowerGap > 0)
+  const lowerGap = anchorTop - (viewBottom - LOWER_THR)
+  const upperGap = (viewTop + UPPER_THR) - anchorTop
+
+  // 去重：同一锚点 + 同一视口底部，不重复滚动
+  const key = `${isWriting.value ? 'w' : 'e'}#${anchorTop}|${viewBottom}`
+  if (key === lastNudgeKey && lowerGap <= 0 && upperGap <= 0)
+    return
+
+  if (lowerGap > 0) {
     container.scrollBy({ top: lowerGap, behavior: 'auto' })
-
-  else if (upperGap > 0)
+    lastNudgeKey = key
+    return
+  }
+  if (upperGap > 0) {
     container.scrollBy({ top: -upperGap, behavior: 'auto' })
+    lastNudgeKey = key
+  }
 }
 
 let lastAndroidPushAt = 0
@@ -191,14 +197,11 @@ let iosNudgeQueued = false
 function scheduleIosNudge() {
   if (!IS_IOS)
     return
-
   const now = Date.now()
   if (now - lastIosNudgeAt < IOS_NUDGE_COOLDOWN_MS)
     return
-
   if (iosNudgeQueued)
     return
-
   iosNudgeQueued = true
   requestAnimationFrame(() => {
     iosNudgeQueued = false
@@ -239,18 +242,17 @@ function onBottomSafeChange(px: number) {
 
   lastAppliedSent = applied
 
-  // 键盘高度变化后：单帧合并一次 + 轻微延迟再一次（更平滑，避免回弹）
+  // 键盘高度变化后：单帧合并一次 + 轻微延迟再一次
   ensureInlineEditorVisibleSoon()
   window.setTimeout(() => {
     ensureInlineEditorVisibleSoon()
-  }, 160)
+  }, 120)
 }
 
 let _pendingEnsureVisible = false
 function ensureInlineEditorVisibleSoon() {
   if (_pendingEnsureVisible)
     return
-
   _pendingEnsureVisible = true
   requestAnimationFrame(() => {
     _pendingEnsureVisible = false
@@ -267,7 +269,6 @@ watch([isWriting, isEditingExisting], () => {
 function nudgeAfterFocus() {
   if (!IS_IOS)
     return
-
   scheduleIosNudge()
   window.setTimeout(() => {
     scheduleIosNudge()
@@ -278,12 +279,10 @@ function nudgeAfterFocus() {
 async function fetchTagData() {
   if (!user.value)
     return
-
   try {
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
     if (tagsError)
       throw tagsError
-
     allTags.value = tagsData || []
 
     const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', { p_user_id: user.value.id })
@@ -359,7 +358,6 @@ async function handleDelete(noteId: string) {
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
-
   else
     localStorage.removeItem(dayCacheKey)
 
@@ -373,7 +371,7 @@ function handleHeaderClick() {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
 function toggleExpandInCalendar(noteId: string) {
-  expandedNoteId.value = expandedNoteId.value === note.id ? null : noteId
+  expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
 }
 
 /* ===================== 日历点 ===================== */
@@ -395,7 +393,6 @@ const attributes = computed(() => {
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
-
   const PAGE = 1000
   let from = 0
   let to = PAGE - 1
@@ -409,7 +406,6 @@ async function fetchAllNoteDatesFull() {
       .range(from, to)
     if (error)
       throw error
-
     const rows = data || []
     rows.forEach((n) => {
       acc.add(toDateKeyStrFromISO(n.created_at))
@@ -417,7 +413,6 @@ async function fetchAllNoteDatesFull() {
     const last = !data || data.length < PAGE
     if (last)
       break
-
     from += PAGE
     to += PAGE
   }
@@ -430,17 +425,14 @@ function loadAllDatesFromCache(): boolean {
   const cached = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (!cached)
     return false
-
   try {
     const arr: string[] = JSON.parse(cached)
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
         return s
-
       const d = new Date(s)
       if (Number.isNaN(d.getTime()))
         return s
-
       return dateKeyStr(d)
     })
     datesWithNotes.value = new Set(normalized)
@@ -457,7 +449,6 @@ function loadAllDatesFromCache(): boolean {
 async function saveExistingNote(content: string, _weather?: string | null) {
   if (!user.value || !editingNote.value)
     return
-
   const id = editingNote.value.id
   const trimmed = (content || '').trim()
   if (!trimmed)
@@ -498,7 +489,6 @@ function cancelEditExisting() {
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
-
   selectedDate.value = date
   expandedNoteId.value = null
 
@@ -528,7 +518,6 @@ async function fetchNotesForDate(date: Date) {
         .order('created_at', { ascending: false })
       if (error)
         throw error
-
       selectedDateNotes.value = data || []
       localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
     }
@@ -547,10 +536,8 @@ async function fetchNotesForDate(date: Date) {
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
-
     else
       datesWithNotes.value.delete(key)
-
     datesWithNotes.value = new Set(datesWithNotes.value)
     localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
@@ -563,10 +550,8 @@ function refreshDotAfterDelete() {
   const hasDot = datesWithNotes.value.has(key)
   if (hasNotes && !hasDot)
     datesWithNotes.value.add(key)
-
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
-
   datesWithNotes.value = new Set(datesWithNotes.value)
   localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
 }
@@ -575,7 +560,6 @@ function refreshDotAfterDelete() {
 async function checkAndRefreshIncremental() {
   if (!user.value)
     return
-
   const lastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0') || 0
   const lastTotal = Number(localStorage.getItem(CAL_LAST_TOTAL) || '0') || 0
 
@@ -587,7 +571,6 @@ async function checkAndRefreshIncremental() {
       .eq('user_id', user.value.id)
     if (error)
       throw error
-
     serverTotal = count || 0
   }
   catch (e) {
@@ -606,7 +589,6 @@ async function checkAndRefreshIncremental() {
       .single()
     if (error && (error as any).code !== 'PGRST116')
       throw error
-
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
@@ -654,7 +636,6 @@ async function checkAndRefreshIncremental() {
       })
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
-
       affectedDateKeys.forEach((keyStr) => {
         const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
@@ -715,7 +696,6 @@ async function startWriting() {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
   await nextTick()
   ensureInlineEditorVisible()
   requestAnimationFrame(() => {
@@ -726,7 +706,6 @@ async function startWriting() {
   }, 120)
   if (newNoteEditorRef.value)
     safeFocusEditor(newNoteEditorRef.value)
-
   nudgeAfterFocus()
 }
 
@@ -738,7 +717,6 @@ const composeButtonText = computed(() => {
   const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
-
   return t('notes.calendar.compose_write', { date: labelDate })
 })
 
@@ -757,7 +735,6 @@ function buildCreatedAtForSelectedDay(): string {
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
-
   const createdISO = buildCreatedAtForSelectedDay()
   const { data, error } = await supabase
     .from('notes')
@@ -847,7 +824,7 @@ async function saveNewNote(content: string, weather: string | null) {
           <div
             v-if="bottomSafeApplied"
             class="kb-spacer"
-            :style="{ height: `${Math.min(bottomSafeApplied, 240)}px` }"
+            :style="{ height: `${Math.min(bottomSafeApplied, 220)}px` }"
           />
           <div ref="anchorNewRef" class="kb-anchor" />
         </div>
@@ -879,7 +856,7 @@ async function saveNewNote(content: string, weather: string | null) {
           <div
             v-if="bottomSafeApplied"
             class="kb-spacer"
-            :style="{ height: `${Math.min(bottomSafeApplied, 240)}px` }"
+            :style="{ height: `${Math.min(bottomSafeApplied, 220)}px` }"
           />
           <div ref="anchorEditRef" class="kb-anchor" />
         </div>
