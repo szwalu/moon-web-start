@@ -34,14 +34,7 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 
-const scrollBodyRef = ref<HTMLElement | null>(null)
-const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
-const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
-
-/* iOS 专用锚点：在行内编辑器底部放一个不可见元素，滚动它以确保“末行+键盘”可见 */
-const anchorNewRef = ref<HTMLDivElement | null>(null)
-const anchorEditRef = ref<HTMLDivElement | null>(null)
-
+/* ===== 先声明：写作/编辑态 + 滚动与包裹 refs（避免 no-use-before-define） ===== */
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -51,26 +44,36 @@ const editContent = ref('')
 const isEditingExisting = computed(() => !!editingNote.value)
 const editDraftKey = computed(() => (editingNote.value ? `calendar_edit_${editingNote.value.id}` : ''))
 
+const scrollBodyRef = ref<HTMLElement | null>(null)
+const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+
+/* iOS 锚点：行内编辑器底部不可见元素，用于 scrollIntoView */
+const anchorNewRef = ref<HTMLDivElement | null>(null)
+const anchorEditRef = ref<HTMLDivElement | null>(null)
+
+/* 行内编辑器包裹容器（新建/编辑两套） */
+const wrapNewRef = ref<HTMLElement | null>(null)
+const wrapEditRef = ref<HTMLElement | null>(null)
+
+/* ====== 只负责隐藏 header 的焦点处理 ====== */
 const hideHeader = ref(false)
 function onEditorFocus() {
   hideHeader.value = true
 }
 
+/* ===== 根节点 & 外击关闭 ===== */
 const rootRef = ref<HTMLElement | null>(null)
 function onGlobalClickCapture(e: MouseEvent) {
   if (!isWriting.value && !isEditingExisting.value)
     return
-
   const target = e.target as HTMLElement | null
   if (!target)
     return
-
   if (!rootRef.value?.contains(target))
     return
-
   if (target.closest('.inline-editor'))
     return
-
   isWriting.value = false
   editingNote.value = null
   hideHeader.value = false
@@ -82,12 +85,47 @@ onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
 })
 
-/* ====== 键盘底部安全区：iOS 场景偏置 + 锚点滚动 ====== */
+/* ================= 可见性保障（与键盘高度无关，按容器底边推） ================= */
+function ensureInlineEditorVisible() {
+  const container = scrollBodyRef.value
+  if (!container)
+    return
+
+  const wrapEl = isWriting.value ? wrapNewRef.value : (isEditingExisting.value ? wrapEditRef.value : null)
+  if (!wrapEl)
+    return
+
+  const extraPadding = 16
+  const effectiveViewH = container.clientHeight
+  const wrapBottom = wrapEl.offsetTop + wrapEl.offsetHeight
+  const viewBottom = container.scrollTop + effectiveViewH - extraPadding
+
+  if (wrapBottom > viewBottom) {
+    const neededTop = wrapBottom - effectiveViewH + extraPadding
+    container.scrollTo({ top: Math.max(0, neededTop), behavior: 'auto' })
+  }
+}
+
+/* 多帧调度：避免一行多语句 & 覆盖动画延迟 */
+function scheduleEnsureVisible() {
+  ensureInlineEditorVisible()
+  requestAnimationFrame(() => {
+    ensureInlineEditorVisible()
+  })
+  window.setTimeout(() => {
+    ensureInlineEditorVisible()
+  }, 120)
+  window.setTimeout(() => {
+    ensureInlineEditorVisible()
+  }, 240)
+}
+
+/* ====== 键盘底部安全区：iOS 偏置 + 锚点滚动 ====== */
 const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const IS_ANDROID = /Android|Adr/i.test(UA)
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
 
-/* 调高到 ~5 行字高（22px*5≈110） */
+/* 调高到 ~5 行（22px*5≈110），稍留冗余 */
 const IOS_EXTRA = 160
 
 const bottomSafeRaw = ref(0)
@@ -115,23 +153,16 @@ let lastAppliedSent = 0
 function iosNudgeToAnchor() {
   if (!IS_IOS)
     return
-
   const container = scrollBodyRef.value
   if (!container)
     return
-
   const anchor = isWriting.value ? anchorNewRef.value : anchorEditRef.value
   if (!anchor)
     return
 
   const tryScroll = () => {
-    anchor.scrollIntoView({
-      block: 'end',
-      inline: 'nearest',
-      behavior: 'auto',
-    })
+    anchor.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' })
   }
-
   tryScroll()
   requestAnimationFrame(tryScroll)
   window.setTimeout(tryScroll, 120)
@@ -142,7 +173,9 @@ function iosNudgeToAnchor() {
       const y = Math.max(0, anchor.offsetTop - 8)
       container.scrollTo({ top: y, behavior: 'auto' })
     }
-    catch {}
+    catch {
+      /* no-op */
+    }
   }, 520)
 }
 
@@ -174,20 +207,24 @@ function onBottomSafeChange(px: number) {
   }
 
   lastAppliedSent = applied
+
+  /* 键盘高度变化后，多帧校准（单点入口） */
+  scheduleEnsureVisible()
 }
 
-/* 初次进入写作/编辑 或切换时，也做一次 iOS 锚点滚动 */
+/* 进入写作/编辑切换时，若已有安全区也做一次 iOS 锚点滚动 */
 watch([isWriting, isEditingExisting], () => {
   if (IS_IOS && bottomSafeApplied.value > 0)
     iosNudgeToAnchor()
 })
 
-/* 进入写作/编辑后首次聚焦时做一轮“多帧 nudge” */
+/* 进入焦点初期的小幅多帧 nudge（配合 iOS 动画延迟） */
 function nudgeAfterFocus() {
   if (!IS_IOS)
     return
-
-  const fn = () => iosNudgeToAnchor()
+  const fn = () => {
+    iosNudgeToAnchor()
+  }
   requestAnimationFrame(fn)
   window.setTimeout(fn, 100)
   window.setTimeout(fn, 200)
@@ -253,6 +290,7 @@ async function handleEdit(note: any) {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
   await nextTick()
+  scheduleEnsureVisible()
 
   if (editNoteEditorRef.value) {
     editNoteEditorRef.value.focus()
@@ -515,7 +553,6 @@ async function checkAndRefreshIncremental() {
 
     if (error)
       throw error
-
     serverTotal = count || 0
   }
   catch (e) {
@@ -535,7 +572,6 @@ async function checkAndRefreshIncremental() {
 
     if (error && (error as any).code !== 'PGRST116')
       throw error
-
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
@@ -655,6 +691,7 @@ async function startWriting() {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
   await nextTick()
+  scheduleEnsureVisible()
 
   if (newNoteEditorRef.value) {
     newNoteEditorRef.value.focus()
@@ -760,8 +797,9 @@ async function saveNewNote(content: string, weather: string | null) {
         <!-- 新建态：内层 spacer + 锚点 -->
         <div
           v-if="isWriting"
+          ref="wrapNewRef"
           class="inline-editor"
-          :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied + 56}px` : `56px` }"
+          :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied}px` : '' }"
         >
           <NoteEditor
             ref="newNoteEditorRef"
@@ -777,7 +815,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :clear-draft-on-save="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
-            @focus="onEditorFocus"
+            @focus="() => { onEditorFocus(); scheduleEnsureVisible() }"
             @blur="() => {}"
             @bottom-safe-change="onBottomSafeChange"
           />
@@ -788,6 +826,7 @@ async function saveNewNote(content: string, weather: string | null) {
         <!-- 编辑态：内层 spacer + 锚点 -->
         <div
           v-if="isEditingExisting"
+          ref="wrapEditRef"
           class="inline-editor"
           :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied}px` : '' }"
         >
@@ -805,7 +844,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :clear-draft-on-save="true"
             @save="saveExistingNote"
             @cancel="cancelEditExisting"
-            @focus="onEditorFocus"
+            @focus="() => { onEditorFocus(); scheduleEnsureVisible() }"
             @blur="() => {}"
             @bottom-safe-change="onBottomSafeChange"
           />
@@ -896,7 +935,7 @@ async function saveNewNote(content: string, weather: string | null) {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   /* 让 scrollIntoView 认识底部留白 */
-  scroll-padding-bottom: calc(var(--kb-pad, 0px) + 56px);
+  scroll-padding-bottom: calc(var(--kb-pad, 0px) + 8px);
 }
 
 .calendar-container {
@@ -915,7 +954,7 @@ async function saveNewNote(content: string, weather: string | null) {
 .notes-list > div { margin-bottom: 1.5rem; }
 .notes-list > div:last-child { margin-bottom: 0; }
 
-/* 新建态/编辑态下的 textarea 最大高度（和你主页一致） */
+/* 新建态/编辑态下的 textarea 最大高度（和主页一致） */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
   max-height: 56vh !important;
 }
@@ -926,12 +965,6 @@ async function saveNewNote(content: string, weather: string | null) {
 /* spacer 与锚点 */
 .kb-spacer, .kb-spacer-global { width: 100%; pointer-events: none; }
 .kb-anchor { width: 1px; height: 1px; margin-top: 0; }
-</style>
-
-<style>
-.n-dialog__mask, .n-modal-mask { z-index: 6002 !important; }
-.n-dialog, .n-dialog__container, .n-modal, .n-modal-container { z-index: 6003 !important; }
-.n-message-container, .n-notification-container, .n-popover, .n-dropdown { z-index: 6004 !important; }
 
 /* 写笔记按钮行 */
 .compose-row { margin: 0 0 12px 0; }
@@ -951,4 +984,10 @@ async function saveNewNote(content: string, weather: string | null) {
 
 /* 隐藏/显示日历的过渡 */
 .calendar-container { transition: height 0.2s ease, opacity 0.2s ease; }
+</style>
+
+<style>
+.n-dialog__mask, .n-modal-mask { z-index: 6002 !important; }
+.n-dialog, .n-dialog__container, .n-modal, .n-modal-container { z-index: 6003 !important; }
+.n-message-container, .n-notification-container, .n-popover, .n-dropdown { z-index: 6004 !important; }
 </style>
