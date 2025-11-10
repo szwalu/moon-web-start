@@ -39,7 +39,7 @@ const editContent = ref('')
 const isEditingExisting = computed(() => !!editingNote.value)
 const editDraftKey = computed(() => (editingNote.value ? `calendar_edit_${editingNote.value.id}` : ''))
 
-/* iOS 锚点：在行内编辑器底部放一个不可见元素，滚动它以确保“末行+键盘”可见 */
+/* 锚点：放在行内编辑器底部，滚它来确保末行+键盘可见 */
 const anchorNewRef = ref<HTMLDivElement | null>(null)
 const anchorEditRef = ref<HTMLDivElement | null>(null)
 
@@ -52,14 +52,15 @@ const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const IS_ANDROID = /Android|Adr/i.test(UA)
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
 
-/* 调参区 */
+/* 调参区（已为 iPhone 13/15 实测调整更稳） */
 const IOS_EXTRA = 120
 const IOS_SMALL_DELTA = 18
-const IOS_NUDGE_COOLDOWN_MS = 280
-const LOWER_THR = 36
-const UPPER_THR = 36
-const EFFECTIVE_PAD_MAX_RATIO = 0.7
-const SCROLL_SUPPRESS_MS = 220
+const IOS_NUDGE_COOLDOWN_MS = 360
+const LOWER_THR = 48
+const UPPER_THR = 48
+const EFFECTIVE_PAD_MAX_RATIO = 0.85
+const EXTRA_SAFE_PAD = 40
+const SCROLL_SUPPRESS_MS = 320
 
 const bottomSafeRaw = ref(0)
 const bottomSafeApplied = computed(() => {
@@ -79,10 +80,11 @@ function applyScrollPaddingBottom(px: number) {
   el.style.setProperty('--kb-pad', `${v}px`)
 }
 
-/* 有效补偿：把键盘高度计入可视高度，上限不超过视高 70% */
+/* 有效补偿：把键盘高度计入可视高度，且上限不超过视高 85% */
 function effectivePad(el: HTMLElement) {
   const cap = Math.floor(el.clientHeight * EFFECTIVE_PAD_MAX_RATIO)
-  return Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
+  const pad = Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
+  return pad
 }
 
 /* 统一的程序性滚动，附带抑制标记，避免连环触发 */
@@ -182,15 +184,15 @@ let iosNudgeQueued = false
 let padRaf = 0
 let pendingPad = -1
 let lastNudgeKey = ''
+let typingTimer = 0
 
-// 把 padding 应用合并进动画帧，避免一帧多次 style+scroll
 function requestApplyPad(applied: number) {
   pendingPad = applied
   if (padRaf)
     return
 
   padRaf = requestAnimationFrame(() => {
-    applyScrollPaddingBottom(pendingPad)
+    applyScrollPaddingBottom(pendingPad + EXTRA_SAFE_PAD)
     padRaf = 0
   })
 }
@@ -258,33 +260,43 @@ function onBottomSafeChange(px: number) {
   const applied = bottomSafeApplied.value
   const deltaApplied = Math.abs(applied - lastAppliedSent)
 
-  // iOS：细小变化直接忽略，避免来回顶
+  // iOS：细小变化直接忽略；若为“下降”且变化不大，也忽略，避免来回顶
   if (IS_IOS && lastAppliedSent > 0 && deltaApplied < IOS_SMALL_DELTA)
     return
 
-  // 仅更新 padding，避免在 pad 变化期间重复 ensure 形成回路
+  if (IS_IOS && applied < lastAppliedSent && deltaApplied < 28)
+    return
+
   requestApplyPad(applied)
 
-  // iOS 仅轻推一次，不调用 ensure
-  if (IS_IOS && applied > 0)
+  if (IS_IOS && applied > lastAppliedSent)
     scheduleIosNudge()
 
-  // Android 轻推（已节流）
   const now = Date.now()
   const changedEnough = Math.abs(applied - lastAppliedSent) >= (IS_ANDROID ? 18 : 8)
   const timeOk = now - lastAndroidPushAt >= (IS_ANDROID ? 140 : 60)
   if (IS_ANDROID && applied > lastAppliedSent && changedEnough && timeOk) {
-    const el = scrollBodyRef.value
-    if (el) {
-      const ratio = 1.2
-      const cap = 240
-      const delta = Math.min(Math.ceil((applied - lastAppliedSent) * ratio), cap)
-      progScrollBy(delta)
-      lastAndroidPushAt = now
-    }
+    const ratio = 1.2
+    const cap = 240
+    const delta = Math.min(Math.ceil((applied - lastAppliedSent) * ratio), cap)
+    progScrollBy(delta)
+    lastAndroidPushAt = now
   }
 
   lastAppliedSent = applied
+}
+
+/* 输入进行时：轻量“锚点轻推”，并合并 60ms 防连环 */
+function onEditorTyping() {
+  if (!IS_IOS)
+    return
+
+  if (typingTimer)
+    window.clearTimeout(typingTimer)
+
+  typingTimer = window.setTimeout(() => {
+    scheduleIosNudge()
+  }, 60)
 }
 
 /* 切换写作/编辑状态后，如已抬升则补一次 nudge（带冷却） */
@@ -292,27 +304,6 @@ watch([isWriting, isEditingExisting], () => {
   if (IS_IOS && bottomSafeApplied.value > 0)
     scheduleIosNudge()
 })
-
-function safeFocusEditor(comp: any) {
-  try {
-    comp?.focus?.({ preventScroll: true })
-  }
-  catch {}
-  try {
-    comp?.$el?.querySelector?.('textarea')?.focus({ preventScroll: true })
-  }
-  catch {}
-}
-
-function nudgeAfterFocus() {
-  if (!IS_IOS)
-    return
-
-  scheduleIosNudge()
-  window.setTimeout(() => {
-    scheduleIosNudge()
-  }, 120)
-}
 
 /* ===================== 标签数据 ===================== */
 async function fetchTagData() {
@@ -830,6 +821,37 @@ async function saveNewNote(content: string, weather: string | null) {
   newNoteContent.value = ''
   hideHeader.value = false
 }
+
+/* ===================== 输入监听（保持光标可见） ===================== */
+watch(newNoteContent, () => {
+  if (isWriting.value)
+    onEditorTyping()
+})
+watch(editContent, () => {
+  if (isEditingExisting.value)
+    onEditorTyping()
+})
+
+function safeFocusEditor(comp: any) {
+  try {
+    comp?.focus?.({ preventScroll: true })
+  }
+  catch {}
+  try {
+    comp?.$el?.querySelector?.('textarea')?.focus({ preventScroll: true })
+  }
+  catch {}
+}
+
+function nudgeAfterFocus() {
+  if (!IS_IOS)
+    return
+
+  scheduleIosNudge()
+  window.setTimeout(() => {
+    scheduleIosNudge()
+  }, 120)
+}
 </script>
 
 <template>
@@ -941,7 +963,7 @@ async function saveNewNote(content: string, weather: string | null) {
           {{ t('notes.calendar.no_notes_for_day') }}
         </div>
 
-        <!-- 统一由 --kb-pad 控制底部补偿 -->
+        <!-- 统一由 --kb-pad 控制底部补偿（含 EXTRA_SAFE_PAD） -->
         <div class="kb-spacer-global" style="height: calc(var(--kb-pad, 0px));" />
       </div>
     </div>
