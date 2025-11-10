@@ -46,11 +46,50 @@ const anchorEditRef = ref<HTMLDivElement | null>(null)
 const wrapNewRef = ref<HTMLElement | null>(null)
 const wrapEditRef = ref<HTMLElement | null>(null)
 
+/* ===================== 视觉与滚动核心 ===================== */
+const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+const IS_ANDROID = /Android|Adr/i.test(UA)
+const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
+
+/* 更温和的额外留白 + 更长冷却压抖 */
+const IOS_EXTRA = 120
+const IOS_SMALL_DELTA = 18
+const IOS_NUDGE_COOLDOWN_MS = 280
+const ENSURE_COOLDOWN_MS = 180
+const LOWER_THR = 36
+const UPPER_THR = 36
+const SPACER_CAP = 200
+
+const bottomSafeRaw = ref(0)
+const bottomSafeApplied = computed(() => {
+  const v = bottomSafeRaw.value
+  if (IS_IOS && v > 0)
+    return v + IOS_EXTRA
+
+  return v
+})
+
+function applyScrollPaddingBottom(px: number) {
+  const el = scrollBodyRef.value
+  if (!el)
+    return
+
+  const v = Math.max(0, px | 0)
+  el.style.setProperty('--kb-pad', `${v}px`)
+}
+
+/* 有效补偿：把键盘高度计入可视高度，上限不超过视高 85% */
+function effectivePad(el: HTMLElement) {
+  const cap = Math.floor(el.clientHeight * 0.85)
+  return Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
+}
+
 /* 当前行内编辑器在容器内可见（考虑键盘留白） */
 function ensureInlineEditorVisible() {
   const container = scrollBodyRef.value
   if (!container)
     return
+
   const wrapEl = isWriting.value ? wrapNewRef.value : (isEditingExisting.value ? wrapEditRef.value : null)
   if (!wrapEl)
     return
@@ -60,6 +99,7 @@ function ensureInlineEditorVisible() {
   const effectiveViewH = Math.max(0, container.clientHeight - pad)
   const wrapBottom = wrapEl.offsetTop + wrapEl.offsetHeight
   const viewBottom = container.scrollTop + effectiveViewH - extraPadding
+
   if (wrapBottom > viewBottom) {
     const neededTop = wrapBottom - effectiveViewH + extraPadding
     const y = Math.max(0, neededTop)
@@ -89,13 +129,17 @@ const rootRef = ref<HTMLElement | null>(null)
 function onGlobalClickCapture(e: MouseEvent) {
   if (!isWriting.value && !isEditingExisting.value)
     return
+
   const target = e.target as HTMLElement | null
   if (!target)
     return
+
   if (!rootRef.value?.contains(target))
     return
+
   if (target.closest('.inline-editor'))
     return
+
   isWriting.value = false
   editingNote.value = null
   hideHeader.value = false
@@ -107,56 +151,53 @@ onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
 })
 
-/* ====== 键盘底部安全区：iOS 止抖 + 锚点滚动 ====== */
-const UA = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-const IS_ANDROID = /Android|Adr/i.test(UA)
-const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
+/* ====== 键盘补偿去抖与锚点轻推 ====== */
+let lastAndroidPushAt = 0
+let lastAppliedSent = 0
+let lastIosNudgeAt = 0
+let iosNudgeQueued = false
+let lastEnsureAt = 0
+let padRaf = 0
+let pendingPad = -1
+let lastNudgeKey = ''
 
-/* 较温和的“额外留白”，并提高冷却时间减少临界抖动 */
-const IOS_EXTRA = 128
-const IOS_SMALL_DELTA = 18
-const IOS_NUDGE_COOLDOWN_MS = 260
-
-const bottomSafeRaw = ref(0)
-const bottomSafeApplied = computed(() => {
-  const v = bottomSafeRaw.value
-  if (IS_IOS && v > 0)
-    return v + IOS_EXTRA
-  return v
-})
-
-function applyScrollPaddingBottom(px: number) {
-  const el = scrollBodyRef.value
-  if (!el)
+// 把 padding 应用与 nudge 合并进动画帧，避免一帧多次滚动
+function requestApplyPad(applied: number) {
+  pendingPad = applied
+  if (padRaf)
     return
-  const v = Math.max(0, px | 0)
-  el.style.setProperty('--kb-pad', `${v}px`)
+
+  padRaf = requestAnimationFrame(() => {
+    applyScrollPaddingBottom(pendingPad)
+    padRaf = 0
+  })
 }
 
-/* 有效补偿：把键盘高度计入可视高度，上限不超过视高 85% */
-function effectivePad(el: HTMLElement) {
-  const cap = Math.floor(el.clientHeight * 0.85)
-  return Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
-}
+function scheduleIosNudge() {
+  if (!IS_IOS)
+    return
 
-// 抽一个安全聚焦的小工具，避免同一行出现多个语句
-function safeFocusEditor(comp: any) {
-  try {
-    comp?.focus?.({ preventScroll: true })
-  }
-  catch {}
-  try {
-    comp?.$el?.querySelector?.('textarea')?.focus({ preventScroll: true })
-  }
-  catch {}
+  const now = Date.now()
+  if (now - lastIosNudgeAt < IOS_NUDGE_COOLDOWN_MS)
+    return
+
+  if (iosNudgeQueued)
+    return
+
+  iosNudgeQueued = true
+  requestAnimationFrame(() => {
+    iosNudgeQueued = false
+    lastIosNudgeAt = Date.now()
+    iosNudgeToAnchor()
+  })
 }
 
 /* 单次、最小必要的锚点滚动（非贴底，仅越界补滚，扣除键盘补偿） */
-let lastNudgeKey = ''
 function iosNudgeToAnchor() {
   const container = scrollBodyRef.value
   if (!container)
     return
+
   const anchor = isWriting.value ? anchorNewRef.value : anchorEditRef.value
   if (!anchor)
     return
@@ -166,14 +207,9 @@ function iosNudgeToAnchor() {
   const viewBottom = viewTop + Math.max(0, container.clientHeight - pad)
   const anchorTop = anchor.offsetTop
 
-  // 只有明显越界才滚动，阈值 36px
-  const LOWER_THR = 36
-  const UPPER_THR = 36
-
   const lowerGap = anchorTop - (viewBottom - LOWER_THR)
   const upperGap = (viewTop + UPPER_THR) - anchorTop
 
-  // 去重：同一锚点 + 同一视口底部，不重复滚动
   const key = `${isWriting.value ? 'w' : 'e'}#${anchorTop}|${viewBottom}`
   if (key === lastNudgeKey && lowerGap <= 0 && upperGap <= 0)
     return
@@ -189,27 +225,6 @@ function iosNudgeToAnchor() {
   }
 }
 
-let lastAndroidPushAt = 0
-let lastAppliedSent = 0
-let lastIosNudgeAt = 0
-let iosNudgeQueued = false
-
-function scheduleIosNudge() {
-  if (!IS_IOS)
-    return
-  const now = Date.now()
-  if (now - lastIosNudgeAt < IOS_NUDGE_COOLDOWN_MS)
-    return
-  if (iosNudgeQueued)
-    return
-  iosNudgeQueued = true
-  requestAnimationFrame(() => {
-    iosNudgeQueued = false
-    lastIosNudgeAt = Date.now()
-    iosNudgeToAnchor()
-  })
-}
-
 function onBottomSafeChange(px: number) {
   const v = Math.max(0, Number(px) || 0)
   bottomSafeRaw.value = v
@@ -217,11 +232,11 @@ function onBottomSafeChange(px: number) {
   const applied = bottomSafeApplied.value
   const deltaApplied = Math.abs(applied - lastAppliedSent)
 
-  /* iOS：细小变化直接忽略，避免来回顶 */
   if (IS_IOS && lastAppliedSent > 0 && deltaApplied < IOS_SMALL_DELTA)
     return
 
-  applyScrollPaddingBottom(applied)
+  // 合并到 rAF 再应用，避免一帧多次 style+scroll
+  requestApplyPad(applied)
 
   if (IS_IOS && applied > 0)
     scheduleIosNudge()
@@ -242,17 +257,19 @@ function onBottomSafeChange(px: number) {
 
   lastAppliedSent = applied
 
-  // 键盘高度变化后：单帧合并一次 + 轻微延迟再一次
-  ensureInlineEditorVisibleSoon()
-  window.setTimeout(() => {
+  // 键盘高度变化后：限频触发可见性校准，避免循环触发抖动
+  const ok = now - lastEnsureAt >= ENSURE_COOLDOWN_MS
+  if (ok) {
+    lastEnsureAt = now
     ensureInlineEditorVisibleSoon()
-  }, 120)
+  }
 }
 
 let _pendingEnsureVisible = false
 function ensureInlineEditorVisibleSoon() {
   if (_pendingEnsureVisible)
     return
+
   _pendingEnsureVisible = true
   requestAnimationFrame(() => {
     _pendingEnsureVisible = false
@@ -260,7 +277,7 @@ function ensureInlineEditorVisibleSoon() {
   })
 }
 
-/* 切换写作/编辑状态后，如已抬升则补一次 nudge */
+/* 切换写作/编辑状态后，如已抬升则补一次 nudge（带冷却） */
 watch([isWriting, isEditingExisting], () => {
   if (IS_IOS && bottomSafeApplied.value > 0)
     scheduleIosNudge()
@@ -269,6 +286,7 @@ watch([isWriting, isEditingExisting], () => {
 function nudgeAfterFocus() {
   if (!IS_IOS)
     return
+
   scheduleIosNudge()
   window.setTimeout(() => {
     scheduleIosNudge()
@@ -279,10 +297,12 @@ function nudgeAfterFocus() {
 async function fetchTagData() {
   if (!user.value)
     return
+
   try {
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', { p_user_id: user.value.id })
     if (tagsError)
       throw tagsError
+
     allTags.value = tagsData || []
 
     const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', { p_user_id: user.value.id })
@@ -358,6 +378,7 @@ async function handleDelete(noteId: string) {
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
+
   else
     localStorage.removeItem(dayCacheKey)
 
@@ -393,6 +414,7 @@ const attributes = computed(() => {
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
+
   const PAGE = 1000
   let from = 0
   let to = PAGE - 1
@@ -406,6 +428,7 @@ async function fetchAllNoteDatesFull() {
       .range(from, to)
     if (error)
       throw error
+
     const rows = data || []
     rows.forEach((n) => {
       acc.add(toDateKeyStrFromISO(n.created_at))
@@ -413,6 +436,7 @@ async function fetchAllNoteDatesFull() {
     const last = !data || data.length < PAGE
     if (last)
       break
+
     from += PAGE
     to += PAGE
   }
@@ -425,14 +449,17 @@ function loadAllDatesFromCache(): boolean {
   const cached = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (!cached)
     return false
+
   try {
     const arr: string[] = JSON.parse(cached)
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
         return s
+
       const d = new Date(s)
       if (Number.isNaN(d.getTime()))
         return s
+
       return dateKeyStr(d)
     })
     datesWithNotes.value = new Set(normalized)
@@ -449,6 +476,7 @@ function loadAllDatesFromCache(): boolean {
 async function saveExistingNote(content: string, _weather?: string | null) {
   if (!user.value || !editingNote.value)
     return
+
   const id = editingNote.value.id
   const trimmed = (content || '').trim()
   if (!trimmed)
@@ -489,6 +517,7 @@ function cancelEditExisting() {
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
+
   selectedDate.value = date
   expandedNoteId.value = null
 
@@ -518,6 +547,7 @@ async function fetchNotesForDate(date: Date) {
         .order('created_at', { ascending: false })
       if (error)
         throw error
+
       selectedDateNotes.value = data || []
       localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
     }
@@ -536,8 +566,10 @@ async function fetchNotesForDate(date: Date) {
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
+
     else
       datesWithNotes.value.delete(key)
+
     datesWithNotes.value = new Set(datesWithNotes.value)
     localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
@@ -550,8 +582,10 @@ function refreshDotAfterDelete() {
   const hasDot = datesWithNotes.value.has(key)
   if (hasNotes && !hasDot)
     datesWithNotes.value.add(key)
+
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
+
   datesWithNotes.value = new Set(datesWithNotes.value)
   localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
 }
@@ -560,6 +594,7 @@ function refreshDotAfterDelete() {
 async function checkAndRefreshIncremental() {
   if (!user.value)
     return
+
   const lastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0') || 0
   const lastTotal = Number(localStorage.getItem(CAL_LAST_TOTAL) || '0') || 0
 
@@ -571,6 +606,7 @@ async function checkAndRefreshIncremental() {
       .eq('user_id', user.value.id)
     if (error)
       throw error
+
     serverTotal = count || 0
   }
   catch (e) {
@@ -589,6 +625,7 @@ async function checkAndRefreshIncremental() {
       .single()
     if (error && (error as any).code !== 'PGRST116')
       throw error
+
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
@@ -636,6 +673,7 @@ async function checkAndRefreshIncremental() {
       })
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
+
       affectedDateKeys.forEach((keyStr) => {
         const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
@@ -696,6 +734,7 @@ async function startWriting() {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+
   await nextTick()
   ensureInlineEditorVisible()
   requestAnimationFrame(() => {
@@ -706,6 +745,7 @@ async function startWriting() {
   }, 120)
   if (newNoteEditorRef.value)
     safeFocusEditor(newNoteEditorRef.value)
+
   nudgeAfterFocus()
 }
 
@@ -717,6 +757,7 @@ const composeButtonText = computed(() => {
   const labelDate = sel.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
+
   return t('notes.calendar.compose_write', { date: labelDate })
 })
 
@@ -735,6 +776,7 @@ function buildCreatedAtForSelectedDay(): string {
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
+
   const createdISO = buildCreatedAtForSelectedDay()
   const { data, error } = await supabase
     .from('notes')
@@ -824,7 +866,7 @@ async function saveNewNote(content: string, weather: string | null) {
           <div
             v-if="bottomSafeApplied"
             class="kb-spacer"
-            :style="{ height: `${Math.min(bottomSafeApplied, 220)}px` }"
+            :style="{ height: `${Math.min(bottomSafeApplied, SPACER_CAP)}px` }"
           />
           <div ref="anchorNewRef" class="kb-anchor" />
         </div>
@@ -856,7 +898,7 @@ async function saveNewNote(content: string, weather: string | null) {
           <div
             v-if="bottomSafeApplied"
             class="kb-spacer"
-            :style="{ height: `${Math.min(bottomSafeApplied, 220)}px` }"
+            :style="{ height: `${Math.min(bottomSafeApplied, SPACER_CAP)}px` }"
           />
           <div ref="anchorEditRef" class="kb-anchor" />
         </div>
