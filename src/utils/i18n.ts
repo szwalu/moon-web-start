@@ -6,6 +6,8 @@ export const i18n = createI18n({
   legacy: false,
   locale: '',
   messages: {},
+  // 可选：增加 fallback，避免缺键时报错
+  fallbackLocale: 'en',
 })
 
 const localesMap = Object.fromEntries(
@@ -24,36 +26,81 @@ function setI18nLanguage(lang: Locale) {
   return lang
 }
 
+// ========= 新增：语言码规范化 & 最佳匹配 =========
+const FALLBACK_LOCALE = (localesMap.en ? 'en' : (availableLocales[0] || 'en')) as Locale
+
+function bestLocale(raw?: string | null): Locale {
+  if (!raw)
+    return FALLBACK_LOCALE
+  // 1) 先看是否存在完全同名（极少数你真的有 en-US.yml 时也能命中）
+  if (localesMap[raw as Locale])
+    return raw as Locale
+
+  const l = raw.toLowerCase()
+  // 2) 中文族群统一用 zh-CN（你项目只有 zh-CN.yml）
+  if (l.startsWith('zh'))
+    return (localesMap['zh-CN'] ? 'zh-CN' : FALLBACK_LOCALE) as Locale
+
+  // 3) 再尝试主语言（en-GB -> en）
+  const primary = l.split('-')[0] as Locale
+  if (localesMap[primary])
+    return primary
+
+  // 4) 兜底
+  return FALLBACK_LOCALE
+}
+// ========= 新增结束 =========
+
 let isFirst = true
+
 export async function loadLanguageAsync(lang: string): Promise<Locale> {
-  if (lang.toLocaleUpperCase() === 'SYSTEM')
-    lang = localesMap[navigator.language] ? navigator.language : 'en'
-  // If the same language
-  if (i18n.global.locale.value === lang)
-    return setI18nLanguage(lang)
+  // SYSTEM 也先规范化
+  const want = (lang.toUpperCase() === 'SYSTEM')
+    ? bestLocale(typeof navigator !== 'undefined' ? navigator.language : null)
+    : bestLocale(lang)
 
-  // If the language was already loaded
-  if (loadedLanguages.includes(lang))
-    return setI18nLanguage(lang)
+  // 如果与当前相同
+  if (i18n.global.locale.value === want)
+    return setI18nLanguage(want)
 
-  // If the language hasn't been loaded yet
+  // 如果已经加载过
+  if (loadedLanguages.includes(want))
+    return setI18nLanguage(want)
+
   if (!isFirst)
     $message.loading(t('messages.loading'), { duration: 0 })
-  const messages = await localesMap[lang]()
-  if (!isFirst)
-    $message.destroyAll()
-  i18n.global.setLocaleMessage(lang, messages.default)
-  loadedLanguages.push(lang)
-  return setI18nLanguage(lang)
+
+  try {
+    const loader = localesMap[want] || localesMap[FALLBACK_LOCALE]
+    const messages = await loader()
+    if (!isFirst)
+      $message.destroyAll()
+    i18n.global.setLocaleMessage(want, messages.default)
+    loadedLanguages.push(want)
+    return setI18nLanguage(want)
+  }
+  catch (err) {
+    if (!isFirst)
+      $message.destroyAll()
+    // 最终兜底：至少装上 fallback
+    const fallbackLoader = localesMap[FALLBACK_LOCALE]
+    const messages = await fallbackLoader()
+    i18n.global.setLocaleMessage(FALLBACK_LOCALE, messages.default)
+    loadedLanguages.push(FALLBACK_LOCALE)
+    return setI18nLanguage(FALLBACK_LOCALE)
+  }
 }
 
 export async function setupI18n(app: App) {
   app.use(i18n)
 
-  let lang = navigator.language
+  // 读取设置或系统语言后，先做规范化再加载
+  let raw = (typeof navigator !== 'undefined' ? navigator.language : '') || ''
   const settings = loadSettings()
   if (settings?.language)
-    lang = settings.language
+    raw = settings.language
+
+  const lang = bestLocale(raw)
   await loadLanguageAsync(lang)
   isFirst = false
 }
