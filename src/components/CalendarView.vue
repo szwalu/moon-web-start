@@ -57,7 +57,8 @@ function ensureInlineEditorVisible() {
     return
 
   const extraPadding = 16
-  const effectiveViewH = container.clientHeight
+  const pad = effectivePad(container)
+  const effectiveViewH = container.clientHeight - pad
   const wrapBottom = wrapEl.offsetTop + wrapEl.offsetHeight
   const viewBottom = container.scrollTop + effectiveViewH - extraPadding
   if (wrapBottom > viewBottom) {
@@ -139,6 +140,12 @@ function applyScrollPaddingBottom(px: number) {
   el.style.setProperty('--kb-pad', `${v}px`)
 }
 
+// 计算有效补偿：把键盘高度参与到可见高度里，且上限不超过视高的 85%
+function effectivePad(el: HTMLElement) {
+  const cap = Math.floor(el.clientHeight * 0.85)
+  return Math.min(Math.max(0, bottomSafeApplied.value | 0), cap)
+}
+
 // 抽一个安全聚焦的小工具，避免同一行出现多个语句
 function safeFocusEditor(comp: any) {
   try {
@@ -151,7 +158,7 @@ function safeFocusEditor(comp: any) {
   catch {}
 }
 
-/* 单次、最小必要的锚点滚动（非贴底，仅越界补滚） */
+/* 单次、最小必要的锚点滚动（非贴底，仅越界补滚，扣除键盘补偿） */
 function iosNudgeToAnchor() {
   const container = scrollBodyRef.value
   if (!container)
@@ -161,8 +168,9 @@ function iosNudgeToAnchor() {
   if (!anchor)
     return
 
+  const pad = effectivePad(container)
   const viewTop = container.scrollTop
-  const viewBottom = viewTop + container.clientHeight
+  const viewBottom = viewTop + container.clientHeight - pad
   const anchorTop = anchor.offsetTop
 
   const lowerGap = anchorTop - (viewBottom - 24)
@@ -365,7 +373,7 @@ function handleHeaderClick() {
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
 function toggleExpandInCalendar(noteId: string) {
-  expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
+  expandedNoteId.value = expandedNoteId.value === note.id ? null : noteId
 }
 
 /* ===================== 日历点 ===================== */
@@ -812,7 +820,7 @@ async function saveNewNote(content: string, weather: string | null) {
           </button>
         </div>
 
-        <!-- 新建态：锚点 -->
+        <!-- 新建态：锚点 + 尾部缓冲 -->
         <div
           v-if="isWriting"
           ref="wrapNewRef"
@@ -836,10 +844,15 @@ async function saveNewNote(content: string, weather: string | null) {
             @bottom-safe-change="onBottomSafeChange"
             @focus="onNewEditorFocus"
           />
+          <div
+            v-if="bottomSafeApplied"
+            class="kb-spacer"
+            :style="{ height: `${Math.min(bottomSafeApplied, 240)}px` }"
+          />
           <div ref="anchorNewRef" class="kb-anchor" />
         </div>
 
-        <!-- 编辑态：锚点 -->
+        <!-- 编辑态：锚点 + 尾部缓冲 -->
         <div
           v-if="isEditingExisting"
           ref="wrapEditRef"
@@ -862,6 +875,11 @@ async function saveNewNote(content: string, weather: string | null) {
             @blur="() => {}"
             @bottom-safe-change="onBottomSafeChange"
             @focus="onEditEditorFocus"
+          />
+          <div
+            v-if="bottomSafeApplied"
+            class="kb-spacer"
+            :style="{ height: `${Math.min(bottomSafeApplied, 240)}px` }"
           />
           <div ref="anchorEditRef" class="kb-anchor" />
         </div>
