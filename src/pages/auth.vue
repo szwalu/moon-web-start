@@ -2460,6 +2460,7 @@ function onCalendarUpdated(updated: any) {
           enable-drafts
           :draft-key="`${LOCAL_CONTENT_KEY}:editor-v2`"
           :clear-draft-on-save="true"
+          :enable-scroll-push="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
