@@ -27,6 +27,7 @@ const props = defineProps({
   draftKey: { type: String, default: '' },
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
+  enableScrollPush: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const dialog = useDialog()
@@ -685,15 +686,15 @@ function recomputeBottomSafePadding() {
         const ratio = 1.6
         const cap = 420
         const delta = Math.min(Math.ceil(need * ratio), cap)
-        window.scrollBy(0, delta)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
       }
       else {
         const ratio = 0.35
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0)
-          ; // scroll push disabled
-        // window.scrollBy(0, delta)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
       }
       _hasPushedPage = true
       window.setTimeout(() => {
