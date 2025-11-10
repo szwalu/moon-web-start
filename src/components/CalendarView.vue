@@ -88,7 +88,7 @@ const IS_ANDROID = /Android|Adr/i.test(UA)
 const IS_IOS = /iPhone|iPad|iPod/i.test(UA)
 
 /* 调高到 ~5 行字高（22px*5≈110） */
-const IOS_EXTRA = 110
+const IOS_EXTRA = 160
 
 const bottomSafeRaw = ref(0)
 const bottomSafeApplied = computed(() => {
@@ -124,15 +124,26 @@ function iosNudgeToAnchor() {
   if (!anchor)
     return
 
-  /* 多帧滚到锚点，覆盖 visualViewport 延迟与弹出动画 */
   const tryScroll = () => {
-    anchor.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' })
+    anchor.scrollIntoView({
+      block: 'end',
+      inline: 'nearest',
+      behavior: 'auto',
+    })
   }
 
   tryScroll()
   requestAnimationFrame(tryScroll)
   window.setTimeout(tryScroll, 120)
   window.setTimeout(tryScroll, 240)
+  window.setTimeout(tryScroll, 360)
+  window.setTimeout(() => {
+    try {
+      const y = Math.max(0, anchor.offsetTop - 8)
+      container.scrollTo({ top: y, behavior: 'auto' })
+    }
+    catch {}
+  }, 520)
 }
 
 function onBottomSafeChange(px: number) {
@@ -750,7 +761,7 @@ async function saveNewNote(content: string, weather: string | null) {
         <div
           v-if="isWriting"
           class="inline-editor"
-          :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied}px` : '' }"
+          :style="{ paddingBottom: bottomSafeApplied ? `${bottomSafeApplied + 56}px` : `56px` }"
         >
           <NoteEditor
             ref="newNoteEditorRef"
@@ -885,7 +896,7 @@ async function saveNewNote(content: string, weather: string | null) {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   /* 让 scrollIntoView 认识底部留白 */
-  scroll-padding-bottom: var(--kb-pad, 0px);
+  scroll-padding-bottom: calc(var(--kb-pad, 0px) + 56px);
 }
 
 .calendar-container {
