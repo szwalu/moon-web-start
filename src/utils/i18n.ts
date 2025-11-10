@@ -94,13 +94,20 @@ export async function loadLanguageAsync(lang: string): Promise<Locale> {
 export async function setupI18n(app: App) {
   app.use(i18n)
 
-  // 读取设置或系统语言后，先做规范化再加载
+  // 保留原始值（可能是 'SYSTEM'），规范化交给 loadLanguageAsync 处理
   let raw = (typeof navigator !== 'undefined' ? navigator.language : '') || ''
   const settings = loadSettings()
   if (settings?.language)
     raw = settings.language
 
-  const lang = bestLocale(raw)
-  await loadLanguageAsync(lang)
+  await loadLanguageAsync(raw)
   isFirst = false
+
+  // （可选增强）如果用户选了“跟随系统”，系统语言改变时自动切换
+  if (settings?.language?.toUpperCase() === 'SYSTEM' && typeof window !== 'undefined') {
+    window.addEventListener('languagechange', () => {
+      // 让它再次按系统语言规范化并切换
+      loadLanguageAsync('SYSTEM')
+    })
+  }
 }
