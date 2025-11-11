@@ -154,7 +154,9 @@ form:
     feedback: Feedback
     applyinvitecode: Request Invite Code
   messageLabel: Please enter
-  emailLabel: Contact Email (optional)
+  emailLabel: Contact Email
+  required: required
+  optional: optional
   submit: Submit
   success: 'Submitted successfully, thank you!'
   selectError: Please select one item from the list

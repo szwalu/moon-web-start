@@ -154,7 +154,9 @@ form:
     feedback: フィードバック
     applyinvitecode: 招待コードを申請
   messageLabel: 入力してください
-  emailLabel: 連絡用メール（任意）
+  emailLabel: 連絡用メール
+  required: 必須
+  optional: 任意
   submit: 送信
   success: 送信しました。ご意見ありがとうございます！
   selectError: リストから1項目を選択してください

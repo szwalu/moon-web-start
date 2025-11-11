@@ -154,7 +154,9 @@ form:
     feedback: 意见反馈
     applyinvitecode: 申请邀请码
   messageLabel: 请输入
-  emailLabel: 联系邮箱（可选）
+  emailLabel: 联系邮箱
+  required: 必填
+  optional: 可选
   submit: 提交
   success: 提交成功，感谢反馈！
   selectError: 请在列表中选择一项

@@ -8,6 +8,13 @@ const form = ref<HTMLFormElement | null>(null)
 const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
+// ✅ 跟踪当前选择类型
+const selectedType = ref('')
+
+// 监听 select 的变化
+function handleTypeChange(e: Event) {
+  selectedType.value = (e.target as HTMLSelectElement).value
+}
 
 async function handleSubmit() {
   if (!form.value)
@@ -72,7 +79,7 @@ async function handleSubmit() {
       <form ref="form" class="form-body" @submit.prevent="handleSubmit">
         <label>
           <span class="required">*</span>{{ t('form.selectLabel') }}
-          <select name="type" required>
+          <select name="type" required @change="handleTypeChange">
             <option value="" disabled selected hidden>{{ t('form.selectPlaceholder') }}</option>
             <option value="apply-site">{{ t('form.options.applySite') }}</option>
             <option value="apply-link">{{ t('form.options.applyLink') }}</option>
@@ -87,7 +94,15 @@ async function handleSubmit() {
         </label>
 
         <label>
+          <!-- 必填时显示红色雪花；可选时不显示 -->
+          <span
+            v-if="['feedback', 'applyinvitecode'].includes(selectedType)"
+            class="required"
+          >✻</span>
           {{ t('form.emailLabel') }}
+          <span>
+            （{{ ['feedback', 'applyinvitecode'].includes(selectedType) ? t('form.required') : t('form.optional') }}）
+          </span>
           <input type="email" name="email">
         </label>
 
