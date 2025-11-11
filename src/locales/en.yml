@@ -159,6 +159,7 @@ form:
   success: 'Submitted successfully, thank you!'
   selectError: Please select one item from the list
   error: 'Submission failed, please try again later'
+  emailRequired: Please enter your email address
 
 about:
   title: WoABC Navigation Features

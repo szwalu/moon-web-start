@@ -159,6 +159,7 @@ form:
   success: 送信しました。ご意見ありがとうございます！
   selectError: リストから1項目を選択してください
   error: 送信に失敗しました。後でもう一度お試しください。
+  emailRequired: 連絡先メールアドレスを入力してください。
 
 about:
   title: WoABCナビゲーションの特徴

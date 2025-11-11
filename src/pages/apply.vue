@@ -20,7 +20,14 @@ async function handleSubmit() {
     const formData = new FormData(form.value)
     const type = formData.get('type') as string
     const message = formData.get('message') as string
-    const email = formData.get('email') as string
+    const email = (formData.get('email') as string)?.trim()
+
+    // ✅ [新增] 条件必填逻辑
+    if ((type === 'feedback' || type === 'applyinvitecode') && !email) {
+      errorMessage.value = `❌ ${t('form.emailRequired')}`
+      loading.value = false
+      return
+    }
 
     const { error } = await supabase.from('feedbacks').insert([{ type, message, email }])
     if (error)
@@ -91,7 +98,7 @@ async function handleSubmit() {
           </button>
 
           <RouterLink to="/" class="btn-back" role="button" aria-label="返回主页">
-            返回
+            {{ t('auth.return') }}
           </RouterLink>
         </div>
 

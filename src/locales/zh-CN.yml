@@ -159,6 +159,7 @@ form:
   success: 提交成功，感谢反馈！
   selectError: 请在列表中选择一项
   error: 提交失败，请稍后再试
+  emailRequired: 请输入联系邮箱
 
 about:
   title: 我abc导航站特性
