@@ -14,6 +14,11 @@ const TAG_ICON_MAP_KEY = 'tag_icons_v1'
 const LAST_KNOWN_USER_ID_KEY = 'last_known_user_id_v1'
 /** 无标签筛选的固定哨兵值 */
 const UNTAGGED_SENTINEL = '__UNTAGGED__'
+// ✅ 展开状态持久化
+const EXPANDED_GROUPS_KEY_PREFIX = 'tag_expanded_groups_v1:'
+function getExpandedStorageKey(uid: string) {
+  return `${EXPANDED_GROUPS_KEY_PREFIX}${uid}`
+}
 
 type SmartPlacement = 'bottom-end' | 'bottom-start' | 'top-end' | 'top-start'
 
@@ -344,6 +349,26 @@ export function useTagMenu(
   }
   function toggleExpandedKey(key: string) {
     expandedGroups.value[key] = !expandedGroups.value[key]
+    saveExpanded()
+  }
+
+  function hydrateExpanded(uid: string) {
+    try {
+      const raw = localStorage.getItem(getExpandedStorageKey(uid))
+      expandedGroups.value = raw ? JSON.parse(raw) : {}
+    }
+    catch {
+      expandedGroups.value = {}
+    }
+  }
+  function saveExpanded() {
+    const uid = currentUserId.value
+    if (!uid)
+      return
+    try {
+      localStorage.setItem(getExpandedStorageKey(uid), JSON.stringify(expandedGroups.value))
+    }
+    catch { /* ignore quota */ }
   }
 
   // 📌 MODIFIED: 将标签列表 (allTags) 也存入缓存
@@ -514,6 +539,7 @@ export function useTagMenu(
     // [在线 或 Session 有效] 逻辑
       currentUserId.value = uid
       localStorage.setItem(LAST_KNOWN_USER_ID_KEY, uid) // 保存当前成功的用户ID，供下次离线使用
+      hydrateExpanded(uid)
 
       // 用服务器数据更新或合并本地数据
       const serverPinned = (user.user_metadata as any)?.pinned_tags
@@ -569,6 +595,7 @@ export function useTagMenu(
       const lastUid = localStorage.getItem(LAST_KNOWN_USER_ID_KEY)
       if (lastUid) {
         currentUserId.value = lastUid
+        hydrateExpanded(lastUid)
         // 在纯离线模式下，只加载用户相关的标签列表缓存，不做任何网络请求
         hydrateCountsFromLocal(lastUid)
       }
@@ -669,7 +696,7 @@ export function useTagMenu(
     hydrateCountsFromLocal(uid)
     refreshTagCountsFromServer().catch(() => {})
     refreshUntaggedCountFromServer(true).catch(() => {})
-    expandedGroups.value = {}
+    // expandedGroups.value = {}
   }
 
   // 若主菜单被误关（处于行内更多/对话框交互时），自动重开；点击外部关闭除外
