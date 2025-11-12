@@ -29,7 +29,56 @@ const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+// === 月份滚轮选择（确保日历立即切换） ===
+const calendarRef = ref<InstanceType<typeof Calendar> | null>(null)
 
+// 当前显示页（1-12）
+const calendarPage = ref({
+  year: selectedDate.value.getFullYear(),
+  month: selectedDate.value.getMonth() + 1,
+})
+
+// 滚轮的字符串值（YYYY-MM）
+const monthPickerValue = ref(
+  `${calendarPage.value.year}-${String(calendarPage.value.month).padStart(2, '0')}`,
+)
+
+function jumpTo(y: number, m: number) {
+  // 1) 同步本地状态
+  calendarPage.value = { year: y, month: m }
+  monthPickerValue.value = `${y}-${String(m).padStart(2, '0')}`
+
+  // 2) 直接驱动 v-calendar 跳页（最稳）
+  calendarRef.value?.move({ year: y, month: m })
+}
+
+function handleMonthChange(e: Event) {
+  const v = (e.target as HTMLInputElement).value // "2025-11"
+  const [y, m] = v.split('-').map(Number)
+  if (y && m)
+    jumpTo(y, m)
+}
+
+// 当用户用 v-calendar 左右箭头/手势换月时，同步到滚轮
+function handleCalendarPageUpdate(page: { year: number; month: number }) {
+  // 某些版本会先发出相同值，这里做一次去抖
+  if (
+    page.year !== calendarPage.value.year
+    || page.month !== calendarPage.value.month
+  ) {
+    calendarPage.value = { ...page }
+    monthPickerValue.value = `${page.year}-${String(page.month).padStart(2, '0')}`
+  }
+}
+
+// 兜底：当 calendarPage 被程序改动时，再次调用 move，保证切换
+watch(
+  () => ({ ...calendarPage.value }),
+  (p) => {
+    calendarRef.value?.move({ year: p.year, month: p.month })
+  },
+  { deep: true },
+)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -688,10 +737,26 @@ async function saveNewNote(content: string, weather: string | null) {
     </div>
     <div ref="scrollBodyRef" class="calendar-body">
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
+        <!-- 年月滚轮（移动端是系统滚轮） -->
+        <div class="month-picker-bar">
+          <label class="month-picker-label">{{ t('notes.calendar.month_picker') || '选择年月' }}</label>
+          <input
+            class="month-input"
+            type="month"
+            :value="monthPickerValue"
+            @change="handleMonthChange"
+          >
+        </div>
+
         <Calendar
+          ref="calendarRef"
           is-expanded
           :attributes="attributes"
           :is-dark="isDark"
+
+          :from-page="calendarPage"
+          @update:from-page="handleCalendarPageUpdate"
+
           @dayclick="day => fetchNotesForDate(day.date)"
         />
       </div>
@@ -880,6 +945,37 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 编辑：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
+}
+
+/* 让 v-calendar 自带标题不再占位；我们用自己的 month picker */
+:deep(.vc-header .vc-title) { display: none; }
+
+/* 滚轮条 */
+.month-picker-bar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .5rem;
+  padding: .25rem .25rem .5rem;
+}
+
+.month-picker-label {
+  font-size: 14px;
+  color: #666;
+}
+
+/* 让滚轮输入更像工具条控件 */
+.month-input {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: var(--month-input-bg, #fff);
+}
+.dark .month-input {
+  --month-input-bg: #111318;
+  border-color: #374151;
+  color: #e5e7eb;
 }
 </style>
 
