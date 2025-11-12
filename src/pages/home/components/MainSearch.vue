@@ -368,4 +368,10 @@ const { iconStyle } = useIconStyle()
 .search-result-card:hover {
   background-color: var(--site-hover-c);
 }
+
+/* 深色模式下：输入文字和光标变白 */
+.dark .search-input {
+  color: #fff;
+  caret-color: #fff;
+}
 </style>

@@ -52,6 +52,10 @@ const features = computed(() => {
   /* 旧 iOS: constant() ；新 iOS: env() */
   padding-top: calc(8px + constant(safe-area-inset-top));
   padding-top: calc(8px + env(safe-area-inset-top));
+
+  /* ✅ 新增：让这一页自己撑满全屏，并使用全站主题背景色 */
+  min-height: 100vh;
+  background-color: var(--main-bg-c);
 }
 
 /* 让按钮能相对卡片绝对定位 */

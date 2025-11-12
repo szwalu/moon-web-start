@@ -273,9 +273,9 @@ function showMobileToast() {
     />
 
     <div
-      class="main-content-area"
+      class="main-content-area min-h-screen bg-$main-bg-c"
       px="6 sm:12" pb="12 sm:24"
-      sm:auto my-0 w-full pt-0 bg-transparent sm:pt-0
+      sm:auto my-0 w-full pt-0 sm:pt-0
       :class="{
         'no_select': settingStore.isSetting,
         'content-shifted': settingStore.isSideNavOpen,
