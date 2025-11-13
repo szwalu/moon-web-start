@@ -693,7 +693,14 @@ async function saveNewNote(content: string, weather: string | null) {
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
-        />
+        >
+          <!-- ✅ 正确写法：用 header-title 插槽，参数是 { title } -->
+          <template #header-title="{ title }">
+            <span class="calendar-nav-title">
+              {{ title }}
+            </span>
+          </template>
+        </Calendar>
       </div>
 
       <div class="notes-for-day-container">
@@ -880,6 +887,16 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 编辑：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
+}
+
+/* 日历顶部“十一月 2025”文字 */
+.calendar-nav-title {
+  font-weight: 600;
+}
+
+/* 暗色模式：强制文字为白色 */
+.dark .calendar-view .calendar-nav-title {
+  color: #f9fafb;
 }
 </style>
 
