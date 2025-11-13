@@ -66,6 +66,8 @@ const iosFirstInputLatch = ref(false)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
+const autoScrollSuppressed = ref(false)
+let autoScrollSuppressedTimer: number | null = null
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
@@ -93,6 +95,26 @@ function onTextPointerUp() {
     recomputeBottomSafePadding()
   }, 260) as unknown as number // 200~400ms 可以按手感微调
 }
+
+function suppressAutoScrollTemporarily() {
+  autoScrollSuppressed.value = true
+
+  if (autoScrollSuppressedTimer != null)
+    window.clearTimeout(autoScrollSuppressedTimer)
+
+  // 手动滚动结束后，约 600ms 再恢复自动对齐
+  autoScrollSuppressedTimer = window.setTimeout(() => {
+    autoScrollSuppressed.value = false
+  }, 600) as unknown as number // 可按手感改成 500~800ms
+}
+
+function onTextareaScroll() {
+  // 只在移动端才需要干预；桌面端不用管
+  if (!isMobile)
+    return
+  suppressAutoScrollTemporarily()
+}
+
 // ============== Store ==============
 const settingsStore = useSettingStore()
 
@@ -533,7 +555,7 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
-  if (isFreezingBottom.value)
+  if (isFreezingBottom.value || autoScrollSuppressed.value)
     return
   const el = textarea.value
   if (!el)
@@ -1439,6 +1461,10 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
+  if (autoScrollSuppressedTimer != null) {
+    window.clearTimeout(autoScrollSuppressedTimer)
+    autoScrollSuppressedTimer = null
+  }
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -1574,9 +1600,9 @@ function handleBeforeInput(e: InputEvent) {
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
         @input="handleInput"
+        @scroll="onTextareaScroll"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
