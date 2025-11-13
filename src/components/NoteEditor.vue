@@ -30,7 +30,6 @@ const props = defineProps({
   enableScrollPush: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-let manualScrollTimer: number | null = null
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -66,16 +65,10 @@ const iosFirstInputLatch = ref(false)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
-const autoScrollSuppressed = ref(false)
-let autoScrollSuppressedTimer: number | null = null
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
-  if (manualScrollTimer != null) {
-    clearTimeout(manualScrollTimer)
-    manualScrollTimer = null
-  }
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
@@ -86,35 +79,14 @@ function onTextPointerMove() {
 
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
-  if (manualScrollTimer != null)
-    clearTimeout(manualScrollTimer)
-
-  manualScrollTimer = window.setTimeout(() => {
-    // 惯性滚动结束后再解冻 & 重算安全区
-    isFreezingBottom.value = false
+  isFreezingBottom.value = false
+  requestAnimationFrame(() => {
     recomputeBottomSafePadding()
-  }, 260) as unknown as number // 200~400ms 可以按手感微调
+  })
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, 120)
 }
-
-function suppressAutoScrollTemporarily() {
-  autoScrollSuppressed.value = true
-
-  if (autoScrollSuppressedTimer != null)
-    window.clearTimeout(autoScrollSuppressedTimer)
-
-  // 手动滚动结束后，约 600ms 再恢复自动对齐
-  autoScrollSuppressedTimer = window.setTimeout(() => {
-    autoScrollSuppressed.value = false
-  }, 600) as unknown as number // 可按手感改成 500~800ms
-}
-
-function onTextareaScroll() {
-  // 只在移动端才需要干预；桌面端不用管
-  if (!isMobile)
-    return
-  suppressAutoScrollTemporarily()
-}
-
 // ============== Store ==============
 const settingsStore = useSettingStore()
 
@@ -555,7 +527,7 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
-  if (isFreezingBottom.value || autoScrollSuppressed.value)
+  if (isFreezingBottom.value)
     return
   const el = textarea.value
   if (!el)
@@ -847,7 +819,6 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
-    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
@@ -919,7 +890,6 @@ function handleClick() {
 
   captureCaret()
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1105,7 +1075,6 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
@@ -1327,7 +1296,6 @@ function selectTag(tag: string) {
       el2.focus()
       el2.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      ensureCaretVisibleInTextarea()
     }
   })
 }
@@ -1461,10 +1429,6 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
-  if (autoScrollSuppressedTimer != null) {
-    window.clearTimeout(autoScrollSuppressedTimer)
-    autoScrollSuppressedTimer = null
-  }
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -1524,7 +1488,6 @@ function startFocusBoost() {
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
@@ -1600,9 +1563,9 @@ function handleBeforeInput(e: InputEvent) {
         @compositionstart="isComposing = true"
         @compositionend="isComposing = false"
         @input="handleInput"
-        @scroll="onTextareaScroll"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
+
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
