@@ -65,27 +65,31 @@ const iosFirstInputLatch = ref(false)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
+
+// 记录手指按下时的 Y，专门给 iOS “大幅滑动自动收起键盘” 用
 const dragStartY = ref<number | null>(null)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown(e?: PointerEvent | TouchEvent) {
   isFreezingBottom.value = true
 
-  // 仅在 iOS 上记录起始 Y，用于判断是否大幅滑动
-  if (isIOS) {
-    let y: number | null = null
-    if (e && 'touches' in e) {
-      const t = e.touches[0]
-      y = t ? t.clientY : null
-    }
-    else if (e && 'clientY' in e) {
-      y = (e as PointerEvent).clientY
-    }
-    dragStartY.value = Number.isFinite(y as number) ? (y as number) : null
+  // 只在 iOS 上记录起始 Y 用来判断“大幅滑动”
+  if (!isIOS)
+    return
+
+  let y: number | null = null
+  if (e && 'touches' in e) {
+    const t = e.touches[0]
+    y = t ? t.clientY : null
   }
+  else if (e && 'clientY' in e) {
+    y = (e as PointerEvent).clientY
+  }
+  dragStartY.value = y
 }
 
 function onTextPointerMove(e?: PointerEvent | TouchEvent) {
+  // 只在 iOS 上做“滑动关闭键盘”的判断，其它平台直接退出
   if (!isIOS || dragStartY.value == null)
     return
 
@@ -102,12 +106,14 @@ function onTextPointerMove(e?: PointerEvent | TouchEvent) {
 
   const delta = Math.abs((y as number) - dragStartY.value)
 
-  // 超过 40px 视为“我要滚动看内容”，此时自动收起键盘
+  // 超过 40px 视为“我要滚动看内容” —— 自动收起键盘
   if (delta > 40) {
     const active = document.activeElement as HTMLElement | null
-    // 只要当前 focus 的是 textarea，就把它 blur 掉（键盘会收起）
     if (active && active.tagName === 'TEXTAREA')
       active.blur()
+
+    // 一次触发后就重置，避免多次重复执行
+    dragStartY.value = null
   }
 }
 
