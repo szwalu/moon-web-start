@@ -68,6 +68,7 @@ const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
+  stopFocusBoost()
   isFreezingBottom.value = true
 }
 
