@@ -582,16 +582,22 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
+  // 非移动端：不做任何托底，直接清零
   if (!isMobile) {
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
+
   if (isFreezingBottom.value)
     return
 
   const el = textarea.value
   if (!el) {
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
@@ -599,19 +605,23 @@ function recomputeBottomSafePadding() {
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
+  // 判断键盘高度：无键盘时直接清零
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
+  // —— 通过 mirror 计算光标在 textarea 内容里的 Y 坐标 —— //
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -622,26 +632,32 @@ function recomputeBottomSafePadding() {
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
     document.body.appendChild(mirror)
+
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
     mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+
     const y = mirror.scrollHeight
     document.body.removeChild(mirror)
     return y
   })()
 
   const rect = el.getBoundingClientRect()
+
+  // 光标“理论底边”在视口里的位置
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+    + lineHeight * 0.8 // 稍微抬一点，避免刚好卡在中间
 
+  // Android：再额外抬一点，兼顾候选栏/工具栏
   const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
+    ? (caretBottomInViewport + lineHeight * 1.6)
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+
+  // 真实 safe-area-bottom
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -651,62 +667,64 @@ function recomputeBottomSafePadding() {
       document.body.removeChild(div)
       return Number.isFinite(px) ? px : 0
     }
-    catch { return 0 }
+    catch {
+      return 0
+    }
   })()
-  const HEADROOM = isAndroid ? 60 : 70
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
-  const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  // 预留的“光标离键盘的最小距离”：越小越能贴近底部
+  const MARGIN = isAndroid ? 18 : 16
 
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
+  // “安全线” = 视口高度 - (键盘上方要留下的 footer + safeInset + margin)
+  const threshold = vv.height - (footerH + safeInset + MARGIN)
 
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
-    need = 0
+  // 需要额外垫高的像素（只要超过安全线就抬起）
+  let need = Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
 
-  // 抑制小幅抖动：与上次差异很小时保持不变
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+  // 轻微抖动抑制：差异 < 4px 就沿用上一次（但允许从 >0 变成 0）
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 4)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
 
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  // —— 根据 need 决定是否轻推页面（外层 scrollBy），仅在开启 enableScrollPush 时 —— //
   if (need > 0) {
-    if (!_hasPushedPage) {
+    if (!_hasPushedPage && props.enableScrollPush) {
       if (isAndroid) {
-        const ratio = 1.6
+        const ratio = 1.4
         const cap = 420
         const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+        if (delta > 0)
+          window.scrollBy(0, delta)
       }
       else {
-        const ratio = 0.35
-        const cap = 80
+        const ratio = 0.4
+        const cap = 96
         const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+        if (delta > 0)
+          window.scrollBy(0, delta)
       }
       _hasPushedPage = true
+
+      // 一小段冷却：过 140ms 后允许再次推一次
       window.setTimeout(() => {
         _hasPushedPage = false
+        // 再算一次，防止键盘动画中间状态遗漏
         recomputeBottomSafePadding()
       }, 140)
     }
+
+    // iOS：只要真正计算过一次，就认为“首输入 latch”完成
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
   }
   else {
+    // 没有需要托底时，随时允许下次推
     _hasPushedPage = false
+    // 完全清零时，也把缓存清一下，避免下次误判
+    _lastBottomNeed = 0
   }
 }
 
@@ -1536,11 +1554,7 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn"
-    :class="[
-      isEditing ? 'editing-viewport' : '',
-      isMobile ? 'mobile' : '',
-    ]"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
     <input
       ref="imageInputRef"
@@ -2017,68 +2031,5 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
-}
-
-/* ======== 移动端编辑态：让编辑器脱离虚拟列表，铺成一个“全屏层” ======== */
-.note-editor-reborn.mobile.editing-viewport {
-  position: fixed;
-  inset: 0; /* 撑满整个视口（含安全区） */
-  z-index: 9999;
-
-  /* 覆盖原来的圆角边框，让它像一个单独页面 */
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-
-  /* 避免外层容器高度限制 */
-  max-height: 100dvh;
-
-  /* 垂直布局：上面是 textarea 区，下面是 footer */
-  display: flex;
-  flex-direction: column;
-}
-
-/* 编辑区域填满可用空间 */
-.note-editor-reborn.mobile.editing-viewport .editor-wrapper {
-  flex: 1 1 auto;
-  min-height: 0; /* 防止 flex 子元素因为内容撑死，导致不能滚 */
-}
-
-/* 让 textarea 直接负责滚动：不再依赖外层虚拟列表的剪裁 */
-.note-editor-reborn.mobile.editing-viewport .editor-textarea {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-
-  overflow-y: auto;        /* 只让 textarea 自己滚动 */
-  -webkit-overflow-scrolling: touch;
-}
-
-/* 底部工具栏保持在底部 */
-.note-editor-reborn.mobile.editing-viewport .editor-footer {
-  flex: 0 0 auto;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
-}
-
-/* ======== 移动端 + 非编辑态：强制回到普通流式布局，避免误挡页面滚动 ======== */
-.note-editor-reborn.mobile:not(.editing-viewport) {
-  position: static;
-  inset: auto;
-  z-index: auto;
-  max-height: none;
-}
-
-/* ======== 移动端编辑态：让 textarea 底部预留出工具栏空间 ======== */
-.note-editor-reborn.mobile.editing-viewport .editor-textarea {
-  /* 原来就有的属性：保持 */
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-
-  /* ✅ 新增：在最底下垫一块空白，让最后几行可以滚到工具栏上方 */
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-  /* 96px 是经验值 ≈ 工具栏高度 + 一点缓冲，你可以按手感微调成 80~110 */
 }
 </style>
