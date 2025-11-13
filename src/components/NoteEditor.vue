@@ -547,15 +547,16 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  // ✅ 只处理“光标掉到视区下面”的情况，防止被键盘挡住
+  if (caretDesiredBottom > viewBottom) {
+    el.scrollTop = Math.min(
+      caretDesiredBottom - el.clientHeight,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -819,6 +820,7 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
@@ -890,6 +892,7 @@ function handleClick() {
 
   captureCaret()
   requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1075,6 +1078,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
+      ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
@@ -1296,6 +1300,7 @@ function selectTag(tag: string) {
       el2.focus()
       el2.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
+      ensureCaretVisibleInTextarea()
     }
   })
 }
@@ -1488,6 +1493,7 @@ function startFocusBoost() {
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
