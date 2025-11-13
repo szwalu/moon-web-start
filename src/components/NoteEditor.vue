@@ -527,6 +527,9 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
+  if (isMobile)
+    return
+
   if (isFreezingBottom.value)
     return
   const el = textarea.value
@@ -547,16 +550,15 @@ function ensureCaretVisibleInTextarea() {
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // ✅ 只处理“光标掉到视区下面”的情况，防止被键盘挡住
-  if (caretDesiredBottom > viewBottom) {
-    el.scrollTop = Math.min(
-      caretDesiredBottom - el.clientHeight,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
