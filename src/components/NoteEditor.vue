@@ -825,12 +825,10 @@ function onDocSelectionChange() {
 }
 
 onMounted(() => {
-  if (!isMobile)
-    document.addEventListener('selectionchange', onDocSelectionChange, { passive: true })
+  document.addEventListener('selectionchange', onDocSelectionChange)
 })
 onUnmounted(() => {
-  if (!isMobile)
-    document.removeEventListener('selectionchange', onDocSelectionChange)
+  document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
 function handleFocus() {
