@@ -825,10 +825,12 @@ function onDocSelectionChange() {
 }
 
 onMounted(() => {
-  document.addEventListener('selectionchange', onDocSelectionChange)
+  if (!isMobile)
+    document.addEventListener('selectionchange', onDocSelectionChange, { passive: true })
 })
 onUnmounted(() => {
-  document.removeEventListener('selectionchange', onDocSelectionChange)
+  if (!isMobile)
+    document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
 function handleFocus() {
@@ -1774,7 +1776,6 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
   padding: 12px 8px 8px 16px;
   border: none;
   background-color: transparent;
