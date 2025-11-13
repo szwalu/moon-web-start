@@ -527,9 +527,6 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
-  if (isMobile)
-    return
-
   if (isFreezingBottom.value)
     return
   const el = textarea.value
@@ -1539,7 +1536,11 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn"
+    :class="[
+      isEditing ? 'editing-viewport' : '',
+      isMobile ? 'mobile' : '',
+    ]"
   >
     <input
       ref="imageInputRef"
@@ -2016,5 +2017,46 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
+
+/* ======== 移动端编辑态：让编辑器脱离虚拟列表，铺成一个“全屏层” ======== */
+.note-editor-reborn.mobile.editing-viewport {
+  position: fixed;
+  inset: 0; /* 撑满整个视口（含安全区） */
+  z-index: 9999;
+
+  /* 覆盖原来的圆角边框，让它像一个单独页面 */
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+
+  /* 避免外层容器高度限制 */
+  max-height: 100dvh;
+
+  /* 垂直布局：上面是 textarea 区，下面是 footer */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 编辑区域填满可用空间 */
+.note-editor-reborn.mobile.editing-viewport .editor-wrapper {
+  flex: 1 1 auto;
+  min-height: 0; /* 防止 flex 子元素因为内容撑死，导致不能滚 */
+}
+
+/* 让 textarea 直接负责滚动：不再依赖外层虚拟列表的剪裁 */
+.note-editor-reborn.mobile.editing-viewport .editor-textarea {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+
+  overflow-y: auto;        /* 只让 textarea 自己滚动 */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 底部工具栏保持在底部 */
+.note-editor-reborn.mobile.editing-viewport .editor-footer {
+  flex: 0 0 auto;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
 }
 </style>
