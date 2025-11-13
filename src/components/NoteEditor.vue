@@ -527,58 +527,30 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
-  // 手指在拖动时完全不干预，保持你原来的“冻结期”逻辑
-  if (isFreezingBottom.value)
-    return
-
   const el = textarea.value
   if (!el)
     return
 
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  // —— iOS：用“行数 × 行高”的简单估算，避免镜像元素在 iOS 上的奇怪行为 —— //
-  if (isIOS) {
-    // 光标之前的文本
-    const before = val.slice(0, selEnd)
-    // 按换行符粗略算“第几行”（不考虑自动换行，只考虑显式 \n）
-    const lineIndex = before.split('\n').length - 1
-    const caretTop = lineIndex * lineHeight
-    const caretBottom = caretTop + lineHeight
-
-    const viewTop = el.scrollTop
-    const viewBottom = viewTop + el.clientHeight
-
-    // 给一点缓冲区，避免太贴边
-    const TOP_MARGIN = lineHeight * 0.8
-    const BOTTOM_MARGIN = lineHeight * 1.2
-
-    // 光标太靠下：往上滚一点
-    if (caretBottom + BOTTOM_MARGIN > viewBottom) {
-      const target = caretBottom + BOTTOM_MARGIN - el.clientHeight
-      el.scrollTop = Math.min(Math.max(target, 0), el.scrollHeight - el.clientHeight)
-    }
-    // 光标太靠上：往下滚一点
-    else if (caretTop - TOP_MARGIN < viewTop) {
-      const target = caretTop - TOP_MARGIN
-      el.scrollTop = Math.max(target, 0)
-    }
-
+  // ✅ iOS：先彻底停用“自动追光标”逻辑，让滚动完全由系统接管
+  if (isIOS)
     return
-  }
 
-  // —— 非 iOS：沿用你之前那套“镜像元素精确测量”的版本 —— //
+  // ✅ 下面是你原来那套非 iOS 的精确算法，保持不变
+  if (isFreezingBottom.value)
+    return
+
+  const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
     = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
