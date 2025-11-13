@@ -120,7 +120,7 @@ async function focusToEnd() {
   catch {}
 
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -525,39 +525,6 @@ watch(() => props.isLoading, (newValue) => {
     isSubmitting.value = false
 })
 
-// ============== 滚动校准 ==============
-function ensureCaretVisibleInTextarea() {
-  if (isFreezingBottom.value)
-    return
-  const el = textarea.value
-  if (!el)
-    return
-
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-  document.body.appendChild(mirror)
-
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
-
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
-
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
-}
-
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
@@ -819,7 +786,7 @@ function onDocSelectionChange() {
     window.clearTimeout(selectionIdleTimer)
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   }, 80)
 }
@@ -843,7 +810,7 @@ function handleFocus() {
 
   // 立即一轮计算
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
@@ -891,7 +858,7 @@ function handleClick() {
 
   captureCaret()
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1042,7 +1009,7 @@ function handleInput(event: Event) {
 
   // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-  ensureCaretVisibleInTextarea()
+  // // ensureCaretVisibleInTextarea()
 
   // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
@@ -1077,7 +1044,7 @@ function updateTextarea(newText: string, newCursorPos?: number) {
       if (newCursorPos !== undefined)
         el.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      ensureCaretVisibleInTextarea()
+      // // ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => recomputeBottomSafePadding())
     }
   })
@@ -1299,7 +1266,7 @@ function selectTag(tag: string) {
       el2.focus()
       el2.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
-      ensureCaretVisibleInTextarea()
+      // // ensureCaretVisibleInTextarea()
     }
   })
 }
@@ -1492,7 +1459,7 @@ function startFocusBoost() {
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
@@ -1527,7 +1494,7 @@ function handleBeforeInput(e: InputEvent) {
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    // // ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1769,14 +1736,20 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
+/* 找到 .editor-textarea 样式 */
 .editor-textarea {
   width: 100%;
-  min-height: 360px;
+  /* min-height: 360px; (最小高度可以保留) */
 
-  /* ❌ 不再让 textarea 自己滚动 / 限高，交给页面滚动 */
+  /* * 👇 禁用这两行。
+   * useTextareaAutosize 会自动处理高度增长。
+   */
   /* max-height: 75dvh; */
   /* overflow-y: auto; */
-  overflow-y: visible;
+
+  /* 明确告诉它不要滚动 */
+  max-height: none; /* 覆盖掉 editing-viewport 里的 max-height */
+  overflow-y: hidden; /* 彻底禁止内部滚动 */
 
   padding: 12px 8px 8px 16px;
   border: none;
@@ -1788,7 +1761,13 @@ function handleBeforeInput(e: InputEvent) {
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  scrollbar-gutter: stable both-edges;
+  /* scrollbar-gutter: stable both-edges; (这个也可以移除了) */
+}
+
+/* 同样，编辑模式下的 max-height 也要拿掉 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  /* max-height:75dvh; */ /* 👈 禁用这个 */
+  max-height: none; /* 👈 改为这个 */
 }
 
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -1974,9 +1953,9 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
-/* 编辑模式下，允许 textarea 跟随内容长高（不再 75dvh 限制） */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height: none;
+  /* max-height:75dvh; */ /* 👈 禁用这个 */
+  max-height: none; /* 👈 改为这个 */
 }
 
 /* tag 面板样式增强 */
