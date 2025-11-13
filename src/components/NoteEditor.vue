@@ -30,6 +30,7 @@ const props = defineProps({
   enableScrollPush: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+let manualScrollTimer: number | null = null
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -69,6 +70,10 @@ const isFreezingBottom = ref(false)
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
 function onTextPointerDown() {
   isFreezingBottom.value = true
+  if (manualScrollTimer != null) {
+    clearTimeout(manualScrollTimer)
+    manualScrollTimer = null
+  }
 }
 
 // 手指移动：保持冻结（避免过程中的抖动）
@@ -79,13 +84,14 @@ function onTextPointerMove() {
 
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
-  isFreezingBottom.value = false
-  requestAnimationFrame(() => {
+  if (manualScrollTimer != null)
+    clearTimeout(manualScrollTimer)
+
+  manualScrollTimer = window.setTimeout(() => {
+    // 惯性滚动结束后再解冻 & 重算安全区
+    isFreezingBottom.value = false
     recomputeBottomSafePadding()
-  })
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, 120)
+  }, 260) as unknown as number // 200~400ms 可以按手感微调
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
