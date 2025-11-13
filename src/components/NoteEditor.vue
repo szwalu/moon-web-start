@@ -2059,4 +2059,26 @@ function handleBeforeInput(e: InputEvent) {
   flex: 0 0 auto;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
 }
+
+/* ======== 移动端 + 非编辑态：强制回到普通流式布局，避免误挡页面滚动 ======== */
+.note-editor-reborn.mobile:not(.editing-viewport) {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  max-height: none;
+}
+
+/* ======== 移动端编辑态：让 textarea 底部预留出工具栏空间 ======== */
+.note-editor-reborn.mobile.editing-viewport .editor-textarea {
+  /* 原来就有的属性：保持 */
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* ✅ 新增：在最底下垫一块空白，让最后几行可以滚到工具栏上方 */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  /* 96px 是经验值 ≈ 工具栏高度 + 一点缓冲，你可以按手感微调成 80~110 */
+}
 </style>
