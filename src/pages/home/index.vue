@@ -29,7 +29,7 @@ defineOptions({
 usePageResume({ storageKey: 'woabc-home-v1' /* , scrollSelector: '.main-content-area' */ })
 
 // --- 初始化 & 状态定义 ---
-const { t, locale } = useI18n()
+const { t } = useI18n()
 // const messageHook = useMessage() // messageHook 变量被保留，因为它可能在 fetchWeather 中使用
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
@@ -204,17 +204,7 @@ function normalizedCoord(lat: number, lon: number) {
 }
 
 function isChineseLocale() {
-  // 1) 优先用当前站点的 i18n 语言
-  const current = (locale?.value || '').toLowerCase()
-  if (current)
-    return current.startsWith('zh')
-
-  // 2) 兜底：用浏览器 / 页面语言
-  const nav = (navigator.language || '').toLowerCase()
-  const docLang = (document.documentElement.lang || '').toLowerCase()
-  const lang = nav || docLang
-
-  return lang.startsWith('zh')
+  return true
 }
 
 async function reverseGeocodeCity(lat: number, lon: number): Promise<string | null> {
