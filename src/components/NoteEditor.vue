@@ -726,27 +726,94 @@ function getWeatherIcon(code: number) {
   const item = (weatherMap as any)[code] || { icon: '❓' }
   return item.icon
 }
+
+async function getBrowserLocation(timeoutMs = 3000): Promise<{ lat: number; lon: number } | null> {
+  // SSR 或不支持 geolocation 时直接放弃
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.geolocation)
+    return null
+
+  return new Promise((resolve) => {
+    let done = false
+
+    const finish = (value: { lat: number; lon: number } | null) => {
+      if (done)
+        return
+      done = true
+      resolve(value)
+    }
+
+    const timer = window.setTimeout(() => {
+      finish(null)
+    }, timeoutMs)
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        window.clearTimeout(timer)
+        finish({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        })
+      },
+      () => {
+        window.clearTimeout(timer)
+        finish(null)
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5 * 60 * 1000,
+        timeout: timeoutMs,
+      },
+    )
+  })
+}
+
 async function fetchWeatherLine(): Promise<string | null> {
   try {
-    // 定位：优先 ipapi.co，失败回退 ip-api.com
     let loc: { city: string; lat: number; lon: number }
-    try {
-      const r = await fetch('https://ipapi.co/json/')
-      if (!r.ok)
-        throw new Error(String(r.status))
-      const d = await r.json()
-      if (d?.error)
-        throw new Error(d?.reason || 'ipapi error')
-      loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+
+    // ===== 1. 优先使用浏览器定位（GPS / Wi-Fi），精度更高 =====
+    const browserLoc = await getBrowserLocation(3000)
+
+    if (browserLoc) {
+      // 有浏览器坐标时，再用 ipapi 只取城市名（失败就用“当前位置”）
+      let city = ''
+      try {
+        const r = await fetch('https://ipapi.co/json/')
+        if (r.ok) {
+          const d = await r.json()
+          if (!d?.error && d?.city)
+            city = d.city as string
+        }
+      }
+      catch {
+        // 忽略城市失败错误，后面兜底
+      }
+
+      if (!city)
+        city = '当前位置'
+
+      loc = { city, lat: browserLoc.lat, lon: browserLoc.lon }
     }
-    catch {
-      const r2 = await fetch('https://ip-api.com/json/')
-      if (!r2.ok)
-        throw new Error(String(r2.status))
-      const d2 = await r2.json()
-      if (d2?.status === 'fail')
-        throw new Error(d2?.message || 'ip-api error')
-      loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+    else {
+      // ===== 2. 浏览器定位失败/拒绝，回退到原来的 IP 定位逻辑 =====
+      try {
+        const r = await fetch('https://ipapi.co/json/')
+        if (!r.ok)
+          throw new Error(String(r.status))
+        const d = await r.json()
+        if (d?.error)
+          throw new Error(d?.reason || 'ipapi error')
+        loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+      }
+      catch {
+        const r2 = await fetch('https://ip-api.com/json/')
+        if (!r2.ok)
+          throw new Error(String(r2.status))
+        const d2 = await r2.json()
+        if (d2?.status === 'fail')
+          throw new Error(d2?.message || 'ip-api error')
+        loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+      }
     }
 
     if (!loc?.lat || !loc?.lon)
@@ -763,6 +830,9 @@ async function fetchWeatherLine(): Promise<string | null> {
     const d = await w.json()
     const tempC = d?.current?.temperature_2m
     const icon = getWeatherIcon(d?.current?.weathercode)
+
+    if (typeof tempC !== 'number')
+      throw new Error('温度数据异常')
 
     // 只保留：城市 温度°C 图标（无文字）
     return `${city} ${tempC}°C ${icon}`
