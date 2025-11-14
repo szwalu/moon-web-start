@@ -71,6 +71,12 @@ function onTextPointerDown() {
   isFreezingBottom.value = true
 }
 
+// 手指移动：保持冻结（避免过程中的抖动）
+function onTextPointerMove() {
+  // 保持监听，避免在拖动过程中触发布局重算；
+  // 不需要显式 return，防止 no-useless-return
+}
+
 // 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
@@ -93,64 +99,6 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
-let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
-let _lastBottomNeed = 0
-
-// ===== iOS：大幅滑动时自动收起键盘 =====
-const swipeStartY = ref<number | null>(null)
-const swipeTotalDy = ref(0)
-const shouldBlurOnSwipeEnd = ref(false)
-
-function handleSwipeStart(e: TouchEvent) {
-  if (!isIOS)
-    return
-  const t = e.touches[0]
-  if (!t)
-    return
-  swipeStartY.value = t.clientY
-  swipeTotalDy.value = 0
-  shouldBlurOnSwipeEnd.value = false
-}
-
-function handleSwipeMove(e: TouchEvent) {
-  if (!isIOS)
-    return
-  if (swipeStartY.value == null)
-    return
-
-  const t = e.touches[0]
-  if (!t)
-    return
-
-  const dy = t.clientY - swipeStartY.value
-  swipeTotalDy.value = dy
-
-  // 🚩 滑动距离超过 80 像素，标记“松手时可以收键盘”
-  if (Math.abs(dy) > 80)
-    shouldBlurOnSwipeEnd.value = true
-}
-
-function handleSwipeEnd() {
-  if (!isIOS)
-    return
-
-  if (shouldBlurOnSwipeEnd.value) {
-    const el = textarea.value
-    if (el && document.activeElement === el) {
-      // 👉 真正收起键盘的地方
-      el.blur()
-      emit('bottomSafeChange', 0)
-      _hasPushedPage = false
-      _lastBottomNeed = 0
-    }
-  }
-
-  // 重置状态
-  swipeStartY.value = null
-  swipeTotalDy.value = 0
-  shouldBlurOnSwipeEnd.value = false
-}
-
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -629,6 +577,9 @@ function getFooterHeight(): number {
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
+
+let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
@@ -1619,10 +1570,11 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
+
         @pointercancel="onTextPointerUp"
-        @touchstart.passive="onTextPointerDown; handleSwipeStart"
-        @touchmove.passive="handleSwipeMove"
-        @touchend.passive="onTextPointerUp; handleSwipeEnd"
+        @touchstart.passive="onTextPointerDown"
+        @touchmove.passive="onTextPointerMove"
+        @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
       />
       <div
