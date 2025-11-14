@@ -726,76 +726,28 @@ function getWeatherIcon(code: number) {
   const item = (weatherMap as any)[code] || { icon: '❓' }
   return item.icon
 }
-
-async function getBrowserLocation(timeoutMs = 3000): Promise<{ lat: number; lon: number } | null> {
-  // SSR 或不支持 geolocation 时直接放弃
-  if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.geolocation)
-    return null
-
-  return new Promise((resolve) => {
-    let done = false
-
-    const finish = (value: { lat: number; lon: number } | null) => {
-      if (done)
-        return
-      done = true
-      resolve(value)
-    }
-
-    const timer = window.setTimeout(() => {
-      finish(null)
-    }, timeoutMs)
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        window.clearTimeout(timer)
-        finish({
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-        })
-      },
-      () => {
-        window.clearTimeout(timer)
-        finish(null)
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5 * 60 * 1000,
-        timeout: timeoutMs,
-      },
-    )
-  })
-}
-
 async function fetchWeatherLine(): Promise<string | null> {
   try {
     let loc: { city: string; lat: number; lon: number }
 
-    // ===== 1. 优先使用浏览器定位（GPS / Wi-Fi），精度更高 =====
-    const browserLoc = await getBrowserLocation(3000)
+    // ===== 1. 主动触发定位弹窗（仅第一次），成功则用 Geolocation =====
+    const browserLoc = await getBrowserLocationWithPromptOnce(10000)
 
     if (browserLoc) {
-      // 有浏览器坐标时，再用 ipapi 只取城市名（失败就用“当前位置”）
-      let city = ''
-      try {
-        const r = await fetch('https://ipapi.co/json/')
-        if (r.ok) {
-          const d = await r.json()
-          if (!d?.error && d?.city)
-            city = d.city as string
-        }
-      }
-      catch {
-        // 忽略城市失败错误，后面兜底
-      }
+      // 有精确坐标：基于坐标做反向地理编码拿城市名
+      let cityFromGeo = await reverseGeocodeCityFromCoords(browserLoc.lat, browserLoc.lon)
 
-      if (!city)
-        city = '当前位置'
+      if (!cityFromGeo)
+        cityFromGeo = '当前位置'
 
-      loc = { city, lat: browserLoc.lat, lon: browserLoc.lon }
+      loc = {
+        city: cityFromGeo,
+        lat: browserLoc.lat,
+        lon: browserLoc.lon,
+      }
     }
     else {
-      // ===== 2. 浏览器定位失败/拒绝，回退到原来的 IP 定位逻辑 =====
+      // ===== 2. 用户拒绝 / 定位失败 / 超时：退回 IP 定位（行为跟原来一致） =====
       try {
         const r = await fetch('https://ipapi.co/json/')
         if (!r.ok)
@@ -821,7 +773,7 @@ async function fetchWeatherLine(): Promise<string | null> {
 
     const city = getMappedCityName(loc.city)
 
-    // 天气
+    // ===== 3. 天气 =====
     const w = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
@@ -836,6 +788,105 @@ async function fetchWeatherLine(): Promise<string | null> {
 
     // 只保留：城市 温度°C 图标（无文字）
     return `${city} ${tempC}°C ${icon}`
+  }
+  catch {
+    return null
+  }
+}
+
+const GEO_CONSENT_KEY = 'geo_consent_v1' // 'granted' | 'denied'
+
+async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ lat: number; lon: number } | null> {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.geolocation)
+    return null
+
+  // 本地记一下用户在“本应用”里的选择：拒绝过就别再弹了
+  let stored: string | null = null
+  try {
+    stored = window.localStorage.getItem(GEO_CONSENT_KEY)
+  }
+  catch {
+    // localStorage 不可用时忽略
+  }
+
+  if (stored === 'denied')
+    return null
+
+  return new Promise((resolve) => {
+    let done = false
+
+    const finish = (value: { lat: number; lon: number } | null) => {
+      if (done)
+        return
+      done = true
+      resolve(value)
+    }
+
+    const timer = window.setTimeout(() => {
+      // 超时就直接放弃本次定位，不再回退到 IP，避免“没等用户点就用 IP”
+      finish(null)
+    }, timeoutMs)
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        window.clearTimeout(timer)
+        try {
+          window.localStorage.setItem(GEO_CONSENT_KEY, 'granted')
+        }
+        catch {}
+
+        finish({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        })
+      },
+      (err) => {
+        window.clearTimeout(timer)
+
+        // 用户明确点了“拒绝”
+        // GeolocationPositionError.PERMISSION_DENIED === 1
+        if (err && (err as GeolocationPositionError).code === 1) {
+          try {
+            window.localStorage.setItem(GEO_CONSENT_KEY, 'denied')
+          }
+          catch {}
+        }
+
+        finish(null)
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5 * 60 * 1000,
+        timeout: timeoutMs,
+      },
+    )
+  })
+}
+
+async function reverseGeocodeCityFromCoords(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`
+    const r = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    if (!r.ok)
+      throw new Error(String(r.status))
+
+    const data = await r.json()
+    const addr = data?.address || {}
+
+    // 从细到粗兜底：城市 > 镇 > 村 > 郡县
+    const city
+      = addr.city
+      || addr.town
+      || addr.village
+      || addr.hamlet
+      || addr.county
+      || null
+
+    return city
   }
   catch {
     return null
