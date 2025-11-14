@@ -904,7 +904,21 @@ async function restoreScrollIfNeeded() {
 
 <style scoped>
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
+.scroller {
+  height: 100%;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scroll-behavior: auto;
+
+  /* 关键：告诉 iOS 这是一个独立的“惯性滚动区域” */
+  -webkit-overflow-scrolling: touch;
+}
+@supports (-webkit-overflow-scrolling: touch) {
+  .scroller {
+    /* 在 iOS 上强制认为“总是可以滚动”，更容易触发那条灰色指示条 */
+    overflow-y: scroll;
+  }
+}
 /* 背景 */
 .scroller { background-color: #e5e7eb; padding: 0.5rem; }
 .dark .scroller { background-color: #0d1117; }
