@@ -204,7 +204,8 @@ function normalizedCoord(lat: number, lon: number) {
 }
 
 function isChineseLocale() {
-  return true
+  const lang = (navigator.language || '').toLowerCase()
+  return lang.startsWith('zh')
 }
 
 async function reverseGeocodeCity(lat: number, lon: number): Promise<string | null> {
