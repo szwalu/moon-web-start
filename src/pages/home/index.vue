@@ -256,6 +256,9 @@ async function reverseGeocodeCity(lat: number, lon: number): Promise<string | nu
       || addr.county
       || addr.state
       || null
+
+    if (city && city.includes(';'))
+      city = city.split(';')[0].trim()
   }
   catch {
     city = null
