@@ -15,7 +15,7 @@ import { usePageResume } from '@/composables/usePageResume'
 
 // 删除了 supabase 的直接引入，因为 store 已经处理了相关逻辑
 import 'sweetalert2/dist/sweetalert2.min.css'
-import { cityMap, weatherMap } from '@/utils/weatherMap'
+import { weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSettingStore } from '@/stores/setting'
 import { useSiteStore } from '@/stores/site'
@@ -51,7 +51,47 @@ const weatherCity = ref(t('index.weather_loading'))
 const weatherInfo = ref('...')
 const isWeatherRefreshing = ref(false)
 const isMobile = ref(false)
+const GEO_CONSENT_KEY = 'geo_consent_for_navigation_v1'
 
+async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ lat: number; lon: number } | null> {
+  if (!navigator?.geolocation)
+    return null
+
+  const stored = localStorage.getItem(GEO_CONSENT_KEY)
+  if (stored === 'denied')
+    return null
+
+  return new Promise((resolve) => {
+    let done = false
+
+    const finish = (val: any) => {
+      if (done)
+        return
+      done = true
+      resolve(val)
+    }
+
+    const timer = setTimeout(() => finish(null), timeoutMs)
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timer)
+        localStorage.setItem(GEO_CONSENT_KEY, 'granted')
+        finish({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        })
+      },
+      (err) => {
+        clearTimeout(timer)
+        if (err.code === 1)
+          localStorage.setItem(GEO_CONSENT_KEY, 'denied')
+        finish(null)
+      },
+      { enableHighAccuracy: true, maximumAge: 300000, timeout: timeoutMs },
+    )
+  })
+}
 let lastJson = ''
 let lastSettingJson = ''
 
@@ -131,6 +171,107 @@ function setCachedWeather(data) {
   localStorage.setItem('weatherData', JSON.stringify(cache))
 }
 
+// ===== 城市名缓存 =====
+const CITY_CACHE_KEY = 'nominatim_city_cache_v1'
+const CITY_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 天
+
+let cityCache: Record<string, any> | null = null
+
+function loadCityCache() {
+  if (cityCache)
+    return cityCache
+  try {
+    cityCache = JSON.parse(localStorage.getItem(CITY_CACHE_KEY) || '{}')
+  }
+  catch {
+    cityCache = {}
+  }
+  return cityCache
+}
+function saveCityCache() {
+  if (!cityCache)
+    return
+  try {
+    localStorage.setItem(CITY_CACHE_KEY, JSON.stringify(cityCache))
+  }
+  catch {}
+}
+
+function normalizedCoord(lat: number, lon: number) {
+  const nLat = (Math.round(lat * 1000) / 1000).toFixed(3)
+  const nLon = (Math.round(lon * 1000) / 1000).toFixed(3)
+  return `${nLat},${nLon}`
+}
+
+function isChineseLocale() {
+  const lang = (navigator.language || '').toLowerCase()
+  return lang.startsWith('zh')
+}
+
+async function reverseGeocodeCity(lat: number, lon: number): Promise<string | null> {
+  const preferZh = isChineseLocale()
+  const langHeader = preferZh
+    ? 'zh-CN,zh;q=0.9,en;q=0.6'
+    : 'en-US,en;q=0.9,zh;q=0.6'
+
+  const key = normalizedCoord(lat, lon)
+  const cache = loadCityCache()
+  const now = Date.now()
+
+  const cached = cache[key]
+  if (cached && (now - cached.ts) < CITY_TTL_MS)
+    return preferZh ? cached.zh : cached.en
+
+  let city: string | null = null
+
+  try {
+    const params = new URLSearchParams({
+      format: 'json',
+      lat: String(lat),
+      lon: String(lon),
+      zoom: '10',
+      addressdetails: '1',
+    })
+
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?${params.toString()}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Language': langHeader,
+          'User-Agent': 'woabc-navigation-weather/1.0 (support@woabc.com)',
+          'Referer': 'https://www.woabc.com/',
+        },
+      },
+    )
+
+    const data = await res.json()
+    const addr = data.address || {}
+
+    city
+      = addr.city
+      || addr.town
+      || addr.village
+      || addr.hamlet
+      || addr.county
+      || addr.state
+      || null
+  }
+  catch {
+    city = null
+  }
+
+  // 写入缓存
+  cache[key] = {
+    zh: preferZh ? city : null,
+    en: preferZh ? null : city,
+    ts: now,
+  }
+  saveCityCache()
+
+  return city
+}
+
 async function fetchWeather(bypassCache = false) {
   const cached = getCachedWeather()
   if (cached && !bypassCache) {
@@ -145,46 +286,61 @@ async function fetchWeather(bypassCache = false) {
   try {
     weatherCity.value = t('index.weather_loading')
     weatherInfo.value = '...'
-    let locData
-    try {
-      const locRes = await fetch('https://ipapi.co/json/')
-      locData = await locRes.json()
-    }
-    catch (ipapiError) {
-      console.warn('ipapi.co failed, trying ip-api.com...')
-      const backupRes = await fetch('http://ip-api.com/json/')
-      locData = await backupRes.json()
-      locData.city = locData.city || locData.regionName
-      locData.latitude = locData.lat
-      locData.longitude = locData.lon
+
+    // ===== 1. 精确定位（主动弹窗） =====
+    let lat = null
+    let lon = null
+
+    const geo = await getBrowserLocationWithPromptOnce(8000)
+    if (geo) {
+      lat = geo.lat
+      lon = geo.lon
     }
 
-    const lat = locData.latitude
-    const lon = locData.longitude
-    const enCity = locData.city
-    const city = getChineseCityName(enCity)
+    // ===== 2. 若用户拒绝 / 失败 → 使用 IP 定位兜底 =====
+    if (!lat || !lon) {
+      let locData: any
+      try {
+        const r = await fetch('https://ipapi.co/json/')
+        locData = await r.json()
+      }
+      catch {
+        const r2 = await fetch('http://ip-api.com/json/')
+        locData = await r2.json()
+        locData.city = locData.city || locData.regionName
+        locData.latitude = locData.lat
+        locData.longitude = locData.lon
+      }
 
+      lat = locData.latitude
+      lon = locData.longitude
+    }
+
+    // ===== 3. 坐标 → 城市（官方 Nominatim） =====
+    let city = await reverseGeocodeCity(lat!, lon!)
+    if (!city)
+      city = t('index.weather_unknown_city')
+
+    // ===== 4. open-meteo 天气数据 =====
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
     const data = await res.json()
+
     const temp = data.current.temperature_2m
     const code = data.current.weathercode
     const { text, icon } = getWeatherText(code)
 
     const weatherText = `${temp}°C ${text} ${icon}`
+
     weatherCity.value = city
     weatherInfo.value = weatherText
 
-    setCachedWeather({
-      city,
-      info: weatherText,
-    })
+    setCachedWeather({ city, info: weatherText })
   }
-  catch (e) {
+  catch {
     weatherCity.value = t('index.weather_failed')
     weatherInfo.value = ''
-    // console.error('Weather fetch failed:', e)
   }
   finally {
     isWeatherRefreshing.value = false
@@ -199,21 +355,6 @@ function showQuote() {
   const totalQuotes = quotes.length
   const randomIndex = Math.floor(Math.random() * totalQuotes)
   dailyQuote.value = quotes[randomIndex]?.zh || ''
-}
-
-function getChineseCityName(enCity: string): string {
-  enCity = enCity?.trim().toLowerCase()
-  for (const [key, value] of Object.entries(cityMap)) {
-    const keyLower = key.toLowerCase()
-    if (
-      enCity === keyLower
-      || enCity === `${keyLower} city`
-      || enCity === `${keyLower} shi`
-      || enCity.includes(keyLower)
-    )
-      return value
-  }
-  return enCity
 }
 
 function getWeatherText(code: number): { text: string; icon: string } {
