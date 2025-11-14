@@ -66,32 +66,14 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
 
-// 记录手指按下时的 Y，专门给 iOS “大幅滑动自动收起键盘” 用
-const dragStartY = ref<number | null>(null)
-
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
-function onTextPointerDown(e?: PointerEvent | TouchEvent) {
+function onTextPointerDown() {
   isFreezingBottom.value = true
-
-  // 只在 iOS 上记录起始 Y 用来判断“大幅滑动”
-  if (!isIOS)
-    return
-
-  let y: number | null = null
-  if (e && 'touches' in e) {
-    const t = e.touches[0]
-    y = t ? t.clientY : null
-  }
-  else if (e && 'clientY' in e) {
-    y = (e as PointerEvent).clientY
-  }
-  dragStartY.value = y
 }
 
+// 手指抬起/取消：退出冻结，并在下一帧 + 稍后各补算一次
 function onTextPointerUp() {
   isFreezingBottom.value = false
-  dragStartY.value = null
-
   requestAnimationFrame(() => {
     recomputeBottomSafePadding()
   })
@@ -111,58 +93,64 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
+let _lastBottomNeed = 0
 
-// ===== iOS: 大幅滑动后自动收起键盘（只针对 textarea 内的手势） =====
-const touchStartY = ref<number | null>(null)
-const isDraggingForScroll = ref(false)
+// ===== iOS：大幅滑动时自动收起键盘 =====
+const swipeStartY = ref<number | null>(null)
+const swipeTotalDy = ref(0)
+const shouldBlurOnSwipeEnd = ref(false)
 
-function onTouchStart(e: TouchEvent) {
+function handleSwipeStart(e: TouchEvent) {
   if (!isIOS)
     return
-
   const t = e.touches[0]
-  touchStartY.value = t ? t.clientY : null
-  isDraggingForScroll.value = false
+  if (!t)
+    return
+  swipeStartY.value = t.clientY
+  swipeTotalDy.value = 0
+  shouldBlurOnSwipeEnd.value = false
 }
 
-function onTouchMove(e: TouchEvent) {
-  if (!isIOS || touchStartY.value == null)
+function handleSwipeMove(e: TouchEvent) {
+  if (!isIOS)
+    return
+  if (swipeStartY.value == null)
     return
 
   const t = e.touches[0]
   if (!t)
     return
 
-  const dy = t.clientY - touchStartY.value
+  const dy = t.clientY - swipeStartY.value
+  swipeTotalDy.value = dy
 
-  // 阈值可以稍微大一点，避免轻微滑动就误收键盘
-  if (Math.abs(dy) > 60)
-    isDraggingForScroll.value = true
+  // 🚩 滑动距离超过 80 像素，标记“松手时可以收键盘”
+  if (Math.abs(dy) > 80)
+    shouldBlurOnSwipeEnd.value = true
 }
 
-function onTouchEnd() {
+function handleSwipeEnd() {
   if (!isIOS)
     return
 
-  if (isDraggingForScroll.value && textarea.value) {
-    // 直接 blur 当前编辑框，让 iOS 乖乖收键盘
-    textarea.value.blur()
+  if (shouldBlurOnSwipeEnd.value) {
+    const el = textarea.value
+    if (el && document.activeElement === el) {
+      // 👉 真正收起键盘的地方
+      el.blur()
+      emit('bottomSafeChange', 0)
+      _hasPushedPage = false
+      _lastBottomNeed = 0
+    }
   }
 
-  touchStartY.value = null
-  isDraggingForScroll.value = false
+  // 重置状态
+  swipeStartY.value = null
+  swipeTotalDy.value = 0
+  shouldBlurOnSwipeEnd.value = false
 }
 
-// 兼容原有“冻结”逻辑：touchstart / touchend 时一起调用原来的 pointer 处理
-function handleTouchStart(e: TouchEvent) {
-  onTextPointerDown()
-  onTouchStart(e)
-}
-
-function handleTouchEnd() {
-  onTouchEnd()
-  onTextPointerUp()
-}
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -591,30 +579,23 @@ watch(() => props.isLoading, (newValue) => {
 
 // ============== 滚动校准 ==============
 function ensureCaretVisibleInTextarea() {
+  if (isFreezingBottom.value)
+    return
   const el = textarea.value
   if (!el)
     return
 
-  // ✅ iOS：先彻底停用“自动追光标”逻辑，让滚动完全由系统接管
-  if (isIOS)
-    return
-
-  // ✅ 下面是你原来那套非 iOS 的精确算法，保持不变
-  if (isFreezingBottom.value)
-    return
-
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  mirror.style.cssText
-    = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+  mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
@@ -623,15 +604,10 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
-    el.scrollTop = Math.min(
-      caretDesiredBottom - el.clientHeight,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -653,9 +629,6 @@ function getFooterHeight(): number {
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
-
-let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
-let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
@@ -1647,11 +1620,10 @@ function handleBeforeInput(e: InputEvent) {
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
         @pointercancel="onTextPointerUp"
-
-        @touchstart.passive="handleTouchStart"
-        @touchmove.passive="onTouchMove"
-        @touchend.passive="handleTouchEnd"
-        @touchcancel.passive="handleTouchEnd"
+        @touchstart.passive="onTextPointerDown; handleSwipeStart"
+        @touchmove.passive="handleSwipeMove"
+        @touchend.passive="onTextPointerUp; handleSwipeEnd"
+        @touchcancel.passive="onTextPointerUp"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
