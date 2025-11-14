@@ -88,35 +88,6 @@ function onTextPointerDown(e?: PointerEvent | TouchEvent) {
   dragStartY.value = y
 }
 
-function onTextPointerMove(e?: PointerEvent | TouchEvent) {
-  // 只在 iOS 上做“滑动关闭键盘”的判断，其它平台直接退出
-  if (!isIOS || dragStartY.value == null)
-    return
-
-  let y: number | null = null
-  if (e && 'touches' in e) {
-    const t = e.touches[0]
-    y = t ? t.clientY : null
-  }
-  else if (e && 'clientY' in e) {
-    y = (e as PointerEvent).clientY
-  }
-  if (!Number.isFinite(y as number))
-    return
-
-  const delta = Math.abs((y as number) - dragStartY.value)
-
-  // 超过 40px 视为“我要滚动看内容” —— 自动收起键盘
-  if (delta > 40) {
-    const active = document.activeElement as HTMLElement | null
-    if (active && active.tagName === 'TEXTAREA')
-      active.blur()
-
-    // 一次触发后就重置，避免多次重复执行
-    dragStartY.value = null
-  }
-}
-
 function onTextPointerUp() {
   isFreezingBottom.value = false
   dragStartY.value = null
@@ -140,6 +111,58 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+
+// ===== iOS: 大幅滑动后自动收起键盘（只针对 textarea 内的手势） =====
+const touchStartY = ref<number | null>(null)
+const isDraggingForScroll = ref(false)
+
+function onTouchStart(e: TouchEvent) {
+  if (!isIOS)
+    return
+
+  const t = e.touches[0]
+  touchStartY.value = t ? t.clientY : null
+  isDraggingForScroll.value = false
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (!isIOS || touchStartY.value == null)
+    return
+
+  const t = e.touches[0]
+  if (!t)
+    return
+
+  const dy = t.clientY - touchStartY.value
+
+  // 阈值可以稍微大一点，避免轻微滑动就误收键盘
+  if (Math.abs(dy) > 60)
+    isDraggingForScroll.value = true
+}
+
+function onTouchEnd() {
+  if (!isIOS)
+    return
+
+  if (isDraggingForScroll.value && textarea.value) {
+    // 直接 blur 当前编辑框，让 iOS 乖乖收键盘
+    textarea.value.blur()
+  }
+
+  touchStartY.value = null
+  isDraggingForScroll.value = false
+}
+
+// 兼容原有“冻结”逻辑：touchstart / touchend 时一起调用原来的 pointer 处理
+function handleTouchStart(e: TouchEvent) {
+  onTextPointerDown()
+  onTouchStart(e)
+}
+
+function handleTouchEnd() {
+  onTouchEnd()
+  onTextPointerUp()
+}
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -1623,12 +1646,12 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
         @pointercancel="onTextPointerUp"
-        @touchstart.passive="onTextPointerDown"
-        @touchmove.passive="onTextPointerMove"
-        @touchend.passive="onTextPointerUp"
-        @touchcancel.passive="onTextPointerUp"
+
+        @touchstart.passive="handleTouchStart"
+        @touchmove.passive="onTouchMove"
+        @touchend.passive="handleTouchEnd"
+        @touchcancel.passive="handleTouchEnd"
       />
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
