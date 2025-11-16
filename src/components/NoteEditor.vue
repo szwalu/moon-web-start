@@ -1957,8 +1957,8 @@ function handleBeforeInput(e: InputEvent) {
 /* ——— 新增：统一尺寸（高度 & 宽度） ——— */
 .btn-primary,
 .btn-secondary {
-  padding: 3px 12px;
-  min-width: 64px;
+  padding: 3px 9px;
+  min-width: 54px;
   height: 28px;
   box-sizing: border-box;
   border-radius: 6px;
