@@ -461,7 +461,7 @@ notes:
     char_limit_content: '单条笔记不能超过 {max} 字，请删减后再保存。'
     save:
       button_save: 保存
-      button_cancel: 取消
+      button_cancel: 关闭
       success: 保存成功！
       weather_fetch_failed: 获取天气信息失败，笔记将不带天气数据保存。
     image_dialog:
