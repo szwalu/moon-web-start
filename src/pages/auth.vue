@@ -2464,6 +2464,7 @@ function onCalendarUpdated(updated: any) {
           @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
+          @cancel="closeComposer"
           @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
