@@ -368,10 +368,11 @@ async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: strin
 async function insertRecordedAudio() {
   if (!recordingBlob.value || isUploadingAudio.value)
     return
+
   isUploadingAudio.value = true
 
   try {
-    // 简单按 MIME 推断扩展名
+    // 1. 简单按 MIME 推断扩展名
     const mime = recordingBlob.value.type || 'audio/webm'
     let ext = 'webm'
     if (mime.includes('ogg'))
@@ -381,36 +382,34 @@ async function insertRecordedAudio() {
     else if (mime.includes('wav'))
       ext = 'wav'
 
+    // 2. 上传到 Supabase
     const url = await uploadAudioToSupabase(recordingBlob.value, ext, mime)
 
-    // ===== 1. 直接用当前光标位置插入完整链接 + 空格 =====
+    // 3. 在当前光标处插入文本（带一个空格，方便继续打字）
     const el = textarea.value
     if (!el)
       throw new Error('找不到编辑器输入框')
 
     const start = el.selectionStart ?? el.value.length
     const end = el.selectionEnd ?? el.value.length
-    const textToInsert = `[🔊 录音](${url}) ` // 末尾加空格方便继续打字
+    const textToInsert = `[🔊 录音](${url}) `
 
     const finalFullText = el.value.slice(0, start) + textToInsert + el.value.slice(end)
     const newCursorPos = start + textToInsert.length
 
-    // 用统一的 updateTextarea，内部会做 focus + 滚动校准
+    // 用统一方法更新文本 + 光标
     updateTextarea(finalFullText, newCursorPos)
 
-    dialog.success({
-      title: '录音已插入',
-      content: '录音链接已写入当前光标位置。',
-      positiveText: '好的',
-    })
-
-    // 关闭录音弹窗 & 清理状态
+    // 4. 关闭录音弹窗 & 清理状态
     resetRecorderState()
+    isUploadingAudio.value = false
 
-    // ===== 2. 再保险：等下一帧强制把焦点和光标拉回 textarea =====
-    await nextTick()
-    const el2 = textarea.value
-    if (el2) {
+    // 5. 不再弹出「录音已插入」对话框，直接把焦点和光标拉回 textarea
+
+    const refocus = () => {
+      const el2 = textarea.value
+      if (!el2)
+        return
       el2.focus()
       el2.setSelectionRange(newCursorPos, newCursorPos)
       captureCaret()
@@ -419,6 +418,13 @@ async function insertRecordedAudio() {
         recomputeBottomSafePadding()
       })
     }
+
+    // 先 nextTick 一次
+    await nextTick()
+    refocus()
+
+    // 再加一层兜底：部分浏览器里弹窗/动画结束稍慢
+    window.setTimeout(refocus, 200)
   }
   catch (err: any) {
     const msg = err?.message || '上传录音失败，请稍后重试。'
