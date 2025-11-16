@@ -342,12 +342,26 @@ defineExpose({
     @click="handleBannerClick"
   >
     <div class="banner-line">
-      <span v-if="isAnniversaryViewActive">
+      <span
+        v-if="isAnniversaryViewActive"
+        class="banner-text"
+      >
         {{ t('notes.anniversary_total', { count: anniversaryNotes.length }) }}
       </span>
-      <span v-else>
+      <span
+        v-else
+        class="banner-text"
+      >
         {{ t('notes.anniversary_found', { count: anniversaryNotes.length }) }}
       </span>
+
+      <!-- 右侧小按钮：文字“查看”，点击仍然触发整个条幅的 handleBannerClick -->
+      <button
+        type="button"
+        class="banner-view-btn"
+      >
+        {{ isAnniversaryViewActive ? t('auth.return') : t('notes.anniversary_view') }}
+      </button>
     </div>
 
     <!-- 只有在“那年今日视图”时显示年份徽章 -->
@@ -390,9 +404,40 @@ defineExpose({
 }
 
 .banner-line {
+  display: flex;
+  align-items: center;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* 中间这句文字保持居中 */
+.banner-text {
+  flex: 1;
   text-align: center;
+}
+
+/* 右侧“查看”按钮 */
+.banner-view-btn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+
+  background-color: rgba(79, 70, 229, 0.12); /* 轻微高亮即可 */
+  color: #4338ca;
+}
+
+.banner-view-btn:active {
+  transform: translateY(1px);
+}
+
+/* 暗色模式下的按钮颜色适配 */
+.dark .banner-view-btn {
+  background-color: rgba(129, 140, 248, 0.25);
+  color: #e5e7eb;
 }
 
 /* 年份徽章区 */

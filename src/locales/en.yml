@@ -326,7 +326,7 @@ notes:
   copy_error: Copy failed
   word_count: 'Word count: {count}'
   anniversary_found: '📅 On this day, you recorded {count} notes'
-  anniversary_total: 'On this day there were {count} notes (click to return)'
+  anniversary_total: 'On this day there were {count} notes'
   created_at: 'Created: {time}'
   updated2_at: 'Updated: {time}'
   export_all: Export Notes
@@ -361,6 +361,7 @@ notes:
   count_notes: 'Total {count} notes'
   search_results_for: 'Results for “{query}”'
   help_title: Instructions
+  anniversary_view: View
 
   upload:
     too_large_title: File Still Too Large After Compression

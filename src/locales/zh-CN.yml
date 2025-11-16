@@ -325,7 +325,7 @@ notes:
   copy_error: 复制失败
   word_count: 字数： {count}
   anniversary_found: 📅 那年今日，您记录了 {count} 条笔记
-  anniversary_total: 那年今日共有 {count} 条笔记 (点击返回)
+  anniversary_total: 那年今日共有 {count} 条笔记
   created_at: 创建： {time}
   updated2_at: 更新： {time}
   export_all: 导出笔记
@@ -360,6 +360,7 @@ notes:
   count_notes: 共 {count} 条笔记
   search_results_for: 搜索“{query}”的结果
   help_title: 使用说明
+  anniversary_view: 查看
 
   upload:
     too_large_title: 压缩后仍偏大

@@ -325,7 +325,7 @@ notes:
   copy_error: コピーに失敗しました
   word_count: '文字数: {count}'
   anniversary_found: '📅 この日に {count} 件のメモを記録しました'
-  anniversary_total: 'この日には合計 {count} 件のメモがあります（クリックで戻る）'
+  anniversary_total: 'この日には合計 {count} 件のメモがあります'
   created_at: '作成日時: {time}'
   updated2_at: '更新日時: {time}'
   export_all: メモをエクスポート
@@ -360,6 +360,7 @@ notes:
   count_notes: '合計 {count} 件のメモ'
   search_results_for: '「{query}」の検索結果'
   help_title: 説明書
+  anniversary_view: チェック
 
   upload:
     too_large_title: 圧縮後もサイズが大きすぎます
