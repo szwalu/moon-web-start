@@ -175,6 +175,8 @@ const isUploadingAudio = ref(false)
 const recordingError = ref<string | null>(null)
 const recordingBlob = ref<Blob | null>(null)
 
+const audioInsertPos = ref<number | null>(null)
+
 let mediaRecorder: MediaRecorder | null = null
 let mediaStream: MediaStream | null = null
 let recordedChunks: BlobPart[] = []
@@ -203,10 +205,22 @@ function resetRecorderState() {
 }
 
 // 点击工具栏录音图标
+// 点击工具栏录音图标
 function openRecorder() {
   recordingError.value = null
   showRecorder.value = true
   hasRecordedAudio.value = false
+
+  // 记录当前文本和光标位置，用于插入录音时精确还原
+  const el = textarea.value
+  if (el && typeof el.selectionStart === 'number') {
+    audioInsertPos.value = el.selectionStart
+  }
+  else {
+    // 兜底：没有 textarea 焦点时就插到末尾
+    const text = input.value || ''
+    audioInsertPos.value = text.length
+  }
 }
 
 // 开始录音
@@ -385,33 +399,40 @@ async function insertRecordedAudio() {
     // 2. 上传到 Supabase
     const url = await uploadAudioToSupabase(recordingBlob.value, ext, mime)
 
-    // 3. 在当前光标处插入文本（带一个空格，方便继续打字）
-    const el = textarea.value
-    if (!el)
-      throw new Error('找不到编辑器输入框')
+    // 3. 计算插入点：优先使用打开录音时记住的位置
+    const textNow = input.value || ''
+    const insertPos = (() => {
+      if (audioInsertPos.value == null)
+        return textNow.length
+      // 防御：避免越界
+      return Math.min(Math.max(audioInsertPos.value, 0), textNow.length)
+    })()
 
-    const start = el.selectionStart ?? el.value.length
-    const end = el.selectionEnd ?? el.value.length
     const textToInsert = `[🔊 录音](${url}) `
-
-    const finalFullText = el.value.slice(0, start) + textToInsert + el.value.slice(end)
-    const newCursorPos = start + textToInsert.length
+    const before = textNow.slice(0, insertPos)
+    const after = textNow.slice(insertPos)
+    const newText = before + textToInsert + after
+    const newCursorPos = insertPos + textToInsert.length
 
     // 用统一方法更新文本 + 光标
-    updateTextarea(finalFullText, newCursorPos)
+    updateTextarea(newText, newCursorPos)
 
     // 4. 关闭录音弹窗 & 清理状态
     resetRecorderState()
+    audioInsertPos.value = null
     isUploadingAudio.value = false
 
-    // 5. 不再弹出「录音已插入」对话框，直接把焦点和光标拉回 textarea
-
+    // 5. 双保险：再强制拉一次焦点到 textarea，并设置光标位置
     const refocus = () => {
       const el2 = textarea.value
       if (!el2)
         return
       el2.focus()
-      el2.setSelectionRange(newCursorPos, newCursorPos)
+      try {
+        el2.setSelectionRange(newCursorPos, newCursorPos)
+      }
+      catch {}
+
       captureCaret()
       ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => {
@@ -419,11 +440,8 @@ async function insertRecordedAudio() {
       })
     }
 
-    // 先 nextTick 一次
     await nextTick()
     refocus()
-
-    // 再加一层兜底：部分浏览器里弹窗/动画结束稍慢
     window.setTimeout(refocus, 200)
   }
   catch (err: any) {
