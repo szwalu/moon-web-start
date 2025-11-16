@@ -1926,34 +1926,45 @@ function handleBeforeInput(e: InputEvent) {
   white-space: nowrap;
 }
 
+/* ——— 颜色与交互保持不变 ——— */
 .btn-primary {
   background-color: #00b386;
   color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 13px;
-  font-weight: 500;
+  border: 1px solid transparent;   /* 用透明边框统一高度 */
   cursor: pointer;
   transition: background-color 0.2s;
 }
 .btn-primary:hover { background-color: #009a74; }
-.btn-primary:disabled { background-color: #a5a5a5; cursor: not-allowed; opacity: 0.7; }
+.btn-primary:disabled {
+  background-color: #a5a5a5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 
 .btn-secondary {
   background-color: #f0f0f0;
   color: #333;
   border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 .btn-secondary:hover { background-color: #e0e0e0; }
+
+/* Dark 模式保持颜色 */
 .dark .btn-secondary { background-color: #4b5563; color: #fff; border-color: #555; }
 .dark .btn-secondary:hover { background-color: #5a6676; }
+
+/* ——— 新增：统一尺寸（高度 & 宽度） ——— */
+.btn-primary,
+.btn-secondary {
+  padding: 3px 12px;
+  min-width: 64px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
 
 .editor-footer {
   display: flex;
