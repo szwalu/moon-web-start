@@ -369,6 +369,7 @@ async function insertRecordedAudio() {
   if (!recordingBlob.value || isUploadingAudio.value)
     return
   isUploadingAudio.value = true
+
   try {
     // 简单按 MIME 推断扩展名
     const mime = recordingBlob.value.type || 'audio/webm'
@@ -382,18 +383,19 @@ async function insertRecordedAudio() {
 
     const url = await uploadAudioToSupabase(recordingBlob.value, ext, mime)
 
-    // 直接按当前光标位置插入完整链接 + 空格，并把光标移到链接后面
+    // ===== 1. 直接用当前光标位置插入完整链接 + 空格 =====
     const el = textarea.value
     if (!el)
       throw new Error('找不到编辑器输入框')
 
     const start = el.selectionStart ?? el.value.length
     const end = el.selectionEnd ?? el.value.length
-    const textToInsert = `[🔊 录音](${url}) ` // 末尾带一个空格，方便继续输入
+    const textToInsert = `[🔊 录音](${url}) ` // 末尾加空格方便继续打字
 
     const finalFullText = el.value.slice(0, start) + textToInsert + el.value.slice(end)
     const newCursorPos = start + textToInsert.length
 
+    // 用统一的 updateTextarea，内部会做 focus + 滚动校准
     updateTextarea(finalFullText, newCursorPos)
 
     dialog.success({
@@ -401,7 +403,22 @@ async function insertRecordedAudio() {
       content: '录音链接已写入当前光标位置。',
       positiveText: '好的',
     })
+
+    // 关闭录音弹窗 & 清理状态
     resetRecorderState()
+
+    // ===== 2. 再保险：等下一帧强制把焦点和光标拉回 textarea =====
+    await nextTick()
+    const el2 = textarea.value
+    if (el2) {
+      el2.focus()
+      el2.setSelectionRange(newCursorPos, newCursorPos)
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+      requestAnimationFrame(() => {
+        recomputeBottomSafePadding()
+      })
+    }
   }
   catch (err: any) {
     const msg = err?.message || '上传录音失败，请稍后重试。'
@@ -413,6 +430,7 @@ async function insertRecordedAudio() {
     isUploadingAudio.value = false
   }
 }
+
 function onPickImageSync() {
   // 👇 一定要同步执行，不要有 await / setTimeout / nextTick 在它前面
   const el = imageInputRef.value
