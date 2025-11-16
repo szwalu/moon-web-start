@@ -1793,7 +1793,7 @@ function handleBeforeInput(e: InputEvent) {
         </span>
       </div>
       <div class="actions">
-        <button v-if="isEditing" type="button" class="btn-secondary" @click="emit('cancel')">
+        <button type="button" class="btn-secondary" @click="emit('cancel')">
           {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
