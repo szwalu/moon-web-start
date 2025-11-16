@@ -210,6 +210,7 @@ function openRecorder() {
 }
 
 // 开始录音
+// 开始录音（压缩版）
 async function startRecording() {
   if (isRecordingAudio.value)
     return
@@ -223,11 +224,55 @@ async function startRecording() {
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    // 1) 请求尽量“便宜”的音频：单声道 + 16kHz
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+      } as MediaTrackConstraints,
+    })
     mediaStream = stream
     recordedChunks = []
 
-    const mr = new MediaRecorder(stream)
+    // 2) 选择最合适、压缩率高的编码格式（Opus 优先）
+    let mimeType = ''
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/ogg;codecs=opus',
+      'audio/webm',
+      'audio/ogg',
+      'audio/mp4;codecs=aac',
+      'audio/mp4',
+    ]
+    if (typeof MediaRecorder !== 'undefined' && 'isTypeSupported' in MediaRecorder) {
+      for (const t of candidates) {
+        if ((MediaRecorder as any).isTypeSupported(t)) {
+          mimeType = t
+          break
+        }
+      }
+    }
+
+    // 3) 用较低的码率（比如 32kbps 左右）创建 MediaRecorder
+    let mr: MediaRecorder
+    try {
+      mr = mimeType
+        ? new MediaRecorder(stream, {
+          mimeType,
+          audioBitsPerSecond: 32000, // 32 kbps：对语音够用又省空间
+        })
+        : new MediaRecorder(stream, {
+          audioBitsPerSecond: 32000,
+        })
+    }
+    catch {
+      // 某些浏览器可能不认 mimeType，则退回最简单构造
+      mr = new MediaRecorder(stream)
+    }
+
     mediaRecorder = mr
 
     mr.ondataavailable = (e: BlobEvent) => {
@@ -241,8 +286,8 @@ async function startRecording() {
         isRecordingAudio.value = false
         return
       }
-      const mime = mr.mimeType || 'audio/webm'
-      recordingBlob.value = new Blob(recordedChunks, { type: mime })
+      const type = mr.mimeType || 'audio/webm'
+      recordingBlob.value = new Blob(recordedChunks, { type })
       hasRecordedAudio.value = true
       isRecordingAudio.value = false
       cleanupRecorderInternal()
@@ -251,6 +296,7 @@ async function startRecording() {
     mr.start()
     isRecordingAudio.value = true
     hasRecordedAudio.value = false
+    recordingError.value = null
   }
   catch (err: any) {
     const msg = err?.message || '无法开始录音，请检查麦克风权限。'
@@ -336,8 +382,20 @@ async function insertRecordedAudio() {
 
     const url = await uploadAudioToSupabase(recordingBlob.value, ext, mime)
 
-    // 像图片一样插入，只是用链接形式，渲染端可以识别 [🔊 录音](url)
-    insertText(`[🔊 录音](${url})`, '')
+    // 直接按当前光标位置插入完整链接 + 空格，并把光标移到链接后面
+    const el = textarea.value
+    if (!el)
+      throw new Error('找不到编辑器输入框')
+
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    const textToInsert = `[🔊 录音](${url}) ` // 末尾带一个空格，方便继续输入
+
+    const finalFullText = el.value.slice(0, start) + textToInsert + el.value.slice(end)
+    const newCursorPos = start + textToInsert.length
+
+    updateTextarea(finalFullText, newCursorPos)
+
     dialog.success({
       title: '录音已插入',
       content: '录音链接已写入当前光标位置。',
@@ -2027,56 +2085,71 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <!-- 录音弹窗 -->
     <div
       v-if="showRecorder"
-      class="audio-recorder"
+      class="audio-recorder-overlay"
     >
-      <div class="audio-recorder-status">
-        <template v-if="recordingError">
-          {{ recordingError }}
-        </template>
-        <template v-else-if="isRecordingAudio">
-          🎙 正在录音中… 再次点击「停止」结束。
-        </template>
-        <template v-else-if="hasRecordedAudio">
-          ✅ 录音已完成，点击「插入到笔记」写入当前光标位置。
-        </template>
-        <template v-else>
-          点击「开始录音」后会使用麦克风录下语音。
-        </template>
-      </div>
-      <div class="audio-recorder-controls">
-        <button
-          v-if="!isRecordingAudio"
-          type="button"
-          class="audio-btn"
-          @click="startRecording"
-        >
-          {{ hasRecordedAudio ? '重新录音' : '开始录音' }}
-        </button>
-        <button
-          v-else
-          type="button"
-          class="audio-btn audio-btn-danger"
-          @click="stopRecording"
-        >
-          停止
-        </button>
-        <button
-          type="button"
-          class="audio-btn audio-btn-primary"
-          :disabled="!hasRecordedAudio || isUploadingAudio"
-          @click="insertRecordedAudio"
-        >
-          {{ isUploadingAudio ? '上传中…' : '插入到笔记' }}
-        </button>
-        <button
-          type="button"
-          class="audio-btn"
-          @click="cancelRecording"
-        >
-          取消
-        </button>
+      <div class="audio-recorder-modal">
+        <div class="audio-recorder-header">
+          <span class="audio-recorder-title">录音</span>
+          <button
+            type="button"
+            class="audio-recorder-close"
+            @click="cancelRecording"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="audio-recorder-status">
+          <template v-if="recordingError">
+            {{ recordingError }}
+          </template>
+          <template v-else-if="isRecordingAudio">
+            🎙 正在录音中… 再次点击「停止」结束。
+          </template>
+          <template v-else-if="hasRecordedAudio">
+            ✅ 录音已完成，点击「插入到笔记」写入当前光标位置。
+          </template>
+          <template v-else>
+            点击「开始录音」后会使用麦克风录下语音。
+          </template>
+        </div>
+
+        <div class="audio-recorder-controls">
+          <button
+            v-if="!isRecordingAudio"
+            type="button"
+            class="audio-btn"
+            @click="startRecording"
+          >
+            {{ hasRecordedAudio ? '重新录音' : '开始录音' }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="audio-btn audio-btn-danger"
+            @click="stopRecording"
+          >
+            停止
+          </button>
+          <button
+            type="button"
+            class="audio-btn audio-btn-primary"
+            :disabled="!hasRecordedAudio || isUploadingAudio"
+            @click="insertRecordedAudio"
+          >
+            {{ isUploadingAudio ? '上传中…' : '插入到笔记' }}
+          </button>
+          <button
+            type="button"
+            class="audio-btn"
+            @click="cancelRecording"
+          >
+            取消
+          </button>
+        </div>
       </div>
     </div>
 
@@ -2373,6 +2446,73 @@ function handleBeforeInput(e: InputEvent) {
   border-color: #f97373;
   background-color: #7f1d1d;
   color: #fee2e2;
+}
+
+/* 覆盖层整屏居中 */
+.audio-recorder-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background-color: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 中央弹窗 */
+.audio-recorder-modal {
+  width: min(480px, 92vw);
+  max-width: 480px;
+  background-color: #f9fafb;
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  padding: 10px 12px 10px;
+  box-sizing: border-box;
+}
+
+.dark .audio-recorder-modal {
+  background-color: #111827;
+}
+
+/* 头部：标题 + 关闭按钮 */
+.audio-recorder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.audio-recorder-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.audio-recorder-close {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.audio-recorder-close:hover {
+  background-color: rgba(0,0,0,0.04);
+}
+
+.dark .audio-recorder-close {
+  color: #d1d5db;
+}
+.dark .audio-recorder-close:hover {
+  background-color: rgba(255,255,255,0.07);
 }
 
 /* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
