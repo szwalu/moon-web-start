@@ -151,8 +151,25 @@ function renderMarkdown(content: string) {
 
 function checkIfNoteOverflows() {
   const el = contentRef.value as HTMLElement | null
-  if (el)
-    noteOverflowStatus.value = el.scrollHeight > el.clientHeight
+  if (!el)
+    return
+
+  const scrollHeight = el.scrollHeight
+  const clientHeight = el.clientHeight
+
+  // 给一点容差，避免像素取整导致“刚好等于”时误判
+  const diff = scrollHeight - clientHeight
+  noteOverflowStatus.value = diff > 1
+}
+
+function scheduleOverflowCheck() {
+  nextTick(() => {
+    // 再晚一帧，确保虚拟列表 / 字体 / line-clamp 都稳定了
+    requestAnimationFrame(() => {
+      checkIfNoteOverflows()
+      attachImgLoadListener(contentRef.value)
+    })
+  })
 }
 
 let observer: ResizeObserver | null = null
@@ -162,12 +179,10 @@ onMounted(() => {
       checkIfNoteOverflows()
     })
     observer.observe(contentRef.value)
-    // 确保初始状态正确
-    nextTick(() => {
-      checkIfNoteOverflows()
-      attachImgLoadListener(contentRef.value)
-    })
   }
+
+  // 初始也走统一的延时测量
+  scheduleOverflowCheck()
 })
 onUnmounted(() => {
   if (observer)
@@ -176,18 +191,13 @@ onUnmounted(() => {
 
 // 当笔记内容变化时，重新检查
 watch(() => props.note.content, () => {
-  nextTick(() => {
-    checkIfNoteOverflows()
-    attachImgLoadListener(contentRef.value)
-  })
+  scheduleOverflowCheck()
 })
 
-// 展开/收起状态变化时，也重新检查
-watch(() => props.isExpanded, () => {
-  nextTick(() => {
-    checkIfNoteOverflows()
-    attachImgLoadListener(contentRef.value)
-  })
+// 展开 → 收起 时重新测一次
+watch(() => props.isExpanded, (val) => {
+  if (!val)
+    scheduleOverflowCheck()
 })
 
 function getDropdownOptions(note: any) {
@@ -647,7 +657,7 @@ async function handleDateUpdate(newDate: Date) {
   margin-bottom: 0.85em;
 }
 
-note-content :deep(p + p) { margin-top: 1.1em; }
+.note-content :deep(p + p) { margin-top: 1.1em; }
 
 /* 3) 关键：当“段落后面紧跟列表”时，把两者之间的间距进一步压小
    - 现代浏览器（含新 iOS Safari）支持 :has，精准只影响相邻场景 */

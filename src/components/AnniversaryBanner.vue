@@ -173,15 +173,62 @@ function scheduleMidnightRefresh() {
     clearTimeout(midnightTimer)
     midnightTimer = null
   }
+
   const now = new Date()
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
   tomorrow.setHours(0, 0, 0, 0)
-  const msUntilMidnight = tomorrow.getTime() - now.getTime()
+
+  let msUntilMidnight = tomorrow.getTime() - now.getTime()
+
+  // 防御：异常值（如系统时间变化）
+  if (msUntilMidnight <= 0 || msUntilMidnight > 25 * 60 * 60 * 1000) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Anniv] msUntilMidnight 异常 =',
+        msUntilMidnight,
+        '。改为 60 秒后重试。',
+      )
+    }
+    msUntilMidnight = 60 * 1000
+  }
+
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[Anniv] 安排零点刷新：now =',
+      now.toString(),
+      '| zeroTime =',
+      tomorrow.toString(),
+      '| 秒数 =',
+      Math.round(msUntilMidnight / 1000),
+    )
+  }
+
   midnightTimer = window.setTimeout(async () => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[Anniv] 零点刷新触发：', new Date().toString())
+    }
+
+    if (!user.value) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[Anniv] 零点触发时 user 为空 → 跳过刷新')
+      }
+      scheduleMidnightRefresh()
+      return
+    }
+
     await loadAnniversaryNotes(true)
-    if (user.value)
-      writeState(user.value.id, { active: isAnniversaryViewActive.value, forDate: todayStr() })
+
+    if (user.value) {
+      writeState(user.value.id, {
+        active: isAnniversaryViewActive.value,
+        forDate: todayStr(),
+      })
+    }
 
     scheduleMidnightRefresh()
   }, msUntilMidnight)
