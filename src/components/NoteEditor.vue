@@ -2,6 +2,7 @@
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
 import { useDialog } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -29,7 +30,11 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
 })
+
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+
+const { t } = useI18n()
+
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
@@ -481,19 +486,30 @@ const charCount = computed(() => contentModel.value.length)
 // ===== 超长提示：超过 maxNoteLength 弹出一次警告 =====
 const overLimitWarned = ref(false)
 
-watch([charCount, () => props.maxNoteLength], ([len, max]) => {
-  if (len > max && !overLimitWarned.value) {
-    overLimitWarned.value = true
-    dialog.warning({
-      title: t('notes.editor.char_limit_title'),
-      content: t('notes.editor.char_limit_content', { max: props.maxNoteLength }),
-      positiveText: t('notes.ok'),
-    })
-  }
-  else if (len <= max && overLimitWarned.value) {
-    overLimitWarned.value = false
-  }
-})
+watch(
+  [charCount, () => props.maxNoteLength],
+  ([len, max]) => {
+    // 统一算出一个可靠的 limit，防止 max 偶尔是 undefined
+    const limit
+      = typeof max === 'number' && Number.isFinite(max) && max > 0
+        ? max
+        : props.maxNoteLength
+
+    if (len > limit && !overLimitWarned.value) {
+      overLimitWarned.value = true
+
+      // ✅ 这里明确指定 max: limit（一定是数字）
+      dialog.warning({
+        title: t('notes.editor.char_limit_title'),
+        content: t('notes.editor.char_limit_content', { max: limit }),
+        positiveText: t('notes.ok'),
+      })
+    }
+    else if (len <= limit && overLimitWarned.value) {
+      overLimitWarned.value = false
+    }
+  },
+)
 
 // ============== 状态与响应式变量 ==============
 const isComposing = ref(false)
