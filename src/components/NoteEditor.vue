@@ -2500,6 +2500,7 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   align-items: center;
+  transform: translateY(-20px);
 }
 .dark .audio-recorder-card {
   background: #1f2933;
