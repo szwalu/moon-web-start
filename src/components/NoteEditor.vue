@@ -2483,12 +2483,20 @@ function handleBeforeInput(e: InputEvent) {
 /* ===== 录音弹窗新样式 ===== */
 .audio-recorder-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
   z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: rgba(0, 0, 0, 0.35);
+
+  display: flex;
+  justify-content: center;
+
+  /* 👇 改关键点：固定一个顶部间距，而不是垂直居中 */
+  align-items: flex-start;
+  padding-top: 18vh;   /* 基于屏幕的 18%，适配长/短屏 */
 }
 
 .audio-recorder-card {
