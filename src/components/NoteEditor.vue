@@ -1976,21 +1976,24 @@ function adjustRecorderPosition() {
   const screenHeight = window.innerHeight
   const keyboardHeight = screenHeight - vv.height - vv.offsetTop
 
-  if (keyboardHeight > 0) {
-    // ① 原始“想要往上挪”的值
+  // 没有键盘：居中
+  if (keyboardHeight <= 0) {
+    overlayTranslateY.value = 0
+    return
+  }
+
+  // === 有键盘的情况 ===
+  if (!props.isEditing) {
+    // ✅「新建笔记」：往上挪一点，避免挡住底部按钮
     const rawUp = keyboardHeight * 0.35
-
-    // ② 给一个“最多往上挪这么多”的上限（比如屏幕高度的 18%）
-    const maxUp = screenHeight * 0.18
-
-    // ③ 实际往上挪的量 = min(原始值, 上限)
+    const maxUp = screenHeight * 0.22 // 上移最多占屏幕高度的 22%
     const finalUp = Math.min(rawUp, maxUp)
-
     overlayTranslateY.value = -finalUp
   }
   else {
-    // 没有键盘 → 回到正中
-    overlayTranslateY.value = 0
+    // ✏️「编辑笔记」（尤其是长文本）：略微往下挪一点，别贴着顶部
+    const down = screenHeight * 0.10 // 往下挪屏幕高度的 10%
+    overlayTranslateY.value = down
   }
 }
 
