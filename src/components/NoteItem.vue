@@ -139,12 +139,20 @@ function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  // 先把 [🎙️录音](url) 转成 <audio>，并加上 preload="none"
+  // 先把 [🎙️录音](url) 转成 <audio>
   const withAudio = content.replace(
     AUDIO_TOKEN_RE,
     (_full, url) => {
       const safeUrl = String(url).replace(/"/g, '&quot;')
-      return `<audio class="note-audio-player" controls preload="none" src="${safeUrl}"></audio>`
+      return (
+        `<audio `
+          + `class="note-audio-player" `
+          + `controls `
+          + `preload="metadata" ` // ✅ 只预加载元数据，减少长时间“加载中”
+          + `playsinline ` // ✅ iOS 内联播放
+          + `src="${safeUrl}"`
+        + `></audio>`
+      )
     },
   )
 
@@ -752,5 +760,12 @@ async function handleDateUpdate(newDate: Date) {
 /* 暗色模式下稍微压暗一点（可选） */
 .dark .note-content :deep(audio.note-audio-player) {
   filter: brightness(0.98);
+}
+
+/* 笔记里的小音频条样式 */
+.note-content :deep(audio.note-audio-player) {
+  width: 100%;
+  margin: 6px 0 2px;
+  outline: none;
 }
 </style>
