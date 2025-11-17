@@ -71,6 +71,7 @@ const md = new MarkdownIt({
       rel: 'noopener noreferrer',
     },
   })
+const AUDIO_TOKEN_RE = /\[🎙️录音]\((https?:\/\/[^\s)]+)\)/g
 
 // 给所有 Markdown 图片添加 lazy/async 属性（优化加载）
 // 右键/长按可直接保存：用 <a download> 包一层（如果本来不在链接中）
@@ -138,14 +139,35 @@ function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  let html = md.render(content)
-  html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+  // 先把 [🎙️录音](url) 转成 <audio>，并加上 preload="none"
+  const withAudio = content.replace(
+    AUDIO_TOKEN_RE,
+    (_full, url) => {
+      const safeUrl = String(url).replace(/"/g, '&quot;')
+      return `<audio class="note-audio-player" controls preload="none" src="${safeUrl}"></audio>`
+    },
+  )
+
+  // 再交给 MarkdownIt 渲染其它内容
+  let html = md.render(withAudio)
+
+  // 标签高亮
+  html = html.replace(
+    /(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g,
+    '<span class="custom-tag">#$1</span>',
+  )
+
+  // 搜索高亮
   const query = props.searchQuery.trim()
   if (query) {
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(escapedQuery, 'gi')
-    html = html.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
+    html = html.replace(
+      regex,
+      match => `<mark class="search-highlight">${match}</mark>`,
+    )
   }
+
   return html
 }
 
