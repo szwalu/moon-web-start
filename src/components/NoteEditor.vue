@@ -1977,11 +1977,19 @@ function adjustRecorderPosition() {
   const keyboardHeight = screenHeight - vv.height - vv.offsetTop
 
   if (keyboardHeight > 0) {
-    // 键盘弹出 → 录音弹窗往上推一点（避免挡住底部按钮）
-    overlayTranslateY.value = -keyboardHeight * 0.35
+    // ① 原始“想要往上挪”的值
+    const rawUp = keyboardHeight * 0.35
+
+    // ② 给一个“最多往上挪这么多”的上限（比如屏幕高度的 18%）
+    const maxUp = screenHeight * 0.18
+
+    // ③ 实际往上挪的量 = min(原始值, 上限)
+    const finalUp = Math.min(rawUp, maxUp)
+
+    overlayTranslateY.value = -finalUp
   }
   else {
-    // 没有键盘 → 居中
+    // 没有键盘 → 回到正中
     overlayTranslateY.value = 0
   }
 }
