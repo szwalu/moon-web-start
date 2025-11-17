@@ -174,6 +174,41 @@ const isPaused = ref(false)
 const isUploadingAudio = ref(false)
 const recordingError = ref<string | null>(null)
 
+// ===== 录音弹窗：打开时锁定页面滚动，避免被各种 scrollBy 顶走 =====
+const recorderScrollY = ref<number | null>(null)
+
+function lockBodyScrollForRecorder() {
+  if (typeof window === 'undefined' || typeof document === 'undefined')
+    return
+  if (recorderScrollY.value != null)
+    return
+
+  const y = window.scrollY || window.pageYOffset || 0
+  recorderScrollY.value = y
+
+  const body = document.body
+  body.style.position = 'fixed'
+  body.style.width = '100%'
+  body.style.top = `-${y}px`
+}
+
+function unlockBodyScrollForRecorder() {
+  if (typeof window === 'undefined' || typeof document === 'undefined')
+    return
+
+  const body = document.body
+  body.style.position = ''
+  body.style.width = ''
+  body.style.top = ''
+
+  if (recorderScrollY.value == null)
+    return
+
+  const y = recorderScrollY.value
+  recorderScrollY.value = null
+  window.scrollTo(0, y)
+}
+
 // 记录「打开录音弹窗时」的光标位置，方便停止后把链接插入这里
 const audioInsertPos = ref<number | null>(null)
 
@@ -222,6 +257,7 @@ function cleanupRecorderInternal() {
 }
 
 function resetRecorderState() {
+  unlockBodyScrollForRecorder()
   cleanupRecorderInternal()
   showRecorder.value = false
   isRecordingAudio.value = false
@@ -243,6 +279,7 @@ function openRecorder() {
 
   recordingError.value = null
   showRecorder.value = true
+  lockBodyScrollForRecorder()
   isRecordingAudio.value = false
   isPaused.value = false
   stopRecordTimer(true)
@@ -925,6 +962,12 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
+// 🚫 录音弹窗打开时，停止一切底部安全区 / 推页逻辑，避免把弹窗顶出视口
+  if (showRecorder.value) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
@@ -2688,12 +2731,6 @@ function handleBeforeInput(e: InputEvent) {
 }
 .dark .audio-recorder-close:hover {
   background-color: rgba(255,255,255,0.07);
-}
-
-/* 编辑长文本时，录音弹窗略微下移，避免贴在屏幕最上方 */
-.note-editor-reborn.editing-viewport .audio-recorder-overlay {
-  align-items: flex-start;   /* 不再垂直居中，而是从上往下排 */
-  padding-top: 20vh;         /* 距离顶部大约 16% 屏幕高度，可按感觉调 12~20 */
 }
 
 /* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
