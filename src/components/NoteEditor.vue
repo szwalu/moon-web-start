@@ -679,7 +679,14 @@ async function startRecording() {
       ? 'audio/webm;codecs=opus'
       : 'audio/webm'
 
-    mediaRecorder = new MediaRecorder(audioStream, { mimeType })
+    // 🔽 新增：尽量请求更低的码率（16 kbps 左右）
+    const targetBits = 16000 // 也可以换成 24000，看你能接受的音质
+
+    mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType,
+      audioBitsPerSecond: targetBits,
+    })
+
     audioChunks = []
 
     mediaRecorder.ondataavailable = (e: BlobEvent) => {
