@@ -114,6 +114,7 @@ const filteredNotesCount = ref(0)
 const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
+const LOCAL_CONTENT_KEY_V2 = `${LOCAL_CONTENT_KEY}:editor-v2`
 const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
 const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
@@ -730,7 +731,11 @@ async function handleCreateNote(content: string, weather?: string | null) {
   try {
     const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
     if (saved) {
+      // ✅ 老版草稿 key（字符串版）
       localStorage.removeItem(LOCAL_CONTENT_KEY)
+      // ✅ 新版 NoteEditor 草稿 key（带 editor-v2 后缀）
+      localStorage.removeItem(LOCAL_CONTENT_KEY_V2)
+
       newNoteContent.value = ''
       nextTick(() => {
         (newNoteEditorRef.value as any)?.reset?.()
@@ -2530,7 +2535,6 @@ function onCalendarUpdated(updated: any) {
           :tag-counts="tagCounts"
           enable-drafts
           :draft-key="`${LOCAL_CONTENT_KEY}:editor-v2`"
-          :clear-draft-on-save="true"
           :enable-scroll-push="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"
