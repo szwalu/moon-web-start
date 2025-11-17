@@ -1966,6 +1966,40 @@ function startFocusBoost() {
   }, 60)
 }
 
+const overlayTranslateY = ref(0)
+
+function adjustRecorderPosition() {
+  const vv = window.visualViewport
+  if (!vv)
+    return
+
+  const screenHeight = window.innerHeight
+  const keyboardHeight = screenHeight - vv.height - vv.offsetTop
+
+  if (keyboardHeight > 0) {
+    // 键盘弹出 → 录音弹窗往上推一点（避免挡住底部按钮）
+    overlayTranslateY.value = -keyboardHeight * 0.35
+  }
+  else {
+    // 没有键盘 → 居中
+    overlayTranslateY.value = 0
+  }
+}
+
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', adjustRecorderPosition)
+    window.visualViewport.addEventListener('scroll', adjustRecorderPosition)
+  }
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', adjustRecorderPosition)
+    window.visualViewport.removeEventListener('scroll', adjustRecorderPosition)
+  }
+})
+
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
@@ -2186,6 +2220,7 @@ function handleBeforeInput(e: InputEvent) {
     <div
       v-if="showRecorder"
       class="audio-recorder-overlay"
+      :style="{ transform: `translateY(${overlayTranslateY}px)` }"
     >
       <div class="audio-recorder-card">
         <div class="audio-recorder-time">
@@ -2483,22 +2518,18 @@ function handleBeforeInput(e: InputEvent) {
 /* ===== 录音弹窗新样式 ===== */
 .audio-recorder-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-
+  inset: 0;
   z-index: 1200;
   background: rgba(0, 0, 0, 0.35);
 
+  /* 默认：真正垂直 & 水平居中 */
   display: flex;
+  align-items: center;
   justify-content: center;
 
-  /* 👇 改关键点：固定一个顶部间距，而不是垂直居中 */
-  align-items: flex-start;
-  padding-top: 18vh;   /* 基于屏幕的 18%，适配长/短屏 */
+  transition: transform .25s ease;
+  transform: translateY(0); /* JS 会改这里 */
 }
-
 .audio-recorder-card {
   width: 260px;
   padding: 24px 16px 20px;
