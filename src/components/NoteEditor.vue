@@ -486,9 +486,8 @@ watch([charCount, () => props.maxNoteLength], ([len, max]) => {
     overLimitWarned.value = true
     dialog.warning({
       title: t('notes.editor.char_limit_title'),
-      content: t('notes.editor.char_limit_content', { max }),
+      content: t('notes.editor.char_limit_content', { max: props.maxNoteLength }),
       positiveText: t('notes.ok'),
-      onAfterLeave: () => {},
     })
   }
   else if (len <= max && overLimitWarned.value) {
