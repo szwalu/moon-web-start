@@ -58,7 +58,7 @@ const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 
 const md = new MarkdownIt({
-  html: false,
+  html: true, // ✅ 允许渲染 <audio> 等 HTML 片段
   linkify: true,
   breaks: true,
 })
@@ -717,5 +717,18 @@ async function handleDateUpdate(newDate: Date) {
 }
 .dark .img-flag {
   opacity: 0.8;
+}
+
+/* 音频播放器：在笔记中直接播放录音 */
+.note-content :deep(audio.note-audio-player) {
+  display: block;
+  width: 100%;
+  max-width: 260px;  /* 播放条不要太宽，看起来更像“小控件” */
+  margin: 4px 0;
+}
+
+/* 暗色模式下稍微压暗一点（可选） */
+.dark .note-content :deep(audio.note-audio-player) {
+  filter: brightness(0.98);
 }
 </style>
