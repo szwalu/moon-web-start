@@ -2693,7 +2693,7 @@ function handleBeforeInput(e: InputEvent) {
 /* 编辑长文本时，录音弹窗略微下移，避免贴在屏幕最上方 */
 .note-editor-reborn.editing-viewport .audio-recorder-overlay {
   align-items: flex-start;   /* 不再垂直居中，而是从上往下排 */
-  padding-top: 16vh;         /* 距离顶部大约 16% 屏幕高度，可按感觉调 12~20 */
+  padding-top: 20vh;         /* 距离顶部大约 16% 屏幕高度，可按感觉调 12~20 */
 }
 
 /* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
