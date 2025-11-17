@@ -167,395 +167,6 @@ function loadDraft() {
 // --- 安全触发文件选择 ---
 const imageInputRef = ref<HTMLInputElement | null>(null)
 
-// ====== 录音：状态（新 UI + 停止后自动插入） ======
-const showRecorder = ref(false)
-const isRecordingAudio = ref(false)
-const isPaused = ref(false)
-const isUploadingAudio = ref(false)
-const recordingError = ref<string | null>(null)
-
-// 录音弹窗的位置（相对视口）
-const recorderPos = ref<{ top: string; left: string }>({
-  top: '50%',
-  left: '50%',
-})
-
-function placeRecorder() {
-  if (typeof window === 'undefined') {
-    recorderPos.value = { top: '50%', left: '50%' }
-    return
-  }
-
-  const vv = window.visualViewport
-  if (vv) {
-    // 在可见区域的 28% 处，略偏上，避免挡住键盘上面的按钮
-    const topPx = vv.offsetTop + vv.height * 0.28
-    recorderPos.value = {
-      top: `${topPx}px`,
-      left: '50%',
-    }
-  }
-  else {
-    const h = window.innerHeight || 0
-    const topPx = h * 0.28
-    recorderPos.value = {
-      top: `${topPx}px`,
-      left: '50%',
-    }
-  }
-}
-
-let recorderViewportHooked = false
-function attachRecorderViewportListeners() {
-  if (typeof window === 'undefined')
-    return
-  const vv = window.visualViewport
-  if (!vv || recorderViewportHooked)
-    return
-  recorderViewportHooked = true
-  vv.addEventListener('resize', placeRecorder)
-  vv.addEventListener('scroll', placeRecorder)
-}
-
-function detachRecorderViewportListeners() {
-  if (typeof window === 'undefined')
-    return
-  const vv = window.visualViewport
-  if (!vv || !recorderViewportHooked)
-    return
-  recorderViewportHooked = false
-  vv.removeEventListener('resize', placeRecorder)
-  vv.removeEventListener('scroll', placeRecorder)
-}
-
-// ===== 录音弹窗：打开时锁定页面滚动，避免被各种 scrollBy 顶走 =====
-const recorderScrollY = ref<number | null>(null)
-
-function lockBodyScrollForRecorder() {
-  if (typeof window === 'undefined' || typeof document === 'undefined')
-    return
-  if (recorderScrollY.value != null)
-    return
-
-  const y = window.scrollY || window.pageYOffset || 0
-  recorderScrollY.value = y
-
-  const body = document.body
-  body.style.position = 'fixed'
-  body.style.width = '100%'
-  body.style.top = `-${y}px`
-}
-
-function unlockBodyScrollForRecorder() {
-  if (typeof window === 'undefined' || typeof document === 'undefined')
-    return
-
-  const body = document.body
-  body.style.position = ''
-  body.style.width = ''
-  body.style.top = ''
-
-  if (recorderScrollY.value == null)
-    return
-
-  const y = recorderScrollY.value
-  recorderScrollY.value = null
-  window.scrollTo(0, y)
-}
-
-// 记录「打开录音弹窗时」的光标位置，方便停止后把链接插入这里
-const audioInsertPos = ref<number | null>(null)
-
-// 计时器：00:00
-const elapsedSec = ref(0)
-let recordTimerId: number | null = null
-
-function startRecordTimer() {
-  if (recordTimerId != null)
-    window.clearInterval(recordTimerId)
-  recordTimerId = window.setInterval(() => {
-    elapsedSec.value += 1
-  }, 1000)
-}
-function stopRecordTimer(reset = false) {
-  if (recordTimerId != null) {
-    window.clearInterval(recordTimerId)
-    recordTimerId = null
-  }
-  if (reset)
-    elapsedSec.value = 0
-}
-const recordTimeLabel = computed(() => {
-  const s = elapsedSec.value
-  const mm = String(Math.floor(s / 60)).padStart(2, '0')
-  const ss = String(s % 60).padStart(2, '0')
-  return `${mm}:${ss}`
-})
-
-let mediaRecorder: MediaRecorder | null = null
-let mediaStream: MediaStream | null = null
-let recordedChunks: BlobPart[] = []
-let recorderCancelled = false
-
-function cleanupRecorderInternal() {
-  if (mediaRecorder) {
-    mediaRecorder.ondataavailable = null as any
-    mediaRecorder.onstop = null as any
-    mediaRecorder = null
-  }
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(track => track.stop())
-    mediaStream = null
-  }
-  recordedChunks = []
-}
-
-function resetRecorderState() {
-  unlockBodyScrollForRecorder()
-  cleanupRecorderInternal()
-  showRecorder.value = false
-  isRecordingAudio.value = false
-  isPaused.value = false
-  isUploadingAudio.value = false
-  recordingError.value = null
-  recorderCancelled = false
-  stopRecordTimer(true)
-  audioInsertPos.value = null
-  detachRecorderViewportListeners()
-}
-
-// 点击工具栏录音图标：弹出录音界面，并记住当前光标位置
-function openRecorder() {
-  const el = textarea.value
-  if (el && typeof el.selectionStart === 'number')
-    audioInsertPos.value = el.selectionStart
-  else
-    audioInsertPos.value = (input.value || '').length
-
-  recordingError.value = null
-  showRecorder.value = true
-  lockBodyScrollForRecorder()
-  isRecordingAudio.value = false
-  isPaused.value = false
-  stopRecordTimer(true)
-  nextTick(() => {
-    placeRecorder()
-    attachRecorderViewportListeners()
-  })
-}
-
-// 开始录音
-async function startRecording() {
-  if (isRecordingAudio.value)
-    return
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    dialog.error({
-      title: '录音不可用',
-      content: '当前浏览器不支持录音或未开放麦克风权限。',
-      positiveText: '知道了',
-    })
-    return
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        noiseSuppression: true,
-        echoCancellation: true,
-        autoGainControl: true,
-      } as MediaTrackConstraints,
-    })
-    mediaStream = stream
-    recordedChunks = []
-    recorderCancelled = false
-
-    // 选择压缩率高的编码
-    let mimeType = ''
-    const candidates = [
-      'audio/webm;codecs=opus',
-      'audio/ogg;codecs=opus',
-      'audio/webm',
-      'audio/ogg',
-      'audio/mp4;codecs=aac',
-      'audio/mp4',
-    ]
-    if (typeof MediaRecorder !== 'undefined' && 'isTypeSupported' in MediaRecorder) {
-      for (const t of candidates) {
-        if ((MediaRecorder as any).isTypeSupported(t)) {
-          mimeType = t
-          break
-        }
-      }
-    }
-
-    let mr: MediaRecorder
-    try {
-      mr = mimeType
-        ? new MediaRecorder(stream, {
-          mimeType,
-          audioBitsPerSecond: 32000, // 32kbps，语音够用
-        })
-        : new MediaRecorder(stream, {
-          audioBitsPerSecond: 32000,
-        })
-    }
-    catch {
-      mr = new MediaRecorder(stream)
-    }
-
-    mediaRecorder = mr
-
-    mr.ondataavailable = (e: BlobEvent) => {
-      if (e.data && e.data.size > 0)
-        recordedChunks.push(e.data)
-    }
-
-    mr.onstop = () => {
-      // 统一在 onstop 里收尾
-      const cancelled = recorderCancelled
-      recorderCancelled = false
-      stopRecordTimer(true)
-
-      if (!recordedChunks.length) {
-        resetRecorderState()
-        return
-      }
-
-      const type = mr.mimeType || 'audio/webm'
-      const blob = new Blob(recordedChunks, { type })
-      cleanupRecorderInternal()
-      recordedChunks = []
-
-      if (cancelled) {
-        // 取消录音：只关闭弹窗，不插入
-        resetRecorderState()
-        return
-      }
-
-      // 正常停止：自动上传并插入到光标位置
-      insertRecordedAudioFromBlob(blob)
-    }
-
-    // 开始录音 & 计时
-    isRecordingAudio.value = true
-    isPaused.value = false
-    elapsedSec.value = 0
-    startRecordTimer()
-    mr.start()
-  }
-  catch (err: any) {
-    const msg = err?.message || '无法开始录音，请检查麦克风权限。'
-    recordingError.value = msg
-    dialog.error({
-      title: '录音失败',
-      content: msg,
-      positiveText: '知道了',
-    })
-    resetRecorderState()
-  }
-}
-
-// 停止录音（会触发 onstop，自动上传 & 插入）
-function stopRecording() {
-  if (!isRecordingAudio.value || !mediaRecorder)
-    return
-  isRecordingAudio.value = false
-  isPaused.value = false
-  mediaRecorder.stop()
-}
-
-// 暂停 / 继续
-function togglePauseRecording() {
-  if (!mediaRecorder || !isRecordingAudio.value)
-    return
-
-  if (!isPaused.value) {
-    try {
-      mediaRecorder.pause()
-    }
-    catch {}
-    isPaused.value = true
-    stopRecordTimer() // 不重置 elapsed，只是暂停计时
-  }
-  else {
-    try {
-      mediaRecorder.resume()
-    }
-    catch {}
-    isPaused.value = false
-    startRecordTimer()
-  }
-}
-
-// 取消录音（不插入）
-function cancelRecording() {
-  if (mediaRecorder && isRecordingAudio.value) {
-    recorderCancelled = true
-    mediaRecorder.stop()
-  }
-  else {
-    resetRecorderState()
-  }
-}
-
-// 停止后真正执行「上传 + 插入」的逻辑
-async function insertRecordedAudioFromBlob(blob: Blob) {
-  if (!blob || isUploadingAudio.value)
-    return
-
-  isUploadingAudio.value = true
-  try {
-    const mime = blob.type || 'audio/webm'
-    let ext = 'webm'
-    if (mime.includes('ogg'))
-      ext = 'ogg'
-    else if (mime.includes('mp4') || mime.includes('m4a'))
-      ext = 'm4a'
-    else if (mime.includes('wav'))
-      ext = 'wav'
-
-    const url = await uploadAudioToSupabase(blob, ext, mime)
-
-    // 按打开录音时的光标位置插入
-    const textNow = input.value || ''
-    const insertPos = (() => {
-      if (audioInsertPos.value == null)
-        return textNow.length
-      return Math.min(Math.max(audioInsertPos.value, 0), textNow.length)
-    })()
-
-    const textToInsert = `[🔊 录音](${url}) `
-    const before = textNow.slice(0, insertPos)
-    const after = textNow.slice(insertPos)
-    const newText = before + textToInsert + after
-    const newCursorPos = insertPos + textToInsert.length
-
-    updateTextarea(newText, newCursorPos)
-  }
-  catch (err: any) {
-    const msg = err?.message || '上传录音失败，请稍后重试。'
-    dialog.error({
-      title: '上传失败',
-      content: msg,
-      positiveText: '知道了',
-    })
-  }
-  finally {
-    isUploadingAudio.value = false
-    resetRecorderState()
-  }
-}
-
-// 中间大按钮：未录音时 = 开始；录音中 = 停止
-function handleMainRecordButton() {
-  if (!isRecordingAudio.value)
-    startRecording()
-  else
-    stopRecording()
-}
-
 function onPickImageSync() {
   // 👇 一定要同步执行，不要有 await / setTimeout / nextTick 在它前面
   const el = imageInputRef.value
@@ -798,56 +409,6 @@ async function uploadImageToSupabase(blob: Blob, ext: string, contentType: strin
   return signed.signedUrl
 }
 
-// ===== 音频上传：和图片类似，放到 note-audios bucket =====
-
-// 音频路径单独一个构造函数，避免和图片混用
-function buildAudioPath(userId: string, ext = 'webm') {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const ts = d.getTime()
-  const rand = Math.random().toString(36).slice(2, 8)
-  return `${userId}/${y}/${m}/${ts}_${rand}.${ext}`
-}
-
-async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
-  const { data: userData, error: userErr } = await supabase.auth.getUser()
-  if (userErr || !userData?.user)
-    throw new Error('请先登录后再上传录音')
-
-  const userId = userData.user.id
-  const filePath = buildAudioPath(userId, ext)
-
-  // 👉 如果你的 bucket 名不是 note-audios，请改成你自己的名字
-  const bucket = 'note-audios'
-
-  const { error: upErr } = await supabase
-    .storage
-    .from(bucket)
-    .upload(filePath, blob, {
-      contentType,
-      upsert: false,
-    })
-
-  if (upErr)
-    throw upErr
-
-  // 先尝试公有 URL
-  const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath)
-  if (pub?.publicUrl)
-    return pub.publicUrl
-
-  // 如果没有设置公开访问，就退回签名 URL
-  const { data: signed, error: sErr } = await supabase
-    .storage
-    .from(bucket)
-    .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 年
-  if (sErr || !signed?.signedUrl)
-    throw new Error('获取录音 URL 失败')
-
-  return signed.signedUrl
-}
-
 function saveDraft() {
   if (!props.enableDrafts)
     return
@@ -912,7 +473,6 @@ onUnmounted(() => {
     window.clearTimeout(draftTimer)
     draftTimer = null
   }
-  detachRecorderViewportListeners()
 })
 
 // ============== Autosize ==============
@@ -950,6 +510,68 @@ const showFormatPalette = ref(false)
 const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
+
+// —— 录音小条（固定在工具栏上面，不再全屏乱跳）——
+const showRecordBar = ref(false)
+const isRecording = ref(false)
+const isRecordPaused = ref(false)
+
+function toggleRecordBarVisible() {
+  if (showRecordBar.value) {
+    // 再次点麦克风：直接收起录音条、重置状态
+    showRecordBar.value = false
+    isRecording.value = false
+    isRecordPaused.value = false
+    return
+  }
+
+  // 打开录音条时，只是展示控件，不自动开始录音
+  showRecordBar.value = true
+  isRecording.value = false
+  isRecordPaused.value = false
+}
+
+function handleRecordCancelClick() {
+  // 取消：关闭录音条，丢弃本次录音状态
+  showRecordBar.value = false
+  isRecording.value = false
+  isRecordPaused.value = false
+
+  // TODO: 如果后面接入真正录音逻辑，
+  // 这里可以调用 stop() 并丢弃已录音的片段
+}
+
+function handleRecordButtonClick() {
+  // 录音按钮：未录音 -> 开始录音；已录音 -> 停止并收条
+  if (!isRecording.value) {
+    // 开始录音
+    isRecording.value = true
+    isRecordPaused.value = false
+
+    // TODO: 在这里接入真正的录音开始逻辑，如：
+    // startRecorder()
+    return
+  }
+
+  // 已经在录音中：此时按钮含义是“停止”
+  isRecording.value = false
+  isRecordPaused.value = false
+  showRecordBar.value = false
+
+  // TODO: 在这里接入“结束录音 + 转文字”的逻辑，如：
+  // stopRecorderAndInsertText()
+}
+
+function handleRecordPauseClick() {
+  // 没在录音，就不允许点“暂停”
+  if (!isRecording.value)
+    return
+
+  // 在录音中：暂停 <-> 继续
+  isRecordPaused.value = !isRecordPaused.value
+
+  // TODO: 这里接入 recorder.pause() / resume()
+}
 
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
@@ -1022,12 +644,6 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-// 🚫 录音弹窗打开时，停止一切底部安全区 / 推页逻辑，避免把弹窗顶出视口
-  if (showRecorder.value) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
@@ -2162,6 +1778,49 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <!-- 固定录音条：点击麦克风后出现在工具栏上方 -->
+    <div v-if="showRecordBar" class="record-bar">
+      <div class="record-status">
+        <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
+        <span class="record-text">
+          <!-- 文案先用中文，后续你想再 i18n 也方便 -->
+          <template v-if="!isRecording">
+            准备录音
+          </template>
+          <template v-else-if="isRecordPaused">
+            已暂停
+          </template>
+          <template v-else>
+            正在录音…
+          </template>
+        </span>
+      </div>
+      <div class="record-actions">
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          @click="handleRecordCancelClick"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          :disabled="!isRecording"
+          @click="handleRecordPauseClick"
+        >
+          {{ isRecordPaused ? '继续' : '暂停' }}
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-primary"
+          @click="handleRecordButtonClick"
+        >
+          {{ isRecording ? '停止' : '录音' }}
+        </button>
+      </div>
+    </div>
+
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
@@ -2232,34 +1891,35 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <!-- 录音（与图片按钮并排） -->
+          <!-- 语音输入：点击只展开/收起“录音条”，不直接录音 -->
           <button
             type="button"
             class="toolbar-btn"
-            title="录音"
-            @pointerdown.prevent="openRecorder"
-            @click.prevent="openRecorder"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="toggleRecordBarVisible"
           >
             <!-- Mic icon -->
             <svg
-              class="icon-20" viewBox="0 0 24 24" fill="none"
-              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+              class="icon-20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
               <path
-                d="M12 3a3 3 0 0 0-3 3v5a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z"
-                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               />
               <path
-                d="M6.5 11a5.5 5.5 0 0 0 11 0"
-                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-              />
-              <path
-                d="M12 17v3.5"
-                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-              />
-              <path
-                d="M9.5 20.5h5"
-                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               />
             </svg>
           </button>
@@ -2282,82 +1942,6 @@ function handleBeforeInput(e: InputEvent) {
         >
           {{ t('notes.editor.save.button_save') }}
         </button>
-      </div>
-    </div>
-
-    <!-- 录音弹窗：居中大按钮，开始时两个按钮；录音中三个按钮 -->
-    <div
-      v-if="showRecorder"
-      class="audio-recorder-overlay"
-    >
-      <div
-        class="audio-recorder-card"
-        :style="{ top: recorderPos.top, left: recorderPos.left }"
-      >
-        <div class="audio-recorder-time">
-          {{ recordTimeLabel }}
-        </div>
-
-        <div class="audio-recorder-buttons">
-          <!-- 左侧：取消（始终存在） -->
-          <button
-            type="button"
-            class="audio-circle-btn audio-circle-btn-secondary"
-            @click="cancelRecording"
-          >
-            取消
-          </button>
-
-          <!-- 中间：录音 / 停止 -->
-          <button
-            type="button"
-            class="audio-circle-btn audio-circle-btn-main"
-            @click="handleMainRecordButton"
-          >
-            <template v-if="!isRecordingAudio">
-              <!-- 麦克风图标 -->
-              <svg
-                class="icon-32" viewBox="0 0 24 24" fill="none"
-                xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
-              >
-                <path
-                  d="M12 3a3 3 0 0 0-3 3v5a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                />
-                <path
-                  d="M6.5 11a5.5 5.5 0 0 0 11 0"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-                />
-                <path
-                  d="M12 17v3.5"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-                />
-                <path
-                  d="M9.5 20.5h5"
-                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-                />
-              </svg>
-            </template>
-            <template v-else>
-              停止
-            </template>
-          </button>
-
-          <!-- 右侧：暂停 / 继续（仅录音中出现） -->
-          <button
-            v-if="isRecordingAudio"
-            type="button"
-            class="audio-circle-btn audio-circle-btn-secondary"
-            @click="togglePauseRecording"
-          >
-            {{ isPaused ? '继续' : '暂停' }}
-          </button>
-        </div>
-
-        <!-- 如有错误，简单显示一行 -->
-        <div v-if="recordingError" class="audio-recorder-error">
-          {{ recordingError }}
-        </div>
       </div>
     </div>
 
@@ -2529,6 +2113,101 @@ function handleBeforeInput(e: InputEvent) {
   background-color: transparent;
 }
 
+/* ===== 录音条（固定在工具栏上方） ===== */
+.record-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  margin: 0 8px 2px;
+  border-radius: 8px;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  gap: 8px;
+  font-size: 13px;
+}
+.dark .record-bar {
+  background-color: #374151;
+  border-color: #4b5563;
+}
+
+.record-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.record-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background-color: #9ca3af;
+}
+.record-dot.active {
+  background-color: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25);
+}
+
+.record-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #4b5563;
+}
+.dark .record-text {
+  color: #e5e7eb;
+}
+
+.record-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.record-btn {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.record-btn-primary {
+  background-color: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+.record-btn-primary:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+
+.record-btn-secondary {
+  background-color: #e5e7eb;
+  color: #374151;
+  border-color: #d1d5db;
+}
+.record-btn-secondary:hover {
+  background-color: #d1d5db;
+}
+.dark .record-btn-secondary {
+  background-color: #4b5563;
+  color: #e5e7eb;
+  border-color: #6b7280;
+}
+.dark .record-btn-secondary:hover {
+  background-color: #6b7280;
+}
+
+.record-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .footer-left {
   display: flex;
   align-items: center;
@@ -2539,7 +2218,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   border: none;
   background: none;
   padding: 0;
@@ -2585,160 +2264,6 @@ function handleBeforeInput(e: InputEvent) {
   background-color: rgba(0,0,0,0.08);
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
-
-/* ===== 录音弹窗新样式 ===== */
-.audio-recorder-card {
-  position: absolute;         /* 由 JS 控制 top */
-  left: 50%;
-  transform: translateX(-50%);
-  width: 260px;
-  padding: 24px 16px 20px;
-  border-radius: 20px;
-  background: #fdfdfd;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.dark .audio-recorder-card {
-  background: #1f2933;
-}
-
-.audio-recorder-time {
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
-  margin-bottom: 24px;
-}
-
-.audio-recorder-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 原来是 gap: 26px; */
-  gap: 18px;
-}
-
-.audio-circle-btn {
-  /* 原来是 72×72 */
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: none;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-}
-.audio-circle-btn:active {
-  transform: scale(0.96);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-}
-
-.audio-circle-btn-main {
-  background: linear-gradient(135deg, #ff8a3c, #ff5a3c);
-  color: #fff;
-}
-.dark .audio-circle-btn-main {
-  background: linear-gradient(135deg, #ff8a3c, #ff5a3c);
-}
-
-.audio-circle-btn-secondary {
-  background: #e5e7eb;
-  color: #111827;
-  box-shadow: none;
-}
-.dark .audio-circle-btn-secondary {
-  background: #374151;
-  color: #f9fafb;
-}
-
-.audio-recorder-error {
-  margin-top: 16px;
-  font-size: 13px;
-  color: #b91c1c;
-}
-.dark .audio-recorder-error {
-  color: #fecaca;
-}
-
-.icon-32 {
-  width: 32px;
-  height: 32px;
-  display: block;
-}
-
-/* 覆盖层整屏居中 */
-.audio-recorder-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  background-color: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 中央弹窗 */
-.audio-recorder-modal {
-  width: min(480px, 92vw);
-  max-width: 480px;
-  background-color: #f9fafb;
-  border-radius: 10px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
-  padding: 10px 12px 10px;
-  box-sizing: border-box;
-}
-
-.dark .audio-recorder-modal {
-  background-color: #111827;
-}
-
-/* 头部：标题 + 关闭按钮 */
-.audio-recorder-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.audio-recorder-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.audio-recorder-close {
-  border: none;
-  background: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6b7280;
-}
-
-.audio-recorder-close:hover {
-  background-color: rgba(0,0,0,0.04);
-}
-
-.dark .audio-recorder-close {
-  color: #d1d5db;
-}
-.dark .audio-recorder-close:hover {
-  background-color: rgba(255,255,255,0.07);
-}
 
 /* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
 .format-palette {
