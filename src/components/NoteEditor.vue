@@ -174,6 +174,60 @@ const isPaused = ref(false)
 const isUploadingAudio = ref(false)
 const recordingError = ref<string | null>(null)
 
+// 录音弹窗的位置（相对视口）
+const recorderPos = ref<{ top: string; left: string }>({
+  top: '50%',
+  left: '50%',
+})
+
+function placeRecorder() {
+  if (typeof window === 'undefined') {
+    recorderPos.value = { top: '50%', left: '50%' }
+    return
+  }
+
+  const vv = window.visualViewport
+  if (vv) {
+    // 在可见区域的 28% 处，略偏上，避免挡住键盘上面的按钮
+    const topPx = vv.offsetTop + vv.height * 0.28
+    recorderPos.value = {
+      top: `${topPx}px`,
+      left: '50%',
+    }
+  }
+  else {
+    const h = window.innerHeight || 0
+    const topPx = h * 0.28
+    recorderPos.value = {
+      top: `${topPx}px`,
+      left: '50%',
+    }
+  }
+}
+
+let recorderViewportHooked = false
+function attachRecorderViewportListeners() {
+  if (typeof window === 'undefined')
+    return
+  const vv = window.visualViewport
+  if (!vv || recorderViewportHooked)
+    return
+  recorderViewportHooked = true
+  vv.addEventListener('resize', placeRecorder)
+  vv.addEventListener('scroll', placeRecorder)
+}
+
+function detachRecorderViewportListeners() {
+  if (typeof window === 'undefined')
+    return
+  const vv = window.visualViewport
+  if (!vv || !recorderViewportHooked)
+    return
+  recorderViewportHooked = false
+  vv.removeEventListener('resize', placeRecorder)
+  vv.removeEventListener('scroll', placeRecorder)
+}
+
 // ===== 录音弹窗：打开时锁定页面滚动，避免被各种 scrollBy 顶走 =====
 const recorderScrollY = ref<number | null>(null)
 
@@ -267,6 +321,7 @@ function resetRecorderState() {
   recorderCancelled = false
   stopRecordTimer(true)
   audioInsertPos.value = null
+  detachRecorderViewportListeners()
 }
 
 // 点击工具栏录音图标：弹出录音界面，并记住当前光标位置
@@ -283,6 +338,10 @@ function openRecorder() {
   isRecordingAudio.value = false
   isPaused.value = false
   stopRecordTimer(true)
+  nextTick(() => {
+    placeRecorder()
+    attachRecorderViewportListeners()
+  })
 }
 
 // 开始录音
@@ -853,6 +912,7 @@ onUnmounted(() => {
     window.clearTimeout(draftTimer)
     draftTimer = null
   }
+  detachRecorderViewportListeners()
 })
 
 // ============== Autosize ==============
@@ -2009,51 +2069,6 @@ function startFocusBoost() {
   }, 60)
 }
 
-const overlayTranslateY = ref(0)
-
-function adjustRecorderPosition() {
-  const vv = window.visualViewport
-  if (!vv)
-    return
-
-  const screenHeight = window.innerHeight
-  const keyboardHeight = screenHeight - vv.height - vv.offsetTop
-
-  // 没有键盘：居中
-  if (keyboardHeight <= 0) {
-    overlayTranslateY.value = 0
-    return
-  }
-
-  // === 有键盘的情况 ===
-  if (!props.isEditing) {
-    // ✅「新建笔记」：往上挪一点，避免挡住底部按钮
-    const rawUp = keyboardHeight * 0.35
-    const maxUp = screenHeight * 0.22 // 上移最多占屏幕高度的 22%
-    const finalUp = Math.min(rawUp, maxUp)
-    overlayTranslateY.value = -finalUp
-  }
-  else {
-    // ✏️「编辑笔记」（尤其是长文本）：略微往下挪一点，别贴着顶部
-    const down = screenHeight * 0.10 // 往下挪屏幕高度的 10%
-    overlayTranslateY.value = down
-  }
-}
-
-onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', adjustRecorderPosition)
-    window.visualViewport.addEventListener('scroll', adjustRecorderPosition)
-  }
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', adjustRecorderPosition)
-    window.visualViewport.removeEventListener('scroll', adjustRecorderPosition)
-  }
-})
-
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
@@ -2274,9 +2289,11 @@ function handleBeforeInput(e: InputEvent) {
     <div
       v-if="showRecorder"
       class="audio-recorder-overlay"
-      :style="{ transform: `translateY(${overlayTranslateY}px)` }"
     >
-      <div class="audio-recorder-card">
+      <div
+        class="audio-recorder-card"
+        :style="{ top: recorderPos.top, left: recorderPos.left }"
+      >
         <div class="audio-recorder-time">
           {{ recordTimeLabel }}
         </div>
@@ -2570,21 +2587,10 @@ function handleBeforeInput(e: InputEvent) {
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
 /* ===== 录音弹窗新样式 ===== */
-.audio-recorder-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  background: rgba(0, 0, 0, 0.35);
-
-  /* 默认：真正垂直 & 水平居中 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  transition: transform .25s ease;
-  transform: translateY(0); /* JS 会改这里 */
-}
 .audio-recorder-card {
+  position: absolute;         /* 由 JS 控制 top */
+  left: 50%;
+  transform: translateX(-50%);
   width: 260px;
   padding: 24px 16px 20px;
   border-radius: 20px;
@@ -2593,15 +2599,6 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* 🔽 让录音框在手机上整体稍微往下移一点，避免贴近屏幕上方 */
-  transform: translateY(6vh);
-}
-
-/* 桌面端保持原来的居中，不下移 */
-@media (min-width: 768px) {
-  .audio-recorder-card {
-    transform: translateY(0);
-  }
 }
 
 .dark .audio-recorder-card {
