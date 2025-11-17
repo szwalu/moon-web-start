@@ -601,6 +601,7 @@ function invalidateAllTagCaches() {
 
 // === [ADD] 提取笔记内容中的 Storage 文件相对路径 ===
 const STORAGE_BUCKET = 'note-images' // 如你的桶名不同，改这里即可
+const AUDIO_BUCKET = 'note-audios' // 👈 录音存放的 bucket 名（如果你叫别的名字，改这里）
 
 function extractStoragePathsFromContent(content: string | null | undefined): string[] {
   if (!content)
@@ -635,6 +636,51 @@ function extractStoragePathsFromContent(content: string | null | undefined): str
     if (rel)
       set.add(rel)
   }
+
+  return Array.from(set)
+}
+
+function extractAudioPathsFromContent(content: string | null | undefined): string[] {
+  if (!content)
+    return []
+
+  // 和图片一样，统一截 note-audios/ 后面的相对路径
+  const rx = /https?:\/\/[^\s)"]+\/note-audios\/([^)\s"']+)/g
+  const set = new Set<string>()
+  let m: RegExpExecArray | null = null
+
+  while (true) {
+    m = rx.exec(content)
+    if (m === null)
+      break
+
+    let rel = (m[1] || '').trim()
+    if (!rel)
+      continue
+
+    // 去掉 query/hash，去前导斜杠，再尝试 decode
+    rel = rel.split(/[?#]/)[0]
+    if (rel.startsWith('/'))
+      rel = rel.slice(1)
+
+    try {
+      rel = decodeURIComponent(rel)
+    }
+    catch {
+      // ignore
+    }
+
+    if (rel)
+      set.add(rel)
+  }
+
+  return Array.from(set)
+}
+
+function collectAudioPathsFromNotes(notesArr: any[]): string[] {
+  const set = new Set<string>()
+  for (const n of notesArr || [])
+    extractAudioPathsFromContent(n?.content).forEach(p => set.add(p))
 
   return Array.from(set)
 }
@@ -1762,6 +1808,7 @@ async function triggerDeleteConfirmation(id: string) {
 
   const noteToDelete = notes.value.find(note => note.id === id)
   const imagePathsForThisNote = noteToDelete ? extractStoragePathsFromContent(noteToDelete.content) : []
+  const audioPathsForThisNote = noteToDelete ? extractAudioPathsFromContent(noteToDelete.content) : []
 
   dialog.warning({
     title: t('notes.delete_confirm_title'),
@@ -1800,6 +1847,15 @@ async function triggerDeleteConfirmation(id: string) {
             .remove(imagePathsForThisNote)
           if (storageError)
             console.warn('[storage] remove failed:', storageError.message)
+        }
+
+        if (audioPathsForThisNote.length > 0) {
+          const { error: audioError } = await supabase
+            .storage
+            .from(AUDIO_BUCKET)
+            .remove(audioPathsForThisNote)
+          if (audioError)
+            console.warn('[storage] audio remove failed:', audioError.message)
         }
 
         // 更新本地缓存与 UI（保持原有逻辑）
@@ -2032,6 +2088,7 @@ async function handleDeleteSelected() {
         // === [ADD] 在删库之前，批量收集这些笔记里引用的 Storage 图片路径
         const notesToDelete = notes.value.filter(n => idsToDelete.includes(n.id))
         const imagePathsForBatch = collectImagePathsFromNotes(notesToDelete)
+        const audioPathsForBatch = collectAudioPathsFromNotes(notesToDelete)
 
         const notesToDeleteNow = notes.value.filter(n => idsToDelete.includes(n.id))
 
@@ -2061,6 +2118,20 @@ async function handleDeleteSelected() {
           }
           catch (e: any) {
             console.warn('[storage] batch remove exception:', e?.message || e)
+          }
+        }
+
+        if (audioPathsForBatch.length > 0) {
+          try {
+            const { error: audioError } = await supabase
+              .storage
+              .from(AUDIO_BUCKET)
+              .remove(audioPathsForBatch)
+            if (audioError)
+              console.warn('[storage] batch audio remove failed:', audioError.message)
+          }
+          catch (e: any) {
+            console.warn('[storage] batch audio remove exception:', e?.message || e)
           }
         }
 
