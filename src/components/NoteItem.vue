@@ -58,7 +58,7 @@ const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 
 const md = new MarkdownIt({
-  html: true, // ✅ 允许渲染 <audio> 等 HTML 片段
+  html: false,
   linkify: true,
   breaks: true,
 })
@@ -71,7 +71,6 @@ const md = new MarkdownIt({
       rel: 'noopener noreferrer',
     },
   })
-const AUDIO_TOKEN_RE = /\[🎙️录音]\((https?:\/\/[^\s)]+)\)/g
 
 // 给所有 Markdown 图片添加 lazy/async 属性（优化加载）
 // 右键/长按可直接保存：用 <a download> 包一层（如果本来不在链接中）
@@ -139,43 +138,14 @@ function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  // 先把 [🎙️录音](url) 转成 <audio>
-  const withAudio = content.replace(
-    AUDIO_TOKEN_RE,
-    (_full, url) => {
-      const safeUrl = String(url).replace(/"/g, '&quot;')
-      return (
-        `<audio `
-          + `class="note-audio-player" `
-          + `controls `
-          + `preload="metadata" ` // ✅ 只预加载元数据，减少长时间“加载中”
-          + `playsinline ` // ✅ iOS 内联播放
-          + `src="${safeUrl}"`
-        + `></audio>`
-      )
-    },
-  )
-
-  // 再交给 MarkdownIt 渲染其它内容
-  let html = md.render(withAudio)
-
-  // 标签高亮
-  html = html.replace(
-    /(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g,
-    '<span class="custom-tag">#$1</span>',
-  )
-
-  // 搜索高亮
+  let html = md.render(content)
+  html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
   const query = props.searchQuery.trim()
   if (query) {
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(escapedQuery, 'gi')
-    html = html.replace(
-      regex,
-      match => `<mark class="search-highlight">${match}</mark>`,
-    )
+    html = html.replace(regex, match => `<mark class="search-highlight">${match}</mark>`)
   }
-
   return html
 }
 
@@ -747,25 +717,5 @@ async function handleDateUpdate(newDate: Date) {
 }
 .dark .img-flag {
   opacity: 0.8;
-}
-
-/* 音频播放器：在笔记中直接播放录音 */
-.note-content :deep(audio.note-audio-player) {
-  display: block;
-  width: 100%;
-  max-width: 260px;  /* 播放条不要太宽，看起来更像“小控件” */
-  margin: 4px 0;
-}
-
-/* 暗色模式下稍微压暗一点（可选） */
-.dark .note-content :deep(audio.note-audio-player) {
-  filter: brightness(0.98);
-}
-
-/* 笔记里的小音频条样式 */
-.note-content :deep(audio.note-audio-player) {
-  width: 100%;
-  margin: 6px 0 2px;
-  outline: none;
 }
 </style>

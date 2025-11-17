@@ -616,8 +616,8 @@ async function uploadAudioToSupabase(blob: Blob): Promise<string> {
   return signed.signedUrl
 }
 
+// 当一段录音结束后：上传并在光标处插入链接
 // 当一段录音结束后：上传并在光标处插入链接（无成功弹窗）
-// 当一段录音结束后：上传并在光标处插入「可直接播放的音频控件」
 async function handleAudioFinished(blob: Blob) {
   if (!blob.size)
     return
@@ -626,14 +626,8 @@ async function handleAudioFinished(blob: Blob) {
   try {
     const url = await uploadAudioToSupabase(blob)
 
-    // 1. 插入一个 <audio> 播放条到当前光标位置
-    const snippet = `<audio controls preload="none" class="note-audio-player">
-  <source src="${url}" type="audio/webm">
-  您的浏览器暂不支持内嵌音频播放，请点击链接收听：
-  <a href="${url}" target="_blank" rel="noopener noreferrer">打开录音</a>
-</audio>\n`
-
-    insertText(snippet, '')
+    // 1. 插入录音链接到当前光标位置
+    insertText(`[🎙️录音](${url}) `, '')
 
     // 2. 下一帧把焦点和光标拉回 textarea（避免光标消失）
     await nextTick()
