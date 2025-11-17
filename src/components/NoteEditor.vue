@@ -511,17 +511,228 @@ const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: 
 const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
 
-// —— 录音小条（固定在工具栏上面，不再全屏乱跳）——
+// —— 录音小条（固定在工具栏上方，不再全屏乱跳）——
 const showRecordBar = ref(false)
 const isRecording = ref(false)
 const isRecordPaused = ref(false)
+const isUploadingAudio = ref(false)
 
+// 录音时长（秒）+ 定时器句柄
+const recordSeconds = ref(0)
+let recordTimer: number | null = null
+
+const recordTimeText = computed(() => {
+  const total = recordSeconds.value
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
+function startRecordTimer() {
+  if (recordTimer != null)
+    window.clearInterval(recordTimer)
+
+  recordTimer = window.setInterval(() => {
+    recordSeconds.value += 1
+  }, 1000) as unknown as number
+}
+
+function stopRecordTimer(reset = false) {
+  if (recordTimer != null) {
+    window.clearInterval(recordTimer)
+    recordTimer = null
+  }
+  if (reset)
+    recordSeconds.value = 0
+}
+
+// MediaRecorder 相关
+let mediaRecorder: MediaRecorder | null = null
+let audioChunks: BlobPart[] = []
+let audioStream: MediaStream | null = null
+
+function cleanupMediaRecorder() {
+  try {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive')
+      mediaRecorder.stop()
+  }
+  catch {
+    // ignore
+  }
+  mediaRecorder = null
+  audioChunks = []
+
+  if (audioStream) {
+    audioStream.getTracks().forEach(track => track.stop())
+    audioStream = null
+  }
+}
+
+// 生成音频文件路径：按用户 + 年月分目录
+function buildAudioPath(userId: string, ext = 'webm') {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const ts = d.getTime()
+  const rand = Math.random().toString(36).slice(2, 8)
+  return `${userId}/${y}/${m}/${ts}_${rand}.${ext}`
+}
+
+// 上传音频到 Supabase，返回可访问 URL
+async function uploadAudioToSupabase(blob: Blob): Promise<string> {
+  const { data: userData, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !userData?.user)
+    throw new Error('请先登录后再上传录音')
+
+  const userId = userData.user.id
+  const bucket = 'note-audios' // 你原来用的桶名如果不一样，这里要改成原来的
+  const ext = 'webm'
+  const contentType = 'audio/webm'
+
+  const filePath = buildAudioPath(userId, ext)
+
+  const { error: upErr } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, blob, { contentType, upsert: false })
+
+  if (upErr)
+    throw upErr
+
+  const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  if (pub?.publicUrl)
+    return pub.publicUrl
+
+  const { data: signed, error: sErr } = await supabase
+    .storage
+    .from(bucket)
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365)
+
+  if (sErr || !signed?.signedUrl)
+    throw new Error('获取录音 URL 失败')
+
+  return signed.signedUrl
+}
+
+// 当一段录音结束后：上传并在光标处插入链接
+// 当一段录音结束后：上传并在光标处插入链接（无成功弹窗）
+async function handleAudioFinished(blob: Blob) {
+  if (!blob.size)
+    return
+
+  isUploadingAudio.value = true
+  try {
+    const url = await uploadAudioToSupabase(blob)
+
+    // 1. 插入录音链接到当前光标位置
+    insertText(`[🎙️录音](${url}) `, '')
+
+    // 2. 下一帧把焦点和光标拉回 textarea（避免光标消失）
+    await nextTick()
+    const el = textarea.value
+    if (el) {
+      el.focus()
+      const len = el.value.length
+      try {
+        el.setSelectionRange(len, len)
+      }
+      catch {
+        // 某些环境会抛错，忽略即可
+      }
+      captureCaret()
+      ensureCaretVisibleInTextarea()
+      requestAnimationFrame(() => {
+        recomputeBottomSafePadding()
+      })
+    }
+  }
+  catch (err: any) {
+    // 失败时仍保留错误提示
+    dialog.error({
+      title: '上传录音失败',
+      content: err?.message || '录音上传或插入时出错。',
+      positiveText: '知道了',
+    })
+  }
+  finally {
+    isUploadingAudio.value = false
+  }
+}
+
+// 开始录音
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    dialog.warning({
+      title: '无法访问麦克风',
+      content: '当前浏览器不支持录音或未开放麦克风权限。',
+      positiveText: '知道了',
+    })
+    return
+  }
+
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
+
+    mediaRecorder = new MediaRecorder(audioStream, { mimeType })
+    audioChunks = []
+
+    mediaRecorder.ondataavailable = (e: BlobEvent) => {
+      if (e.data && e.data.size > 0)
+        audioChunks.push(e.data)
+    }
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: mimeType })
+      cleanupMediaRecorder()
+      // 录音结束后再上传并插入链接
+      handleAudioFinished(blob).catch(() => {})
+    }
+
+    mediaRecorder.start()
+  }
+  catch (err: any) {
+    cleanupMediaRecorder()
+    dialog.error({
+      title: '录音启动失败',
+      content: err?.message || '无法开始录音，可能是麦克风被禁止。',
+      positiveText: '知道了',
+    })
+  }
+}
+
+// 暂停录音
+function pauseRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording')
+    mediaRecorder.pause()
+}
+
+// 继续录音
+function resumeRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'paused')
+    mediaRecorder.resume()
+}
+
+// 停止录音（会触发 onstop → 上传 → 插入）
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive')
+    mediaRecorder.stop()
+}
+
+// —— 录音条按钮：展开 / 收起 —— //
 function toggleRecordBarVisible() {
   if (showRecordBar.value) {
-    // 再次点麦克风：直接收起录音条、重置状态
+    // 再次点麦克风：直接收起录音条、重置状态和录音器
     showRecordBar.value = false
     isRecording.value = false
     isRecordPaused.value = false
+    stopRecordTimer(true)
+    cleanupMediaRecorder()
     return
   }
 
@@ -529,49 +740,68 @@ function toggleRecordBarVisible() {
   showRecordBar.value = true
   isRecording.value = false
   isRecordPaused.value = false
+  recordSeconds.value = 0
 }
-
+// —— 录音条按钮：取消 —— //
 function handleRecordCancelClick() {
-  // 取消：关闭录音条，丢弃本次录音状态
+  // 取消：关闭录音条，丢弃本次录音
   showRecordBar.value = false
   isRecording.value = false
   isRecordPaused.value = false
-
-  // TODO: 如果后面接入真正录音逻辑，
-  // 这里可以调用 stop() 并丢弃已录音的片段
+  stopRecordTimer(true)
+  cleanupMediaRecorder()
 }
 
+// —— 录音条按钮：录音 / 停止 —— //
 function handleRecordButtonClick() {
-  // 录音按钮：未录音 -> 开始录音；已录音 -> 停止并收条
+  if (isUploadingAudio.value)
+    return
+
+  // 当前不是录音状态 → 开始录音
   if (!isRecording.value) {
-    // 开始录音
     isRecording.value = true
     isRecordPaused.value = false
-
-    // TODO: 在这里接入真正的录音开始逻辑，如：
-    // startRecorder()
+    recordSeconds.value = 0
+    stopRecordTimer(false)
+    startRecordTimer()
+    startRecording().catch(() => {})
     return
   }
 
-  // 已经在录音中：此时按钮含义是“停止”
+  // 已经在录音中：此时按钮含义是“停止并生成链接”
   isRecording.value = false
   isRecordPaused.value = false
-  showRecordBar.value = false
+  stopRecordTimer(false) // 停止计时，但保留最后时长显示
+  stopRecording()
 
-  // TODO: 在这里接入“结束录音 + 转文字”的逻辑，如：
-  // stopRecorderAndInsertText()
+  // 不立刻收起录音条，等上传结束也可以；你如果想直接收起就取消下面注释
+  // showRecordBar.value = false
 }
 
+// —— 录音条按钮：暂停 / 继续 —— //
 function handleRecordPauseClick() {
-  // 没在录音，就不允许点“暂停”
-  if (!isRecording.value)
+  if (!isRecording.value || isUploadingAudio.value)
     return
 
-  // 在录音中：暂停 <-> 继续
-  isRecordPaused.value = !isRecordPaused.value
+  // 正在录音 → 暂停
+  if (!isRecordPaused.value) {
+    isRecordPaused.value = true
+    pauseRecording()
+    stopRecordTimer(false)
+    return
+  }
 
-  // TODO: 这里接入 recorder.pause() / resume()
+  // 已暂停 → 继续
+  isRecordPaused.value = false
+  resumeRecording()
+  startRecordTimer()
 }
+
+// 生命周期：卸载时一定要关掉麦克风
+onUnmounted(() => {
+  cleanupMediaRecorder()
+  stopRecordTimer(true)
+})
 
 // 根节点 + 光标缓存
 const rootRef = ref<HTMLElement | null>(null)
@@ -1783,7 +2013,6 @@ function handleBeforeInput(e: InputEvent) {
       <div class="record-status">
         <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
         <span class="record-text">
-          <!-- 文案先用中文，后续你想再 i18n 也方便 -->
           <template v-if="!isRecording">
             准备录音
           </template>
@@ -1793,6 +2022,13 @@ function handleBeforeInput(e: InputEvent) {
           <template v-else>
             正在录音…
           </template>
+        </span>
+        <!-- 新增：录音时长 mm:ss -->
+        <span
+          v-if="recordSeconds > 0 || isRecording"
+          class="record-time"
+        >
+          {{ recordTimeText }}
         </span>
       </div>
       <div class="record-actions">
@@ -2157,6 +2393,16 @@ function handleBeforeInput(e: InputEvent) {
 }
 .dark .record-text {
   color: #e5e7eb;
+}
+
+.record-time {
+  margin-left: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #6b7280;
+}
+.dark .record-time {
+  color: #d1d5db;
 }
 
 .record-actions {
