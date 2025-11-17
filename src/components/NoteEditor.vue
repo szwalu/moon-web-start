@@ -2593,7 +2593,17 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* 🔽 让录音框在手机上整体稍微往下移一点，避免贴近屏幕上方 */
+  transform: translateY(6vh);
 }
+
+/* 桌面端保持原来的居中，不下移 */
+@media (min-width: 768px) {
+  .audio-recorder-card {
+    transform: translateY(0);
+  }
+}
+
 .dark .audio-recorder-card {
   background: #1f2933;
 }
