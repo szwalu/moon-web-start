@@ -276,11 +276,6 @@ async function onImageChosen(e: Event) {
     // 5) 上传并插入
     const url = await uploadImageToSupabase(best.blob, best.ext, best.type)
     insertText(`![](${url})`, '')
-    dialog.success({
-      title: t('notes.upload.success_title'),
-      content: t('notes.upload.success_content'),
-      positiveText: t('notes.upload.ok'),
-    })
   }
   catch (err: any) {
     dialog.error({
