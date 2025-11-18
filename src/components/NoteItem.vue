@@ -394,28 +394,33 @@ async function systemShareImage() {
   }
 
   try {
-    // dataURL → blob
+    // 1. dataURL → blob
     const response = await fetch(shareImageUrl.value)
     const blob = await response.blob()
 
-    const files: File[] = []
-    if (navAny.canShare && navAny.canShare({ files: [] })) {
-      const file = new File([blob], 'note.png', { type: 'image/png' })
-      files.push(file)
-    }
+    // 2. 构建 PNG 文件
+    const file = new File([blob], 'note.png', { type: 'image/png' })
+    const files = [file]
 
+    // 3. 构建 shareData
     const shareData: any = {
       title: t('notes.share_title', '分享笔记'),
-      text: props.note?.content?.slice(0, 100) || '',
+      // text 可以留空，避免有的 App 把它当成“文本分享”优先
+      text: '',
     }
 
-    if (files.length)
+    // 4. 如果支持文件分享，就带上 files；不支持就退回纯文本分享
+    if (!navAny.canShare || navAny.canShare({ files })) {
       shareData.files = files
+    }
+    else {
+      // 退路：某些老浏览器不支持 files，就只发文本
+      shareData.text = props.note?.content?.slice(0, 100) || ''
+    }
 
     await navAny.share(shareData)
   }
   catch (err) {
-    // 用户取消或者分享失败，这里静默即可
     console.warn('share cancelled or failed', err)
   }
 }
