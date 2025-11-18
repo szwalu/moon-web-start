@@ -312,6 +312,43 @@ function handleNoteContentClick(event: MouseEvent) {
     event.preventDefault()
   }
 }
+
+// ===== 将 Supabase 图片转为 dataURL，避免 CORS，专用于分享卡片 =====
+async function convertSupabaseImagesToDataURL(container: HTMLElement) {
+  const imgs = Array.from(container.querySelectorAll('img'))
+
+  // 只处理 note-images 桶里的图片
+  const supabaseImgPattern = /^https:\/\/[a-z0-9.-]+\.supabase\.co\/storage\/v1\/object\/public\/note-images\//i
+
+  for (const img of imgs) {
+    const src = img.getAttribute('src')
+    if (!src || !supabaseImgPattern.test(src))
+      continue
+
+    try {
+      const response = await fetch(src)
+      const blob = await response.blob()
+
+      const dataURL = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          resolve(String(reader.result ?? ''))
+        }
+        reader.onerror = () => {
+          reject(reader.error || new Error('FileReader error'))
+        }
+        reader.readAsDataURL(blob)
+      })
+
+      img.setAttribute('src', dataURL)
+    }
+    catch (err) {
+      // 转换失败就忽略，不影响整张图生成
+      console.error('convertSupabaseImagesToDataURL failed:', src, err)
+    }
+  }
+}
+
 async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
@@ -354,17 +391,20 @@ async function handleShare() {
     if (!el)
       throw new Error('share card element not found')
 
+    // ✅ 截图前先把分享卡片里的 Supabase 图片转成 dataURL
+    await convertSupabaseImagesToDataURL(el as HTMLElement)
+
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
-      useCORS: true, // ✅ 允许加载带 CORS 的跨域图片
-      allowTaint: false, // ✅ 防止被不安全图片“污染”掉整个 canvas
+      useCORS: true,
+      allowTaint: false,
     })
 
-    // ✅ 保存 canvas 供后面导出 JPEG 使用
+    // 保存 canvas，后面导出 JPEG 用
     shareCanvasRef.value = canvas
 
-    // 预览用 PNG（保持不变）
+    // 预览用 PNG
     shareImageUrl.value = canvas.toDataURL('image/png')
 
     sharePreviewVisible.value = true
