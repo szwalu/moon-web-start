@@ -313,7 +313,7 @@ function handleNoteContentClick(event: MouseEvent) {
   }
 }
 
-// ===== 将 Supabase 图片转为 dataURL，避免 CORS，专用于分享卡片 =====
+// ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
 
@@ -321,31 +321,12 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const supabaseImgPattern = /^https:\/\/[a-z0-9.-]+\.supabase\.co\/storage\/v1\/object\/public\/note-images\//i
 
   for (const img of imgs) {
-    const src = img.getAttribute('src')
-    if (!src || !supabaseImgPattern.test(src))
+    const src = img.getAttribute('src') || ''
+    if (!supabaseImgPattern.test(src))
       continue
 
-    try {
-      const response = await fetch(src)
-      const blob = await response.blob()
-
-      const dataURL = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          resolve(String(reader.result ?? ''))
-        }
-        reader.onerror = () => {
-          reject(reader.error || new Error('FileReader error'))
-        }
-        reader.readAsDataURL(blob)
-      })
-
-      img.setAttribute('src', dataURL)
-    }
-    catch (err) {
-      // 转换失败就忽略，不影响整张图生成
-      console.error('convertSupabaseImagesToDataURL failed:', src, err)
-    }
+    // 直接从分享卡片 DOM 中移除该图片节点
+    img.remove()
   }
 }
 
