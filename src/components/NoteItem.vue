@@ -77,6 +77,7 @@ const md = new MarkdownIt({
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
+  tokens[idx].attrSet('crossorigin', 'anonymous')
   const style = tokens[idx].attrGet('style')
   tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
 
@@ -357,6 +358,8 @@ async function handleShare() {
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
+      useCORS: true, // ✅ 允许加载带 CORS 的跨域图片
+      allowTaint: false, // ✅ 防止被不安全图片“污染”掉整个 canvas
     })
 
     // ✅ 保存 canvas 供后面导出 JPEG 使用
@@ -1128,5 +1131,14 @@ async function systemShareImage() {
 
 .dark .share-hint {
   color: #9ca3af;
+}
+
+.share-card-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  margin: 6px 0;
 }
 </style>
