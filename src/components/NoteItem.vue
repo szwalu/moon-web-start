@@ -108,6 +108,7 @@ const shareImageUrl = ref<string | null>(null) // 生成的分享图片 dataURL
 const sharePreviewVisible = ref(false) // 是否显示分享预览弹层
 const shareGenerating = ref(false) // 是否正在生成中
 const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片 DOM 引用
+const shareCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 function attachImgLoadListener(root: Element | null) {
   if (!root)
@@ -331,7 +332,6 @@ async function handleShare() {
     shareGenerating.value = true
     showShareCard.value = true
 
-    // 等待分享卡片渲染完成
     await nextTick()
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
@@ -348,7 +348,12 @@ async function handleShare() {
       scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
     })
 
+    // ✅ 保存 canvas 供后面导出 JPEG 使用
+    shareCanvasRef.value = canvas
+
+    // 预览用 PNG（保持不变）
     shareImageUrl.value = canvas.toDataURL('image/png')
+
     sharePreviewVisible.value = true
   }
   catch (err: any) {
@@ -394,27 +399,43 @@ async function systemShareImage() {
   }
 
   try {
-    // 1. dataURL → blob
-    const response = await fetch(shareImageUrl.value)
-    const blob = await response.blob()
+    let blob: Blob
 
-    // 2. 构建 PNG 文件
-    const file = new File([blob], 'note.png', { type: 'image/png' })
+    if (shareCanvasRef.value) {
+      // ✅ 有原始 canvas：导出 JPEG，微信更友好
+      blob = await new Promise<Blob>((resolve, reject) => {
+        shareCanvasRef.value!.toBlob(
+          (b) => {
+            if (b)
+              resolve(b)
+            else
+              reject(new Error('canvas toBlob failed'))
+          },
+          'image/jpeg',
+          0.9, // 品质 0~1
+        )
+      })
+    }
+    else {
+      // 兜底：没有 canvas 时，从 PNG dataURL 里取（极少见）
+      const response = await fetch(shareImageUrl.value)
+      blob = await response.blob()
+    }
+
+    // 文件改为 JPEG
+    const file = new File([blob], 'note.jpg', { type: 'image/jpeg' })
     const files = [file]
 
-    // 3. 构建 shareData
     const shareData: any = {
       title: t('notes.share_title', '分享笔记'),
-      // text 可以留空，避免有的 App 把它当成“文本分享”优先
       text: '',
     }
 
-    // 4. 如果支持文件分享，就带上 files；不支持就退回纯文本分享
     if (!navAny.canShare || navAny.canShare({ files })) {
       shareData.files = files
     }
     else {
-      // 退路：某些老浏览器不支持 files，就只发文本
+      // 某些老浏览器不支持文件分享时退回纯文本
       shareData.text = props.note?.content?.slice(0, 100) || ''
     }
 
