@@ -361,10 +361,19 @@ async function handleShare() {
   }
 }
 
-function downloadShareImage() {
+async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
 
+  // ✅ 优先使用系统分享（iOS / 安卓 Chrome 等）
+  const navAny = typeof navigator !== 'undefined' ? (navigator as any) : null
+  if (navAny && navAny.share) {
+    // 直接复用上面的 systemShareImage 逻辑
+    await systemShareImage()
+    return
+  }
+
+  // ❗ fallback：不支持 navigator.share 的浏览器，才使用下载文件方式
   const link = document.createElement('a')
   link.href = shareImageUrl.value
   link.download = `note-${props.note.id || 'share'}.png`
@@ -563,7 +572,7 @@ async function systemShareImage() {
             <button
               type="button"
               class="share-btn"
-              @click="(isIOS ? systemShareImage : downloadShareImage)()"
+              @click="downloadShareImage"
             >
               {{ $t('notes.share_save', '保存图片') }}
             </button>
