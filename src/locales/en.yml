@@ -477,8 +477,7 @@ notes:
       url_failed: Failed to obtain recording URL.
       link_label: Recording
       uploading: Uploading audio…
-      countdown_title: Recording Ending Soon
-      countdown_msg: 'The recording will stop automatically in {seconds} seconds.'
+      remaining: '{time} left'
     char_limit_title: Character limit exceeded
     char_limit_content: 'A single note can''t exceed {max} characters. Please shorten it before saving.'
     save:

@@ -461,7 +461,7 @@ notes:
     record:
       status_ready: 准备录音
       status_paused: 已暂停
-      status_recording: 正在录音…
+      status_recording: 录音中…
       button_cancel: 取消
       button_pause: 暂停
       button_resume: 继续
@@ -477,8 +477,7 @@ notes:
       url_failed: 获取录音 URL 失败
       link_label: 录音
       uploading: 录音文件上传中…
-      countdown_title: 录音即将结束
-      countdown_msg: '录音还有 {seconds} 秒将自动结束。'
+      remaining: '还剩 {time}'
     char_limit_title: 字数超出限制
     char_limit_content: '单条笔记不能超过 {max} 字，请删减后再保存。'
     save:

@@ -2100,7 +2100,7 @@ function handleBeforeInput(e: InputEvent) {
             v-if="recordRemainingText"
             class="record-remaining"
           >
-            （还剩 {{ recordRemainingText }}）
+            |{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}
           </span>
         </span>
       </div>
@@ -2474,13 +2474,14 @@ function handleBeforeInput(e: InputEvent) {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: #6b7280;
+  white-space: nowrap;       /* ✅ 让时间 + 剩余一起尽量不换行 */
 }
 .dark .record-time {
   color: #d1d5db;
 }
 
 .record-remaining {
-  margin-left: 4px;
+  margin-left: 2px;          /* ✅ 间距更紧一点，减少换行概率 */
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: #ef4444;
