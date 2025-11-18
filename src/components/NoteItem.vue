@@ -391,9 +391,11 @@ async function handleShare() {
     // ✅ 截图前先把分享卡片里的 Supabase 图片转成 dataURL
     await convertSupabaseImagesToDataURL(el as HTMLElement)
 
+    const scale = Math.min(window.devicePixelRatio || 1, 2)
+
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
-      scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
+      scale,
       useCORS: true,
       allowTaint: false,
     })
@@ -401,8 +403,8 @@ async function handleShare() {
     // 保存 canvas，后面导出 JPEG 用
     shareCanvasRef.value = canvas
 
-    // 预览用 PNG
-    shareImageUrl.value = canvas.toDataURL('image/png')
+    // 预览 & 下载都用 JPEG，质量稍微压缩一点
+    shareImageUrl.value = canvas.toDataURL('image/jpeg', 0.8)
 
     sharePreviewVisible.value = true
   }
@@ -455,7 +457,7 @@ async function systemShareImage() {
               reject(new Error('canvas toBlob failed'))
           },
           'image/jpeg',
-          0.9, // 品质 0~1
+          0.75, // 品质 0~1
         )
       })
     }
