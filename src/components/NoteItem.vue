@@ -1042,14 +1042,17 @@ async function systemShareImage() {
   left: 0;
   right: 0;
   height: 3px;
-  background: #6366f1; /* Tema色：indigo-500 */
+
+  /* 🌈 品牌渐变：品牌紫 → 淡紫 */
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
 }
 
 /* 暗色模式下的顶部色条 */
 .dark .share-card::before {
-  background: #818cf8; /* indigo-400，暗色下更亮 */
+  background: linear-gradient(90deg, #818cf8, #c4b5fd);
 }
 
 .dark .share-card {
