@@ -1014,27 +1014,50 @@ async function systemShareImage() {
 }
 
 /* ===== 分享卡片（离屏渲染用） ===== */
+/* ===== 分享卡片（离屏渲染用） ===== */
 .share-card-root {
   position: fixed;
   top: -9999px;
   left: -9999px;
   width: 360px;       /* 如果想整体更窄可以改成 340 */
-  padding: 0;         /* ✅ 去掉外层多余空白 */
+  padding: 0;
   box-sizing: border-box;
   pointer-events: none;
   z-index: -1;
 }
 
 .share-card {
-  border-radius: 16px;
-  background: linear-gradient(135deg, #f9fafb, #e5edff);
-  padding: 12px 14px 10px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
   position: relative; /* 必须加 */
+  border-radius: 16px;
+
+  /* 卡片背景（含轻渐变） */
+  background: linear-gradient(135deg, #f9fafb, #e5edff);
+
+  padding: 12px 14px 10px;
+
+  /* 专业海报感：卡片主体阴影 */
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
+
+  font-family: system-ui, -apple-system, BlinkMacSystemFont,
+               'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+
+  /* ================================ */
+  /* 🌟 专业海报感柔光边框 —— 主角登场 */
+  /* ================================ */
+  border: 1px solid rgba(99, 102, 241, 0.18);  /* 品牌紫柔光边框 */
+  backdrop-filter: blur(4px);                  /* 柔光效果 */
 }
 
-/* 顶部 3px 色条（亮色） */
+.dark .share-card {
+  background: linear-gradient(135deg, #020617, #020b3a);
+  color: #e5e7eb;
+
+  /* 深色模式的柔光边框更亮一点 */
+  border: 1px solid rgba(129, 140, 248, 0.20);
+  backdrop-filter: blur(4px);
+}
+
+/* 顶部品牌渐变色条（你之前指定的品牌特征） */
 .share-card::before {
   content: "";
   position: absolute;
@@ -1042,22 +1065,14 @@ async function systemShareImage() {
   left: 0;
   right: 0;
   height: 3px;
-
-  /* 🌈 品牌渐变：品牌紫 → 淡紫 */
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
-
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
+
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
 }
 
-/* 暗色模式下的顶部色条 */
 .dark .share-card::before {
   background: linear-gradient(90deg, #818cf8, #c4b5fd);
-}
-
-.dark .share-card {
-  background: linear-gradient(135deg, #020617, #020b3a);
-  color: #e5e7eb;
 }
 
 .share-card-header {
