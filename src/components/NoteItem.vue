@@ -101,7 +101,7 @@ const showShareCard = ref(false) // 是否渲染“离屏分享卡片”
 const shareImageUrl = ref<string | null>(null) // 生成的分享图片 dataURL
 const sharePreviewVisible = ref(false) // 是否显示分享预览弹层
 const shareGenerating = ref(false) // 是否正在生成中
-const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片 DOM 引用
+const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片DOM 引用
 const shareCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 function formatShareDate(dateStr: string) {
