@@ -36,6 +36,12 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
+const isIOS = computed(() => {
+  if (typeof navigator === 'undefined')
+    return false
+  return /iP(hone|ad|od)/i.test(navigator.userAgent)
+})
+
 // NoteItem.vue <script setup> 顶部已有 props
 const containsImage = computed(() => {
   const c = (props.note?.content || '').toString()
@@ -557,7 +563,7 @@ async function systemShareImage() {
             <button
               type="button"
               class="share-btn"
-              @click="downloadShareImage"
+              @click="(isIOS ? systemShareImage : downloadShareImage)()"
             >
               {{ $t('notes.share_save', '保存图片') }}
             </button>
@@ -578,7 +584,10 @@ async function systemShareImage() {
           </div>
 
           <p class="share-hint">
-            {{ $t('notes.share_hint', '如需分享到微信，可先保存图片，再在微信中从相册选择分享。') }}
+            {{ $t('notes.share_hint', isIOS
+              ? 'iPhone 上请在弹出的菜单中选择「存储图像」即可保存到相册。'
+              : '如需分享到微信，可先保存图片，再在微信中从相册选择分享。',
+            ) }}
           </p>
         </div>
       </div>
