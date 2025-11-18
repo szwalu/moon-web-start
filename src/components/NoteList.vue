@@ -524,6 +524,7 @@ async function handleEditTop(note: any) {
 }
 
 // 保存（顶置）
+// 保存（顶置）
 function saveEditTop(content: string /* , _weather: string | null */) {
   if (!editingNoteTop.value)
     return
@@ -534,8 +535,22 @@ function saveEditTop(content: string /* , _weather: string | null */) {
 
   // 仍然沿用父组件的更新回调：{ id, content }, (success)=>{}
   emit('updateNote', { id, content: trimmed }, async (success: boolean) => {
+    // ❌ 保存失败：什么都不做，草稿继续保留
     if (!success)
       return
+
+    // ✅ 保存成功：手动清除当前这条笔记的编辑草稿
+    const key = editTopDraftKey.value
+    if (key) {
+      try {
+        localStorage.removeItem(key)
+      }
+      catch (err) {
+        // 本地存储异常直接忽略，不影响后续逻辑
+      }
+    }
+
+    // 关闭顶置编辑态 & 清空当前编辑内容
     editingNoteTop.value = null
     editTopContent.value = ''
     emit('editingStateChange', false)
@@ -803,7 +818,7 @@ async function restoreScrollIfNeeded() {
         enable-drafts
         :draft-key="editTopDraftKey"
 
-        clear-draft-on-save
+        :clear-draft-on-save="false"
         :original-content="editingNoteTop?.content || ''"
 
         @save="saveEditTop"
