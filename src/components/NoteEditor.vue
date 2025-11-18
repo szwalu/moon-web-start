@@ -528,13 +528,14 @@ const isRecordPaused = ref(false)
 const isUploadingAudio = ref(false)
 
 // 录音时长（秒）+ 定时器句柄
+// 录音时长（秒）+ 定时器句柄
 const recordSeconds = ref(0)
 let recordTimer: number | null = null
 
 const MAX_RECORD_SECONDS = 10 * 60
 const WARNING_SECONDS = 2 * 60
-let warnedCountdown = false // ⭐ 倒计时提示是否已经提示过
 
+// 已录制时长：mm:ss
 const recordTimeText = computed(() => {
   const total = recordSeconds.value
   const m = Math.floor(total / 60)
@@ -544,29 +545,33 @@ const recordTimeText = computed(() => {
   return `${mm}:${ss}`
 })
 
+/**
+ * 剩余时间文本：还剩 01:59
+ * 只在“剩余时间 <= WARNING_SECONDS（2 分钟）”时显示
+ */
+const recordRemainingText = computed(() => {
+  const remaining = MAX_RECORD_SECONDS - recordSeconds.value
+  if (remaining <= 0)
+    return ''
+  // 如果希望全程显示剩余时间，把这一行删掉即可
+  if (remaining > WARNING_SECONDS)
+    return ''
+
+  const m = Math.floor(remaining / 60)
+  const s = remaining % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
 function startRecordTimer() {
   if (recordTimer != null)
     window.clearInterval(recordTimer)
 
-  warnedCountdown = false // ⭐ 每次开始录音时重置状态
-
   recordTimer = window.setInterval(() => {
     recordSeconds.value += 1
 
-    const remaining = MAX_RECORD_SECONDS - recordSeconds.value
-
-    // ⭐ 当进入倒计时 2 分钟，只提示一次
-    if (remaining <= WARNING_SECONDS && remaining > 0 && !warnedCountdown) {
-      warnedCountdown = true
-
-      dialog.info({
-        title: t('notes.editor.record.countdown_title'),
-        content: t('notes.editor.record.countdown_msg', { seconds: remaining }),
-        positiveText: t('notes.ok'),
-      })
-    }
-
-    // ⭐ 超时自动停止录音（之前你已经加过）
+    // 超时自动停止录音（10 分钟）
     if (recordSeconds.value >= MAX_RECORD_SECONDS) {
       isRecording.value = false
       isRecordPaused.value = false
@@ -2091,6 +2096,12 @@ function handleBeforeInput(e: InputEvent) {
           class="record-time"
         >
           {{ recordTimeText }}
+          <span
+            v-if="recordRemainingText"
+            class="record-remaining"
+          >
+            （还剩 {{ recordRemainingText }}）
+          </span>
         </span>
       </div>
       <div class="record-actions">
@@ -2466,6 +2477,16 @@ function handleBeforeInput(e: InputEvent) {
 }
 .dark .record-time {
   color: #d1d5db;
+}
+
+.record-remaining {
+  margin-left: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #ef4444;
+}
+.dark .record-remaining {
+  color: #f97316;
 }
 
 .record-actions {
