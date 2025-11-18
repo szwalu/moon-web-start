@@ -531,6 +531,10 @@ const isUploadingAudio = ref(false)
 const recordSeconds = ref(0)
 let recordTimer: number | null = null
 
+const MAX_RECORD_SECONDS = 10 * 60
+const WARNING_SECONDS = 2 * 60
+let warnedCountdown = false // ⭐ 倒计时提示是否已经提示过
+
 const recordTimeText = computed(() => {
   const total = recordSeconds.value
   const m = Math.floor(total / 60)
@@ -544,16 +548,28 @@ function startRecordTimer() {
   if (recordTimer != null)
     window.clearInterval(recordTimer)
 
+  warnedCountdown = false // ⭐ 每次开始录音时重置状态
+
   recordTimer = window.setInterval(() => {
     recordSeconds.value += 1
 
-    // ⭐ 每秒检查一次：超过 10 分钟就自动停止录音
+    const remaining = MAX_RECORD_SECONDS - recordSeconds.value
+
+    // ⭐ 当进入倒计时 2 分钟，只提示一次
+    if (remaining <= WARNING_SECONDS && remaining > 0 && !warnedCountdown) {
+      warnedCountdown = true
+
+      dialog.info({
+        title: t('notes.editor.record.countdown_title'),
+        content: t('notes.editor.record.countdown_msg', { seconds: remaining }),
+        positiveText: t('notes.ok'),
+      })
+    }
+
+    // ⭐ 超时自动停止录音（之前你已经加过）
     if (recordSeconds.value >= MAX_RECORD_SECONDS) {
-      // 和用户点击“停止”按钮的效果一致
       isRecording.value = false
       isRecordPaused.value = false
-
-      // 不重置秒数，让用户还能看到「10:00」
       stopRecordTimer(false)
       stopRecording()
     }
