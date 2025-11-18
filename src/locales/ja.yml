@@ -477,7 +477,7 @@ notes:
       link_label: 録音
       uploading: 録音ファイルをアップロード中…
       countdown_title: 録音がまもなく終了します
-      countdown_msg: '録音はあと {{seconds}} 秒で自動的に停止します。'
+      countdown_msg: '録音はあと {seconds} 秒で自動的に停止します。'
     char_limit_title: 文字数の上限を超えました
     char_limit_content: '1つのノートは {max} 文字までです。保存前に短くしてください。'
     save:
