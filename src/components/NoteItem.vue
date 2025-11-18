@@ -98,17 +98,14 @@ const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
 // ===== 平台判断：决定分享弹窗按钮布局 =====
-const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
-const isIOS = /iP(hone|ad|od)/i.test(ua)
-const isMacOS = !isIOS && /Macintosh|Mac OS X/i.test(ua)
-const isWindows = /Windows NT/i.test(ua)
-const isAndroid = /Android/i.test(ua)
+const isIOS = typeof navigator !== 'undefined'
+  && /iP(hone|ad|od)/i.test(navigator.userAgent || '')
 
 /**
- * macOS / Windows / Android 走「保存」「分享」「关闭」三按钮
- * iOS 保持「保存/分享」「关闭」两按钮
+ * 非 iOS：三个按钮「保存」「分享」「关闭」
+ * iOS：两个按钮「保存/分享」「关闭」
  */
-const showSeparateSaveShareButtons = isMacOS || isWindows || isAndroid
+const showSeparateSaveShareButtons = !isIOS
 
 // ===== 分享图片相关 =====
 const showShareCard = ref(false) // 是否渲染“离屏分享卡片”
