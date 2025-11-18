@@ -325,7 +325,7 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
     if (!supabaseImgPattern.test(src))
       continue
 
-    // 直接从分享卡片 DOM 中移除该图片节点
+    // 直接从分享卡片 DOM中移除该图片节点
     img.remove()
   }
 }
