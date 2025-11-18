@@ -2474,7 +2474,7 @@ function handleBeforeInput(e: InputEvent) {
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 /* 工具栏按钮间距（维持你之前已加大的 8px） */
@@ -2523,7 +2523,7 @@ function handleBeforeInput(e: InputEvent) {
   display: inline-block;
   width: 1px;
   height: 16px;
-  margin-left: 6px;
+  margin-left: 0px;
   background-color: rgba(0,0,0,0.08);
 }
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
