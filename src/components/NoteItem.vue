@@ -77,7 +77,6 @@ const md = new MarkdownIt({
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
-  tokens[idx].attrSet('crossorigin', 'anonymous')
   const style = tokens[idx].attrGet('style')
   tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
 
