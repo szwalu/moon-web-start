@@ -707,8 +707,23 @@ async function startRecording() {
     mediaRecorder.onstop = () => {
       const blob = new Blob(audioChunks, { type: mimeType })
       cleanupMediaRecorder()
-      // 录音结束后再上传并插入链接
-      handleAudioFinished(blob).catch(() => {})
+
+      // 录音结束后上传并插入链接
+      handleAudioFinished(blob)
+        .then(() => {
+          // ✅ 上传成功后关闭录音条
+          showRecordBar.value = false
+          isRecording.value = false
+          isRecordPaused.value = false
+          recordSeconds.value = 0
+        })
+        .catch(() => {
+          // ❗ 上传失败时，同样关闭录音条（可按需保留）
+          showRecordBar.value = false
+          isRecording.value = false
+          isRecordPaused.value = false
+          recordSeconds.value = 0
+        })
     }
 
     mediaRecorder.start()
