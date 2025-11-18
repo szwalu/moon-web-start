@@ -2045,7 +2045,10 @@ function handleBeforeInput(e: InputEvent) {
       <div class="record-status">
         <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
         <span class="record-text">
-          <template v-if="!isRecording">
+          <template v-if="isUploadingAudio">
+            {{ t('notes.editor.record.uploading') }}
+          </template>
+          <template v-else-if="!isRecording">
             {{ t('notes.editor.record.status_ready') }}
           </template>
           <template v-else-if="isRecordPaused">
@@ -2074,7 +2077,7 @@ function handleBeforeInput(e: InputEvent) {
         <button
           type="button"
           class="record-btn record-btn-secondary"
-          :disabled="!isRecording"
+          :disabled="!isRecording || isUploadingAudio"
           @click="handleRecordPauseClick"
         >
           {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
@@ -2082,6 +2085,7 @@ function handleBeforeInput(e: InputEvent) {
         <button
           type="button"
           class="record-btn record-btn-primary"
+          :disabled="isUploadingAudio"
           @click="handleRecordButtonClick"
         >
           {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}

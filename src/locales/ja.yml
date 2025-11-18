@@ -475,6 +475,7 @@ notes:
       login_required: 録音をアップロードする前にログインしてください。
       url_failed: 録音のURLを取得できませんでした。
       link_label: 録音
+      uploading: 録音ファイルをアップロード中…
     char_limit_title: 文字数の上限を超えました
     char_limit_content: '1つのノートは {max} 文字までです。保存前に短くしてください。'
     save:

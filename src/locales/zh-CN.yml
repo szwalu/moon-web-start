@@ -476,6 +476,7 @@ notes:
       login_required: 请先登录后再上传录音
       url_failed: 获取录音 URL 失败
       link_label: 录音
+      uploading: 录音文件上传中…
     char_limit_title: 字数超出限制
     char_limit_content: '单条笔记不能超过 {max} 字，请删减后再保存。'
     save:
