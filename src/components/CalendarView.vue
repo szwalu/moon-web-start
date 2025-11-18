@@ -311,10 +311,21 @@ async function saveExistingNote(content: string /* , _weather: string | null */)
   }
   catch (e) {
     console.error('更新笔记失败：', e)
-    return
+    return // ❌ 更新失败：不清草稿，也不关闭编辑器
   }
 
-  // 退出编辑器并清空
+  // ✅ 保存成功：清除这一条的“编辑草稿”
+  const draftKey = editDraftKey.value
+  if (draftKey) {
+    try {
+      localStorage.removeItem(draftKey)
+    }
+    catch {
+      // 忽略本地错误
+    }
+  }
+
+  // ✅ 然后再退出编辑器
   editingNote.value = null
   editContent.value = ''
   hideHeader.value = false
@@ -633,7 +644,6 @@ function buildCreatedAtForSelectedDay(): string {
   return day.toISOString()
 }
 
-// 在日历内保存新笔记（NoteEditor 的 @save 回调签名：content, weather）
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
@@ -646,14 +656,14 @@ async function saveNewNote(content: string, weather: string | null) {
       content: content.trim(),
       created_at: createdISO,
       updated_at: createdISO,
-      weather, // 你 NoteItem 已支持显示天气
+      weather,
     })
     .select('*')
     .single()
 
   if (error) {
     console.error('保存失败：', error)
-    return
+    return // ❌ 保存失败：不清草稿，退出函数
   }
 
   // 1) 立即插入到当天列表（置顶）
@@ -671,9 +681,24 @@ async function saveNewNote(content: string, weather: string | null) {
   }
 
   // 3) 刷新当天缓存
-  localStorage.setItem(getCalendarDateCacheKey(selectedDate.value), JSON.stringify(selectedDateNotes.value))
+  localStorage.setItem(
+    getCalendarDateCacheKey(selectedDate.value),
+    JSON.stringify(selectedDateNotes.value),
+  )
   emit('created', data)
-  // 4) 关输入框（NoteEditor 自带 clearDraftOnSave=true 会清草稿）
+
+  // ✅ 4) 保存成功后，手动清除“新建草稿”
+  const draftKey = writingKey.value
+  if (draftKey) {
+    try {
+      localStorage.removeItem(draftKey)
+    }
+    catch {
+      // 本地存储异常忽略即可
+    }
+  }
+
+  // 5) 关输入框 & 清空当前 v-model
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false
@@ -724,7 +749,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :tag-counts="tagCounts"
             :enable-drafts="true"
             :draft-key="writingKey"
-            :clear-draft-on-save="true"
+            :clear-draft-on-save="false"
             :enable-scroll-push="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
@@ -746,7 +771,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :tag-counts="tagCounts"
             :enable-drafts="true"
             :draft-key="editDraftKey"
-            :clear-draft-on-save="true"
+            :clear-draft-on-save="false"
             :enable-scroll-push="true"
             @save="saveExistingNote"
             @cancel="cancelEditExisting"
