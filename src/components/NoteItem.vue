@@ -312,6 +312,24 @@ function handleNoteContentClick(event: MouseEvent) {
     event.preventDefault()
   }
 }
+
+// ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
+async function convertSupabaseImagesToDataURL(container: HTMLElement) {
+  const imgs = Array.from(container.querySelectorAll('img'))
+
+  // 只处理 note-images 桶里的图片
+  const supabaseImgPattern = /^https:\/\/[a-z0-9.-]+\.supabase\.co\/storage\/v1\/object\/public\/note-images\//i
+
+  for (const img of imgs) {
+    const src = img.getAttribute('src') || ''
+    if (!supabaseImgPattern.test(src))
+      continue
+
+    // 直接从分享卡片 DOM中移除该图片节点
+    img.remove()
+  }
+}
+
 async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
@@ -354,15 +372,20 @@ async function handleShare() {
     if (!el)
       throw new Error('share card element not found')
 
+    // ✅ 截图前先把分享卡片里的 Supabase 图片转成 dataURL
+    await convertSupabaseImagesToDataURL(el as HTMLElement)
+
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
+      useCORS: true,
+      allowTaint: false,
     })
 
-    // ✅ 保存 canvas 供后面导出 JPEG 使用
+    // 保存 canvas，后面导出 JPEG 用
     shareCanvasRef.value = canvas
 
-    // 预览用 PNG（保持不变）
+    // 预览用 PNG
     shareImageUrl.value = canvas.toDataURL('image/png')
 
     sharePreviewVisible.value = true
@@ -1128,5 +1151,14 @@ async function systemShareImage() {
 
 .dark .share-hint {
   color: #9ca3af;
+}
+
+.share-card-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  margin: 6px 0;
 }
 </style>
