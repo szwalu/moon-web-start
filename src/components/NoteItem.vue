@@ -99,7 +99,12 @@ const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
 // ===== 平台判断：决定分享弹窗按钮布局 =====
 const isIOS = typeof navigator !== 'undefined'
-  && /iP(hone|ad|od)/i.test(navigator.userAgent || '')
+  && typeof window !== 'undefined'
+  && (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
+    // iPadOS 13+ 有时把自己伪装成 Mac，这里用触摸点数辅助判断
+    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
+  )
 
 /**
  * 非 iOS：三个按钮「保存」「分享」「关闭」
