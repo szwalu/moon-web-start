@@ -96,6 +96,20 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 }
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+
+// ===== 平台判断：决定分享弹窗按钮布局 =====
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+const isIOS = /iP(hone|ad|od)/i.test(ua)
+const isMacOS = !isIOS && /Macintosh|Mac OS X/i.test(ua)
+const isWindows = /Windows NT/i.test(ua)
+const isAndroid = /Android/i.test(ua)
+
+/**
+ * macOS / Windows / Android 走「保存」「分享」「关闭」三按钮
+ * iOS 保持「保存/分享」「关闭」两按钮
+ */
+const showSeparateSaveShareButtons = isMacOS || isWindows || isAndroid
+
 // ===== 分享图片相关 =====
 const showShareCard = ref(false) // 是否渲染“离屏分享卡片”
 const shareImageUrl = ref<string | null>(null) // 生成的分享图片 dataURL
@@ -404,18 +418,11 @@ async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
 
-  // ✅ 优先使用系统分享（iOS / 安卓 Chrome 等）
-  const navAny = typeof navigator !== 'undefined' ? (navigator as any) : null
-  if (navAny && navAny.share) {
-    // 直接复用上面的 systemShareImage 逻辑
-    await systemShareImage()
-    return
-  }
-
-  // ❗ fallback：不支持 navigator.share 的浏览器，才使用下载文件方式
+  // 直接下载到本机（macOS / Windows / Android）
   const link = document.createElement('a')
   link.href = shareImageUrl.value
-  link.download = `云笔记-${props.note.id || 'share'}.png`
+  // 用 jpg 后缀，和系统分享里的文件名保持一致
+  link.download = `云笔记-${props.note.id || 'share'}.jpg`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -631,20 +638,48 @@ async function systemShareImage() {
           </div>
 
           <div class="share-modal-actions">
-            <button
-              type="button"
-              class="share-btn"
-              @click="downloadShareImage"
-            >
-              {{ $t('notes.share_save', '保存/分享') }}
-            </button>
-            <button
-              type="button"
-              class="share-btn share-btn-secondary"
-              @click="sharePreviewVisible = false"
-            >
-              {{ $t('common.close', '关闭') }}
-            </button>
+            <!-- 桌面 / 安卓：三个按钮「保存」「分享」「关闭」 -->
+            <template v-if="showSeparateSaveShareButtons">
+              <button
+                type="button"
+                class="share-btn"
+                @click="downloadShareImage"
+              >
+                {{ $t('notes.share_save_only', '保存') }}
+              </button>
+              <button
+                type="button"
+                class="share-btn"
+                @click="systemShareImage"
+              >
+                {{ $t('notes.share_button', '分享') }}
+              </button>
+              <button
+                type="button"
+                class="share-btn share-btn-secondary"
+                @click="sharePreviewVisible = false"
+              >
+                {{ $t('common.close', '关闭') }}
+              </button>
+            </template>
+
+            <!-- iOS：两个按钮「保存/分享」（走系统分享） + 「关闭」 -->
+            <template v-else>
+              <button
+                type="button"
+                class="share-btn"
+                @click="systemShareImage"
+              >
+                {{ $t('notes.share_save', '保存/分享') }}
+              </button>
+              <button
+                type="button"
+                class="share-btn share-btn-secondary"
+                @click="sharePreviewVisible = false"
+              >
+                {{ $t('common.close', '关闭') }}
+              </button>
+            </template>
           </div>
         </div>
       </div>
