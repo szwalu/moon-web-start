@@ -36,12 +36,6 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
-const isIOS = computed(() => {
-  if (typeof navigator === 'undefined')
-    return false
-  return /iP(hone|ad|od)/i.test(navigator.userAgent)
-})
-
 // NoteItem.vue <script setup> 顶部已有 props
 const containsImage = computed(() => {
   const c = (props.note?.content || '').toString()
@@ -109,6 +103,23 @@ const sharePreviewVisible = ref(false) // 是否显示分享预览弹层
 const shareGenerating = ref(false) // 是否正在生成中
 const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片 DOM 引用
 const shareCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+function formatShareDate(dateStr: string) {
+  const d = new Date(dateStr)
+
+  const year = d.getFullYear()
+  const month = d.getMonth() + 1
+  const day = d.getDate()
+
+  // 星期还是交给 i18n（中文/英文都自动切）
+  const weekday = t(`notes.card.weekday_${d.getDay()}`)
+
+  // 与「17日 周一」等相同逻辑保持一致
+  const daySuffix = t('notes.card.day_suffix') // 中文/日文是“日”，英文为空
+  const dayLabel = `${day}${daySuffix || ''}`
+
+  return `${year}年${month}月${dayLabel} ${weekday}`
+}
 
 function attachImgLoadListener(root: Element | null) {
   if (!root)
@@ -381,7 +392,7 @@ async function downloadShareImage() {
   // ❗ fallback：不支持 navigator.share 的浏览器，才使用下载文件方式
   const link = document.createElement('a')
   link.href = shareImageUrl.value
-  link.download = `note-${props.note.id || 'share'}.png`
+  link.download = `云笔记-${props.note.id || 'share'}.png`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -423,7 +434,7 @@ async function systemShareImage() {
     }
 
     // 文件改为 JPEG
-    const file = new File([blob], 'note.jpg', { type: 'image/jpeg' })
+    const file = new File([blob], '云笔记.jpg', { type: 'image/jpeg' })
     const files = [file]
 
     const shareData: any = {
@@ -536,7 +547,9 @@ async function systemShareImage() {
     >
       <div class="share-card">
         <div class="share-card-header">
-          <p class="share-card-date" v-html="formatDateWithWeekday(note.created_at)" />
+          <p class="share-card-date">
+            {{ formatShareDate(note.created_at) }}
+          </p>
           <span v-if="weatherDisplay" class="share-card-weather">
             · {{ weatherDisplay }}
           </span>
@@ -600,14 +613,7 @@ async function systemShareImage() {
               class="share-btn"
               @click="downloadShareImage"
             >
-              {{ $t('notes.share_save', '保存图片') }}
-            </button>
-            <button
-              type="button"
-              class="share-btn"
-              @click="systemShareImage"
-            >
-              {{ $t('notes.share_more', '微信 / 更多') }}
+              {{ $t('notes.share_save', '保存/分享') }}
             </button>
             <button
               type="button"
@@ -617,13 +623,6 @@ async function systemShareImage() {
               {{ $t('common.close', '关闭') }}
             </button>
           </div>
-
-          <p class="share-hint">
-            {{ $t('notes.share_hint', isIOS
-              ? 'iPhone 上请在弹出的菜单中选择「存储图像」即可保存到相册。'
-              : '如需分享到微信，可先保存图片，再在微信中从相册选择分享。',
-            ) }}
-          </p>
         </div>
       </div>
     </Teleport>
@@ -955,10 +954,10 @@ async function systemShareImage() {
 /* ===== 分享卡片（离屏渲染用） ===== */
 .share-card-root {
   position: fixed;
-  top: -9999px;    /* 移到屏幕外，但仍参与布局渲染 */
+  top: -9999px;
   left: -9999px;
-  width: 360px;    /* 分享图片宽度，可视为手机宽度 */
-  padding: 16px;
+  width: 360px;       /* 如果想整体更窄可以改成 340 */
+  padding: 0;         /* ✅ 去掉外层多余空白 */
   box-sizing: border-box;
   pointer-events: none;
   z-index: -1;
@@ -967,7 +966,7 @@ async function systemShareImage() {
 .share-card {
   border-radius: 16px;
   background: #f9fafb;
-  padding: 16px 18px 14px;
+  padding: 12px 14px 10px;  /* ✅ 左右比之前的 18px 更窄 */
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 }
@@ -982,6 +981,10 @@ async function systemShareImage() {
   align-items: center;
   gap: 4px;
   margin-bottom: 10px;
+}
+
+.share-card-year {
+  margin-right: 4px;
 }
 
 .share-card-date {
