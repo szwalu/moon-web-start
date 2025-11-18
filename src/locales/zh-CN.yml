@@ -458,6 +458,24 @@ notes:
     date_format: '{year}年{month}月{day}日'
 
   editor:
+    record:
+      status_ready: 准备录音
+      status_paused: 已暂停
+      status_recording: 正在录音…
+      button_cancel: 取消
+      button_pause: 暂停
+      button_resume: 继续
+      button_start: 录音
+      button_stop: 停止
+      upload_failed_title: 上传录音失败
+      upload_failed_content: 录音上传或插入时出错。
+      no_mic_title: 无法访问麦克风
+      no_mic_content: 当前浏览器不支持录音或未开放麦克风权限。
+      start_failed_title: 录音启动失败
+      start_failed_content: 无法开始录音，可能是麦克风被禁止。
+      login_required: 请先登录后再上传录音
+      url_failed: 获取录音 URL 失败
+      link_label: 录音
     char_limit_title: 字数超出限制
     char_limit_content: '单条笔记不能超过 {max} 字，请删减后再保存。'
     save:

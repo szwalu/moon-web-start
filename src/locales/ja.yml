@@ -457,6 +457,24 @@ notes:
     date_format: '{year}年{month}月{day}日'
 
   editor:
+    record:
+      status_ready: 録音の準備ができました
+      status_paused: 一時停止中
+      status_recording: 録音中…
+      button_cancel: キャンセル
+      button_pause: 一時停止
+      button_resume: 再開
+      button_start: 録音開始
+      button_stop: 停止
+      upload_failed_title: 録音のアップロードに失敗しました
+      upload_failed_content: 録音のアップロードまたは挿入中にエラーが発生しました。
+      no_mic_title: マイクにアクセスできません
+      no_mic_content: ご利用のブラウザは録音をサポートしていないか、マイクへのアクセスが拒否されています。
+      start_failed_title: 録音の開始に失敗しました
+      start_failed_content: 録音を開始できませんでした。マイクが無効になっている可能性があります。
+      login_required: 録音をアップロードする前にログインしてください。
+      url_failed: 録音のURLを取得できませんでした。
+      link_label: 録音
     char_limit_title: 文字数の上限を超えました
     char_limit_content: '1つのノートは {max} 文字までです。保存前に短くしてください。'
     save:

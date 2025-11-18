@@ -458,6 +458,24 @@ notes:
     date_format: '{year}/{month}/{day}'
 
   editor:
+    record:
+      status_ready: Ready to record
+      status_paused: Paused
+      status_recording: Recording…
+      button_cancel: Cancel
+      button_pause: Pause
+      button_resume: Resume
+      button_start: Record
+      button_stop: Stop
+      upload_failed_title: Failed to upload recording
+      upload_failed_content: An error occurred while uploading or inserting the recording.
+      no_mic_title: Microphone unavailable
+      no_mic_content: Your browser does not support recording or microphone access is blocked.
+      start_failed_title: Failed to start recording
+      start_failed_content: Unable to start recording. The microphone may be disabled.
+      login_required: Please sign in before uploading a recording.
+      url_failed: Failed to obtain recording URL.
+      link_label: Recording
     char_limit_title: Character limit exceeded
     char_limit_content: 'A single note can''t exceed {max} characters. Please shorten it before saving.'
     save:

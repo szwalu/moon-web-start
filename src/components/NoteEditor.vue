@@ -594,7 +594,7 @@ function buildAudioPath(userId: string, ext = 'webm') {
 async function uploadAudioToSupabase(blob: Blob): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
-    throw new Error('请先登录后再上传录音')
+    throw new Error(t('notes.editor.record.login_required'))
 
   const userId = userData.user.id
   const bucket = 'note-audios' // 你原来用的桶名如果不一样，这里要改成原来的
@@ -621,12 +621,11 @@ async function uploadAudioToSupabase(blob: Blob): Promise<string> {
     .createSignedUrl(filePath, 60 * 60 * 24 * 365)
 
   if (sErr || !signed?.signedUrl)
-    throw new Error('获取录音 URL 失败')
+    throw new Error(t('notes.editor.record.url_failed'))
 
   return signed.signedUrl
 }
 
-// 当一段录音结束后：上传并在光标处插入链接
 // 当一段录音结束后：上传并在光标处插入链接（无成功弹窗）
 async function handleAudioFinished(blob: Blob) {
   if (!blob.size)
@@ -637,7 +636,8 @@ async function handleAudioFinished(blob: Blob) {
     const url = await uploadAudioToSupabase(blob)
 
     // 1. 插入录音链接到当前光标位置
-    insertText(`[🎙️录音](${url}) `, '')
+    const label = t('notes.editor.record.link_label')
+    insertText(`[🎙️${label}](${url}) `, '')
 
     // 2. 下一帧把焦点和光标拉回 textarea（避免光标消失）
     await nextTick()
@@ -661,9 +661,9 @@ async function handleAudioFinished(blob: Blob) {
   catch (err: any) {
     // 失败时仍保留错误提示
     dialog.error({
-      title: '上传录音失败',
-      content: err?.message || '录音上传或插入时出错。',
-      positiveText: '知道了',
+      title: t('notes.editor.record.upload_failed_title'),
+      content: err?.message || t('notes.editor.record.upload_failed_content'),
+      positiveText: t('notes.ok'),
     })
   }
   finally {
@@ -675,9 +675,9 @@ async function handleAudioFinished(blob: Blob) {
 async function startRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     dialog.warning({
-      title: '无法访问麦克风',
-      content: '当前浏览器不支持录音或未开放麦克风权限。',
-      positiveText: '知道了',
+      title: t('notes.editor.record.no_mic_title'),
+      content: t('notes.editor.record.no_mic_content'),
+      positiveText: t('notes.ok'),
     })
     return
   }
@@ -716,9 +716,9 @@ async function startRecording() {
   catch (err: any) {
     cleanupMediaRecorder()
     dialog.error({
-      title: '录音启动失败',
-      content: err?.message || '无法开始录音，可能是麦克风被禁止。',
-      positiveText: '知道了',
+      title: t('notes.editor.record.start_failed_title'),
+      content: err?.message || t('notes.editor.record.start_failed_content'),
+      positiveText: t('notes.ok'),
     })
   }
 }
@@ -2031,13 +2031,13 @@ function handleBeforeInput(e: InputEvent) {
         <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
         <span class="record-text">
           <template v-if="!isRecording">
-            准备录音
+            {{ t('notes.editor.record.status_ready') }}
           </template>
           <template v-else-if="isRecordPaused">
-            已暂停
+            {{ t('notes.editor.record.status_paused') }}
           </template>
           <template v-else>
-            正在录音…
+            {{ t('notes.editor.record.status_recording') }}
           </template>
         </span>
         <!-- 新增：录音时长 mm:ss -->
@@ -2054,7 +2054,7 @@ function handleBeforeInput(e: InputEvent) {
           class="record-btn record-btn-secondary"
           @click="handleRecordCancelClick"
         >
-          取消
+          {{ t('notes.editor.record.button_cancel') }}
         </button>
         <button
           type="button"
@@ -2062,14 +2062,14 @@ function handleBeforeInput(e: InputEvent) {
           :disabled="!isRecording"
           @click="handleRecordPauseClick"
         >
-          {{ isRecordPaused ? '继续' : '暂停' }}
+          {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
         </button>
         <button
           type="button"
           class="record-btn record-btn-primary"
           @click="handleRecordButtonClick"
         >
-          {{ isRecording ? '停止' : '录音' }}
+          {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
         </button>
       </div>
     </div>
