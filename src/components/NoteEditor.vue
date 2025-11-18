@@ -546,6 +546,17 @@ function startRecordTimer() {
 
   recordTimer = window.setInterval(() => {
     recordSeconds.value += 1
+
+    // ⭐ 每秒检查一次：超过 10 分钟就自动停止录音
+    if (recordSeconds.value >= MAX_RECORD_SECONDS) {
+      // 和用户点击“停止”按钮的效果一致
+      isRecording.value = false
+      isRecordPaused.value = false
+
+      // 不重置秒数，让用户还能看到「10:00」
+      stopRecordTimer(false)
+      stopRecording()
+    }
   }, 1000) as unknown as number
 }
 
