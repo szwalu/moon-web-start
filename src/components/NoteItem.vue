@@ -457,7 +457,7 @@ async function systemShareImage() {
               reject(new Error('canvas toBlob failed'))
           },
           'image/jpeg',
-          0.75, // 品质 0~1
+          0.8, // 品质 0~1
         )
       })
     }
@@ -1027,14 +1027,33 @@ async function systemShareImage() {
 
 .share-card {
   border-radius: 16px;
-  background: #f9fafb;
-  padding: 12px 14px 10px;  /* ✅ 左右比之前的 18px 更窄 */
+  background: linear-gradient(135deg, #f9fafb, #e5edff);
+  padding: 12px 14px 10px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  position: relative; /* 必须加 */
+}
+
+/* 顶部 3px 色条（亮色） */
+.share-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #6366f1; /* Tema色：indigo-500 */
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+/* 暗色模式下的顶部色条 */
+.dark .share-card::before {
+  background: #818cf8; /* indigo-400，暗色下更亮 */
 }
 
 .dark .share-card {
-  background: #020617;
+  background: linear-gradient(135deg, #020617, #020b3a);
   color: #e5e7eb;
 }
 
