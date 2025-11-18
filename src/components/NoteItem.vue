@@ -6,7 +6,7 @@ import taskLists from 'markdown-it-task-lists'
 import { NDropdown, useMessage } from 'naive-ui'
 import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
-
+import html2canvas from 'html2canvas'
 import mark from 'markdown-it-mark'
 import linkAttrs from 'markdown-it-link-attributes'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
@@ -96,6 +96,12 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 }
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+// ===== 分享图片相关 =====
+const showShareCard = ref(false) // 是否渲染“离屏分享卡片”
+const shareImageUrl = ref<string | null>(null) // 生成的分享图片 dataURL
+const sharePreviewVisible = ref(false) // 是否显示分享预览弹层
+const shareGenerating = ref(false) // 是否正在生成中
+const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片 DOM 引用
 
 function attachImgLoadListener(root: Element | null) {
   if (!root)
@@ -206,6 +212,10 @@ function getDropdownOptions(note: any) {
   const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   return [
     { label: t('notes.edit'), key: 'edit' },
+
+    // ✅ 新增：分享
+    { label: t('notes.share', '分享'), key: 'share' },
+
     { label: t('notes.copy'), key: 'copy' },
     { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
     { label: t('notes.delete'), key: 'delete' },
@@ -233,6 +243,11 @@ function handleDropdownSelect(key: string) {
       emit('edit', props.note)
       break
     }
+    case 'share': {
+      // ✅ 新增：处理分享
+      handleShare()
+      break
+    }
     case 'copy': {
       emit('copy', props.note.content)
       break
@@ -254,7 +269,6 @@ function handleDropdownSelect(key: string) {
     }
   }
 }
-
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   const listItem = target.closest('li.task-list-item')
@@ -299,6 +313,95 @@ async function handleDateUpdate(newDate: Date) {
   }
   catch (err: any) {
     messageHook.error(t('notes.card.date_update_failed', { reason: err.message }))
+  }
+}
+
+// ===== 分享图片相关逻辑 =====
+async function handleShare() {
+  if (!props.note)
+    return
+
+  try {
+    shareGenerating.value = true
+    showShareCard.value = true
+
+    // 等待分享卡片渲染完成
+    await nextTick()
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        resolve()
+      })
+    })
+
+    const el = shareCardRef.value
+    if (!el)
+      throw new Error('share card element not found')
+
+    const canvas = await html2canvas(el, {
+      backgroundColor: isDark.value ? '#020617' : '#f9fafb',
+      scale: window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
+    })
+
+    shareImageUrl.value = canvas.toDataURL('image/png')
+    sharePreviewVisible.value = true
+  }
+  catch (err: any) {
+    console.error(err)
+    messageHook.error(t('notes.share_failed', '生成分享图片失败，请稍后重试'))
+  }
+  finally {
+    shareGenerating.value = false
+    showShareCard.value = false
+  }
+}
+
+function downloadShareImage() {
+  if (!shareImageUrl.value)
+    return
+
+  const link = document.createElement('a')
+  link.href = shareImageUrl.value
+  link.download = `note-${props.note.id || 'share'}.png`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+async function systemShareImage() {
+  if (!shareImageUrl.value)
+    return
+
+  const navAny = navigator as any
+
+  if (!navAny.share) {
+    messageHook.warning(t('notes.share_not_supported', '当前浏览器不支持系统分享，请先保存图片再手动分享'))
+    return
+  }
+
+  try {
+    // dataURL → blob
+    const response = await fetch(shareImageUrl.value)
+    const blob = await response.blob()
+
+    const files: File[] = []
+    if (navAny.canShare && navAny.canShare({ files: [] })) {
+      const file = new File([blob], 'note.png', { type: 'image/png' })
+      files.push(file)
+    }
+
+    const shareData: any = {
+      title: t('notes.share_title', '分享笔记'),
+      text: props.note?.content?.slice(0, 100) || '',
+    }
+
+    if (files.length)
+      shareData.files = files
+
+    await navAny.share(shareData)
+  }
+  catch (err) {
+    // 用户取消或者分享失败，这里静默即可
+    console.warn('share cancelled or failed', err)
   }
 }
 </script>
@@ -384,6 +487,37 @@ async function handleDateUpdate(newDate: Date) {
       </div>
     </div>
 
+    <!-- ===== 离屏分享卡片（供 html2canvas 截图用） ===== -->
+    <div
+      v-if="showShareCard"
+      ref="shareCardRef"
+      class="share-card-root"
+    >
+      <div class="share-card">
+        <div class="share-card-header">
+          <p class="share-card-date" v-html="formatDateWithWeekday(note.created_at)" />
+          <span v-if="weatherDisplay" class="share-card-weather">
+            · {{ weatherDisplay }}
+          </span>
+        </div>
+
+        <div
+          class="prose dark:prose-invert share-card-content max-w-none"
+          :class="fontSizeClass"
+          v-html="renderMarkdown(note.content)"
+        />
+
+        <div class="share-card-footer">
+          <span class="share-app-name">
+            云笔记
+          </span>
+          <span class="share-meta">
+            {{ t('notes.word_count', { count: note.content ? note.content.length : 0 }) }}
+          </span>
+        </div>
+      </div>
+    </div>
+
     <Teleport to="body">
       <DateTimePickerModal
         v-if="showDatePicker"
@@ -393,6 +527,61 @@ async function handleDateUpdate(newDate: Date) {
         @close="showDatePicker = false"
         @confirm="handleDateUpdate"
       />
+    </Teleport>
+
+    <!-- ===== 分享预览弹层 ===== -->
+    <Teleport to="body">
+      <div
+        v-if="sharePreviewVisible"
+        class="share-modal-backdrop"
+        @click.self="sharePreviewVisible = false"
+      >
+        <div class="share-modal">
+          <p class="share-modal-title">
+            {{ $t('notes.share_title', '分享笔记') }}
+          </p>
+
+          <div class="share-modal-body">
+            <img
+              v-if="shareImageUrl"
+              :src="shareImageUrl"
+              alt="share preview"
+              class="share-modal-image"
+            >
+            <div v-else class="share-modal-placeholder">
+              {{ $t('notes.share_generating', '正在生成图片…') }}
+            </div>
+          </div>
+
+          <div class="share-modal-actions">
+            <button
+              type="button"
+              class="share-btn"
+              @click="downloadShareImage"
+            >
+              {{ $t('notes.share_save', '保存图片') }}
+            </button>
+            <button
+              type="button"
+              class="share-btn"
+              @click="systemShareImage"
+            >
+              {{ $t('notes.share_more', '微信 / 更多') }}
+            </button>
+            <button
+              type="button"
+              class="share-btn share-btn-secondary"
+              @click="sharePreviewVisible = false"
+            >
+              {{ $t('common.close', '关闭') }}
+            </button>
+          </div>
+
+          <p class="share-hint">
+            {{ $t('notes.share_hint', '如需分享到微信，可先保存图片，再在微信中从相册选择分享。') }}
+          </p>
+        </div>
+      </div>
     </Teleport>
   </div>
 </template>
@@ -717,5 +906,180 @@ async function handleDateUpdate(newDate: Date) {
 }
 .dark .img-flag {
   opacity: 0.8;
+}
+
+/* ===== 分享卡片（离屏渲染用） ===== */
+.share-card-root {
+  position: fixed;
+  top: -9999px;    /* 移到屏幕外，但仍参与布局渲染 */
+  left: -9999px;
+  width: 360px;    /* 分享图片宽度，可视为手机宽度 */
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.share-card {
+  border-radius: 16px;
+  background: #f9fafb;
+  padding: 16px 18px 14px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+}
+
+.dark .share-card {
+  background: #020617;
+  color: #e5e7eb;
+}
+
+.share-card-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.share-card-date {
+  margin: 0;
+  font-size: 14px;
+}
+
+.share-card-weather {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.share-card-content {
+  max-height: none;
+  overflow: visible;
+  margin-bottom: 12px;
+}
+
+.share-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.dark .share-card-footer {
+  color: #9ca3af;
+}
+
+.share-app-name {
+  font-weight: 600;
+}
+
+.share-meta {
+  white-space: nowrap;
+}
+
+/* ===== 分享预览弹层 ===== */
+.share-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 7000;
+}
+
+.share-modal {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px 16px 12px;
+  max-width: 420px;
+  width: 90vw;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+}
+
+.dark .share-modal {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+.share-modal-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.share-modal-body {
+  max-height: 60vh;
+  overflow: auto;
+  border-radius: 12px;
+  background: #f3f4f6;
+  padding: 6px;
+  margin-bottom: 10px;
+}
+
+.dark .share-modal-body {
+  background: #020617;
+}
+
+.share-modal-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.share-modal-placeholder {
+  width: 100%;
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.dark .share-modal-placeholder {
+  color: #9ca3af;
+}
+
+.share-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.share-btn {
+  flex: 1;
+  border: none;
+  border-radius: 9999px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #6366f1;
+  color: #ffffff;
+}
+
+.share-btn:hover {
+  filter: brightness(1.05);
+}
+
+.share-btn-secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.dark .share-btn-secondary {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.share-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.dark .share-hint {
+  color: #9ca3af;
 }
 </style>
