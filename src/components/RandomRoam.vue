@@ -19,7 +19,7 @@ const emit = defineEmits<{
 
 const isDark = useDark()
 
-const BATCH_SIZE = 20
+const BATCH_SIZE = 100
 
 const batchNotes = ref<Note[]>([])
 const currentIndex = ref(0)
