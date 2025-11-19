@@ -2615,6 +2615,10 @@ function onCalendarUpdated(updated: any) {
         <RandomRoam
           v-if="showRandomRoam"
           :notes="notes"
+          :total-notes="totalNotes"
+          :has-more="hasMoreNotes"
+          :is-loading="isLoadingNotes"
+          :load-more="nextPage"
           @close="showRandomRoam = false"
         />
       </Transition>

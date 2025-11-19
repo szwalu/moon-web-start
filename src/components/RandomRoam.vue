@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDark } from '@vueuse/core'
 
 interface Note {
@@ -11,6 +11,10 @@ interface Note {
 
 const props = defineProps<{
   notes: Note[]
+  totalNotes: number
+  hasMore: boolean
+  isLoading: boolean
+  loadMore: () => Promise<void> | void
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +43,10 @@ const showSwipeHint = ref(true)
 // 是否桌面端（用于提示文案 + 点击切卡）
 const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
 
-// === 随机工具：Fisher–Yates 洗牌 ===
+// 内部「正在向后台要更多」的标志，避免并发
+const isLoadingMore = ref(false)
+
+// === 工具：Fisher–Yates 洗牌 ===
 function shuffle<T>(arr: T[]): T[] {
   const pool = [...arr]
   for (let i = pool.length - 1; i > 0; i -= 1) {
@@ -49,42 +56,69 @@ function shuffle<T>(arr: T[]): T[] {
   return pool
 }
 
-// 重新填充 randomQueue：从所有笔记中选出不在 excludedIds 里的笔记并打乱
-function refillRandomQueue(excludedIds: Set<string>) {
-  const source = (props.notes || []).filter(note => !excludedIds.has(note.id))
-  if (!source.length) {
-    randomQueue = []
-    return
+// 根据当前 props.notes 构建一个候选池（排除 deck 中已有的）
+function buildCandidates(excludedIds: Set<string>): Note[] {
+  const source = props.notes || []
+  if (!source.length)
+    return []
+  const seen = new Set<string>()
+  const result: Note[] = []
+  for (const n of source) {
+    if (!n || !n.id)
+      continue
+    if (excludedIds.has(n.id))
+      continue
+    if (seen.has(n.id))
+      continue
+    seen.add(n.id)
+    result.push(n)
   }
-  randomQueue = shuffle(source)
+  return result
 }
 
-// 初始化牌堆：打开随机漫游时调用
-function initDeck() {
-  // 当前没有任何排除，先把全集洗一遍
-  randomQueue = shuffle(props.notes || [])
-
-  const firstBatch: Note[] = []
-  const usedIds = new Set<string>()
-
-  while (firstBatch.length < STACK_SIZE && randomQueue.length) {
-    const next = randomQueue.shift()!
-    firstBatch.push(next)
-    usedIds.add(next.id)
-  }
-
-  deck.value = firstBatch
-  showSwipeHint.value = true
-  deltaX.value = 0
-}
-
-// 从队列里取下一张卡片；如队列为空，则重建一轮
-function getNextRandomNote(): Note | null {
+// 确保 randomQueue 至少有一批候选，如果本地没货、且还有下一页，则向后台要
+async function ensureQueueFilled(excludedIds: Set<string>) {
+  // 先尝试用现有 notes 构建队列
   if (!randomQueue.length) {
-    // 当前屏幕上已经有一叠卡片：重建队列时先排除这些 id，避免同时出现重复
-    const excluded = new Set(deck.value.map(n => n.id))
-    refillRandomQueue(excluded)
+    const candidates = buildCandidates(excludedIds)
+    if (candidates.length)
+      randomQueue = shuffle(candidates)
   }
+
+  // 已经有队列了就不用再折腾
+  if (randomQueue.length)
+    return
+
+  // 本地真的没有新笔记可用，看是否能向后台再要一页
+  const totalLoaded = props.notes?.length ?? 0
+  const canLoadMoreFromServer = props.hasMore && totalLoaded < props.totalNotes
+
+  if (!canLoadMoreFromServer)
+    return
+
+  // 避免重复请求
+  if (isLoadingMore.value || props.isLoading)
+    return
+
+  try {
+    isLoadingMore.value = true
+    await props.loadMore?.()
+  }
+  finally {
+    isLoadingMore.value = false
+  }
+
+  // 再用更新后的 notes 试一次
+  const newCandidates = buildCandidates(excludedIds)
+  if (newCandidates.length)
+    randomQueue = shuffle(newCandidates)
+}
+
+// 从队列里拿下一张；必要时会触发后台分页
+async function getNextRandomNote(): Promise<Note | null> {
+  // 当前屏幕上已有的卡片不再加入队列，避免「同时出现两张一样的」
+  const excluded = new Set(deck.value.map(n => n.id))
+  await ensureQueueFilled(excluded)
   return randomQueue.shift() ?? null
 }
 
@@ -116,24 +150,25 @@ function handleTouchEnd() {
 
   const THRESHOLD = 80
   if (deltaX.value > THRESHOLD)
-    goNextCard()
+    // 不等待：UI 先响应，内部异步补队列
+    goNextCard() // eslint 就不抱怨了
 
   deltaX.value = 0
 }
 
 // 切到下一张卡片（核心逻辑）
-function goNextCard() {
+async function goNextCard() {
   if (!deck.value.length)
     return
 
-  const removed = deck.value.shift() // 移除顶部卡片
-  const next = getNextRandomNote()
+  const removed = deck.value.shift()!
 
+  const next = await getNextRandomNote()
   if (next) {
     deck.value.push(next)
   }
-  else if (removed) {
-    // 极端情况：只有一条笔记，就循环自己
+  else {
+    // 实在没有新货，就把刚刚那张丢回去，保证始终有卡可看
     deck.value.push(removed)
   }
 
@@ -149,9 +184,37 @@ function handleCardClick(index: number) {
   goNextCard()
 }
 
+// 初始化牌堆：打开随机漫游时调用
+function initDeckFromNotes() {
+  const source = props.notes || []
+  if (!source.length) {
+    deck.value = []
+    randomQueue = []
+    return
+  }
+
+  const shuffled = shuffle(source)
+  deck.value = shuffled.slice(0, STACK_SIZE)
+  randomQueue = shuffled.slice(STACK_SIZE)
+  showSwipeHint.value = true
+  deltaX.value = 0
+}
+
+// notes 第一次有值时初始化一遍（防止打开时 notes 还在加载）
 onMounted(() => {
-  initDeck()
+  if (props.notes?.length)
+    initDeckFromNotes()
 })
+
+// 如果用户在打开期间又加载了大量新笔记（比如后台预取），
+// 当前牌堆已经有内容时不强制重置，只在「一开始为空 → 有内容」时重建。
+watch(
+  () => props.notes.length,
+  (len, oldLen) => {
+    if (!oldLen && len > 0 && deck.value.length === 0)
+      initDeckFromNotes()
+  },
+)
 </script>
 
 <template>
