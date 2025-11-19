@@ -56,6 +56,7 @@ const messageHook = useMessage()
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
+const fullContentRef = ref<Element | null>(null)
 
 const md = new MarkdownIt({
   html: false,
@@ -144,13 +145,13 @@ function attachImgLoadListener(root: Element | null) {
   if (!imgs.length)
     return
   imgs.forEach((img) => {
-    if ((img as HTMLImageElement).complete) {
-      // 已经加载完成也触发一次
+    const htmlImg = img as HTMLImageElement
+    if (htmlImg.complete) {
       checkIfNoteOverflows()
     }
     else {
-      img.addEventListener('load', checkIfNoteOverflows, { once: true })
-      img.addEventListener('error', checkIfNoteOverflows, { once: true })
+      htmlImg.addEventListener('load', checkIfNoteOverflows, { once: true })
+      htmlImg.addEventListener('error', checkIfNoteOverflows, { once: true })
     }
   })
 }
@@ -190,43 +191,53 @@ function renderMarkdown(content: string) {
 }
 
 function checkIfNoteOverflows() {
-  const el = contentRef.value as HTMLElement | null
-  if (!el)
-    return
+  const preview = contentRef.value as HTMLElement | null
+  const full = fullContentRef.value as HTMLElement | null
 
-  const scrollHeight = el.scrollHeight
-  const clientHeight = el.clientHeight
+  if (!preview || !full) {
+    noteOverflowStatus.value = false
+    return
+  }
+
+  const clampHeight = preview.clientHeight
+  const fullHeight = full.scrollHeight
 
   // 给一点容差，避免像素取整导致“刚好等于”时误判
-  const diff = scrollHeight - clientHeight
+  const diff = fullHeight - clampHeight
   noteOverflowStatus.value = diff > 1
 }
 
 function scheduleOverflowCheck() {
   nextTick(() => {
-    // 再晚一帧，确保虚拟列表 / 字体 / line-clamp 都稳定了
     requestAnimationFrame(() => {
       checkIfNoteOverflows()
+      // 预览 + 隐藏完整内容都挂一次图片监听
       attachImgLoadListener(contentRef.value)
+      attachImgLoadListener(fullContentRef.value)
     })
   })
 }
 
 let observer: ResizeObserver | null = null
 onMounted(() => {
-  if (contentRef.value) {
-    observer = new ResizeObserver(() => {
-      checkIfNoteOverflows()
-    })
-    observer.observe(contentRef.value)
-  }
+  observer = new ResizeObserver(() => {
+    checkIfNoteOverflows()
+  })
+
+  if (contentRef.value)
+    observer.observe(contentRef.value as HTMLElement)
+  if (fullContentRef.value)
+    observer.observe(fullContentRef.value as HTMLElement)
 
   // 初始也走统一的延时测量
   scheduleOverflowCheck()
 })
+
 onUnmounted(() => {
-  if (observer)
+  if (observer) {
     observer.disconnect()
+    observer = null
+  }
 })
 
 // 当笔记内容变化时，重新检查
@@ -547,19 +558,32 @@ async function systemShareImage() {
         </div>
 
         <div v-else>
-          <div
-            ref="contentRef"
-            class="prose dark:prose-invert note-content line-clamp-3 max-w-none"
-            :class="fontSizeClass"
-            v-html="renderMarkdown(note.content)"
-          />
-          <!-- ✅ 新增：收起状态下如果包含图片，显示小图标 -->
+          <div class="note-preview-wrapper">
+            <!-- 可见的 3 行预览（带 line-clamp-3） -->
+            <div
+              ref="contentRef"
+              class="prose dark:prose-invert note-content line-clamp-3 max-w-none"
+              :class="fontSizeClass"
+              v-html="renderMarkdown(note.content)"
+            />
+            <!-- 隐藏的完整内容，用来准确测量高度 -->
+            <div
+              ref="fullContentRef"
+              class="prose dark:prose-invert note-content note-content-measure max-w-none"
+              :class="fontSizeClass"
+              aria-hidden="true"
+              v-html="renderMarkdown(note.content)"
+            />
+          </div>
+
+          <!-- ✅ 收起状态下如果包含图片，显示小图标 -->
           <span
             v-if="!isExpanded && containsImage"
             class="img-flag"
             :aria-label="t('notes.editor.image_dialog.image_direct')"
             :title="t('notes.editor.image_dialog.image_direct')"
           >🖼️</span>
+
           <div
             v-if="noteOverflowStatus"
             class="toggle-button-row"
@@ -1236,5 +1260,26 @@ async function systemShareImage() {
   object-fit: contain;
   border-radius: 6px;
   margin: 6px 0;
+}
+
+.note-preview-wrapper {
+  position: relative;
+}
+
+/* 隐藏的完整内容，只用于测量高度，不参与布局 */
+.note-content-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+  max-height: none;
+  overflow: visible;
+
+  /* 确保不受 line-clamp 影响 */
+  display: block;
+  -webkit-line-clamp: initial;
+  -webkit-box-orient: initial;
 }
 </style>
