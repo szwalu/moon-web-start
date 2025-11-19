@@ -37,6 +37,7 @@ const allTags = ref<string[]>([])
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'))
 const AccountModal = defineAsyncComponent(() => import('@/components/AccountModal.vue'))
 const CalendarView = defineAsyncComponent(() => import('@/components/CalendarView.vue'))
+const RandomRoam = defineAsyncComponent(() => import('@/components/RandomRoam.vue'))
 
 const MobileDateRangePicker = defineAsyncComponent(() => import('@/components/MobileDateRangePicker.vue'))
 
@@ -60,6 +61,7 @@ const newNoteEditorContainerRef = ref(null)
 const newNoteEditorRef = ref(null)
 const noteActionsRef = ref<any>(null)
 const showCalendarView = ref(false)
+const showRandomRoam = ref(false)
 const showSettingsModal = ref(false)
 const showAccountModal = ref(false)
 const showDropdown = ref(false)
@@ -286,6 +288,13 @@ const mainMenuOptions = computed(() => [
         h(HelpCircle, { size: 18 }), // ← 图标为问号圆圈
         h('span', null, t('notes.help_title') || '使用帮助'),
       ]),
+  },
+
+  // ⭐⭐ 新增：一级菜单「随机漫游」，在回收站前面
+  {
+    label: '随机漫游',
+    key: 'randomRoam',
+    icon: () => h(HelpCircle, { size: 18 }), // 先借用 HelpCircle 图标，需要再换我们再调
   },
 
   // 顶层：回收站（保持为一级）
@@ -2202,6 +2211,11 @@ function handleMainMenuSelect(rawKey: string) {
     case 'tags':
       // “标签”一级项点了不触发；仅子项（真正的标签）触发
       break
+      // ⭐⭐ 新增：随机漫游
+    case 'randomRoam':
+      showRandomRoam.value = true
+      mainMenuVisible.value = false // 点完收起菜单
+      break
     case 'trash':
       showTrashModal.value = true
       break
@@ -2595,6 +2609,13 @@ function onCalendarUpdated(updated: any) {
           @copy="handleCopy"
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"
+        />
+      </Transition>
+      <Transition name="slide-up-fade">
+        <RandomRoam
+          v-if="showRandomRoam"
+          :notes="notes"
+          @close="showRandomRoam = false"
         />
       </Transition>
       <Transition name="fade">
