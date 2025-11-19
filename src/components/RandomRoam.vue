@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDark } from '@vueuse/core'
 
 interface Note {
@@ -10,124 +10,122 @@ interface Note {
 }
 
 const props = defineProps<{
-  /** 当前主页内存中的所有笔记（可能是多页合并后的） */
   notes: Note[]
-  /** 主页是否还有更多页（auth.vue 的 hasMoreNotes） */
+  totalNotes: number
   hasMore: boolean
-  /** 主页是否正在加载下一页（auth.vue 的 isLoadingNotes） */
   isLoading: boolean
+  loadMore: () => Promise<void> | void
 }>()
 
 const emit = defineEmits<{
   close: []
-  /** 当随机池快不够用且还有更多页时，通知父组件去拉下一页 */
-  needMore: []
 }>()
 
 const isDark = useDark()
 
-// 一直维持一个“随机队列”，不再只看 20 条
-const batchNotes = ref<Note[]>([])
-const currentIndex = ref(0)
+// 同一时间最多在 DOM 里的卡片数量
+const STACK_SIZE = 20
 
-// 记录哪些 id 已经加入过随机队列，避免重复插入
-const seenIds = ref<Set<string>>(new Set())
-const initialized = ref(false)
+// 当前牌堆（屏幕上那一叠）
+const deck = ref<Note[]>([])
+
+// 全局随机队列：从这里依次取下一张补到牌堆尾部
+let randomQueue: Note[] = []
 
 // 拖动状态（移动端）
 const startX = ref(0)
 const deltaX = ref(0)
 const isDragging = ref(false)
 
-// 只在第一张卡片时展示“向右滑动”的提示
+// 只在第一张卡片时展示提示
 const showSwipeHint = ref(true)
 
-// 预取阈值：剩余不足多少条时，会请求父组件拉更多
-const PREFETCH_THRESHOLD = 10
-const isRequestingMore = ref(false)
+// 是否桌面端（用于提示文案 + 点击切卡）
+const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
 
-// ============ 随机池构建 & 补货 ============
+// 内部「正在向后台要更多」的标志，避免并发
+const isLoadingMore = ref(false)
 
-function shuffleInPlace(arr: Note[]) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
+// === 工具：Fisher–Yates 洗牌 ===
+function shuffle<T>(arr: T[]): T[] {
+  const pool = [...arr]
+  for (let i = pool.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
-    const tmp = arr[i]
-    arr[i] = arr[j]
-    arr[j] = tmp
+    ;[pool[i], pool[j]] = [pool[j], pool[i]]
   }
+  return pool
 }
 
-function hydrateFromNotes(newNotes: Note[]) {
-  if (!newNotes || newNotes.length === 0)
-    return
+// 根据当前 props.notes 构建一个候选池（排除 deck 中已有的）
+function buildCandidates(excludedIds: Set<string>): Note[] {
+  const source = props.notes || []
+  if (!source.length)
+    return []
+  const seen = new Set<string>()
+  const result: Note[] = []
+  for (const n of source) {
+    if (!n || !n.id)
+      continue
+    if (excludedIds.has(n.id))
+      continue
+    if (seen.has(n.id))
+      continue
+    seen.add(n.id)
+    result.push(n)
+  }
+  return result
+}
 
-  // 第一次：用全部 notes 做一次完整洗牌，作为初始随机队列
-  if (!initialized.value) {
-    const pool = [...newNotes]
-    shuffleInPlace(pool)
-    batchNotes.value = pool
-    pool.forEach((n) => {
-      seenIds.value.add(n.id)
-    })
-    initialized.value = true
-    currentIndex.value = 0
-    deltaX.value = 0
-    showSwipeHint.value = true
-    return
+// 确保 randomQueue 至少有一批候选，如果本地没货、且还有下一页，则向后台要
+async function ensureQueueFilled(excludedIds: Set<string>) {
+  // 先尝试用现有 notes 构建队列
+  if (!randomQueue.length) {
+    const candidates = buildCandidates(excludedIds)
+    if (candidates.length)
+      randomQueue = shuffle(candidates)
   }
 
-  // 后续：只把“新出现”的笔记随机插入队列（插到当前 index 之后，避免插到已经看完的前面）
-  const unseen = newNotes.filter(n => !seenIds.value.has(n.id))
-  if (!unseen.length)
+  // 已经有队列了就不用再折腾
+  if (randomQueue.length)
     return
 
-  unseen.forEach((note) => {
-    seenIds.value.add(note.id)
+  // 本地真的没有新笔记可用，看是否能向后台再要一页
+  const totalLoaded = props.notes?.length ?? 0
+  const canLoadMoreFromServer = props.hasMore && totalLoaded < props.totalNotes
 
-    const tailLength = Math.max(batchNotes.value.length - currentIndex.value, 0)
-    const insertOffset = tailLength > 0 ? Math.floor(Math.random() * (tailLength + 1)) : 0
-    const insertPos = currentIndex.value + insertOffset
+  if (!canLoadMoreFromServer)
+    return
 
-    batchNotes.value.splice(insertPos, 0, note)
-  })
+  // 避免重复请求
+  if (isLoadingMore.value || props.isLoading)
+    return
+
+  try {
+    isLoadingMore.value = true
+    await props.loadMore?.()
+  }
+  finally {
+    isLoadingMore.value = false
+  }
+
+  // 再用更新后的 notes 试一次
+  const newCandidates = buildCandidates(excludedIds)
+  if (newCandidates.length)
+    randomQueue = shuffle(newCandidates)
 }
 
-// 监听父组件传进来的 notes：初始化 + 后续补货
-watch(
-  () => props.notes,
-  (newVal) => {
-    hydrateFromNotes(newVal || [])
-    // 一旦有新数据进来，就说明一次补货完成，可以允许下一次请求
-    isRequestingMore.value = false
-  },
-  { immediate: true, deep: true },
-)
-
-const visibleCards = computed(() => batchNotes.value.slice(currentIndex.value))
-
-const hasMoreCards = computed(
-  () => currentIndex.value < batchNotes.value.length - 1,
-)
-
-// 判断是否需要让父组件去拉下一页
-function maybeRequestMore() {
-  const remaining = batchNotes.value.length - currentIndex.value - 1
-  if (remaining >= PREFETCH_THRESHOLD)
-    return
-
-  if (!props.hasMore)
-    return
-  if (props.isLoading)
-    return
-  if (isRequestingMore.value)
-    return
-
-  isRequestingMore.value = true
-  emit('needMore')
+// 从队列里拿下一张；必要时会触发后台分页
+async function getNextRandomNote(): Promise<Note | null> {
+  // 当前屏幕上已有的卡片不再加入队列，避免「同时出现两张一样的」
+  const excluded = new Set(deck.value.map(n => n.id))
+  await ensureQueueFilled(excluded)
+  return randomQueue.shift() ?? null
 }
 
-// ============ 交互：滑动 / 点击切换 ============
+// 计算当前要渲染的卡片（就是整個牌堆）
+const visibleCards = computed(() => deck.value)
 
+// 手势：开始拖动
 function handleTouchStart(e: TouchEvent) {
   if (!visibleCards.value.length)
     return
@@ -136,6 +134,7 @@ function handleTouchStart(e: TouchEvent) {
   deltaX.value = 0
 }
 
+// 手势：移动
 function handleTouchMove(e: TouchEvent) {
   if (!isDragging.value)
     return
@@ -143,6 +142,7 @@ function handleTouchMove(e: TouchEvent) {
   deltaX.value = x - startX.value
 }
 
+// 手势：结束
 function handleTouchEnd() {
   if (!isDragging.value)
     return
@@ -150,30 +150,71 @@ function handleTouchEnd() {
 
   const THRESHOLD = 80
   if (deltaX.value > THRESHOLD)
-    goNextCard()
+    // 不等待：UI 先响应，内部异步补队列
+    goNextCard() // eslint 就不抱怨了
 
   deltaX.value = 0
 }
 
-function goNextCard() {
-  if (hasMoreCards.value) {
-    currentIndex.value += 1
-    showSwipeHint.value = false // 一旦成功切到下一张，就不再显示提示
-    maybeRequestMore()
-  }
-}
-
-// 💻 桌面端：点击卡片切到下一张（仅当 index === 0）
-function handleCardClick(index: number) {
-  if (index !== 0)
+// 切到下一张卡片（核心逻辑）
+async function goNextCard() {
+  if (!deck.value.length)
     return
 
-  const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 768 : false
+  const removed = deck.value.shift()!
+
+  const next = await getNextRandomNote()
+  if (next) {
+    deck.value.push(next)
+  }
+  else {
+    // 实在没有新货，就把刚刚那张丢回去，保证始终有卡可看
+    deck.value.push(removed)
+  }
+
+  showSwipeHint.value = false
+}
+
+// 💻 桌面端：点击顶层卡片切到下一张
+function handleCardClick(index: number) {
   if (!isDesktop)
     return
-
+  if (index !== 0)
+    return
   goNextCard()
 }
+
+// 初始化牌堆：打开随机漫游时调用
+function initDeckFromNotes() {
+  const source = props.notes || []
+  if (!source.length) {
+    deck.value = []
+    randomQueue = []
+    return
+  }
+
+  const shuffled = shuffle(source)
+  deck.value = shuffled.slice(0, STACK_SIZE)
+  randomQueue = shuffled.slice(STACK_SIZE)
+  showSwipeHint.value = true
+  deltaX.value = 0
+}
+
+// notes 第一次有值时初始化一遍（防止打开时 notes 还在加载）
+onMounted(() => {
+  if (props.notes?.length)
+    initDeckFromNotes()
+})
+
+// 如果用户在打开期间又加载了大量新笔记（比如后台预取），
+// 当前牌堆已经有内容时不强制重置，只在「一开始为空 → 有内容」时重建。
+watch(
+  () => props.notes.length,
+  (len, oldLen) => {
+    if (!oldLen && len > 0 && deck.value.length === 0)
+      initDeckFromNotes()
+  },
+)
 </script>
 
 <template>
@@ -212,18 +253,14 @@ function handleCardClick(index: number) {
             }"
             @click="handleCardClick(index)"
           >
-            <!-- 顶部紫色渐变区域（高度缩小） -->
+            <!-- 顶部紫色渐变区域 -->
             <div class="rr-card-img-placeholder">
               <span>📄</span>
             </div>
 
-            <!-- 向右滑动 / 点击 提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
+            <!-- 提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
             <div v-if="index === 0 && showSwipeHint" class="rr-swipe-hint">
-              👉 {{
-                (typeof window !== 'undefined' && window.innerWidth >= 768)
-                  ? '点击卡片，浏览下一条'
-                  : '向右滑动，浏览下一条'
-              }}
+              👉 {{ isDesktop ? '点击卡片，浏览下一条' : '向右滑动，浏览下一条' }}
             </div>
 
             <div class="rr-card-body">
@@ -231,12 +268,10 @@ function handleCardClick(index: number) {
                 {{ new Date(note.created_at).toLocaleString('zh-CN') }}
               </div>
 
-              <!-- 有标题才显示；大部分没标题则整行不渲染 -->
               <div v-if="note.title" class="rr-card-title">
                 {{ note.title }}
               </div>
 
-              <!-- 正文区：字体稍大 & 内部可滚动 -->
               <div class="rr-card-content">
                 {{ note.content }}
               </div>
@@ -306,8 +341,8 @@ function handleCardClick(index: number) {
 .card-stack {
   position: relative;
   width: 100%;
-  max-width: 960px; /* 🧱 桌面端宽度显著加大；移动端自动变为 100% 宽 */
-  height: 78vh;     /* 高一点，正文区域更大 */
+  max-width: 960px; /* 桌面端宽度显著加大；移动端 100% */
+  height: 78vh;
   margin: 0 auto;
 }
 
@@ -340,7 +375,7 @@ function handleCardClick(index: number) {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* 向右滑动 / 点击 提示 */
+/* 提示气泡 */
 .rr-swipe-hint {
   position: absolute;
   right: 12px;
@@ -363,7 +398,7 @@ function handleCardClick(index: number) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 0; /* 让内部滚动生效 */
+  min-height: 0;
 }
 
 .rr-card-date {
