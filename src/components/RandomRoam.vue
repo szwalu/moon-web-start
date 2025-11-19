@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDark } from '@vueuse/core'
+import MarkdownIt from 'markdown-it'
+import taskLists from 'markdown-it-task-lists'
+import ins from 'markdown-it-ins'
+import mark from 'markdown-it-mark'
+import linkAttrs from 'markdown-it-link-attributes'
+import { useSettingStore } from '@/stores/setting'
 
 interface Note {
   id: string
@@ -23,7 +29,61 @@ const emit = defineEmits<{
 
 const isDark = useDark()
 
-// 同一时间最多在 DOM 里的卡片数量
+// ========= Markdown 渲染（参考 NoteItem.vue） =========
+const settingsStore = useSettingStore()
+const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+  .use(taskLists, { enabled: true, label: true })
+  .use(mark)
+  .use(ins)
+  .use(linkAttrs, {
+    attrs: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  })
+
+// 图片：lazy + 等比缩放 + 可下载（和 NoteItem 保持一致）
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  tokens[idx].attrSet('loading', 'lazy')
+  tokens[idx].attrSet('decoding', 'async')
+  const style = tokens[idx].attrGet('style')
+  tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
+
+  const imgHtml = self.renderToken(tokens, idx, options)
+  const src = tokens[idx].attrGet('src') || ''
+  const alt = tokens[idx].content || ''
+
+  const prev = tokens[idx - 1]?.type
+  const next = tokens[idx + 1]?.type
+  const alreadyLinked = prev === 'link_open' && next === 'link_close'
+  if (alreadyLinked)
+    return imgHtml
+
+  return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
+}
+
+function renderMarkdown(content: string) {
+  if (!content)
+    return ''
+
+  let html = md.render(content)
+
+  // 自定义 tag：#标签 → 小胶囊
+  html = html.replace(
+    /(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g,
+    '<span class="custom-tag">#$1</span>',
+  )
+
+  return html
+}
+
+// ====== 随机漫游逻辑（你这版的“正常版本”） ======
 const STACK_SIZE = 20
 
 // 当前牌堆（屏幕上那一叠）
@@ -116,7 +176,6 @@ async function ensureQueueFilled(excludedIds: Set<string>) {
 
 // 从队列里拿下一张；必要时会触发后台分页
 async function getNextRandomNote(): Promise<Note | null> {
-  // 当前屏幕上已有的卡片不再加入队列，避免「同时出现两张一样的」
   const excluded = new Set(deck.value.map(n => n.id))
   await ensureQueueFilled(excluded)
   return randomQueue.shift() ?? null
@@ -150,8 +209,7 @@ function handleTouchEnd() {
 
   const THRESHOLD = 80
   if (deltaX.value > THRESHOLD)
-    // 不等待：UI 先响应，内部异步补队列
-    goNextCard() // eslint 就不抱怨了
+    goNextCard()
 
   deltaX.value = 0
 }
@@ -272,9 +330,12 @@ watch(
                 {{ note.title }}
               </div>
 
-              <div class="rr-card-content">
-                {{ note.content }}
-              </div>
+              <!-- ✅ 正文：改成 Markdown + prose 样式 -->
+              <div
+                class="rr-card-content prose dark:prose-invert max-w-none"
+                :class="fontSizeClass"
+                v-html="renderMarkdown(note.content)"
+              />
             </div>
           </div>
         </template>
@@ -398,7 +459,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 0;
+  min-height: 0; /* 让内部滚动生效 */
 }
 
 .rr-card-date {
@@ -411,14 +472,121 @@ watch(
   font-weight: 600;
 }
 
-/* 正文：略大字号 + 可滚动 */
+/* ===== 正文：参考 NoteItem 的排版风格 ===== */
+
+/* 容器自身的滚动 & 基础行距 */
 .rr-card-content {
   flex: 1;
-  font-size: 16px;
-  line-height: 1.7;
   overflow-y: auto;
   padding-right: 4px;
   word-break: break-word;
+
+  /* 亮色模式链接色 */
+  --tw-prose-links: #2563eb;
+}
+
+.random-roam-page--dark .rr-card-content {
+  /* 暗色模式链接色 */
+  --tw-prose-invert-links: #60a5fa;
+}
+
+/* 段落 & 列表间距 */
+.rr-card-content :deep(p) {
+  margin-top: 0.85em;
+  margin-bottom: 0.85em;
+}
+.rr-card-content :deep(p + p) {
+  margin-top: 1.1em;
+}
+.rr-card-content :deep(ul),
+.rr-card-content :deep(ol) {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+  padding-left: 1.2em;
+}
+
+/* 第一个/最后一个子元素收紧上下边距 */
+.rr-card-content :deep(:first-child) {
+  margin-top: 0 !important;
+}
+.rr-card-content :deep(:last-child) {
+  margin-bottom: 0 !important;
+}
+
+/* 自定义 tag chip */
+.rr-card-content :deep(.custom-tag) {
+  background-color: #eef2ff;
+  color: #4338ca;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.875em;
+  font-weight: 500;
+  margin: 0 2px;
+}
+.random-roam-page--dark .rr-card-content :deep(.custom-tag) {
+  background-color: #312e81;
+  color: #c7d2fe;
+}
+
+/* 链接颜色（与 NoteItem 保持一致） */
+.rr-card-content :deep(a),
+.rr-card-content :deep(a:visited) {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+.rr-card-content :deep(a:hover) {
+  color: #1d4ed8 !important;
+}
+.random-roam-page--dark .rr-card-content :deep(a),
+.random-roam-page--dark .rr-card-content :deep(a:visited) {
+  color: #60a5fa !important;
+}
+
+/* 图片自适应 */
+.rr-card-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+
+/* 任务列表细节（防止复选框撑高行距） */
+.rr-card-content :deep(li.task-list-item) {
+  line-height: inherit;
+  margin: 0;
+  padding: 0;
+}
+.rr-card-content :deep(li.task-list-item > label) {
+  display: inline;
+  margin: 0;
+  line-height: inherit;
+}
+.rr-card-content :deep(li.task-list-item input[type="checkbox"]) {
+  vertical-align: middle;
+  margin: 0 0.45em 0 0;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+.rr-card-content :deep(li > p) {
+  display: inline;
+  margin: 0;
+  line-height: inherit;
+}
+
+/* 字号档位（和 NoteItem 保持同名） */
+:deep(.prose.font-size-small) {
+  font-size: 14px !important;
+}
+:deep(.prose.font-size-medium) {
+  font-size: 17px !important;
+}
+:deep(.prose.font-size-large) {
+  font-size: 20px !important;
+}
+:deep(.prose.font-size-extra-large) {
+  font-size: 22px !important;
 }
 
 .rr-empty {
