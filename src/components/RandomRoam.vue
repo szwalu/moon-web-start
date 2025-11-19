@@ -24,7 +24,7 @@ const BATCH_SIZE = 20
 const batchNotes = ref<Note[]>([])
 const currentIndex = ref(0)
 
-// 拖动状态
+// 拖动状态（移动端）
 const startX = ref(0)
 const deltaX = ref(0)
 const isDragging = ref(false)
@@ -85,6 +85,19 @@ function goNextCard() {
   }
 }
 
+// 💻 桌面端：点击卡片切到下一张（仅当 index === 0）
+function handleCardClick(index: number) {
+  if (index !== 0)
+    return
+
+  // 只在“宽屏”(简单判断) 才启用点击切换，
+  // 防止手机上轻点就跳卡，还是以滑动为主
+  if (window.innerWidth < 768)
+    return
+
+  goNextCard()
+}
+
 function handleRefreshBatch() {
   pickRandomBatch()
 }
@@ -128,8 +141,9 @@ onMounted(() => {
                   : `translateY(${index * 4}px) scale(${1 - index * 0.02})`,
               opacity: index > 3 ? 0 : 1,
             }"
+            @click="handleCardClick(index)"
           >
-            <!-- 顶部紫色渐变区域（高度再次缩小） -->
+            <!-- 顶部紫色渐变区域（高度缩小） -->
             <div class="rr-card-img-placeholder">
               <span>📄</span>
             </div>
@@ -144,7 +158,7 @@ onMounted(() => {
                 {{ new Date(note.created_at).toLocaleString('zh-CN') }}
               </div>
 
-              <!-- 有标题才显示；没有标题时整行不渲染 -->
+              <!-- 有标题才显示；大部分没标题则整行不渲染 -->
               <div v-if="note.title" class="rr-card-title">
                 {{ note.title }}
               </div>
@@ -192,7 +206,7 @@ onMounted(() => {
   color: #f9fafb;
 }
 
-/* 1️⃣ 页眉更靠近上方：减少内部 padding */
+/* 顶部更贴近屏幕边缘一点 */
 .random-roam-header {
   height: 42px;
   display: flex;
@@ -218,7 +232,7 @@ onMounted(() => {
   margin-right: 32px; /* 留出“返回”按钮占的空间 */
 }
 
-/* 1️⃣ 主体区域更高：减少上下 padding，卡片高度略增 */
+/* 主体：高度再拉长一点 */
 .random-roam-main {
   flex: 1;
   display: flex;
@@ -230,8 +244,9 @@ onMounted(() => {
 .card-stack {
   position: relative;
   width: 100%;
-  max-width: 420px;
-  height: 78vh; /* 比原来的 72vh 再长一点 */
+  max-width: 960px; /* 🧱 桌面端宽度显著加大；移动端自动变为 100% 宽 */
+  height: 78vh;     /* 比之前的 72vh 再高一点 */
+  margin: 0 auto;
 }
 
 .rr-card {
@@ -252,7 +267,7 @@ onMounted(() => {
   color: #e5e7eb;
 }
 
-/* 2️⃣ 顶部紫色块 —— 再缩小一些高度 */
+/* 顶部紫色块 —— 比最初版本更矮一些 */
 .rr-card-img-placeholder {
   height: 90px;
   background: linear-gradient(135deg, #6366f1, #a78bfa);
@@ -263,7 +278,7 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* 4️⃣ 向右滑动提示的样式 */
+/* 向右滑动提示 */
 .rr-swipe-hint {
   position: absolute;
   right: 12px;
@@ -294,13 +309,12 @@ onMounted(() => {
   opacity: 0.7;
 }
 
-/* 标题可选 */
 .rr-card-title {
   font-size: 16px;
   font-weight: 600;
 }
 
-/* 3️⃣ 正文字号略放大，行距稍微加大一点 */
+/* 正文：略大字号 + 可滚动 */
 .rr-card-content {
   flex: 1;
   font-size: 16px;
@@ -316,16 +330,19 @@ onMounted(() => {
   margin-top: 40px;
 }
 
-/* 1️⃣ 页脚更靠近按钮：减小 padding */
+/* 底部：按钮宽度与卡片宽度一致 */
 .random-roam-footer {
   padding: 4px 16px 6px;
+  display: flex;
+  justify-content: center;
 }
 
 .rr-refresh-btn {
   width: 100%;
-  height: 44px;
+  max-width: 960px;   /* 🧱 与 card-stack 同宽 */
   border-radius: 999px;
   border: none;
+  height: 44px;
   font-size: 15px;
   font-weight: 500;
   background: #6366f1;
