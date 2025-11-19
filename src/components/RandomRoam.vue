@@ -102,6 +102,7 @@ function handleRefreshBatch() {
   pickRandomBatch()
 }
 
+const isDesktop = window.innerWidth >= 768
 onMounted(() => {
   pickRandomBatch()
 })
@@ -150,7 +151,7 @@ onMounted(() => {
 
             <!-- 向右滑动提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
             <div v-if="index === 0 && showSwipeHint" class="rr-swipe-hint">
-              👉 向右滑动，浏览下一条
+              👉 {{ isDesktop ? '点击卡片，浏览下一条' : '向右滑动，浏览下一条' }}
             </div>
 
             <div class="rr-card-body">

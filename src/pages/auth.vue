@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Shuffle, Trash2, Type, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -294,7 +294,7 @@ const mainMenuOptions = computed(() => [
   {
     label: '随机漫游',
     key: 'randomRoam',
-    icon: () => h(HelpCircle, { size: 18 }), // 先借用 HelpCircle 图标，需要再换我们再调
+    icon: () => h(Shuffle, { size: 18 }), // 先借用 HelpCircle 图标，需要再换我们再调
   },
 
   // 顶层：回收站（保持为一级）
