@@ -29,6 +29,9 @@ const startX = ref(0)
 const deltaX = ref(0)
 const isDragging = ref(false)
 
+// 只在第一张卡片时展示“向右滑动”的提示
+const showSwipeHint = ref(true)
+
 function pickRandomBatch() {
   const pool = [...props.notes]
   // Fisher–Yates 洗牌
@@ -38,6 +41,8 @@ function pickRandomBatch() {
   }
   batchNotes.value = pool.slice(0, BATCH_SIZE)
   currentIndex.value = 0
+  deltaX.value = 0
+  showSwipeHint.value = true
 }
 
 const visibleCards = computed(() => batchNotes.value.slice(currentIndex.value))
@@ -74,8 +79,10 @@ function handleTouchEnd() {
 }
 
 function goNextCard() {
-  if (hasMoreCards.value)
+  if (hasMoreCards.value) {
     currentIndex.value += 1
+    showSwipeHint.value = false // 一旦成功切到下一张，就不再显示提示
+  }
 }
 
 function handleRefreshBatch() {
@@ -122,9 +129,14 @@ onMounted(() => {
               opacity: index > 3 ? 0 : 1,
             }"
           >
-            <!-- 顶部紫色渐变区域（高度已缩小） -->
+            <!-- 顶部紫色渐变区域（高度再次缩小） -->
             <div class="rr-card-img-placeholder">
               <span>📄</span>
+            </div>
+
+            <!-- 向右滑动提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
+            <div v-if="index === 0 && showSwipeHint" class="rr-swipe-hint">
+              👉 向右滑动，浏览下一条
             </div>
 
             <div class="rr-card-body">
@@ -137,7 +149,7 @@ onMounted(() => {
                 {{ note.title }}
               </div>
 
-              <!-- 正文区：尽量占满高度 & 内部可滚动 -->
+              <!-- 正文区：字体稍大 & 内部可滚动 -->
               <div class="rr-card-content">
                 {{ note.content }}
               </div>
@@ -180,11 +192,12 @@ onMounted(() => {
   color: #f9fafb;
 }
 
+/* 1️⃣ 页眉更靠近上方：减少内部 padding */
 .random-roam-header {
-  height: 48px;
+  height: 42px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 10px;
   position: relative;
 }
 
@@ -192,7 +205,7 @@ onMounted(() => {
   border: none;
   background: none;
   font-size: 15px;
-  padding: 4px 6px;
+  padding: 2px 4px;
   cursor: pointer;
   color: inherit;
 }
@@ -205,19 +218,20 @@ onMounted(() => {
   margin-right: 32px; /* 留出“返回”按钮占的空间 */
 }
 
+/* 1️⃣ 主体区域更高：减少上下 padding，卡片高度略增 */
 .random-roam-main {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8px 16px 0;
+  padding: 4px 16px 0;
 }
 
 .card-stack {
   position: relative;
   width: 100%;
   max-width: 420px;
-  height: 72vh; /* 稍微长一点，下面紧接“更新一批” */
+  height: 78vh; /* 比原来的 72vh 再长一点 */
 }
 
 .rr-card {
@@ -238,23 +252,40 @@ onMounted(() => {
   color: #e5e7eb;
 }
 
-/* 顶部紫色块 —— 已明显压低高度 */
+/* 2️⃣ 顶部紫色块 —— 再缩小一些高度 */
 .rr-card-img-placeholder {
-  height: 120px;
+  height: 90px;
   background: linear-gradient(135deg, #6366f1, #a78bfa);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 42px;
+  font-size: 36px;
   color: rgba(255, 255, 255, 0.85);
+}
+
+/* 4️⃣ 向右滑动提示的样式 */
+.rr-swipe-hint {
+  position: absolute;
+  right: 12px;
+  top: 100px;
+  transform: translateY(-50%);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f9fafb;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.random-roam-page--dark .rr-swipe-hint {
+  background: rgba(249, 250, 251, 0.9);
+  color: #111827;
 }
 
 .rr-card-body {
   flex: 1;
-  padding: 14px 16px 16px;
+  padding: 10px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-height: 0; /* 让内部滚动生效 */
 }
 
@@ -263,18 +294,19 @@ onMounted(() => {
   opacity: 0.7;
 }
 
-/* 标题是可选的：仅有标题字段时才显示 */
+/* 标题可选 */
 .rr-card-title {
   font-size: 16px;
   font-weight: 600;
 }
 
+/* 3️⃣ 正文字号略放大，行距稍微加大一点 */
 .rr-card-content {
   flex: 1;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.7;
   overflow-y: auto;
-  padding-right: 4px; /* 给滚动条留一点空 */
+  padding-right: 4px;
   word-break: break-word;
 }
 
@@ -284,8 +316,9 @@ onMounted(() => {
   margin-top: 40px;
 }
 
+/* 1️⃣ 页脚更靠近按钮：减小 padding */
 .random-roam-footer {
-  padding: 8px 16px 12px;
+  padding: 4px 16px 6px;
 }
 
 .rr-refresh-btn {
