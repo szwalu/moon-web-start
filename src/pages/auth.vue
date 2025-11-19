@@ -2620,7 +2620,7 @@ function onCalendarUpdated(updated: any) {
       </Transition>
       <Transition name="fade">
         <button
-          v-if="showScrollTopButton"
+          v-if="showScrollTopButton && !showRandomRoam"
           class="scroll-top-button"
           aria-label="t('auth.back_to_top')"
           @click="handleScrollTopClick"
@@ -2640,7 +2640,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 右下角 “+” 悬浮按钮：仅在未展开输入框时显示 -->
       <button
-        v-if="!showComposer && !isTopEditing && !showCalendarView"
+        v-if="!showComposer && !isTopEditing && !showCalendarView && !showRandomRoam"
         class="fab-add"
         aria-label="新建笔记"
         @click="openComposer"
