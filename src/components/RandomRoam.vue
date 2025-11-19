@@ -19,38 +19,79 @@ const emit = defineEmits<{
 
 const isDark = useDark()
 
-const BATCH_SIZE = 20
+// 同一时间最多在 DOM 里的卡片数量
+const STACK_SIZE = 20
 
-const batchNotes = ref<Note[]>([])
-const currentIndex = ref(0)
+// 当前牌堆（屏幕上那一叠）
+const deck = ref<Note[]>([])
+
+// 全局随机队列：从这里依次取下一张补到牌堆尾部
+let randomQueue: Note[] = []
 
 // 拖动状态（移动端）
 const startX = ref(0)
 const deltaX = ref(0)
 const isDragging = ref(false)
 
-// 只在第一张卡片时展示“向右滑动”的提示
+// 只在第一张卡片时展示提示
 const showSwipeHint = ref(true)
 
-function pickRandomBatch() {
-  const pool = [...props.notes]
-  // Fisher–Yates 洗牌
+// 是否桌面端（用于提示文案 + 点击切卡）
+const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
+
+// === 随机工具：Fisher–Yates 洗牌 ===
+function shuffle<T>(arr: T[]): T[] {
+  const pool = [...arr]
   for (let i = pool.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[pool[i], pool[j]] = [pool[j], pool[i]]
   }
-  batchNotes.value = pool.slice(0, BATCH_SIZE)
-  currentIndex.value = 0
-  deltaX.value = 0
-  showSwipeHint.value = true
+  return pool
 }
 
-const visibleCards = computed(() => batchNotes.value.slice(currentIndex.value))
+// 重新填充 randomQueue：从所有笔记中选出不在 excludedIds 里的笔记并打乱
+function refillRandomQueue(excludedIds: Set<string>) {
+  const source = (props.notes || []).filter(note => !excludedIds.has(note.id))
+  if (!source.length) {
+    randomQueue = []
+    return
+  }
+  randomQueue = shuffle(source)
+}
 
-const hasMoreCards = computed(
-  () => currentIndex.value < batchNotes.value.length - 1,
-)
+// 初始化牌堆：打开随机漫游时调用
+function initDeck() {
+  // 当前没有任何排除，先把全集洗一遍
+  randomQueue = shuffle(props.notes || [])
 
+  const firstBatch: Note[] = []
+  const usedIds = new Set<string>()
+
+  while (firstBatch.length < STACK_SIZE && randomQueue.length) {
+    const next = randomQueue.shift()!
+    firstBatch.push(next)
+    usedIds.add(next.id)
+  }
+
+  deck.value = firstBatch
+  showSwipeHint.value = true
+  deltaX.value = 0
+}
+
+// 从队列里取下一张卡片；如队列为空，则重建一轮
+function getNextRandomNote(): Note | null {
+  if (!randomQueue.length) {
+    // 当前屏幕上已经有一叠卡片：重建队列时先排除这些 id，避免同时出现重复
+    const excluded = new Set(deck.value.map(n => n.id))
+    refillRandomQueue(excluded)
+  }
+  return randomQueue.shift() ?? null
+}
+
+// 计算当前要渲染的卡片（就是整個牌堆）
+const visibleCards = computed(() => deck.value)
+
+// 手势：开始拖动
 function handleTouchStart(e: TouchEvent) {
   if (!visibleCards.value.length)
     return
@@ -59,6 +100,7 @@ function handleTouchStart(e: TouchEvent) {
   deltaX.value = 0
 }
 
+// 手势：移动
 function handleTouchMove(e: TouchEvent) {
   if (!isDragging.value)
     return
@@ -66,6 +108,7 @@ function handleTouchMove(e: TouchEvent) {
   deltaX.value = x - startX.value
 }
 
+// 手势：结束
 function handleTouchEnd() {
   if (!isDragging.value)
     return
@@ -78,33 +121,36 @@ function handleTouchEnd() {
   deltaX.value = 0
 }
 
+// 切到下一张卡片（核心逻辑）
 function goNextCard() {
-  if (hasMoreCards.value) {
-    currentIndex.value += 1
-    showSwipeHint.value = false // 一旦成功切到下一张，就不再显示提示
+  if (!deck.value.length)
+    return
+
+  const removed = deck.value.shift() // 移除顶部卡片
+  const next = getNextRandomNote()
+
+  if (next) {
+    deck.value.push(next)
   }
+  else if (removed) {
+    // 极端情况：只有一条笔记，就循环自己
+    deck.value.push(removed)
+  }
+
+  showSwipeHint.value = false
 }
 
-// 💻 桌面端：点击卡片切到下一张（仅当 index === 0）
+// 💻 桌面端：点击顶层卡片切到下一张
 function handleCardClick(index: number) {
+  if (!isDesktop)
+    return
   if (index !== 0)
     return
-
-  // 只在“宽屏”(简单判断) 才启用点击切换，
-  // 防止手机上轻点就跳卡，还是以滑动为主
-  if (window.innerWidth < 768)
-    return
-
   goNextCard()
 }
 
-function handleRefreshBatch() {
-  pickRandomBatch()
-}
-
-const isDesktop = window.innerWidth >= 768
 onMounted(() => {
-  pickRandomBatch()
+  initDeck()
 })
 </script>
 
@@ -144,12 +190,12 @@ onMounted(() => {
             }"
             @click="handleCardClick(index)"
           >
-            <!-- 顶部紫色渐变区域（高度缩小） -->
+            <!-- 顶部紫色渐变区域 -->
             <div class="rr-card-img-placeholder">
               <span>📄</span>
             </div>
 
-            <!-- 向右滑动提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
+            <!-- 提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
             <div v-if="index === 0 && showSwipeHint" class="rr-swipe-hint">
               👉 {{ isDesktop ? '点击卡片，浏览下一条' : '向右滑动，浏览下一条' }}
             </div>
@@ -159,12 +205,10 @@ onMounted(() => {
                 {{ new Date(note.created_at).toLocaleString('zh-CN') }}
               </div>
 
-              <!-- 有标题才显示；大部分没标题则整行不渲染 -->
               <div v-if="note.title" class="rr-card-title">
                 {{ note.title }}
               </div>
 
-              <!-- 正文区：字体稍大 & 内部可滚动 -->
               <div class="rr-card-content">
                 {{ note.content }}
               </div>
@@ -177,17 +221,6 @@ onMounted(() => {
         </p>
       </div>
     </main>
-
-    <!-- 底部：只有“更新一批”按钮 -->
-    <footer class="random-roam-footer">
-      <button
-        class="rr-refresh-btn"
-        type="button"
-        @click="handleRefreshBatch"
-      >
-        更新一批
-      </button>
-    </footer>
   </div>
 </template>
 
@@ -245,8 +278,8 @@ onMounted(() => {
 .card-stack {
   position: relative;
   width: 100%;
-  max-width: 960px; /* 🧱 桌面端宽度显著加大；移动端自动变为 100% 宽 */
-  height: 78vh;     /* 比之前的 72vh 再高一点 */
+  max-width: 960px; /* 桌面端宽度显著加大；移动端 100% */
+  height: 78vh;
   margin: 0 auto;
 }
 
@@ -268,7 +301,7 @@ onMounted(() => {
   color: #e5e7eb;
 }
 
-/* 顶部紫色块 —— 比最初版本更矮一些 */
+/* 顶部紫色块 */
 .rr-card-img-placeholder {
   height: 90px;
   background: linear-gradient(135deg, #6366f1, #a78bfa);
@@ -279,7 +312,7 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* 向右滑动提示 */
+/* 提示气泡 */
 .rr-swipe-hint {
   position: absolute;
   right: 12px;
@@ -302,7 +335,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 0; /* 让内部滚动生效 */
+  min-height: 0;
 }
 
 .rr-card-date {
@@ -329,27 +362,5 @@ onMounted(() => {
   text-align: center;
   opacity: 0.6;
   margin-top: 40px;
-}
-
-/* 底部：按钮宽度与卡片宽度一致 */
-.random-roam-footer {
-  padding: 4px 16px 6px;
-  display: flex;
-  justify-content: center;
-}
-
-.rr-refresh-btn {
-  width: 100%;
-  max-width: 960px;   /* 🧱 与 card-stack 同宽 */
-  border-radius: 999px;
-  border: none;
-  height: 44px;
-  font-size: 15px;
-  font-weight: 500;
-  background: #6366f1;
-  color: #fff;
-}
-.random-roam-page--dark .rr-refresh-btn {
-  background: #4f46e5;
 }
 </style>
