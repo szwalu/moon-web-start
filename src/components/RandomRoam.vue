@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 }>()
 
 const isDark = useDark()
+const { t } = useI18n()
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
@@ -276,10 +278,10 @@ watch(
     <!-- 顶部栏：标题 + 返回按钮 -->
     <header class="random-roam-header">
       <button class="rr-back-btn" type="button" @click="emit('close')">
-        ‹ 返回
+        ‹ {{ t('notes.random_roam.back') }}
       </button>
       <div class="rr-title">
-        随机漫游
+        {{ t('notes.random_roam.title') }}
       </div>
     </header>
 
@@ -314,7 +316,9 @@ watch(
 
             <!-- 提示：仅第一张卡、且 showSwipeHint 为 true 时显示 -->
             <div v-if="index === 0 && showSwipeHint" class="rr-swipe-hint">
-              👉 {{ isDesktop ? '点击卡片，浏览下一条' : '向右滑动，浏览下一条' }}
+              👉 {{
+                isDesktop ? t('notes.random_roam.hint_desktop') : t('notes.random_roam.hint_mobile')
+              }}
             </div>
 
             <div class="rr-card-body">
@@ -337,7 +341,7 @@ watch(
         </template>
 
         <p v-else class="rr-empty">
-          没有可用的笔记～
+          {{ t('notes.random_roam.empty') }}
         </p>
       </div>
     </main>

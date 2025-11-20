@@ -361,6 +361,12 @@ notes:
   search_results_for: '「{query}」の検索結果'
   help_title: 説明書
   anniversary_view: チェック
+  random_roam:
+    title: ランダム散歩
+    back: 戻る
+    hint_desktop: カードをクリックして次のノートを見る
+    hint_mobile: 右にスワイプして次のノートを見る
+    empty: 表示できるノートがありません～
 
   upload:
     too_large_title: 圧縮後もサイズが大きすぎます

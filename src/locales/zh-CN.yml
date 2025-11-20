@@ -361,7 +361,12 @@ notes:
   search_results_for: 搜索“{query}”的结果
   help_title: 使用说明
   anniversary_view: 查看
-
+  random_roam:
+    title: 随机漫游
+    back: 返回
+    hint_desktop: 点击卡片，浏览下一条
+    hint_mobile: 向右滑动，浏览下一条
+    empty: 没有可用的笔记～
   upload:
     too_large_title: 压缩后仍偏大
     too_large_content: '压缩后仍超过 {max} MB，请尝试裁剪后再试或降低清晰度。'
