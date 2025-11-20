@@ -510,7 +510,7 @@ async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
 
-  const appName = t('app.name_short', '云笔记')
+  const appName = t('notes.notes', '云笔记')
 
   // 直接下载到本机（macOS / Windows / Android）
   const link = document.createElement('a')
@@ -534,7 +534,7 @@ async function systemShareImage() {
   }
 
   try {
-    const appName = t('app.name_short', '云笔记')
+    const appName = t('notes.notes', '云笔记')
     let blob: Blob
 
     if (shareCanvasRef.value) {
@@ -701,7 +701,7 @@ async function systemShareImage() {
 
         <div class="share-card-footer">
           <span class="share-app-name">
-            {{ $t('app.name_short', '云笔记') }}
+            {{ $t('notes.notes', '云笔记') }}
           </span>
           <span class="share-meta">
             {{ t('notes.word_count', { count: note.content ? note.content.length : 0 }) }}
