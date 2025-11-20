@@ -292,7 +292,7 @@ const mainMenuOptions = computed(() => [
 
   // ⭐⭐ 新增：一级菜单「随机漫游」，在回收站前面
   {
-    label: '随机漫游',
+    label: t('notes.random_roam.title') || '随机漫游',
     key: 'randomRoam',
     icon: () => h(Shuffle, { size: 18 }), // 先借用 HelpCircle 图标，需要再换我们再调
   },
