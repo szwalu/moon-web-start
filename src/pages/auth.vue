@@ -2624,7 +2624,7 @@ function onCalendarUpdated(updated: any) {
       </Transition>
       <Transition name="fade">
         <button
-          v-if="showScrollTopButton && !showRandomRoam"
+          v-if="showScrollTopButton && !showRandomRoam && !showCalendarView && !showComposer && !isTopEditing"
           class="scroll-top-button"
           aria-label="t('auth.back_to_top')"
           @click="handleScrollTopClick"

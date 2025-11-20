@@ -9,6 +9,7 @@ import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
 import mark from 'markdown-it-mark'
 import linkAttrs from 'markdown-it-link-attributes'
+import { ArrowUp, Calendar, ClipboardCopy, Edit3, Share, Trash2 } from 'lucide-vue-next'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
@@ -258,27 +259,96 @@ watch(() => props.isExpanded, (val) => {
     scheduleOverflowCheck()
 })
 
+function makeDropdownItem(iconComp: any, text: string) {
+  return () =>
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        },
+      },
+      [
+        h(iconComp, { size: 16 }),
+        h('span', null, text),
+      ],
+    )
+}
+
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
   return [
-    { label: t('notes.edit'), key: 'edit' },
+    // 编辑：铅笔 Type
+    {
+      key: 'edit',
+      label: makeDropdownItem(Edit3, t('notes.edit')),
+    },
 
-    // ✅ 新增：分享
-    { label: t('notes.share', '分享'), key: 'share' },
+    // 分享：用 Download（盒子+箭头）
+    {
+      key: 'share',
+      label: makeDropdownItem(Share, t('notes.share', '分享')),
+    },
 
-    { label: t('notes.copy'), key: 'copy' },
-    { label: note.is_pinned ? t('notes.unpin') : t('notes.pin'), key: 'pin' },
-    { label: t('notes.delete'), key: 'delete' },
-    { label: t('notes.card.set_date'), key: 'set_date' },
+    {
+      key: 'Copy',
+      label: makeDropdownItem(ClipboardCopy, t('notes.copy')),
+    },
+
+    // 置顶 / 取消置顶：CheckSquare
+    {
+      key: 'pin',
+      label: makeDropdownItem(
+        ArrowUp,
+        note.is_pinned ? t('notes.unpin') : t('notes.pin'),
+      ),
+    },
+
+    // 删除：Trash2
+    {
+      key: 'delete',
+      label: makeDropdownItem(Trash2, t('notes.delete')),
+    },
+
+    // 修改日期：Calendar
+    {
+      key: 'set_date',
+      label: makeDropdownItem(Calendar, t('notes.card.set_date')),
+    },
+
     { key: 'divider-1', type: 'divider' },
+
     {
       key: 'info-block',
       type: 'render',
       render: () => {
         const textColor = isDark.value ? '#aaa' : '#666'
-        const pStyle = { margin: '0', padding: '0', lineHeight: '1.8', whiteSpace: 'nowrap', fontSize: '13px', color: textColor } as const
+        const pStyle = {
+          margin: '0',
+          padding: '0',
+          lineHeight: '1.8',
+          whiteSpace: 'nowrap',
+          fontSize: '13px',
+          color: textColor,
+        } as const
+
         return h('div', { style: { padding: '4px 12px', cursor: 'default' } }, [
           h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
           h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),

@@ -2,7 +2,7 @@
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
-import { ChevronRight } from 'lucide-vue-next'
+import { ChevronRight, Pencil, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -741,11 +741,46 @@ export function useTagMenu(
 
   function getRowMenuOptions(tag: string) {
     const pinned = isPinned(tag)
+
     return [
-      { label: pinned ? (t('notes.unpin_favorites') || '取消置顶') : (t('notes.pin_favorites') || '置顶'), key: 'pin' },
-      { label: t('tags.rename_tag') || '重命名', key: 'rename' },
-      { label: t('tags.change_icon') || '更改图标', key: 'change_icon' },
-      { label: t('tags.remove_tag') || '移除', key: 'remove' },
+      {
+        key: 'pin',
+        label: pinned
+          ? (t('notes.unpin_favorites') || '取消置顶')
+          : (t('notes.pin_favorites') || '设置常用'),
+        icon: () =>
+          h(pinned ? StarOff : Star, {
+            size: 16,
+            strokeWidth: 2,
+          }),
+      },
+      {
+        key: 'rename',
+        label: t('tags.rename_tag') || 'Rename',
+        icon: () =>
+          h(Pencil, {
+            size: 16,
+            strokeWidth: 2,
+          }),
+      },
+      {
+        key: 'change_icon',
+        label: t('tags.change_icon') || '更改图标',
+        icon: () =>
+          h(Sparkles, {
+            size: 16,
+            strokeWidth: 2,
+          }),
+      },
+      {
+        key: 'remove',
+        label: t('tags.remove_tag') || '移除',
+        icon: () =>
+          h(Trash2, {
+            size: 16,
+            strokeWidth: 2,
+          }),
+      },
     ]
   }
 
