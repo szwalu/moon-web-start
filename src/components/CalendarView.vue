@@ -212,6 +212,60 @@ const attributes = computed(() => {
 
   return attrs
 })
+
+// 把「十一月 2025」转成「2025年11月」
+function formatCalendarHeaderTitle(rawTitle: string) {
+  if (!rawTitle)
+    return rawTitle
+
+  const parts = rawTitle.split(' ')
+  if (parts.length !== 2)
+    return rawTitle
+
+  const [monthText, yearText] = parts
+  if (!/^\d{4}$/.test(yearText))
+    return rawTitle
+
+  // 支持把“十一月 2025”解析出月份数字
+  const zhMonthMap: Record<string, number> = {
+    一月: 1,
+    二月: 2,
+    三月: 3,
+    四月: 4,
+    五月: 5,
+    六月: 6,
+    七月: 7,
+    八月: 8,
+    九月: 9,
+    十月: 10,
+    十一月: 11,
+    十二月: 12,
+  }
+
+  const monthNum = zhMonthMap[monthText]
+  if (!monthNum)
+    return rawTitle
+
+  const yearNum = Number(yearText)
+  const d = new Date(yearNum, monthNum - 1, 1)
+  const lang = String(locale.value || '').toLowerCase()
+
+  // 中文：固定成“2025年11月”
+  if (lang.startsWith('zh'))
+    return `${yearText}年${monthNum}月`
+
+  // 非中文：用当前语言格式化（英文就是“November 2025”）
+  try {
+    return new Intl.DateTimeFormat(
+      lang || undefined,
+      { year: 'numeric', month: 'long' },
+    ).format(d)
+  }
+  catch {
+    return rawTitle
+  }
+}
+
 /* ===================== 全量：获取所有有笔记的日期集合（分页） ===================== */
 async function fetchAllNoteDatesFull() {
   if (!user.value)
@@ -719,10 +773,10 @@ async function saveNewNote(content: string, weather: string | null) {
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
         >
-          <!-- ✅ 正确写法：用 header-title 插槽，参数是 { title } -->
+          <!-- 用自定义格式替换原来的 title -->
           <template #header-title="{ title }">
             <span class="calendar-nav-title">
-              {{ title }}
+              {{ formatCalendarHeaderTitle(title) }}
             </span>
           </template>
         </Calendar>
@@ -943,6 +997,14 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   z-index: 6004 !important;
 }
 
+/* 覆盖 v-calendar 顶部年月标题的灰色/白色胶囊背景 */
+.calendar-view .vc-title,
+.calendar-view .vc-title-wrapper {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
 /* 写笔记按钮行 */
 .compose-row {
   margin: 0 0 12px 0;
@@ -966,5 +1028,24 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 关键：当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
+}
+
+/* 写在 <style>（不带 scoped 的那个）里面，放在最后就行 */
+
+/* 去掉所有导航标题的灰色背景（含年份弹层中间的年份按钮） */
+.vc-nav-title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 年份选择弹层里的年份按钮再补一刀，防止被更具体的选择器盖回去 */
+.vc-nav-popover .vc-nav-title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 暗色模式下让标题/年份保持白色 */
+.dark .vc-nav-title {
+  color: #f9fafb !important;
 }
 </style>
