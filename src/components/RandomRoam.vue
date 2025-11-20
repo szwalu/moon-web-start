@@ -28,11 +28,10 @@ const emit = defineEmits<{
 }>()
 
 const isDark = useDark()
-
-// ========= Markdown 渲染（参考 NoteItem.vue） =========
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
+// ========== Markdown 渲染（沿用 NoteItem 的配置） ==========
 const md = new MarkdownIt({
   html: false,
   linkify: true,
@@ -48,7 +47,6 @@ const md = new MarkdownIt({
     },
   })
 
-// 图片：lazy + 等比缩放 + 可下载（和 NoteItem 保持一致）
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
@@ -74,7 +72,7 @@ function renderMarkdown(content: string) {
 
   let html = md.render(content)
 
-  // 自定义 tag：#标签 → 小胶囊
+  // #标签 → 胶囊
   html = html.replace(
     /(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g,
     '<span class="custom-tag">#$1</span>',
@@ -83,30 +81,29 @@ function renderMarkdown(content: string) {
   return html
 }
 
-// ====== 随机漫游逻辑（你这版的“正常版本”） ======
+// ========== 随机漫游核心逻辑 ==========
+
+// 同一时间卡堆里的数量
 const STACK_SIZE = 20
+// 随机队列的“预备库存”最大值：队列不会无限大，这样更容易轮到新加载的旧笔记
+const MAX_QUEUE_SIZE = 40
 
-// 当前牌堆（屏幕上那一叠）
 const deck = ref<Note[]>([])
-
-// 全局随机队列：从这里依次取下一张补到牌堆尾部
 let randomQueue: Note[] = []
 
-// 拖动状态（移动端）
 const startX = ref(0)
 const deltaX = ref(0)
 const isDragging = ref(false)
 
-// 只在第一张卡片时展示提示
 const showSwipeHint = ref(true)
-
-// 是否桌面端（用于提示文案 + 点击切卡）
 const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
 
-// 内部「正在向后台要更多」的标志，避免并发
 const isLoadingMore = ref(false)
 
-// === 工具：Fisher–Yates 洗牌 ===
+// 统计滑动次数，用来决定何时后台预取下一页
+const slideCount = ref(0)
+
+// 洗牌
 function shuffle<T>(arr: T[]): T[] {
   const pool = [...arr]
   for (let i = pool.length - 1; i > 0; i -= 1) {
@@ -116,7 +113,7 @@ function shuffle<T>(arr: T[]): T[] {
   return pool
 }
 
-// 根据当前 props.notes 构建一个候选池（排除 deck 中已有的）
+// 从 props.notes 里构建候选池（排除当前卡堆里的 ID，去重）
 function buildCandidates(excludedIds: Set<string>): Note[] {
   const source = props.notes || []
   if (!source.length)
@@ -136,55 +133,27 @@ function buildCandidates(excludedIds: Set<string>): Note[] {
   return result
 }
 
-// 确保 randomQueue 至少有一批候选，如果本地没货、且还有下一页，则向后台要
+// 确保随机队列有货：只负责“本地 notes → 队列”，不管后台
 async function ensureQueueFilled(excludedIds: Set<string>) {
-  // 先尝试用现有 notes 构建队列
   if (!randomQueue.length) {
     const candidates = buildCandidates(excludedIds)
-    if (candidates.length)
-      randomQueue = shuffle(candidates)
+    if (candidates.length) {
+      // 队列也只留一部分，避免一次把所有本地笔记塞完
+      randomQueue = shuffle(candidates).slice(0, MAX_QUEUE_SIZE)
+    }
   }
-
-  // 已经有队列了就不用再折腾
-  if (randomQueue.length)
-    return
-
-  // 本地真的没有新笔记可用，看是否能向后台再要一页
-  const totalLoaded = props.notes?.length ?? 0
-  const canLoadMoreFromServer = props.hasMore && totalLoaded < props.totalNotes
-
-  if (!canLoadMoreFromServer)
-    return
-
-  // 避免重复请求
-  if (isLoadingMore.value || props.isLoading)
-    return
-
-  try {
-    isLoadingMore.value = true
-    await props.loadMore?.()
-  }
-  finally {
-    isLoadingMore.value = false
-  }
-
-  // 再用更新后的 notes 试一次
-  const newCandidates = buildCandidates(excludedIds)
-  if (newCandidates.length)
-    randomQueue = shuffle(newCandidates)
 }
 
-// 从队列里拿下一张；必要时会触发后台分页
+// 真正取下一条随机笔记（必要时会先补队列）
 async function getNextRandomNote(): Promise<Note | null> {
   const excluded = new Set(deck.value.map(n => n.id))
   await ensureQueueFilled(excluded)
   return randomQueue.shift() ?? null
 }
 
-// 计算当前要渲染的卡片（就是整個牌堆）
+// ===== 滑动手势 =====
 const visibleCards = computed(() => deck.value)
 
-// 手势：开始拖动
 function handleTouchStart(e: TouchEvent) {
   if (!visibleCards.value.length)
     return
@@ -193,7 +162,6 @@ function handleTouchStart(e: TouchEvent) {
   deltaX.value = 0
 }
 
-// 手势：移动
 function handleTouchMove(e: TouchEvent) {
   if (!isDragging.value)
     return
@@ -201,7 +169,6 @@ function handleTouchMove(e: TouchEvent) {
   deltaX.value = x - startX.value
 }
 
-// 手势：结束
 function handleTouchEnd() {
   if (!isDragging.value)
     return
@@ -214,26 +181,54 @@ function handleTouchEnd() {
   deltaX.value = 0
 }
 
-// 切到下一张卡片（核心逻辑）
+// ===== 每滑一张，顺便“后台默默补货” =====
+function maybePreloadMore() {
+  const totalLoaded = props.notes?.length ?? 0
+  const canLoadMoreFromServer = props.hasMore && totalLoaded < props.totalNotes
+
+  if (!canLoadMoreFromServer)
+    return
+  if (isLoadingMore.value || props.isLoading)
+    return
+
+  // 每滑 N 张预取一次，避免太频繁打 supabase
+  const SLIDE_INTERVAL = 40
+  if (slideCount.value % SLIDE_INTERVAL !== 0)
+    return
+
+  const result = props.loadMore?.()
+  if (result && typeof (result as any).then === 'function') {
+    isLoadingMore.value = true
+    ;(result as Promise<unknown>)
+      .catch(() => {
+        // 忽略单次预取失败
+      })
+      .finally(() => {
+        isLoadingMore.value = false
+      })
+  }
+}
+
+// 切到下一张卡片
 async function goNextCard() {
   if (!deck.value.length)
     return
 
+  slideCount.value += 1
+
   const removed = deck.value.shift()!
 
   const next = await getNextRandomNote()
-  if (next) {
+  if (next)
     deck.value.push(next)
-  }
-  else {
-    // 实在没有新货，就把刚刚那张丢回去，保证始终有卡可看
+  else
     deck.value.push(removed)
-  }
 
   showSwipeHint.value = false
+  maybePreloadMore()
 }
 
-// 💻 桌面端：点击顶层卡片切到下一张
+// 桌面端：点最上面一张也能切换
 function handleCardClick(index: number) {
   if (!isDesktop)
     return
@@ -242,7 +237,7 @@ function handleCardClick(index: number) {
   goNextCard()
 }
 
-// 初始化牌堆：打开随机漫游时调用
+// 初始化牌堆
 function initDeckFromNotes() {
   const source = props.notes || []
   if (!source.length) {
@@ -253,19 +248,20 @@ function initDeckFromNotes() {
 
   const shuffled = shuffle(source)
   deck.value = shuffled.slice(0, STACK_SIZE)
-  randomQueue = shuffled.slice(STACK_SIZE)
+  // 随机队列只拿一部分，为后续“补货 + 旧笔记混进来”留空间
+  randomQueue = shuffled.slice(STACK_SIZE, STACK_SIZE + MAX_QUEUE_SIZE)
   showSwipeHint.value = true
   deltaX.value = 0
+  slideCount.value = 0
 }
 
-// notes 第一次有值时初始化一遍（防止打开时 notes 还在加载）
+// notes 第一次有值时初始化
 onMounted(() => {
   if (props.notes?.length)
     initDeckFromNotes()
 })
 
-// 如果用户在打开期间又加载了大量新笔记（比如后台预取），
-// 当前牌堆已经有内容时不强制重置，只在「一开始为空 → 有内容」时重建。
+// 如果原来没有 notes，后来父组件加载完了，再初始化一次
 watch(
   () => props.notes.length,
   (len, oldLen) => {
