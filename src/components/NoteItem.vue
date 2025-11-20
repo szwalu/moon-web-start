@@ -700,9 +700,13 @@ async function systemShareImage() {
         />
 
         <div class="share-card-footer">
-          <span class="share-app-name">
-            {{ $t('notes.notes', '云笔记') }}
-          </span>
+          <div class="share-footer-left">
+            <img src="/icons/pwa-192.png" class="share-footer-logo" alt="">
+            <span class="share-app-name">
+              {{ $t('notes.notes', '云笔记') }}
+            </span>
+          </div>
+
           <span class="share-meta">
             {{ t('notes.word_count', { count: note.content ? note.content.length : 0 }) }}
           </span>
@@ -1216,6 +1220,26 @@ async function systemShareImage() {
 
 .dark .share-card-footer {
   color: #9ca3af;
+}
+
+/* 左侧：Logo + 名称 */
+.share-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.share-footer-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  transform: translateY(7px); /* ← 新增，下移对齐 */
 }
 
 .share-app-name {

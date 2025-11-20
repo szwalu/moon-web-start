@@ -2428,7 +2428,16 @@ function onCalendarUpdated(updated: any) {
             </button>
           </NDropdown>
         </div>
-        <h1 class="page-title">{{ $t('notes.notes') }}</h1>
+        <h1 class="page-title">
+          <span class="page-title-inner">
+            <img
+              src="/icons/pwa-192.png"
+              alt="Logo"
+              class="page-title-logo"
+            >
+            <span class="page-title-text">{{ $t('notes.notes') }}</span>
+          </span>
+        </h1>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button
@@ -2708,14 +2717,43 @@ function onCalendarUpdated(updated: any) {
 .dark .page-header {
   background: #1e1e1e;
 }
+
+/* 标题本身不再绝对定位，跟着 flex 正常排布就好 */
 .page-title {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+
+  /* 新增：让内部内容以 flex 居中对齐 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 0;
+  padding: 0;
   font-size: 22px;
   font-weight: 600;
-  margin: 0;
+}
+
+/* 新增：让 logo 和文字作为一个整体紧挨排在一起 */
+.page-title-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;           /* 间距很小，几乎是“紧挨着” */
+}
+
+.page-title-logo {
+  width: 45px;
+  height: 45px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+  transform: translateY(2px); /* ← 只移动 Logo，不动文字 */
+}
+
+.page-title-text {
+  /* 可选：以后想调字重、字距可以写在这里 */
 }
 .dark .page-title {
     color: #f0f0f0;

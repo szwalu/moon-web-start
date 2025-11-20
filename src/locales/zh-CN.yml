@@ -133,7 +133,7 @@ navbar:
   auth: 注册/登录
   logout: 登出
   account: 我的账户
-  cloud_Notes: 云笔记
+  cloud_Notes: 星云笔记
 
 footer:
   disclaimer: 本站内容源自互联网，如有内容侵犯权益，请联系我们删除相关内容，
@@ -274,10 +274,8 @@ index:
   weather_failed: 天气加载失败
   refresh_weather: 刷新天气
 
-app:
-  name_short: 云笔记
 notes:
-  notes: 云笔记
+  notes: 星云笔记
   save_note: 保存
   more_notes: 更多笔记
   content_placeholder: 写点什么...
@@ -523,7 +521,7 @@ notes:
   ok: 确定
 
   HelpDialog:
-    title: 云笔记 · 使用说明
+    title: 星云笔记 · 使用说明
     aria_label: 帮助与使用说明
     close: 关闭
     got_it: 知道了
@@ -616,7 +614,7 @@ notes:
     faq_1_a1_prefix: 在浏览器键入：
     faq_1_a1_suffix: ，按提示注册登陆即可。
     faq_1_a2: 在手机浏览器界面选择“添加到主屏幕”后，即可像普通APP一样使用笔记。
-    faq_1_a3: 在网址站中点击云笔记或移动端的Logo即可进入笔记；在笔记主界面点击右上角「x」键可返回网址站。
+    faq_1_a3: 在网址站中点击星云笔记或移动端的Logo即可进入笔记；在笔记主界面点击右上角「x」键可返回网址站。
 
     faq_2_q: 离线时的编辑/删除会丢吗？
     faq_2_a1: 不会，离线操作会写入本地快照与同步队列，联网后自动提交到服务器。
