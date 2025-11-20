@@ -9,7 +9,7 @@ import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
 import mark from 'markdown-it-mark'
 import linkAttrs from 'markdown-it-link-attributes'
-import { ArrowUp, Calendar, ClipboardCopy, Edit3, Share, Trash2 } from 'lucide-vue-next'
+import { Calendar, Copy, Edit3, Pin, PinOff, Share, Trash2 } from 'lucide-vue-next'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
@@ -309,14 +309,14 @@ function getDropdownOptions(note: any) {
 
     {
       key: 'Copy',
-      label: makeDropdownItem(ClipboardCopy, t('notes.copy')),
+      label: makeDropdownItem(Copy, t('notes.copy')),
     },
 
-    // 置顶 / 取消置顶：CheckSquare
+    // 置顶 / 取消置顶：Pin/PinOff
     {
       key: 'pin',
       label: makeDropdownItem(
-        ArrowUp,
+        note.is_pinned ? PinOff : Pin,
         note.is_pinned ? t('notes.unpin') : t('notes.pin'),
       ),
     },

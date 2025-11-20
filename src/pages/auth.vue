@@ -2744,8 +2744,8 @@ function onCalendarUpdated(updated: any) {
 }
 
 .page-title-logo {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   display: block;
   flex-shrink: 0;
   object-fit: contain;
