@@ -7,6 +7,7 @@ common:
   link: 'Link (please enter the full link starting with https://)'
   name: Name
   more: More
+  close: close
 
 time_units:
   days: Days
@@ -274,6 +275,8 @@ index:
   weather_failed: Failed to load weather
   refresh_weather: Refresh Weather
 
+app:
+  name_short: Cloud Notes
 notes:
   notes: Cloud Notes
   save_note: Save Note
@@ -362,6 +365,16 @@ notes:
   search_results_for: 'Results for “{query}”'
   help_title: Instructions
   anniversary_view: View
+
+  share: Share
+  share_title: Share note
+  share_generating: Generating image…
+  share_save_only: Save
+  share_button: Share
+  share_save: Save / Share
+  share_failed: Failed to generate share image. Please try again later.
+  share_not_supported: System sharing is not supported in this browser. Please save the image first and share it manually.
+  share_date_full: '{year}-{month}-{day} {weekday}'
   random_roam:
     title: Random roam
     back: Back

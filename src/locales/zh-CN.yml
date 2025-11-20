@@ -7,6 +7,7 @@ common:
   link: 链接(请输入带 https:// 的完整链接)
   name: 名称
   more: 更多
+  close: 关闭
 
 time_units:
   days: 天
@@ -273,6 +274,8 @@ index:
   weather_failed: 天气加载失败
   refresh_weather: 刷新天气
 
+app:
+  name_short: 云笔记
 notes:
   notes: 云笔记
   save_note: 保存
@@ -361,6 +364,16 @@ notes:
   search_results_for: 搜索“{query}”的结果
   help_title: 使用说明
   anniversary_view: 查看
+
+  share: 分享
+  share_title: 分享笔记
+  share_generating: 正在生成图片…
+  share_save_only: 保存
+  share_button: 分享
+  share_save: 保存/分享
+  share_failed: 生成分享图片失败，请稍后重试
+  share_not_supported: 当前浏览器不支持系统分享，请先保存图片再手动分享
+  share_date_full: '{year}年{month}月{dayLabel} {weekday}'
   random_roam:
     title: 随机漫游
     back: 返回

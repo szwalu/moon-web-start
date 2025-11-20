@@ -7,6 +7,7 @@ common:
   link: 'リンク（https:// から始まる完全なリンクを入力してください）'
   name: 名前
   more: もっと見る
+  close: キャンセル
 
 time_units:
   days: 日
@@ -273,6 +274,8 @@ index:
   weather_failed: 天気の取得に失敗しました
   refresh_weather: 天気を更新
 
+app:
+  name_short: クラウドノート
 notes:
   notes: クラウドノート
   save_note: メモを保存
@@ -361,6 +364,16 @@ notes:
   search_results_for: '「{query}」の検索結果'
   help_title: 説明書
   anniversary_view: チェック
+
+  share: 共有
+  share_title: ノートを共有
+  share_generating: 画像を生成しています…
+  share_save_only: 保存
+  share_button: 共有
+  share_save: 保存 / 共有
+  share_failed: 共有用画像の生成に失敗しました。しばらくしてからもう一度お試しください。
+  share_not_supported: このブラウザはシステム共有に対応していません。まず画像を保存してから手動で共有してください。
+  share_date_full: '{year}年{month}月{dayLabel} {weekday}'
   random_roam:
     title: ランダム散歩
     back: 戻る

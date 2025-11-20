@@ -128,14 +128,21 @@ function formatShareDate(dateStr: string) {
   const month = d.getMonth() + 1
   const day = d.getDate()
 
-  // 星期还是交给 i18n（中文/英文都自动切）
+  // 星期还是交给现有 weekday_0~6
   const weekday = t(`notes.card.weekday_${d.getDay()}`)
 
-  // 与「17日 周一」等相同逻辑保持一致
-  const daySuffix = t('notes.card.day_suffix') // 中文/日文是“日”，英文为空
+  // 与正文日期一致：用 day_suffix 拼 “日” / "" 等
+  const daySuffix = t('notes.card.day_suffix')
   const dayLabel = `${day}${daySuffix || ''}`
 
-  return `${year}年${month}月${dayLabel} ${weekday}`
+  // 用新的 i18n 文本控制整体格式
+  return t('notes.share_date_full', {
+    year,
+    month,
+    day,
+    dayLabel,
+    weekday,
+  })
 }
 
 function attachImgLoadListener(root: Element | null) {
@@ -433,11 +440,13 @@ async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
 
+  const appName = t('app.name_short', '云笔记')
+
   // 直接下载到本机（macOS / Windows / Android）
   const link = document.createElement('a')
   link.href = shareImageUrl.value
-  // 用 jpg 后缀，和系统分享里的文件名保持一致
-  link.download = `云笔记-${props.note.id || 'share'}.jpg`
+  // 用本地化后的应用名
+  link.download = `${appName}-${props.note.id || 'share'}.jpg`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -455,6 +464,7 @@ async function systemShareImage() {
   }
 
   try {
+    const appName = t('app.name_short', '云笔记')
     let blob: Blob
 
     if (shareCanvasRef.value) {
@@ -479,7 +489,7 @@ async function systemShareImage() {
     }
 
     // 文件改为 JPEG
-    const file = new File([blob], '云笔记.jpg', { type: 'image/jpeg' })
+    const file = new File([blob], `${appName}.jpg`, { type: 'image/jpeg' })
     const files = [file]
 
     const shareData: any = {
@@ -621,7 +631,7 @@ async function systemShareImage() {
 
         <div class="share-card-footer">
           <span class="share-app-name">
-            云笔记
+            {{ $t('app.name_short', '云笔记') }}
           </span>
           <span class="share-meta">
             {{ t('notes.word_count', { count: note.content ? note.content.length : 0 }) }}
