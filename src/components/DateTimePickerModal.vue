@@ -202,4 +202,17 @@ function formatCalendarHeaderTitle(rawTitle: string) {
 .dark .vc-nav-title.is-active {
   color: #f9fafb !important;
 }
+
+/* 调大顶部标题（例如：2025年11月 / November 2025）字号 */
+.vc-title,
+.vc-nav-title {
+  font-size: 18px !important;   /* 你可以改成 22px / 24px */
+  font-weight: 600 !important;   /* 可选：加粗一点 */
+}
+
+/* 深色模式也能跟着生效 */
+.dark .vc-title,
+.dark .vc-nav-title {
+  font-size: 18px !important;
+}
 </style>

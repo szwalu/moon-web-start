@@ -1048,4 +1048,17 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 .dark .vc-nav-title {
   color: #f9fafb !important;
 }
+
+/* 日历顶部标题（如：2025年11月 / November 2025）调大字号 */
+.calendar-nav-title {
+  font-weight: 600;
+  font-size: 18px;     /* ← 原来约 16px，调大一些 */
+  line-height: 1.3;    /* 更加居中对齐 */
+}
+
+/* 深色模式保持一致 */
+.dark .calendar-nav-title {
+  color: #f9fafb;
+  font-size: 18px;
+}
 </style>
