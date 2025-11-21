@@ -379,8 +379,8 @@ notes:
   random_roam:
     title: Random roam
     back: Back
-    hint_desktop: Click the card to view the next note
-    hint_mobile: Swipe right to view the next note
+    hint_mobile: 'Swipe left: next · Swipe right: previous'
+    hint_desktop: Click to switch · Left=next · Right=previous
     empty: No notes available~
 
   upload:

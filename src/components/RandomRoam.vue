@@ -212,9 +212,9 @@ function handleTouchEnd() {
   isDragging.value = false
 
   const THRESHOLD = 80
-  if (deltaX.value > THRESHOLD)
+  if (deltaX.value < -THRESHOLD)
     goNextCard()
-  else if (deltaX.value < -THRESHOLD)
+  else if (deltaX.value > THRESHOLD)
     goPrevCard()
 
   deltaX.value = 0

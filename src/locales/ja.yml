@@ -378,8 +378,8 @@ notes:
   random_roam:
     title: ランダム散歩
     back: 戻る
-    hint_desktop: カードをクリックして次のノートを見る
-    hint_mobile: 右にスワイプして次のノートを見る
+    hint_mobile: 左へスワイプ：次へ · 右へスワイプ：前へ
+    hint_desktop: クリックで切替 · 左＝次 · 右＝前
     empty: 表示できるノートがありません～
 
   upload:

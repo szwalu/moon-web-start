@@ -376,8 +376,8 @@ notes:
   random_roam:
     title: 随机漫游
     back: 返回
-    hint_desktop: 点击卡片，浏览下一条
-    hint_mobile: 向右滑动，浏览下一条
+    hint_mobile: 向左滑动：下一条；向右滑动：上一条
+    hint_desktop: 点击卡片切换 · 左=下一条 · 右=上一条
     empty: 没有可用的笔记～
   upload:
     too_large_title: 压缩后仍偏大
