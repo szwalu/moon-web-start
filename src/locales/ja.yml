@@ -273,6 +273,7 @@ index:
   weather_loading: 読み込み中...
   weather_failed: 天気の取得に失敗しました
   refresh_weather: 天気を更新
+  weather_unknown_city: 場所不明
 
 app:
   name_short: クラウドノート

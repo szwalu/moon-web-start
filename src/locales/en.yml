@@ -274,6 +274,7 @@ index:
   weather_loading: Loading...
   weather_failed: Failed to load weather
   refresh_weather: Refresh Weather
+  weather_unknown_city: Unknown location
 
 app:
   name_short: Cloud Notes

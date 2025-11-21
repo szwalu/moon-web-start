@@ -273,6 +273,7 @@ index:
   weather_loading: 加载中...
   weather_failed: 天气加载失败
   refresh_weather: 刷新天气
+  weather_unknown_city: 未知位置
 
 notes:
   notes: 星云笔记

@@ -171,6 +171,12 @@ function setCachedWeather(data) {
   localStorage.setItem('weatherData', JSON.stringify(cache))
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
 // ===== 城市名缓存 =====
 const CITY_CACHE_KEY = 'nominatim_city_cache_v1'
 const CITY_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 天
@@ -180,6 +186,7 @@ let cityCache: Record<string, any> | null = null
 function loadCityCache() {
   if (cityCache)
     return cityCache
+
   try {
     cityCache = JSON.parse(localStorage.getItem(CITY_CACHE_KEY) || '{}')
   }
@@ -208,7 +215,16 @@ function isChineseLocale() {
   return lang.startsWith('zh')
 }
 
-async function reverseGeocodeCity(lat: number, lon: number): Promise<string | null> {
+interface ReverseOptions {
+  fallbackName?: string
+  allowRetry?: boolean
+}
+
+async function reverseGeocodeCity(
+  lat: number,
+  lon: number,
+  options: ReverseOptions = {},
+): Promise<string | null> {
   const preferZh = isChineseLocale()
   const langHeader = preferZh
     ? 'zh-CN,zh;q=0.9,en;q=0.6'
@@ -219,8 +235,11 @@ async function reverseGeocodeCity(lat: number, lon: number): Promise<string | nu
   const now = Date.now()
 
   const cached = cache[key]
-  if (cached && (now - cached.ts) < CITY_TTL_MS)
-    return preferZh ? cached.zh : cached.en
+  if (cached && (now - cached.ts) < CITY_TTL_MS) {
+    const cachedName = preferZh ? cached.zh : cached.en
+    if (cachedName)
+      return cachedName
+  }
 
   let city: string | null = null
 
@@ -264,13 +283,28 @@ async function reverseGeocodeCity(lat: number, lon: number): Promise<string | nu
     city = null
   }
 
-  // 写入缓存
-  cache[key] = {
-    zh: preferZh ? city : null,
-    en: preferZh ? null : city,
-    ts: now,
+  // 第一次请求失败 / 拿不到城市 → 等一会儿再重试一次
+  if (!city && options.allowRetry !== false) {
+    await sleep(300)
+    return reverseGeocodeCity(lat, lon, {
+      fallbackName: options.fallbackName,
+      allowRetry: false,
+    })
   }
-  saveCityCache()
+
+  // 还没有城市名，用外部传进来的 IP 城市兜底
+  if (!city && options.fallbackName)
+    city = options.fallbackName
+
+  // 只缓存非空值，防止把 null 长期写进缓存
+  if (city) {
+    cache[key] = {
+      zh: preferZh ? city : cache[key]?.zh || null,
+      en: preferZh ? cache[key]?.en || null : city,
+      ts: now,
+    }
+    saveCityCache()
+  }
 
   return city
 }
@@ -290,10 +324,11 @@ async function fetchWeather(bypassCache = false) {
     weatherCity.value = t('index.weather_loading')
     weatherInfo.value = '...'
 
-    // ===== 1. 精确定位（主动弹窗） =====
-    let lat = null
-    let lon = null
+    let lat: number | null = null
+    let lon: number | null = null
+    let fallbackCityFromIp: string | null = null
 
+    // ===== 1. 精确定位（主动弹窗） =====
     const geo = await getBrowserLocationWithPromptOnce(8000)
     if (geo) {
       lat = geo.lat
@@ -301,8 +336,9 @@ async function fetchWeather(bypassCache = false) {
     }
 
     // ===== 2. 若用户拒绝 / 失败 → 使用 IP 定位兜底 =====
-    if (!lat || !lon) {
-      let locData: any
+    if (lat == null || lon == null) {
+      let locData: any = null
+
       try {
         const r = await fetch('https://ipapi.co/json/')
         locData = await r.json()
@@ -311,18 +347,38 @@ async function fetchWeather(bypassCache = false) {
         const r2 = await fetch('http://ip-api.com/json/')
         locData = await r2.json()
         locData.city = locData.city || locData.regionName
-        locData.latitude = locData.lat
-        locData.longitude = locData.lon
+        locData.latitude = locData.latitude ?? locData.lat
+        locData.longitude = locData.longitude ?? locData.lon
       }
 
-      lat = locData.latitude
-      lon = locData.longitude
+      if (locData) {
+        lat = Number(locData.latitude)
+        lon = Number(locData.longitude)
+        fallbackCityFromIp
+          = locData.city
+          || locData.region
+          || locData.regionName
+          || locData.country_name
+          || locData.country
+          || null
+      }
+    }
+
+    // 仍然拿不到坐标，直接失败
+    if (lat == null || lon == null) {
+      weatherCity.value = t('index.weather_failed')
+      weatherInfo.value = ''
+      return
     }
 
     // ===== 3. 坐标 → 城市（官方 Nominatim） =====
-    let city = await reverseGeocodeCity(lat!, lon!)
+    let city = await reverseGeocodeCity(lat, lon, {
+      fallbackName: fallbackCityFromIp || undefined,
+      allowRetry: true,
+    })
+
     if (!city)
-      city = t('index.weather_unknown_city')
+      city = fallbackCityFromIp || t('index.weather_unknown_city')
 
     // ===== 4. open-meteo 天气数据 =====
     const res = await fetch(
@@ -330,8 +386,8 @@ async function fetchWeather(bypassCache = false) {
     )
     const data = await res.json()
 
-    const temp = data.current.temperature_2m
-    const code = data.current.weathercode
+    const temp = data.current?.temperature_2m
+    const code = data.current?.weathercode
     const { text, icon } = getWeatherText(code)
 
     const weatherText = `${temp}°C ${text} ${icon}`
