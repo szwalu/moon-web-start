@@ -180,14 +180,24 @@ async function restoreOne(id: string) {
     const { error } = await supabase.rpc('restore_note', { p_note_id: id })
     if (error)
       throw error
+
     list.value = list.value.filter(n => n.id !== id)
     selected.value = selected.value.filter(s => s !== id)
+
+    // ✅ 这里补一刀：同步更新本地缓存
+    if (user.value)
+      saveCache(user.value.id, list.value)
+
     message.success(t('notes.trash.restore_success_one'))
     emit('restored')
   }
   catch (err: any) {
     console.error(err)
-    message.error(t('notes.trash.restore_failed_with_reason', { reason: err.message || t('notes.trash.unknown_error') }))
+    message.error(
+      t('notes.trash.restore_failed_with_reason', {
+        reason: err.message || t('notes.trash.unknown_error'),
+      }),
+    )
   }
 }
 
