@@ -308,7 +308,7 @@ function getDropdownOptions(note: any) {
     },
 
     {
-      key: 'Copy',
+      key: 'copy',
       label: makeDropdownItem(Copy, t('notes.copy')),
     },
 
