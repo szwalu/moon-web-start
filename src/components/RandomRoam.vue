@@ -92,6 +92,8 @@ const MAX_QUEUE_SIZE = 40
 
 const deck = ref<Note[]>([])
 let randomQueue: Note[] = []
+// 👉 新增：已看过的卡片历史，用于「向左滑返回上一条」
+let history: Note[] = []
 
 const startX = ref(0)
 const deltaX = ref(0)
@@ -171,6 +173,39 @@ function handleTouchMove(e: TouchEvent) {
   deltaX.value = x - startX.value
 }
 
+// 👉 新增：上一条逻辑（向左滑）
+function goPrevCard() {
+  if (!history.length)
+    return
+  const prev = history.pop()
+  if (!prev)
+    return
+
+  const currentDeck = deck.value
+  if (!currentDeck.length) {
+    deck.value = [prev]
+    return
+  }
+
+  const currentTop = currentDeck[0]
+
+  // 先把 deck 里所有同一个 prev.id 的条目去掉，避免重复
+  const withoutPrev = currentDeck.filter(n => n.id !== prev.id)
+
+  // 当前这张放回队列头部，后面还有机会再被抽到
+  const existsInQueue = randomQueue.some(n => n.id === currentTop.id)
+  if (!existsInQueue) {
+    randomQueue.unshift(currentTop)
+    if (randomQueue.length > MAX_QUEUE_SIZE)
+      randomQueue.pop()
+  }
+
+  // 把 prev 放到最上面，后面接原来的其它卡（去掉了 prev 本体）
+  deck.value = [prev, ...withoutPrev.slice(1)]
+
+  // 返回上一条就不要动 slideCount / 预取逻辑了
+}
+
 function handleTouchEnd() {
   if (!isDragging.value)
     return
@@ -179,6 +214,8 @@ function handleTouchEnd() {
   const THRESHOLD = 80
   if (deltaX.value > THRESHOLD)
     goNextCard()
+  else if (deltaX.value < -THRESHOLD)
+    goPrevCard()
 
   deltaX.value = 0
 }
@@ -211,12 +248,20 @@ function maybePreloadMore() {
   }
 }
 
-// 切到下一张卡片
+// 切到下一张卡片（向右滑 / 桌面点击）
 async function goNextCard() {
   if (!deck.value.length)
     return
 
   slideCount.value += 1
+
+  // 记录当前顶层卡片到历史栈（避免连续重复压入）
+  const currentTop = deck.value[0]
+  if (currentTop) {
+    const lastHistory = history[history.length - 1]
+    if (!lastHistory || lastHistory.id !== currentTop.id)
+      history.push(currentTop)
+  }
 
   const removed = deck.value.shift()!
 
@@ -245,6 +290,7 @@ function initDeckFromNotes() {
   if (!source.length) {
     deck.value = []
     randomQueue = []
+    history = []
     return
   }
 
@@ -252,6 +298,7 @@ function initDeckFromNotes() {
   deck.value = shuffled.slice(0, STACK_SIZE)
   // 随机队列只拿一部分，为后续“补货 + 旧笔记混进来”留空间
   randomQueue = shuffled.slice(STACK_SIZE, STACK_SIZE + MAX_QUEUE_SIZE)
+  history = []
   showSwipeHint.value = true
   deltaX.value = 0
   slideCount.value = 0
