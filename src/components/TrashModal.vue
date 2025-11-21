@@ -455,8 +455,8 @@ onMounted(() => {
   word-break: break-word;
   white-space: normal;
   color: inherit;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;   /* ← 内容略放大 */
+  line-height: 1.7;  /* ← 行距稍微加一点，便于阅读 */
 }
 
 .item-main .meta {
@@ -464,7 +464,7 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: .5rem .75rem;
-  font-size: 12px;
+  font-size: 13px;   /* ← 时间/剩余天数也放大一点 */
   color: #6b7280;
 }
 .dark .item-main .meta { color: #9ca3af; }
@@ -486,4 +486,24 @@ onMounted(() => {
 .wide { min-width: 120px; }
 .fade-enter-active,.fade-leave-active { transition: opacity .25s }
 .fade-enter-from,.fade-leave-to { opacity: 0 }
+
+/* 顶部工具栏（全选、恢复、彻底删除）按钮文字稍微放大 */
+.check-all span {
+  font-size: 15px;  /* 默认大约 14，现在 +1 */
+}
+
+.btn-secondary,
+.btn-danger {
+  font-size: 15px;  /* 原来 14px，现在 +1 */
+}
+
+/* 底部“返回”按钮字号 */
+.modal-footer .btn-secondary {
+  font-size: 15px;
+}
+/* ===== 列表中每条笔记右边的蓝色“恢复”字号调大 ===== */
+.item-actions .btn-link {
+  font-size: 16px !important;
+  font-weight: 500;
+}
 </style>
