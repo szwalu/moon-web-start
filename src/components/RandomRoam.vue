@@ -285,6 +285,7 @@ function handleCardClick(index: number) {
 }
 
 // 初始化牌堆
+// 初始化牌堆：采用“随机起点”来避免永远从最新的笔记开始
 function initDeckFromNotes() {
   const source = props.notes || []
   if (!source.length) {
@@ -294,16 +295,26 @@ function initDeckFromNotes() {
     return
   }
 
-  const shuffled = shuffle(source)
+  // ------------ 🎯 新增：随机起点逻辑 ------------
+  const total = source.length
+  const maxStart = Math.max(0, total - STACK_SIZE)
+  const startIndex = Math.floor(Math.random() * (maxStart + 1))
+  // -------------------------------------------------
+
+  // 把 source 头尾拼接起来，让 startIndex 永远可以作为一个“旋转起点”
+  const rotated = source.slice(startIndex).concat(source.slice(0, startIndex))
+
+  // 随机打散（但仍然基于 rotated）
+  const shuffled = shuffle(rotated)
+
   deck.value = shuffled.slice(0, STACK_SIZE)
-  // 随机队列只拿一部分，为后续“补货 + 旧笔记混进来”留空间
   randomQueue = shuffled.slice(STACK_SIZE, STACK_SIZE + MAX_QUEUE_SIZE)
+
   history = []
   showSwipeHint.value = true
   deltaX.value = 0
   slideCount.value = 0
 }
-
 // notes 第一次有值时初始化
 onMounted(() => {
   if (props.notes?.length)
