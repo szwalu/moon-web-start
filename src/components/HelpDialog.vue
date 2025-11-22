@@ -125,6 +125,7 @@ const { t } = useI18n()
             <li><strong>{{ t('notes.HelpDialog.copy') }}</strong>{{ t('notes.HelpDialog.s7_i2_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.delete') }}</strong>{{ t('notes.HelpDialog.s7_i3_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.set_date') }}</strong>{{ t('notes.HelpDialog.s7_i4_tail') }}</li>
+            <li><strong>{{ t('notes.HelpDialog.share') }}</strong>{{ t('notes.HelpDialog.s7_i5_tail') }}</li>
           </ul>
         </section>
 
@@ -170,6 +171,15 @@ const { t } = useI18n()
           <ul>
             <li><strong>{{ t('notes.HelpDialog.trash') }}</strong>{{ t('notes.HelpDialog.s12_i1_tail') }}</li>
             <li>{{ t('notes.HelpDialog.s12_i2') }}</li>
+          </ul>
+        </section>
+
+        <!-- 13) 随机漫游 -->
+        <section>
+          <h3>{{ t('notes.HelpDialog.s13_title') }}</h3>
+          <ul>
+            <li>{{ t('notes.HelpDialog.s13_i1') }}</li>
+            <li>{{ t('notes.HelpDialog.s13_i2') }}</li>
           </ul>
         </section>
 

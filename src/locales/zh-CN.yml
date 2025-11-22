@@ -80,23 +80,23 @@ settings:
     currentTab: 当前标签页打开
     newTab: 新标签页打开
   showTime:
-    title: 显示时间
+    title: 时间
   showDate:
-    title: 显示日期
+    title: 日期
   showSecond:
-    title: 显示秒钟
+    title: 秒钟
   showLunar:
-    title: 显示农历
+    title: 农历
   showFooter:
-    title: 显示页脚
+    title: 页脚
   tagMode:
     title: 标签模式
     concise: 精简
     full: 完全
   showWeather:
-    title: 显示天气
+    title: 天气
   showDailyQuote:
-    title: 显示每日一句
+    title: 每日一句
   common:
     show: 显示
     hide: 隐藏
@@ -539,6 +539,7 @@ notes:
     cold_restore: 冷启动还原
     silent_prefetch: 静默预取
     trash: 在主菜单打开「回收站」
+    share: 分享
 
     s1_title: 1) 快速开始
     s1_i1: 已登录直接进入主页；未登录会显示登录组件。
@@ -584,11 +585,12 @@ notes:
     s6_i2_and: 与
     s6_i2_after: ；完成后点击「完成」退出。
 
-    s7_title: 7) 笔记的“置顶 / 复制 / 删除 / 设定日期”操作
+    s7_title: 7) 笔记的“置顶 / 复制 / 删除 / 设定日期 / 分享”操作
     s7_i1_tail: ：列表项操作中切换（离线也生效，稍后自动同步）。
     s7_i2_tail: ：将该条内容复制到剪贴板。
     s7_i3_tail: ：支持单条与批量；相关标签/日历/搜索缓存会自动失效以保持一致。
     s7_i4_tail: ：修改笔记的创建日期。
+    s7_i5_tail: ：将当前笔记生成图片并保存，或调用系统分享给其他应用。
 
     s8_title: 8) 日历视图
     s8_i1: 在主菜单点击「日历」进入，按日期查看/创建/编辑/复制/置顶/删除。
@@ -610,6 +612,10 @@ notes:
     s12_title: 12) 回收站
     s12_i1_tail: 。可恢复（即时插回并排序）或清空（刷新数据与缓存）。
     s12_i2: 「回收站」数据保留30天，30天后自动彻底删除。
+
+    s13_title: 13) 随机漫游
+    s13_i1: 在主菜单中点击「随机漫游」，进入卡片视图随机浏览笔记。
+    s13_i2: 移动端左右滑动切换笔记；桌面端点击卡片左右区域切换。
 
     faq_title: 常见问题
     faq_1_q: 怎样进入笔记？

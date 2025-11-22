@@ -541,6 +541,7 @@ notes:
     cold_restore: Cold Start Restore
     silent_prefetch: Silent Prefetch
     trash: 'Open ''Trash'' from the main menu'
+    share: share
 
     s1_title: 1 Quick Start
     s1_i1: Logged-in users go directly to the homepage; unauthenticated users will see the login component.
@@ -586,11 +587,12 @@ notes:
     s6_i2_and: and
     s6_i2_after: '; click ''Done'' to exit.'
 
-    s7_title: 7 Pin / Copy / Delete / Set Date
+    s7_title: 7 Pin / Copy / Delete / Set Date /sharing
     s7_i1_tail: ': Toggle pinning in the list (works offline, syncs later).'
     s7_i2_tail: ': Copy note content to clipboard.'
     s7_i3_tail: ': Supports single or batch delete; tag/calendar/search caches will auto-refresh to stay consistent.'
     s7_i4_tail: ': Modify the note’s creation date.'
+    s7_i5_tail: ': Generate an image of the current note and save it, or use system sharing to send it to other apps.'
 
     s8_title: 8 Calendar View
     s8_i1: 'Click ''Calendar'' in the main menu to view, create, edit, copy, pin, or delete notes by date.'
@@ -612,6 +614,10 @@ notes:
     s12_title: 12 Trash
     s12_i1_tail: . You can restore (instantly reinserts and sorts) or empty it (refreshes data and cache).
     s12_i2: '''Trash'' keeps data for 30 days, after which it’s permanently deleted.'
+
+    s13_title: 13) Random Roam
+    s13_i1: 'Click "Random Roam" in the main menu to enter card view and browse notes randomly.'
+    s13_i2: 'On mobile, swipe left or right to switch notes; on desktop, click the left or right side of the card.'
 
     faq_title: FAQ
     faq_1_q: How do I access the notes?
