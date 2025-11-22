@@ -654,14 +654,23 @@ watch(
 /* ===== 正文：参考 NoteItem 的排版风格 ===== */
 
 /* 容器自身的滚动 & 基础行距 */
+/* 默认：移动端行距 1.8 */
 .rr-card-content {
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
   word-break: break-word;
-  line-height: 1.9;
-  /* 亮色模式链接色 */
+
+  line-height: 1.8;
+
   --tw-prose-links: #2563eb;
+}
+
+/* 桌面端 ≥ 768px 行距 2.2 */
+@media (min-width: 768px) {
+  .rr-card-content {
+    line-height: 2.2;
+  }
 }
 
 .random-roam-page--dark .rr-card-content {
