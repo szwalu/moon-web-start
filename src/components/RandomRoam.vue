@@ -14,6 +14,7 @@ interface Note {
   content: string
   created_at: string
   title?: string | null
+  weather?: string | null // ✅ 新增这一行
 }
 
 const props = defineProps<{
@@ -82,6 +83,27 @@ function renderMarkdown(content: string) {
   )
 
   return html
+}
+
+// ===== 日期 + 天气展示 =====
+const WEEKDAY_MAP_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function formatDateWithWeekday(iso: string): string {
+  if (!iso)
+    return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime()))
+    return ''
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  const w = WEEKDAY_MAP_ZH[d.getDay()] ?? ''
+  return `${y}年${m}月${day}日 ${w}`
+}
+
+function getNoteWeather(note: Note | any): string {
+  const w = String(note?.weather ?? '').trim()
+  return w || ''
 }
 
 // ========== 随机漫游核心逻辑 ==========
@@ -336,6 +358,23 @@ function initDeckFromNotes() {
   slideCount.value = 0
 }
 
+function getWeatherDisplay(note: Note): string {
+  // 尽量兼容你现有的几种命名
+  const n = note as any
+  const weatherText = n.weather_text || n.weather || n.weather_icon || ''
+  const temp = n.temperature ?? n.temp ?? n.temperature_c
+
+  const hasTemp = temp !== null && temp !== undefined && temp !== ''
+
+  if (!weatherText && !hasTemp)
+    return ''
+  if (weatherText && !hasTemp)
+    return weatherText
+  if (!weatherText && hasTemp)
+    return `${temp}°`
+  return `${weatherText} ${temp}°`
+}
+
 // notes 第一次有值时初始化
 onMounted(() => {
   if (props.notes?.length)
@@ -402,8 +441,17 @@ watch(
             </div>
 
             <div class="rr-card-body">
-              <div class="rr-card-date">
-                {{ new Date(note.created_at).toLocaleString('zh-CN') }}
+              <div class="rr-card-date-row">
+                <div class="rr-card-date">
+                  <span>{{ formatDateWithWeekday(note.created_at) }}</span>
+                  <span v-if="getNoteWeather(note)" class="rr-card-weather">
+                    · {{ getNoteWeather(note) }}
+                  </span>
+                </div>
+
+                <span v-if="getWeatherDisplay(note)" class="rr-card-weather">
+                  {{ getWeatherDisplay(note) }}
+                </span>
               </div>
 
               <div v-if="note.title" class="rr-card-title">
@@ -606,6 +654,19 @@ watch(
   opacity: 0.7;
 }
 
+.rr-card-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rr-card-weather {
+  font-size: 12px;
+  opacity: 0.8;
+  white-space: nowrap; /* 避免天气被换行挤下来 */
+}
+
 .rr-card-title {
   font-size: 16px;
   font-weight: 600;
@@ -619,7 +680,7 @@ watch(
   overflow-y: auto;
   padding-right: 4px;
   word-break: break-word;
-
+  line-height: 2.0;
   /* 亮色模式链接色 */
   --tw-prose-links: #2563eb;
 }
