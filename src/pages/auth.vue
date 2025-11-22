@@ -2764,7 +2764,7 @@ function onCalendarUpdated(updated: any) {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-72%, -50%);
 
   /* 新增：让内部内容以 flex 居中对齐 */
   display: flex;
