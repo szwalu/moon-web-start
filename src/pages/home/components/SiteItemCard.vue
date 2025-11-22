@@ -39,6 +39,7 @@ const effectiveTarget = computed(() => (isStandalone ? '_blank' : undefined))
 </script>
 
 <template>
+  <!-- 精简模式：只有一行标题，也当成卡片标题 -->
   <a
     v-if="type === 'Concise'"
     class="site__handle"
@@ -49,8 +50,18 @@ const effectiveTarget = computed(() => (isStandalone ? '_blank' : undefined))
     inline-flex cursor-pointer items-center gap-x-8 px-12 transition-300 h-40 max-w-100p
   >
     <Favicon class="shrink-0" :site="site" />
-    <span whitespace-nowrap text-14 overflow-hidden>{{ site.name }}</span>
+    <!-- ★ 标题：加上 site-card-title，吃主页字号设置 -->
+    <span
+      class="site-card-title"
+      whitespace-nowrap
+      text-14
+      overflow-hidden
+    >
+      {{ site.name }}
+    </span>
   </a>
+
+  <!-- 完全模式：上面一行是标题，下面一行是说明 -->
   <a
     v-else
     class="site__handle"
@@ -63,8 +74,23 @@ const effectiveTarget = computed(() => (isStandalone ? '_blank' : undefined))
   >
     <Favicon class="shrink-0" :site="site" :size="36" round />
     <div>
-      <div text-13 font-600 ellipsis-1>{{ site.name }}</div>
-      <div text="13 $text-c-1" mt-6 ellipsis-1>{{ site.desc ?? extractDomainFromUrl(site.url) }}</div>
+      <!-- ★ 标题：加上 site-card-title，字号随设置变化 -->
+      <div
+        class="site-card-title"
+        text-13
+        font-600
+        ellipsis-1
+      >
+        {{ site.name }}
+      </div>
+      <!-- 说明文字：不加类，保持原有字号 -->
+      <div
+        text="13 $text-c-1"
+        mt-6
+        ellipsis-1
+      >
+        {{ site.desc ?? extractDomainFromUrl(site.url) }}
+      </div>
     </div>
   </a>
 </template>

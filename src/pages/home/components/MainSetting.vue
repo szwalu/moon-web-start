@@ -247,6 +247,15 @@ function handleStopSync() {
       <SettingSelection v-model="settingStore.settings.showSecond" :title="S.showSecond.name" :options="S.showSecond.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showSecond: key })" />
       <SettingSelection v-model="settingStore.settings.showLunar" :title="S.showLunar.name" :options="S.showLunar.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showLunar: key })" />
       <SettingSelection v-model="settingStore.settings.showFooter" :title="S.showFooter.name" :options="S.showFooter.children" label-field="name" value-field="key" :on-update-value="(key: string) => settingStore.setSettings({ showFooter: key })" />
+      <!-- ★ 新增：字号设置 -->
+      <SettingSelection
+        v-model="settingStore.settings.fontSize"
+        :title="S.fontSize.name"
+        :options="S.fontSize.children"
+        label-field="name"
+        value-field="key"
+        :on-update-value="(key: string) => settingStore.setSettings({ fontSize: key })"
+      />
     </div>
     <div v-if="WITH_SERVER" mt-16 flex-center py-12>
       <div flex-center gap-12>

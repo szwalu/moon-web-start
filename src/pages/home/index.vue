@@ -36,6 +36,18 @@ const settingStore = useSettingStore()
 const siteStore = useSiteStore()
 const { autoSaveData } = useAutoSave()
 
+const fontSizeClass = computed(() => {
+  const key = settingStore.settings.fontSize || 'md'
+  switch (key) {
+    case 'xl': return 'home-font-xl'
+    case 'lg': return 'home-font-lg'
+    case 'sm': return 'home-font-sm'
+    case 'md':
+    default:
+      return 'home-font-md'
+  }
+})
+
 // 【核心修改】 1. 移除所有本地认证相关的 ref
 // const user = ref<any>(null) -> 已移除
 // const sessionExpired = ref(false) -> 已移除
@@ -476,10 +488,13 @@ function showMobileToast() {
       class="main-content-area min-h-screen bg-$main-bg-c"
       px="6 sm:12" pb="12 sm:24"
       sm:auto my-0 w-full pt-0 sm:pt-0
-      :class="{
-        'no_select': settingStore.isSetting,
-        'content-shifted': settingStore.isSideNavOpen,
-      }"
+      :class="[
+        {
+          'no_select': settingStore.isSetting,
+          'content-shifted': settingStore.isSideNavOpen,
+        },
+        fontSizeClass,
+      ]"
     >
       <div
         class="sticky z-[1010] w-full left-0 top-0"
@@ -630,6 +645,28 @@ function showMobileToast() {
 .refresh-icon {
   display: inline-block;
   font-size: 1em;
+}
+
+/* ★ 字号设置：只作用于卡片标题（site-card-title），说明文字保持原来的大小 */
+
+/* 特大 */
+.main-content-area.home-font-xl :deep(.site-card-title) {
+  font-size: 18px;
+}
+
+/* 大 */
+.main-content-area.home-font-lg :deep(.site-card-title) {
+  font-size: 16px;
+}
+
+/* 中（默认） */
+.main-content-area.home-font-md :deep(.site-card-title) {
+  font-size: 14px;
+}
+
+/* 小 */
+.main-content-area.home-font-sm :deep(.site-card-title) {
+  font-size: 12px;
 }
 </style>
 

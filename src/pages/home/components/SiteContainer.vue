@@ -10,7 +10,7 @@ provide(FAVICON_MAP_SYMBOL, faviconMap)
 </script>
 
 <template>
-  <div px="md:32 lg:64" text="$text-c-1" z-8>
+  <div class="site-container-root" px="md:32 lg:64" text="$text-c-1" z-8>
     <!-- 已移除原来在此处渲染的 <SiteNavBar /> -->
     <SiteGroupList />
     <SiteModal />
