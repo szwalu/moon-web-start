@@ -452,6 +452,7 @@ watch(
   /* 挡住后台页面 */
   overflow: hidden;
 
+  /* 底部 safe-area 只在最外层加一次 */
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -478,39 +479,44 @@ watch(
   color: inherit;
 }
 
+/* 标题：真正相对整个 header 水平居中 */
 .rr-title {
   flex: 1;
   text-align: center;
   font-weight: 600;
   font-size: 17px;
+
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none; /* 防止挡住返回按钮的点击区域 */
 }
 
-/* 主体区域 */
-/* 1️⃣ 主体区不要再把内容垂直居中，改成拉伸填满 */
+/* 主体区域：填满 header 和 footer 之间 */
 .random-roam-main {
   flex: 1;
   overflow: hidden; /* 卡堆内部自己滚 */
   display: flex;
   justify-content: center;
-  align-items: stretch; /* 关键：占满 header 和 footer 之间的高度 */
+  align-items: stretch;
 }
 
-/* 2️⃣ 卡堆高度改为 100%，不再固定 78vh */
+/* 卡堆占满主体区域高度 */
 .card-stack {
   position: relative;
   width: 100%;
   max-width: 960px;
-  height: 100%;      /* 原来是 78vh */
+  height: 100%;
   margin: 0 auto;
 }
 
-/* 3️⃣ 卡片不要居中，而是上下各留一点点间隙 */
+/* 卡片：上下只留一点点空隙，让高度更大、靠近底部按钮 */
 .rr-card {
   position: absolute;
   left: 0;
   right: 0;
-  top: 6px;          /* 距离卡堆顶部 6px */
-  bottom: 6px;       /* 距离卡堆底部 6px —— 这里决定卡片底部离按钮有多近 */
+  top: 4px;         /* 卡片顶部距卡堆顶部 4px */
+  bottom: 4px;      /* 卡片底部距卡堆底部 4px —— 调这个可以微调卡片高度 */
   margin: 0 auto;
   background: #fff;
   border-radius: 18px;
@@ -521,14 +527,20 @@ watch(
   flex-direction: column;
 }
 
-/* 4️⃣ footer 再往上顶一点（缩小按钮与卡片之间的缝隙） */
+.random-roam-page--dark .rr-card {
+  background: #111827;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
+  color: #e5e7eb;
+}
+
+/* 底部“更新一批”区域：贴近卡片底部 */
 .random-roam-footer {
-  padding: 2px 16px env(safe-area-inset-bottom, 0px); /* 原来是 6px 16px calc(6px + env(...)) */
+  padding: 2px 16px 6px; /* 不再用 env(safe-area-inset-bottom)，避免重复叠加 */
   display: flex;
   justify-content: center;
 }
 
-/* “更新一批”按钮：改为占满内容宽度 */
+/* “更新一批”按钮：占满内容宽度 */
 .rr-refresh-btn {
   border: none;
   background: #6366f1;
@@ -538,7 +550,7 @@ watch(
   border-radius: 999px;
   cursor: pointer;
 
-  width: 100%;          /* 占满 footer 可用宽度 */
+  width: 100%;
   max-width: 960px;     /* 和 card-stack 同宽 */
   text-align: center;
 }
@@ -550,24 +562,6 @@ watch(
 .rr-refresh-btn:disabled {
   opacity: 0.6;
   cursor: default;
-}
-
-.rr-card {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
-  overflow: hidden;
-  transition: transform 0.25s ease, opacity 0.25s ease;
-  display: flex;
-  flex-direction: column;
-}
-.random-roam-page--dark .rr-card {
-  background: #111827;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
-  color: #e5e7eb;
 }
 
 /* 顶部紫色块 */
