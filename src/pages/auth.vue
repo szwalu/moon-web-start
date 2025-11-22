@@ -1707,6 +1707,7 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
     isLoadingNotes.value = false
   }
 }
+
 async function handleTrashRestored(restoredNotes?: any[]) {
   // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
   const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
@@ -1736,10 +1737,45 @@ async function handleTrashRestored(restoredNotes?: any[]) {
     currentPage.value = 1
     await fetchNotes()
   }
-  if (Array.isArray(restoredNotes) && restoredNotes.length > 0 && anniversaryBannerRef.value?.addNote) {
-    for (const note of restoredNotes) {
-      if (note && note.id && note.created_at)
-        anniversaryBannerRef.value.addNote(note)
+
+  // ===== 同步“那年今日”横幅和视图 =====
+  if (Array.isArray(restoredNotes) && restoredNotes.length > 0) {
+    // 1）让 AnniversaryBanner 自己重算数量（横幅上的 “你记录了 X 条笔记”）
+    if (anniversaryBannerRef.value?.loadAnniversaryNotes)
+      anniversaryBannerRef.value.loadAnniversaryNotes()
+
+    // 2）如果当前就在“那年今日”视图里，把符合条件的恢复笔记补进列表
+    if (isAnniversaryViewActive.value && Array.isArray(anniversaryNotes.value)) {
+      const today = new Date()
+      const todayMonth = today.getMonth()
+      const todayDate = today.getDate()
+      const existingIds = new Set(anniversaryNotes.value.map(n => n.id))
+
+      const toAppend: any[] = []
+
+      for (const n of restoredNotes) {
+        if (!n || !n.id || !n.created_at)
+          continue
+        if (existingIds.has(n.id))
+          continue
+
+        const d = new Date(n.created_at)
+        if (Number.isNaN(d.getTime()))
+          continue
+
+        // 同月同日的才是“那年今日”
+        if (d.getMonth() === todayMonth && d.getDate() === todayDate)
+          toAppend.push(n)
+      }
+
+      if (toAppend.length > 0) {
+        anniversaryNotes.value = [...anniversaryNotes.value, ...toAppend]
+        // 简单按时间倒序排一下
+        anniversaryNotes.value.sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        )
+      }
     }
   }
 }
@@ -2608,7 +2644,7 @@ function onCalendarUpdated(updated: any) {
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="(restored) => { invalidateAllTagCaches(); handleTrashRestored(restored) }"
+        @restored="invalidateAllTagCaches(); handleTrashRestored()"
         @purged="invalidateAllTagCaches(); handleTrashPurged()"
       />
 
