@@ -354,7 +354,7 @@ watch(
 
 <template>
   <div class="random-roam-page" :class="{ 'random-roam-page--dark': isDark }">
-    <!-- 顶部栏：标题 + 返回按钮 + 更新一批 -->
+    <!-- 顶部栏：标题 + 返回按钮 -->
     <header class="random-roam-header">
       <button class="rr-back-btn" type="button" @click="emit('close')">
         ‹ {{ t('notes.random_roam.back') }}
@@ -363,17 +363,6 @@ watch(
       <div class="rr-title">
         {{ t('notes.random_roam.title') }}
       </div>
-
-      <!-- 右侧“更新一批”按钮 -->
-      <button
-        v-if="props.loadRandomBatch"
-        class="rr-refresh-btn"
-        type="button"
-        :disabled="isRefreshingBatch"
-        @click="handleRefreshBatch"
-      >
-        {{ t('notes.random_roam.refresh_batch') || '更新一批' }}
-      </button>
     </header>
 
     <!-- 卡片区域 -->
@@ -421,7 +410,7 @@ watch(
                 {{ note.title }}
               </div>
 
-              <!-- ✅ 正文：改成 Markdown + prose 样式 -->
+              <!-- 正文：Markdown + prose 样式 -->
               <div
                 class="rr-card-content prose dark:prose-invert max-w-none"
                 :class="fontSizeClass"
@@ -436,6 +425,18 @@ watch(
         </p>
       </div>
     </main>
+
+    <!-- 底部：更新一批按钮，靠页面最下方 -->
+    <footer v-if="props.loadRandomBatch" class="random-roam-footer">
+      <button
+        class="rr-refresh-btn"
+        type="button"
+        :disabled="isRefreshingBatch"
+        @click="handleRefreshBatch"
+      >
+        {{ t('notes.random_roam.refresh_batch') || '更新一批' }}
+      </button>
+    </footer>
   </div>
 </template>
 
@@ -455,7 +456,7 @@ watch(
   color: #f9fafb;
 }
 
-/* 顶部栏：左右各一个按钮，中间标题 */
+/* 顶部栏：左返回，中间标题 */
 .random-roam-header {
   height: 42px;
   display: flex;
@@ -480,28 +481,7 @@ watch(
   font-size: 17px;
 }
 
-/* “更新一批”按钮：右上角小字按钮 */
-.rr-refresh-btn {
-  border: none;
-  background: #6366f1;
-  color: #fff;
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-  margin-left: auto; /* 顶到最右边 */
-}
-
-.random-roam-page--dark .rr-refresh-btn {
-  background: #4f46e5;
-}
-
-.rr-refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* 主体：高度再拉长一点 */
+/* 主体区域 */
 .random-roam-main {
   flex: 1;
   display: flex;
@@ -516,6 +496,35 @@ watch(
   max-width: 960px; /* 桌面端宽度显著加大；移动端 100% */
   height: 78vh;
   margin: 0 auto;
+}
+
+/* 底部“更新一批” */
+.random-roam-footer {
+  padding: 6px 16px calc(6px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+}
+
+/* “更新一批”按钮样式（底部居中的小 pill） */
+.rr-refresh-btn {
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  min-width: 120px;
+  text-align: center;
+}
+
+.random-roam-page--dark .rr-refresh-btn {
+  background: #4f46e5;
+}
+
+.rr-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .rr-card {
