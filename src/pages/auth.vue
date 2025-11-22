@@ -1530,6 +1530,42 @@ async function fetchNotes() {
   }
 }
 
+async function loadRandomBatchForRandomRoam() {
+  if (!user.value)
+    return
+
+  // 随机选一个起点
+  const total = totalNotes.value || 0
+  if (total === 0)
+    return
+
+  const BATCH_SIZE = 60
+  const randomStart = Math.max(
+    0,
+    Math.floor(Math.random() * Math.max(1, total - BATCH_SIZE)),
+  )
+  const randomEnd = randomStart + BATCH_SIZE - 1
+
+  const { data, error } = await supabase
+    .from('notes')
+    .select('id, content, weather, created_at, updated_at, is_pinned')
+    .eq('user_id', user.value.id)
+    .order('created_at', { ascending: false })
+    .range(randomStart, randomEnd)
+
+  if (error || !data)
+    return
+
+  // 合并去重
+  const existing = new Set(notes.value.map(n => n.id))
+  const toAdd = data.filter(n => !existing.has(n.id))
+
+  if (toAdd.length) {
+    notes.value = [...notes.value, ...toAdd]
+    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+  }
+}
+
 async function silentPrefetchMore() {
   // 只在“主页列表”模式下预取；搜索/标签/那年今日时不预取
   if (isPrefetching.value
@@ -1707,7 +1743,6 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
     isLoadingNotes.value = false
   }
 }
-
 async function handleTrashRestored(restoredNotes?: any[]) {
   // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
   const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
@@ -1738,46 +1773,9 @@ async function handleTrashRestored(restoredNotes?: any[]) {
     await fetchNotes()
   }
 
-  // ===== 同步“那年今日”横幅和视图 =====
-  if (Array.isArray(restoredNotes) && restoredNotes.length > 0) {
-    // 1）让 AnniversaryBanner 自己重算数量（横幅上的 “你记录了 X 条笔记”）
-    if (anniversaryBannerRef.value?.loadAnniversaryNotes)
-      anniversaryBannerRef.value.loadAnniversaryNotes()
-
-    // 2）如果当前就在“那年今日”视图里，把符合条件的恢复笔记补进列表
-    if (isAnniversaryViewActive.value && Array.isArray(anniversaryNotes.value)) {
-      const today = new Date()
-      const todayMonth = today.getMonth()
-      const todayDate = today.getDate()
-      const existingIds = new Set(anniversaryNotes.value.map(n => n.id))
-
-      const toAppend: any[] = []
-
-      for (const n of restoredNotes) {
-        if (!n || !n.id || !n.created_at)
-          continue
-        if (existingIds.has(n.id))
-          continue
-
-        const d = new Date(n.created_at)
-        if (Number.isNaN(d.getTime()))
-          continue
-
-        // 同月同日的才是“那年今日”
-        if (d.getMonth() === todayMonth && d.getDate() === todayDate)
-          toAppend.push(n)
-      }
-
-      if (toAppend.length > 0) {
-        anniversaryNotes.value = [...anniversaryNotes.value, ...toAppend]
-        // 简单按时间倒序排一下
-        anniversaryNotes.value.sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        )
-      }
-    }
-  }
+  // ⭐ 核心修复：强制刷新“那年今日”，绕过本地缓存
+  if (anniversaryBannerRef.value?.loadAnniversaryNotes)
+    await anniversaryBannerRef.value.loadAnniversaryNotes(true)
 }
 
 async function handleTrashPurged() {
@@ -2670,6 +2668,7 @@ function onCalendarUpdated(updated: any) {
           :has-more="hasMoreNotes"
           :is-loading="isLoadingNotes"
           :load-more="nextPage"
+          :load-random-batch="loadRandomBatchForRandomRoam"
           @close="showRandomRoam = false"
         />
       </Transition>

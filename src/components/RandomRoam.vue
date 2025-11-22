@@ -22,6 +22,7 @@ const props = defineProps<{
   hasMore: boolean
   isLoading: boolean
   loadMore: () => Promise<void> | void
+  loadRandomBatch?: () => Promise<void> | void
 }>()
 
 const emit = defineEmits<{
@@ -92,7 +93,7 @@ const MAX_QUEUE_SIZE = 40
 
 const deck = ref<Note[]>([])
 let randomQueue: Note[] = []
-// 👉 新增：已看过的卡片历史，用于「向左滑返回上一条」
+// 已看过的卡片历史，用于「向右滑上一条」
 let history: Note[] = []
 
 const startX = ref(0)
@@ -103,6 +104,7 @@ const showSwipeHint = ref(true)
 const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
 
 const isLoadingMore = ref(false)
+const isRefreshingBatch = ref(false)
 
 // 统计滑动次数，用来决定何时后台预取下一页
 const slideCount = ref(0)
@@ -173,7 +175,7 @@ function handleTouchMove(e: TouchEvent) {
   deltaX.value = x - startX.value
 }
 
-// 👉 新增：上一条逻辑（向左滑）
+// 上一条逻辑（向右滑）
 function goPrevCard() {
   if (!history.length)
     return
@@ -212,8 +214,10 @@ function handleTouchEnd() {
   isDragging.value = false
 
   const THRESHOLD = 80
+  // 向左滑（deltaX < 0）→ 下一条
   if (deltaX.value < -THRESHOLD)
     goNextCard()
+  // 向右滑（deltaX > 0）→ 上一条
   else if (deltaX.value > THRESHOLD)
     goPrevCard()
 
@@ -248,7 +252,29 @@ function maybePreloadMore() {
   }
 }
 
-// 切到下一张卡片（向右滑 / 桌面点击）
+async function handleRefreshBatch() {
+  // 父组件没传这个能力就不做
+  if (!props.loadRandomBatch)
+    return
+  if (isRefreshingBatch.value)
+    return
+
+  isRefreshingBatch.value = true
+  try {
+    // 1）让父组件去 Supabase 随机拉一批（比如 60 条）
+    const result = props.loadRandomBatch()
+    if (result && typeof (result as any).then === 'function')
+      await (result as Promise<unknown>)
+
+    // 2）notes 在父组件里更新完以后，用最新的 notes 重新初始化卡堆
+    initDeckFromNotes()
+  }
+  finally {
+    isRefreshingBatch.value = false
+  }
+}
+
+// 切到下一张卡片（向左滑 / 桌面点击）
 async function goNextCard() {
   if (!deck.value.length)
     return
@@ -275,7 +301,7 @@ async function goNextCard() {
   maybePreloadMore()
 }
 
-// 桌面端：点最上面一张也能切换
+// 桌面端：点最上面一张也能切换（仍然视为“下一条”）
 function handleCardClick(index: number) {
   if (!isDesktop)
     return
@@ -284,7 +310,6 @@ function handleCardClick(index: number) {
   goNextCard()
 }
 
-// 初始化牌堆
 // 初始化牌堆：采用“随机起点”来避免永远从最新的笔记开始
 function initDeckFromNotes() {
   const source = props.notes || []
@@ -295,16 +320,11 @@ function initDeckFromNotes() {
     return
   }
 
-  // ------------ 🎯 新增：随机起点逻辑 ------------
   const total = source.length
   const maxStart = Math.max(0, total - STACK_SIZE)
   const startIndex = Math.floor(Math.random() * (maxStart + 1))
-  // -------------------------------------------------
 
-  // 把 source 头尾拼接起来，让 startIndex 永远可以作为一个“旋转起点”
   const rotated = source.slice(startIndex).concat(source.slice(0, startIndex))
-
-  // 随机打散（但仍然基于 rotated）
   const shuffled = shuffle(rotated)
 
   deck.value = shuffled.slice(0, STACK_SIZE)
@@ -315,6 +335,7 @@ function initDeckFromNotes() {
   deltaX.value = 0
   slideCount.value = 0
 }
+
 // notes 第一次有值时初始化
 onMounted(() => {
   if (props.notes?.length)
@@ -333,14 +354,26 @@ watch(
 
 <template>
   <div class="random-roam-page" :class="{ 'random-roam-page--dark': isDark }">
-    <!-- 顶部栏：标题 + 返回按钮 -->
+    <!-- 顶部栏：标题 + 返回按钮 + 更新一批 -->
     <header class="random-roam-header">
       <button class="rr-back-btn" type="button" @click="emit('close')">
         ‹ {{ t('notes.random_roam.back') }}
       </button>
+
       <div class="rr-title">
         {{ t('notes.random_roam.title') }}
       </div>
+
+      <!-- 右侧“更新一批”按钮 -->
+      <button
+        v-if="props.loadRandomBatch"
+        class="rr-refresh-btn"
+        type="button"
+        :disabled="isRefreshingBatch"
+        @click="handleRefreshBatch"
+      >
+        {{ t('notes.random_roam.refresh_batch') || '更新一批' }}
+      </button>
     </header>
 
     <!-- 卡片区域 -->
@@ -422,7 +455,7 @@ watch(
   color: #f9fafb;
 }
 
-/* 顶部更贴近屏幕边缘一点 */
+/* 顶部栏：左右各一个按钮，中间标题 */
 .random-roam-header {
   height: 42px;
   display: flex;
@@ -445,7 +478,27 @@ watch(
   text-align: center;
   font-weight: 600;
   font-size: 17px;
-  margin-right: 32px; /* 留出“返回”按钮占的空间 */
+}
+
+/* “更新一批”按钮：右上角小字按钮 */
+.rr-refresh-btn {
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  margin-left: auto; /* 顶到最右边 */
+}
+
+.random-roam-page--dark .rr-refresh-btn {
+  background: #4f46e5;
+}
+
+.rr-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 主体：高度再拉长一点 */
