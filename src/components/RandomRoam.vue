@@ -358,23 +358,6 @@ function initDeckFromNotes() {
   slideCount.value = 0
 }
 
-function getWeatherDisplay(note: Note): string {
-  // 尽量兼容你现有的几种命名
-  const n = note as any
-  const weatherText = n.weather_text || n.weather || n.weather_icon || ''
-  const temp = n.temperature ?? n.temp ?? n.temperature_c
-
-  const hasTemp = temp !== null && temp !== undefined && temp !== ''
-
-  if (!weatherText && !hasTemp)
-    return ''
-  if (weatherText && !hasTemp)
-    return weatherText
-  if (!weatherText && hasTemp)
-    return `${temp}°`
-  return `${weatherText} ${temp}°`
-}
-
 // notes 第一次有值时初始化
 onMounted(() => {
   if (props.notes?.length)
@@ -448,10 +431,6 @@ watch(
                     · {{ getNoteWeather(note) }}
                   </span>
                 </div>
-
-                <span v-if="getWeatherDisplay(note)" class="rr-card-weather">
-                  {{ getWeatherDisplay(note) }}
-                </span>
               </div>
 
               <div v-if="note.title" class="rr-card-title">
@@ -657,8 +636,8 @@ watch(
 .rr-card-date-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start; /* 原来是 space-between */
+  gap: 4px;                    /* 可以比原来的 8px 小一点 */
 }
 
 .rr-card-weather {
@@ -680,7 +659,7 @@ watch(
   overflow-y: auto;
   padding-right: 4px;
   word-break: break-word;
-  line-height: 2.0;
+  line-height: 1.9;
   /* 亮色模式链接色 */
   --tw-prose-links: #2563eb;
 }
