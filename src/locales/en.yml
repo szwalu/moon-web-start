@@ -378,6 +378,7 @@ notes:
   share_date_full: '{year}-{month}-{day} {weekday}'
   random_roam:
     title: Random roam
+    refresh_batch: Refresh batch
     back: Back
     hint_mobile: 'Swipe left: next · Swipe right: previous'
     hint_desktop: Click to switch · Left=next · Right=previous

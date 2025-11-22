@@ -448,6 +448,10 @@ watch(
   background: #f5f5f5;
   display: flex;
   flex-direction: column;
+
+  /* 挡住后台页面 */
+  overflow: hidden;
+
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -482,39 +486,60 @@ watch(
 }
 
 /* 主体区域 */
+/* 1️⃣ 主体区不要再把内容垂直居中，改成拉伸填满 */
 .random-roam-main {
   flex: 1;
+  overflow: hidden; /* 卡堆内部自己滚 */
   display: flex;
   justify-content: center;
-  align-items: center;
-  padding: 4px 16px 0;
+  align-items: stretch; /* 关键：占满 header 和 footer 之间的高度 */
 }
 
+/* 2️⃣ 卡堆高度改为 100%，不再固定 78vh */
 .card-stack {
   position: relative;
   width: 100%;
-  max-width: 960px; /* 桌面端宽度显著加大；移动端 100% */
-  height: 78vh;
+  max-width: 960px;
+  height: 100%;      /* 原来是 78vh */
   margin: 0 auto;
 }
 
-/* 底部“更新一批” */
+/* 3️⃣ 卡片不要居中，而是上下各留一点点间隙 */
+.rr-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;          /* 距离卡堆顶部 6px */
+  bottom: 6px;       /* 距离卡堆底部 6px —— 这里决定卡片底部离按钮有多近 */
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+  overflow: hidden;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 4️⃣ footer 再往上顶一点（缩小按钮与卡片之间的缝隙） */
 .random-roam-footer {
-  padding: 6px 16px calc(6px + env(safe-area-inset-bottom, 0px));
+  padding: 2px 16px env(safe-area-inset-bottom, 0px); /* 原来是 6px 16px calc(6px + env(...)) */
   display: flex;
   justify-content: center;
 }
 
-/* “更新一批”按钮样式（底部居中的小 pill） */
+/* “更新一批”按钮：改为占满内容宽度 */
 .rr-refresh-btn {
   border: none;
   background: #6366f1;
   color: #fff;
   font-size: 13px;
-  padding: 6px 18px;
+  padding: 10px 18px;
   border-radius: 999px;
   cursor: pointer;
-  min-width: 120px;
+
+  width: 100%;          /* 占满 footer 可用宽度 */
+  max-width: 960px;     /* 和 card-stack 同宽 */
   text-align: center;
 }
 

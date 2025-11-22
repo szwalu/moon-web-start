@@ -375,6 +375,7 @@ notes:
   share_date_full: '{year}年{month}月{dayLabel} {weekday}'
   random_roam:
     title: 随机漫游
+    refresh_batch: 更新一批
     back: 返回
     hint_mobile: 向左滑动：下一条；向右滑动：上一条
     hint_desktop: 点击卡片切换 · 左=下一条 · 右=上一条

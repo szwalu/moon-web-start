@@ -377,6 +377,7 @@ notes:
   share_date_full: '{year}年{month}月{dayLabel} {weekday}'
   random_roam:
     title: ランダム散歩
+    refresh_batch: まとめて更新
     back: 戻る
     hint_mobile: 左へスワイプ：次へ · 右へスワイプ：前へ
     hint_desktop: クリックで切替 · 左＝次 · 右＝前
