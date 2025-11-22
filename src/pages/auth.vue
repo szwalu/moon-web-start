@@ -1736,6 +1736,12 @@ async function handleTrashRestored(restoredNotes?: any[]) {
     currentPage.value = 1
     await fetchNotes()
   }
+  if (Array.isArray(restoredNotes) && restoredNotes.length > 0 && anniversaryBannerRef.value?.addNote) {
+    for (const note of restoredNotes) {
+      if (note && note.id && note.created_at)
+        anniversaryBannerRef.value.addNote(note)
+    }
+  }
 }
 
 async function handleTrashPurged() {
@@ -2602,7 +2608,7 @@ function onCalendarUpdated(updated: any) {
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="invalidateAllTagCaches(); handleTrashRestored()"
+        @restored="(restored) => { invalidateAllTagCaches(); handleTrashRestored(restored) }"
         @purged="invalidateAllTagCaches(); handleTrashPurged()"
       />
 
