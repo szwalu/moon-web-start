@@ -196,8 +196,9 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：启动“滚动锁定模式”，持续 2 秒
-// 在这 2 秒内，任何高度变化（resize）都会触发自动回滚，确保目标死死钉在屏幕中间
+// ✅ 修复：放弃物理 DOM 滚动，改用“多次指令”策略
+// 既然 DOM 高度在变，我们就多次命令虚拟列表滚到同一个 index。
+// 虚拟列表会自动处理高度变化后的重新定位。
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -212,36 +213,32 @@ function tryRestorePwaScroll() {
   if (index === -1)
     return
 
-  // 1. 立即执行第一次滚动 (先让它出现在视野里)
-  scrollerRef.value.scrollToItem(index, { align: 'center' })
+  // 策略：在 2 秒内，连续下达 5 次“滚到这里”的指令
+  // 第一次：立刻执行（可能位置不准，因为图没出）
+  // 后续几次：随着图片加载，高度变化，虚拟列表会根据新高度自动修正滚动位置
+  const attempts = [0, 300, 600, 1000, 1500]
 
-  // 2. 开启 2 秒的“保护期”
-  // 在这段时间内，handleItemResize 会一直负责把目标拉回中间
-  // 2秒足够让最慢的图片也加载出来了
-  setTimeout(() => {
-    pendingPwaScrollId.value = null
-    localStorage.removeItem('pwa_return_note_id')
-  }, 2000)
-}
+  attempts.forEach((delay, i) => {
+    setTimeout(() => {
+      // 检查 ref 是否还在 (防止组件已销毁)
+      if (!scrollerRef.value)
+        return
 
-// ✅ 新增：响应式修正位置
-// 这个函数绑定在模板的 @resize 上。
-// 只要列表里有任何卡片高度变了（比如长图加载出来了），这个函数就会执行。
-function handleItemResize() {
-  // 1. 执行原有的收起按钮位置更新
-  updateCollapsePos()
+      // 再次确认 index (防止数据变更导致 index 偏移)
+      // 虽然 mixedItems 是计算属性，但在闭包里最好重新查找一下最稳妥，
+      // 或者为了性能直接用之前的 index (假设列表顺序没变)
+      // 这里为了稳妥，只在第一次查找，后面复用 index，因为 PWA 恢复时数据通常不变
 
-  // 2. 关键逻辑：如果处于 PWA 恢复期的 2 秒内
-  if (pendingPwaScrollId.value) {
-    const targetId = pendingPwaScrollId.value
-    const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
-
-    if (index !== -1 && scrollerRef.value) {
-      // 👊 强力修正：图片撑开了？没关系，给我滚回中间去！
-      // 这一步会瞬间抵消图片撑开导致的位移
+      // 核心命令：滚到该索引，居中显示
       scrollerRef.value.scrollToItem(index, { align: 'center' })
-    }
-  }
+
+      // 最后一次尝试结束后，清理存储
+      if (i === attempts.length - 1) {
+        pendingPwaScrollId.value = null
+        localStorage.removeItem('pwa_return_note_id')
+      }
+    }, delay)
+  })
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
@@ -911,7 +908,7 @@ async function restoreScrollIfNeeded() {
             ? [item.content, expandedNote === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="handleItemResize"
+          @resize="updateCollapsePos"
         >
           <div v-if="item.type === 'month-header'" class="month-header-outer">
             <div
