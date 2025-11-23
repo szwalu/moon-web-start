@@ -1121,49 +1121,60 @@ async function systemShareImage() {
   opacity: 0.8;
 }
 
-/* ===== 分享卡片（离屏渲染用） ===== */
+/* ... 上面的代码保持不变 ... */
+
 /* ===== 分享卡片（离屏渲染用） ===== */
 .share-card-root {
   position: fixed;
   top: -9999px;
   left: -9999px;
-  width: 360px;       /* 如果想整体更窄可以改成 340 */
-  padding: 0;
+  /* 1. 修改宽度：稍微加大一点，容纳内边距 */
+  width: 380px;
+  /* 2. 新增内边距：这样生成的图片周围会有一圈背景，让卡片的边框和阴影完全显示出来，不会贴边 */
+  padding: 20px;
   box-sizing: border-box;
   pointer-events: none;
   z-index: -1;
 }
 
 .share-card {
-  position: relative; /* 必须加 */
+  position: relative;
   border-radius: 16px;
 
-  /* 卡片背景（含轻渐变） */
+  /* 卡片背景 */
   background: linear-gradient(135deg, #f9fafb, #e5edff);
-
   padding: 12px 14px 10px;
 
-  /* 专业海报感：卡片主体阴影 */
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.24);
+  /* 3. 加深阴影：让卡片更有立体感，与背景区分开 */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0,0,0,0.03);
 
   font-family: system-ui, -apple-system, BlinkMacSystemFont,
-               'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+                 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 
   /* ================================ */
-  /* 🌟 专业海报感柔光边框 —— 主角登场 */
+  /* 🌟 修改这里：加粗边框并提高不透明度 */
   /* ================================ */
-  border: 1px solid rgba(99, 102, 241, 0.18);  /* 品牌紫柔光边框 */
-  backdrop-filter: blur(4px);                  /* 柔光效果 */
+  /* 原来是 1px solid rgba(99, 102, 241, 0.18) 太淡了 */
+  border: 2px solid #6366f1; /* 使用明显的品牌色（靛蓝），且是实线 */
+
+  /* 如果想要“深色硬边框”风格，可以用下面这句代替上面那句： */
+  /* border: 2px solid #333; */
+
+  backdrop-filter: blur(4px);
 }
 
 .dark .share-card {
   background: linear-gradient(135deg, #020617, #020b3a);
   color: #e5e7eb;
 
-  /* 深色模式的柔光边框更亮一点 */
-  border: 1px solid rgba(129, 140, 248, 0.20);
+  /* 深色模式下也加粗 */
+  border: 2px solid #818cf8;
+  /* 深色模式下的阴影 */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
 }
+
+/* ... 下面的代码保持不变 ... */
 
 /* 顶部品牌渐变色条（你之前指定的品牌特征） */
 .share-card::before {
