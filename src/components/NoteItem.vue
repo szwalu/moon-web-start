@@ -37,17 +37,27 @@ const emit = defineEmits([
   'dateUpdated',
 ])
 
-// NoteItem.vue <script setup> 顶部已有 props
-const containsImage = computed(() => {
+// ✅ 新增：提取笔记内容中的第一张图片 URL
+const firstImageUrl = computed(() => {
   const c = (props.note?.content || '').toString()
 
-  // 命中三类：Markdown 图片、HTML <img>、以及指向你桶的 note-images 链接（含签名 URL）
-  const mdImage = /!\[[^\]]*]\([^)]+\)/i.test(c) // 基本判断
-  const htmlImg = /<img\s[^>]*src=/i.test(c)
-  const storageHit = /\/note-images\//i.test(c) // 无扩展名也能命中
-  const extImage = /https?:\/\/[^\s)'"<>]+?\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(c)
+  // 1. 尝试匹配 Markdown 图片: ![alt](url)
+  const mdMatch = /!\[[^\]]*]\(([^)]+)\)/.exec(c)
+  if (mdMatch && mdMatch[1])
+    return mdMatch[1]
 
-  return mdImage || htmlImg || storageHit || extImage
+  // 2. 尝试匹配 HTML 图片: <img src="url">
+  const htmlMatch = /<img\s[^>]*?src=["']([^"']+)["']/.exec(c)
+  if (htmlMatch && htmlMatch[1])
+    return htmlMatch[1]
+
+  // 3. 如果只是裸链接但符合图片扩展名 (这种比较少见，作为兜底)
+  // 简单的正则匹配 http 开头 .jpg/png 结尾
+  const urlMatch = /https?:\/\/[^\s)]+?\.(?:png|jpg|jpeg|gif|webp|svg)/i.exec(c)
+  if (urlMatch && urlMatch[0])
+    return urlMatch[0]
+
+  return null
 })
 
 const { t } = useI18n()
@@ -638,6 +648,16 @@ async function systemShareImage() {
     console.warn('share cancelled or failed', err)
   }
 }
+
+function handleImageLoad() {
+  // 1. 图片加载会导致卡片高度变化，重新检查一下溢出状态（虽然图片在文字下方，不太影响文字溢出，但这是一个好习惯）
+  checkIfNoteOverflows()
+
+  // 2. 这里的关键是：当这个函数执行时，DOM 高度已经因图片加载而改变了。
+  // 由于 DynamicScrollerItem 内部有 ResizeObserver 监听整个 NoteItem 的根节点，
+  // 所以只要 DOM 变了，虚拟列表就会自动收到通知。
+  // 因此，这里的 @load 主要是为了确保“时序”上的兜底，保证图片出来的那一帧，状态是同步的。
+}
 </script>
 
 <template>
@@ -696,14 +716,13 @@ async function systemShareImage() {
 
         <div v-else>
           <div class="note-preview-wrapper">
-            <!-- 可见的 3 行预览（带 line-clamp-3） -->
             <div
               ref="contentRef"
-              class="prose dark:prose-invert note-content line-clamp-3 max-w-none"
+              class="prose dark:prose-invert note-content note-preview-text line-clamp-3 max-w-none"
               :class="fontSizeClass"
               v-html="renderMarkdown(note.content)"
             />
-            <!-- 隐藏的完整内容，用来准确测量高度 -->
+
             <div
               ref="fullContentRef"
               class="prose dark:prose-invert note-content note-content-measure max-w-none"
@@ -711,18 +730,21 @@ async function systemShareImage() {
               aria-hidden="true"
               v-html="renderMarkdown(note.content)"
             />
+
+            <div v-if="firstImageUrl" class="preview-image-container">
+              <img
+                :src="firstImageUrl"
+                class="preview-extracted-img"
+                loading="lazy"
+                alt="preview"
+                @load="handleImageLoad"
+                @click.stop="emit('toggleExpand', note.id)"
+              >
+            </div>
           </div>
 
-          <!-- ✅ 收起状态下如果包含图片，显示小图标 -->
-          <span
-            v-if="!isExpanded && containsImage"
-            class="img-flag"
-            :aria-label="t('notes.editor.image_dialog.image_direct')"
-            :title="t('notes.editor.image_dialog.image_direct')"
-          >🖼️</span>
-
           <div
-            v-if="noteOverflowStatus"
+            v-if="noteOverflowStatus || firstImageUrl"
             class="toggle-button-row"
             @click.stop="emit('toggleExpand', note.id)"
           >
@@ -1178,8 +1200,6 @@ async function systemShareImage() {
   opacity: 0.8;
 }
 
-/* ... 上面的代码保持不变 ... */
-
 /* ===== 分享卡片（离屏渲染用） ===== */
 .share-card-root {
   position: fixed;
@@ -1230,8 +1250,6 @@ async function systemShareImage() {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
 }
-
-/* ... 下面的代码保持不变 ... */
 
 /* 顶部品牌渐变色条（你之前指定的品牌特征） */
 .share-card::before {
@@ -1453,5 +1471,42 @@ async function systemShareImage() {
   display: block;
   -webkit-line-clamp: initial;
   -webkit-box-orient: initial;
+}
+
+/* ... 之前的 CSS ... */
+
+/* ✅ 隐藏预览文字流里原本的图片 */
+.note-preview-text :deep(img) {
+  display: none !important;
+}
+
+/* ✅ 图片容器 */
+.preview-image-container {
+  margin-top: 12px;
+  width: 100%;
+}
+
+/* ✅ 修改这里：图片样式 */
+.preview-extracted-img {
+  display: block;
+
+  /* 🌟 核心修改：宽度设为 50%，实现缩小效果 */
+  width: 50%;
+
+  /* 🌟 核心修改：高度自动，确保图片按原比例显示，不裁剪 */
+  height: auto;
+
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.05);
+
+  /* 鼠标放上去显示手型，提示可点击 */
+  cursor: pointer;
+
+  /* 可选：如果你希望图片居中显示，解开下面这行；如果不解开则默认靠左 */
+  /* margin: 0 auto; */
+}
+
+.dark .preview-extracted-img {
+  border-color: rgba(255,255,255,0.1);
 }
 </style>
