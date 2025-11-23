@@ -134,7 +134,7 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     // preload="metadata": 预加载元数据(时长等)，但不下载整个文件，节省流量
     // controls: 显示播放/暂停/进度条
     // onclick: 阻止冒泡，防止点击播放器时触发展开/收起笔记
-    return `<audio controls src="${href}" preload="metadata" onclick="event.stopPropagation()" style="width: 100%; max-width: 360px; height: 32px; vertical-align: middle; margin: 4px 0; border-radius: 9999px;"></audio><span style="display:none">`
+    return `<audio controls src="${href}" preload="metadata" onclick="event.stopPropagation()" style="width: 100%; max-width: 240px; height: 32px; vertical-align: middle; margin: 4px 0; border-radius: 9999px; outline: none;"></audio><span style="display:none">`
   }
 
   return defaultLinkOpen(tokens, idx, options, env, self)
