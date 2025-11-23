@@ -196,7 +196,7 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-/// ✅ 修复：增加了 isConnected 检查，确保滚动的是页面上真实存在的元素
+// ✅ 修复：调整函数定义顺序，解决 ESLint no-use-before-define 报错
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -211,31 +211,51 @@ function tryRestorePwaScroll() {
   if (index === -1)
     return
 
-  let attempts = 0
-  // 增加重试次数和间隔，给长图加载多一点时间
-  const maxAttempts = 20
+  let findAttempts = 0
+  const maxFindAttempts = 30 // 寻找阶段：最多试3秒
 
-  const attemptScroll = () => {
-    // 1. 持续命令虚拟列表滚到目标位置 (应对高度动态变化)
+  // 1. 先定义“锁定阶段”的函数 (被 findElementPhase 调用)
+  const startLockPhase = (el: HTMLElement) => {
+    let lockCount = 0
+    const maxLockCount = 15 // 锁定 1.5 秒 (15 * 100ms)
+
+    const lockTick = () => {
+      // 核心：强制让它回到中间
+      el.scrollIntoView({ block: 'center', behavior: 'auto' })
+
+      lockCount++
+      if (lockCount < maxLockCount) {
+        // 继续锁定
+        setTimeout(lockTick, 100)
+      }
+      else {
+        // 锁定结束，清理现场
+        pendingPwaScrollId.value = null
+        localStorage.removeItem('pwa_return_note_id')
+      }
+    }
+
+    // 立即执行第一次锁定
+    lockTick()
+  }
+
+  // 2. 后定义“寻找阶段”的函数
+  const findElementPhase = () => {
+    // 只要还没找到 DOM，就一直命令虚拟列表往那里滚
     scrollerRef.value.scrollToItem(index, { align: 'center' })
 
     setTimeout(() => {
       const el = noteContainers.value[targetId]
 
-      // 2. 关键检查：元素必须存在，且必须连接在文档中 (isConnected)
       if (el && el.isConnected) {
-        // 3. 强制物理滚动
-        el.scrollIntoView({ block: 'center', behavior: 'auto' })
-
-        // 成功后清理
-        pendingPwaScrollId.value = null
-        localStorage.removeItem('pwa_return_note_id')
+        // 🎉 找到了！进入阶段二：位置锁定
+        startLockPhase(el)
       }
       else {
-        // 4. 没找到，或者元素是僵尸元素，继续重试
-        attempts++
-        if (attempts < maxAttempts) {
-          requestAnimationFrame(attemptScroll)
+        // 没找到，继续找
+        findAttempts++
+        if (findAttempts < maxFindAttempts) {
+          requestAnimationFrame(findElementPhase)
         }
         else {
           // 超时放弃
@@ -246,7 +266,8 @@ function tryRestorePwaScroll() {
     }, 100)
   }
 
-  attemptScroll()
+  // 3. 启动
+  findElementPhase()
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
