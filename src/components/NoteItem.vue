@@ -434,15 +434,16 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
       return
 
     try {
-      // 2. 请求图片数据
-      // 注意：这里需要 fetch 能够成功，如果 Supabase 桶是私有的，
-      // 这里的 src 需要是带有 token 的签名 URL (Signed URL)
-      // 如果是公开桶 (Public Bucket)，直接 fetch 即可
-      const response = await fetch(src, {
-        mode: 'cors', // 尝试开启跨域请求
+      // ✅ 修改开始：添加时间戳，强制不读缓存
+      // 判断 src 原本有没有参数，决定是用 ? 还是 &
+      const suffix = src.includes('?') ? '&' : '?'
+      const fetchUrl = `${src}${suffix}t=${new Date().getTime()}`
+
+      // 使用新的 fetchUrl 请求
+      const response = await fetch(fetchUrl, {
+        mode: 'cors', // 关键
         cache: 'no-cache',
       })
-
       if (!response.ok)
         throw new Error('Network response was not ok')
 
