@@ -62,6 +62,9 @@ const editTopEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const noteContainers = ref<Record<string, HTMLElement>>({})
 const editReturnScrollTop = ref<number | null>(null)
 
+// ✅ 新增：用于存储 PWA 返回时需要滚动的目标笔记 ID
+const pendingPwaScrollId = ref<string | null>(null)
+
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
   if (!el)
@@ -188,6 +191,31 @@ const noteById = computed<Record<string, any>>(() => {
 
   return m
 })
+
+// ✅ 修复：将 tryRestorePwaScroll 移到 mixedItems 定义之后
+function tryRestorePwaScroll() {
+  if (!pendingPwaScrollId.value)
+    return
+  if (!scrollerRef.value)
+    return
+  if (mixedItems.value.length === 0)
+    return
+
+  // 在混合列表(包含月份头)中找到该笔记的索引
+  const targetId = pendingPwaScrollId.value
+  const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
+
+  if (index !== -1) {
+    // 找到了！命令虚拟列表滚过去
+    nextTick(() => {
+      scrollerRef.value.scrollToItem(index, { align: 'center' })
+
+      // 任务完成，清理现场
+      pendingPwaScrollId.value = null
+      localStorage.removeItem('pwa_return_note_id')
+    })
+  }
+}
 
 const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
@@ -444,6 +472,8 @@ watch(() => props.notes, () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recomputeStickyState()
+        // ✅ 新增：数据变化（加载完成）后，尝试恢复位置
+        tryRestorePwaScroll()
       })
     })
   })
@@ -473,6 +503,16 @@ function handleWindowResize() {
 }
 
 onMounted(() => {
+  // ✅ 新增：组件挂载时，检查是否有需要恢复的 PWA 滚动位置
+  try {
+    const lastId = localStorage.getItem('pwa_return_note_id')
+    if (lastId) {
+      pendingPwaScrollId.value = lastId
+      // 尝试立即滚动（如果数据由于 keep-alive 已经存在）
+      tryRestorePwaScroll()
+    }
+  }
+  catch (e) { console.error(e) }
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
   const root = scrollerRef.value?.$el as HTMLElement | undefined
@@ -788,7 +828,6 @@ async function restoreScrollIfNeeded() {
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
-    <!-- 悬浮月份条：不影响“收起”按钮（z-index 更低，且 pointer-events:none） -->
     <div
       v-if="currentMonthLabel"
       class="sticky-month"
@@ -804,7 +843,6 @@ async function restoreScrollIfNeeded() {
       {{ t('notes.no_notes') }}
     </div>
 
-    <!-- 顶置编辑框（出现在列表顶部） -->
     <div v-show="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
       <NoteEditor
         ref="editTopEditorRef"
@@ -848,7 +886,6 @@ async function restoreScrollIfNeeded() {
           class="note-item-container"
           @resize="updateCollapsePos"
         >
-          <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div v-if="item.type === 'month-header'" class="month-header-outer">
             <div
               :ref="(el) => setHeaderEl(el, item.monthKey)"
@@ -859,7 +896,6 @@ async function restoreScrollIfNeeded() {
             </div>
           </div>
 
-          <!-- 笔记项（已移除内联编辑器） -->
           <div
             v-else
             :ref="(el) => setNoteContainer(el, item.id)"
@@ -875,7 +911,6 @@ async function restoreScrollIfNeeded() {
             </div>
 
             <div class="note-content-wrapper">
-              <!-- 仅渲染卡片；编辑改为触发顶置编辑框 -->
               <NoteItem
                 :note="item"
                 :is-expanded="expandedNote === item.id"

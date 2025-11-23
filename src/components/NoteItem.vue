@@ -69,8 +69,6 @@ const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 const fullContentRef = ref<Element | null>(null)
 
-const rootEl = ref<HTMLElement | null>(null)
-
 const md = new MarkdownIt({
   html: false,
   linkify: true,
@@ -288,32 +286,18 @@ function scheduleOverflowCheck() {
 let observer: ResizeObserver | null = null
 
 onMounted(() => {
+  // 1. 仅创建 Observer 实例，不在这里直接 observe
   observer = new ResizeObserver(() => {
     checkIfNoteOverflows()
   })
 
+  // 2. 初始检查（以防组件加载时就是收起状态）
   if (contentRef.value) {
     observer.observe(contentRef.value)
     scheduleOverflowCheck()
   }
   if (fullContentRef.value)
     observer.observe(fullContentRef.value)
-
-  // ✅ 新增：检查是否是从链接跳转回来的，如果是，滚回这个笔记的位置
-  try {
-    const lastId = localStorage.getItem('pwa_return_note_id')
-    if (lastId && lastId === props.note.id) {
-      // 找到了刚才离开的那个笔记，滚过去！
-      nextTick(() => {
-        rootEl.value?.scrollIntoView({ block: 'center', behavior: 'auto' })
-        // 滚动完后清除标记，免得下次刷新还跳
-        localStorage.removeItem('pwa_return_note_id')
-      })
-    }
-  }
-  catch (e) {
-    // 忽略 localStorage 错误
-  }
 })
 
 onUnmounted(() => {
@@ -482,26 +466,25 @@ function handleDropdownSelect(key: string) {
     }
   }
 }
-
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // ✅ 1. 链接处理逻辑
+  // ✅ 1. 新增：优先处理链接点击
+  // 如果用户点击的是链接 (a 标签)，先保存 ID，然后放行让它跳转
   const link = target.closest('a')
   if (link) {
-    // 关键点：在跳转前，把当前笔记的 ID 存入 localStorage
-    // 这样当 PWA 刷新重启时，我们知道该滚回到哪里
+    // 关键：保存当前笔记 ID，以便 PWA 返回时 NotesList 能读到并滚回这里
     localStorage.setItem('pwa_return_note_id', props.note.id)
 
-    // 确保在新窗口/弹窗打开 (iOS PWA 里的 Sheets)
+    // 确保 target="_blank"，这有助于 iOS PWA 弹出二级浏览器而不是刷新页面
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
 
-    // 放行，让浏览器执行跳转
+    // 直接返回，不阻止冒泡，允许浏览器执行默认的跳转行为
     return
   }
 
-  // ✅ 2. 待办事项 (Checkbox) 逻辑
+  // ✅ 2. 原有的待办事项 (Checkbox) 逻辑
   const listItem = target.closest('li.task-list-item')
 
   // 如果点击的不是一个待办事项行，则直接返回
@@ -521,11 +504,12 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // 只有在点击 "待办事项行的非链接区域" 时，才阻止默认行为
-    // 这样可以防止点击文字时光标乱跳，或者误触 label
+    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
+    // 防止误触 Checkbox
     event.preventDefault()
   }
 }
+
 // ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
 // ✅ 新逻辑：将图片转为 Base64，而不是删除
 // 这样 html2canvas 就能截取到图片了，不会出现跨域空白
@@ -760,7 +744,7 @@ function handleImageLoad() {
 </script>
 
 <template>
-  <div ref="rootEl" class="note-item" @dblclick="emit('edit', note)" v-on="$attrs">
+  <div class="note-item" @dblclick="emit('edit', note)" v-on="$attrs">
     <div
       :data-note-id="note.id"
       class="note-card"
