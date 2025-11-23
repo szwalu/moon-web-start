@@ -192,8 +192,7 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：将 tryRestorePwaScroll 移到 mixedItems 定义之后
-// ✅ 修复：两步走滚动策略，解决长图导致的高度计算偏差
+// ✅ 修复：使用轮询重试策略，应对图片加载导致的高度剧烈变化
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -205,26 +204,50 @@ function tryRestorePwaScroll() {
   const targetId = pendingPwaScrollId.value
   const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
 
-  if (index !== -1) {
-    // 第一步：命令虚拟列表“大概”滚到那个位置
-    // 这一步的目的是为了让虚拟列表把目标 Item 渲染到 DOM 中
+  if (index === -1)
+    return
+
+  // 定义最大重试次数，防止死循环（比如笔记真的被删了）
+  let attempts = 0
+  const maxAttempts = 15 // 尝试约 2-3 秒
+
+  const attemptScroll = () => {
+    // 1. 命令虚拟列表滚到目标索引
+    // 每次调用时，虚拟列表都会根据当前已知的最新高度重新计算位置
     scrollerRef.value.scrollToItem(index, { align: 'center' })
 
-    // 第二步：等待 DOM 渲染完成后，进行“精准修正”
-    // 此时因为已经大概滚到了，目标 DOM 元素应该已经被挂载了
+    // 2. 稍等片刻，让 DOM 渲染或图片撑开
     setTimeout(() => {
       const el = noteContainers.value[targetId]
-      if (el) {
-        // 使用原生 API 强制让该元素居中显示
-        // 这会无视之前虚拟列表计算的高度偏差，直接对齐物理 DOM
-        el.scrollIntoView({ block: 'center', behavior: 'auto' })
-      }
 
-      // 任务完成，清理现场
-      pendingPwaScrollId.value = null
-      localStorage.removeItem('pwa_return_note_id')
-    }, 150) // 延时 150ms，确保虚拟列表完成渲染和布局
+      // 3. 检查目标 DOM 是否存在，且确实在视口可见范围内
+      // 简单判断：只要 el 存在，说明虚拟列表把它渲染出来了
+      if (el) {
+        // 找到目标了！强制物理对齐
+        el.scrollIntoView({ block: 'center', behavior: 'auto' })
+
+        // 完美结束
+        pendingPwaScrollId.value = null
+        localStorage.removeItem('pwa_return_note_id')
+      }
+      else {
+        // 4. 还没找到（可能被上方的图片撑出去了），再试一次
+        attempts++
+        if (attempts < maxAttempts) {
+          // 继续递归尝试
+          requestAnimationFrame(attemptScroll)
+        }
+        else {
+          // 放弃，清理垃圾
+          pendingPwaScrollId.value = null
+          localStorage.removeItem('pwa_return_note_id')
+        }
+      }
+    }, 100) // 每 100ms 检查一次
   }
+
+  // 开始尝试
+  attemptScroll()
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
