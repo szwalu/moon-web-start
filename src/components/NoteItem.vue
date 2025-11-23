@@ -69,6 +69,8 @@ const noteOverflowStatus = ref(false)
 const contentRef = ref<Element | null>(null)
 const fullContentRef = ref<Element | null>(null)
 
+const rootEl = ref<HTMLElement | null>(null)
+
 const md = new MarkdownIt({
   html: false,
   linkify: true,
@@ -286,18 +288,32 @@ function scheduleOverflowCheck() {
 let observer: ResizeObserver | null = null
 
 onMounted(() => {
-  // 1. 仅创建 Observer 实例，不在这里直接 observe
   observer = new ResizeObserver(() => {
     checkIfNoteOverflows()
   })
 
-  // 2. 初始检查（以防组件加载时就是收起状态）
   if (contentRef.value) {
     observer.observe(contentRef.value)
     scheduleOverflowCheck()
   }
   if (fullContentRef.value)
     observer.observe(fullContentRef.value)
+
+  // ✅ 新增：检查是否是从链接跳转回来的，如果是，滚回这个笔记的位置
+  try {
+    const lastId = localStorage.getItem('pwa_return_note_id')
+    if (lastId && lastId === props.note.id) {
+      // 找到了刚才离开的那个笔记，滚过去！
+      nextTick(() => {
+        rootEl.value?.scrollIntoView({ block: 'center', behavior: 'auto' })
+        // 滚动完后清除标记，免得下次刷新还跳
+        localStorage.removeItem('pwa_return_note_id')
+      })
+    }
+  }
+  catch (e) {
+    // 忽略 localStorage 错误
+  }
 })
 
 onUnmounted(() => {
@@ -466,22 +482,22 @@ function handleDropdownSelect(key: string) {
     }
   }
 }
+
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // ✅ 1. 链接处理逻辑：这里是关键
-  // 我们不再用 JS 调用 window.open（会导致页面刷新），
-  // 而是直接 "return"，彻底放行。
-  // 让 <a target="_blank"> 原生行为生效，这在 iOS PWA 里通常会打开一个
-  // "不影响主页状态" 的二级页面，关闭后能完美回到原位。
+  // ✅ 1. 链接处理逻辑
   const link = target.closest('a')
   if (link) {
-    // 双重保险：确保它有 target="_blank"
+    // 关键点：在跳转前，把当前笔记的 ID 存入 localStorage
+    // 这样当 PWA 刷新重启时，我们知道该滚回到哪里
+    localStorage.setItem('pwa_return_note_id', props.note.id)
+
+    // 确保在新窗口/弹窗打开 (iOS PWA 里的 Sheets)
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
 
-    // 直接返回，不阻止冒泡，不阻止默认行为
-    // 让浏览器自己处理跳转
+    // 放行，让浏览器执行跳转
     return
   }
 
@@ -744,7 +760,7 @@ function handleImageLoad() {
 </script>
 
 <template>
-  <div class="note-item" @dblclick="emit('edit', note)" v-on="$attrs">
+  <div ref="rootEl" class="note-item" @dblclick="emit('edit', note)" v-on="$attrs">
     <div
       :data-note-id="note.id"
       class="note-card"
