@@ -715,12 +715,62 @@ async function stableSetScrollTop(el: HTMLElement, target: number, tries = 5, ep
   })
 }
 
+/**
+ * 链接返回后，对齐指定 noteId 的卡片到容器顶部附近
+ * - 多帧循环，适应上方缩略图高度变化
+ */
+function alignNoteAfterLink(noteId: string, maxFrames = 20) {
+  let frame = 0
+  const marginTop = 12 // 希望卡片顶部离容器顶部大约 12px
+
+  const step = () => {
+    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+    const card = noteContainers.value[noteId] as HTMLElement | undefined
+    if (!scroller || !card || !card.isConnected) {
+      if (frame < maxFrames) {
+        frame++
+        requestAnimationFrame(step)
+      }
+      return
+    }
+
+    // 防止虚拟列表复用 DOM，确认 data-note-id 还是这条
+    const dataId = card.getAttribute('data-note-id')
+    if (dataId !== String(noteId)) {
+      if (frame < maxFrames) {
+        frame++
+        requestAnimationFrame(step)
+      }
+      return
+    }
+
+    const scRect = scroller.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const delta = (cardRect.top - scRect.top) - marginTop
+
+    // 差距很小就认为稳定了
+    if (Math.abs(delta) <= 0.5 || frame >= maxFrames) {
+      recomputeStickyState()
+      updateCollapsePos()
+      return
+    }
+
+    // 逐步修正 scrollTop，使卡片保持在目标位置附近
+    scroller.scrollTop += delta
+    frame++
+    requestAnimationFrame(step)
+  }
+
+  requestAnimationFrame(step)
+}
+
 watch(expandedNote, () => {
   nextTick(() => {
     updateCollapsePos()
   })
 })
 
+// ===== 监听 noteId 映射 + scroller 准备好时，恢复链接锚点 =====
 watch(
   [noteIdToMixedIndex, scrollerRef],
   async () => {
@@ -728,8 +778,7 @@ watch(
       return
 
     const scrollerVm = scrollerRef.value
-    const scrollerEl = scrollerVm?.$el as HTMLElement | undefined
-    if (!scrollerEl)
+    if (!scrollerVm)
       return
 
     const { noteId } = pendingLinkAnchor.value
@@ -748,37 +797,15 @@ watch(
       }
     }
 
-    // 等一帧让虚拟列表首屏渲染完
+    // 等虚拟列表首屏渲染
     await nextTick()
     requestAnimationFrame(() => {
-      // 先粗略滚到这一项附近（用虚拟列表自己的定位）
-      scrollerVm.scrollToItem(idx, { align: 'start', behavior: 'auto' })
+      // 先滚到目标索引附近，让这条笔记进 DOM
+      scrollerVm.scrollToItem(idx, { align: 'nearest', behavior: 'auto' })
 
-      // 再用真实 DOM 精修一次，让目标卡片距顶部留一点 margin
-      requestAnimationFrame(() => {
-        const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-        const card = noteContainers.value[noteId]
-        if (!scroller || !card || !card.isConnected)
-          return
-
-        const scRect = scroller.getBoundingClientRect()
-        const cardRect = card.getBoundingClientRect()
-        const marginTop = 12 // 目标：卡片离容器顶部大约 12px
-
-        const delta = (cardRect.top - scRect.top) - marginTop
-        if (Math.abs(delta) > 1) {
-          const target = scroller.scrollTop + delta
-          stableSetScrollTop(scroller, target, 6, 0.5).then(() => {
-            recomputeStickyState()
-            updateCollapsePos()
-          })
-        }
-        else {
-          // 差距很小就不用动了
-          recomputeStickyState()
-          updateCollapsePos()
-        }
-      })
+      // 再通过多帧 DOM 对齐，强制这条笔记 stay 在视口顶部附近，
+      // 哪怕上方缩略图图片在后面才加载完也会持续纠正。
+      alignNoteAfterLink(noteId)
     })
   },
   { immediate: true },
