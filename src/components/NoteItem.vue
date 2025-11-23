@@ -418,20 +418,59 @@ function handleNoteContentClick(event: MouseEvent) {
 }
 
 // ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
+// ✅ 新逻辑：将图片转为 Base64，而不是删除
+// 这样 html2canvas 就能截取到图片了，不会出现跨域空白
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
 
-  // 只处理 note-images 桶里的图片
-  const supabaseImgPattern = /^https:\/\/[a-z0-9.-]+\.supabase\.co\/storage\/v1\/object\/public\/note-images\//i
+  // 创建一个 Promise 数组，并发处理所有图片
+  const promises = imgs.map(async (img) => {
+    const src = img.getAttribute('src')
+    if (!src)
+      return
 
-  for (const img of imgs) {
-    const src = img.getAttribute('src') || ''
-    if (!supabaseImgPattern.test(src))
-      continue
+    // 1. 如果已经是 base64 (data:image...)，不用处理
+    if (src.startsWith('data:'))
+      return
 
-    // 直接从分享卡片 DOM中移除该图片节点
-    img.remove()
-  }
+    try {
+      // 2. 请求图片数据
+      // 注意：这里需要 fetch 能够成功，如果 Supabase 桶是私有的，
+      // 这里的 src 需要是带有 token 的签名 URL (Signed URL)
+      // 如果是公开桶 (Public Bucket)，直接 fetch 即可
+      const response = await fetch(src, {
+        mode: 'cors', // 尝试开启跨域请求
+        cache: 'no-cache',
+      })
+
+      if (!response.ok)
+        throw new Error('Network response was not ok')
+
+      const blob = await response.blob()
+
+      // 3. 转成 Base64
+      const base64Url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+
+      // 4. 替换 DOM 里的 src，这样 html2canvas 截图时就是本地数据了
+      img.src = base64Url
+
+      // 显式设置 crossOrigin 为 null，防止 html2canvas 二次检查跨域
+      img.removeAttribute('crossorigin')
+    }
+    catch (err) {
+      console.warn('图片转 Base64 失败，可能是跨域限制或链接失效:', src, err)
+      // 如果转换失败，为了美观，可以选择保留原图试试，或者移除
+      // img.remove() //如果不想要破图，可以取消注释这行
+    }
+  })
+
+  // 等待所有图片都转换完成
+  await Promise.all(promises)
 }
 
 async function handleDateUpdate(newDate: Date) {
@@ -466,34 +505,34 @@ async function handleShare() {
     showShareCard.value = true
 
     await nextTick()
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        resolve()
-      })
-    })
+    // 等待 DOM 挂载
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
 
-    // ✅ 截图前先把分享卡片里的 Supabase 图片转成 dataURL
+    // ✅ 第一步：先进行图片转 Base64 (这一步会 await 直到所有图片下载并转换完毕)
     await convertSupabaseImagesToDataURL(el as HTMLElement)
+
+    // ✅ 第二步：稍微多等一下，确保 Base64 图片在 DOM 中渲染出来了
+    // 有时候转换完 src 变了，但浏览器绘制还需要一帧
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     const scale = Math.min(window.devicePixelRatio || 1, 2)
 
+    // ✅ 第三步：截图
+    // useCORS: true 依然保留，作为双重保险
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale,
       useCORS: true,
-      allowTaint: false,
+      allowTaint: true, // 允许一定的“污染”，因为我们已经转 Base64 了
+      logging: false, // 关闭调试日志，看着清爽点
     })
 
-    // 保存 canvas，后面导出 JPEG 用
     shareCanvasRef.value = canvas
-
-    // 预览 & 下载都用 JPEG，质量稍微压缩一点
     shareImageUrl.value = canvas.toDataURL('image/jpeg', 0.8)
-
     sharePreviewVisible.value = true
   }
   catch (err: any) {
