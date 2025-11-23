@@ -62,20 +62,17 @@ const editTopEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const noteContainers = ref<Record<string, HTMLElement>>({})
 const editReturnScrollTop = ref<number | null>(null)
 
-// ✅ 新增：用于存储 PWA 返回时需要滚动的目标笔记 ID
-const pendingPwaScrollId = ref<string | null>(null)
+const LINK_ANCHOR_KEY = 'note_return_anchor_v1'
+const pendingLinkAnchor = ref<{ noteId: string; scrollTop: number } | null>(null)
 
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
-  if (el) {
-    const $el = el as HTMLElement
-    $el.setAttribute('data-note-id', id)
-    noteContainers.value[id] = $el
-  }
-  else {
-    // 关键：当 el 为 null 时，必须从字典中移除
-    delete noteContainers.value[id]
-  }
+  if (!el)
+    return
+
+  const $el = el as HTMLElement
+  $el.setAttribute('data-note-id', id)
+  noteContainers.value[id] = $el
 }
 
 // ==============================
@@ -194,61 +191,6 @@ const noteById = computed<Record<string, any>>(() => {
 
   return m
 })
-
-// ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
-function tryRestorePwaScroll() {
-  if (!pendingPwaScrollId.value)
-    return
-  if (!scrollerRef.value)
-    return
-  if (mixedItems.value.length === 0)
-    return
-
-  const targetId = pendingPwaScrollId.value
-  const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
-
-  if (index === -1)
-    return
-
-  const startTime = performance.now()
-  const DURATION = 2000 // 锁定 2 秒
-
-  const lockLoop = () => {
-    // 停止条件
-    if (!pendingPwaScrollId.value)
-      return
-    if (performance.now() - startTime > DURATION) {
-      pendingPwaScrollId.value = null
-      localStorage.removeItem('pwa_return_note_id')
-      return
-    }
-
-    // 核心：使用虚拟列表 API 进行定位
-    // 这不会破坏虚拟列表内部状态，也不会引发空白块
-    if (scrollerRef.value)
-      scrollerRef.value.scrollToItem(index, { align: 'center' })
-
-    requestAnimationFrame(lockLoop)
-  }
-
-  lockLoop()
-}
-
-// ✅ 新增：统一处理 Resize 事件
-// 既负责更新收起按钮位置，又负责在 PWA 恢复期修正滚动位置
-function handleItemResize() {
-  // 1. 原有逻辑：更新收起按钮
-  updateCollapsePos()
-
-  // 2. 新增逻辑：如果正在恢复滚动位置，且发生了高度变化（如长图加载）
-  // 立即触发一次对齐，不要等下一帧
-  if (pendingPwaScrollId.value && scrollerRef.value) {
-    const targetId = pendingPwaScrollId.value
-    const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
-    if (index !== -1)
-      scrollerRef.value.scrollToItem(index, { align: 'center' })
-  }
-}
 
 const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
@@ -505,8 +447,6 @@ watch(() => props.notes, () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recomputeStickyState()
-        // ✅ 新增：数据变化（加载完成）后，尝试恢复位置
-        tryRestorePwaScroll()
       })
     })
   })
@@ -536,16 +476,6 @@ function handleWindowResize() {
 }
 
 onMounted(() => {
-  // ✅ 新增：组件挂载时，检查是否有需要恢复的 PWA 滚动位置
-  try {
-    const lastId = localStorage.getItem('pwa_return_note_id')
-    if (lastId) {
-      pendingPwaScrollId.value = lastId
-      // 尝试立即滚动（如果数据由于 keep-alive 已经存在）
-      tryRestorePwaScroll()
-    }
-  }
-  catch (e) { console.error(e) }
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
   const root = scrollerRef.value?.$el as HTMLElement | undefined
@@ -560,7 +490,26 @@ onMounted(() => {
       recomputeStickyState()
     })
   })
+  // ===== 新增：从 sessionStorage 读取“链接返回锚点” =====
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage.getItem(LINK_ANCHOR_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { noteId?: string; scrollTop?: number }
+        if (parsed && parsed.noteId) {
+          pendingLinkAnchor.value = {
+            noteId: parsed.noteId,
+            scrollTop: typeof parsed.scrollTop === 'number' ? parsed.scrollTop : 0,
+          }
+        }
+      }
+    }
+    catch {
+      // ignore
+    }
+  }
 })
+
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
   handleScroll.cancel()
@@ -772,6 +721,50 @@ watch(expandedNote, () => {
   })
 })
 
+watch(
+  [noteIdToMixedIndex, scrollerRef],
+  async () => {
+    if (!pendingLinkAnchor.value)
+      return
+
+    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+    if (!scroller)
+      return
+
+    const { noteId, scrollTop } = pendingLinkAnchor.value
+    const idx = noteIdToMixedIndex.value[noteId]
+    if (idx === undefined)
+      return
+
+    // 只恢复一次
+    pendingLinkAnchor.value = null
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.removeItem(LINK_ANCHOR_KEY)
+      }
+      catch {
+        // ignore
+      }
+    }
+
+    // 先粗略恢复旧 scrollTop，避免差太远
+    await nextTick()
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    const safeTop = Math.max(0, Math.min(scrollTop, maxScrollTop))
+    scroller.scrollTop = safeTop
+
+    // 再用虚拟列表自身的 scrollToItem 精准对齐该条笔记
+    requestAnimationFrame(() => {
+      scrollerRef.value?.scrollToItem(idx, { align: 'nearest', behavior: 'auto' })
+      requestAnimationFrame(() => {
+        recomputeStickyState()
+        updateCollapsePos()
+      })
+    })
+  },
+  { immediate: true },
+)
+
 function updateCollapsePos() {
   if (isUserScrolling.value) {
     collapseVisible.value = false
@@ -838,6 +831,28 @@ async function focusAndEditNote(noteId: string) {
   }
 }
 
+function handleNoteLinkClick(payload: { noteId: string; href: string }) {
+  if (typeof window === 'undefined')
+    return
+
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  const scrollTop = scroller?.scrollTop ?? 0
+
+  const data = {
+    noteId: payload.noteId,
+    scrollTop,
+    href: payload.href,
+    ts: Date.now(),
+  }
+
+  try {
+    window.sessionStorage.setItem(LINK_ANCHOR_KEY, JSON.stringify(data))
+  }
+  catch {
+    // 忽略存储失败
+  }
+}
+
 function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
@@ -861,6 +876,7 @@ async function restoreScrollIfNeeded() {
 
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
+    <!-- 悬浮月份条：不影响“收起”按钮（z-index 更低，且 pointer-events:none） -->
     <div
       v-if="currentMonthLabel"
       class="sticky-month"
@@ -876,6 +892,7 @@ async function restoreScrollIfNeeded() {
       {{ t('notes.no_notes') }}
     </div>
 
+    <!-- 顶置编辑框（出现在列表顶部） -->
     <div v-show="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
       <NoteEditor
         ref="editTopEditorRef"
@@ -917,8 +934,9 @@ async function restoreScrollIfNeeded() {
             ? [item.content, expandedNote === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="handleItemResize"
+          @resize="updateCollapsePos"
         >
+          <!-- 月份头部条幅（作为虚拟项参与虚拟化） -->
           <div v-if="item.type === 'month-header'" class="month-header-outer">
             <div
               :ref="(el) => setHeaderEl(el, item.monthKey)"
@@ -929,6 +947,7 @@ async function restoreScrollIfNeeded() {
             </div>
           </div>
 
+          <!-- 笔记项（已移除内联编辑器） -->
           <div
             v-else
             :ref="(el) => setNoteContainer(el, item.id)"
@@ -944,6 +963,7 @@ async function restoreScrollIfNeeded() {
             </div>
 
             <div class="note-content-wrapper">
+              <!-- 仅渲染卡片；编辑改为触发顶置编辑框 -->
               <NoteItem
                 :note="item"
                 :is-expanded="expandedNote === item.id"
@@ -956,6 +976,7 @@ async function restoreScrollIfNeeded() {
                 @delete="(id) => emit('deleteNote', id)"
                 @task-toggle="(payload) => emit('taskToggle', payload)"
                 @date-updated="() => emit('dateUpdated')"
+                @link-click="handleNoteLinkClick"
               />
             </div>
           </div>
@@ -986,7 +1007,6 @@ async function restoreScrollIfNeeded() {
 </template>
 
 <style scoped>
-/* ... 样式部分保持不变 ... */
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
