@@ -195,117 +195,59 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ PWA 返回：先滚到大致位置，再用真实 DOM 做精细对齐
+// ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
 function tryRestorePwaScroll() {
+  if (!pendingPwaScrollId.value)
+    return
+  if (!scrollerRef.value)
+    return
+  if (mixedItems.value.length === 0)
+    return
+
   const targetId = pendingPwaScrollId.value
-  if (!targetId)
+  const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
+
+  if (index === -1)
     return
 
-  const scroller = scrollerRef.value
-  if (!scroller)
-    return
+  const startTime = performance.now()
+  const DURATION = 2000 // 锁定 2 秒
 
-  if (!mixedItems.value.length)
-    return
-
-  const index = mixedItems.value.findIndex(
-    item => item.type === 'note' && item.id === targetId,
-  )
-  if (index === -1) {
-    // 笔记已经不在列表里了，直接清理
-    pendingPwaScrollId.value = null
-    try {
-      localStorage.removeItem('pwa_return_note_id')
-    }
-    catch {
-      // ignore
-    }
-    return
-  }
-
-  // 第一步：用虚拟列表滚到大致位置（不会循环，只执行一次）
-  scroller.scrollToItem(index, { align: 'center' })
-
-  // 第二步：下一帧开始，用真实 DOM 对齐，防止被上方长缩略图“拉走”
-  requestAnimationFrame(() => {
-    alignNoteAfterReturn(targetId)
-  })
-}
-
-// ✅ 用真实 DOM 把目标笔记对齐到视口内固定位置，避免被上方长图片影响
-function alignNoteAfterReturn(noteId: string, maxFrames = 20) {
-  const scrollerEl = scrollerRef.value?.$el as HTMLElement | undefined
-  if (!scrollerEl)
-    return
-
-  let frame = 0
-
-  const step = () => {
-    // 如果已经不需要恢复了，直接退出
-    if (!pendingPwaScrollId.value || pendingPwaScrollId.value !== noteId)
+  const lockLoop = () => {
+    // 停止条件
+    if (!pendingPwaScrollId.value)
       return
-
-    const cardEl = noteContainers.value[noteId] as HTMLElement | undefined
-    if (!cardEl || !cardEl.isConnected) {
-      // 目标卡片还没挂上 DOM，等几帧
-      if (frame < maxFrames) {
-        frame += 1
-        requestAnimationFrame(step)
-      }
-      return
-    }
-
-    // 防止虚拟列表复用错误节点
-    const dataId = cardEl.getAttribute('data-note-id')
-    if (dataId !== noteId) {
-      if (frame < maxFrames) {
-        frame += 1
-        requestAnimationFrame(step)
-      }
-      return
-    }
-
-    const scRect = scrollerEl.getBoundingClientRect()
-    const cardRect = cardEl.getBoundingClientRect()
-
-    // 目标：卡片顶部距离滚动容器顶部 ≈ 25% 容器高度
-    const desiredOffset = scRect.height * 0.25
-    const currentOffset = cardRect.top - scRect.top
-    const delta = currentOffset - desiredOffset
-
-    // 足够接近 或者 帧数用完，认为稳定，清理 pending 状态
-    if (Math.abs(delta) < 1 || frame >= maxFrames) {
+    if (performance.now() - startTime > DURATION) {
       pendingPwaScrollId.value = null
-      try {
-        localStorage.removeItem('pwa_return_note_id')
-      }
-      catch {
-        // ignore
-      }
+      localStorage.removeItem('pwa_return_note_id')
       return
     }
 
-    const targetScrollTop = scrollerEl.scrollTop + delta
-    scrollerEl.scrollTop = Math.max(
-      0,
-      Math.min(targetScrollTop, scrollerEl.scrollHeight - scrollerEl.clientHeight),
-    )
+    // 核心：使用虚拟列表 API 进行定位
+    // 这不会破坏虚拟列表内部状态，也不会引发空白块
+    if (scrollerRef.value)
+      scrollerRef.value.scrollToItem(index, { align: 'center' })
 
-    frame += 1
-    requestAnimationFrame(step)
+    requestAnimationFrame(lockLoop)
   }
 
-  requestAnimationFrame(step)
+  lockLoop()
 }
 
+// ✅ 新增：统一处理 Resize 事件
+// 既负责更新收起按钮位置，又负责在 PWA 恢复期修正滚动位置
 function handleItemResize() {
-  // 原有逻辑：更新收起按钮
+  // 1. 原有逻辑：更新收起按钮
   updateCollapsePos()
 
-  // 如果正在做 PWA 返回定位，任何高度变化（尤其是上方长缩略图加载）
-  // 都用真实 DOM 再微调一下对齐
-  if (pendingPwaScrollId.value)
-    alignNoteAfterReturn(pendingPwaScrollId.value, 8)
+  // 2. 新增逻辑：如果正在恢复滚动位置，且发生了高度变化（如长图加载）
+  // 立即触发一次对齐，不要等下一帧
+  if (pendingPwaScrollId.value && scrollerRef.value) {
+    const targetId = pendingPwaScrollId.value
+    const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
+    if (index !== -1)
+      scrollerRef.value.scrollToItem(index, { align: 'center' })
+  }
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
