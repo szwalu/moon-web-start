@@ -196,9 +196,10 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：狂暴锁定模式 (Aggressive Locking)
-// 混合使用 scrollToItem (逻辑定位) 和 scrollIntoView (物理定位)
-// 使用 requestAnimationFrame 高频修正，以对抗图片加载造成的布局抖动
+// ✅ 修复：基于虚拟列表 API 的持续锁定 (Virtual Lock)
+// 放弃物理 DOM 操作(scrollIntoView)，改回使用虚拟列表的 scrollToItem。
+// 通过高频调用 scrollToItem，让虚拟列表负责处理高度变化和重定位，
+// 这样既能应对上方长图加载导致的位移，又不会因为 DOM 销毁而失效。
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -214,42 +215,32 @@ function tryRestorePwaScroll() {
     return
 
   const startTime = performance.now()
-  const DURATION = 2000 // 锁定持续 2 秒，足够覆盖大部分图片加载时间
+  // 持续锁定 2 秒，确保覆盖绝大多数图片的加载时间
+  const DURATION = 2000
 
-  const lockLoop = () => {
-    // 如果 ID 被清空（比如用户手动取消了），停止循环
+  const virtualLockLoop = () => {
+    // 1. 停止条件：ID 被清空 或 超时
     if (!pendingPwaScrollId.value)
       return
-
-    // 超时检查
     if (performance.now() - startTime > DURATION) {
       pendingPwaScrollId.value = null
       localStorage.removeItem('pwa_return_note_id')
       return
     }
 
-    const el = noteContainers.value[targetId]
-
-    if (el && el.isConnected) {
-      // 这种情况：元素在 DOM 里，但可能被上方的长图挤出了可视区域
-      // 策略：使用原生 API 强制物理对齐，瞬间拉回中间
-      // behavior: 'auto' 是关键，必须是瞬间跳变，不能用 smooth，否则会跟不上布局变化
-      el.scrollIntoView({ block: 'center', behavior: 'auto' })
-    }
-    else {
-      // 这种情况：元素被挤得太远，虚拟列表把它回收销毁了
-      // 策略：命令虚拟列表重新把它渲染出来
+    // 2. 核心：每一帧都命令虚拟列表“对齐”该索引
+    // 如果上方有图片加载撑开了高度，虚拟列表会在这一帧自动计算出新的 scrollTop
+    // 从而实现“视觉位置不变”的效果
+    if (scrollerRef.value)
       scrollerRef.value.scrollToItem(index, { align: 'center' })
-    }
 
-    // 下一帧继续监控，直到 2 秒结束
-    requestAnimationFrame(lockLoop)
+    // 3. 下一帧继续，死死咬住目标
+    requestAnimationFrame(virtualLockLoop)
   }
 
   // 启动循环
-  lockLoop()
+  virtualLockLoop()
 }
-
 const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
 let headersIO: IntersectionObserver | null = null
