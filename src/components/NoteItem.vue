@@ -106,6 +106,53 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   // 用 <a download> 包裹，这样左键会触发下载；右键依然有“另存为”
   return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
 }
+
+// ... 上面是 md.renderer.rules.image 的代码 ...
+
+// ✅ 新增：音频文件渲染规则
+// 如果链接是以 mp3, wav, m4a, ogg, aac 结尾，渲染为 <audio> 播放器
+// 1. 定义音频扩展名检测
+const isAudio = (url: string) => /\.(mp3|wav|m4a|ogg|aac|flac|webm)(\?|$)/i.test(url)
+
+// 2. 备份原有的 link 渲染规则 (为了兼容 linkAttrs 插件和其他普通链接)
+const defaultLinkOpen = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+  return self.renderToken(tokens, idx, options)
+}
+const defaultLinkClose = md.renderer.rules.link_close || function (tokens, idx, options, env, self) {
+  return self.renderToken(tokens, idx, options)
+}
+
+// 3. 拦截 link_open (链接开始标签)
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const href = tokens[idx].attrGet('href') || ''
+
+  if (isAudio(href)) {
+    // 标记当前处于音频链接中，传给 link_close 使用
+    env.inAudioLink = true
+
+    // 渲染 <audio> 标签
+    // preload="metadata": 预加载元数据(时长等)，但不下载整个文件，节省流量
+    // controls: 显示播放/暂停/进度条
+    // onclick: 阻止冒泡，防止点击播放器时触发展开/收起笔记
+    return `<audio controls src="${href}" preload="metadata" onclick="event.stopPropagation()" style="width: 100%; max-width: 360px; height: 32px; vertical-align: middle; margin: 4px 0; border-radius: 9999px;"></audio><span style="display:none">`
+  }
+
+  return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
+// 4. 拦截 link_close (链接结束标签)
+md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
+  if (env.inAudioLink) {
+    env.inAudioLink = false
+    // 闭合 audio 标签
+    // 注意：我们在 open 里加了一个 <span style="display:none"> 把原本的链接文字(文件名)藏起来
+    // 这样界面上就只剩下一个纯净的播放器
+    return '</span>'
+  }
+
+  return defaultLinkClose(tokens, idx, options, env, self)
+}
+
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
