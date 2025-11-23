@@ -727,11 +727,12 @@ watch(
     if (!pendingLinkAnchor.value)
       return
 
-    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-    if (!scroller)
+    const scrollerVm = scrollerRef.value
+    const scrollerEl = scrollerVm?.$el as HTMLElement | undefined
+    if (!scrollerEl)
       return
 
-    const { noteId, scrollTop } = pendingLinkAnchor.value
+    const { noteId } = pendingLinkAnchor.value
     const idx = noteIdToMixedIndex.value[noteId]
     if (idx === undefined)
       return
@@ -747,24 +748,41 @@ watch(
       }
     }
 
-    // 先粗略恢复旧 scrollTop，避免差太远
+    // 等一帧让虚拟列表首屏渲染完
     await nextTick()
-    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-    const safeTop = Math.max(0, Math.min(scrollTop, maxScrollTop))
-    scroller.scrollTop = safeTop
-
-    // 再用虚拟列表自身的 scrollToItem 精准对齐该条笔记
     requestAnimationFrame(() => {
-      scrollerRef.value?.scrollToItem(idx, { align: 'nearest', behavior: 'auto' })
+      // 先粗略滚到这一项附近（用虚拟列表自己的定位）
+      scrollerVm.scrollToItem(idx, { align: 'start', behavior: 'auto' })
+
+      // 再用真实 DOM 精修一次，让目标卡片距顶部留一点 margin
       requestAnimationFrame(() => {
-        recomputeStickyState()
-        updateCollapsePos()
+        const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+        const card = noteContainers.value[noteId]
+        if (!scroller || !card || !card.isConnected)
+          return
+
+        const scRect = scroller.getBoundingClientRect()
+        const cardRect = card.getBoundingClientRect()
+        const marginTop = 12 // 目标：卡片离容器顶部大约 12px
+
+        const delta = (cardRect.top - scRect.top) - marginTop
+        if (Math.abs(delta) > 1) {
+          const target = scroller.scrollTop + delta
+          stableSetScrollTop(scroller, target, 6, 0.5).then(() => {
+            recomputeStickyState()
+            updateCollapsePos()
+          })
+        }
+        else {
+          // 差距很小就不用动了
+          recomputeStickyState()
+          updateCollapsePos()
+        }
       })
     })
   },
   { immediate: true },
 )
-
 function updateCollapsePos() {
   if (isUserScrolling.value) {
     collapseVisible.value = false
