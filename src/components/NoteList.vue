@@ -66,13 +66,17 @@ const editReturnScrollTop = ref<number | null>(null)
 const pendingPwaScrollId = ref<string | null>(null)
 
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
+// ✅ 修复：正确处理 DOM 销毁，防止持有死引用的 DOM
 function setNoteContainer(el: Element | null, id: string) {
-  if (!el)
-    return
-
-  const $el = el as HTMLElement
-  $el.setAttribute('data-note-id', id)
-  noteContainers.value[id] = $el
+  if (el) {
+    const $el = el as HTMLElement
+    $el.setAttribute('data-note-id', id)
+    noteContainers.value[id] = $el
+  }
+  else {
+    // 关键：当 el 为 null 时，必须从字典中移除
+    delete noteContainers.value[id]
+  }
 }
 
 // ==============================
@@ -192,7 +196,7 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：使用轮询重试策略，应对图片加载导致的高度剧烈变化
+/// ✅ 修复：增加了 isConnected 检查，确保滚动的是页面上真实存在的元素
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -207,46 +211,41 @@ function tryRestorePwaScroll() {
   if (index === -1)
     return
 
-  // 定义最大重试次数，防止死循环（比如笔记真的被删了）
   let attempts = 0
-  const maxAttempts = 15 // 尝试约 2-3 秒
+  // 增加重试次数和间隔，给长图加载多一点时间
+  const maxAttempts = 20
 
   const attemptScroll = () => {
-    // 1. 命令虚拟列表滚到目标索引
-    // 每次调用时，虚拟列表都会根据当前已知的最新高度重新计算位置
+    // 1. 持续命令虚拟列表滚到目标位置 (应对高度动态变化)
     scrollerRef.value.scrollToItem(index, { align: 'center' })
 
-    // 2. 稍等片刻，让 DOM 渲染或图片撑开
     setTimeout(() => {
       const el = noteContainers.value[targetId]
 
-      // 3. 检查目标 DOM 是否存在，且确实在视口可见范围内
-      // 简单判断：只要 el 存在，说明虚拟列表把它渲染出来了
-      if (el) {
-        // 找到目标了！强制物理对齐
+      // 2. 关键检查：元素必须存在，且必须连接在文档中 (isConnected)
+      if (el && el.isConnected) {
+        // 3. 强制物理滚动
         el.scrollIntoView({ block: 'center', behavior: 'auto' })
 
-        // 完美结束
+        // 成功后清理
         pendingPwaScrollId.value = null
         localStorage.removeItem('pwa_return_note_id')
       }
       else {
-        // 4. 还没找到（可能被上方的图片撑出去了），再试一次
+        // 4. 没找到，或者元素是僵尸元素，继续重试
         attempts++
         if (attempts < maxAttempts) {
-          // 继续递归尝试
           requestAnimationFrame(attemptScroll)
         }
         else {
-          // 放弃，清理垃圾
+          // 超时放弃
           pendingPwaScrollId.value = null
           localStorage.removeItem('pwa_return_note_id')
         }
       }
-    }, 100) // 每 100ms 检查一次
+    }, 100)
   }
 
-  // 开始尝试
   attemptScroll()
 }
 
