@@ -552,11 +552,22 @@ async function downloadShareImage() {
 
   const appName = t('notes.notes', '云笔记')
 
-  // 直接下载到本机（macOS / Windows / Android）
+  // ✅ 新增：根据笔记创建时间生成文件名
+  // 格式示例：云笔记_2025-11-22_1430.jpg
+  const d = new Date(props.note.created_at)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hour = String(d.getHours()).padStart(2, '0') // 时
+  const minute = String(d.getMinutes()).padStart(2, '0') // 分
+
+  // 组合文件名：日期 + 时间 (HHmm)
+  // 加上时间是为了区分当天的多篇笔记，避免文件名重复
+  const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
+
   const link = document.createElement('a')
   link.href = shareImageUrl.value
-  // 用本地化后的应用名
-  link.download = `${appName}-${props.note.id || 'share'}.jpg`
+  link.download = fileName // ✅ 使用新文件名
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -575,31 +586,40 @@ async function systemShareImage() {
 
   try {
     const appName = t('notes.notes', '云笔记')
+
+    // ✅ 同样的逻辑生成文件名
+    const d = new Date(props.note.created_at)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const hour = String(d.getHours()).padStart(2, '0')
+    const minute = String(d.getMinutes()).padStart(2, '0')
+
+    // 格式：云笔记_2025-11-22_1430.jpg
+    const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
+
     let blob: Blob
 
     if (shareCanvasRef.value) {
-      // ✅ 有原始 canvas：导出 JPEG，微信更友好
       blob = await new Promise<Blob>((resolve, reject) => {
         shareCanvasRef.value!.toBlob(
           (b) => {
             if (b)
               resolve(b)
-            else
-              reject(new Error('canvas toBlob failed'))
+            else reject(new Error('canvas toBlob failed'))
           },
           'image/jpeg',
-          0.8, // 品质 0~1
+          0.8,
         )
       })
     }
     else {
-      // 兜底：没有 canvas 时，从 PNG dataURL 里取（极少见）
       const response = await fetch(shareImageUrl.value)
       blob = await response.blob()
     }
 
-    // 文件改为 JPEG
-    const file = new File([blob], `${appName}.jpg`, { type: 'image/jpeg' })
+    // ✅ 在这里使用 fileName
+    const file = new File([blob], fileName, { type: 'image/jpeg' })
     const files = [file]
 
     const shareData: any = {
@@ -607,13 +627,10 @@ async function systemShareImage() {
       text: '',
     }
 
-    if (!navAny.canShare || navAny.canShare({ files })) {
+    if (!navAny.canShare || navAny.canShare({ files }))
       shareData.files = files
-    }
-    else {
-      // 某些老浏览器不支持文件分享时退回纯文本
+    else
       shareData.text = props.note?.content?.slice(0, 100) || ''
-    }
 
     await navAny.share(shareData)
   }
