@@ -196,9 +196,9 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：放弃物理 DOM 滚动，改用“多次指令”策略
-// 既然 DOM 高度在变，我们就多次命令虚拟列表滚到同一个 index。
-// 虚拟列表会自动处理高度变化后的重新定位。
+// ✅ 修复：狂暴锁定模式 (Aggressive Locking)
+// 混合使用 scrollToItem (逻辑定位) 和 scrollIntoView (物理定位)
+// 使用 requestAnimationFrame 高频修正，以对抗图片加载造成的布局抖动
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -213,32 +213,41 @@ function tryRestorePwaScroll() {
   if (index === -1)
     return
 
-  // 策略：在 2 秒内，连续下达 5 次“滚到这里”的指令
-  // 第一次：立刻执行（可能位置不准，因为图没出）
-  // 后续几次：随着图片加载，高度变化，虚拟列表会根据新高度自动修正滚动位置
-  const attempts = [0, 300, 600, 1000, 1500]
+  const startTime = performance.now()
+  const DURATION = 2000 // 锁定持续 2 秒，足够覆盖大部分图片加载时间
 
-  attempts.forEach((delay, i) => {
-    setTimeout(() => {
-      // 检查 ref 是否还在 (防止组件已销毁)
-      if (!scrollerRef.value)
-        return
+  const lockLoop = () => {
+    // 如果 ID 被清空（比如用户手动取消了），停止循环
+    if (!pendingPwaScrollId.value)
+      return
 
-      // 再次确认 index (防止数据变更导致 index 偏移)
-      // 虽然 mixedItems 是计算属性，但在闭包里最好重新查找一下最稳妥，
-      // 或者为了性能直接用之前的 index (假设列表顺序没变)
-      // 这里为了稳妥，只在第一次查找，后面复用 index，因为 PWA 恢复时数据通常不变
+    // 超时检查
+    if (performance.now() - startTime > DURATION) {
+      pendingPwaScrollId.value = null
+      localStorage.removeItem('pwa_return_note_id')
+      return
+    }
 
-      // 核心命令：滚到该索引，居中显示
+    const el = noteContainers.value[targetId]
+
+    if (el && el.isConnected) {
+      // 这种情况：元素在 DOM 里，但可能被上方的长图挤出了可视区域
+      // 策略：使用原生 API 强制物理对齐，瞬间拉回中间
+      // behavior: 'auto' 是关键，必须是瞬间跳变，不能用 smooth，否则会跟不上布局变化
+      el.scrollIntoView({ block: 'center', behavior: 'auto' })
+    }
+    else {
+      // 这种情况：元素被挤得太远，虚拟列表把它回收销毁了
+      // 策略：命令虚拟列表重新把它渲染出来
       scrollerRef.value.scrollToItem(index, { align: 'center' })
+    }
 
-      // 最后一次尝试结束后，清理存储
-      if (i === attempts.length - 1) {
-        pendingPwaScrollId.value = null
-        localStorage.removeItem('pwa_return_note_id')
-      }
-    }, delay)
-  })
+    // 下一帧继续监控，直到 2 秒结束
+    requestAnimationFrame(lockLoop)
+  }
+
+  // 启动循环
+  lockLoop()
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
