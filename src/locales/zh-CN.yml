@@ -374,7 +374,7 @@ notes:
   share_not_supported: 当前浏览器不支持系统分享，请先保存图片再手动分享
   share_date_full: '{year}年{month}月{dayLabel} {weekday}'
   random_roam:
-    title: 随机漫游
+    title: 随机回忆
     refresh_batch: 更新一批
     back: 返回
     hint_mobile: 向左滑动：下一条；向右滑动：上一条
@@ -613,8 +613,8 @@ notes:
     s12_i1_tail: 。可恢复（即时插回并排序）或清空（刷新数据与缓存）。
     s12_i2: 「回收站」数据保留30天，30天后自动彻底删除。
 
-    s13_title: 13) 随机漫游
-    s13_i1: 在主菜单中点击「随机漫游」，进入卡片视图随机浏览笔记。
+    s13_title: 13) 随机回忆
+    s13_i1: 在主菜单中点击「随机回忆」，进入卡片视图随机浏览笔记。
     s13_i2: 移动端左右滑动切换笔记；桌面端点击卡片左右区域切换。
 
     faq_title: 常见问题
