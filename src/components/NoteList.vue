@@ -196,7 +196,9 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：调整函数定义顺序，解决 ESLint no-use-before-define 报错
+// ✅ 修复：放弃物理 DOM 滚动，改用“多次指令”策略
+// 既然 DOM 高度在变，我们就多次命令虚拟列表滚到同一个 index。
+// 虚拟列表会自动处理高度变化后的重新定位。
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -211,63 +213,32 @@ function tryRestorePwaScroll() {
   if (index === -1)
     return
 
-  let findAttempts = 0
-  const maxFindAttempts = 30 // 寻找阶段：最多试3秒
+  // 策略：在 2 秒内，连续下达 5 次“滚到这里”的指令
+  // 第一次：立刻执行（可能位置不准，因为图没出）
+  // 后续几次：随着图片加载，高度变化，虚拟列表会根据新高度自动修正滚动位置
+  const attempts = [0, 300, 600, 1000, 1500]
 
-  // 1. 先定义“锁定阶段”的函数 (被 findElementPhase 调用)
-  const startLockPhase = (el: HTMLElement) => {
-    let lockCount = 0
-    const maxLockCount = 15 // 锁定 1.5 秒 (15 * 100ms)
+  attempts.forEach((delay, i) => {
+    setTimeout(() => {
+      // 检查 ref 是否还在 (防止组件已销毁)
+      if (!scrollerRef.value)
+        return
 
-    const lockTick = () => {
-      // 核心：强制让它回到中间
-      el.scrollIntoView({ block: 'center', behavior: 'auto' })
+      // 再次确认 index (防止数据变更导致 index 偏移)
+      // 虽然 mixedItems 是计算属性，但在闭包里最好重新查找一下最稳妥，
+      // 或者为了性能直接用之前的 index (假设列表顺序没变)
+      // 这里为了稳妥，只在第一次查找，后面复用 index，因为 PWA 恢复时数据通常不变
 
-      lockCount++
-      if (lockCount < maxLockCount) {
-        // 继续锁定
-        setTimeout(lockTick, 100)
-      }
-      else {
-        // 锁定结束，清理现场
+      // 核心命令：滚到该索引，居中显示
+      scrollerRef.value.scrollToItem(index, { align: 'center' })
+
+      // 最后一次尝试结束后，清理存储
+      if (i === attempts.length - 1) {
         pendingPwaScrollId.value = null
         localStorage.removeItem('pwa_return_note_id')
       }
-    }
-
-    // 立即执行第一次锁定
-    lockTick()
-  }
-
-  // 2. 后定义“寻找阶段”的函数
-  const findElementPhase = () => {
-    // 只要还没找到 DOM，就一直命令虚拟列表往那里滚
-    scrollerRef.value.scrollToItem(index, { align: 'center' })
-
-    setTimeout(() => {
-      const el = noteContainers.value[targetId]
-
-      if (el && el.isConnected) {
-        // 🎉 找到了！进入阶段二：位置锁定
-        startLockPhase(el)
-      }
-      else {
-        // 没找到，继续找
-        findAttempts++
-        if (findAttempts < maxFindAttempts) {
-          requestAnimationFrame(findElementPhase)
-        }
-        else {
-          // 超时放弃
-          pendingPwaScrollId.value = null
-          localStorage.removeItem('pwa_return_note_id')
-        }
-      }
-    }, 100)
-  }
-
-  // 3. 启动
-  findElementPhase()
+    }, delay)
+  })
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
