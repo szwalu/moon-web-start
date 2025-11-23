@@ -284,18 +284,20 @@ function scheduleOverflowCheck() {
 }
 
 let observer: ResizeObserver | null = null
+
 onMounted(() => {
+  // 1. 仅创建 Observer 实例，不在这里直接 observe
   observer = new ResizeObserver(() => {
     checkIfNoteOverflows()
   })
 
-  if (contentRef.value)
-    observer.observe(contentRef.value as HTMLElement)
+  // 2. 初始检查（以防组件加载时就是收起状态）
+  if (contentRef.value) {
+    observer.observe(contentRef.value)
+    scheduleOverflowCheck()
+  }
   if (fullContentRef.value)
-    observer.observe(fullContentRef.value as HTMLElement)
-
-  // 初始也走统一的延时测量
-  scheduleOverflowCheck()
+    observer.observe(fullContentRef.value)
 })
 
 onUnmounted(() => {
@@ -303,6 +305,22 @@ onUnmounted(() => {
     observer.disconnect()
     observer = null
   }
+})
+
+// ✅ 新增关键修复：监听 contentRef 的变化
+// 当 v-if / v-else 切换导致 DOM 重建时，必须重新挂载 observer
+watch(contentRef, (el) => {
+  if (el && observer) {
+    observer.observe(el)
+    // 元素重新出现时，立即测一次高度，把“展开”按钮显示出来
+    scheduleOverflowCheck()
+  }
+})
+
+// 同理监听 fullContentRef
+watch(fullContentRef, (el) => {
+  if (el && observer)
+    observer.observe(el)
 })
 
 // 当笔记内容变化时，重新检查
