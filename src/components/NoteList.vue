@@ -66,7 +66,6 @@ const editReturnScrollTop = ref<number | null>(null)
 const pendingPwaScrollId = ref<string | null>(null)
 
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
-// ✅ 修复：正确处理 DOM 销毁，防止持有死引用的 DOM
 function setNoteContainer(el: Element | null, id: string) {
   if (el) {
     const $el = el as HTMLElement
@@ -196,10 +195,7 @@ const noteById = computed<Record<string, any>>(() => {
   return m
 })
 
-// ✅ 修复：基于虚拟列表 API 的持续锁定 (Virtual Lock)
-// 放弃物理 DOM 操作(scrollIntoView)，改回使用虚拟列表的 scrollToItem。
-// 通过高频调用 scrollToItem，让虚拟列表负责处理高度变化和重定位，
-// 这样既能应对上方长图加载导致的位移，又不会因为 DOM 销毁而失效。
+// ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
 function tryRestorePwaScroll() {
   if (!pendingPwaScrollId.value)
     return
@@ -215,11 +211,10 @@ function tryRestorePwaScroll() {
     return
 
   const startTime = performance.now()
-  // 持续锁定 2 秒，确保覆盖绝大多数图片的加载时间
-  const DURATION = 2000
+  const DURATION = 2000 // 锁定 2 秒
 
-  const virtualLockLoop = () => {
-    // 1. 停止条件：ID 被清空 或 超时
+  const lockLoop = () => {
+    // 停止条件
     if (!pendingPwaScrollId.value)
       return
     if (performance.now() - startTime > DURATION) {
@@ -228,19 +223,33 @@ function tryRestorePwaScroll() {
       return
     }
 
-    // 2. 核心：每一帧都命令虚拟列表“对齐”该索引
-    // 如果上方有图片加载撑开了高度，虚拟列表会在这一帧自动计算出新的 scrollTop
-    // 从而实现“视觉位置不变”的效果
+    // 核心：使用虚拟列表 API 进行定位
+    // 这不会破坏虚拟列表内部状态，也不会引发空白块
     if (scrollerRef.value)
       scrollerRef.value.scrollToItem(index, { align: 'center' })
 
-    // 3. 下一帧继续，死死咬住目标
-    requestAnimationFrame(virtualLockLoop)
+    requestAnimationFrame(lockLoop)
   }
 
-  // 启动循环
-  virtualLockLoop()
+  lockLoop()
 }
+
+// ✅ 新增：统一处理 Resize 事件
+// 既负责更新收起按钮位置，又负责在 PWA 恢复期修正滚动位置
+function handleItemResize() {
+  // 1. 原有逻辑：更新收起按钮
+  updateCollapsePos()
+
+  // 2. 新增逻辑：如果正在恢复滚动位置，且发生了高度变化（如长图加载）
+  // 立即触发一次对齐，不要等下一帧
+  if (pendingPwaScrollId.value && scrollerRef.value) {
+    const targetId = pendingPwaScrollId.value
+    const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
+    if (index !== -1)
+      scrollerRef.value.scrollToItem(index, { align: 'center' })
+  }
+}
+
 const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
 let headersIO: IntersectionObserver | null = null
@@ -908,7 +917,7 @@ async function restoreScrollIfNeeded() {
             ? [item.content, expandedNote === item.id, item.updated_at, item.vid]
             : [item.label, item.vid]"
           class="note-item-container"
-          @resize="updateCollapsePos"
+          @resize="handleItemResize"
         >
           <div v-if="item.type === 'month-header'" class="month-header-outer">
             <div
@@ -977,6 +986,7 @@ async function restoreScrollIfNeeded() {
 </template>
 
 <style scoped>
+/* ... 样式部分保持不变 ... */
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
