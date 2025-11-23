@@ -469,22 +469,23 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // ✅ 1. 优先处理：拦截所有链接 (a 标签) 点击
-  // 目的：强制在系统自带浏览器(Safari/Chrome)中打开，而不是在 PWA 内部跳转
-  // 这样返回时，PWA 依然停留在原来的位置，不会刷新
+  // ✅ 1. 链接处理逻辑：这里是关键
+  // 我们不再用 JS 调用 window.open（会导致页面刷新），
+  // 而是直接 "return"，彻底放行。
+  // 让 <a target="_blank"> 原生行为生效，这在 iOS PWA 里通常会打开一个
+  // "不影响主页状态" 的二级页面，关闭后能完美回到原位。
   const link = target.closest('a')
   if (link) {
-    const href = link.getAttribute('href')
-    // 确保是 http/https 链接
-    if (href && (href.startsWith('http') || href.startsWith('https'))) {
-      event.preventDefault() // 阻止 PWA 内部跳转
-      event.stopPropagation() // 阻止冒泡
-      window.open(href, '_blank') // '_blank' 在 PWA 环境下通常会唤起外部系统浏览器
-      return
-    }
+    // 双重保险：确保它有 target="_blank"
+    if (link.getAttribute('target') !== '_blank')
+      link.setAttribute('target', '_blank')
+
+    // 直接返回，不阻止冒泡，不阻止默认行为
+    // 让浏览器自己处理跳转
+    return
   }
 
-  // ✅ 2. 下面是原有的 Checkbox (待办事项) 逻辑
+  // ✅ 2. 待办事项 (Checkbox) 逻辑
   const listItem = target.closest('li.task-list-item')
 
   // 如果点击的不是一个待办事项行，则直接返回
@@ -504,11 +505,11 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
+    // 只有在点击 "待办事项行的非链接区域" 时，才阻止默认行为
+    // 这样可以防止点击文字时光标乱跳，或者误触 label
     event.preventDefault()
   }
 }
-
 // ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
 // ✅ 新逻辑：将图片转为 Base64，而不是删除
 // 这样 html2canvas 就能截取到图片了，不会出现跨域空白
