@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDropdown, useDialog, useMessage } from 'naive-ui'
+import { NDropdown, NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Shuffle, Trash2, Type, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
@@ -1147,15 +1147,52 @@ async function handleBatchExport() {
   }
 
   const dialogDateRange = ref<[number, number] | null>(null)
+  // 新增：导出用的标签过滤（可选）
+  const dialogTagFilter = ref<string | null>(null)
+
+  // 从当前 allTags 生成下拉选项（去重）
+  const seen = new Set<string>()
+  const tagOptions = allTags.value
+    .filter((tag) => {
+      if (!tag)
+        return false
+      if (seen.has(tag))
+        return false
+      seen.add(tag)
+      return true
+    })
+    .map(tag => ({
+      label: tag,
+      value: tag,
+    }))
 
   dialog.info({
     title: t('notes.export_confirm_title'),
     // 在对话框里附一段说明“必须选择日期 + 上限提示”
     content: () => h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+      // 日期范围选择器（保持原样）
       h(MobileDateRangePicker, {
         'modelValue': dialogDateRange.value,
         'onUpdate:modelValue': (v: [number, number] | null) => { dialogDateRange.value = v },
       }),
+
+      // 新增：标签过滤下拉框（可选）
+      tagOptions.length > 0
+        ? h('div', { style: 'display:flex;flex-direction:column;gap:4px;margin-top:4px;' }, [
+          h('div', {
+            style: 'font-size:13px;color:#6b7280;',
+          }, t('notes.tag_filter_optional')),
+          h(NSelect, {
+            'value': dialogTagFilter.value,
+            'onUpdate:value': (v: string | null) => { dialogTagFilter.value = v },
+            'options': tagOptions,
+            'clearable': true,
+            'placeholder': t('notes.tag_filter_all'),
+            'style': 'width:100%;',
+          }),
+        ])
+        : null,
+
       h('small', {}, t('notes.export_date_range_hint', { max: EXPORT_MAX_ROWS })),
     ]),
     positiveText: t('notes.confirm_export'),
@@ -1173,6 +1210,8 @@ async function handleBatchExport() {
 
       try {
         const [startDate, endDate] = dialogDateRange.value
+        const selectedTag = dialogTagFilter.value // 可能为 null
+
         let allNotes: any[] = []
         let page = 0
         let hasMore = true
@@ -1195,6 +1234,10 @@ async function handleBatchExport() {
             endOfDay.setHours(23, 59, 59, 999)
             query = query.lte('created_at', endOfDay.toISOString())
           }
+
+          // 新增：按标签过滤（如果选择了标签）
+          if (selectedTag)
+            query = query.ilike('content', `%${selectedTag}%`)
 
           const { data, error } = await query
           if (error)
@@ -1235,7 +1278,11 @@ async function handleBatchExport() {
 
         const datePart = `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
         const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-        a.download = `notes_export_${datePart}_${timestamp}.md`
+
+        // 可选：如果有标签，把标签简短地加进文件名
+        const tagSuffix = selectedTag ? `_tag_${encodeURIComponent(selectedTag.replace(/^#/, ''))}` : ''
+
+        a.download = `notes_export_${datePart}${tagSuffix}_${timestamp}.md`
         document.body.appendChild(a)
         a.click()
         setTimeout(() => {

@@ -363,6 +363,12 @@ notes:
   search_results_for: 搜索“{query}”的结果
   help_title: 使用说明
   anniversary_view: 查看
+  tag_filter_optional: 标签过滤（可选）
+  tag_filter_all: 全部标签
+
+  search_quick_has_image: 有图片
+  search_quick_has_audio: 有录音
+  search_quick_has_link: 有链接
 
   share: 分享
   share_title: 分享笔记

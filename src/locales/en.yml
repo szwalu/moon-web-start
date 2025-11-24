@@ -366,6 +366,12 @@ notes:
   search_results_for: 'Results for “{query}”'
   help_title: Instructions
   anniversary_view: View
+  tag_filter_optional: Tag Filter (Optional)
+  tag_filter_all: All Tags
+
+  search_quick_has_image: With images
+  search_quick_has_audio: With audio
+  search_quick_has_link: With links
 
   share: Share
   share_title: Share note
