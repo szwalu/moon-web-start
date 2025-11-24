@@ -873,9 +873,10 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   flex-direction: column;
   color: #333;
-   /* 关键：整体让出顶部/底部安全区 */
-   padding-top: var(--safe-top);
-   padding-bottom: var(--safe-bottom);
+box-sizing: border-box; /* 关键：防止 padding 撑大高度 */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  overflow: hidden; /* 关键：禁止根容器自身产生滚动条 */
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -913,6 +914,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  overscroll-behavior-y: contain;
 }
 .calendar-container {
   padding: 1rem;
