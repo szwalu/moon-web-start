@@ -739,46 +739,62 @@ export function useTagMenu(
     }
   }
 
-  function getRowMenuOptions(tag: string) {
+  function getRowMenuOptions(tag: string, closeMenu: () => void) {
     const pinned = isPinned(tag)
 
-    // 统一的菜单行样式：调大垂直 padding
-    const makeRow = (text: string, IconComp: any) => {
-      return () =>
-        h(
-          'div',
-          {
-            style: [
-              'display:flex;',
-              'align-items:center;',
-              'padding:4px 10px;', // ← 垂直间距在这里调，大一点小一点都可以
-              'gap:8px;',
-            ].join(''),
-          },
-          [
-          // 左侧图标
-            h(
-              'span',
-              {
-                style: 'display:inline-flex;width:20px;justify-content:center;',
+    // 统一的菜单行样式：调大垂直 padding + 图标文字居中
+    function makeRow(
+      action: 'pin' | 'rename' | 'change_icon' | 'remove',
+      text: string,
+      IconComp: any,
+    ) {
+      return {
+        key: action,
+        type: 'render' as const,
+        render: () =>
+          h(
+            'div',
+            {
+              style: [
+                'display:flex;',
+                'align-items:center;', // 垂直居中，图标和文字不会错位
+                'padding:4px 10px;', // 上下 4px，左右 10px → 间距在这里调
+                'gap:8px;',
+                'cursor:pointer;',
+              ].join(''),
+              onClick: (e: MouseEvent) => {
+                e.stopPropagation()
+                // 手动触发原来的逻辑
+                handleRowMenuSelect(tag, action)
+                // 关闭当前菜单
+                closeMenu()
               },
-              [
-                h(IconComp, {
-                  size: 16,
-                  strokeWidth: 2,
-                }),
-              ],
-            ),
-            // 右侧文字
-            h(
-              'span',
-              {
-                style: 'font-size:13px;',
-              },
-              text,
-            ),
-          ],
-        )
+            },
+            [
+            // 左侧图标
+              h(
+                'span',
+                {
+                  style: 'display:inline-flex;width:20px;justify-content:center;',
+                },
+                [
+                  h(IconComp, {
+                    size: 16,
+                    strokeWidth: 2,
+                  }),
+                ],
+              ),
+              // 右侧文字
+              h(
+                'span',
+                {
+                  style: 'font-size:13px;',
+                },
+                text,
+              ),
+            ],
+          ),
+      }
     }
 
     const pinLabel = pinned
@@ -786,26 +802,10 @@ export function useTagMenu(
       : (t('notes.pin_favorites') || '设置常用')
 
     return [
-      {
-        key: 'pin',
-        type: 'render' as const,
-        render: makeRow(pinLabel, pinned ? StarOff : Star),
-      },
-      {
-        key: 'rename',
-        type: 'render' as const,
-        render: makeRow(t('tags.rename_tag') || '重命名', Pencil),
-      },
-      {
-        key: 'change_icon',
-        type: 'render' as const,
-        render: makeRow(t('tags.change_icon') || '更改图标', Sparkles),
-      },
-      {
-        key: 'remove',
-        type: 'render' as const,
-        render: makeRow(t('tags.remove_tag') || '移除', Trash2),
-      },
+      makeRow('pin', pinLabel, pinned ? StarOff : Star),
+      makeRow('rename', t('tags.rename_tag') || '重命名', Pencil),
+      makeRow('change_icon', t('tags.change_icon') || '更改图标', Sparkles),
+      makeRow('remove', t('tags.remove_tag') || '移除', Trash2),
     ]
   }
 
@@ -1177,7 +1177,7 @@ export function useTagMenu(
             // Cell 3: "More" button
             h('div', { style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;' }, [
               h(NDropdown, {
-                options: getRowMenuOptions(tag),
+                options: getRowMenuOptions(tag, closeMenu),
                 trigger: 'manual',
                 show: showRef.value,
                 showArrow: false,
@@ -1185,12 +1185,16 @@ export function useTagMenu(
                 placement: placementRef.value,
                 to: 'body',
                 onUpdateShow: (show: boolean) => {
-                  showRef.value = show; isRowMoreOpen.value = show
+                  showRef.value = show
+                  isRowMoreOpen.value = show
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tag, key); closeMenu() },
-                onClickoutside: () => { lastMoreClosedByOutside = true; closeMenu(); setTimeout(() => { lastMoreClosedByOutside = false }, 0) },
+                onClickoutside: () => {
+                  lastMoreClosedByOutside = true
+                  closeMenu()
+                  setTimeout(() => { lastMoreClosedByOutside = false }, 0)
+                },
               }, {
                 default: () => h('button', {
                   'aria-label': t('tags.more_actions') || '更多操作',
@@ -1297,7 +1301,7 @@ export function useTagMenu(
               style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;',
             }, [
               h(NDropdown, {
-                options: getRowMenuOptions(tagFull),
+                options: getRowMenuOptions(tagFull, closeMenu),
                 trigger: 'manual',
                 show: showRef.value,
                 showArrow: false,
@@ -1310,7 +1314,6 @@ export function useTagMenu(
                   if (show)
                     lastMoreClosedByOutside = false
                 },
-                onSelect: (key: any) => { lastMoreClosedByOutside = false; handleRowMenuSelect(tagFull, key); closeMenu() },
                 onClickoutside: () => {
                   lastMoreClosedByOutside = true
                   closeMenu()
