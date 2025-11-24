@@ -40,8 +40,6 @@ const emit = defineEmits([
 ])
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-// 移除所有内存缓存（Map）相关的定义和函数
-
 onMounted(() => {
   searchInputRef.value?.focus()
 })
@@ -60,9 +58,10 @@ const searchModel = computed({
   },
 })
 
-// --- 搜索执行函数（修改为 localStorage 缓存） ---
-async function executeSearch() {
-  const raw = searchModel.value
+// --- 搜索执行函数（localStorage 缓存） ---
+// 支持外部传入 termOverride；不传则用当前输入框内容
+async function executeSearch(termOverride?: string) {
+  const raw = typeof termOverride === 'string' ? termOverride : searchModel.value
   const query = raw.trim()
 
   if (!query) {
@@ -100,9 +99,11 @@ async function executeSearch() {
     if (error)
       throw error
 
-    // —— 补全天气 ——（与上面 auth.vue 类似）
     const results = Array.isArray(data) ? data : []
-    const missingIds = results.filter(n => !('weather' in n)).map(n => n.id).filter(Boolean)
+    const missingIds = results
+      .filter(n => !('weather' in n))
+      .map(n => n.id)
+      .filter(Boolean)
 
     if (missingIds.length) {
       const { data: weatherRows, error: wErr } = await supabase
@@ -112,14 +113,15 @@ async function executeSearch() {
 
       if (!wErr && weatherRows?.length) {
         const wMap = new Map(weatherRows.map(r => [r.id, r.weather ?? null]))
-        data = results.map(n => ('weather' in n) ? n : ({ ...n, weather: wMap.get(n.id) ?? null }))
+        data = results.map(n =>
+          ('weather' in n) ? n : ({ ...n, weather: wMap.get(n.id) ?? null }),
+        )
       }
       else {
         data = results
       }
     }
 
-    // 缓存“已补全”的数据
     if (data)
       localStorage.setItem(cacheKey, JSON.stringify(data))
     emit('searchCompleted', { data, error: null, fromCache: false })
@@ -130,7 +132,32 @@ async function executeSearch() {
   }
 }
 
-// --- 标签建议逻辑 (在输入时触发) ---
+// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
+function handleQuickSearch(type: 'image' | 'audio' | 'link') {
+  let keyword = ''
+
+  if (type === 'image')
+    keyword = 'note-images/'
+
+  else if (type === 'audio')
+    keyword = 'note-audios/'
+
+  else if (type === 'link')
+    keyword = 'https://'
+
+  if (!keyword)
+    return
+
+  // 更新输入框显示
+  searchModel.value = keyword
+  showSearchTagSuggestions.value = false
+  highlightedSearchIndex.value = -1
+  searchInputRef.value?.focus()
+
+  // 直接用关键字执行搜索，不等 v-model 回传
+  executeSearch(keyword)
+}
+// --- 标签建议逻辑 ---
 function handleSearchQueryChange(query: string) {
   const lastHashIndex = query.lastIndexOf('#')
   if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
@@ -232,14 +259,36 @@ defineExpose({
         </ul>
       </div>
     </div>
+
+    <!-- 新增：搜索框下方的快捷筛选按钮 -->
+    <div class="quick-search-chips">
+      <button
+        class="quick-chip"
+        @click="handleQuickSearch('image')"
+      >
+        {{ t('notes.search_quick_has_image', '有图片') }}
+      </button>
+      <button
+        class="quick-chip"
+        @click="handleQuickSearch('audio')"
+      >
+        {{ t('notes.search_quick_has_audio', '有录音') }}
+      </button>
+      <button
+        class="quick-chip"
+        @click="handleQuickSearch('link')"
+      >
+        {{ t('notes.search_quick_has_link', '有链接') }}
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .search-export-bar {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  align-items: center;
   position: -webkit-sticky;
   position: sticky;
   top: 0;
@@ -256,13 +305,12 @@ defineExpose({
 
 .search-input-wrapper {
   position: relative;
-  flex: 4;
   display: flex;
   align-items: center;
 }
 
 .search-input {
-  flex: 4;
+  flex: 1;
   padding: 1rem 2rem 1rem 0.5rem;
   font-size: 14px;
   border: 1px solid #ccc;
@@ -366,6 +414,37 @@ defineExpose({
   left: 0;
   right: 0;
   margin-top: 4px;
+}
+
+/* 新增：快捷筛选按钮样式 */
+.quick-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 2rem;   /* 左右间距更大 */
+  row-gap: 0.6rem;    /* 上下保留原来的紧凑感 */
+}
+
+.quick-chip {
+  padding: 0.5rem 1rem;
+  font-size: 13px;
+  border-radius: 9999px;
+  border: none;
+  background-color: #e5e7eb;
+  color: #111827;
+  cursor: pointer;
+}
+
+.quick-chip:hover {
+  background-color: #d1d5db;
+}
+
+.dark .quick-chip {
+  background-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.dark .quick-chip:hover {
+  background-color: #6b7280;
 }
 
 @media (max-width: 768px) {
