@@ -742,44 +742,69 @@ export function useTagMenu(
   function getRowMenuOptions(tag: string) {
     const pinned = isPinned(tag)
 
+    // 统一的菜单行样式：调大垂直 padding
+    const makeRow = (text: string, IconComp: any) => {
+      return () =>
+        h(
+          'div',
+          {
+            style: [
+              'display:flex;',
+              'align-items:center;',
+              'padding:6px 10px;', // ← 垂直间距在这里调，大一点小一点都可以
+              'gap:8px;',
+            ].join(''),
+          },
+          [
+          // 左侧图标
+            h(
+              'span',
+              {
+                style: 'display:inline-flex;width:20px;justify-content:center;',
+              },
+              [
+                h(IconComp, {
+                  size: 16,
+                  strokeWidth: 2,
+                }),
+              ],
+            ),
+            // 右侧文字
+            h(
+              'span',
+              {
+                style: 'font-size:13px;',
+              },
+              text,
+            ),
+          ],
+        )
+    }
+
+    const pinLabel = pinned
+      ? (t('notes.unpin_favorites') || '取消置顶')
+      : (t('notes.pin_favorites') || '设置常用')
+
     return [
       {
         key: 'pin',
-        label: pinned
-          ? (t('notes.unpin_favorites') || '取消置顶')
-          : (t('notes.pin_favorites') || '设置常用'),
-        icon: () =>
-          h(pinned ? StarOff : Star, {
-            size: 16,
-            strokeWidth: 2,
-          }),
+        type: 'render' as const,
+        render: makeRow(pinLabel, pinned ? StarOff : Star),
       },
       {
         key: 'rename',
-        label: t('tags.rename_tag') || 'Rename',
-        icon: () =>
-          h(Pencil, {
-            size: 16,
-            strokeWidth: 2,
-          }),
+        type: 'render' as const,
+        render: makeRow(t('tags.rename_tag') || '重命名', Pencil),
       },
       {
         key: 'change_icon',
-        label: t('tags.change_icon') || '更改图标',
-        icon: () =>
-          h(Sparkles, {
-            size: 16,
-            strokeWidth: 2,
-          }),
+        type: 'render' as const,
+        render: makeRow(t('tags.change_icon') || '更改图标', Sparkles),
       },
       {
         key: 'remove',
-        label: t('tags.remove_tag') || '移除',
-        icon: () =>
-          h(Trash2, {
-            size: 16,
-            strokeWidth: 2,
-          }),
+        type: 'render' as const,
+        render: makeRow(t('tags.remove_tag') || '移除', Trash2),
       },
     ]
   }
