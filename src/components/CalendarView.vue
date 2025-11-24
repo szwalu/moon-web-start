@@ -34,10 +34,6 @@ const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
-const headerRef = ref<HTMLElement | null>(null)
-const calendarContainerRef = ref<HTMLElement | null>(null)
-const notesInnerRef = ref<HTMLElement | null>(null)
-const notesScrollable = ref(false)
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
@@ -177,7 +173,6 @@ async function handleDelete(noteId: string) {
 
   // 3) 重新校准小蓝点
   refreshDotAfterDelete()
-  await updateNotesLayoutAndScroll()
 }
 function handleDateUpdated() {
   refreshData()
@@ -469,63 +464,7 @@ async function fetchNotesForDate(date: Date) {
     )
   }
   // --- 结束重写逻辑 ---
-  await updateNotesLayoutAndScroll()
 }
-
-async function updateNotesLayoutAndScroll() {
-  await nextTick()
-
-  const root = rootRef.value
-  const headerEl = headerRef.value
-  const calEl = calendarContainerRef.value
-  const outer = scrollBodyRef.value // 笔记滚动容器
-  const inner = notesInnerRef.value // 笔记真实内容
-
-  if (!root || !outer || !inner)
-    return
-
-  const headerH = headerEl?.offsetHeight ?? 0
-  // 只在「非写作/非编辑」时才算日历高度；写作时你本来就把日历收起来
-  const calH = (!isWriting.value && !isEditingExisting.value && calEl)
-    ? calEl.offsetHeight
-    : 0
-
-  const totalH = root.clientHeight
-  const safeTop = 0 // 已经用 padding-top 让出了安全区，这里不用再减
-  const safeBottom = 0 // 同上
-
-  const available = totalH - safeTop - safeBottom - headerH - calH
-
-  if (available > 0)
-    outer.style.maxHeight = `${available}px`
-  else
-    outer.style.maxHeight = '0px'
-
-  // 再根据内容高度决定要不要开滚动
-  notesScrollable.value = inner.scrollHeight > outer.clientHeight + 1
-}
-
-async function updateNotesScrollAbility() {
-  await nextTick()
-  const el = scrollBodyRef.value
-  if (!el)
-    return
-
-  // scrollHeight > clientHeight 说明内容“溢出”了，需要滚动
-  notesScrollable.value = el.scrollHeight > el.clientHeight + 1
-}
-
-watch(
-  () => ({
-    len: selectedDateNotes.value.length,
-    writing: isWriting.value,
-    editing: isEditingExisting.value,
-  }),
-  () => {
-    updateNotesScrollAbility()
-  },
-  { flush: 'post' },
-)
 
 /** 在删除后重新校准当前日期的蓝点状态 */
 function refreshDotAfterDelete() {
@@ -696,7 +635,6 @@ onMounted(async () => {
 
   await fetchNotesForDate(new Date())
   await checkAndRefreshIncremental()
-  await updateNotesLayoutAndScroll()
 
   // 在组件挂载时，添加可见性变化的事件监听器
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -818,25 +756,27 @@ async function saveNewNote(content: string, weather: string | null) {
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false
-  await updateNotesLayoutAndScroll()
 }
 </script>
 
 <template>
   <div ref="rootRef" class="calendar-view">
-    <div v-show="!hideHeader" ref="headerRef" class="calendar-header" @click="handleHeaderClick">
+    <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
-    <div class="calendar-body">
-      <!-- 上半：日历，固定不滚动 -->
-      <div v-show="!isWriting && !isEditingExisting" ref="calendarContainerRef" class="calendar-container">
+
+    <!-- ✅ 新增：非滚动区域，包含「日历 + 写某天笔记按钮」 -->
+    <div>
+      <!-- 日历：从 scrollBodyRef 里搬出来，结构和 v-show 完全不变 -->
+      <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
         >
+          <!-- 用自定义格式替换原来的 title -->
           <template #header-title="{ title }">
             <span class="calendar-nav-title">
               {{ formatCalendarHeaderTitle(title) }}
@@ -845,89 +785,89 @@ async function saveNewNote(content: string, weather: string | null) {
         </Calendar>
       </div>
 
-      <!-- 下半：笔记区域，单独滚动 -->
-      <div
-        ref="scrollBodyRef"
-        class="notes-scroll" :class="[{ 'notes-scroll--scrollable': notesScrollable }]"
-      >
-        <div ref="notesInnerRef" class="notes-for-day-container">
-          <!-- 工具行：写笔记按钮 -->
-          <div v-if="!isWriting && !isEditingExisting" class="compose-row">
-            <button class="compose-btn" @click="startWriting">
-              {{ composeButtonText }}
-            </button>
-          </div>
+      <!-- 写某天笔记按钮：也从 scrollBodyRef 里搬出来，样式 / 逻辑不变 -->
+      <div class="notes-for-day-container">
+        <!-- 工具行：写笔记按钮 -->
+        <div v-if="!isWriting && !isEditingExisting" class="compose-row">
+          <button class="compose-btn" @click="startWriting">
+            {{ composeButtonText }}
+          </button>
+        </div>
+      </div>
+    </div>
 
-          <!-- 轻量输入框（显示时隐藏上面的日历） -->
-          <div v-if="isWriting" class="inline-editor">
-            <NoteEditor
-              ref="newNoteEditorRef"
-              v-model="newNoteContent"
-              :is-editing="false"
-              :is-loading="false"
-              :max-note-length="20000"
-              :placeholder="t('notes.calendar.placeholder_new')"
-              :all-tags="allTags"
-              :tag-counts="tagCounts"
-              :enable-drafts="true"
-              :draft-key="writingKey"
-              :clear-draft-on-save="false"
-              :enable-scroll-push="true"
-              @save="saveNewNote"
-              @cancel="cancelWriting"
-              @focus="onEditorFocus"
-              @blur="() => {}"
+    <!-- ✅ 只让下面这一块滚动（笔记输入 + 列表） -->
+    <div ref="scrollBodyRef" class="calendar-body">
+      <div class="notes-for-day-container">
+        <!-- 轻量输入框（显示时隐藏上面的日历） -->
+        <div v-if="isWriting" class="inline-editor">
+          <NoteEditor
+            ref="newNoteEditorRef"
+            v-model="newNoteContent"
+            :is-editing="false"
+            :is-loading="false"
+            :max-note-length="20000"
+            :placeholder="t('notes.calendar.placeholder_new')"
+            :all-tags="allTags"
+            :tag-counts="tagCounts"
+            :enable-drafts="true"
+            :draft-key="writingKey"
+            :clear-draft-on-save="false"
+            :enable-scroll-push="true"
+            @save="saveNewNote"
+            @cancel="cancelWriting"
+            @focus="onEditorFocus"
+            @blur="() => {}"
+          />
+        </div>
+
+        <!-- 编辑已有笔记（直接在日历内） -->
+        <div v-if="isEditingExisting" class="inline-editor">
+          <NoteEditor
+            ref="editNoteEditorRef"
+            v-model="editContent"
+            :is-editing="true"
+            :is-loading="false"
+            :max-note-length="20000"
+            :placeholder="t('notes.calendar.placeholder_edit')"
+            :all-tags="allTags"
+            :tag-counts="tagCounts"
+            :enable-drafts="true"
+            :draft-key="editDraftKey"
+            :clear-draft-on-save="false"
+            :enable-scroll-push="true"
+            @save="saveExistingNote"
+            @cancel="cancelEditExisting"
+            @focus="onEditorFocus"
+            @blur="() => {}"
+          />
+        </div>
+
+        <div v-if="isLoadingNotes" class="loading-text">
+          {{ t('notes.calendar.loading') }}
+        </div>
+
+        <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
+          <div v-for="note in selectedDateNotes" :key="note.id">
+            <NoteItem
+              :note="note"
+              :is-expanded="expandedNoteId === note.id"
+              :dropdown-in-place="true"
+              :show-internal-collapse-button="true"
+              @toggle-expand="toggleExpandInCalendar"
+              @edit="handleEdit"
+              @copy="handleCopy"
+              @pin="handlePin"
+              @delete="handleDelete"
+              @dblclick="handleEdit(note)"
+              @date-updated="handleDateUpdated"
+              @set-date="(note) => emit('setDate', note)"
             />
           </div>
+        </div>
 
-          <!-- 编辑已有笔记 -->
-          <div v-if="isEditingExisting" class="inline-editor">
-            <NoteEditor
-              ref="editNoteEditorRef"
-              v-model="editContent"
-              :is-editing="true"
-              :is-loading="false"
-              :max-note-length="20000"
-              :placeholder="t('notes.calendar.placeholder_edit')"
-              :all-tags="allTags"
-              :tag-counts="tagCounts"
-              :enable-drafts="true"
-              :draft-key="editDraftKey"
-              :clear-draft-on-save="false"
-              :enable-scroll-push="true"
-              @save="saveExistingNote"
-              @cancel="cancelEditExisting"
-              @focus="onEditorFocus"
-              @blur="() => {}"
-            />
-          </div>
-
-          <div v-if="isLoadingNotes" class="loading-text">
-            {{ t('notes.calendar.loading') }}
-          </div>
-
-          <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
-            <div v-for="note in selectedDateNotes" :key="note.id">
-              <NoteItem
-                :note="note"
-                :is-expanded="expandedNoteId === note.id"
-                :dropdown-in-place="true"
-                :show-internal-collapse-button="true"
-                @toggle-expand="toggleExpandInCalendar"
-                @edit="handleEdit"
-                @copy="handleCopy"
-                @pin="handlePin"
-                @delete="handleDelete"
-                @dblclick="handleEdit(note)"
-                @date-updated="handleDateUpdated"
-                @set-date="(note) => emit('setDate', note)"
-              />
-            </div>
-          </div>
-
-          <div v-else class="no-notes-text">
-            {{ t('notes.calendar.no_notes_for_day') }}
-          </div>
+        <div v-else class="no-notes-text">
+          {{ t('notes.calendar.no_notes_for_day') }}
         </div>
       </div>
     </div>
@@ -984,21 +924,8 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 .calendar-body {
   flex: 1;
   min-height: 0;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-/* 新增：只让笔记区域滚动 */
-/* 只负责占位，不默认滚动 */
-.notes-scroll {
- overflow-y: hidden;
-}
-
-/* 当内容超过容器高度时，才允许滚动 */
-.notes-scroll--scrollable {
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 .calendar-container {
   padding: 1rem;
