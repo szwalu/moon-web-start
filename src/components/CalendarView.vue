@@ -33,7 +33,7 @@ const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
-
+const notesScrollable = ref(false)
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
   if (!user.value)
@@ -173,6 +173,7 @@ async function handleDelete(noteId: string) {
 
   // 3) 重新校准小蓝点
   refreshDotAfterDelete()
+  await updateNotesScrollAbility()
 }
 function handleDateUpdated() {
   refreshData()
@@ -464,7 +465,30 @@ async function fetchNotesForDate(date: Date) {
     )
   }
   // --- 结束重写逻辑 ---
+  await updateNotesScrollAbility()
 }
+
+async function updateNotesScrollAbility() {
+  await nextTick()
+  const el = scrollBodyRef.value
+  if (!el)
+    return
+
+  // scrollHeight > clientHeight 说明内容“溢出”了，需要滚动
+  notesScrollable.value = el.scrollHeight > el.clientHeight + 1
+}
+
+watch(
+  () => ({
+    len: selectedDateNotes.value.length,
+    writing: isWriting.value,
+    editing: isEditingExisting.value,
+  }),
+  () => {
+    updateNotesScrollAbility()
+  },
+  { flush: 'post' },
+)
 
 /** 在删除后重新校准当前日期的蓝点状态 */
 function refreshDotAfterDelete() {
@@ -756,6 +780,7 @@ async function saveNewNote(content: string, weather: string | null) {
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false
+  await updateNotesScrollAbility()
 }
 </script>
 
@@ -783,7 +808,10 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
 
       <!-- 下半：笔记区域，单独滚动 -->
-      <div ref="scrollBodyRef" class="notes-scroll">
+      <div
+        ref="scrollBodyRef"
+        class="notes-scroll" :class="[{ 'notes-scroll--scrollable': notesScrollable }]"
+      >
         <div class="notes-for-day-container">
           <!-- 工具行：写笔记按钮 -->
           <div v-if="!isWriting && !isEditingExisting" class="compose-row">
@@ -919,16 +947,19 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   flex: 1;
   min-height: 0;
   position: relative;
-
-  /* 新增：让内部上下两块（上日历，下笔记区域）垂直排列 */
   display: flex;
   flex-direction: column;
 }
 
 /* 新增：只让笔记区域滚动 */
+/* 只负责占位，不默认滚动 */
 .notes-scroll {
   flex: 1;
   min-height: 0;
+}
+
+/* 当内容超过容器高度时，才允许滚动 */
+.notes-scroll--scrollable {
   overflow-y: auto;
 }
 .calendar-container {
