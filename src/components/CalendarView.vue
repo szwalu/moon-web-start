@@ -33,6 +33,10 @@ const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const isWriting = ref(false) // 是否显示输入框
 const newNoteContent = ref('') // v-model
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+
+const headerRef = ref<HTMLElement | null>(null)
+const calendarContainerRef = ref<HTMLElement | null>(null)
+const notesInnerRef = ref<HTMLElement | null>(null)
 const notesScrollable = ref(false)
 // --- 👇 新增：获取所有标签的函数 ---
 async function fetchTagData() {
@@ -173,7 +177,7 @@ async function handleDelete(noteId: string) {
 
   // 3) 重新校准小蓝点
   refreshDotAfterDelete()
-  await updateNotesScrollAbility()
+  await updateNotesLayoutAndScroll()
 }
 function handleDateUpdated() {
   refreshData()
@@ -465,7 +469,40 @@ async function fetchNotesForDate(date: Date) {
     )
   }
   // --- 结束重写逻辑 ---
-  await updateNotesScrollAbility()
+  await updateNotesLayoutAndScroll()
+}
+
+async function updateNotesLayoutAndScroll() {
+  await nextTick()
+
+  const root = rootRef.value
+  const headerEl = headerRef.value
+  const calEl = calendarContainerRef.value
+  const outer = scrollBodyRef.value // 笔记滚动容器
+  const inner = notesInnerRef.value // 笔记真实内容
+
+  if (!root || !outer || !inner)
+    return
+
+  const headerH = headerEl?.offsetHeight ?? 0
+  // 只在「非写作/非编辑」时才算日历高度；写作时你本来就把日历收起来
+  const calH = (!isWriting.value && !isEditingExisting.value && calEl)
+    ? calEl.offsetHeight
+    : 0
+
+  const totalH = root.clientHeight
+  const safeTop = 0 // 已经用 padding-top 让出了安全区，这里不用再减
+  const safeBottom = 0 // 同上
+
+  const available = totalH - safeTop - safeBottom - headerH - calH
+
+  if (available > 0)
+    outer.style.maxHeight = `${available}px`
+  else
+    outer.style.maxHeight = '0px'
+
+  // 再根据内容高度决定要不要开滚动
+  notesScrollable.value = inner.scrollHeight > outer.clientHeight + 1
 }
 
 async function updateNotesScrollAbility() {
@@ -659,6 +696,7 @@ onMounted(async () => {
 
   await fetchNotesForDate(new Date())
   await checkAndRefreshIncremental()
+  await updateNotesLayoutAndScroll()
 
   // 在组件挂载时，添加可见性变化的事件监听器
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -780,19 +818,19 @@ async function saveNewNote(content: string, weather: string | null) {
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false
-  await updateNotesScrollAbility()
+  await updateNotesLayoutAndScroll()
 }
 </script>
 
 <template>
   <div ref="rootRef" class="calendar-view">
-    <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
+    <div v-show="!hideHeader" ref="headerRef" class="calendar-header" @click="handleHeaderClick">
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
     <div class="calendar-body">
       <!-- 上半：日历，固定不滚动 -->
-      <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
+      <div v-show="!isWriting && !isEditingExisting" ref="calendarContainerRef" class="calendar-container">
         <Calendar
           is-expanded
           :attributes="attributes"
@@ -812,7 +850,7 @@ async function saveNewNote(content: string, weather: string | null) {
         ref="scrollBodyRef"
         class="notes-scroll" :class="[{ 'notes-scroll--scrollable': notesScrollable }]"
       >
-        <div class="notes-for-day-container">
+        <div ref="notesInnerRef" class="notes-for-day-container">
           <!-- 工具行：写笔记按钮 -->
           <div v-if="!isWriting && !isEditingExisting" class="compose-row">
             <button class="compose-btn" @click="startWriting">
@@ -954,13 +992,13 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 /* 新增：只让笔记区域滚动 */
 /* 只负责占位，不默认滚动 */
 .notes-scroll {
-  flex: 1;
-  min-height: 0;
+ overflow-y: hidden;
 }
 
 /* 当内容超过容器高度时，才允许滚动 */
 .notes-scroll--scrollable {
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .calendar-container {
   padding: 1rem;
