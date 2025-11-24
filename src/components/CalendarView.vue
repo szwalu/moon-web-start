@@ -876,6 +876,8 @@ async function saveNewNote(content: string, weather: string | null) {
    /* 关键：整体让出顶部/底部安全区 */
    padding-top: var(--safe-top);
    padding-bottom: var(--safe-bottom);
+   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -909,9 +911,6 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   color: inherit;
 }
 .calendar-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   position: relative;
 }
 .calendar-container {
