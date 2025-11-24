@@ -866,17 +866,19 @@ async function saveNewNote(content: string, weather: string | null) {
   position: fixed;
   top: 0;
   left: 0;
+  right: 0;     /* 新增：确保左右撑满 */
+  bottom: 0;    /* 关键修改：用 bottom: 0 替代 height: 100% */
+  /* height: 100%;  <-- 删除这一行，它会导致容器比屏幕高 */
+
   width: 100%;
-  height: 100%;
   background: white;
   z-index: 5000;
   display: flex;
   flex-direction: column;
   color: #333;
-box-sizing: border-box; /* 关键：防止 padding 撑大高度 */
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
-  overflow: hidden; /* 关键：禁止根容器自身产生滚动条 */
+  overflow: hidden; /* 关键：禁止最外层容器滚动 */
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -914,7 +916,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
 }
 .calendar-container {
   padding: 1rem;
