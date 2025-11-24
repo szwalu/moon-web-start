@@ -751,7 +751,7 @@ export function useTagMenu(
             style: [
               'display:flex;',
               'align-items:center;',
-              'padding:5px 10px;', // ← 垂直间距在这里调，大一点小一点都可以
+              'padding:4px 10px;', // ← 垂直间距在这里调，大一点小一点都可以
               'gap:8px;',
             ].join(''),
           },
