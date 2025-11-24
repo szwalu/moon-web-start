@@ -765,7 +765,8 @@ async function saveNewNote(content: string, weather: string | null) {
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
-    <div ref="scrollBodyRef" class="calendar-body">
+    <div class="calendar-body">
+      <!-- 上半：日历，固定不滚动 -->
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
           is-expanded
@@ -773,7 +774,6 @@ async function saveNewNote(content: string, weather: string | null) {
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
         >
-          <!-- 用自定义格式替换原来的 title -->
           <template #header-title="{ title }">
             <span class="calendar-nav-title">
               {{ formatCalendarHeaderTitle(title) }}
@@ -782,80 +782,87 @@ async function saveNewNote(content: string, weather: string | null) {
         </Calendar>
       </div>
 
-      <div class="notes-for-day-container">
-        <!-- 工具行：写笔记按钮 -->
-        <div v-if="!isWriting && !isEditingExisting" class="compose-row">
-          <button class="compose-btn" @click="startWriting">
-            {{ composeButtonText }}
-          </button>
-        </div>
+      <!-- 下半：笔记区域，单独滚动 -->
+      <div ref="scrollBodyRef" class="notes-scroll">
+        <div class="notes-for-day-container">
+          <!-- 工具行：写笔记按钮 -->
+          <div v-if="!isWriting && !isEditingExisting" class="compose-row">
+            <button class="compose-btn" @click="startWriting">
+              {{ composeButtonText }}
+            </button>
+          </div>
 
-        <!-- 轻量输入框（显示时隐藏上面的日历） -->
-        <div v-if="isWriting" class="inline-editor">
-          <NoteEditor
-            ref="newNoteEditorRef"
-            v-model="newNoteContent"
-            :is-editing="false"
-            :is-loading="false"
-            :max-note-length="20000"
-            :placeholder="t('notes.calendar.placeholder_new')"
-            :all-tags="allTags"
-            :tag-counts="tagCounts"
-            :enable-drafts="true"
-            :draft-key="writingKey"
-            :clear-draft-on-save="false"
-            :enable-scroll-push="true"
-            @save="saveNewNote"
-            @cancel="cancelWriting"
-            @focus="onEditorFocus"
-            @blur="() => {}"
-          />
-        </div>
-
-        <!-- 编辑已有笔记（直接在日历内） -->
-        <div v-if="isEditingExisting" class="inline-editor">
-          <NoteEditor
-            ref="editNoteEditorRef"
-            v-model="editContent"
-            :is-editing="true"
-            :is-loading="false"
-            :max-note-length="20000"
-            :placeholder="t('notes.calendar.placeholder_edit')"
-            :all-tags="allTags"
-            :tag-counts="tagCounts"
-            :enable-drafts="true"
-            :draft-key="editDraftKey"
-            :clear-draft-on-save="false"
-            :enable-scroll-push="true"
-            @save="saveExistingNote"
-            @cancel="cancelEditExisting"
-            @focus="onEditorFocus"
-            @blur="() => {}"
-          />
-        </div>
-
-        <div v-if="isLoadingNotes" class="loading-text">{{ t('notes.calendar.loading') }}</div>
-
-        <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
-          <div v-for="note in selectedDateNotes" :key="note.id">
-            <NoteItem
-              :note="note"
-              :is-expanded="expandedNoteId === note.id"
-              :dropdown-in-place="true"
-              :show-internal-collapse-button="true"
-              @toggle-expand="toggleExpandInCalendar"
-              @edit="handleEdit"
-              @copy="handleCopy"
-              @pin="handlePin"
-              @delete="handleDelete"
-              @dblclick="handleEdit(note)"
-              @date-updated="handleDateUpdated"
-              @set-date="(note) => emit('setDate', note)"
+          <!-- 轻量输入框（显示时隐藏上面的日历） -->
+          <div v-if="isWriting" class="inline-editor">
+            <NoteEditor
+              ref="newNoteEditorRef"
+              v-model="newNoteContent"
+              :is-editing="false"
+              :is-loading="false"
+              :max-note-length="20000"
+              :placeholder="t('notes.calendar.placeholder_new')"
+              :all-tags="allTags"
+              :tag-counts="tagCounts"
+              :enable-drafts="true"
+              :draft-key="writingKey"
+              :clear-draft-on-save="false"
+              :enable-scroll-push="true"
+              @save="saveNewNote"
+              @cancel="cancelWriting"
+              @focus="onEditorFocus"
+              @blur="() => {}"
             />
           </div>
-        </div>
 
-        <div v-else class="no-notes-text">{{ t('notes.calendar.no_notes_for_day') }}</div>
+          <!-- 编辑已有笔记 -->
+          <div v-if="isEditingExisting" class="inline-editor">
+            <NoteEditor
+              ref="editNoteEditorRef"
+              v-model="editContent"
+              :is-editing="true"
+              :is-loading="false"
+              :max-note-length="20000"
+              :placeholder="t('notes.calendar.placeholder_edit')"
+              :all-tags="allTags"
+              :tag-counts="tagCounts"
+              :enable-drafts="true"
+              :draft-key="editDraftKey"
+              :clear-draft-on-save="false"
+              :enable-scroll-push="true"
+              @save="saveExistingNote"
+              @cancel="cancelEditExisting"
+              @focus="onEditorFocus"
+              @blur="() => {}"
+            />
+          </div>
+
+          <div v-if="isLoadingNotes" class="loading-text">
+            {{ t('notes.calendar.loading') }}
+          </div>
+
+          <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
+            <div v-for="note in selectedDateNotes" :key="note.id">
+              <NoteItem
+                :note="note"
+                :is-expanded="expandedNoteId === note.id"
+                :dropdown-in-place="true"
+                :show-internal-collapse-button="true"
+                @toggle-expand="toggleExpandInCalendar"
+                @edit="handleEdit"
+                @copy="handleCopy"
+                @pin="handlePin"
+                @delete="handleDelete"
+                @dblclick="handleEdit(note)"
+                @date-updated="handleDateUpdated"
+                @set-date="(note) => emit('setDate', note)"
+              />
+            </div>
+          </div>
+
+          <div v-else class="no-notes-text">
+            {{ t('notes.calendar.no_notes_for_day') }}
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -876,8 +883,6 @@ async function saveNewNote(content: string, weather: string | null) {
    /* 关键：整体让出顶部/底部安全区 */
    padding-top: var(--safe-top);
    padding-bottom: var(--safe-bottom);
-   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -911,7 +916,20 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   color: inherit;
 }
 .calendar-body {
+  flex: 1;
+  min-height: 0;
   position: relative;
+
+  /* 新增：让内部上下两块（上日历，下笔记区域）垂直排列 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 新增：只让笔记区域滚动 */
+.notes-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .calendar-container {
   padding: 1rem;
@@ -930,7 +948,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   color: #f0f0f0;
 }
 .notes-for-day-container {
-  padding-bottom: 8px;
+  padding: 1rem 1.5rem;
 }
 .selected-date-header {
   font-weight: 600;
@@ -940,7 +958,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 .no-notes-text {
   text-align: center;
   color: #888;
-  padding: 1rem;
+  padding: 2rem;
 }
 .dark .loading-text,
 .dark .no-notes-text {
