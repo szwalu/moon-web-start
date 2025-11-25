@@ -2742,7 +2742,7 @@ function handleBeforeInput(e: InputEvent) {
 .format-caret {
   position: absolute;
   left: 50%;
-  transform: translate(-50%, 3px) rotate(45deg);
+  transform: translate(calc(-50% - 30px), 3px) rotate(45deg);
   bottom: -3px;
   width: 6px;
   height: 6px;
