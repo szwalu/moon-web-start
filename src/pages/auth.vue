@@ -80,6 +80,7 @@ const hasMoreNotes = ref(true)
 const hasPreviousNotes = ref(false)
 const maxNoteLength = 20000
 const searchQuery = ref('')
+const hasSearchRun = ref(false)
 const isExporting = ref(false)
 const isReady = ref(false)
 const isEditorActive = ref(false)
@@ -1028,6 +1029,7 @@ function restoreHomepageFromCache(): boolean {
 
 function handleSearchStarted() {
   // ++ 新增：进入搜索时清理“那年今日”持久化，保证互斥
+  hasSearchRun.value = true
   sessionStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
   sessionStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
 
@@ -1043,6 +1045,7 @@ function handleSearchStarted() {
 }
 
 function handleSearchCompleted({ data, error }: { data: any[] | null; error: Error | null }) {
+  hasSearchRun.value = true
   if (error) {
     messageHook.error(`${t('notes.fetch_error')}: ${error.message}`)
     notes.value = []
@@ -1061,6 +1064,7 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 }
 
 function handleSearchCleared() {
+  hasSearchRun.value = false
   isShowingSearchResults.value = false
   if (!restoreHomepageFromCache()) {
     currentPage.value = 1
@@ -2593,12 +2597,12 @@ function onCalendarUpdated(updated: any) {
       </Transition>
 
       <AnniversaryBanner
-        v-show="showAnniversaryBanner"
+        v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner"
         ref="anniversaryBannerRef"
         @toggle-view="handleAnniversaryToggle"
       />
 
-      <div v-if="activeTagFilter" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
+      <div v-if="activeTagFilter && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             {{ t('notes.filtering_by_tag') }}：<strong>{{ activeTagFilter === UNTAGGED_SENTINEL ? ($t('tags.untagged') || '∅ 无标签') : activeTagFilter }}</strong>
@@ -2612,7 +2616,7 @@ function onCalendarUpdated(updated: any) {
         </div>
       </div>
 
-      <div v-if="isShowingSearchResults" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
+      <div v-if="isShowingSearchResults && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             <i18n-t keypath="notes.search_results_for" tag="span">
@@ -2660,7 +2664,7 @@ function onCalendarUpdated(updated: any) {
         class="editor-bottom-spacer"
         aria-hidden="true"
       />
-      <div v-if="showNotesList" class="notes-list-container">
+      <div v-if="showNotesList && (!showSearchBar || hasSearchRun)" class="notes-list-container">
         <NoteList
           ref="noteListRef" :key="noteListKey"
           :notes="displayedNotes"
@@ -2741,7 +2745,7 @@ function onCalendarUpdated(updated: any) {
 
       <!-- 右下角 “+” 悬浮按钮：仅在未展开输入框时显示 -->
       <button
-        v-if="!showComposer && !isTopEditing && !showCalendarView && !showRandomRoam"
+        v-if="!showComposer && !isTopEditing && !showCalendarView && !showRandomRoam && !showSearchBar"
         class="fab-add"
         aria-label="新建笔记"
         @click="openComposer"
