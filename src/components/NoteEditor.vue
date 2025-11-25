@@ -1665,6 +1665,15 @@ function addTable() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
+/** 插入当前时间：只插入 HH:mm */
+function addCurrentTime() {
+  const d = new Date()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const text = `${hh}:${mm}`
+  insertText(text, '')
+}
+
 function addLink() {
   const el = textarea.value
   if (!el)
@@ -1681,7 +1690,7 @@ function addLink() {
   )
 
   dialog.create({
-    title: '插入链接',
+    title: t('notes.editor.toolbar.link'),
     maskClosable: true,
     zIndex: 4000, // 把层级拉高，盖住编辑器
     content: () =>
@@ -1693,7 +1702,7 @@ function addLink() {
         'inputmode': 'url',
       }),
     positiveText: t('notes.ok'),
-    negativeText: '取消',
+    negativeText: t('button.cancel'),
     onPositiveClick: () => {
       const raw = urlRef.value.trim()
       if (!raw)
@@ -2172,7 +2181,6 @@ function handleBeforeInput(e: InputEvent) {
             {{ t('notes.editor.record.status_recording') }}
           </template>
         </span>
-        <!-- 新增：录音时长 mm:ss -->
         <span
           v-if="recordSeconds > 0 || isRecording"
           class="record-time"
@@ -2213,6 +2221,7 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <!-- 底部工具栏 + 字数 + 按钮 -->
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
@@ -2253,20 +2262,7 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <!-- 样式(Aa)汇总按钮 -->
-          <button
-            ref="formatBtnRef"
-            type="button"
-            class="toolbar-btn toolbar-btn-aa"
-            :title="t('notes.editor.toolbar.styles')"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="toggleFormatPalette"
-          >
-            Aa
-          </button>
-
-          <!-- 插入图片链接（Naive UI 对话框） -->
+          <!-- 插入图片 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -2274,45 +2270,6 @@ function handleBeforeInput(e: InputEvent) {
             @pointerdown="onPickImageSync"
             @click="onPickImageSync"
           >
-            <!-- Image icon -->
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
-              <circle cx="9" cy="9" r="1.6" fill="currentColor" />
-              <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            class="toolbar-btn"
-            :title="t('notes.editor.toolbar.link') || '插入链接'"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="addLink"
-          >
-            <svg
-              class="icon-20 icon-link-small"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-
-          <!-- 语音输入：点击只展开/收起“录音条”，不直接录音 -->
-          <button
-            type="button"
-            class="toolbar-btn"
-            @mousedown.prevent
-            @touchstart.prevent
-            @pointerdown.prevent="toggleRecordBarVisible"
-          >
-            <!-- Mic icon -->
             <svg
               class="icon-20"
               viewBox="0 0 24 24"
@@ -2320,29 +2277,45 @@ function handleBeforeInput(e: InputEvent) {
               xmlns="http://www.w3.org/2000/svg"
               aria-hidden="true"
             >
+              <rect
+                x="3" y="4" width="18" height="16" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <circle cx="9" cy="9" r="1.6" fill="currentColor" />
               <path
-                d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
               />
               <path
-                d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                d="M13.5 13.5 18 9"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
               />
             </svg>
           </button>
 
+          <!-- “···” 小工具条按钮 -->
+          <button
+            ref="formatBtnRef"
+            type="button"
+            class="toolbar-btn toolbar-btn-aa"
+            :title="t('notes.editor.toolbar.more_toolbar') || '更多工具'"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="toggleFormatPalette"
+          >
+            ···
+          </button>
+
           <span class="toolbar-sep" aria-hidden="true" />
         </div>
+
         <span class="char-counter">
           {{ charCount }}
         </span>
       </div>
+
       <div class="actions">
         <button type="button" class="btn-secondary" @click="emit('cancel')">
           {{ t('notes.editor.save.button_cancel') }}
@@ -2358,7 +2331,7 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <!-- 样式弹层（更小、更贴合 Aa） -->
+    <!-- 样式弹层（更小、更贴合 “···” ） -->
     <div
       v-if="showFormatPalette"
       ref="formatPaletteRef"
@@ -2366,9 +2339,22 @@ function handleBeforeInput(e: InputEvent) {
       :style="{ top: formatPalettePos.top, left: formatPalettePos.left }"
       @mousedown.prevent
     >
+      <!-- 第一行：文字样式相关 -->
       <div class="format-row">
-        <button type="button" class="format-btn" :title="t('notes.editor.format.bold')" @click="handleFormat(addBold)">B</button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.ordered_list')" @click="handleFormat(addOrderedList)">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.bold')"
+          @click="handleFormat(addBold)"
+        >
+          B
+        </button>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.ordered_list')"
+          @click="handleFormat(addOrderedList)"
+        >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
             <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
@@ -2378,9 +2364,28 @@ function handleBeforeInput(e: InputEvent) {
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.heading')" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.underline')" @click="handleFormat(addUnderline)">U</button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.bullet_list')" @click="handleFormat(addBulletList)">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.heading')"
+          @click="handleFormat(addHeading)"
+        >
+          H
+        </button>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.underline')"
+          @click="handleFormat(addUnderline)"
+        >
+          U
+        </button>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.bullet_list')"
+          @click="handleFormat(addBulletList)"
+        >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="6" cy="7" r="2" fill="currentColor" />
             <circle cx="6" cy="12" r="2" fill="currentColor" />
@@ -2390,14 +2395,36 @@ function handleBeforeInput(e: InputEvent) {
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.highlight')" @click="handleFormat(addMarkHighlight)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.highlight')"
+          @click="handleFormat(addMarkHighlight)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
             <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
           </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.insert_table')" @click="handleFormat(addTable)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.insert_table')"
+          @click="handleFormat(addTable)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" />
             <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" />
             <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" />
@@ -2405,6 +2432,96 @@ function handleBeforeInput(e: InputEvent) {
           </svg>
         </button>
       </div>
+
+      <!-- 第二行：链接 / 时间 / 录音 -->
+      <div class="format-row">
+        <!-- 插入链接 -->
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.link') || '插入链接'"
+          @click="handleFormat(addLink)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!-- 插入当前时间 -->
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.time') || '插入时间'"
+          @click="handleFormat(addCurrentTime)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" />
+            <path
+              d="M12 8v4l2.5 2.5"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!-- 录音：打开/收起录音条 -->
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.recording') || '录音'"
+          @click="handleFormat(() => toggleRecordBarVisible())"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+
       <div class="format-caret" />
     </div>
   </div>
@@ -2742,7 +2859,7 @@ function handleBeforeInput(e: InputEvent) {
 .format-caret {
   position: absolute;
   left: 50%;
-  transform: translate(calc(-50% - 30px), 3px) rotate(45deg);
+  transform: translate(calc(-50% - 7px), 3px) rotate(45deg);
   bottom: -3px;
   width: 6px;
   height: 6px;
@@ -2816,5 +2933,10 @@ function handleBeforeInput(e: InputEvent) {
   display: block;
   margin: -5px !important;    /* 负外边距把放大的图形居中回去，不撑大面板 */
   pointer-events: none;       /* 防止图标遮挡点击（点击事件仍落到 button 上） */
+}
+
+/* 底部工具栏：拉大四个图标左右间距 */
+.editor-footer .toolbar-btn {
+  margin: 0 6px; /* 原本一般是 4px～6px，这里加大到 10px */
 }
 </style>

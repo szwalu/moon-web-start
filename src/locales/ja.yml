@@ -568,6 +568,10 @@ notes:
       todo: ToDo
       styles: スタイル
       insert_image_link: 画像リンクを挿入
+      link: リンクを挿入
+      time: 時間を挿入
+      recording: 録音
+      more_toolbar: その他のツール
   ok: OK
 
   HelpDialog:

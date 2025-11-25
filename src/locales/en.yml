@@ -569,6 +569,10 @@ notes:
       todo: To-do
       styles: Styles
       insert_image_link: Insert image link
+      link: Insert link
+      time: Insert time
+      recording: recording
+      more_toolbar: More tools
   ok: OK
 
   HelpDialog:

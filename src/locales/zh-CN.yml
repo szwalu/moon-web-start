@@ -566,6 +566,10 @@ notes:
       todo: 待办事项
       styles: 样式
       insert_image_link: 插入图片
+      link: 插入链接
+      time: 插入时间
+      recording: 录音
+      more_toolbar: 更多工具
   ok: 确定
 
   HelpDialog:
