@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTextareaAutosize } from '@vueuse/core'
-import { useDialog } from 'naive-ui'
+import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
@@ -1665,6 +1665,67 @@ function addTable() {
   updateTextarea(finalFullText, newCursorPos)
 }
 
+function addLink() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  const value = el.value
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  const selected = value.slice(start, end)
+
+  // 默认值：如果选中的是以 http 开头的文本，就用选中值，否则用 https://
+  const urlRef = ref(
+    selected && /^https?:\/\//i.test(selected) ? selected : 'https://',
+  )
+
+  dialog.create({
+    title: '插入链接',
+    maskClosable: true,
+    zIndex: 4000, // 把层级拉高，盖住编辑器
+    content: () =>
+      h(NInput, {
+        'value': urlRef.value,
+        'onUpdate:value': (v: string) => { urlRef.value = v },
+        'placeholder': 'https://example.com',
+        'autofocus': true,
+        'inputmode': 'url',
+      }),
+    positiveText: t('notes.ok'),
+    negativeText: '取消',
+    onPositiveClick: () => {
+      const raw = urlRef.value.trim()
+      if (!raw)
+        return false
+
+      const url = raw
+      const label = selected || url
+
+      const before = value.slice(0, start)
+      const after = value.slice(end)
+      const linkMd = `[${label}](${url})`
+      const newText = `${before}${linkMd}${after}`
+      const newCursorPos = before.length + linkMd.length
+
+      updateTextarea(newText, newCursorPos)
+
+      nextTick(() => {
+        const textareaEl = textarea.value
+        if (textareaEl) {
+          textareaEl.focus()
+          textareaEl.setSelectionRange(newCursorPos, newCursorPos)
+          captureCaret()
+          ensureCaretVisibleInTextarea()
+          requestAnimationFrame(() => recomputeBottomSafePadding())
+        }
+      })
+
+      return true
+    },
+  })
+}
+
 function handleEnterKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || isComposing.value)
     return
@@ -2201,6 +2262,31 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.toolbar.link') || '插入链接'"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="addLink"
+          >
+            <svg
+              class="icon-20"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4.25 7.75a2.5 2.5 0 0 0 3.54.2l1.7-1.7a2.5 2.5 0 1 0-3.54-3.54L5.4 3" />
+              <path d="M9.75 6.25a2.5 2.5 0 0 0-3.54-.2l-1.7 1.7a2.5 2.5 0 1 0 3.54 3.54l0.85-.85" />
+            </svg>
+          </button>
+
           <!-- 语音输入：点击只展开/收起“录音条”，不直接录音 -->
           <button
             type="button"
@@ -2418,7 +2504,7 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: 4px 6px;
   border-top: none;
   background-color: transparent;
 }
@@ -2549,7 +2635,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 1px;
   border: none;
   background: none;
   padding: 0;
