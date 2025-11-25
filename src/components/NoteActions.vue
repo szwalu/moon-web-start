@@ -669,26 +669,22 @@ defineExpose({
 
         <div class="sheet-body">
           <ul class="more-list">
-            <li
-              class="more-item"
-              :class="{ selected: moreHasImage }"
-              @click="moreHasImage = !moreHasImage"
-            >
+            <!-- 有图片 -->
+            <li class="more-item" @click="moreHasImage = !moreHasImage">
               {{ t('notes.search_quick_has_image', '有图片') }}
+              <span v-if="moreHasImage" class="check-icon">✓</span>
             </li>
-            <li
-              class="more-item"
-              :class="{ selected: moreHasLink }"
-              @click="moreHasLink = !moreHasLink"
-            >
+
+            <!-- 有链接 -->
+            <li class="more-item" @click="moreHasLink = !moreHasLink">
               {{ t('notes.search_quick_has_link', '有链接') }}
+              <span v-if="moreHasLink" class="check-icon">✓</span>
             </li>
-            <li
-              class="more-item"
-              :class="{ selected: moreHasAudio }"
-              @click="moreHasAudio = !moreHasAudio"
-            >
+
+            <!-- 有语音 -->
+            <li class="more-item" @click="moreHasAudio = !moreHasAudio">
               {{ t('notes.search_quick_has_audio', '有语音') }}
+              <span v-if="moreHasAudio" class="check-icon">✓</span>
             </li>
           </ul>
         </div>
@@ -1142,5 +1138,37 @@ defineExpose({
   .search-input {
     font-size: 16px;
   }
+}
+
+/* 左侧打勾图标 */
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 15px;
+}
+
+.more-item:last-child {
+  border-bottom: none;
+}
+
+/* 勾号样式 */
+.check-icon {
+  color: #22c55e;      /* 绿色 */
+  font-weight: 700;
+  width: 1.2rem;
+  text-align: center;
+}
+
+/* 未选时占位对齐 */
+.check-placeholder {
+  width: 1.2rem;
+}
+
+/* Dark mode */
+.dark .more-item {
+  border-color: #4b5563;
 }
 </style>
