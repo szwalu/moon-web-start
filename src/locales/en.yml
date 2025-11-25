@@ -8,6 +8,7 @@ common:
   name: Name
   more: More
   close: close
+  confirm: Confirm
 
 time_units:
   days: Days
@@ -369,9 +370,48 @@ notes:
   tag_filter_optional: Tag Filter (Optional)
   tag_filter_all: All Tags
 
+  # Top filter chips
+  search_filter_date: Date
+  search_filter_date_this_week: This week
+  search_filter_date_this_month: This month
+  search_filter_date_custom: Custom
+
+  search_filter_tag: Tag
+  search_filter_tag_untagged: No tag
+  search_filter_tag_include: Include tag
+  search_filter_tag_exclude: Exclude tag
+
+  search_filter_more: More
+
+  # Quick search
+  search_quick_title: Quick search
   search_quick_has_image: With images
-  search_quick_has_audio: With audio
   search_quick_has_link: With links
+  search_quick_has_audio: With audio
+
+  # Date sheet
+  search_date_title: Date range
+  search_date_all: All time
+  search_date_this_week: This week
+  search_date_this_month: This month
+  search_date_start: Start date
+  search_date_end: End date
+
+  # Tag sheet
+  search_tag_title: Tag range
+  search_tag_all: All notes
+  search_tag_untagged: No tag
+  search_tag_include: Include specific tag
+  search_tag_exclude: Exclude specific tag
+  search_tag_pick_label: Choose a tag
+  search_tag_pick_placeholder: Select a tag
+
+  # More sheet
+  search_more_title: More filters
+
+  # Errors (console)
+  search_error_user_invalid: 'Search aborted: user not logged in or user info is invalid.'
+  search_error_api_failed: Search API request failed：
 
   share: Share
   share_title: Share note

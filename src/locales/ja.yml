@@ -8,6 +8,7 @@ common:
   name: 名前
   more: もっと見る
   close: キャンセル
+  confirm: 確定
 
 time_units:
   days: 日
@@ -368,9 +369,48 @@ notes:
   tag_filter_optional: タグフィルター（任意）
   tag_filter_all: すべてのタグ
 
+  # 上部フィルターチップ
+  search_filter_date: 日付
+  search_filter_date_this_week: 今週
+  search_filter_date_this_month: 今月
+  search_filter_date_custom: カスタム
+
+  search_filter_tag: タグ
+  search_filter_tag_untagged: タグなし
+  search_filter_tag_include: 指定タグを含む
+  search_filter_tag_exclude: 指定タグを除外
+
+  search_filter_more: さらに絞り込む
+
+  # クイック検索
+  search_quick_title: クイック検索
   search_quick_has_image: 画像あり
-  search_quick_has_audio: 録音あり
   search_quick_has_link: リンクあり
+  search_quick_has_audio: 音声あり
+
+  # 日付シート
+  search_date_title: 日付範囲
+  search_date_all: 期間指定なし
+  search_date_this_week: 今週
+  search_date_this_month: 今月
+  search_date_start: 開始日
+  search_date_end: 終了日
+
+  # タグシート
+  search_tag_title: タグ範囲
+  search_tag_all: すべてのノート
+  search_tag_untagged: タグなし
+  search_tag_include: 指定タグを含む
+  search_tag_exclude: 指定タグを除外
+  search_tag_pick_label: タグを選択
+  search_tag_pick_placeholder: タグを選んでください
+
+  # その他シート
+  search_more_title: 詳細条件
+
+  # エラー（console）
+  search_error_user_invalid: 検索を中止しました。ユーザーが未ログイン、またはユーザー情報が無効です。
+  search_error_api_failed: 検索 API の呼び出しに失敗しました：
 
   share: 共有
   share_title: ノートを共有

@@ -8,6 +8,7 @@ common:
   name: 名称
   more: 更多
   close: 关闭
+  confirm: 确定
 
 time_units:
   days: 天
@@ -366,9 +367,48 @@ notes:
   tag_filter_optional: 标签过滤（可选）
   tag_filter_all: 全部标签
 
+  # 顶部三个筛选 chip
+  search_filter_date: 日期
+  search_filter_date_this_week: 本周
+  search_filter_date_this_month: 本月
+  search_filter_date_custom: 自定义
+
+  search_filter_tag: 标签
+  search_filter_tag_untagged: 无标签
+  search_filter_tag_include: 包含标签
+  search_filter_tag_exclude: 排除标签
+
+  search_filter_more: 更多
+
+  # 快捷搜索
+  search_quick_title: 快捷搜索
   search_quick_has_image: 有图片
-  search_quick_has_audio: 有录音
   search_quick_has_link: 有链接
+  search_quick_has_audio: 有语音
+
+  # 日期弹窗
+  search_date_title: 日期范围
+  search_date_all: 不限时间
+  search_date_this_week: 本周
+  search_date_this_month: 本月
+  search_date_start: 开始日期
+  search_date_end: 结束日期
+
+  # 标签弹窗
+  search_tag_title: 标签范围
+  search_tag_all: 全部内容
+  search_tag_untagged: 无标签
+  search_tag_include: 包含指定标签
+  search_tag_exclude: 排除指定标签
+  search_tag_pick_label: 选择标签
+  search_tag_pick_placeholder: 请选择标签
+
+  # 更多弹窗
+  search_more_title: 更多条件
+
+  # 错误提示（console）
+  search_error_user_invalid: 搜索中止，原因：用户未登录或用户信息无效
+  search_error_api_failed: 搜索 API 请求失败：
 
   share: 分享
   share_title: 分享笔记

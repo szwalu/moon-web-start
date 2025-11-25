@@ -2984,16 +2984,20 @@ function onCalendarUpdated(updated: any) {
   transform: translate(-50%, 20px);
 }
 .search-bar-container {
+  /* ✅ 修复间距的核心：改回 sticky */
+  /* sticky 既能实现吸顶，也能作为内部绝对定位元素的参照物 */
   position: -webkit-sticky;
   position: sticky;
-  top: 44px;
-  z-index: 9;
-  background: white;
+  display: block;
+
+  /* 确保背景不透明，防止滚动时内容透出来 */
+  background: var(--app-bg);
+  /* 保持原有的内边距 */
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
+
+  /* 确保层级高于内容列表 */
+  z-index: 100;
 }
 .dark .search-bar-container {
   background: #1e1e1e;
@@ -3232,6 +3236,31 @@ function onCalendarUpdated(updated: any) {
 
 /* 深色模式下的微调 */
 .dark .fab-add { background: #818cf8; color: #111; }
+.cancel-search-btn {
+  /* 绝对定位：固定在容器右上角 */
+  position: absolute;
+  right: 0;
+  top: 13px; /* 根据 padding-top: 0.5rem (8px) + 微调，让文字居中 */
+
+  /* 确保按钮在最上层，不被输入框遮挡 */
+  z-index: 200;
+
+  /* 样式 */
+  background: none;
+  border: none;
+  font-size: 15px; /* 字体稍微大一点点更易点 */
+  color: #666;
+  cursor: pointer;
+  padding: 0 4px; /* 增加一点点击热区 */
+}
+
+.dark .cancel-search-btn {
+  color: #bbb;
+}
+
+.search-actions-wrapper :deep(.search-input-wrapper) {
+  margin-right: 50px !important; /* 右侧留出 45px 空间 */
+}
 </style>
 
 <style>
