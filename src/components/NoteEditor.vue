@@ -1865,13 +1865,34 @@ function placeFormatPalette() {
   const panel = formatPaletteRef.value
   if (!btn || !root || !panel)
     return
+
   const btnRect = btn.getBoundingClientRect()
   const rootRect = root.getBoundingClientRect()
   const gap = 8
   const panelH = panel.offsetHeight || 0
+  const panelW = panel.offsetWidth || 0
+  const rootWidth = rootRect.width
+
+  // 垂直位置：保持原来的在 Aa 上方
   const top = (btnRect.top - rootRect.top) - panelH - gap
-  const left = (btnRect.left - rootRect.left) + btnRect.width / 2
-  formatPalettePos.value = { top: `${Math.max(top, 0)}px`, left: `${left}px` }
+
+  // 基准：Aa 按钮中点
+  const centerBase = (btnRect.left - rootRect.left) + btnRect.width / 2
+
+  // 微调：整体向右平移几个像素（你可以改成 8 或 10 做微调）
+  const H_OFFSET = 6
+  let left = centerBase + H_OFFSET
+
+  // 防止左/右溢出：考虑 transform: translateX(-50%)
+  const margin = 4
+  const minLeft = (panelW / 2) + margin
+  const maxLeft = rootWidth - (panelW / 2) - margin
+  left = Math.min(Math.max(left, minLeft), maxLeft)
+
+  formatPalettePos.value = {
+    top: `${Math.max(top, 0)}px`,
+    left: `${left}px`,
+  }
 }
 
 let paletteFollowRaf: number | null = null
@@ -2278,8 +2299,8 @@ function handleBeforeInput(e: InputEvent) {
               xmlns="http://www.w3.org/2000/svg"
               aria-hidden="true"
             >
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
 
