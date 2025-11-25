@@ -928,6 +928,7 @@ defineExpose({
   background-color: #ffffff;
   border-radius: 16px 16px 0 0;
   padding: 1rem 1rem 0.75rem;
+  margin-bottom: 5vh;
 }
 
 .dark .sheet-panel {

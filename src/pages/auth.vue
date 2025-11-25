@@ -3259,7 +3259,7 @@ function onCalendarUpdated(updated: any) {
 }
 
 .search-actions-wrapper :deep(.search-input-wrapper) {
-  margin-right: 50px !important; /* 右侧留出 45px 空间 */
+  margin-right: 45px !important; /* 右侧留出 45px 空间 */
 }
 </style>
 
