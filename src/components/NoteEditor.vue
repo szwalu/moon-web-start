@@ -2271,19 +2271,15 @@ function handleBeforeInput(e: InputEvent) {
             @pointerdown.prevent="addLink"
           >
             <svg
-              class="icon-20"
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
+              class="icon-20 icon-link-small"
+              viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              xmlns="http://www.w3.org/2000/svg"
               aria-hidden="true"
             >
-              <path d="M4.25 7.75a2.5 2.5 0 0 0 3.54.2l1.7-1.7a2.5 2.5 0 1 0-3.54-3.54L5.4 3" />
-              <path d="M9.75 6.25a2.5 2.5 0 0 0-3.54-.2l-1.7 1.7a2.5 2.5 0 1 0 3.54 3.54l0.85-.85" />
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
 
@@ -2783,6 +2779,10 @@ function handleBeforeInput(e: InputEvent) {
   width: 20px;
   height: 20px;
   display: block;
+}
+.icon-20.icon-link-small {
+  width: 16px;
+  height: 16px;
 }
 
 /* 允许图标溢出按钮盒，不改变按钮盒尺寸 */
