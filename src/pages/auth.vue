@@ -3240,7 +3240,7 @@ function onCalendarUpdated(updated: any) {
   /* 绝对定位：固定在容器右上角 */
   position: absolute;
   right: 0;
-  top: 8px; /* 根据 padding-top: 0.5rem (8px) + 微调，让文字居中 */
+  top: 9px; /* 根据 padding-top: 0.5rem (8px) + 微调，让文字居中 */
 
   /* 确保按钮在最上层，不被输入框遮挡 */
   z-index: 200;
