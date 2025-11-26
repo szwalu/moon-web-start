@@ -103,6 +103,11 @@ const contentModel = computed({
   },
 })
 
+// 只有在移动端，且处于编辑模式 & 输入框有焦点时，才浮动工具栏
+const showFloatingFooter = computed(() => {
+  return isMobile && props.isEditing && isFocused.value
+})
+
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
@@ -1309,6 +1314,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  isFocused.value = true
   emit('focus')
   captureCaret()
 
@@ -1340,6 +1346,7 @@ function handleFocus() {
 }
 
 function onBlur() {
+  isFocused.value = false
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
@@ -2222,7 +2229,10 @@ function handleBeforeInput(e: InputEvent) {
     </div>
 
     <!-- 底部工具栏 + 字数 + 按钮 -->
-    <div class="editor-footer">
+    <div
+      class="editor-footer"
+      :class="{ 'editor-footer-floating': showFloatingFooter }"
+    >
       <div class="footer-left">
         <div class="editor-toolbar">
           <button
@@ -2596,6 +2606,24 @@ function handleBeforeInput(e: InputEvent) {
   padding: 4px 6px;
   border-top: none;
   background-color: transparent;
+}
+
+/* ⭐ 移动端编辑时：工具栏贴在键盘上方（视口底部） */
+.editor-footer-floating {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom);
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  background-color: #f9f9f9;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  z-index: 900;
+}
+
+.dark .editor-footer-floating {
+  background-color: #2c2c2e;
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ===== 录音条（固定在工具栏上方） ===== */
