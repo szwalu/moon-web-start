@@ -2108,7 +2108,8 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn"
+    :class="[{ 'editing-viewport': isEditing }, { 'editing-mobile': isEditing && isMobile }]"
   >
     <input
       ref="imageInputRef"
@@ -2490,6 +2491,29 @@ function handleBeforeInput(e: InputEvent) {
   padding: 4px 6px;
   border-top: none;
   background-color: transparent;
+}
+
+/* ===== 编辑态 + 移动端：底部工具栏吸附到键盘上方 ===== */
+.note-editor-reborn.editing-mobile .editor-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom);
+  z-index: 1200;
+  padding: 6px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: #f9f9f9;
+}
+
+/* 深色模式下的背景与边线 */
+.dark .note-editor-reborn.editing-mobile .editor-footer {
+  background-color: #111827;
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 编辑态 + 移动端时，给正文多留一点底部空间，避免最后一行被工具栏压住 */
+.note-editor-reborn.editing-mobile .editor-textarea {
+  padding-bottom: 56px; /* 略大于工具栏高度，防止被挡 */
 }
 
 /* ===== 录音条（固定在工具栏上方） ===== */
