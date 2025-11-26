@@ -66,10 +66,12 @@ const endDateStr = ref('')
 const tagMode = ref<'all' | 'untagged' | 'include' | 'exclude'>('all')
 const selectedTagForFilter = ref('') // 选择标签下拉框当前值
 
-// 更多筛选（有图片 / 有链接 / 有语音）
+// 更多筛选（有图片 / 有链接）
 const moreHasImage = ref(false)
 const moreHasLink = ref(false)
-const moreHasAudio = ref(false)
+
+// 有语音：前端本地 AND 过滤开关（不再传布尔到 RPC）
+const audioFilterEnabled = ref(false)
 
 // 是否有任何筛选条件生效（用于允许“仅筛选、不输关键字”的搜索）
 const hasAnyFilter = computed(() => {
@@ -83,7 +85,7 @@ const hasAnyFilter = computed(() => {
     || !!selectedTagForFilter.value
 
   const hasMore
-    = moreHasImage.value || moreHasLink.value || moreHasAudio.value
+    = moreHasImage.value || moreHasLink.value || audioFilterEnabled.value
 
   return hasDate || hasTag || hasMore
 })
@@ -121,7 +123,7 @@ const moreLabel = computed(() => {
     parts.push(t('notes.search_quick_has_image', '有图片'))
   if (moreHasLink.value)
     parts.push(t('notes.search_quick_has_link', '有链接'))
-  if (moreHasAudio.value)
+  if (audioFilterEnabled.value)
     parts.push(t('notes.search_quick_has_audio', '有语音'))
 
   if (!parts.length)
@@ -138,9 +140,30 @@ const searchModel = computed({
   },
 })
 
+// ====== 本地“有语音”判定：三个标志必须都出现 ======
+const AUDIO_NOTE_MARKERS = ['note-audios/', '.webm', '录音'] as const
+
+function isAudioNote(note: any): boolean {
+  if (!note)
+    return false
+  let raw = ''
+  try {
+    raw = JSON.stringify(note)
+  }
+  catch {
+    return false
+  }
+  return AUDIO_NOTE_MARKERS.every(marker => raw.includes(marker))
+}
+
 /**
  * 把「关键字 + 各种筛选条件」打包成 RPC 需要的 payload
  * 同时返回标准化后的 query 字符串，用于缓存 key。
+ *
+ * 注意：
+ * - 普通模式：search_term = 用户输入的 query
+ * - 有语音模式：在 query 基础上额外加上“录音”（如果原来没有），
+ *   不把 note-audios/ 和 .webm 传给 RPC，只在前端本地 AND 过滤。
  */
 function buildSearchPayload(termOverride?: string) {
   const raw = typeof termOverride === 'string' ? termOverride : searchModel.value
@@ -148,8 +171,23 @@ function buildSearchPayload(termOverride?: string) {
 
   const payload: Record<string, any> = {
     p_user_id: props.user.id,
-    search_term: query || null,
   }
+
+  // ===== 决定送给 RPC 的 search_term =====
+  let searchTermForRpc = query
+
+  if (audioFilterEnabled.value) {
+    if (!searchTermForRpc) {
+      // 没有其它关键字，仅按“录音”搜索
+      searchTermForRpc = '录音'
+    }
+    else if (!searchTermForRpc.includes('录音')) {
+      // 有其它关键字时，在后面附加“录音”
+      searchTermForRpc = `${searchTermForRpc} 录音`
+    }
+  }
+
+  payload.search_term = searchTermForRpc || null
 
   // 日期条件：前端全部传给后端，后端自行决定怎么用
   payload.date_mode = dateMode.value
@@ -163,10 +201,9 @@ function buildSearchPayload(termOverride?: string) {
       ? (selectedTagForFilter.value || null)
       : null
 
-  // 更多条件：布尔值
+  // 更多条件：布尔值（仅图片/链接，语音用本地过滤不下发）
   payload.has_image = moreHasImage.value
   payload.has_link = moreHasLink.value
-  payload.has_audio = moreHasAudio.value
 
   return { payload, query }
 }
@@ -197,7 +234,7 @@ async function executeSearch(termOverride?: string) {
     tag: selectedTagForFilter.value,
     img: moreHasImage.value,
     link: moreHasLink.value,
-    audio: moreHasAudio.value,
+    audioFilter: audioFilterEnabled.value,
   }))
 
   // 1) 先查 localStorage 缓存
@@ -205,7 +242,10 @@ async function executeSearch(termOverride?: string) {
   if (cachedRaw) {
     try {
       const data = JSON.parse(cachedRaw)
-      emit('searchCompleted', { data, error: null, fromCache: true })
+      const finalData = audioFilterEnabled.value && Array.isArray(data)
+        ? data.filter(isAudioNote)
+        : data
+      emit('searchCompleted', { data: finalData, error: null, fromCache: true })
       return
     }
     catch (e) {
@@ -243,9 +283,15 @@ async function executeSearch(termOverride?: string) {
       }
     }
 
-    if (data)
-      localStorage.setItem(cacheKey, JSON.stringify(data))
-    emit('searchCompleted', { data, error: null, fromCache: false })
+    let finalData: any = data
+
+    // 本地“有语音” AND 过滤
+    if (audioFilterEnabled.value && Array.isArray(finalData))
+      finalData = finalData.filter(isAudioNote)
+
+    if (finalData)
+      localStorage.setItem(cacheKey, JSON.stringify(finalData))
+    emit('searchCompleted', { data: finalData, error: null, fromCache: false })
   }
   catch (err: any) {
     console.error(t('notes.search_error_api_failed', '搜索 API 请求失败:'), err)
@@ -254,16 +300,22 @@ async function executeSearch(termOverride?: string) {
 }
 
 // --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
-// 保持原来的“关键字搜索”行为不变
 function handleQuickSearch(type: 'image' | 'audio' | 'link') {
   let keyword = ''
 
-  if (type === 'image')
+  if (type === 'image') {
+    audioFilterEnabled.value = false
     keyword = 'note-images/'
-  else if (type === 'audio')
-    keyword = 'note-audios/'
-  else if (type === 'link')
+  }
+  else if (type === 'audio') {
+    // 启用“有语音”本地过滤，并让 RPC 至少按“录音”搜索
+    audioFilterEnabled.value = true
+    keyword = '录音'
+  }
+  else if (type === 'link') {
+    audioFilterEnabled.value = false
     keyword = 'https://'
+  }
 
   if (!keyword)
     return
@@ -298,7 +350,7 @@ function confirmTagFilter() {
   executeSearch()
 }
 
-// “更多”弹窗确认：不再改搜索框内容，直接带着布尔筛选执行搜索
+// “更多”弹窗确认：不再改搜索框内容，直接带着布尔筛选 + 本地音频筛选执行搜索
 function confirmMoreFilter() {
   showMoreModal.value = false
   executeSearch()
@@ -349,7 +401,7 @@ function moveSearchSelection(offset: number) {
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
-    selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
+    selectSearchTag(searchTagSuggestions.value[highlightedIndex.value])
   else
     executeSearch()
 }
@@ -366,7 +418,7 @@ function clearSearch() {
   selectedTagForFilter.value = ''
   moreHasImage.value = false
   moreHasLink.value = false
-  moreHasAudio.value = false
+  audioFilterEnabled.value = false
 
   emit('searchCleared')
 }
@@ -451,7 +503,7 @@ defineExpose({
       {{ t('notes.search_quick_title', '快捷搜索') }}
     </div>
 
-    <!-- 快捷搜索：只保留 有图片 / 有语音 / 有链接 -->
+    <!-- 快捷搜索：有图片 / 有语音 / 有链接 -->
     <div class="quick-search-chips">
       <button
         class="quick-chip"
@@ -681,10 +733,10 @@ defineExpose({
               <span v-if="moreHasLink" class="check-icon">✓</span>
             </li>
 
-            <!-- 有语音 -->
-            <li class="more-item" @click="moreHasAudio = !moreHasAudio">
+            <!-- 有语音：仅本地 AND 过滤 + 在 search_term 中附加“录音” -->
+            <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">
               {{ t('notes.search_quick_has_audio', '有语音') }}
-              <span v-if="moreHasAudio" class="check-icon">✓</span>
+              <span v-if="audioFilterEnabled" class="check-icon">✓</span>
             </li>
           </ul>
         </div>
@@ -702,6 +754,7 @@ defineExpose({
 </template>
 
 <style scoped>
+/* 原样保留样式不变 */
 .search-export-bar {
   display: flex;
   flex-direction: column;
@@ -1117,6 +1170,9 @@ defineExpose({
 }
 
 .more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.7rem 0.25rem;
   border-bottom: 1px solid #e5e7eb;
   font-size: 15px;
@@ -1138,20 +1194,6 @@ defineExpose({
   .search-input {
     font-size: 16px;
   }
-}
-
-/* 左侧打勾图标 */
-.more-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 15px;
-}
-
-.more-item:last-child {
-  border-bottom: none;
 }
 
 /* 勾号样式 */
