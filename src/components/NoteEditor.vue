@@ -68,6 +68,8 @@ const isIOS = /iphone|ipad|ipod/.test(UA)
 const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
+const keyboardVisible = ref(false)
+const keyboardLift = ref(0)
 
 const isFreezingBottom = ref(false)
 
@@ -939,6 +941,8 @@ let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
+    keyboardVisible.value = false
+    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
     return
   }
@@ -947,18 +951,28 @@ function recomputeBottomSafePadding() {
 
   const el = textarea.value
   if (!el) {
+    keyboardVisible.value = false
+    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
     return
   }
 
   const vv = window.visualViewport
   if (!vv) {
+    keyboardVisible.value = false
+    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+
+  // === 新增：同步键盘可见状态 & 抬升高度（供浮动工具栏使用） ===
+  const visible = keyboardHeight >= 60
+  keyboardVisible.value = visible
+  keyboardLift.value = visible ? keyboardHeight : 0
+
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
@@ -990,18 +1004,14 @@ function recomputeBottomSafePadding() {
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15)
 
   const caretBottomAdjusted = isAndroid
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const TOOLBAR_OFFSET = props.isEditing ? 50 : 0
-
-  const EXTRA = isAndroid
-    ? 28 + TOOLBAR_OFFSET
-    : (iosFirstInputLatch.value ? 48 : 32) + TOOLBAR_OFFSET
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1021,25 +1031,21 @@ function recomputeBottomSafePadding() {
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
+  const DEADZONE = isAndroid ? 72 : 46
+  const MIN_STEP = isAndroid ? 24 : 14
+  const STICKY = 12
 
   let need = rawNeed - DEADZONE
   if (need < MIN_STEP)
     need = 0
 
-  // 抑制小幅抖动：与上次差异很小时保持不变
   if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
 
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
@@ -1047,14 +1053,14 @@ function recomputeBottomSafePadding() {
         const cap = 420
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+          window.scrollBy(0, delta)
       }
       else {
         const ratio = 0.35
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+          window.scrollBy(0, delta)
       }
       _hasPushedPage = true
       window.setTimeout(() => {
@@ -1069,7 +1075,6 @@ function recomputeBottomSafePadding() {
     _hasPushedPage = false
   }
 }
-
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
@@ -1350,6 +1355,14 @@ function onBlur() {
   stopFocusBoost()
   _lastBottomNeed = 0
 
+  keyboardVisible.value = false
+  keyboardLift.value = 0
+
+  if (suppressNextBlur.value) {
+    suppressNextBlur.value = false
+    return
+  }
+
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -1595,13 +1608,13 @@ function runToolbarAction(fn: () => void) {
 function addHeading() {
   insertText('## ', '')
 }
-function addBold() {
+function _addBold() {
   insertText('**', '**')
 }
 function addUnderline() {
   insertText('++', '++')
 }
-function addBulletList() {
+function _addBulletList() {
   const el = textarea.value
   if (!el)
     return
@@ -2108,8 +2121,7 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn"
-    :class="[{ 'editing-viewport': isEditing }, { 'editing-mobile': isEditing && isMobile }]"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
     <input
       ref="imageInputRef"
@@ -2143,6 +2155,7 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
+
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
@@ -2167,152 +2180,158 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <Teleport to="body">
-      <div v-if="isEditing && isMobile" class="mobile-keyboard-toolbar">
-        <div v-if="showRecordBar" class="record-bar-sticky">
-          <div class="record-status">
-            <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
-            <span class="record-text">
-              <template v-if="isUploadingAudio">{{ t('notes.editor.record.uploading') }}</template>
-              <template v-else-if="!isRecording">{{ t('notes.editor.record.status_ready') }}</template>
-              <template v-else-if="isRecordPaused">{{ t('notes.editor.record.status_paused') }}</template>
-              <template v-else>{{ t('notes.editor.record.status_recording') }}</template>
-            </span>
-            <span v-if="recordSeconds > 0 || isRecording" class="record-time">
-              {{ recordTimeText }}
-              <span v-if="recordRemainingText" class="record-remaining">|{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}</span>
-            </span>
-          </div>
-          <div class="record-actions">
-            <button type="button" class="record-btn record-btn-secondary" @click="handleRecordCancelClick">
-              {{ t('notes.editor.record.button_cancel') }}
-            </button>
-            <button type="button" class="record-btn record-btn-secondary" :disabled="!isRecording || isUploadingAudio" @click="handleRecordPauseClick">
-              {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
-            </button>
-            <button type="button" class="record-btn record-btn-primary" :disabled="isUploadingAudio" @click="handleRecordButtonClick">
-              {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
-            </button>
-          </div>
-        </div>
-
-        <div class="toolbar-inner">
-          <button
-            type="button" class="toolbar-btn"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="openTagMenu"
+    <!-- 固定录音条：点击麦克风后出现在工具栏上方 -->
+    <div v-if="showRecordBar" class="record-bar">
+      <div class="record-status">
+        <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
+        <span class="record-text">
+          <template v-if="isUploadingAudio">
+            {{ t('notes.editor.record.uploading') }}
+          </template>
+          <template v-else-if="!isRecording">
+            {{ t('notes.editor.record.status_ready') }}
+          </template>
+          <template v-else-if="isRecordPaused">
+            {{ t('notes.editor.record.status_paused') }}
+          </template>
+          <template v-else>
+            {{ t('notes.editor.record.status_recording') }}
+          </template>
+        </span>
+        <span
+          v-if="recordSeconds > 0 || isRecording"
+          class="record-time"
+        >
+          {{ recordTimeText }}
+          <span
+            v-if="recordRemainingText"
+            class="record-remaining"
           >
-            #
-          </button>
-
-          <button
-            type="button" class="toolbar-btn"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="runToolbarAction(addBold)"
-          >
-            B
-          </button>
-
-          <button
-            type="button" class="toolbar-btn"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="runToolbarAction(addBulletList)"
-          >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="6" cy="7" r="2" fill="currentColor" /><circle cx="6" cy="12" r="2" fill="currentColor" /><circle cx="6" cy="17" r="2" fill="currentColor" /><path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-            </svg>
-          </button>
-
-          <button
-            type="button" class="toolbar-btn"
-            @pointerdown="onPickImageSync" @click="onPickImageSync"
-          >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" /><circle cx="9" cy="9" r="1.6" fill="currentColor" /><path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-
-          <button
-            ref="formatBtnRef" type="button" class="toolbar-btn toolbar-btn-aa"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="toggleFormatPalette"
-          >
-            ···
-          </button>
-        </div>
-
-        <div v-if="showFormatPalette" ref="formatPaletteRef" class="format-palette-sticky" @mousedown.prevent>
-          <div class="format-row">
-            <button type="button" class="format-btn" @click="handleFormat(addTodo)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><path d="M7 12l4 4 6-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button type="button" class="format-btn" @click="handleFormat(addOrderedList)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui">1</text><text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui">2</text><text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui">3</text><path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
-            </button>
-            <button type="button" class="format-btn" @click="handleFormat(addHeading)">H</button>
-            <button type="button" class="format-btn" @click="handleFormat(addUnderline)">U</button>
-            <button type="button" class="format-btn" @click="handleFormat(addMarkHighlight)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text></svg>
-            </button>
-            <button type="button" class="format-btn" @click="handleFormat(addTable)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" /><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" /><line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" /><line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" /></svg>
-            </button>
-          </div>
-          <div class="format-row">
-            <button type="button" class="format-btn" @click="handleFormat(addLink)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button type="button" class="format-btn" @click="handleFormat(addCurrentTime)">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" /><path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button type="button" class="format-btn" @click="handleFormat(() => toggleRecordBarVisible())">
-              <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-          </div>
-          <div class="format-caret-sticky" />
-        </div>
+            |{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}
+          </span>
+        </span>
       </div>
-    </Teleport>
+      <div class="record-actions">
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          @click="handleRecordCancelClick"
+        >
+          {{ t('notes.editor.record.button_cancel') }}
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          :disabled="!isRecording || isUploadingAudio"
+          @click="handleRecordPauseClick"
+        >
+          {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-primary"
+          :disabled="isUploadingAudio"
+          @click="handleRecordButtonClick"
+        >
+          {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
+        </button>
+      </div>
+    </div>
 
-    <div class="editor-footer">
+    <!-- 底部工具栏 + 字数 + 按钮 -->
+    <!-- 底部工具栏 + 字数 + 按钮
+         桌面端：仍然贴在编辑器底部
+         移动端：键盘弹起时吸附在键盘上方，键盘隐藏时一起隐藏 -->
+    <div
+      v-show="!isMobile || keyboardVisible"
+      class="editor-footer"
+      :class="{
+        'editor-footer-inline': !isMobile,
+        'editor-footer-floating': isMobile,
+      }"
+      :style="isMobile && keyboardVisible ? { bottom: `${Math.max(keyboardLift, 0)}px` } : undefined"
+    >
       <div class="footer-left">
-        <div v-if="!isEditing || !isMobile" class="editor-toolbar">
+        <div class="editor-toolbar">
+          <!-- # 标签 -->
           <button
-            type="button" class="toolbar-btn"
+            type="button"
+            class="toolbar-btn"
             :title="t('notes.editor.toolbar.add_tag')"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="openTagMenu"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="openTagMenu"
           >
             #
           </button>
 
+          <!-- 待办 ✓ -->
           <button
-            type="button" class="toolbar-btn"
-            :title="t('notes.editor.format.bold')"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="runToolbarAction(addBold)"
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.toolbar.todo')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addTodo)"
           >
-            B
-          </button>
-
-          <button
-            type="button" class="toolbar-btn"
-            :title="t('notes.editor.format.bullet_list')"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="runToolbarAction(addBulletList)"
-          >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="6" cy="7" r="2" fill="currentColor" /><circle cx="6" cy="12" r="2" fill="currentColor" /><circle cx="6" cy="17" r="2" fill="currentColor" /><path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <svg
+              class="icon-20" viewBox="0 0 24 24" fill="none"
+              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            >
+              <rect
+                x="3" y="3" width="18" height="18" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <path
+                d="M7 12l4 4 6-8"
+                stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
             </svg>
           </button>
 
+          <!-- 插入图片 -->
           <button
-            type="button" class="toolbar-btn"
+            type="button"
+            class="toolbar-btn"
             :title="t('notes.editor.image_dialog.title')"
-            @pointerdown="onPickImageSync" @click="onPickImageSync"
+            @pointerdown="onPickImageSync"
+            @click="onPickImageSync"
           >
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" /><circle cx="9" cy="9" r="1.6" fill="currentColor" /><path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <svg
+              class="icon-20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect
+                x="3" y="4" width="18" height="16" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
+              <circle cx="9" cy="9" r="1.6" fill="currentColor" />
+              <path
+                d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
+              <path
+                d="M13.5 13.5 18 9"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
             </svg>
           </button>
 
+          <!-- “···” 小工具条按钮 -->
           <button
-            ref="formatBtnRef" type="button" class="toolbar-btn toolbar-btn-aa"
+            ref="formatBtnRef"
+            type="button"
+            class="toolbar-btn toolbar-btn-aa"
             :title="t('notes.editor.toolbar.more_toolbar') || '更多工具'"
-            @mousedown.prevent @touchstart.prevent @pointerdown.prevent="toggleFormatPalette"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="toggleFormatPalette"
           >
             ···
           </button>
@@ -2320,7 +2339,9 @@ function handleBeforeInput(e: InputEvent) {
           <span class="toolbar-sep" aria-hidden="true" />
         </div>
 
-        <span class="char-counter">{{ charCount }}</span>
+        <span class="char-counter">
+          {{ charCount }}
+        </span>
       </div>
 
       <div class="actions">
@@ -2328,7 +2349,8 @@ function handleBeforeInput(e: InputEvent) {
           {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
-          type="button" class="btn-primary"
+          type="button"
+          class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
           @click="handleSave"
         >
@@ -2338,40 +2360,146 @@ function handleBeforeInput(e: InputEvent) {
     </div>
 
     <div
-      v-if="showFormatPalette && (!isMobile || !isEditing)"
+      v-if="showFormatPalette"
       ref="formatPaletteRef"
       class="format-palette"
       :style="{ top: formatPalettePos.top, left: formatPalettePos.left }"
       @mousedown.prevent
     >
       <div class="format-row">
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.todo')" @click="handleFormat(addTodo)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><path d="M7 12l4 4 6-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.todo')"
+          @click="handleFormat(addTodo)"
+        >
+          <svg
+            class="icon-bleed" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+          >
+            <rect
+              x="3" y="3" width="18" height="18" rx="2.5"
+              stroke="currentColor" stroke-width="1.6"
+            />
+            <path
+              d="M7 12l4 4 6-8"
+              stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"
+            />
+          </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.ordered_list')" @click="handleFormat(addOrderedList)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui">1</text><text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui">2</text><text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui">3</text><path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.ordered_list')"
+          @click="handleFormat(addOrderedList)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
+            <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
+            <text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">3</text>
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.heading')" @click="handleFormat(addHeading)">H</button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.underline')" @click="handleFormat(addUnderline)">U</button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.highlight')" @click="handleFormat(addMarkHighlight)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text></svg>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.heading')"
+          @click="handleFormat(addHeading)"
+        >
+          H
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.format.insert_table')" @click="handleFormat(addTable)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" /><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" /><line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" /><line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" /></svg>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.underline')"
+          @click="handleFormat(addUnderline)"
+        >
+          U
+        </button>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.highlight')"
+          @click="handleFormat(addMarkHighlight)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+            <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.insert_table')"
+          @click="handleFormat(addTable)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" />
+            <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" />
+            <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" />
+          </svg>
         </button>
       </div>
 
       <div class="format-row">
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.link')" @click="handleFormat(addLink)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.link') || '插入链接'"
+          @click="handleFormat(addLink)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.time')" @click="handleFormat(addCurrentTime)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" /><path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.time') || '插入时间'"
+          @click="handleFormat(addCurrentTime)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" />
+            <path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.recording')" @click="handleFormat(() => toggleRecordBarVisible())">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.recording') || '录音'"
+          @click="handleFormat(() => toggleRecordBarVisible())"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
       </div>
+
       <div class="format-caret" />
     </div>
   </div>
@@ -2493,29 +2621,37 @@ function handleBeforeInput(e: InputEvent) {
   background-color: transparent;
 }
 
-/* ===== 编辑态 + 移动端：底部工具栏吸附到键盘上方 ===== */
-.note-editor-reborn.editing-mobile .editor-footer {
+/* 桌面端：保持原来的“贴在编辑器底部” */
+.editor-footer-inline {
+  position: relative;
+}
+
+/* 移动端：浮在视口底部，按键盘高度抬起 */
+.editor-footer-floating {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: env(safe-area-inset-bottom);
   z-index: 1200;
-  padding: 6px 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  background-color: #f9f9f9;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background-color: rgba(249, 250, 251, 0.96);
+  backdrop-filter: blur(10px);
 }
 
-/* 深色模式下的背景与边线 */
-.dark .note-editor-reborn.editing-mobile .editor-footer {
-  background-color: #111827;
-  border-top-color: rgba(255, 255, 255, 0.12);
+/* 宽屏时稍微收窄一点，避免铺满整屏（可选） */
+@media (min-width: 768px) {
+  .editor-footer-floating {
+    max-width: 640px;
+    margin: 0 auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
 }
 
-/* 编辑态 + 移动端时，给正文多留一点底部空间，避免最后一行被工具栏压住 */
-.note-editor-reborn.editing-mobile .editor-textarea {
-  padding-bottom: 56px; /* 略大于工具栏高度，防止被挡 */
+.dark .editor-footer-floating {
+  background-color: rgba(31, 41, 55, 0.96);
+  border-top-color: rgba(75, 85, 99, 0.9);
 }
-
 /* ===== 录音条（固定在工具栏上方） ===== */
 .record-bar {
   display: flex;
@@ -2811,81 +2947,5 @@ function handleBeforeInput(e: InputEvent) {
 /* 底部工具栏：拉大四个图标左右间距 */
 .editor-footer .toolbar-btn {
   margin: 0 3px; /* 原本一般是 4px～6px，这里加大到 10px */
-}
-
-/* ============ 悬浮工具栏 (Teleport Body) ============ */
-.mobile-keyboard-toolbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999; /* 极高的层级，确保在所有弹窗之上 */
-  background-color: #f8f8f8; /* iOS 键盘背景色风格 */
-  border-top: 0.5px solid #b0b0b0;
-  padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -1px 3px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-}
-
-.dark .mobile-keyboard-toolbar {
-  background-color: #2c2c2e;
-  border-color: #3f3f46;
-}
-
-/* 内部工具栏容器 */
-.toolbar-inner {
-  height: 44px; /* 标准 iOS 工具栏高度 */
-  display: flex;
-  align-items: center;
-  justify-content: space-around; /* 按钮均匀分布 */
-  padding: 0 8px;
-}
-
-/* 录音条样式修正 */
-.record-bar-sticky {
-  background-color: #f2f2f7;
-  border-bottom: 0.5px solid #d1d1d6;
-  padding: 6px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-}
-.dark .record-bar-sticky {
-  background-color: #1c1c1e;
-  border-color: #38383a;
-}
-
-/* 悬浮样式弹层 (直接贴在工具栏上方) */
-.format-palette-sticky {
-  position: absolute;
-  bottom: 100%; /* 位于工具栏顶部 */
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 10px; /* 悬浮距离 */
-  background: #fff;
-  border: 1px solid #d1d1d6;
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  padding: 4px;
-  z-index: 100000;
-}
-.dark .format-palette-sticky {
-  background: #2c2c2e;
-  border-color: #3f3f46;
-}
-
-/* 小三角 */
-.format-caret-sticky {
-  position: absolute;
-  left: 50%;
-  transform: translate(-50%, 5px) rotate(45deg); /* 向下指 */
-  bottom: 0;
-  width: 8px;
-  height: 8px;
-  background: inherit;
-  border-right: 1px solid inherit; /* 调整边框方向适配旋转 */
-  border-bottom: 1px solid inherit;
 }
 </style>
