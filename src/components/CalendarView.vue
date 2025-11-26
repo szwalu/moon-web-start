@@ -158,13 +158,14 @@ function handleCopy(content: string) {
 function handlePin(note: any) {
   emit('pin', note)
 }
+
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
 
   // 1) 从当前列表移除
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
 
-  // 2) 同步当天缓存：空则删除缓存，不空则覆盖
+  // 2) 同步当天缓存
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
@@ -173,7 +174,15 @@ async function handleDelete(noteId: string) {
 
   // 3) 重新校准小蓝点
   refreshDotAfterDelete()
+
+  // =========== 👇 新增代码开始 👇 ===========
+  // 4) 关键修复：删除时，强制让本地“同步标记”失效。
+  // 这样当页面再次可见或刷新时，会检测到本地状态与服务器不一致（Dirty State），从而触发重新拉取。
+  localStorage.removeItem(CAL_LAST_TOTAL)
+  localStorage.removeItem(CAL_LAST_SYNC_TS)
+  // =========== 👆 新增代码结束 👆 ===========
 }
+
 function handleDateUpdated() {
   refreshData()
 }
@@ -209,7 +218,17 @@ const attributes = computed(() => {
       contentClass: 'today-outline', // 额外 class（可选）
     },
   })
-
+  // ③ 当前选中的日期（持久高亮）
+  if (selectedDate.value) {
+    attrs.push({
+      key: 'selected-date',
+      dates: selectedDate.value,
+      highlight: {
+        color: 'blue', // 颜色，可以改成 'teal' 或其他你喜欢的颜色
+        fillMode: 'light', // 'light' = 浅色圆圈背景（推荐），'solid' = 实心深色，'outline' = 空心圈
+      },
+    })
+  }
   return attrs
 })
 
@@ -487,6 +506,8 @@ function refreshDotAfterDelete() {
   )
 }
 /* ===================== 轻量校验 & 增量刷新 ===================== */
+// 修改：引入更彻底的缓存清理逻辑
+// Calendar.vue 中的 checkAndRefreshIncremental
 async function checkAndRefreshIncremental() {
   if (!user.value)
     return
@@ -504,7 +525,6 @@ async function checkAndRefreshIncremental() {
 
     if (error)
       throw error
-
     serverTotal = count || 0
   }
   catch (e) {
@@ -525,7 +545,6 @@ async function checkAndRefreshIncremental() {
 
     if (error && (error as any).code !== 'PGRST116')
       throw error
-
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
@@ -538,23 +557,29 @@ async function checkAndRefreshIncremental() {
   if (serverTotal === lastTotal && serverMaxUpdatedAt <= lastSync)
     return
 
-  // 4) 总数减少（可能跨端删除）：全量重算日期集合
-  if (serverTotal < lastTotal) {
+  // 4) 总数变化（恢复、删除、外部添加）
+  // ✅ 优化逻辑：不再清空所有缓存，因为 Trash.vue 已经帮我们把“脏日期”的缓存删掉了。
+  // 我们只需要：
+  //    A. 重算所有日期集合（fetchAllNoteDatesFull），确保小蓝点正确（比如某天原本没笔记，恢复后有了）。
+  //    B. 强制刷新当前选中的这一天（refetchSelectedDateAndMarkSync），以防用户正好停留在恢复的那一天。
+  if (serverTotal !== lastTotal) {
     try {
+      // 这里的开销比“清空所有缓存后重新拉取”要小得多，因为它只查日期字段
       await fetchAllNoteDatesFull()
     }
     catch (e) {
       console.error('全量重算日期集合失败：', e)
     }
+
+    // 更新本地记录，并刷新当前视图
     await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
     return
   }
 
-  // 5) 仅新增/编辑：增量合并
+  // 5) 仅新增/编辑：增量合并（保持原样，未变动）
   try {
     if (serverMaxUpdatedAt > lastSync) {
       const sinceISO = new Date(lastSync || 0).toISOString()
-
       const { data, error } = await supabase
         .from('notes')
         .select('id, created_at, updated_at')
@@ -565,7 +590,7 @@ async function checkAndRefreshIncremental() {
         throw error
 
       const affectedDateKeys = new Set<string>()
-      let added = false // ✅ 新增：记录是否真的往集合里加了新日期
+      let added = false
 
       for (const row of (data || [])) {
         const key = toDateKeyStrFromISO(row.created_at)
@@ -576,18 +601,15 @@ async function checkAndRefreshIncremental() {
         }
       }
 
-      // ✅ 关键：替换成一个新的 Set 实例，触发 Vue 响应
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
 
-      // 清理这些日期的日缓存（使用本地无歧义还原）
       affectedDateKeys.forEach((keyStr) => {
-        const partsDate = dateFromKeyStr(keyStr) // ✅ 本地时区安全
+        const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
 
-      // 覆盖写“所有日期”缓存
       localStorage.setItem(
         CACHE_KEYS.CALENDAR_ALL_DATES,
         JSON.stringify(Array.from(datesWithNotes.value)),
@@ -600,7 +622,6 @@ async function checkAndRefreshIncremental() {
 
   await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
 }
-
 // 把这个函数恢复成下面的样子
 async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpdatedAt: number) {
   // 先强制失效“选中日期”的本地缓存，避免读到过期数据

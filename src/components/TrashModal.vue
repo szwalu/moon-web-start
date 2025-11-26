@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+import { getCalendarDateCacheKey } from '@/utils/cacheKeys'
 
 const props = defineProps<{
   show: boolean
@@ -175,16 +176,37 @@ function formatDateTime(dt: string | number | Date): string {
   }
 }
 
+function clearCalendarCacheForNote(note: TrashNote) {
+  if (!note.created_at)
+    return
+  try {
+    const date = new Date(note.created_at)
+    const cacheKey = getCalendarDateCacheKey(date)
+    localStorage.removeItem(cacheKey)
+    // 可选：同时也清除“所有日期集合”的缓存，强迫日历重新计算小蓝点
+    // localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
+  }
+  catch (e) {
+    console.error('清理日历缓存失败', e)
+  }
+}
+
 async function restoreOne(id: string) {
   try {
+    // ✅ 在调用 RPC 之前，先从 list 中找到这个笔记对象（为了拿 created_at）
+    const targetNote = list.value.find(n => n.id === id)
+
     const { error } = await supabase.rpc('restore_note', { p_note_id: id })
     if (error)
       throw error
 
+    // ✅ 恢复成功后，精准清除那一天的日历缓存
+    if (targetNote)
+      clearCalendarCacheForNote(targetNote)
+
     list.value = list.value.filter(n => n.id !== id)
     selected.value = selected.value.filter(s => s !== id)
 
-    // ✅ 这里补一刀：同步更新本地缓存
     if (user.value)
       saveCache(user.value.id, list.value)
 
@@ -207,11 +229,20 @@ async function restoreSelected() {
   const ids = [...selected.value]
   loading.value = true
   try {
+    // ✅ 先把要恢复的笔记对象找出来（为了拿 created_at）
+    const notesToRestore = list.value.filter(n => ids.includes(n.id))
+
     for (const id of ids) {
       const { error } = await supabase.rpc('restore_note', { p_note_id: id })
       if (error)
         throw error
     }
+
+    // ✅ 循环清除这些笔记对应的日历缓存
+    notesToRestore.forEach((note) => {
+      clearCalendarCacheForNote(note)
+    })
+
     list.value = list.value.filter(n => !ids.includes(n.id))
     selected.value = []
     if (user.value)
