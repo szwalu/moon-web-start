@@ -499,12 +499,18 @@ defineExpose({
     </div>
 
     <!-- 快捷搜索标题 -->
-    <div class="quick-search-title">
+    <div
+      v-if="!searchModel"
+      class="quick-search-title"
+    >
       {{ t('notes.search_quick_title', '快捷搜索') }}
     </div>
 
     <!-- 快捷搜索：有图片 / 有语音 / 有链接 -->
-    <div class="quick-search-chips">
+    <div
+      v-if="!searchModel"
+      class="quick-search-chips"
+    >
       <button
         class="quick-chip"
         type="button"
