@@ -189,7 +189,7 @@ h1 {
 .auth-form input {
   width: 100%;
   padding: 0.8rem;
-  font-size: 14px;
+  font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;
   background-color: #fff;
@@ -205,6 +205,7 @@ h1 {
   background-color: #2c2c2e;
   border-color: #48484a;
   color: #ffffff;
+  font-size: 16px;
 }
 
 .dark .auth-form input:disabled {
