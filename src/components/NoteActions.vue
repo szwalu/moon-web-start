@@ -358,6 +358,10 @@ function confirmMoreFilter() {
 
 // --- 标签建议逻辑（输入 # 时的自动补全，保留原有逻辑） ---
 function handleSearchQueryChange(query: string) {
+  if (!query) {
+    clearSearch()
+    return
+  }
   const lastHashIndex = query.lastIndexOf('#')
   if (lastHashIndex !== -1 && (lastHashIndex === 0 || /\s/.test(query[lastHashIndex - 1]))) {
     const term = query.substring(lastHashIndex + 1)
@@ -440,7 +444,7 @@ defineExpose({
         :placeholder="t('notes.search_placeholder_enter', '输入后按回车搜索...')"
         class="search-input"
         autocomplete="off"
-        @input="handleSearchQueryChange(searchModel)"
+        @input="handleSearchQueryChange($event.target.value)"
         @keydown.down.prevent="moveSearchSelection(1)"
         @keydown.up.prevent="moveSearchSelection(-1)"
         @keydown.enter.prevent="handleEnterKey"

@@ -2225,7 +2225,6 @@ function handleBeforeInput(e: InputEvent) {
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <!-- # 标签 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -2237,32 +2236,39 @@ function handleBeforeInput(e: InputEvent) {
             #
           </button>
 
-          <!-- 待办 ✓ -->
           <button
             type="button"
             class="toolbar-btn"
-            :title="t('notes.editor.toolbar.todo')"
+            :title="t('notes.editor.format.bold')"
             @mousedown.prevent
             @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addTodo)"
+            @pointerdown.prevent="runToolbarAction(addBold)"
+          >
+            B
+          </button>
+
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.format.bullet_list')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addBulletList)"
           >
             <svg
-              class="icon-20" viewBox="0 0 24 24" fill="none"
+              class="icon-20"
+              viewBox="0 0 24 24" fill="none"
               xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
             >
-              <rect
-                x="3" y="3" width="18" height="18" rx="2.5"
-                stroke="currentColor" stroke-width="1.6"
-              />
-              <path
-                d="M7 12l4 4 6-8"
-                stroke="currentColor" stroke-width="1.8"
-                stroke-linecap="round" stroke-linejoin="round"
-              />
+              <circle cx="6" cy="7" r="2" fill="currentColor" />
+              <circle cx="6" cy="12" r="2" fill="currentColor" />
+              <circle cx="6" cy="17" r="2" fill="currentColor" />
+              <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
             </svg>
           </button>
 
-          <!-- 插入图片 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -2295,7 +2301,6 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <!-- “···” 小工具条按钮 -->
           <button
             ref="formatBtnRef"
             type="button"
@@ -2331,7 +2336,6 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <!-- 样式弹层（更小、更贴合 “···” ） -->
     <div
       v-if="showFormatPalette"
       ref="formatPaletteRef"
@@ -2339,16 +2343,29 @@ function handleBeforeInput(e: InputEvent) {
       :style="{ top: formatPalettePos.top, left: formatPalettePos.left }"
       @mousedown.prevent
     >
-      <!-- 第一行：文字样式相关 -->
       <div class="format-row">
         <button
           type="button"
           class="format-btn"
-          :title="t('notes.editor.format.bold')"
-          @click="handleFormat(addBold)"
+          :title="t('notes.editor.toolbar.todo')"
+          @click="handleFormat(addTodo)"
         >
-          B
+          <svg
+            class="icon-bleed" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+          >
+            <rect
+              x="3" y="3" width="18" height="18" rx="2.5"
+              stroke="currentColor" stroke-width="1.6"
+            />
+            <path
+              d="M7 12l4 4 6-8"
+              stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"
+            />
+          </svg>
         </button>
+
         <button
           type="button"
           class="format-btn"
@@ -2364,6 +2381,7 @@ function handleBeforeInput(e: InputEvent) {
             <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
         </button>
+
         <button
           type="button"
           class="format-btn"
@@ -2372,6 +2390,7 @@ function handleBeforeInput(e: InputEvent) {
         >
           H
         </button>
+
         <button
           type="button"
           class="format-btn"
@@ -2380,21 +2399,7 @@ function handleBeforeInput(e: InputEvent) {
         >
           U
         </button>
-        <button
-          type="button"
-          class="format-btn"
-          :title="t('notes.editor.format.bullet_list')"
-          @click="handleFormat(addBulletList)"
-        >
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="6" cy="7" r="2" fill="currentColor" />
-            <circle cx="6" cy="12" r="2" fill="currentColor" />
-            <circle cx="6" cy="17" r="2" fill="currentColor" />
-            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-          </svg>
-        </button>
+
         <button
           type="button"
           class="format-btn"
@@ -2412,6 +2417,7 @@ function handleBeforeInput(e: InputEvent) {
             <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
           </svg>
         </button>
+
         <button
           type="button"
           class="format-btn"
@@ -2433,91 +2439,40 @@ function handleBeforeInput(e: InputEvent) {
         </button>
       </div>
 
-      <!-- 第二行：链接 / 时间 / 录音 -->
       <div class="format-row">
-        <!-- 插入链接 -->
         <button
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.link') || '插入链接'"
           @click="handleFormat(addLink)"
         >
-          <svg
-            class="icon-bleed"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
 
-        <!-- 插入当前时间 -->
         <button
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.time') || '插入时间'"
           @click="handleFormat(addCurrentTime)"
         >
-          <svg
-            class="icon-bleed"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" />
-            <path
-              d="M12 8v4l2.5 2.5"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+            <path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
 
-        <!-- 录音：打开/收起录音条 -->
         <button
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.recording') || '录音'"
           @click="handleFormat(() => toggleRecordBarVisible())"
         >
-          <svg
-            class="icon-bleed"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
       </div>
@@ -2937,6 +2892,6 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 底部工具栏：拉大四个图标左右间距 */
 .editor-footer .toolbar-btn {
-  margin: 0 6px; /* 原本一般是 4px～6px，这里加大到 10px */
+  margin: 0 3px; /* 原本一般是 4px～6px，这里加大到 10px */
 }
 </style>
