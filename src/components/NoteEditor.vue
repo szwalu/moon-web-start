@@ -2530,7 +2530,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75dvh;
+  max-height: 55dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -2887,7 +2887,7 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:75dvh;
+  max-height:55dvh;
 }
 
 /* tag 面板样式增强 */
