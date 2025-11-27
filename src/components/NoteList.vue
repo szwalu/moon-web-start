@@ -790,6 +790,7 @@ function updateCollapsePos() {
     scheduleCollapseRetry()
     return
   }
+
   const dataId = (cardEl as HTMLElement).getAttribute('data-note-id')
   if (dataId !== expandedNote.value) {
     collapseVisible.value = false
@@ -800,7 +801,18 @@ function updateCollapsePos() {
   const scrollerRect = scrollerEl.getBoundingClientRect()
   const wrapperRect = wrapperEl.getBoundingClientRect()
   const cardRect = (cardEl as HTMLElement).getBoundingClientRect()
-  const outOfView = cardRect.bottom <= scrollerRect.top || cardRect.top >= scrollerRect.bottom
+
+  // === 新增：用「视觉视口」修正真正可见的上下边界 ===
+  const vv = window.visualViewport
+  const viewportTop = vv ? vv.offsetTop : 0
+  const viewportBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+
+  // 滚动容器和视觉视口夹在一起，得到真正可见区
+  const effectiveTop = Math.max(scrollerRect.top, viewportTop)
+  const effectiveBottom = Math.min(scrollerRect.bottom, viewportBottom)
+
+  // 卡片整体完全在可见区外，就不显示按钮
+  const outOfView = cardRect.bottom <= effectiveTop || cardRect.top >= effectiveBottom
   if (outOfView) {
     collapseVisible.value = false
     scheduleCollapseRetry()
@@ -811,21 +823,25 @@ function updateCollapsePos() {
   const btnH = btnEl ? btnEl.offsetHeight : 36
   const margin = 10
 
-  // ✅ 新增：把底部安全区（编辑器工具条 / safe-area 等）也算进来
+  // 底部安全区：用于你的底部工具栏 / safe-area / inline 编辑器高度
   const safeInset = props.bottomInset ?? 0
 
-  // 原来只减 margin，现在再减一个 safeInset，避免被底部遮挡
+  // 在卡片底部、滚动容器底部、视觉视口底部三者之间取「真正能看到的底边」
   const visibleBottom = Math.min(
     cardRect.bottom,
-    scrollerRect.bottom - margin - safeInset,
+    effectiveBottom - margin - safeInset,
   )
+  const visibleTop = Math.max(cardRect.top, effectiveTop + margin)
 
-  const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
+  // 如果计算后区间反向了，说明可用空间太小，直接不显示按钮
+  if (visibleBottom <= visibleTop) {
+    collapseVisible.value = false
+    return
+  }
 
   let topPx = visibleBottom - btnH
-  // 下面这个topPx -= 20是收起按钮的位置高度
+  // 你的微调：往上再提一点
   topPx -= 20
-
   if (topPx < visibleTop)
     topPx = visibleTop
 
