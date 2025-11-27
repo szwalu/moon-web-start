@@ -71,6 +71,7 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 浮动工具条：是否显示 + 距离屏幕底部抬起多少（等于键盘高度）
 const keyboardVisible = ref(false)
 const keyboardLift = ref(0)
+let lockedKeyboardHeight = 0
 
 const isFreezingBottom = ref(false)
 
@@ -961,18 +962,34 @@ function recomputeBottomSafePadding() {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     keyboardLift.value = 0
+    lockedKeyboardHeight = 0
     return
   }
 
-  const keyboardHeight = Math.max(0, window.innerHeight - vv.height)
+  // 原始高度：innerHeight - vv.height（此值会随滚动 / 地址栏略微变化）
+  const rawHeight = Math.max(0, window.innerHeight - vv.height)
 
-  // ✅ 让浮动工具条跟着键盘顶缘走
+  // 键盘收起：rawHeight 非常小，直接当作 0，并清掉锁定值
+  if (rawHeight < 40) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    keyboardLift.value = 0
+    lockedKeyboardHeight = 0
+    return
+  }
+
+  // 第一次看到“像样的键盘高度”时锁定下来，后面不再跟着 rawHeight 抖动
+  if (lockedKeyboardHeight < 40)
+    lockedKeyboardHeight = rawHeight
+
+  const keyboardHeight = lockedKeyboardHeight
+
+  // ✅ 工具条永远贴着“锁定后的键盘顶缘”
   keyboardLift.value = keyboardHeight
 
-  // 原来这句大概是：
-  // if (!isAndroid && keyboardHeight < 60) { ... }
-  // 下面这一段保留，用来决定要不要给外层 bottomSafe，但不要再改 keyboardVisible
-  if (!isAndroid && keyboardHeight < 60) {
+  // iOS 小于 60 的情况（比如只有 home indicator），仍然按“无键盘”处理
+  // 注意这里用 rawHeight，而不是被锁定的 keyboardHeight
+  if (!isAndroid && rawHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
@@ -1370,6 +1387,7 @@ function onBlur() {
 
   keyboardVisible.value = false
   keyboardLift.value = 0
+  lockedKeyboardHeight = 0
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
