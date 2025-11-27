@@ -1282,6 +1282,25 @@ function handleFocus() {
     recomputeBottomSafePadding()
   }, t2)
 
+  // 🔐 新增：在键盘真正弹起后，强制测一次“键盘高度”，喂给 keyboardLift
+  if (isMobile) {
+    const vv = window.visualViewport
+    const fixLift = () => {
+      if (!vv)
+        return
+      // 用 innerHeight - vv.height 估算键盘高度
+      const raw = Math.max(0, window.innerHeight - vv.height)
+      if (raw > 60)
+        keyboardLift.value = raw
+    }
+
+    // 立刻测一次（某些机型已经弹完）
+    fixLift()
+    // 再在 200ms / 400ms 各补一次，覆盖 iOS 慢动画
+    window.setTimeout(fixLift, 200)
+    window.setTimeout(fixLift, 400)
+  }
+
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
