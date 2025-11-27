@@ -71,6 +71,7 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 浮动工具条：是否显示 + 距离屏幕底部抬起多少（等于键盘高度）
 const keyboardVisible = ref(false)
 const keyboardLift = ref(0)
+let _lockedKeyboardHeight = 0
 
 const isFreezingBottom = ref(false)
 
@@ -961,28 +962,34 @@ function recomputeBottomSafePadding() {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     keyboardLift.value = 0
+    _lockedKeyboardHeight = 0
     return
   }
 
-  // 只用 vv.height 估算键盘高度：和页面滚动无关
-  const rawHeight = Math.max(0, window.innerHeight - vv.height)
+  // 用 height + offsetTop，扣掉上方安全区/地址栏
+  const rawHeight = Math.max(
+    0,
+    window.innerHeight - (vv.height + vv.offsetTop),
+  )
 
-  // 小于 60px 认为还没真正弹出键盘（或只是顶部/底部栏变化）
-  if (rawHeight < 60) {
+  // rawHeight 很小或为 0：认为键盘已收起
+  if (rawHeight <= 0) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     keyboardLift.value = 0
+    _lockedKeyboardHeight = 0
     return
   }
 
-  // 轻微抖动时保持上一次的高度，避免工具条上下抖
-  const prevLift = keyboardLift.value || 0
-  let keyboardHeight = rawHeight
-  const STABLE_DEADZONE = 24
+  // ✅ 第一次看到 >0 的键盘高度时锁定下来，之后就不再跟着 vv 抖动
+  if (_lockedKeyboardHeight <= 0) {
+    const MAX_KEYBOARD = window.innerHeight * 0.8 // 防止锁到离谱的大值
+    _lockedKeyboardHeight = Math.min(rawHeight, MAX_KEYBOARD)
+  }
 
-  if (prevLift > 0 && Math.abs(rawHeight - prevLift) < STABLE_DEADZONE)
-    keyboardHeight = prevLift
+  const keyboardHeight = _lockedKeyboardHeight > 0 ? _lockedKeyboardHeight : rawHeight
 
+  // 浮动工具条永远贴着“锁定后的键盘顶缘”
   keyboardLift.value = keyboardHeight
 
   // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等 =======
@@ -1377,7 +1384,7 @@ function onBlur() {
 
   keyboardVisible.value = false
   keyboardLift.value = 0
-  lockedKeyboardHeight = 0
+  _lockedKeyboardHeight = 0
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
