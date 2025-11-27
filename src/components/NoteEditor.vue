@@ -73,7 +73,7 @@ const keyboardVisible = ref(false)
 const keyboardLift = ref(0)
 let _lockedKeyboardHeight = 0
 
-// 只在 visualViewport 变化（键盘弹出/收起、地址栏变化）时更新键盘高度
+// 只在键盘出现/收起时锁定高度；地址栏/滚动的细微变化不再改高度
 function updateKeyboardHeightFromViewport() {
   if (!isMobile) {
     _lockedKeyboardHeight = 0
@@ -88,19 +88,27 @@ function updateKeyboardHeightFromViewport() {
     return
   }
 
-  // 视口整体高度变化 → 视为键盘高度
-  const diff = window.innerHeight - vv.height
-  // 太小的变化（< 40px）当作“没有键盘”
-  const h = diff > 40 ? diff : 0
+  // 用 height + offsetTop，兼容顶部安全区/地址栏
+  const rawHeight = Math.max(
+    0,
+    window.innerHeight - (vv.height + vv.offsetTop),
+  )
 
-  if (h <= 0) {
+  // 小于阈值：认为键盘已收起
+  const MIN_KEYBOARD = 40
+  if (rawHeight <= MIN_KEYBOARD) {
     _lockedKeyboardHeight = 0
     keyboardLift.value = 0
     return
   }
 
-  const MAX_KEYBOARD = window.innerHeight * 0.9
-  _lockedKeyboardHeight = Math.min(h, MAX_KEYBOARD)
+  // ✅ 只在“当前还没锁高度”时锁一次
+  if (_lockedKeyboardHeight <= 0) {
+    const MAX_KEYBOARD = window.innerHeight * 0.9
+    _lockedKeyboardHeight = Math.min(rawHeight, MAX_KEYBOARD)
+  }
+
+  // 之后只用锁住的这一份
   keyboardLift.value = _lockedKeyboardHeight
 }
 
@@ -995,7 +1003,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 始终使用单独锁定的键盘高度（由 updateKeyboardHeightFromViewport 维护）
+  // ✅ 只使用“已经锁好”的键盘高度
   const keyboardHeight = _lockedKeyboardHeight
   if (keyboardHeight <= 0) {
     emit('bottomSafeChange', 0)
@@ -2019,9 +2027,7 @@ onUnmounted(() => {
 })
 
 function handleViewportChange() {
-  // 1) 先根据 visualViewport 锁定键盘高度
   updateKeyboardHeightFromViewport()
-  // 2) 再让内容做一轮安全区/推页计算
   recomputeBottomSafePadding()
 }
 
@@ -2029,17 +2035,14 @@ onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
     vv.addEventListener('resize', handleViewportChange)
-    vv.addEventListener('scroll', handleViewportChange)
-    // 初次挂载也跑一轮，确保一开始就对齐
+    // ⛔ 不再监听 scroll，避免跟随滚动重新计算键盘高度
     updateKeyboardHeightFromViewport()
   }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
-  if (vv) {
+  if (vv)
     vv.removeEventListener('resize', handleViewportChange)
-    vv.removeEventListener('scroll', handleViewportChange)
-  }
 })
 
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
