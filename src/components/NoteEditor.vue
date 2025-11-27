@@ -69,7 +69,6 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const keyboardVisible = ref(false)
-const keyboardLift = ref(0)
 
 const isFreezingBottom = ref(false)
 
@@ -968,11 +967,6 @@ function recomputeBottomSafePadding() {
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
 
-  // === 新增：同步键盘可见状态 & 抬升高度（供浮动工具栏使用） ===
-  const visible = keyboardHeight >= 60
-  keyboardVisible.value = visible
-  keyboardLift.value = visible ? keyboardHeight : 0
-
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
@@ -1319,6 +1313,11 @@ onUnmounted(() => {
 
 function handleFocus() {
   emit('focus')
+
+  // ✅ 移动端：一旦 textarea 聚焦，就显示浮动工具条
+  if (isMobile)
+    keyboardVisible.value = true
+
   captureCaret()
 
   // 允许再次“轻推”
@@ -1354,6 +1353,14 @@ function onBlur() {
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
+
+  if (isMobile)
+    keyboardVisible.value = false
+
+  if (suppressNextBlur.value) {
+    suppressNextBlur.value = false
+    return
+  }
 
   keyboardVisible.value = false
   keyboardLift.value = 0
@@ -2239,9 +2246,6 @@ function handleBeforeInput(e: InputEvent) {
     </div>
 
     <!-- 底部工具栏 + 字数 + 按钮 -->
-    <!-- 底部工具栏 + 字数 + 按钮
-         桌面端：仍然贴在编辑器底部
-         移动端：键盘弹起时吸附在键盘上方，键盘隐藏时一起隐藏 -->
     <div
       v-show="!isMobile || keyboardVisible"
       class="editor-footer"
@@ -2249,7 +2253,7 @@ function handleBeforeInput(e: InputEvent) {
         'editor-footer-inline': !isMobile,
         'editor-footer-floating': isMobile,
       }"
-      :style="isMobile && keyboardVisible ? { bottom: `${Math.max(keyboardLift, 0)}px` } : undefined"
+      :style="isMobile && keyboardVisible ? { bottom: '0px' } : undefined"
     >
       <div class="footer-left">
         <div class="editor-toolbar">
@@ -2621,24 +2625,25 @@ function handleBeforeInput(e: InputEvent) {
   background-color: transparent;
 }
 
-/* 桌面端：保持原来的“贴在编辑器底部” */
+/* 桌面端：保持原样，贴在组件底部 */
 .editor-footer-inline {
   position: relative;
 }
 
-/* 移动端：浮在视口底部，按键盘高度抬起 */
+/* 移动端：固定在可视区域底部（键盘上方） */
 .editor-footer-floating {
   position: fixed;
   left: 0;
   right: 0;
+  bottom: 0; /* ✅ 关键：永远贴可视区域底部 */
   z-index: 1200;
   padding: 6px 10px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px); /* 适配刘海 & 小白条 */
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background-color: rgba(249, 250, 251, 0.96);
   backdrop-filter: blur(10px);
 }
 
-/* 宽屏时稍微收窄一点，避免铺满整屏（可选） */
 @media (min-width: 768px) {
   .editor-footer-floating {
     max-width: 640px;
