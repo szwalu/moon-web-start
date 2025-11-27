@@ -2322,7 +2322,7 @@ function handleMainMenuSelect(rawKey: string) {
       showHelpDialog.value = true
       break
     case 'feedback':
-      window.location.href = '/apply'
+      window.location.href = '/apply?from=auth'
       break
     default:
       break

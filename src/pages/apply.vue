@@ -89,7 +89,7 @@ async function handleSubmit() {
             <option value="apply-site">{{ t('form.options.applySite') }}</option>
             <option value="apply-link">{{ t('form.options.applyLink') }}</option>
             <option value="feedback">{{ t('form.options.feedback') }}</option>
-            <option value="feedback">{{ t('form.options.applyinvitecode') }}</option>
+            <option value="applyinvitecode">{{ t('form.options.applyinvitecode') }}</option>
           </select>
         </label>
 
