@@ -990,6 +990,7 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 let lockedKeyboardHeight = 0 // 🔴 锁定一次键盘高度，用它来抬工具条
+let baselineInnerHeight = typeof window !== 'undefined' ? window.innerHeight : 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
@@ -1018,8 +1019,13 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 只用 vv.height 估算键盘高度：和页面滚动无关
-  const rawHeight = Math.max(0, window.innerHeight - vv.height)
+  // 无键盘时刷新一次“基线 innerHeight”（取见过的最大值）
+  // 注意只在 keyboardVisible 还没打开的阶段刷新，避免键盘过程中的 innerHeight 把基线拉低
+  if (!keyboardVisible.value)
+    baselineInnerHeight = Math.max(baselineInnerHeight, window.innerHeight)
+
+  // 用“无键盘时的 innerHeight 基线”减去当前 visualViewport.height 估算键盘高度
+  const rawHeight = Math.max(0, baselineInnerHeight - vv.height)
 
   // 小于 60px 认为键盘没弹出 / 已收起 —— 清零所有状态
   if (rawHeight < 60) {
