@@ -73,6 +73,37 @@ const keyboardVisible = ref(false)
 const keyboardLift = ref(0)
 let _lockedKeyboardHeight = 0
 
+// 只在 visualViewport 变化（键盘弹出/收起、地址栏变化）时更新键盘高度
+function updateKeyboardHeightFromViewport() {
+  if (!isMobile) {
+    _lockedKeyboardHeight = 0
+    keyboardLift.value = 0
+    return
+  }
+
+  const vv = window.visualViewport
+  if (!vv) {
+    _lockedKeyboardHeight = 0
+    keyboardLift.value = 0
+    return
+  }
+
+  // 视口整体高度变化 → 视为键盘高度
+  const diff = window.innerHeight - vv.height
+  // 太小的变化（< 40px）当作“没有键盘”
+  const h = diff > 40 ? diff : 0
+
+  if (h <= 0) {
+    _lockedKeyboardHeight = 0
+    keyboardLift.value = 0
+    return
+  }
+
+  const MAX_KEYBOARD = window.innerHeight * 0.9
+  _lockedKeyboardHeight = Math.min(h, MAX_KEYBOARD)
+  keyboardLift.value = _lockedKeyboardHeight
+}
+
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -961,33 +992,16 @@ function recomputeBottomSafePadding() {
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
-    keyboardLift.value = 0
-    _lockedKeyboardHeight = 0
     return
   }
 
-  // 用 height + offsetTop，扣掉上方安全区/地址栏
-  const rawHeight = Math.max(
-    0,
-    window.innerHeight - vv.height,
-  )
-
-  // rawHeight 很小或为 0：认为键盘已收起
-  if (rawHeight <= 0) {
+  // 始终使用单独锁定的键盘高度（由 updateKeyboardHeightFromViewport 维护）
+  const keyboardHeight = _lockedKeyboardHeight
+  if (keyboardHeight <= 0) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
-    keyboardLift.value = 0
-    _lockedKeyboardHeight = 0
     return
   }
-
-  // ✅ 第一次看到 >0 的键盘高度时锁定下来，之后就不再跟着 vv 抖动
-  if (_lockedKeyboardHeight <= 0) {
-    const MAX_KEYBOARD = window.innerHeight * 0.8 // 防止锁到离谱的大值
-    _lockedKeyboardHeight = Math.min(rawHeight, MAX_KEYBOARD)
-  }
-
-  const keyboardHeight = _lockedKeyboardHeight > 0 ? _lockedKeyboardHeight : rawHeight
 
   // 浮动工具条永远贴着“锁定后的键盘顶缘”
   keyboardLift.value = keyboardHeight
@@ -2004,18 +2018,27 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
+function handleViewportChange() {
+  // 1) 先根据 visualViewport 锁定键盘高度
+  updateKeyboardHeightFromViewport()
+  // 2) 再让内容做一轮安全区/推页计算
+  recomputeBottomSafePadding()
+}
+
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
+    vv.addEventListener('resize', handleViewportChange)
+    vv.addEventListener('scroll', handleViewportChange)
+    // 初次挂载也跑一轮，确保一开始就对齐
+    updateKeyboardHeightFromViewport()
   }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.removeEventListener('resize', recomputeBottomSafePadding)
-    vv.removeEventListener('scroll', recomputeBottomSafePadding)
+    vv.removeEventListener('resize', handleViewportChange)
+    vv.removeEventListener('scroll', handleViewportChange)
   }
 })
 
