@@ -806,14 +806,26 @@ function updateCollapsePos() {
     scheduleCollapseRetry()
     return
   }
+
   const btnEl = collapseBtnRef.value
   const btnH = btnEl ? btnEl.offsetHeight : 36
   const margin = 10
-  const visibleBottom = Math.min(cardRect.bottom, scrollerRect.bottom - margin)
+
+  // ✅ 新增：把底部安全区（编辑器工具条 / safe-area 等）也算进来
+  const safeInset = props.bottomInset ?? 0
+
+  // 原来只减 margin，现在再减一个 safeInset，避免被底部遮挡
+  const visibleBottom = Math.min(
+    cardRect.bottom,
+    scrollerRect.bottom - margin - safeInset,
+  )
+
   const visibleTop = Math.max(cardRect.top, scrollerRect.top + margin)
+
   let topPx = visibleBottom - btnH
   // 下面这个topPx -= 20是收起按钮的位置高度
   topPx -= 20
+
   if (topPx < visibleTop)
     topPx = visibleTop
 
