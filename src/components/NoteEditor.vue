@@ -931,6 +931,56 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+// ===== 键盘弹出时锁定外层滚动，防止整页被系统“顶上去” =====
+let scrollParent: HTMLElement | null = null
+let lockedScrollTop = 0
+let restoringScroll = false
+
+function onScrollParent() {
+  if (!isMobile || !keyboardVisible.value || !scrollParent || restoringScroll)
+    return
+
+  const current = scrollParent.scrollTop
+  const diff = current - lockedScrollTop
+
+  // 微小抖动（惯性/回弹）不处理
+  if (Math.abs(diff) < 2)
+    return
+
+  // 立刻拉回原来的 scrollTop，防止工具条被“整页”推离键盘
+  restoringScroll = true
+  scrollParent.scrollTop = lockedScrollTop
+  requestAnimationFrame(() => {
+    restoringScroll = false
+  })
+}
+
+function lockScrollParent() {
+  if (!isMobile)
+    return
+  if (!rootRef.value && !textarea.value)
+    return
+
+  const base = (rootRef.value as HTMLElement | null) || (textarea.value as unknown as HTMLElement | null)
+  if (!base)
+    return
+
+  const parent = _getScrollParent(base) || (document.scrollingElement as HTMLElement | null)
+  if (!parent)
+    return
+
+  scrollParent = parent
+  lockedScrollTop = parent.scrollTop
+  parent.addEventListener('scroll', onScrollParent, { passive: true })
+}
+
+function unlockScrollParent() {
+  if (scrollParent) {
+    scrollParent.removeEventListener('scroll', onScrollParent as any)
+    scrollParent = null
+  }
+}
+
 function getFooterHeight(): number {
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
@@ -1246,6 +1296,9 @@ onUnmounted(() => {
 function handleFocus() {
   emit('focus')
 
+  if (isMobile)
+    lockScrollParent() // 🔴 键盘弹出时锁定外层滚动
+
   // ✅ 移动端：一旦 textarea 聚焦，就显示浮动工具条
   if (isMobile)
     keyboardVisible.value = true
@@ -1288,7 +1341,7 @@ function onBlur() {
 
   if (isMobile)
     keyboardVisible.value = false
-
+  unlockScrollParent()
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -1958,6 +2011,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
+  unlockScrollParent()
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
