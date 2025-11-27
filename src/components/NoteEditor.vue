@@ -939,11 +939,13 @@ function getFooterHeight(): number {
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
+let lockedKeyboardHeight = 0 // 🔴 锁定一次键盘高度，用它来抬工具条
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
+    lockedKeyboardHeight = 0
     return
   }
   if (isFreezingBottom.value)
@@ -953,6 +955,7 @@ function recomputeBottomSafePadding() {
   if (!el) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
+    lockedKeyboardHeight = 0
     return
   }
 
@@ -961,32 +964,39 @@ function recomputeBottomSafePadding() {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     keyboardLift.value = 0
+    lockedKeyboardHeight = 0
     return
   }
 
   // 只用 vv.height 估算键盘高度：和页面滚动无关
   const rawHeight = Math.max(0, window.innerHeight - vv.height)
 
-  // 小于 60px 认为还没真正弹出键盘（或只是顶部/底部栏变化）
+  // 小于 60px 认为键盘没弹出 / 已收起 —— 清零所有状态
   if (rawHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
+    _lastBottomNeed = 0
     keyboardLift.value = 0
+    lockedKeyboardHeight = 0
     return
   }
 
-  // 轻微抖动时保持上一次的高度，避免工具条上下抖
-  const prevLift = keyboardLift.value || 0
-  let keyboardHeight = rawHeight
-  const STABLE_DEADZONE = 24
+  // 第一次检测到“有键盘”时，锁定一个高度
+  if (lockedKeyboardHeight <= 0) {
+    lockedKeyboardHeight = rawHeight
+  }
+  else {
+    // 如果高度变化非常大（比如横竖屏切换），允许重新锁定
+    const diff = Math.abs(rawHeight - lockedKeyboardHeight)
+    const BIG_CHANGE = Math.max(80, lockedKeyboardHeight * 0.5)
+    if (diff > BIG_CHANGE)
+      lockedKeyboardHeight = rawHeight
+  }
 
-  if (prevLift > 0 && Math.abs(rawHeight - prevLift) < STABLE_DEADZONE)
-    keyboardHeight = prevLift
+  // ✅ 之后始终用 lockedKeyboardHeight 来抬工具条，不再跟随 vv.height 抖动
+  keyboardLift.value = lockedKeyboardHeight
 
-  // ✅ 关键：只锁工具条在键盘上沿
-  keyboardLift.value = keyboardHeight
-
-  // ✅ 不再根据光标“推高整页”，让父组件永远认为 bottomSafe = 0
+  // ✅ 不再给父组件任何 bottomSafe，页面不再被“推高”
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   _lastBottomNeed = 0
