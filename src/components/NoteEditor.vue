@@ -969,7 +969,7 @@ function recomputeBottomSafePadding() {
   // 用 height + offsetTop，扣掉上方安全区/地址栏
   const rawHeight = Math.max(
     0,
-    window.innerHeight - (vv.height + vv.offsetTop),
+    window.innerHeight - vv.height,
   )
 
   // rawHeight 很小或为 0：认为键盘已收起
