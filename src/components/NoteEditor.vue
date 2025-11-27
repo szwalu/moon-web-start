@@ -941,11 +941,14 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
+  // 桌面端：完全不参与键盘适配
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
     return
   }
+
+  // 文本选择/拖动时，暂停一切底部调整
   if (isFreezingBottom.value)
     return
 
@@ -953,29 +956,33 @@ function recomputeBottomSafePadding() {
   if (!el) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
+    _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
   const vv = window.visualViewport
   if (!vv) {
     emit('bottomSafeChange', 0)
-    _hasPushedPage = false
     keyboardLift.value = 0
+    _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
-  // 只用 vv.height 估算键盘高度：和页面滚动无关
+  // 用 visualViewport.height 估算键盘高度：和页面滚动无关
   const rawHeight = Math.max(0, window.innerHeight - vv.height)
 
-  // 小于 60px 认为还没真正弹出键盘（或只是顶部/底部栏变化）
+  // 小于 60px 认为键盘还没真正弹出
   if (rawHeight < 60) {
     emit('bottomSafeChange', 0)
-    _hasPushedPage = false
     keyboardLift.value = 0
+    _hasPushedPage = false
+    _lastBottomNeed = 0
     return
   }
 
-  // 轻微抖动时保持上一次的高度，避免工具条上下抖
+  // 轻微抖动时锁定上一帧的高度，避免工具条上下抖动
   const prevLift = keyboardLift.value || 0
   let keyboardHeight = rawHeight
   const STABLE_DEADZONE = 24
@@ -983,112 +990,16 @@ function recomputeBottomSafePadding() {
   if (prevLift > 0 && Math.abs(rawHeight - prevLift) < STABLE_DEADZONE)
     keyboardHeight = prevLift
 
+  // ✅ 工具条永远用 keyboardLift 抬到“键盘上沿”
   keyboardLift.value = keyboardHeight
 
-  // 👉 新建笔记时：只锁定工具条在键盘上沿，不再“推页面”
-  if (!props.isEditing) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    _lastBottomNeed = 0
-    return
-  }
+  // ✅ 新策略：移动端完全不再用 bottomSafeChange 推页面
+  emit('bottomSafeChange', 0)
+  _hasPushedPage = false
+  _lastBottomNeed = 0
 
-  // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等 =======
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + 'border-style:solid;'
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15)
-
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
-
-  const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-  const HEADROOM = isAndroid ? 60 : 70
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
-
-  const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  const DEADZONE = isAndroid ? 72 : 46
-  const MIN_STEP = isAndroid ? 24 : 14
-  const STICKY = 12
-
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
-    need = 0
-
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
-    need = _lastBottomNeed
-
-  _lastBottomNeed = need
-
-  emit('bottomSafeChange', need)
-
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta)
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta)
-      }
-      _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
-    }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
-  }
-  else {
-    _hasPushedPage = false
-  }
+  // 只保证 textarea 内部光标可见，不再去动外层滚动
+  ensureCaretVisibleInTextarea()
 }
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
@@ -2135,10 +2046,8 @@ function handleBeforeInput(e: InputEvent) {
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
-  emit('bottomSafeChange', prelift)
+  // ✅ 不再用 bottomSafeChange 预抬整页，统一交给 keyboardLift + textarea 自己滚动
+  emit('bottomSafeChange', 0)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
