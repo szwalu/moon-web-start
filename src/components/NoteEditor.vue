@@ -68,7 +68,9 @@ const isIOS = /iphone|ipad|ipod/.test(UA)
 const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
+// 浮动工具条：是否显示 + 距离屏幕底部抬起多少（等于键盘高度）
 const keyboardVisible = ref(false)
+const keyboardLift = ref(0)
 
 const isFreezingBottom = ref(false)
 
@@ -940,9 +942,8 @@ let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
-    keyboardVisible.value = false
-    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
+    keyboardLift.value = 0
     return
   }
   if (isFreezingBottom.value)
@@ -950,29 +951,34 @@ function recomputeBottomSafePadding() {
 
   const el = textarea.value
   if (!el) {
-    keyboardVisible.value = false
-    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
+    keyboardLift.value = 0
     return
   }
 
   const vv = window.visualViewport
   if (!vv) {
-    keyboardVisible.value = false
-    keyboardLift.value = 0
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
+    keyboardLift.value = 0
     return
   }
 
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
 
+  // ✅ 让浮动工具条跟着键盘顶缘走
+  keyboardLift.value = keyboardHeight
+
+  // 原来这句大概是：
+  // if (!isAndroid && keyboardHeight < 60) { ... }
+  // 下面这一段保留，用来决定要不要给外层 bottomSafe，但不要再改 keyboardVisible
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
+  // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等全保持原样 =======
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
@@ -2253,7 +2259,9 @@ function handleBeforeInput(e: InputEvent) {
         'editor-footer-inline': !isMobile,
         'editor-footer-floating': isMobile,
       }"
-      :style="isMobile && keyboardVisible ? { bottom: '0px' } : undefined"
+      :style="isMobile && keyboardVisible
+        ? { bottom: `${Math.max(keyboardLift, 0)}px` }
+        : undefined"
     >
       <div class="footer-left">
         <div class="editor-toolbar">
@@ -2625,20 +2633,18 @@ function handleBeforeInput(e: InputEvent) {
   background-color: transparent;
 }
 
-/* 桌面端：保持原样，贴在组件底部 */
+/* 桌面端：贴在编辑器内部底部 */
 .editor-footer-inline {
   position: relative;
 }
 
-/* 移动端：固定在可视区域底部（键盘上方） */
+/* 移动端：浮在视口底部，再被 keyboardLift 往上抬 */
 .editor-footer-floating {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0; /* ✅ 关键：永远贴可视区域底部 */
   z-index: 1200;
   padding: 6px 10px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px); /* 适配刘海 & 小白条 */
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background-color: rgba(249, 250, 251, 0.96);
   backdrop-filter: blur(10px);
