@@ -368,6 +368,7 @@ notes:
   anniversary_view: チェック
   tag_filter_optional: タグフィルター（任意）
   tag_filter_all: すべてのタグ
+  feedback_title: フィードバック
 
   # 上部フィルターチップ
   search_filter_date: 日付

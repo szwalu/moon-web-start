@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, Settings, Shuffle, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, MessageSquare, Settings, Shuffle, Trash2, Type, User, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -290,7 +290,15 @@ const mainMenuOptions = computed(() => [
         h('span', null, t('notes.help_title') || '使用帮助'),
       ]),
   },
-
+  {
+    key: 'feedback',
+    show: settingsExpanded.value,
+    label: () =>
+      h('div', { class: 'submenu-inline' }, [
+        h(MessageSquare, { size: 18 }),
+        h('span', null, t('notes.feedback_title') || '反馈建议'),
+      ]),
+  },
   // ⭐⭐ 新增：一级菜单「随机漫游」，在回收站前面
   {
     label: t('notes.random_roam.title') || '随机漫游',
@@ -2312,6 +2320,9 @@ function handleMainMenuSelect(rawKey: string) {
       break
     case 'help':
       showHelpDialog.value = true
+      break
+    case 'feedback':
+      window.location.href = '/apply'
       break
     default:
       break

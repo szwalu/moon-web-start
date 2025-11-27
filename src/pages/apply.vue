@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { supabase } from '../utils/supabaseClient'
+
+const route = useRoute()
+const backTarget = computed(() => {
+  // ?from=auth 时，返回 /auth，否则返回首页
+  return route.query.from === 'auth' ? '/auth' : '/'
+})
 
 const { t } = useI18n()
 const form = ref<HTMLFormElement | null>(null)
 const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
-// ✅ 跟踪当前选择类型
 const selectedType = ref('')
 
 // 监听 select 的变化
@@ -29,7 +35,6 @@ async function handleSubmit() {
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    // ✅ [新增] 条件必填逻辑
     if ((type === 'feedback' || type === 'applyinvitecode') && !email) {
       errorMessage.value = `❌ ${t('form.emailRequired')}`
       loading.value = false
@@ -112,7 +117,7 @@ async function handleSubmit() {
             {{ loading ? '提交中...' : t('form.submit') }}
           </button>
 
-          <RouterLink to="/" class="btn-back" role="button" aria-label="返回主页">
+          <RouterLink :to="backTarget" class="btn-back" role="button" aria-label="返回">
             {{ t('auth.return') }}
           </RouterLink>
         </div>

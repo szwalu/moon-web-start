@@ -369,6 +369,7 @@ notes:
   anniversary_view: View
   tag_filter_optional: Tag Filter (Optional)
   tag_filter_all: All Tags
+  feedback_title: Feedback
 
   # Top filter chips
   search_filter_date: Date
