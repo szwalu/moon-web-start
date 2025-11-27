@@ -941,14 +941,11 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-  // 桌面端：完全不参与键盘适配
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
     return
   }
-
-  // 文本选择/拖动时，暂停一切底部调整
   if (isFreezingBottom.value)
     return
 
@@ -956,33 +953,29 @@ function recomputeBottomSafePadding() {
   if (!el) {
     emit('bottomSafeChange', 0)
     keyboardLift.value = 0
-    _hasPushedPage = false
-    _lastBottomNeed = 0
     return
   }
 
   const vv = window.visualViewport
   if (!vv) {
     emit('bottomSafeChange', 0)
-    keyboardLift.value = 0
     _hasPushedPage = false
-    _lastBottomNeed = 0
+    keyboardLift.value = 0
     return
   }
 
-  // 用 visualViewport.height 估算键盘高度：和页面滚动无关
+  // 只用 vv.height 估算键盘高度：和页面滚动无关
   const rawHeight = Math.max(0, window.innerHeight - vv.height)
 
-  // 小于 60px 认为键盘还没真正弹出
+  // 小于 60px 认为还没真正弹出键盘（或只是顶部/底部栏变化）
   if (rawHeight < 60) {
     emit('bottomSafeChange', 0)
-    keyboardLift.value = 0
     _hasPushedPage = false
-    _lastBottomNeed = 0
+    keyboardLift.value = 0
     return
   }
 
-  // 轻微抖动时锁定上一帧的高度，避免工具条上下抖动
+  // 轻微抖动时保持上一次的高度，避免工具条上下抖
   const prevLift = keyboardLift.value || 0
   let keyboardHeight = rawHeight
   const STABLE_DEADZONE = 24
@@ -990,16 +983,13 @@ function recomputeBottomSafePadding() {
   if (prevLift > 0 && Math.abs(rawHeight - prevLift) < STABLE_DEADZONE)
     keyboardHeight = prevLift
 
-  // ✅ 工具条永远用 keyboardLift 抬到“键盘上沿”
+  // ✅ 关键：只锁工具条在键盘上沿
   keyboardLift.value = keyboardHeight
 
-  // ✅ 新策略：移动端完全不再用 bottomSafeChange 推页面
+  // ✅ 不再根据光标“推高整页”，让父组件永远认为 bottomSafe = 0
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   _lastBottomNeed = 0
-
-  // 只保证 textarea 内部光标可见，不再去动外层滚动
-  ensureCaretVisibleInTextarea()
 }
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
@@ -2046,7 +2036,7 @@ function handleBeforeInput(e: InputEvent) {
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // ✅ 不再用 bottomSafeChange 预抬整页，统一交给 keyboardLift + textarea 自己滚动
+  // ✅ 不再预先通过 bottomSafeChange 推高整页，交给键盘高度 + textarea 自己滚
   emit('bottomSafeChange', 0)
 
   requestAnimationFrame(() => {
