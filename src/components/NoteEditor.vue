@@ -964,7 +964,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  const keyboardHeight = Math.max(0, window.innerHeight - vv.height)
 
   // ✅ 让浮动工具条跟着键盘顶缘走
   keyboardLift.value = keyboardHeight
