@@ -68,9 +68,6 @@ const isIOS = /iphone|ipad|ipod/.test(UA)
 const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
-// 浮动工具条：是否显示 + 距离屏幕底部抬起多少（等于键盘高度）
-const keyboardVisible = ref(false)
-const keyboardLift = ref(0)
 
 const isFreezingBottom = ref(false)
 
@@ -931,56 +928,6 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-// ===== 键盘弹出时锁定外层滚动，防止整页被系统“顶上去” =====
-let scrollParent: HTMLElement | null = null
-let lockedScrollTop = 0
-let restoringScroll = false
-
-function onScrollParent() {
-  if (!isMobile || !keyboardVisible.value || !scrollParent || restoringScroll)
-    return
-
-  const current = scrollParent.scrollTop
-  const diff = current - lockedScrollTop
-
-  // 微小抖动（惯性/回弹）不处理
-  if (Math.abs(diff) < 2)
-    return
-
-  // 立刻拉回原来的 scrollTop，防止工具条被“整页”推离键盘
-  restoringScroll = true
-  scrollParent.scrollTop = lockedScrollTop
-  requestAnimationFrame(() => {
-    restoringScroll = false
-  })
-}
-
-function lockScrollParent() {
-  if (!isMobile)
-    return
-  if (!rootRef.value && !textarea.value)
-    return
-
-  const base = (rootRef.value as HTMLElement | null) || (textarea.value as unknown as HTMLElement | null)
-  if (!base)
-    return
-
-  const parent = _getScrollParent(base) || (document.scrollingElement as HTMLElement | null)
-  if (!parent)
-    return
-
-  scrollParent = parent
-  lockedScrollTop = parent.scrollTop
-  parent.addEventListener('scroll', onScrollParent, { passive: true })
-}
-
-function unlockScrollParent() {
-  if (scrollParent) {
-    scrollParent.removeEventListener('scroll', onScrollParent as any)
-    scrollParent = null
-  }
-}
-
 function getFooterHeight(): number {
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
@@ -989,14 +936,10 @@ function getFooterHeight(): number {
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
-let lockedKeyboardHeight = 0 // 🔴 锁定一次键盘高度，用它来抬工具条
-let baselineInnerHeight = typeof window !== 'undefined' ? window.innerHeight : 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
     emit('bottomSafeChange', 0)
-    keyboardLift.value = 0
-    lockedKeyboardHeight = 0
     return
   }
   if (isFreezingBottom.value)
@@ -1005,8 +948,6 @@ function recomputeBottomSafePadding() {
   const el = textarea.value
   if (!el) {
     emit('bottomSafeChange', 0)
-    keyboardLift.value = 0
-    lockedKeyboardHeight = 0
     return
   }
 
@@ -1014,58 +955,117 @@ function recomputeBottomSafePadding() {
   if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
-    keyboardLift.value = 0
-    lockedKeyboardHeight = 0
     return
   }
 
-  // 无键盘时刷新一次“基线 innerHeight”（取见过的最大值）
-  // 注意只在 keyboardVisible 还没打开的阶段刷新，避免键盘过程中的 innerHeight 把基线拉低
-  if (!keyboardVisible.value)
-    baselineInnerHeight = Math.max(baselineInnerHeight, window.innerHeight)
-
-  // 用“无键盘时的 innerHeight 基线”减去当前 visualViewport.height 估算键盘高度
-  const rawHeight = Math.max(0, baselineInnerHeight - vv.height)
-
-  // 小于 60px 认为键盘没弹出 / 已收起 —— 清零所有状态
-  if (rawHeight < 60) {
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
-    _lastBottomNeed = 0
-    keyboardLift.value = 0
-    lockedKeyboardHeight = 0
     return
   }
 
-  // 第一次检测到“有键盘”时，锁定一个高度
-  if (lockedKeyboardHeight <= 0) {
-    lockedKeyboardHeight = rawHeight
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
+
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
+  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
+  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
+  const STICKY = 12 // 微抖动抑制阈值
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  // 抑制小幅抖动：与上次差异很小时保持不变
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
+  emit('bottomSafeChange', need)
+
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      _hasPushedPage = true
+      window.setTimeout(() => {
+        _hasPushedPage = false
+        recomputeBottomSafePadding()
+      }, 140)
+    }
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
   }
   else {
-    const BIG_CHANGE = Math.max(80, lockedKeyboardHeight * 0.5)
-
-    if (rawHeight >= lockedKeyboardHeight) {
-      // 键盘还在往上长：始终取“见过的最大值”，贴紧键盘
-      lockedKeyboardHeight = rawHeight
-    }
-    else {
-      const diffDown = lockedKeyboardHeight - rawHeight
-      if (diffDown > BIG_CHANGE) {
-        // 横竖屏切换 / 键盘模式大变：允许重锁一次
-        lockedKeyboardHeight = rawHeight
-      }
-      // 小幅抖动：忽略，保持之前的更大值
-    }
+    _hasPushedPage = false
   }
-
-  // ✅ 始终用“见过的最大键盘高度”来抬工具条
-  keyboardLift.value = lockedKeyboardHeight
-
-  // ✅ 不再给父组件任何 bottomSafe，页面不再被“推高”
-  emit('bottomSafeChange', 0)
-  _hasPushedPage = false
-  _lastBottomNeed = 0
 }
+
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
   if (!enCity)
@@ -1310,14 +1310,6 @@ onUnmounted(() => {
 
 function handleFocus() {
   emit('focus')
-
-  if (isMobile)
-    lockScrollParent() // 🔴 键盘弹出时锁定外层滚动
-
-  // ✅ 移动端：一旦 textarea 聚焦，就显示浮动工具条
-  if (isMobile)
-    keyboardVisible.value = true
-
   captureCaret()
 
   // 允许再次“轻推”
@@ -1353,23 +1345,6 @@ function onBlur() {
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
-
-  if (isMobile)
-    keyboardVisible.value = false
-  unlockScrollParent()
-  if (suppressNextBlur.value) {
-    suppressNextBlur.value = false
-    return
-  }
-
-  keyboardVisible.value = false
-  keyboardLift.value = 0
-  lockedKeyboardHeight = 0
-
-  if (suppressNextBlur.value) {
-    suppressNextBlur.value = false
-    return
-  }
 
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
@@ -1616,13 +1591,13 @@ function runToolbarAction(fn: () => void) {
 function addHeading() {
   insertText('## ', '')
 }
-function _addBold() {
+function addBold() {
   insertText('**', '**')
 }
 function addUnderline() {
   insertText('++', '++')
 }
-function _addBulletList() {
+function addBulletList() {
   const el = textarea.value
   if (!el)
     return
@@ -2026,7 +2001,6 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
-  unlockScrollParent()
 })
 
 // —— 插入图片链接（Naive UI 对话框 + 增强记忆前缀规则）
@@ -2115,8 +2089,10 @@ function handleBeforeInput(e: InputEvent) {
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // ✅ 不再预先通过 bottomSafeChange 推高整页，交给键盘高度 + textarea 自己滚
-  emit('bottomSafeChange', 0)
+  // 预抬升：iPhone 保底 120，Android 保底 180
+  const base = getFooterHeight() + 24
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
@@ -2246,20 +2222,9 @@ function handleBeforeInput(e: InputEvent) {
     </div>
 
     <!-- 底部工具栏 + 字数 + 按钮 -->
-    <div
-      v-show="!isMobile || keyboardVisible"
-      class="editor-footer"
-      :class="{
-        'editor-footer-inline': !isMobile,
-        'editor-footer-floating': isMobile,
-      }"
-      :style="isMobile && keyboardVisible
-        ? { bottom: `${Math.max(keyboardLift, 0)}px` }
-        : undefined"
-    >
+    <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <!-- # 标签 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -2271,32 +2236,39 @@ function handleBeforeInput(e: InputEvent) {
             #
           </button>
 
-          <!-- 待办 ✓ -->
           <button
             type="button"
             class="toolbar-btn"
-            :title="t('notes.editor.toolbar.todo')"
+            :title="t('notes.editor.format.bold')"
             @mousedown.prevent
             @touchstart.prevent
-            @pointerdown.prevent="runToolbarAction(addTodo)"
+            @pointerdown.prevent="runToolbarAction(addBold)"
+          >
+            B
+          </button>
+
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.format.bullet_list')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addBulletList)"
           >
             <svg
-              class="icon-20" viewBox="0 0 24 24" fill="none"
+              class="icon-20"
+              viewBox="0 0 24 24" fill="none"
               xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
             >
-              <rect
-                x="3" y="3" width="18" height="18" rx="2.5"
-                stroke="currentColor" stroke-width="1.6"
-              />
-              <path
-                d="M7 12l4 4 6-8"
-                stroke="currentColor" stroke-width="1.8"
-                stroke-linecap="round" stroke-linejoin="round"
-              />
+              <circle cx="6" cy="7" r="2" fill="currentColor" />
+              <circle cx="6" cy="12" r="2" fill="currentColor" />
+              <circle cx="6" cy="17" r="2" fill="currentColor" />
+              <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
             </svg>
           </button>
 
-          <!-- 插入图片 -->
           <button
             type="button"
             class="toolbar-btn"
@@ -2329,7 +2301,6 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <!-- “···” 小工具条按钮 -->
           <button
             ref="formatBtnRef"
             type="button"
@@ -2545,7 +2516,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 35dvh;
+  max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -2627,36 +2598,6 @@ function handleBeforeInput(e: InputEvent) {
   background-color: transparent;
 }
 
-/* 桌面端：贴在编辑器内部底部 */
-.editor-footer-inline {
-  position: relative;
-}
-
-/* 移动端：浮在视口底部，再被 keyboardLift 往上抬 */
-.editor-footer-floating {
-  position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 1200;
-  padding: 6px 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  background-color: rgba(249, 250, 251, 0.96);
-  backdrop-filter: blur(10px);
-}
-
-@media (min-width: 768px) {
-  .editor-footer-floating {
-    max-width: 640px;
-    margin: 0 auto;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-}
-
-.dark .editor-footer-floating {
-  background-color: rgba(31, 41, 55, 0.96);
-  border-top-color: rgba(75, 85, 99, 0.9);
-}
 /* ===== 录音条（固定在工具栏上方） ===== */
 .record-bar {
   display: flex;
@@ -2902,7 +2843,7 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:35dvh;
+  max-height:75dvh;
 }
 
 /* tag 面板样式增强 */
