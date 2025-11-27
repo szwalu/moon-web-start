@@ -966,17 +966,14 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // ✅ 更精确：用 height + offsetTop 来扣掉上方安全区 / 地址栏
+  // 用 height + offsetTop，扣掉上方安全区/地址栏
   const rawHeight = Math.max(
     0,
     window.innerHeight - (vv.height + vv.offsetTop),
   )
 
-  // 判断“是不是像键盘”的最小高度（px）
-  const MIN_KEYBOARD = 80
-
-  // 小于这个值，当作“没键盘”（比如只剩 home 指示条）
-  if (rawHeight < MIN_KEYBOARD) {
+  // rawHeight === 0 认为键盘已收起
+  if (rawHeight <= 0) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     keyboardLift.value = 0
@@ -984,19 +981,18 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 第一次看到像样的键盘高度时，锁定下来，并做一层上限保护
-  if (lockedKeyboardHeight < MIN_KEYBOARD) {
-    const MAX_KEYBOARD = window.innerHeight * 0.7 // 防止锁到半屏以上的离谱值
-    const sane = Math.max(MIN_KEYBOARD, Math.min(rawHeight, MAX_KEYBOARD))
-    lockedKeyboardHeight = sane
+  // 第一次看到 >0 的键盘高度时锁定下来，之后就不跟着 vv 抖动了
+  if (lockedKeyboardHeight <= 0) {
+    const MAX_KEYBOARD = window.innerHeight * 0.8 // 防止锁到离谱的大值
+    lockedKeyboardHeight = Math.min(rawHeight, MAX_KEYBOARD)
   }
 
-  const keyboardHeight = lockedKeyboardHeight
+  const keyboardHeight = lockedKeyboardHeight > 0 ? lockedKeyboardHeight : rawHeight
 
   // 浮动工具条永远贴着“锁定后的键盘顶缘”
   keyboardLift.value = keyboardHeight
 
-  // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等全保持原样 =======
+  // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等 =======
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
