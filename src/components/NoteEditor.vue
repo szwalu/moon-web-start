@@ -1036,14 +1036,23 @@ function recomputeBottomSafePadding() {
     lockedKeyboardHeight = rawHeight
   }
   else {
-    // 如果高度变化非常大（比如横竖屏切换），允许重新锁定
-    const diff = Math.abs(rawHeight - lockedKeyboardHeight)
     const BIG_CHANGE = Math.max(80, lockedKeyboardHeight * 0.5)
-    if (diff > BIG_CHANGE)
+
+    if (rawHeight >= lockedKeyboardHeight) {
+      // 键盘还在往上长：始终取“见过的最大值”，贴紧键盘
       lockedKeyboardHeight = rawHeight
+    }
+    else {
+      const diffDown = lockedKeyboardHeight - rawHeight
+      if (diffDown > BIG_CHANGE) {
+        // 横竖屏切换 / 键盘模式大变：允许重锁一次
+        lockedKeyboardHeight = rawHeight
+      }
+      // 小幅抖动：忽略，保持之前的更大值
+    }
   }
 
-  // ✅ 之后始终用 lockedKeyboardHeight 来抬工具条，不再跟随 vv.height 抖动
+  // ✅ 始终用“见过的最大键盘高度”来抬工具条
   keyboardLift.value = lockedKeyboardHeight
 
   // ✅ 不再给父组件任何 bottomSafe，页面不再被“推高”
