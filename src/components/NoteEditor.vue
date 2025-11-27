@@ -71,7 +71,7 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 浮动工具条：是否显示 + 距离屏幕底部抬起多少（等于键盘高度）
 const keyboardVisible = ref(false)
 const keyboardLift = ref(0)
-let lockedKeyboardHeight = 0
+
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -964,22 +964,102 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // ↓↓↓ 不再推工具条，只靠 content padding 处理遮挡
-  const caretY = getCaretYPosition(el)
-  const viewportHeight = vv.height
-  const viewportOffsetTop = vv.offsetTop
-  const caretScreenY = caretY - el.scrollTop + el.getBoundingClientRect().top - viewportOffsetTop
+  // 只用 vv.height 估算键盘高度：和页面滚动无关
+  const rawHeight = Math.max(0, window.innerHeight - vv.height)
 
-  const threshold = viewportHeight * 0.7
-  const need = caretScreenY - threshold
-
-  // ===== 工具条永远使用 lockedKeyboardHeight，不再随滚动变化 =====
-  if (lockedKeyboardHeight <= 0) {
-    const rawHeight = Math.max(0, window.innerHeight - vv.height)
-    if (rawHeight > 60)
-      lockedKeyboardHeight = rawHeight
+  // 小于 60px 认为还没真正弹出键盘（或只是顶部/底部栏变化）
+  if (rawHeight < 60) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    keyboardLift.value = 0
+    return
   }
-  keyboardLift.value = lockedKeyboardHeight
+
+  // 轻微抖动时保持上一次的高度，避免工具条上下抖
+  const prevLift = keyboardLift.value || 0
+  let keyboardHeight = rawHeight
+  const STABLE_DEADZONE = 24
+
+  if (prevLift > 0 && Math.abs(rawHeight - prevLift) < STABLE_DEADZONE)
+    keyboardHeight = prevLift
+
+  keyboardLift.value = keyboardHeight
+
+  // 👉 新建笔记时：只锁定工具条在键盘上沿，不再“推页面”
+  if (!props.isEditing) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    _lastBottomNeed = 0
+    return
+  }
+
+  // ======= 下面这部分不用动：lineHeight、caret、need、_hasPushedPage 等 =======
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15)
+
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
+
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  const DEADZONE = isAndroid ? 72 : 46
+  const MIN_STEP = isAndroid ? 24 : 14
+  const STICKY = 12
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  emit('bottomSafeChange', need)
 
   if (need > 0) {
     if (!_hasPushedPage) {
@@ -987,20 +1067,22 @@ function recomputeBottomSafePadding() {
         const ratio = 1.6
         const cap = 420
         const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush && delta > 0)
+        if (props.enableScrollPush)
           window.scrollBy(0, delta)
       }
       else {
-        // iOS 不再 scrollBy
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta)
       }
-
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
         recomputeBottomSafePadding()
       }, 140)
     }
-
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
   }
@@ -1281,25 +1363,6 @@ function handleFocus() {
   window.setTimeout(() => {
     recomputeBottomSafePadding()
   }, t2)
-
-  // 🔐 新增：在键盘真正弹起后，强制测一次“键盘高度”，喂给 keyboardLift
-  if (isMobile) {
-    const vv = window.visualViewport
-    const fixLift = () => {
-      if (!vv)
-        return
-      // 用 innerHeight - vv.height 估算键盘高度
-      const raw = Math.max(0, window.innerHeight - vv.height)
-      if (raw > 60)
-        keyboardLift.value = raw
-    }
-
-    // 立刻测一次（某些机型已经弹完）
-    fixLift()
-    // 再在 200ms / 400ms 各补一次，覆盖 iOS 慢动画
-    window.setTimeout(fixLift, 200)
-    window.setTimeout(fixLift, 400)
-  }
 
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
