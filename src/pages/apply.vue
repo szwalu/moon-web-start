@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { supabase } from '../utils/supabaseClient'
@@ -17,6 +17,19 @@ const form = ref<HTMLFormElement | null>(null)
 const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
+
+// ===== 锁定 body 滚动，改用内部滚动容器（改善 iOS 键盘滚动行为） =====
+const originalBodyOverflow = ref<string | null>(null)
+
+onMounted(() => {
+  originalBodyOverflow.value = document.body.style.overflow || ''
+  document.body.style.overflow = 'hidden'
+})
+
+onUnmounted(() => {
+  if (originalBodyOverflow.value !== null)
+    document.body.style.overflow = originalBodyOverflow.value
+})
 
 async function handleSubmit() {
   if (!form.value)
@@ -59,6 +72,7 @@ async function handleSubmit() {
     form.value.reset()
 
     setTimeout(() => {
+      // 提交完成后：和返回按钮逻辑一致
       window.location.href = backTarget.value
     }, 2000)
   }
@@ -74,79 +88,90 @@ async function handleSubmit() {
 
 <template>
   <div class="page-safearea">
-    <div class="form-container">
-      <div class="breadcrumb">
-        {{ t(isFromAuth ? 'form.title' : 'form.breadcrumb') }}
-      </div>
-      <p class="tip">
-        {{ t(isFromAuth ? 'form.tipauth' : 'form.tip') }}
-      </p>
-
-      <form ref="form" class="form-body" @submit.prevent="handleSubmit">
-        <!-- 仅非 /auth 来源时显示选择类型 -->
-        <label v-if="!isFromAuth">
-          <span class="required">*</span>{{ t('form.selectLabel') }}
-          <select name="type" required>
-            <option value="" disabled selected hidden>
-              {{ t('form.selectPlaceholder') }}
-            </option>
-            <option value="apply-site">{{ t('form.options.applySite') }}</option>
-            <option value="apply-link">{{ t('form.options.applyLink') }}</option>
-            <option value="feedback">{{ t('form.options.feedback') }}</option>
-            <option value="applyinvitecode">
-              {{ t('form.options.applyinvitecode') }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          <span class="required">*</span>{{ t('form.messageLabel') }}
-          <textarea name="message" rows="8" required />
-        </label>
-
-        <label>
-          {{ t('form.emailLabel') }}
-          <span>（{{ t('form.optional') }}）</span>
-          <input type="email" name="email">
-        </label>
-
-        <!-- 提交与返回按钮：5:1 -->
-        <div class="button-row">
-          <button type="submit" :disabled="loading">
-            {{ loading ? '提交中...' : t('form.submit') }}
-          </button>
-
-          <RouterLink :to="backTarget" class="btn-back" role="button" aria-label="返回">
-            {{ t('auth.return') }}
-          </RouterLink>
+    <div class="scroll-wrapper">
+      <div class="form-container">
+        <div class="breadcrumb">
+          {{ t(isFromAuth ? 'form.title' : 'form.breadcrumb') }}
         </div>
+        <p class="tip">
+          {{ t(isFromAuth ? 'form.tipauth' : 'form.tip') }}
+        </p>
 
-        <p v-if="successMessage" class="success-message">
-          {{ successMessage }}
-        </p>
-        <p v-if="errorMessage" class="error-message">
-          {{ errorMessage }}
-        </p>
-      </form>
+        <form ref="form" class="form-body" @submit.prevent="handleSubmit">
+          <!-- 仅非 /auth 来源时显示选择类型 -->
+          <label v-if="!isFromAuth">
+            <span class="required">*</span>{{ t('form.selectLabel') }}
+            <select name="type" required>
+              <option value="" disabled selected hidden>
+                {{ t('form.selectPlaceholder') }}
+              </option>
+              <option value="apply-site">{{ t('form.options.applySite') }}</option>
+              <option value="apply-link">{{ t('form.options.applyLink') }}</option>
+              <option value="feedback">{{ t('form.options.feedback') }}</option>
+              <option value="applyinvitecode">
+                {{ t('form.options.applyinvitecode') }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span class="required">*</span>{{ t('form.messageLabel') }}
+            <textarea name="message" rows="8" required />
+          </label>
+
+          <label>
+            {{ t('form.emailLabel') }}
+            <span>（{{ t('form.optional') }}）</span>
+            <input type="email" name="email">
+          </label>
+
+          <!-- 提交与返回按钮：5:1 -->
+          <div class="button-row">
+            <button type="submit" :disabled="loading">
+              {{ loading ? '提交中...' : t('form.submit') }}
+            </button>
+
+            <RouterLink :to="backTarget" class="btn-back" role="button" aria-label="返回">
+              {{ t('auth.return') }}
+            </RouterLink>
+          </div>
+
+          <p v-if="successMessage" class="success-message">
+            {{ successMessage }}
+          </p>
+          <p v-if="errorMessage" class="error-message">
+            {{ errorMessage }}
+          </p>
+        </form>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 顶部安全区容器：避免内容顶进刘海区 */
+/* 顶部安全区容器：固定视口高度，内部滚动 */
 .page-safearea {
+  height: 100vh;
   padding-top: calc(8px + constant(safe-area-inset-top));
   padding-top: calc(8px + env(safe-area-inset-top));
+  box-sizing: border-box;
+}
+
+/* 内部滚动容器：真正滚动的是它，而不是 body */
+.scroll-wrapper {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ============== 原样式保持 ============== */
 .form-container {
   max-width: 640px;
-  margin: 1rem auto 2rem;
+  margin: 2rem auto;
   background: white;
   padding: 2rem;
   border-radius: 10px;
-  font-size: 16px !important;
+  font-size: 13px !important;
   line-height: 1.6;
   font-family: system-ui, sans-serif;
   color: #333;
@@ -178,7 +203,7 @@ label {
 select,
 textarea,
 input {
-  font-size: 13px !important;
+  font-size: 16px !important; /* iOS 防止放大 */
   font-family: inherit;
   width: 100%;
   padding: 0.8rem;
@@ -260,7 +285,7 @@ button:hover:not([disabled]) {
 @media (max-width: 600px) {
   .form-container {
     padding: 1.25rem;
-    font-size: 16px !important;
+    font-size: 15px !important;
   }
 
   .breadcrumb {
@@ -270,12 +295,12 @@ button:hover:not([disabled]) {
   select,
   textarea,
   input {
-    font-size: 16px !important;
+    font-size: 16px !important; /* 保持 16，避免 iOS 再放大 */
   }
 
   button,
   .btn-back {
-    font-size: 16px !important;
+    font-size: 15px !important;
   }
 }
 
@@ -320,8 +345,5 @@ button:hover:not([disabled]) {
   .btn-back:hover {
     background: #333;
   }
-}
-.form-body {
-  padding-bottom: 40px; /* 自己调一个舒服的值 */
 }
 </style>
