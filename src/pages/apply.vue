@@ -142,7 +142,7 @@ async function handleSubmit() {
 /* ============== 原样式保持 ============== */
 .form-container {
   max-width: 640px;
-  margin: 2rem auto;
+  margin: 1rem auto 2rem;
   background: white;
   padding: 2rem;
   border-radius: 10px;
@@ -320,5 +320,8 @@ button:hover:not([disabled]) {
   .btn-back:hover {
     background: #333;
   }
+}
+.form-body {
+  padding-bottom: 40px; /* 自己调一个舒服的值 */
 }
 </style>
