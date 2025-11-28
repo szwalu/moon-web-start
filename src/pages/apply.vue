@@ -146,7 +146,7 @@ async function handleSubmit() {
   background: white;
   padding: 2rem;
   border-radius: 10px;
-  font-size: 13px !important;
+  font-size: 16px !important;
   line-height: 1.6;
   font-family: system-ui, sans-serif;
   color: #333;
@@ -260,7 +260,7 @@ button:hover:not([disabled]) {
 @media (max-width: 600px) {
   .form-container {
     padding: 1.25rem;
-    font-size: 15px !important;
+    font-size: 16px !important;
   }
 
   .breadcrumb {
@@ -270,12 +270,12 @@ button:hover:not([disabled]) {
   select,
   textarea,
   input {
-    font-size: 15px !important;
+    font-size: 16px !important;
   }
 
   button,
   .btn-back {
-    font-size: 15px !important;
+    font-size: 16px !important;
   }
 }
 
