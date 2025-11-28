@@ -5,9 +5,11 @@ import { useRoute } from 'vue-router'
 import { supabase } from '../utils/supabaseClient'
 
 const route = useRoute()
+const isFromAuth = computed(() => route.query.from === 'auth')
+
 const backTarget = computed(() => {
   // ?from=auth 时，返回 /auth，否则返回首页
-  return route.query.from === 'auth' ? '/auth' : '/'
+  return isFromAuth.value ? '/auth' : '/'
 })
 
 const { t } = useI18n()
@@ -15,32 +17,27 @@ const form = ref<HTMLFormElement | null>(null)
 const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
-const selectedType = ref('')
-
-// 监听 select 的变化
-function handleTypeChange(e: Event) {
-  selectedType.value = (e.target as HTMLSelectElement).value
-}
 
 async function handleSubmit() {
   if (!form.value)
     return
+
   loading.value = true
   successMessage.value = ''
   errorMessage.value = ''
 
   try {
     const formData = new FormData(form.value)
-    const type = formData.get('type') as string
+
+    // 从 /auth 来时强制视为 feedback，否则按下拉选择
+    const type = isFromAuth.value
+      ? 'feedback'
+      : (formData.get('type') as string)
+
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    if ((type === 'feedback' || type === 'applyinvitecode') && !email) {
-      errorMessage.value = `❌ ${t('form.emailRequired')}`
-      loading.value = false
-      return
-    }
-
+    // 邮箱永远可选，不做非空校验
     const { error } = await supabase.from('feedbacks').insert([{ type, message, email }])
     if (error)
       throw error
@@ -62,7 +59,7 @@ async function handleSubmit() {
     form.value.reset()
 
     setTimeout(() => {
-      window.location.href = '/'
+      window.location.href = backTarget.value
     }, 2000)
   }
   catch (err) {
@@ -78,18 +75,27 @@ async function handleSubmit() {
 <template>
   <div class="page-safearea">
     <div class="form-container">
-      <div class="breadcrumb">{{ t('form.breadcrumb') }}</div>
-      <p class="tip">{{ t('form.tip') }}</p>
+      <div class="breadcrumb">
+        {{ t(isFromAuth ? 'form.title' : 'form.breadcrumb') }}
+      </div>
+      <p class="tip">
+        {{ t(isFromAuth ? 'form.tipauth' : 'form.tip') }}
+      </p>
 
       <form ref="form" class="form-body" @submit.prevent="handleSubmit">
-        <label>
+        <!-- 仅非 /auth 来源时显示选择类型 -->
+        <label v-if="!isFromAuth">
           <span class="required">*</span>{{ t('form.selectLabel') }}
-          <select name="type" required @change="handleTypeChange">
-            <option value="" disabled selected hidden>{{ t('form.selectPlaceholder') }}</option>
+          <select name="type" required>
+            <option value="" disabled selected hidden>
+              {{ t('form.selectPlaceholder') }}
+            </option>
             <option value="apply-site">{{ t('form.options.applySite') }}</option>
             <option value="apply-link">{{ t('form.options.applyLink') }}</option>
             <option value="feedback">{{ t('form.options.feedback') }}</option>
-            <option value="applyinvitecode">{{ t('form.options.applyinvitecode') }}</option>
+            <option value="applyinvitecode">
+              {{ t('form.options.applyinvitecode') }}
+            </option>
           </select>
         </label>
 
@@ -99,15 +105,8 @@ async function handleSubmit() {
         </label>
 
         <label>
-          <!-- 必填时显示红色雪花；可选时不显示 -->
-          <span
-            v-if="['feedback', 'applyinvitecode'].includes(selectedType)"
-            class="required"
-          >✻</span>
           {{ t('form.emailLabel') }}
-          <span>
-            （{{ ['feedback', 'applyinvitecode'].includes(selectedType) ? t('form.required') : t('form.optional') }}）
-          </span>
+          <span>（{{ t('form.optional') }}）</span>
           <input type="email" name="email">
         </label>
 
@@ -122,8 +121,12 @@ async function handleSubmit() {
           </RouterLink>
         </div>
 
-        <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
-        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+        <p v-if="successMessage" class="success-message">
+          {{ successMessage }}
+        </p>
+        <p v-if="errorMessage" class="error-message">
+          {{ errorMessage }}
+        </p>
       </form>
     </div>
   </div>
@@ -212,10 +215,12 @@ button {
   padding: 0.8rem;
   font-size: 13px !important;
 }
+
 button[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 button:hover:not([disabled]) {
   background-color: #009f77;
 }
@@ -232,6 +237,7 @@ button:hover:not([disabled]) {
   color: #333;
   border: 1px solid #ddd;
 }
+
 .btn-back:hover {
   background: #e9e9e9;
 }
@@ -242,17 +248,35 @@ button:hover:not([disabled]) {
   font-weight: bold;
   text-align: center;
 }
-.success-message { color: #008800; }
-.error-message { color: red; }
+
+.success-message {
+  color: #008800;
+}
+
+.error-message {
+  color: red;
+}
 
 @media (max-width: 600px) {
   .form-container {
     padding: 1.25rem;
     font-size: 15px !important;
   }
-  .breadcrumb { font-size: 18px !important; }
-  select, textarea, input { font-size: 15px !important; }
-  button, .btn-back { font-size: 15px !important; }
+
+  .breadcrumb {
+    font-size: 18px !important;
+  }
+
+  select,
+  textarea,
+  input {
+    font-size: 15px !important;
+  }
+
+  button,
+  .btn-back {
+    font-size: 15px !important;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -261,23 +285,38 @@ button:hover:not([disabled]) {
     color: #eee;
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
   }
-  input, textarea, select {
+
+  input,
+  textarea,
+  select {
     background: #2a2a2a;
     color: #eee;
     border: 1px solid #555;
   }
+
   .breadcrumb {
     background: #333;
     color: #ffec99;
   }
-  .tip { color: #ccc; }
-  button { background-color: #009f77; }
-  button:hover:not([disabled]) { background-color: #00b386; }
+
+  .tip {
+    color: #ccc;
+  }
+
+  button {
+    background-color: #009f77;
+  }
+
+  button:hover:not([disabled]) {
+    background-color: #00b386;
+  }
+
   .btn-back {
     background: #2a2a2a;
     color: #eee;
     border-color: #555;
   }
+
   .btn-back:hover {
     background: #333;
   }
