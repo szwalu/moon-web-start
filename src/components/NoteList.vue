@@ -41,7 +41,7 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
 
 const { t } = useI18n()
 
-const scrollerRef = ref<any>(null)
+const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const collapseBtnRef = ref<HTMLElement | null>(null)
 const collapseVisible = ref(false)
@@ -194,6 +194,62 @@ const noteById = computed<Record<string, any>>(() => {
 
   return m
 })
+
+function scrollToMonth(year: number, month: number): boolean {
+  if (!Array.isArray(mixedItems.value) || mixedItems.value.length === 0)
+    return false
+
+  const targetMonthKey = `${year}-${String(month).padStart(2, '0')}`
+
+  // ① 优先：找到该月的 month-header
+  let targetIndex = mixedItems.value.findIndex(
+    item => item.type === 'month-header' && item.monthKey === targetMonthKey,
+  )
+
+  // ② 没有 header，再找第一条属于该月的 note
+  if (targetIndex === -1) {
+    targetIndex = mixedItems.value.findIndex((item) => {
+      if (item.type !== 'note')
+        return false
+
+      const raw = item.date || item.created_at || item.updated_at
+      if (!raw)
+        return false
+
+      const d = new Date(raw)
+      if (Number.isNaN(d.getTime()))
+        return false
+
+      return d.getFullYear() === year && (d.getMonth() + 1) === month
+    })
+  }
+
+  // ③ 还是没找到：说明当前缓存里根本没有这个月份
+  if (targetIndex === -1)
+    return false
+
+  // ④ 用 DynamicScroller 的 scrollToItem
+  if (scrollerRef.value && typeof (scrollerRef.value as any).scrollToItem === 'function') {
+    ;(scrollerRef.value as any).scrollToItem(targetIndex, { align: 'start', behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      recomputeStickyState()
+    })
+    return true
+  }
+
+  // ⑤ DOM 兜底
+  const rootEl = (scrollerRef.value as any)?.$el as HTMLElement | undefined
+  if (!rootEl)
+    return false
+
+  const itemEl = rootEl.querySelector(`[data-index="${targetIndex}"]`) as HTMLElement | null
+  if (itemEl) {
+    itemEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    return true
+  }
+
+  return false
+}
 
 // ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
 function tryRestorePwaScroll() {
@@ -870,7 +926,18 @@ function scrollToTop() {
   scrollerRef.value?.scrollToItem(0)
 }
 
-defineExpose({ scrollToTop, focusAndEditNote })
+defineExpose({ scrollToTop, focusAndEditNote, restorePwaScroll, scrollToMonth })
+
+function restorePwaScroll(noteId: string | null) {
+  if (!noteId)
+    return
+
+  // 把目标 ID 记录到本组件的状态中
+  pendingPwaScrollId.value = noteId
+
+  // 立即尝试一次恢复（内部会自己判断列表是否已就绪）
+  tryRestorePwaScroll()
+}
 
 async function restoreScrollIfNeeded() {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined

@@ -368,6 +368,9 @@ notes:
   tag_filter_optional: 标签过滤（可选）
   tag_filter_all: 全部标签
   feedback_title: 反馈建议
+  no_notes_in_month: 本月没有笔记
+  jump_to_month_title: 选择要跳转的年月
+  no_notes_to_jump: 当前没有可跳转的笔记
 
   # 顶部三个筛选 chip
   search_filter_date: 日期

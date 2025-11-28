@@ -52,6 +52,37 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 const noteListRef = ref(null)
+
+// ===== 年月跳转相关 =====
+const jumpYear = ref(new Date().getFullYear())
+const jumpMonth = ref(new Date().getMonth() + 1)
+
+const yearOptions = computed(() => {
+  const years: { label: string; value: number }[] = []
+
+  for (let y = 2000; y <= 2100; y++) {
+    years.push({
+      label: `${y}年`,
+      value: y,
+    })
+  }
+
+  // 让当前年份附近排在上面：倒序
+  return years.reverse()
+})
+
+const monthOptions = Array.from({ length: 12 }, (_, i) => {
+  const m = i + 1
+  return {
+    label: `${String(m).padStart(2, '0')}月`,
+    value: m,
+  }
+})
+
+// 顶部显示的“2025年”文案
+const jumpYearLabel = computed(() => {
+  return `${jumpYear.value}年`
+})
 // === 图片加载后，通知 NoteList 触发 DynamicScroller 的 remeasure ===
 function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
@@ -1357,6 +1388,84 @@ function handleExportResults() {
   }
 }
 
+function openYearMonthPicker() {
+  if (!yearOptions.value.length) {
+    messageHook.warning(t('notes.no_notes_to_jump') || '当前没有可跳转的笔记')
+    return
+  }
+
+  dialog.info({
+    title: t('notes.jump_to_month_title') || '选择要跳转的年月',
+    content: () =>
+      h(
+        'div',
+        { style: 'display:flex;gap:12px;margin-top:8px;' },
+        [
+          h(NSelect, {
+            'value': jumpYear.value,
+            'onUpdate:value': (v: number) => { jumpYear.value = v },
+            'options': yearOptions.value,
+            'style': 'flex:1;',
+          }),
+          h(NSelect, {
+            'value': jumpMonth.value,
+            'onUpdate:value': (v: number) => { jumpMonth.value = v },
+            'options': monthOptions,
+            'style': 'flex:1;',
+          }),
+        ],
+      ),
+    positiveText: t('common.confirm') || '确定',
+    negativeText: t('notes.cancel') || '取消',
+    onPositiveClick: () => {
+      jumpToMonth(jumpYear.value, jumpMonth.value)
+    },
+  })
+}
+
+async function fetchNotesByMonth(year: number, month: number) {
+  const from = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`
+  const toMonth = month === 12 ? 1 : month + 1
+  const toYear = month === 12 ? year + 1 : year
+  const to = `${toYear}-${String(toMonth).padStart(2, '0')}-01T00:00:00`
+
+  const { data, error } = await supabase
+    .from('notes')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .gte('created_at', from)
+    .lt('created_at', to)
+    .order('created_at', { ascending: false })
+
+  if (error)
+    console.error(error)
+
+  return data || []
+}
+
+async function jumpToMonth(year: number, month: number) {
+  // 步骤 1：让列表尝试用现有缓存跳
+  if ((noteListRef.value as any)?.scrollToMonth?.(year, month))
+    return
+
+  // 步骤 2：如果缓存里没有 → 直接向 Supabase 拉“该月”的全部笔记
+  const monthNotes = await fetchNotesByMonth(year, month)
+
+  if (monthNotes.length === 0) {
+    // 该月无笔记 → 明确提示
+    messageHook.warning(t('notes.no_notes_in_month') || '该月没有笔记')
+    return
+  }
+
+  // 步骤 3：把这批数据合入 notes（保持不破坏你的 normalizedNotes）
+  notes.value = [...notes.value, ...monthNotes]
+
+  await nextTick()
+
+  // 步骤 4：再次跳（这次一定能跳到）
+  ;(noteListRef.value as any)?.scrollToMonth?.(year, month)
+}
+
 function addNoteToList(newNote: any) {
   if (notes.value.some(note => note.id === newNote.id))
     return
@@ -2552,6 +2661,24 @@ function onCalendarUpdated(updated: any) {
         </div>
       </div>
 
+      <Transition name="fade">
+        <div
+          v-if="headerCollapsed && !isSelectionModeActive && !showSearchBar"
+          class="year-jump-bar"
+        >
+          <button class="year-jump-btn" @click="openYearMonthPicker">
+            <span class="year-jump-text">{{ jumpYearLabel }}</span>
+            <span class="year-jump-caret">▾</span>
+          </button>
+        </div>
+      </Transition>
+
+      <AnniversaryBanner
+        v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner && !headerCollapsed"
+        ref="anniversaryBannerRef"
+        @toggle-view="handleAnniversaryToggle"
+      />
+
       <!-- 顶部选择模式条幅（进入选择模式立刻显示；0 条也显示） -->
       <Transition name="slide-fade">
         <div
@@ -2606,12 +2733,6 @@ function onCalendarUpdated(updated: any) {
           <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
         </div>
       </Transition>
-
-      <AnniversaryBanner
-        v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner"
-        ref="anniversaryBannerRef"
-        @toggle-view="handleAnniversaryToggle"
-      />
 
       <div v-if="activeTagFilter && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
         <span class="banner-info">
@@ -3021,6 +3142,75 @@ function onCalendarUpdated(updated: any) {
   .cancel-search-btn {
     font-size: 14px;
     padding: 0.6rem 1rem;
+  }
+}
+
+/* 「年份按钮 + 那年今日」一行布局 */
+.anniv-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+/* 年份按钮的容器：固定定位在头部 + 月份条下面 */
+.year-jump-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(var(--header-height) + 22px); /* 32px 大致是月份条高度，可微调 */
+  z-index: 3500;
+  pointer-events: none; /* 自己不挡点击，只让内部按钮接收 */
+}
+
+.year-jump-btn {
+  pointer-events: auto;          /* 真正接收点击的只有按钮 */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;              /* 稍微瘦一点，避免挡太多月份 */
+  border-radius: 999px;
+  border: none;
+  background-color: #f3f4f6;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+
+  /* 和主容器左右 padding 对齐（一般是 1.5rem） */
+  margin-left: 1.5rem;
+
+  /* 往下挪一点，看起来像“贴着月份条的左下角” */
+  transform: translateY(4px);
+}
+
+.year-jump-text {
+  line-height: 1;
+}
+
+.year-jump-caret {
+  font-size: 12px;
+  transform: translateY(1px);
+}
+
+.year-jump-btn:active {
+  transform: translateY(4px) scale(0.97);
+}
+
+.dark .year-jump-btn {
+  background-color: #374151;
+  color: #e5e7eb;
+}
+
+/* 桌面端：让年份按钮跟内容区左边对齐，而不是贴浏览器左边 */
+@media (min-width: 768px) {
+  .year-jump-btn {
+    margin-left: calc((100vw - 960px) / 2 + 1.5rem);
+    /* 解释：
+       (100vw - 960px) / 2  是内容区左边灰边的宽度
+       + 1.5rem             是 auth-container 自己的左右 padding
+    */
   }
 }
 
