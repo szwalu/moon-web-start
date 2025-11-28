@@ -78,11 +78,6 @@ const monthOptions = Array.from({ length: 12 }, (_, i) => {
     value: m,
   }
 })
-
-// 顶部显示的“2025年”文案
-const jumpYearLabel = computed(() => {
-  return `${jumpYear.value}年`
-})
 // === 图片加载后，通知 NoteList 触发 DynamicScroller 的 remeasure ===
 function handleMdImageLoad() {
   // NoteList 里暴露了 forceUpdate（见第3步备注）
@@ -108,6 +103,7 @@ const currentPage = ref(1)
 const notesPerPage = 30
 const totalNotes = ref(0)
 const hasMoreNotes = ref(true)
+const oldestLoadedAt = ref<string | null>(null)
 const hasPreviousNotes = ref(false)
 const maxNoteLength = 20000
 const searchQuery = ref('')
@@ -518,8 +514,7 @@ onMounted(() => {
           }
           else {
             // 路径D：没有任何缓存，正常首次加载主页
-            isLoadingNotes.value = true // 只有在这里才需要设置加载状态
-            await fetchNotes() // fetchNotes内部会把加载状态设为false
+            await fetchNotes(true) // fetchNotes内部会把加载状态设为false
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
 
@@ -1061,6 +1056,20 @@ function restoreHomepageFromCache(): boolean {
     totalNotes.value = meta.totalNotes
     currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
     hasMoreNotes.value = cachedNotes.length < meta.totalNotes
+
+    // 👇 新增：从缓存里顺便算一遍“最旧的 created_at”，给后续分页用
+    if (notes.value.length > 0) {
+      let minCreated = notes.value[0].created_at
+      for (const n of notes.value) {
+        if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+          minCreated = n.created_at
+      }
+      oldestLoadedAt.value = minCreated
+    }
+    else {
+      oldestLoadedAt.value = null
+    }
+
     return true
   }
   return false
@@ -1107,7 +1116,8 @@ function handleSearchCleared() {
   isShowingSearchResults.value = false
   if (!restoreHomepageFromCache()) {
     currentPage.value = 1
-    fetchNotes()
+    oldestLoadedAt.value = null
+    fetchNotes(true)
   }
 }
 
@@ -1444,26 +1454,90 @@ async function fetchNotesByMonth(year: number, month: number) {
 }
 
 async function jumpToMonth(year: number, month: number) {
-  // 步骤 1：让列表尝试用现有缓存跳
-  if ((noteListRef.value as any)?.scrollToMonth?.(year, month))
+  // 0. 如果当前就是普通主页视图，且已经有这个月份的数据，
+  //    直接让虚拟列表滚过去即可（不需要重新拉）
+  if (
+    !isAnniversaryViewActive.value
+    && !activeTagFilter.value
+    && !isShowingSearchResults.value
+    && (noteListRef.value as any)?.scrollToMonth?.(year, month)
+  )
     return
 
-  // 步骤 2：如果缓存里没有 → 直接向 Supabase 拉“该月”的全部笔记
-  const monthNotes = await fetchNotesByMonth(year, month)
+  // 1. 退出所有“特殊视图”，但**不要**调用会触发 fetchNotes 的封装函数
+  // —— 那年今日
+  isAnniversaryViewActive.value = false
+  anniversaryNotes.value = null
+  localStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+  localStorage.removeItem(SESSION_ANNIV_RESULTS_KEY)
 
-  if (monthNotes.length === 0) {
-    // 该月无笔记 → 明确提示
-    messageHook.warning(t('notes.no_notes_in_month') || '该月没有笔记')
-    return
+  // —— 标签筛选
+  activeTagFilter.value = null
+  // 不调用 clearTagFilter()，避免 restoreHomepageFromCache / fetchNotes(true)
+
+  // —— 搜索
+  isShowingSearchResults.value = false
+  hasSearchRun.value = false
+  searchQuery.value = ''
+  showSearchBar.value = false
+  sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+  sessionStorage.removeItem(SESSION_SHOW_SEARCH_BAR_KEY)
+  sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+
+  // 2. 以“目标月份”为新的时间轴起点：清空当前列表与分页状态
+  isLoadingNotes.value = true
+  notes.value = []
+  currentPage.value = 1
+  hasMoreNotes.value = true
+  oldestLoadedAt.value = null
+
+  try {
+    // 3. 拉取该月全部笔记
+    const monthNotes = await fetchNotesByMonth(year, month)
+
+    if (!monthNotes || monthNotes.length === 0) {
+      // 该月没有任何笔记
+      notes.value = []
+      hasMoreNotes.value = false
+      messageHook.warning(t('notes.no_notes_in_month') || '该月没有笔记')
+      return
+    }
+
+    // 4. 塞回列表，**以后滚动就从这个月份往早加载**
+    notes.value = monthNotes
+
+    // 计算这个月里最早一条的 created_at，作为后续分页 anchor
+    let minCreated = monthNotes[0].created_at
+    for (const n of monthNotes) {
+      if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+        minCreated = n.created_at
+    }
+    oldestLoadedAt.value = minCreated
+
+    // 先乐观地认为“还有更早的笔记可以加载”，让下拉能触发 fetchNotes()
+    hasMoreNotes.value = true
+
+    // 5. 更新本地缓存 & 快照（保持和 fetchNotes 一致）
+    try {
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(
+        CACHE_KEYS.HOME_META,
+        JSON.stringify({ totalNotes: totalNotes.value || notes.value.length }),
+      )
+      await saveNotesSnapshot(notes.value)
+    }
+    catch {
+      // 缓存失败可以忽略，不影响跳转
+    }
+
+    // 6. 等 DOM 渲染完成，再调用虚拟列表的滚动到月份方法
+    await nextTick()
+    ;(noteListRef.value as any)?.scrollToMonth?.(year, month)
   }
-
-  // 步骤 3：把这批数据合入 notes（保持不破坏你的 normalizedNotes）
-  notes.value = [...notes.value, ...monthNotes]
-
-  await nextTick()
-
-  // 步骤 4：再次跳（这次一定能跳到）
-  ;(noteListRef.value as any)?.scrollToMonth?.(year, month)
+  finally {
+    isLoadingNotes.value = false
+  }
 }
 
 function addNoteToList(newNote: any) {
@@ -1611,37 +1685,96 @@ function updateNoteInList(updatedNote: any) {
   anniversaryBannerRef.value?.updateNote(updatedNote)
 }
 
-async function fetchNotes() {
+// 重写：支持 reset / silent，并使用 created_at 游标向过去翻页
+async function fetchNotes(arg?: boolean | { reset?: boolean; silent?: boolean }) {
+  let reset = false
+  let silent = false
+
+  if (typeof arg === 'boolean') {
+    reset = arg
+  }
+  else if (arg && typeof arg === 'object') {
+    reset = !!arg.reset
+    silent = !!arg.silent
+  }
+
   if (!user.value)
     return
 
-  isLoadingNotes.value = true
+  // 避免重复加载：正常加载时如果还在 loading 就直接返回
+  if (isLoadingNotes.value && !silent)
+    return
+
+  if (reset) {
+    currentPage.value = 1
+    oldestLoadedAt.value = null
+  }
+
+  // reset 首次加载时要拿到 totalNotes，用 count
+  const selectOptions = reset ? { count: 'exact' as const } : { count: 'none' as const }
+
+  let query = supabase
+    .from('notes')
+    .select('id, content, weather, created_at, updated_at, is_pinned', selectOptions)
+    .eq('user_id', user.value.id)
+    .order('is_pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(notesPerPage)
+
+  // 非 reset 情况：只拉“当前最旧 created_at 之前”的一页
+  if (!reset && oldestLoadedAt.value)
+    query = query.lt('created_at', oldestLoadedAt.value)
+
+  if (!silent)
+    isLoadingNotes.value = true
+
   try {
-    const from = (currentPage.value - 1) * notesPerPage
-    const to = from + notesPerPage - 1
-    const { data, error, count } = await supabase
-      .from('notes')
-      .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'planned' })
-      .eq('user_id', user.value.id)
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .range(from, to)
+    const { data, error, count } = await query
 
     if (error)
       throw error
 
     const newNotes = data || []
-    totalNotes.value = count || 0
 
-    // 合并分页或覆盖
-    notes.value = currentPage.value > 1 ? [...notes.value, ...newNotes] : newNotes
+    if (reset) {
+      notes.value = newNotes
+      totalNotes.value = typeof count === 'number' ? count : totalNotes.value
+    }
+    else {
+      // 追加时做一次去重，避免 prefetch / 手动加载造成重复
+      const existing = new Set(notes.value.map(n => n.id))
+      const toAppend = newNotes.filter(n => !existing.has(n.id))
+      notes.value = [...notes.value, ...toAppend]
+      currentPage.value += 1
+    }
 
-    if (newNotes.length > 0) {
-      // 现有本地缓存（localStorage）
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: count || 0 }))
+    // 是否还有下一页：按“这一页是否满页”来判断即可
+    hasMoreNotes.value = newNotes.length === notesPerPage
 
-      // ✅ 写入 IndexedDB 快照（只读离线用）
+    // 更新“最旧 created_at” 游标
+    if (notes.value.length > 0) {
+      let minCreated = notes.value[0].created_at
+      for (const n of notes.value) {
+        if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+          minCreated = n.created_at
+      }
+      oldestLoadedAt.value = minCreated
+    }
+    else {
+      oldestLoadedAt.value = null
+    }
+
+    // ====== 缓存 & 快照逻辑保持原样 ======
+    if (notes.value.length > 0) {
+      try {
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+        localStorage.setItem(
+          CACHE_KEYS.HOME_META,
+          JSON.stringify({ totalNotes: totalNotes.value || notes.value.length }),
+        )
+      }
+      catch { /* ignore */ }
+
       try {
         await saveNotesSnapshot(notes.value)
       }
@@ -1650,51 +1783,46 @@ async function fetchNotes() {
       }
     }
 
-    hasMoreNotes.value = to + 1 < totalNotes.value
+    // ✅ 首次加载时仍然可以走静默预取逻辑（不动你的 silentPrefetchMore）
+    if (reset) {
+      const TARGET = Math.min(
+        (totalNotes.value || Number.POSITIVE_INFINITY), (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5)
+      const loadedEnough = Array.isArray(notes.value) && notes.value.length >= TARGET
+
+      let fresh = false
+      try {
+        const tsRaw = localStorage.getItem(PREFETCH_LAST_TS_KEY)
+        const ts = tsRaw ? Number.parseInt(tsRaw, 10) : 0
+        fresh = ts > 0 && (Date.now() - ts) < PREFETCH_TTL_MS
+      }
+      catch {}
+
+      if (hasMoreNotes.value && !(fresh && loadedEnough))
+        silentPrefetchMore()
+    }
 
     // ✅ 拉取成功 => 复位“离线只弹一次”的开关
     offlineToastShown = false
-
-    // 目标条数：首屏 + 10 页（300 条），对齐总数上限；留 5 条冗余
-    const TARGET = Math.min(
-      (totalNotes.value || Number.POSITIVE_INFINITY), (1 + SILENT_PREFETCH_PAGES) * notesPerPage - 5,
-    )
-    const loadedEnough = Array.isArray(notes.value) && notes.value.length >= TARGET
-
-    let fresh = false
-    try {
-      const tsRaw = localStorage.getItem(PREFETCH_LAST_TS_KEY)
-      const ts = tsRaw ? Number.parseInt(tsRaw, 10) : 0
-      fresh = ts > 0 && (Date.now() - ts) < PREFETCH_TTL_MS
-    }
-    catch {}
-
-    // ✅ 只有“24h 内预取过”且“当前已够 10 页”才跳过；否则就预取
-    if (currentPage.value === 1 && hasMoreNotes.value && !(fresh && loadedEnough))
-      silentPrefetchMore()
   }
   catch (err: any) {
-    // ⛔️ 离线 / 网络错误：只弹一次，并暂停无限下拉
     const msg = String(err?.message || err)
-    const isOffline
-      = navigator.onLine === false
+    const offline = navigator.onLine === false
       || /Failed to fetch|NetworkError|TypeError.*fetch/i.test(msg)
 
-    if (isOffline) {
+    if (offline) {
       if (!offlineToastShown) {
         offlineToastShown = true
         messageHook.error(t('notes.fetch_error'))
       }
-      // 防止继续下拉触发一串失败
       hasMoreNotes.value = false
     }
     else {
-      // 非离线错误：正常提示
       messageHook.error(t('notes.fetch_error'))
     }
   }
   finally {
-    isLoadingNotes.value = false
+    if (!silent)
+      isLoadingNotes.value = false
   }
 }
 
@@ -1935,10 +2063,9 @@ async function handleTrashRestored(restoredNotes?: any[]) {
     }
   }
   else {
-    // 其他情况（例如当前是搜索/标签/那年今日/或没拿到 restoredNotes）：
-    // 保持原有行为：轻量刷新主页数据，但不强制切视图
     currentPage.value = 1
-    await fetchNotes()
+    oldestLoadedAt.value = null
+    await fetchNotes(true)
   }
 
   // ⭐ 核心修复：强制刷新“那年今日”，绕过本地缓存
@@ -1947,9 +2074,7 @@ async function handleTrashRestored(restoredNotes?: any[]) {
 }
 
 async function handleTrashPurged() {
-  // 可选：不用刷新主页，但你如果想同步总数，可轻量刷新一次元数据
-  // 例如保持当前页不动，只更新 totalNotes：
-  await fetchNotes()
+  await fetchNotes(true)
 }
 
 function handleHeaderClick() {
@@ -2563,17 +2688,15 @@ async function fetchNotesByTag(tag: string) {
 function clearTagFilter() {
   activeTagFilter.value = null
 
-  // ✅ 核心修改：不再依赖 mainNotesCache，而是直接从主页缓存恢复
   if (!restoreHomepageFromCache()) {
-    // 如果因故未能从缓存恢复，则从网络请求第一页作为兜底
     currentPage.value = 1
-    fetchNotes()
+    oldestLoadedAt.value = null
+    fetchNotes(true)
   }
 
   noteListKey.value++ // 强制刷新列表
   headerCollapsed.value = false
 }
-
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 
@@ -2660,18 +2783,6 @@ function onCalendarUpdated(updated: any) {
           </button>
         </div>
       </div>
-
-      <Transition name="fade">
-        <div
-          v-if="headerCollapsed && !isSelectionModeActive && !showSearchBar"
-          class="year-jump-bar"
-        >
-          <button class="year-jump-btn" @click="openYearMonthPicker">
-            <span class="year-jump-text">{{ jumpYearLabel }}</span>
-            <span class="year-jump-caret">▾</span>
-          </button>
-        </div>
-      </Transition>
 
       <AnniversaryBanner
         v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner && !headerCollapsed"
@@ -2814,9 +2925,10 @@ function onCalendarUpdated(updated: any) {
           @copy-note="handleCopy"
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
-          @date-updated="fetchNotes"
+          @date-updated="() => fetchNotes(true)"
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
+          @month-header-click="openYearMonthPicker"
         />
       </div>
 
@@ -3142,75 +3254,6 @@ function onCalendarUpdated(updated: any) {
   .cancel-search-btn {
     font-size: 14px;
     padding: 0.6rem 1rem;
-  }
-}
-
-/* 「年份按钮 + 那年今日」一行布局 */
-.anniv-row {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  margin-top: 4px;
-  margin-bottom: 10px;
-}
-
-/* 年份按钮的容器：固定定位在头部 + 月份条下面 */
-.year-jump-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: calc(var(--header-height) + 22px); /* 32px 大致是月份条高度，可微调 */
-  z-index: 3500;
-  pointer-events: none; /* 自己不挡点击，只让内部按钮接收 */
-}
-
-.year-jump-btn {
-  pointer-events: auto;          /* 真正接收点击的只有按钮 */
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;              /* 稍微瘦一点，避免挡太多月份 */
-  border-radius: 999px;
-  border: none;
-  background-color: #f3f4f6;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-
-  /* 和主容器左右 padding 对齐（一般是 1.5rem） */
-  margin-left: 1.5rem;
-
-  /* 往下挪一点，看起来像“贴着月份条的左下角” */
-  transform: translateY(4px);
-}
-
-.year-jump-text {
-  line-height: 1;
-}
-
-.year-jump-caret {
-  font-size: 12px;
-  transform: translateY(1px);
-}
-
-.year-jump-btn:active {
-  transform: translateY(4px) scale(0.97);
-}
-
-.dark .year-jump-btn {
-  background-color: #374151;
-  color: #e5e7eb;
-}
-
-/* 桌面端：让年份按钮跟内容区左边对齐，而不是贴浏览器左边 */
-@media (min-width: 768px) {
-  .year-jump-btn {
-    margin-left: calc((100vw - 960px) / 2 + 1.5rem);
-    /* 解释：
-       (100vw - 960px) / 2  是内容区左边灰边的宽度
-       + 1.5rem             是 auth-container 自己的左右 padding
-    */
   }
 }
 

@@ -30,6 +30,7 @@ const emit = defineEmits([
   'dateUpdated',
   'scrolled',
   'editingStateChange',
+  'monthHeaderClick',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -331,6 +332,16 @@ const currentMonthLabel = computed(() => {
   const [y, m] = currentMonthKey.value.split('-')
   return t('notes.list.month_label', { year: Number(y), month: Number(m) })
 })
+
+/** 点击浮动月份条右侧的小倒三角 */
+function handleStickyMonthClick() {
+  if (!currentMonthKey.value)
+    return
+
+  // 把当前月份 key（如 "2025-11"）抛给父组件
+  emit('monthHeaderClick', currentMonthKey.value)
+}
+
 const pushOffset = ref(0)
 
 /** 新增：滚动方向（仅在向上滚时做月份兜底纠正） */
@@ -961,7 +972,17 @@ async function restoreScrollIfNeeded() {
       class="sticky-month"
       :style="{ transform: `translateY(${-pushOffset}px)` }"
     >
-      {{ currentMonthLabel }}
+      <button
+        type="button"
+        class="sticky-month-main"
+        @click.stop="handleStickyMonthClick"
+      >
+        <span class="sticky-month-label">
+          {{ currentMonthLabel }}
+        </span>
+        <!-- 只保留你原来的这一个小倒三角 -->
+        <span class="sticky-month-caret" />
+      </button>
     </div>
 
     <div v-if="isLoading && notes.length === 0" class="py-4 text-center text-gray-500">
@@ -1170,20 +1191,23 @@ async function restoreScrollIfNeeded() {
 
   height: 26px;           /* 与 HEADER_HEIGHT 与 .month-header 一致 */
   padding: 0 8px;         /* 与 .month-header 一致 */
-  pointer-events: none;
 
-  /* ✅ 关键：与 .month-header 同样的圆角与描边/背景 */
+  /* 现在需要可点击 */
+  pointer-events: auto;
+
+  /* 外观与 .month-header 一致 */
   border-radius: 8px;
   background: #eef2ff;
   border: 1px solid #e5e7eb;
 
-  /* 与 .month-header 一致的文字样式 */
   font-weight: 900;
   font-size: 15px;
   color: #374151;
 
   display: flex;
   align-items: center;
+  justify-content: flex-start; /* ✅ 全部靠左排布 */
+  gap: 1px; /* 间距稍微小一点，更“紧挨” */
 }
 
 /* 暗色主题下保持一致 */
@@ -1193,4 +1217,38 @@ async function restoreScrollIfNeeded() {
   color: #e5e7eb;
 }
 .list-bottom-spacer { width: 100%; flex: 0 0 auto; }
+
+/* 左侧文字，自动占满剩余空间，避免被挤 */
+.sticky-month-label {
+  flex: 0 0 auto;           /* ✅ 不再拉伸，占自身宽度即可 */
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* 实际的倒三角，用 border 画 */
+.sticky-month-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor; /* 用文字颜色画出小三角 */
+}
+
+/* 点击区域（文字 + 倒三角） */
+.sticky-month-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  padding: 0;
+  margin: 0;
+
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+
+  cursor: pointer;
+}
 </style>
