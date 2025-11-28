@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NDropdown, NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, MessageSquare, Settings, Shuffle, Trash2, Type, User, X } from 'lucide-vue-next'
+import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, House, MessageSquare, Settings, Shuffle, Trash2, Type, User } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -2547,7 +2547,7 @@ function onCalendarUpdated(updated: any) {
             aria-label="t('auth.go_to_links')"
             @click="goToLinksSite"
           >
-            <X :size="18" />
+            <House :size="18" />
           </button>
         </div>
       </div>
