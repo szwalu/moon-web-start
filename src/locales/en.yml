@@ -148,6 +148,7 @@ form:
   title: 'Suggestions & Feedback'
   breadcrumb: 'Website Submission & Feedback'
   tip: 'Hello! If you’d like your site included, apply for a link exchange, or submit feedback, please fill out the form below. Thank you!'
+  tipauth: Hello, welcome to Nebula Notes. If you have any suggestions or feedback, please fill out the form below and submit it. Thank you!
   selectLabel: Please select
   selectPlaceholder: Select a type
   options:
