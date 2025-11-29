@@ -2735,7 +2735,7 @@ function clearTagFilter() {
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 
 function goToLinksSite() {
-  window.location.assign('/')
+  window.location.assign('/?from=notes')
 }
 
 function onCalendarCreated(note: any) {

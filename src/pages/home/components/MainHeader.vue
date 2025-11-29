@@ -21,6 +21,8 @@ const router = useRouter()
 
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
+const showBackTip = ref(false)
+let tipTimer: number | null = null
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
@@ -66,6 +68,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
+  if (tipTimer !== null)
+    clearTimeout(tipTimer)
 })
 
 const user = ref<any>(null)
@@ -80,6 +84,16 @@ onMounted(async () => {
   const { data: { session } } = await supabase.auth.getSession()
   if (session)
     logoPath.value = '/logo.jpg'
+})
+
+// ✅ 新增这一段：只要是 from=notes 且移动端，显示 20 秒提示
+onMounted(() => {
+  if (isMobile.value && route.query.from === 'notes') {
+    showBackTip.value = true
+    tipTimer = window.setTimeout(() => {
+      showBackTip.value = false
+    }, 20000) // 20 秒
+  }
 })
 
 function getIconClass(routeName: string) {
@@ -118,12 +132,22 @@ async function handleSettingsClick() {
   >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
-      <RouterLink v-if="isMobile && !settingStore.isSideNavOpen" to="/auth">
+      <RouterLink
+        v-if="isMobile && !settingStore.isSideNavOpen"
+        to="/auth"
+        class="flex items-center gap-x-2"
+      >
         <img
           :src="logoPath"
           alt="Logo"
           class="w-auto h-32"
         >
+        <span
+          v-if="showBackTip"
+          class="text-xs text-gray-500 dark:text-gray-300"
+        >
+          👈 点击返回笔记
+        </span>
       </RouterLink>
     </div>
 
