@@ -176,6 +176,7 @@ function buildSearchPayload(termOverride?: string) {
   // ===== 决定送给 RPC 的 search_term =====
   let searchTermForRpc = query
 
+  // —— 有语音：保证 search_term 至少包含“录音” ——
   if (audioFilterEnabled.value) {
     if (!searchTermForRpc) {
       // 没有其它关键字，仅按“录音”搜索
@@ -185,6 +186,23 @@ function buildSearchPayload(termOverride?: string) {
       // 有其它关键字时，在后面附加“录音”
       searchTermForRpc = `${searchTermForRpc} 录音`
     }
+  }
+  // —— 有图片：补上 note-images/ 关键字（与快捷搜索保持一致） ——
+  if (moreHasImage.value) {
+    if (!searchTermForRpc)
+      searchTermForRpc = 'note-images/'
+
+    else if (!searchTermForRpc.includes('note-images/'))
+      searchTermForRpc = `${searchTermForRpc} note-images/`
+  }
+
+  // —— 有链接：补上 https:// 关键字（与快捷搜索保持一致） ——
+  if (moreHasLink.value) {
+    if (!searchTermForRpc)
+      searchTermForRpc = 'https://'
+
+    else if (!searchTermForRpc.includes('https://'))
+      searchTermForRpc = `${searchTermForRpc} https://`
   }
 
   payload.search_term = searchTermForRpc || null
@@ -300,34 +318,30 @@ async function executeSearch(termOverride?: string) {
 }
 
 // --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
+// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
 function handleQuickSearch(type: 'image' | 'audio' | 'link') {
-  let keyword = ''
-
-  if (type === 'image') {
-    audioFilterEnabled.value = false
-    keyword = 'note-images/'
-  }
-  else if (type === 'audio') {
-    // 启用“有语音”本地过滤，并让 RPC 至少按“录音”搜索
-    audioFilterEnabled.value = true
-    keyword = '录音'
-  }
-  else if (type === 'link') {
-    audioFilterEnabled.value = false
-    keyword = 'https://'
-  }
-
-  if (!keyword)
-    return
-
-  // 更新输入框显示
-  searchModel.value = keyword
+  // 关掉标签建议
   showSearchTagSuggestions.value = false
   highlightedSearchIndex.value = -1
-  searchInputRef.value?.focus()
 
-  // 直接用关键字执行搜索，不等 v-model 回传
-  executeSearch(keyword)
+  // 重置「更多」里的三个开关
+  moreHasImage.value = false
+  moreHasLink.value = false
+  audioFilterEnabled.value = false
+
+  if (type === 'image')
+    moreHasImage.value = true // 等同于在“更多”里勾上“有图片”
+
+  else if (type === 'audio')
+    audioFilterEnabled.value = true // 等同于勾上“有语音”
+
+  else if (type === 'link')
+    moreHasLink.value = true // 等同于勾上“有链接”
+
+  // 和“更多”里的确定按钮共用一套逻辑：
+  // 1. 如果输入框为空，就在 searchModel 里填上「有图片 / 有链接 / 有语音」
+  // 2. 调用 executeSearch()，带上布尔筛选 + 关键字注入
+  confirmMoreFilter()
 }
 
 // 日期弹窗确认：更新模式 & 触发搜索
@@ -352,6 +366,24 @@ function confirmTagFilter() {
 
 // “更多”弹窗确认：不再改搜索框内容，直接带着布尔筛选 + 本地音频筛选执行搜索
 function confirmMoreFilter() {
+  // ⭐ 如果当前没有关键字，但启用了「更多」里的任意筛选，
+  //    给搜索框填入一个友好的关键词，方便上面的“搜索“xx”的结果”使用
+  if (!searchModel.value.trim()) {
+    const keywords: string[] = []
+
+    if (moreHasImage.value)
+      keywords.push(t('notes.search_quick_has_image', '有图片'))
+
+    if (moreHasLink.value)
+      keywords.push(t('notes.search_quick_has_link', '有链接'))
+
+    if (audioFilterEnabled.value)
+      keywords.push(t('notes.search_quick_has_audio', '有语音'))
+
+    if (keywords.length)
+      searchModel.value = keywords.join(' ')
+  }
+
   showMoreModal.value = false
   executeSearch()
 }
@@ -405,7 +437,7 @@ function moveSearchSelection(offset: number) {
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
-    selectSearchTag(searchTagSuggestions.value[highlightedIndex.value])
+    selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
   else
     executeSearch()
 }
