@@ -157,7 +157,7 @@ async function handleSettingsClick() {
           v-if="showBackTip"
           style="font-size: 12px; font-weight: 400; color: #dc2626; padding-left: 2px; line-height: 1;"
         >
-          👈 点击返回笔记
+          👈 {{ $t('notes.back_to_notes') }}
         </span>
       </RouterLink>
     </div>

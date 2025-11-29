@@ -374,6 +374,7 @@ notes:
   no_notes_in_month: No notes this month
   jump_to_month_title: Select a month to jump to
   no_notes_to_jump: No available notes to jump to
+  back_to_notes: Tap to return to Notes
 
   # Top filter chips
   search_filter_date: Date
