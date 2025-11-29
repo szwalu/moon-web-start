@@ -121,6 +121,7 @@ const lastSavedId = ref<string | null>(null)
 const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
 const headerCollapsed = ref(false)
+const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
 
@@ -1047,6 +1048,7 @@ watch([notesCount, isAnniversaryViewActive, isShowingSearchResults, activeTagFil
 }, { immediate: true })
 
 function restoreHomepageFromCache(): boolean {
+  isMonthJumpView.value = false
   const cachedNotesData = localStorage.getItem(CACHE_KEYS.HOME)
   const cachedMetaData = localStorage.getItem(CACHE_KEYS.HOME_META)
   if (cachedNotesData && cachedMetaData) {
@@ -1057,7 +1059,6 @@ function restoreHomepageFromCache(): boolean {
     currentPage.value = Math.max(1, Math.ceil(cachedNotes.length / notesPerPage))
     hasMoreNotes.value = cachedNotes.length < meta.totalNotes
 
-    // 👇 新增：从缓存里顺便算一遍“最旧的 created_at”，给后续分页用
     if (notes.value.length > 0) {
       let minCreated = notes.value[0].created_at
       for (const n of notes.value) {
@@ -1070,8 +1071,13 @@ function restoreHomepageFromCache(): boolean {
       oldestLoadedAt.value = null
     }
 
+    // ⭐ 恢复到首页视图
+    isMonthJumpView.value = false
+
     return true
   }
+  // 兜底：没有缓存时也当作不在跳转视图
+  isMonthJumpView.value = false
   return false
 }
 
@@ -1185,8 +1191,9 @@ function onListScroll(top: number) {
 
 // ++ 新增：按钮的点击处理函数
 function handleScrollTopClick() {
-  (noteListRef.value as any)?.scrollToTop?.()
-  showScrollTopButton.value = false
+  // ✅ 在“年月跳转视图”下：先恢复 HOME，再滚到顶部（今天 + 置顶笔记）
+  // ✅ 在普通 HOME 下：就是原来的 scrollToTop
+  restoreHomeAndScrollTop()
 }
 
 async function handleBatchExport() {
@@ -1464,7 +1471,7 @@ async function jumpToMonth(year: number, month: number) {
   )
     return
 
-  // 1. 退出所有“特殊视图”，但**不要**调用会触发 fetchNotes 的封装函数
+  // 1. 退出所有“特殊视图”，但**不要**去重置 HOME / 清空 notes
   // —— 那年今日
   isAnniversaryViewActive.value = false
   anniversaryNotes.value = null
@@ -1473,7 +1480,6 @@ async function jumpToMonth(year: number, month: number) {
 
   // —— 标签筛选
   activeTagFilter.value = null
-  // 不调用 clearTagFilter()，避免 restoreHomepageFromCache / fetchNotes(true)
 
   // —— 搜索
   isShowingSearchResults.value = false
@@ -1485,53 +1491,58 @@ async function jumpToMonth(year: number, month: number) {
   sessionStorage.removeItem(SESSION_SHOW_SEARCH_BAR_KEY)
   sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
 
-  // 2. 以“目标月份”为新的时间轴起点：清空当前列表与分页状态
+  // 🚫 不再清空 notes / currentPage / oldestLoadedAt
+  // notes.value = []
+  // currentPage.value = 1
+  // hasMoreNotes.value = true
+  // oldestLoadedAt.value = null
+
   isLoadingNotes.value = true
-  notes.value = []
-  currentPage.value = 1
-  hasMoreNotes.value = true
-  oldestLoadedAt.value = null
 
   try {
-    // 3. 拉取该月全部笔记
+    // 2. 拉取该月全部笔记
     const monthNotes = await fetchNotesByMonth(year, month)
 
     if (!monthNotes || monthNotes.length === 0) {
-      // 该月没有任何笔记
-      notes.value = []
-      hasMoreNotes.value = false
       messageHook.warning(t('notes.no_notes_in_month') || '该月没有笔记')
       return
     }
 
-    // 4. 塞回列表，**以后滚动就从这个月份往早加载**
-    notes.value = monthNotes
+    // 3. 把“目标月份”的结果并入当前 notes，而不是覆盖
+    const map = new Map<string, any>()
+    for (const n of notes.value)
+      map.set(n.id, n)
+    for (const n of monthNotes)
+      map.set(n.id, n)
 
-    // 计算这个月里最早一条的 created_at，作为后续分页 anchor
-    let minCreated = monthNotes[0].created_at
-    for (const n of monthNotes) {
-      if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
-        minCreated = n.created_at
+    const merged = Array.from(map.values())
+
+    // 与主页同一排序：先置顶，再按 created_at 倒序
+    merged.sort(
+      (a, b) =>
+        (b.is_pinned - a.is_pinned)
+        || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    )
+
+    notes.value = merged
+
+    // 4. 重新计算“最早 created_at”作为向过去翻页的锚点
+    if (notes.value.length > 0) {
+      let minCreated = notes.value[0].created_at
+      for (const n of notes.value) {
+        if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+          minCreated = n.created_at
+      }
+      oldestLoadedAt.value = minCreated
     }
-    oldestLoadedAt.value = minCreated
-
-    // 先乐观地认为“还有更早的笔记可以加载”，让下拉能触发 fetchNotes()
-    hasMoreNotes.value = true
-
-    // 5. 更新本地缓存 & 快照（保持和 fetchNotes 一致）
-    try {
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(
-        CACHE_KEYS.HOME_META,
-        JSON.stringify({ totalNotes: totalNotes.value || notes.value.length }),
-      )
-      await saveNotesSnapshot(notes.value)
-    }
-    catch {
-      // 缓存失败可以忽略，不影响跳转
+    else {
+      oldestLoadedAt.value = null
     }
 
-    // 6. 等 DOM 渲染完成，再调用虚拟列表的滚动到月份方法
+    // 年月跳转只是“临时观察窗口”，保留这个标记即可
+    isMonthJumpView.value = true
+
+    // 5. 等 DOM 渲染完，再滚动到指定月份位置
     await nextTick()
     ;(noteListRef.value as any)?.scrollToMonth?.(year, month)
   }
@@ -1708,6 +1719,7 @@ async function fetchNotes(arg?: boolean | { reset?: boolean; silent?: boolean })
   if (reset) {
     currentPage.value = 1
     oldestLoadedAt.value = null
+    isMonthJumpView.value = false
   }
 
   // reset 首次加载时要拿到 totalNotes，用 count
@@ -2078,7 +2090,46 @@ async function handleTrashPurged() {
 }
 
 function handleHeaderClick() {
-  (noteListRef.value as any)?.scrollToTop?.()
+  // 行为与右下角箭头保持一致：
+  // 在年月跳转视图下 → 回到今天页；
+  // 在 HOME 下 → 单纯滚到顶部。
+  restoreHomeAndScrollTop()
+}
+
+// ⭐ 新增：统一处理“回到顶部 / 回到首页”逻辑
+// ⭐ 统一且“硬”的回到首页逻辑：
+async function restoreHomeAndScrollTop() {
+  // 1. 清理各种模式
+  if (isAnniversaryViewActive.value)
+    handleAnniversaryToggle(null)
+
+  if (activeTagFilter.value)
+    activeTagFilter.value = null
+
+  if (isShowingSearchResults.value || searchQuery.value) {
+    hasSearchRun.value = false
+    isShowingSearchResults.value = false
+    searchQuery.value = ''
+    showSearchBar.value = false
+    sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+    sessionStorage.removeItem(SESSION_SHOW_SEARCH_BAR_KEY)
+    sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+  }
+
+  isMonthJumpView.value = false
+
+  // 2. 优先用本地首页缓存
+  const restored = restoreHomepageFromCache()
+
+  // 3. 如果没有缓存、或者你想在在线时兜底再拉一遍，可以按需要保留：
+  if (!restored && navigator.onLine !== false)
+    await fetchNotes(true)
+
+  // 4. 回到顶部
+  await nextTick()
+  ;(noteListRef.value as any)?.scrollToTop?.()
+  showScrollTopButton.value = false
 }
 
 async function nextPage() {
@@ -2928,7 +2979,10 @@ function onCalendarUpdated(updated: any) {
           @date-updated="() => fetchNotes(true)"
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
-          @month-header-click="openYearMonthPicker"
+          @month-header-click="() => {
+            if (isAnniversaryViewActive || activeTagFilter) return
+            openYearMonthPicker()
+          }"
         />
       </div>
 
