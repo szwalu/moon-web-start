@@ -62,7 +62,7 @@ const yearOptions = computed(() => {
 
   for (let y = 2000; y <= 2100; y++) {
     years.push({
-      label: `${y}年`,
+      label: `${y}`,
       value: y,
     })
   }
@@ -74,7 +74,7 @@ const yearOptions = computed(() => {
 const monthOptions = Array.from({ length: 12 }, (_, i) => {
   const m = i + 1
   return {
-    label: `${String(m).padStart(2, '0')}月`,
+    label: `${String(m).padStart(2, '0')}`,
     value: m,
   }
 })
