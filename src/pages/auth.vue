@@ -762,7 +762,7 @@ async function deleteNoteImagesForNotes(notesToProcess: Array<{ content?: string
 async function _reloadNotes() {
   const { data, error } = await supabase
     .from('notes')
-    .select('id, content, weather, created_at, updated_at, is_pinned') // 👈 包含 weather
+    .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited') // 👈 包含 weather
     .order('created_at', { ascending: false })
   if (error)
     throw error
@@ -1651,6 +1651,29 @@ async function handlePinToggle(note: any) {
     messageHook.error(`${t('notes.operation_error')}: ${err.message}`)
   }
 }
+
+async function handleFavoriteNote(note: any) {
+  const newValue = !note.is_favorited
+
+  const { _data, error } = await supabase
+    .from('notes')
+    .update({ is_favorited: newValue })
+    .eq('id', note.id)
+    .select()
+    .single()
+
+  if (error) {
+    // 可选：用 message 显示失败提示
+    console.error(error)
+    return
+  }
+
+  // 本地 notes 列表里也同步一下 is_favorited
+  const idx = notes.value.findIndex(n => n.id === note.id)
+  if (idx !== -1)
+    notes.value[idx] = { ...notes.value[idx], is_favorited: newValue }
+}
+
 function updateNoteInList(updatedNote: any) {
   // 步骤 1: 无论如何，都先更新当前视图中的笔记，确保UI立即响应
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
@@ -1727,7 +1750,7 @@ async function fetchNotes(arg?: boolean | { reset?: boolean; silent?: boolean })
 
   let query = supabase
     .from('notes')
-    .select('id, content, weather, created_at, updated_at, is_pinned', selectOptions)
+    .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited', selectOptions)
     .eq('user_id', user.value.id)
     .order('is_pinned', { ascending: false })
     .order('created_at', { ascending: false })
@@ -1856,7 +1879,7 @@ async function loadRandomBatchForRandomRoam() {
 
   const { data, error } = await supabase
     .from('notes')
-    .select('id, content, weather, created_at, updated_at, is_pinned')
+    .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
     .eq('user_id', user.value.id)
     .order('created_at', { ascending: false })
     .range(randomStart, randomEnd)
@@ -2000,7 +2023,7 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
       // 父标签能命中子标签：'#运动' 会命中包含 '#运动/跑步' 的内容
       const { data, error, count } = await supabase
         .from('notes')
-        .select('id, content, weather, created_at, updated_at, is_pinned', { count: 'exact' })
+        .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited', { count: 'exact' })
         .eq('user_id', user.value!.id)
         .ilike('content', `%${hashTag}%`)
         .order('is_pinned', { ascending: false })
@@ -2962,6 +2985,7 @@ function onCalendarUpdated(updated: any) {
           @date-updated="() => fetchNotes(true)"
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
+          @favorite-note="handleFavoriteNote"
           @month-header-click="() => {
             if (
               isAnniversaryViewActive

@@ -73,6 +73,8 @@ const moreHasLink = ref(false)
 // 有语音：前端本地 AND 过滤开关（不再传布尔到 RPC）
 const audioFilterEnabled = ref(false)
 
+const favoriteOnly = ref(false)
+
 // 是否有任何筛选条件生效（用于允许“仅筛选、不输关键字”的搜索）
 const hasAnyFilter = computed(() => {
   const hasDate
@@ -85,7 +87,7 @@ const hasAnyFilter = computed(() => {
     || !!selectedTagForFilter.value
 
   const hasMore
-    = moreHasImage.value || moreHasLink.value || audioFilterEnabled.value
+    = moreHasImage.value || moreHasLink.value || audioFilterEnabled.value || favoriteOnly.value
 
   return hasDate || hasTag || hasMore
 })
@@ -222,7 +224,7 @@ function buildSearchPayload(termOverride?: string) {
   // 更多条件：布尔值（仅图片/链接，语音用本地过滤不下发）
   payload.has_image = moreHasImage.value
   payload.has_link = moreHasLink.value
-
+  payload.favorite_only = favoriteOnly.value
   return { payload, query }
 }
 
@@ -235,6 +237,47 @@ async function executeSearch(termOverride?: string) {
   }
 
   const { payload, query } = buildSearchPayload(termOverride)
+
+  // ⭐ 特殊分支：仅启用了「已收藏」，没有其它筛选条件 && 没有关键字
+  const onlyFavoriteFilterActive
+    = favoriteOnly.value
+    && !moreHasImage.value
+    && !moreHasLink.value
+    && !audioFilterEnabled.value
+    && tagMode.value === 'all'
+    && !selectedTagForFilter.value
+    && dateMode.value === 'all'
+    && !startDateStr.value
+    && !endDateStr.value
+
+  if (!query && onlyFavoriteFilterActive) {
+    emit('searchStarted')
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('id, content, created_at, weather, is_favorited')
+        .eq('user_id', props.user.id)
+        .eq('is_favorited', true)
+        .order('created_at', { ascending: false })
+
+      if (error)
+        throw error
+
+      const finalData = (data ?? []).map((n: any) => ({
+        ...n,
+        highlight: null,
+        is_fts: false,
+        terms: [],
+      }))
+
+      emit('searchCompleted', { data: finalData, error: null, fromCache: false })
+    }
+    catch (err: any) {
+      console.error(t('notes.search_error_api_failed', '搜索 API 请求失败:'), err)
+      emit('searchCompleted', { data: [], error: err, fromCache: false })
+    }
+    return
+  }
 
   // 既没有关键字，也没有任何筛选 → 视为清空搜索
   if (!query && !hasAnyFilter.value) {
@@ -253,6 +296,7 @@ async function executeSearch(termOverride?: string) {
     img: moreHasImage.value,
     link: moreHasLink.value,
     audioFilter: audioFilterEnabled.value,
+    favoriteOnly: favoriteOnly.value,
   }))
 
   // 1) 先查 localStorage 缓存
@@ -317,30 +361,40 @@ async function executeSearch(termOverride?: string) {
   }
 }
 
-// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
-// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 ---
-function handleQuickSearch(type: 'image' | 'audio' | 'link') {
+// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 / 已收藏 ---
+function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   // 关掉标签建议
   showSearchTagSuggestions.value = false
   highlightedSearchIndex.value = -1
 
-  // 重置「更多」里的三个开关
+  // 重置所有筛选
   moreHasImage.value = false
   moreHasLink.value = false
   audioFilterEnabled.value = false
+  favoriteOnly.value = false
 
+  // ✅ 特殊处理“已收藏”
+  if (type === 'favorite') {
+    favoriteOnly.value = true
+
+    // 仅在当前没有手动关键字时，帮你填一个友好文案
+    if (!searchModel.value.trim())
+      searchModel.value = t('notes.search_quick_favorited', '已收藏')
+
+    // 核心：执行“无关键字 + 收藏筛选”的搜索
+    executeSearch('') // 传空字符串，让后端只按 favorite_only 过滤
+    return
+  }
+
+  // 其它三种仍然复用原来的逻辑
   if (type === 'image')
-    moreHasImage.value = true // 等同于在“更多”里勾上“有图片”
-
+    moreHasImage.value = true
   else if (type === 'audio')
-    audioFilterEnabled.value = true // 等同于勾上“有语音”
-
+    audioFilterEnabled.value = true
   else if (type === 'link')
-    moreHasLink.value = true // 等同于勾上“有链接”
+    moreHasLink.value = true
 
-  // 和“更多”里的确定按钮共用一套逻辑：
-  // 1. 如果输入框为空，就在 searchModel 里填上「有图片 / 有链接 / 有语音」
-  // 2. 调用 executeSearch()，带上布尔筛选 + 关键字注入
+  // 和“更多”里的确定按钮共用一套逻辑
   confirmMoreFilter()
 }
 
@@ -364,7 +418,6 @@ function confirmTagFilter() {
   executeSearch()
 }
 
-// “更多”弹窗确认：不再改搜索框内容，直接带着布尔筛选 + 本地音频筛选执行搜索
 function confirmMoreFilter() {
   // ⭐ 如果当前没有关键字，但启用了「更多」里的任意筛选，
   //    给搜索框填入一个友好的关键词，方便上面的“搜索“xx”的结果”使用
@@ -379,6 +432,9 @@ function confirmMoreFilter() {
 
     if (audioFilterEnabled.value)
       keywords.push(t('notes.search_quick_has_audio', '有语音'))
+
+    if (favoriteOnly.value)
+      keywords.push(t('notes.search_quick_favorited', '已收藏')) // ✅ 新增
 
     if (keywords.length)
       searchModel.value = keywords.join(' ')
@@ -455,6 +511,7 @@ function clearSearch() {
   moreHasImage.value = false
   moreHasLink.value = false
   audioFilterEnabled.value = false
+  favoriteOnly.value = false
 
   emit('searchCleared')
 }
@@ -567,6 +624,13 @@ defineExpose({
         @click="handleQuickSearch('link')"
       >
         {{ t('notes.search_quick_has_link', '有链接') }}
+      </button>
+      <button
+        class="quick-chip"
+        type="button"
+        @click="handleQuickSearch('favorite')"
+      >
+        {{ t('notes.search_quick_favorited', '已收藏') }}
       </button>
     </div>
 

@@ -9,7 +9,7 @@ import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
 import mark from 'markdown-it-mark'
 import linkAttrs from 'markdown-it-link-attributes'
-import { Calendar, Copy, Edit3, Pin, PinOff, Share, Trash2 } from 'lucide-vue-next'
+import { Calendar, Copy, Edit3, Heart, HeartOff, Pin, PinOff, Share, Trash2 } from 'lucide-vue-next'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
@@ -35,6 +35,7 @@ const emit = defineEmits([
   'set-date',
   'taskToggle',
   'dateUpdated',
+  'favorite',
 ])
 
 // ✅ 新增：提取笔记内容中的第一张图片 URL
@@ -323,7 +324,7 @@ watch(() => props.isExpanded, (val) => {
     scheduleOverflowCheck()
 })
 
-function makeDropdownItem(iconComp: any, text: string) {
+function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string, any> = {}) {
   return () =>
     h(
       'div',
@@ -335,7 +336,7 @@ function makeDropdownItem(iconComp: any, text: string) {
         },
       },
       [
-        h(iconComp, { size: 16 }),
+        h(iconComp, { size: 16, style: iconStyle }),
         h('span', null, text),
       ],
     )
@@ -382,6 +383,20 @@ function getDropdownOptions(note: any) {
       label: makeDropdownItem(
         note.is_pinned ? PinOff : Pin,
         note.is_pinned ? t('notes.unpin') : t('notes.pin'),
+      ),
+    },
+
+    // 收藏 / 取消收藏：Heart / HeartOff
+    {
+      key: 'favorite',
+      label: makeDropdownItem(
+        note.is_favorited ? HeartOff : Heart,
+        note.is_favorited
+          ? t('notes.unfavorite', '取消收藏')
+          : t('notes.favorite', '收藏'),
+        {
+          color: note.is_favorited ? '#ef4444' : undefined, // ❤️ 红色
+        },
       ),
     },
 
@@ -440,6 +455,10 @@ function handleDropdownSelect(key: string) {
     }
     case 'pin': {
       emit('pin', props.note)
+      break
+    }
+    case 'favorite': {
+      emit('favorite', props.note)
       break
     }
     case 'set_date': {

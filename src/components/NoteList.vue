@@ -31,6 +31,7 @@ const emit = defineEmits([
   'scrolled',
   'editingStateChange',
   'monthHeaderClick',
+  'favoriteNote',
 ])
 
 // 记录“展开瞬间”的锚点，用于收起时恢复
@@ -1069,6 +1070,7 @@ async function restoreScrollIfNeeded() {
                 @edit="handleEditTop(item)"
                 @copy="(content) => emit('copyNote', content)"
                 @pin="(note) => emit('pinNote', note)"
+                @favorite="(note) => emit('favoriteNote', note)"
                 @delete="(id) => emit('deleteNote', id)"
                 @task-toggle="(payload) => emit('taskToggle', payload)"
                 @date-updated="() => emit('dateUpdated')"
