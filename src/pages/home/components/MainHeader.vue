@@ -89,10 +89,21 @@ onMounted(async () => {
 // ✅ 新增这一段：只要是 from=notes 且移动端，显示 20 秒提示
 onMounted(() => {
   if (isMobile.value && route.query.from === 'notes') {
-    showBackTip.value = true
-    tipTimer = window.setTimeout(() => {
-      showBackTip.value = false
-    }, 20000) // 20 秒
+    const countStr = localStorage.getItem('notes_to_main_tip_count')
+    const currentCount = countStr ? Number(countStr) : 0
+
+    // 只显示前 20 次
+    if (currentCount < 20) {
+      showBackTip.value = true
+
+      // 自动关闭
+      tipTimer = window.setTimeout(() => {
+        showBackTip.value = false
+      }, 20000)
+
+      // 计数 +1
+      localStorage.setItem('notes_to_main_tip_count', String(currentCount + 1))
+    }
   }
 })
 
@@ -144,8 +155,7 @@ async function handleSettingsClick() {
         >
         <span
           v-if="showBackTip"
-          class="text-sm font-medium text-gray-700 dark:text-gray-200"
-          style="padding-left: 2px;"
+          style="font-size: 12px; font-weight: 400; color: #dc2626; padding-left: 2px; line-height: 1;"
         >
           👈 点击返回笔记
         </span>
