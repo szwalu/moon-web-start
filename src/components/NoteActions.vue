@@ -981,13 +981,17 @@ defineExpose({
   z-index: 50;
 }
 
+/* ★ 让弹窗整体更高一些，并允许内部滚动 */
 .sheet-panel {
   width: 100%;
   max-width: 640px;
+  max-height: 80vh;
   background-color: #ffffff;
   border-radius: 16px 16px 0 0;
-  padding: 1rem 1rem 0.75rem;
-  margin-bottom: 5vh;
+  padding: 1.5rem 1.5rem 1.25rem; /* ⬅️ 内边距更大 */
+  margin-bottom: 4vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .dark .sheet-panel {
@@ -999,7 +1003,13 @@ defineExpose({
   align-items: center;
   justify-content: center;
   position: relative;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1.1rem; /* ⬅️ 标题和内容之间更宽 */
+}
+
+.sheet-body {
+  flex: 1;
+  padding: 1rem 0 1.25rem; /* ⬅️ 上下留白更大 */
+  overflow-y: auto;
 }
 
 .sheet-title {
@@ -1019,15 +1029,13 @@ defineExpose({
   cursor: pointer;
 }
 
-.sheet-body {
-  padding-bottom: 0.75rem;
-}
+/* ★ 主体增加为可滚动区域，并撑满剩余高度 */
 
 .sheet-confirm-btn {
   width: 100%;
-  margin-top: 0.25rem;
+  margin-top: 0.5rem;
   margin-bottom: 0.25rem;
-  padding: 0.7rem 1rem;
+  padding: 0.8rem 1rem;
   font-size: 16px;
   border-radius: 9999px;
   border: none;
@@ -1036,17 +1044,19 @@ defineExpose({
   font-weight: 600;
 }
 
-/* 日期弹窗内部 */
+/* ===== 日期弹窗内部 ===== */
+
+/* ★ 间距稍微加大一点 */
 .seg-row {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 1rem;             /* ⬅️ 按钮之间更开 */
+  margin-bottom: 1.25rem;
 }
 
 .seg-btn {
   flex: 1;
-  padding: 0.5rem 0.75rem;
-  font-size: 14px;
+  padding: 0.8rem 1rem;  /* ⬅️ 高度明显增加 */
+  font-size: 15px;
   border-radius: 9999px;
   border: none;
   background-color: #e5e7eb;
@@ -1071,7 +1081,8 @@ defineExpose({
 .date-input-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;             /* ⬅️ 左右空一点 */
+  margin-top: 0.75rem;
 }
 
 .date-input-wrapper {
@@ -1081,8 +1092,8 @@ defineExpose({
 }
 
 .date-label {
-  font-size: 12px;
-  margin-bottom: 0.25rem;
+  font-size: 13px;
+  margin-bottom: 0.4rem; /* ⬅️ label 与输入框间距微调 */
   color: #6b7280;
 }
 
@@ -1091,10 +1102,10 @@ defineExpose({
 }
 
 .date-input {
-  padding: 0.45rem 0.6rem;
+  padding: 0.7rem 0.9rem;/* ⬅️ 输入框高度加大 */
   border-radius: 8px;
   border: 1px solid #d1d5db;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .dark .date-input {
@@ -1108,17 +1119,20 @@ defineExpose({
   padding-top: 1rem;
 }
 
-/* 标签弹窗 */
+/* ===== 标签弹窗 ===== */
+
+/* ★ 标签按钮网格拉宽间距 */
 .tag-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .tag-mode-btn {
-  padding: 0.6rem 0.75rem;
-  font-size: 14px;
-  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  font-size: 15px;
+  border-radius: 12px;
   border: none;
   background-color: #e5e7eb;
   color: #111827;
@@ -1142,25 +1156,25 @@ defineExpose({
 
 /* 标签选择行 */
 .tag-select-row {
-  margin-top: 1rem;
+  margin-top: 1.5rem;    /* ⬅️ 与上方按钮拉开距离 */
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;             /* ⬅️ label 与 select 间距更大 */
 }
 
 .tag-select-label {
   font-size: 14px;
   color: #4b5563;
 }
-
 .dark .tag-select-label {
   color: #d1d5db;
 }
 
+/* ★ 下拉框也稍微增大一点 */
 .tag-select {
   width: 100%;
-  padding: 0.55rem 0.75rem;
-  font-size: 14px;
+  padding: 0.7rem 0.9rem;/* ⬅️ 下拉框高度加大 */
+  font-size: 15px;
   border-radius: 8px;
   border: 1px solid #d1d5db;
   background-color: #fff;
@@ -1172,18 +1186,19 @@ defineExpose({
   border-color: #4b5563;
 }
 
-/* 更多弹窗 */
+/* ===== 更多弹窗 ===== */
+
 .more-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.5rem 0;     /* ⬅️ 上下再多一点 */
 }
 
 .more-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 0.25rem;
+  gap: 0.75rem;          /* ⬅️ 文本与勾之间更开 */
+  padding: 1rem 0.75rem; /* ⬅️ 行高明显增加，左右也更宽 */
   border-bottom: 1px solid #e5e7eb;
   font-size: 15px;
 }

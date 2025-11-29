@@ -373,7 +373,7 @@ notes:
   no_notes_in_month: 今月のノートはありません
   jump_to_month_title: 移動する年月を選択
   no_notes_to_jump: 移動できるノートはありません
-  back_to_notes: 👈 メモに戻る
+  back_to_notes: メモに戻る
 
   # 上部フィルターチップ
   search_filter_date: 日付
