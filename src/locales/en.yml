@@ -375,6 +375,9 @@ notes:
   jump_to_month_title: Select a month to jump to
   no_notes_to_jump: No available notes to jump to
   back_to_notes: Tap to return to Notes
+  favorite: Favorite
+  unfavorite: Unfavorite
+  search_quick_favorited: Favorited
 
   # Top filter chips
   search_filter_date: Date

@@ -374,6 +374,9 @@ notes:
   jump_to_month_title: 移動する年月を選択
   no_notes_to_jump: 移動できるノートはありません
   back_to_notes: メモに戻る
+  favorite: お気に入り
+  unfavorite: お気に入り解除
+  search_quick_favorited: お気に入り
 
   # 上部フィルターチップ
   search_filter_date: 日付
