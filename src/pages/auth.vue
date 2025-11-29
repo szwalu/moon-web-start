@@ -2096,37 +2096,20 @@ function handleHeaderClick() {
   restoreHomeAndScrollTop()
 }
 
-// ⭐ 新增：统一处理“回到顶部 / 回到首页”逻辑
-// ⭐ 统一且“硬”的回到首页逻辑：
+// ⭐ 统一处理“回到顶部 / 回到首页”逻辑：
+// - 在年月跳转视图下：先恢复首页，再滚到顶部
+// - 其余情况下：只滚到顶部，不清理搜索/标签/那年今日等状态
 async function restoreHomeAndScrollTop() {
-  // 1. 清理各种模式
-  if (isAnniversaryViewActive.value)
-    handleAnniversaryToggle(null)
+  // 1. 仅当当前是“年月跳转视图”时，才尝试恢复首页数据
+  if (isMonthJumpView.value) {
+    const restored = restoreHomepageFromCache()
 
-  if (activeTagFilter.value)
-    activeTagFilter.value = null
-
-  if (isShowingSearchResults.value || searchQuery.value) {
-    hasSearchRun.value = false
-    isShowingSearchResults.value = false
-    searchQuery.value = ''
-    showSearchBar.value = false
-    sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
-    sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
-    sessionStorage.removeItem(SESSION_SHOW_SEARCH_BAR_KEY)
-    sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+    // 如果没有缓存、且在线，再兜底拉一遍首页
+    if (!restored && navigator.onLine !== false)
+      await fetchNotes(true)
   }
 
-  isMonthJumpView.value = false
-
-  // 2. 优先用本地首页缓存
-  const restored = restoreHomepageFromCache()
-
-  // 3. 如果没有缓存、或者你想在在线时兜底再拉一遍，可以按需要保留：
-  if (!restored && navigator.onLine !== false)
-    await fetchNotes(true)
-
-  // 4. 回到顶部
+  // 2. 回到顶部（对当前视图：主页 / 搜索结果 / 标签筛选 / 那年今日 都只滚动）
   await nextTick()
   ;(noteListRef.value as any)?.scrollToTop?.()
   showScrollTopButton.value = false
