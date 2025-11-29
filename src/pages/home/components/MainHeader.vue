@@ -144,7 +144,8 @@ async function handleSettingsClick() {
         >
         <span
           v-if="showBackTip"
-          class="text-xs text-gray-500 dark:text-gray-300"
+          class="text-sm font-medium text-gray-700 dark:text-gray-200"
+          style="padding-left: 2px;"
         >
           👈 点击返回笔记
         </span>
