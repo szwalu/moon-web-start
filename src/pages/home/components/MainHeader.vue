@@ -89,19 +89,24 @@ onMounted(async () => {
 // ✅ 新增这一段：只要是 from=notes 且移动端，显示 20 秒提示
 onMounted(() => {
   if (isMobile.value && route.query.from === 'notes') {
+    // ✅ 第一次识别到 from=notes 时，把这个标记从 URL 中移除
+    const { from: _from, ...restQuery } = route.query
+    router.replace({
+      path: route.path,
+      query: restQuery,
+    })
+
     const countStr = localStorage.getItem('notes_to_main_tip_count')
     const currentCount = countStr ? Number(countStr) : 0
 
-    // 只显示前 20 次
-    if (currentCount < 20) {
+    // 只显示前 10 次
+    if (currentCount < 10) {
       showBackTip.value = true
 
-      // 自动关闭
       tipTimer = window.setTimeout(() => {
         showBackTip.value = false
       }, 20000)
 
-      // 计数 +1
       localStorage.setItem('notes_to_main_tip_count', String(currentCount + 1))
     }
   }
@@ -155,6 +160,7 @@ async function handleSettingsClick() {
         >
         <span
           v-if="showBackTip"
+          class="flash-tip"
           style="font-size: 12px; font-weight: 400; color: #dc2626; padding-left: 2px; line-height: 1;"
         >
           👈 {{ $t('notes.back_to_notes') }}
@@ -194,5 +200,17 @@ async function handleSettingsClick() {
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
+}
+.flash-tip {
+  animation: flashFade 1.2s ease-in-out infinite;
+}
+
+@keyframes flashFade {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 </style>
