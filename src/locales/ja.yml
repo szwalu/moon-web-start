@@ -370,7 +370,9 @@ notes:
   tag_filter_optional: タグフィルター（任意）
   tag_filter_all: すべてのタグ
   feedback_title: フィードバック
-  no_notes_in_month: この月にはメモがありません
+  no_notes_in_month: 今月のノートはありません
+  jump_to_month_title: 移動する年月を選択
+  no_notes_to_jump: 移動できるノートはありません
 
   # 上部フィルターチップ
   search_filter_date: 日付

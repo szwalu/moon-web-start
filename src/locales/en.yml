@@ -371,7 +371,9 @@ notes:
   tag_filter_optional: Tag Filter (Optional)
   tag_filter_all: All Tags
   feedback_title: Feedback
-  no_notes_in_month: No notes for this month
+  no_notes_in_month: No notes this month
+  jump_to_month_title: Select a month to jump to
+  no_notes_to_jump: No available notes to jump to
 
   # Top filter chips
   search_filter_date: Date
