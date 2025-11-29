@@ -2963,7 +2963,13 @@ function onCalendarUpdated(updated: any) {
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
           @month-header-click="() => {
-            if (isAnniversaryViewActive || activeTagFilter) return
+            if (
+              isAnniversaryViewActive
+              || activeTagFilter
+              || isShowingSearchResults
+              || isSelectionModeActive //
+            ) return
+
             openYearMonthPicker()
           }"
         />
