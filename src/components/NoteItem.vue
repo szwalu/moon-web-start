@@ -39,23 +39,12 @@ const emit = defineEmits([
 
 // ✅ 新增：提取笔记内容中的第一张图片 URL
 const firstImageUrl = computed(() => {
-  const c = (props.note?.content || '').toString()
+  const c = String(props.note?.content || '')
 
-  // 1. 尝试匹配 Markdown 图片: ![alt](url)
-  const mdMatch = /!\[[^\]]*]\(([^)]+)\)/.exec(c)
+  // 只匹配 Markdown 图片: ![任意alt](https://开头的url)
+  const mdMatch = /!\[[^\]]*]\((https?:\/\/[^)]+)\)/.exec(c)
   if (mdMatch && mdMatch[1])
-    return mdMatch[1]
-
-  // 2. 尝试匹配 HTML 图片: <img src="url">
-  const htmlMatch = /<img\s[^>]*?src=["']([^"']+)["']/.exec(c)
-  if (htmlMatch && htmlMatch[1])
-    return htmlMatch[1]
-
-  // 3. 如果只是裸链接但符合图片扩展名 (这种比较少见，作为兜底)
-  // 简单的正则匹配 http 开头 .jpg/png 结尾
-  const urlMatch = /https?:\/\/[^\s)]+?\.(?:png|jpg|jpeg|gif|webp|svg)/i.exec(c)
-  if (urlMatch && urlMatch[0])
-    return urlMatch[0]
+    return mdMatch[1].trim()
 
   return null
 })
