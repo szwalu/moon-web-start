@@ -52,7 +52,7 @@ const showSearchTagSuggestions = ref(false)
 const searchTagSuggestions = ref<string[]>([])
 const highlightedSearchIndex = ref(-1)
 
-// ====== 新增：筛选弹窗相关状态 ======
+// ====== 筛选弹窗相关状态 ======
 const showDateModal = ref(false)
 const showTagModal = ref(false)
 const showMoreModal = ref(false)
@@ -70,9 +70,10 @@ const selectedTagForFilter = ref('') // 选择标签下拉框当前值
 const moreHasImage = ref(false)
 const moreHasLink = ref(false)
 
-// 有语音：前端本地 AND 过滤开关（不再传布尔到 RPC）
+// 有语音：前端本地 AND 过滤开关
 const audioFilterEnabled = ref(false)
 
+// 仅已收藏
 const favoriteOnly = ref(false)
 
 // 是否有任何筛选条件生效（用于允许“仅筛选、不输关键字”的搜索）
@@ -142,152 +143,251 @@ const searchModel = computed({
   },
 })
 
-// ====== 本地“有语音”判定：三个标志必须都出现 ======
-const AUDIO_NOTE_MARKERS = ['note-audios/', '.webm', '录音'] as const
+// ====== 本地判定工具 ======
 
-function isAudioNote(note: any): boolean {
+function getNoteRaw(note: any): string {
   if (!note)
-    return false
-  let raw = ''
+    return ''
+  if (typeof note.content === 'string')
+    return note.content
   try {
-    raw = JSON.stringify(note)
+    return JSON.stringify(note)
   }
   catch {
-    return false
+    return ''
   }
-  return AUDIO_NOTE_MARKERS.every(marker => raw.includes(marker))
+}
+
+// “有语音”：稍微放宽，3 项里命中 ≥2 个就算有语音
+function isAudioNote(note: any): boolean {
+  const raw = getNoteRaw(note)
+  let hit = 0
+  if (raw.includes('note-audios/'))
+    hit++
+  if (raw.includes('.webm'))
+    hit++
+  if (raw.includes('录音'))
+    hit++
+  return hit >= 2
+}
+
+function noteHasImage(note: any): boolean {
+  const raw = getNoteRaw(note)
+  return raw.includes('note-images/')
+}
+
+function noteHasLink(note: any): boolean {
+  const raw = getNoteRaw(note)
+  return raw.includes('https://') || raw.includes('http://')
+}
+
+// ====== 自动提示词：只用来填搜索框文案，不参与 RPC 语义 ======
+const autoLabelTokens = computed(() => [
+  t('notes.search_quick_has_image', '有图片'),
+  t('notes.search_quick_has_audio', '有语音'),
+  t('notes.search_quick_has_link', '有链接'),
+  t('notes.search_quick_favorited', '已收藏'),
+])
+
+function stripAutoLabels(raw: string): string {
+  let q = raw
+  autoLabelTokens.value.forEach((label) => {
+    if (!label)
+      return
+    q = q.split(label).join('')
+  })
+  return q.replace(/\s+/g, ' ').trim()
+}
+
+function isPureAutoLabelQuery(raw: string): boolean {
+  const q = raw.trim()
+  if (!q)
+    return false
+  const tokens = q.split(/\s+/g).filter(Boolean)
+  if (!tokens.length)
+    return false
+  const labels = autoLabelTokens.value
+  return tokens.every(tok => labels.includes(tok))
+}
+
+// ====== 日期范围 & 标签过滤，用于前端本地过滤 ======
+function getDateRange() {
+  const now = new Date()
+  let start: Date | null = null
+  let end: Date | null = null
+
+  if (dateMode.value === 'week') {
+    const day = now.getDay() || 7
+    const monday = new Date(now)
+    monday.setHours(0, 0, 0, 0)
+    monday.setDate(now.getDate() - (day - 1))
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 7)
+    start = monday
+    end = sunday
+  }
+  else if (dateMode.value === 'month') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+    const nextMonthFirst = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    start = firstDay
+    end = nextMonthFirst
+  }
+  else if (dateMode.value === 'custom') {
+    if (startDateStr.value) {
+      start = new Date(startDateStr.value)
+      start.setHours(0, 0, 0, 0)
+    }
+    if (endDateStr.value) {
+      end = new Date(endDateStr.value)
+      end.setHours(23, 59, 59, 999)
+    }
+  }
+
+  return { start, end }
+}
+
+function inDateRange(note: any): boolean {
+  const { start, end } = getDateRange()
+  if (!start && !end)
+    return true
+  if (!note?.created_at)
+    return false
+  const d = new Date(note.created_at)
+  if (Number.isNaN(d.getTime()))
+    return false
+  if (start && d < start)
+    return false
+  if (end && d > end)
+    return false
+  return true
+}
+
+// 标签过滤：基于内容里的 # 文本
+function matchTagFilter(note: any): boolean {
+  const raw = getNoteRaw(note)
+
+  if (tagMode.value === 'all')
+    return true
+
+  if (tagMode.value === 'untagged')
+    return !raw.includes('#')
+
+  if (!selectedTagForFilter.value)
+    return true
+
+  const tag = selectedTagForFilter.value
+
+  if (tagMode.value === 'include')
+    return raw.includes(tag)
+
+  if (tagMode.value === 'exclude')
+    return !raw.includes(tag)
+
+  return true
+}
+
+// 关键字拆 token，全部包含才算命中
+function matchKeyword(raw: string, keyword: string): boolean {
+  const q = keyword.trim()
+  if (!q)
+    return true
+  const tokens = q.split(/\s+/).filter(Boolean)
+  if (!tokens.length)
+    return true
+  return tokens.every(token => raw.includes(token))
+}
+
+// === 统一本地过滤逻辑（关键字 + 日期 + 标签 + 更多） ===
+function applyAllFilters(list: any[], keyword: string) {
+  return list
+    .filter((note) => {
+      const raw = getNoteRaw(note)
+
+      if (!matchKeyword(raw, keyword))
+        return false
+
+      if (!inDateRange(note))
+        return false
+
+      if (!matchTagFilter(note))
+        return false
+
+      if (moreHasImage.value && !noteHasImage(note))
+        return false
+      if (audioFilterEnabled.value && !isAudioNote(note))
+        return false
+      if (moreHasLink.value && !noteHasLink(note))
+        return false
+
+      // ✅ 这里改成：只有明确为 false 时才排除，undefined 视为“由后端已过滤”
+      if (favoriteOnly.value && note.is_favorited === false)
+        return false
+
+      return true
+    })
+    .map((n: any) => ({
+      ...n,
+      highlight: null,
+      is_fts: false,
+      terms: [],
+    }))
 }
 
 /**
- * 把「关键字 + 各种筛选条件」打包成 RPC 需要的 payload
- * 同时返回标准化后的 query 字符串，用于缓存 key。
- *
- * 注意：
- * - 普通模式：search_term = 用户输入的 query
- * - 有语音模式：在 query 基础上额外加上“录音”（如果原来没有），
- *   不把 note-audios/ 和 .webm 传给 RPC，只在前端本地 AND 过滤。
+ * 构造 RPC payload：
+ * - search_term 只用“真实关键字”，完全不含“有图片 / 有语音 / 有链接 / 已收藏”这些提示词；
+ * - “更多”条件通过 payload.has_image / has_link / favorite_only / has_audio 通知后端做一层粗过滤，
+ *   前端再用 applyAllFilters 做 AND 精过滤。
  */
 function buildSearchPayload(termOverride?: string) {
   const raw = typeof termOverride === 'string' ? termOverride : searchModel.value
-  const query = raw.trim()
+  const rawQuery = raw.trim()
+
+  const queryWithoutAuto = isPureAutoLabelQuery(rawQuery)
+    ? ''
+    : stripAutoLabels(rawQuery)
 
   const payload: Record<string, any> = {
     p_user_id: props.user.id,
   }
 
-  // ===== 决定送给 RPC 的 search_term =====
-  let searchTermForRpc = query
+  payload.search_term = queryWithoutAuto || null
 
-  // —— 有语音：保证 search_term 至少包含“录音” ——
-  if (audioFilterEnabled.value) {
-    if (!searchTermForRpc) {
-      // 没有其它关键字，仅按“录音”搜索
-      searchTermForRpc = '录音'
-    }
-    else if (!searchTermForRpc.includes('录音')) {
-      // 有其它关键字时，在后面附加“录音”
-      searchTermForRpc = `${searchTermForRpc} 录音`
-    }
-  }
-  // —— 有图片：补上 note-images/ 关键字（与快捷搜索保持一致） ——
-  if (moreHasImage.value) {
-    if (!searchTermForRpc)
-      searchTermForRpc = 'note-images/'
-
-    else if (!searchTermForRpc.includes('note-images/'))
-      searchTermForRpc = `${searchTermForRpc} note-images/`
-  }
-
-  // —— 有链接：补上 https:// 关键字（与快捷搜索保持一致） ——
-  if (moreHasLink.value) {
-    if (!searchTermForRpc)
-      searchTermForRpc = 'https://'
-
-    else if (!searchTermForRpc.includes('https://'))
-      searchTermForRpc = `${searchTermForRpc} https://`
-  }
-
-  payload.search_term = searchTermForRpc || null
-
-  // 日期条件：前端全部传给后端，后端自行决定怎么用
   payload.date_mode = dateMode.value
   payload.date_start = startDateStr.value || null
   payload.date_end = endDateStr.value || null
 
-  // 标签条件：模式 + 具体标签
   payload.tag_mode = tagMode.value
   payload.tag_value
     = (tagMode.value === 'include' || tagMode.value === 'exclude')
       ? (selectedTagForFilter.value || null)
       : null
 
-  // 更多条件：布尔值（仅图片/链接，语音用本地过滤不下发）
+  // 图片 / 链接 / 收藏 / 语音 → 后端先过滤一层
   payload.has_image = moreHasImage.value
   payload.has_link = moreHasLink.value
   payload.favorite_only = favoriteOnly.value
-  return { payload, query }
+  payload.has_audio = audioFilterEnabled.value
+
+  return { payload, queryBase: queryWithoutAuto }
 }
 
-// --- 搜索执行函数（localStorage 缓存） ---
-// 支持外部传入 termOverride；不传则用当前输入框内容
+// --- 搜索执行函数（localStorage 缓存 + 前端 AND 过滤） ---
 async function executeSearch(termOverride?: string) {
-  if (!props.user?.id) {
-    console.error(t('notes.search_error_user_invalid', '搜索中止，原因：用户未登录或用户信息无效'))
+  if (!props.user?.id)
     return
-  }
 
-  const { payload, query } = buildSearchPayload(termOverride)
+  const { payload, queryBase } = buildSearchPayload(termOverride)
 
-  // ⭐ 特殊分支：仅启用了「已收藏」，没有其它筛选条件 && 没有关键字
-  const onlyFavoriteFilterActive
-    = favoriteOnly.value
-    && !moreHasImage.value
-    && !moreHasLink.value
-    && !audioFilterEnabled.value
-    && tagMode.value === 'all'
-    && !selectedTagForFilter.value
-    && dateMode.value === 'all'
-    && !startDateStr.value
-    && !endDateStr.value
-
-  if (!query && onlyFavoriteFilterActive) {
-    emit('searchStarted')
-    try {
-      const { data, error } = await supabase
-        .from('notes')
-        .select('id, content, created_at, weather, is_favorited')
-        .eq('user_id', props.user.id)
-        .eq('is_favorited', true)
-        .order('created_at', { ascending: false })
-
-      if (error)
-        throw error
-
-      const finalData = (data ?? []).map((n: any) => ({
-        ...n,
-        highlight: null,
-        is_fts: false,
-        terms: [],
-      }))
-
-      emit('searchCompleted', { data: finalData, error: null, fromCache: false })
-    }
-    catch (err: any) {
-      console.error(t('notes.search_error_api_failed', '搜索 API 请求失败:'), err)
-      emit('searchCompleted', { data: [], error: err, fromCache: false })
-    }
-    return
-  }
-
-  // 既没有关键字，也没有任何筛选 → 视为清空搜索
-  if (!query && !hasAnyFilter.value) {
+  // 没关键字、也没任何筛选 → 清空搜索
+  if (!queryBase && !hasAnyFilter.value) {
     emit('searchCleared')
     return
   }
 
-  // 缓存 key 需要把「关键字 + 筛选条件」都算进去
+  // 缓存 key 使用“真实关键字”（剔除提示词）+ 所有筛选条件
   const cacheKey = getSearchCacheKey(JSON.stringify({
-    q: query || '',
+    q: queryBase || '',
     dm: dateMode.value,
     ds: startDateStr.value,
     de: endDateStr.value,
@@ -299,30 +399,30 @@ async function executeSearch(termOverride?: string) {
     favoriteOnly: favoriteOnly.value,
   }))
 
+  emit('searchStarted')
+
   // 1) 先查 localStorage 缓存
   const cachedRaw = localStorage.getItem(cacheKey)
   if (cachedRaw) {
     try {
       const data = JSON.parse(cachedRaw)
-      const finalData = audioFilterEnabled.value && Array.isArray(data)
-        ? data.filter(isAudioNote)
-        : data
+      const finalData = applyAllFilters(Array.isArray(data) ? data : [], queryBase)
       emit('searchCompleted', { data: finalData, error: null, fromCache: true })
       return
     }
-    catch (e) {
-      localStorage.removeItem(cacheKey) // 解析失败，删除损坏的缓存
+    catch {
+      localStorage.removeItem(cacheKey)
     }
   }
 
-  // 2) 无缓存，走远端
-  emit('searchStarted')
+  // 2) 无缓存，走 RPC
   try {
     let { data, error } = await supabase.rpc('search_notes_with_highlight', payload)
     if (error)
       throw error
 
     const results = Array.isArray(data) ? data : []
+
     const missingIds = results
       .filter(n => !('weather' in n))
       .map(n => n.id)
@@ -345,25 +445,19 @@ async function executeSearch(termOverride?: string) {
       }
     }
 
-    let finalData: any = data
+    const list = Array.isArray(data) ? data : []
+    const finalData = applyAllFilters(list, queryBase)
 
-    // 本地“有语音” AND 过滤
-    if (audioFilterEnabled.value && Array.isArray(finalData))
-      finalData = finalData.filter(isAudioNote)
-
-    if (finalData)
-      localStorage.setItem(cacheKey, JSON.stringify(finalData))
+    localStorage.setItem(cacheKey, JSON.stringify(list))
     emit('searchCompleted', { data: finalData, error: null, fromCache: false })
   }
   catch (err: any) {
-    console.error(t('notes.search_error_api_failed', '搜索 API 请求失败:'), err)
     emit('searchCompleted', { data: [], error: err, fromCache: false })
   }
 }
 
 // --- 快捷筛选按钮：有图片 / 有录音 / 有链接 / 已收藏 ---
 function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
-  // 关掉标签建议
   showSearchTagSuggestions.value = false
   highlightedSearchIndex.value = -1
 
@@ -373,29 +467,33 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   audioFilterEnabled.value = false
   favoriteOnly.value = false
 
-  // ✅ 特殊处理“已收藏”
-  if (type === 'favorite') {
-    favoriteOnly.value = true
-
-    // 仅在当前没有手动关键字时，帮你填一个友好文案
-    if (!searchModel.value.trim())
-      searchModel.value = t('notes.search_quick_favorited', '已收藏')
-
-    // 核心：执行“无关键字 + 收藏筛选”的搜索
-    executeSearch('') // 传空字符串，让后端只按 favorite_only 过滤
-    return
-  }
-
-  // 其它三种仍然复用原来的逻辑
   if (type === 'image')
     moreHasImage.value = true
   else if (type === 'audio')
     audioFilterEnabled.value = true
   else if (type === 'link')
     moreHasLink.value = true
+  else if (type === 'favorite')
+    favoriteOnly.value = true
 
-  // 和“更多”里的确定按钮共用一套逻辑
-  confirmMoreFilter()
+  // 填友好文案（仅用于 UI 提示，不参与 RPC 语义）
+  if (!searchModel.value.trim()) {
+    const keywords: string[] = []
+
+    if (moreHasImage.value)
+      keywords.push(t('notes.search_quick_has_image', '有图片'))
+    if (moreHasLink.value)
+      keywords.push(t('notes.search_quick_has_link', '有链接'))
+    if (audioFilterEnabled.value)
+      keywords.push(t('notes.search_quick_has_audio', '有语音'))
+    if (favoriteOnly.value)
+      keywords.push(t('notes.search_quick_favorited', '已收藏'))
+
+    if (keywords.length)
+      searchModel.value = keywords.join(' ')
+  }
+
+  executeSearch()
 }
 
 // 日期弹窗确认：更新模式 & 触发搜索
@@ -419,8 +517,6 @@ function confirmTagFilter() {
 }
 
 function confirmMoreFilter() {
-  // ⭐ 如果当前没有关键字，但启用了「更多」里的任意筛选，
-  //    给搜索框填入一个友好的关键词，方便上面的“搜索“xx”的结果”使用
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
 
@@ -434,7 +530,7 @@ function confirmMoreFilter() {
       keywords.push(t('notes.search_quick_has_audio', '有语音'))
 
     if (favoriteOnly.value)
-      keywords.push(t('notes.search_quick_favorited', '已收藏')) // ✅ 新增
+      keywords.push(t('notes.search_quick_favorited', '已收藏'))
 
     if (keywords.length)
       searchModel.value = keywords.join(' ')
@@ -493,7 +589,7 @@ function moveSearchSelection(offset: number) {
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
-    selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
+    selectSearchTag(searchTagSuggestions.value[highlightedIndex.value])
   else
     executeSearch()
 }
@@ -502,7 +598,6 @@ function handleEnterKey() {
 function clearSearch() {
   searchModel.value = ''
   searchInputRef.value?.focus()
-  // 清除关键字的同时也重置筛选
   dateMode.value = 'all'
   startDateStr.value = ''
   endDateStr.value = ''
