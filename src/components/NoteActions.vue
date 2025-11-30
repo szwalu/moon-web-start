@@ -374,6 +374,7 @@ function buildSearchPayload(termOverride?: string) {
 
 // --- 搜索执行函数（localStorage 缓存 + 前端 AND 过滤） ---
 // --- 搜索执行函数（带版本控制的智能缓存） ---
+// --- 搜索执行函数（带版本控制的智能缓存 + 状态补全） ---
 async function executeSearch(termOverride?: string) {
   if (!props.user?.id)
     return
@@ -386,10 +387,10 @@ async function executeSearch(termOverride?: string) {
     return
   }
 
-  // 1. 获取当前全局数据版本号 (如果没有则默认为 '0')
+  // 1. 获取当前全局数据版本号
   const currentDbVersion = localStorage.getItem('NOTES_DB_VERSION') || '0'
 
-  // 生成缓存 key (Key 本身不变，只跟搜索条件有关)
+  // 生成缓存 key
   const cacheKey = getSearchCacheKey(JSON.stringify({
     q: queryBase || '',
     dm: dateMode.value,
@@ -410,18 +411,13 @@ async function executeSearch(termOverride?: string) {
   if (cachedRaw) {
     try {
       const cachedObj = JSON.parse(cachedRaw)
-
-      // 【关键逻辑】：检查缓存内部记录的版本号是否与当前全局版本号一致
-      // 只有版本一致，且数据格式正确，才使用缓存
       if (cachedObj && cachedObj.v === currentDbVersion && Array.isArray(cachedObj.d)) {
         const finalData = applyAllFilters(cachedObj.d, queryBase)
         emit('searchCompleted', { data: finalData, error: null, fromCache: true })
         return
       }
-    // 缓存存在但版本不符或格式不对：什么都不做，走下面正常请求逻辑
     }
     catch (e) {
-    // ignore error
       localStorage.removeItem(cacheKey)
     }
   }
@@ -434,34 +430,39 @@ async function executeSearch(termOverride?: string) {
 
     const results = Array.isArray(data) ? data : []
 
-    // 补全天气信息的逻辑 (保留原样)
-    const missingIds = results
-      .filter(n => !('weather' in n))
-      .map(n => n.id)
-      .filter(Boolean)
+    // ====== [修改开始] 核心修复：补全 收藏/置顶/天气 状态 ======
+    // 即使 RPC 函数没有返回 is_favorited，我们在这里手动查一次，保证状态最新
+    const idsToCheck = results.map(n => n.id)
 
-    if (missingIds.length) {
-      const { data: weatherRows, error: wErr } = await supabase
+    if (idsToCheck.length) {
+      const { data: metaRows, error: mErr } = await supabase
         .from('notes')
-        .select('id, weather')
-        .in('id', missingIds)
+        .select('id, weather, is_favorited, is_pinned') // 👈 明确查这几个字段
+        .in('id', idsToCheck)
 
-      if (!wErr && weatherRows?.length) {
-        const wMap = new Map(weatherRows.map(r => [r.id, r.weather ?? null]))
-        data = results.map(n =>
-          ('weather' in n) ? n : ({ ...n, weather: wMap.get(n.id) ?? null }),
-        )
-      }
-      else {
-        data = results
+      if (!mErr && metaRows?.length) {
+        // 建立 ID -> 数据的映射
+        const metaMap = new Map(metaRows.map(r => [r.id, r]))
+
+        // 合并数据
+        data = results.map((n) => {
+          const meta = metaMap.get(n.id)
+          return {
+            ...n,
+            // 逻辑：优先用 RPC 的（如果RPC改好了），否则用新查到的，最后兜底 null/false
+            weather: n.weather ?? meta?.weather ?? null,
+            is_favorited: n.is_favorited ?? meta?.is_favorited ?? false, // 👈 修复收藏状态
+            is_pinned: n.is_pinned ?? meta?.is_pinned ?? false, // 👈 顺便修复置顶状态
+          }
+        })
       }
     }
+    // ====== [修改结束] ======
 
     const list = Array.isArray(data) ? data : []
     const finalData = applyAllFilters(list, queryBase)
 
-    // 4. 【写入缓存】：保存数据时，带上当前的 currentDbVersion
-    // 结构变为： { v: '版本号', d: [数据数组] }
+    // 4. 【写入缓存】
     const cachePayload = {
       v: currentDbVersion,
       d: list,

@@ -1590,6 +1590,67 @@ async function handleFavoriteNote(note: any) {
 
   const newValue = !note.is_favorited
 
+  // ====== A) 离线模式：仿效置顶的逻辑 (新增部分) ======
+  if (!isOnline()) {
+    try {
+      const noteId = note.id
+      const nowIso = new Date().toISOString()
+      // 构造更新后的对象
+      const updatedNote = {
+        ...note,
+        is_favorited: newValue,
+        updated_at: nowIso,
+      }
+
+      // 1. 更新 UI 列表
+      const index = notes.value.findIndex(n => n.id === noteId)
+      if (index !== -1) {
+        notes.value[index] = updatedNote
+        // 保持原有的排序逻辑 (通常收藏不改变顺序，但为了数据一致性重新sort一下)
+        notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+      }
+
+      // 2. 刷新本地缓存 (LocalStorage)
+      try {
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      }
+      catch {}
+
+      // 3. 写入 IndexedDB 快照
+      try {
+        await saveNotesSnapshot(notes.value)
+      }
+      catch (e) {
+        console.warn('[offline] snapshot failed (favorite)', e)
+      }
+
+      // 4. 入队 Update (等上线后同步)
+      await queuePendingUpdate(noteId, {
+        is_favorited: newValue,
+        updated_at: nowIso,
+        user_id: user.value.id,
+      })
+
+      // 5. 关键：收藏状态会影响搜索/筛选，清理搜索缓存
+      try {
+        invalidateAllSearchCaches()
+      }
+      catch (e) {
+        console.warn('invalidateAllSearchCaches failed', e)
+      }
+
+      // 6. 提示成功 (使用通用的离线更新提示)
+      messageHook.success(t('notes.offline_update_success'))
+      return
+    }
+    catch (e: any) {
+      console.warn('[offline] favorite failed:', e)
+      messageHook.error(`${t('notes.operation_error')}: ${e?.message || t('notes.try_again')}`)
+      return
+    }
+  }
+
+  // ====== B) 在线模式 (原有逻辑保持不变) ======
   try {
     const { data, error } = await supabase
       .from('notes')
@@ -1605,21 +1666,19 @@ async function handleFavoriteNote(note: any) {
     // 用服务器返回的最新记录为准（包含 updated_at 等字段）
     const updatedNote = data ? { ...data } : { ...note, is_favorited: newValue }
 
-    // ✅ 统一走 updateNoteInList：
-    //  - 更新当前视图 notes.value
-    //  - 更新 localStorage HOME 缓存
-    //  - 刷新“那年今日”里的同一条笔记
-    //  - 在标签筛选/搜索视图下，安全更新主缓存
+    // ✅ 统一走 updateNoteInList
     updateNoteInList(updatedNote)
 
     // ✅ 关键：收藏状态变化也会影响“已收藏”搜索
-    //    所以必须让所有搜索缓存失效，下一次点“已收藏”才会重新向服务器要最新结果
     try {
       invalidateAllSearchCaches()
     }
     catch (e) {
       console.warn('invalidateAllSearchCaches failed', e)
     }
+
+    // 原代码在线模式这里没有提示，如果你想加上，可以解开下面这行：
+    // messageHook.success(newValue ? t('notes.favorite_success') : t('notes.unfavorite_success'))
   }
   catch (err: any) {
     console.error(err)
