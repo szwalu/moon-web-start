@@ -373,6 +373,7 @@ function buildSearchPayload(termOverride?: string) {
 }
 
 // --- 搜索执行函数（localStorage 缓存 + 前端 AND 过滤） ---
+// --- 搜索执行函数（带版本控制的智能缓存） ---
 async function executeSearch(termOverride?: string) {
   if (!props.user?.id)
     return
@@ -385,7 +386,10 @@ async function executeSearch(termOverride?: string) {
     return
   }
 
-  // 缓存 key 使用“真实关键字”（剔除提示词）+ 所有筛选条件
+  // 1. 获取当前全局数据版本号 (如果没有则默认为 '0')
+  const currentDbVersion = localStorage.getItem('NOTES_DB_VERSION') || '0'
+
+  // 生成缓存 key (Key 本身不变，只跟搜索条件有关)
   const cacheKey = getSearchCacheKey(JSON.stringify({
     q: queryBase || '',
     dm: dateMode.value,
@@ -401,21 +405,28 @@ async function executeSearch(termOverride?: string) {
 
   emit('searchStarted')
 
-  // 1) 先查 localStorage 缓存
+  // 2. 尝试读取缓存
   const cachedRaw = localStorage.getItem(cacheKey)
   if (cachedRaw) {
     try {
-      const data = JSON.parse(cachedRaw)
-      const finalData = applyAllFilters(Array.isArray(data) ? data : [], queryBase)
-      emit('searchCompleted', { data: finalData, error: null, fromCache: true })
-      return
+      const cachedObj = JSON.parse(cachedRaw)
+
+      // 【关键逻辑】：检查缓存内部记录的版本号是否与当前全局版本号一致
+      // 只有版本一致，且数据格式正确，才使用缓存
+      if (cachedObj && cachedObj.v === currentDbVersion && Array.isArray(cachedObj.d)) {
+        const finalData = applyAllFilters(cachedObj.d, queryBase)
+        emit('searchCompleted', { data: finalData, error: null, fromCache: true })
+        return
+      }
+    // 缓存存在但版本不符或格式不对：什么都不做，走下面正常请求逻辑
     }
-    catch {
+    catch (e) {
+    // ignore error
       localStorage.removeItem(cacheKey)
     }
   }
 
-  // 2) 无缓存，走 RPC
+  // 3. 缓存失效或无缓存，走 Supabase RPC
   try {
     let { data, error } = await supabase.rpc('search_notes_with_highlight', payload)
     if (error)
@@ -423,6 +434,7 @@ async function executeSearch(termOverride?: string) {
 
     const results = Array.isArray(data) ? data : []
 
+    // 补全天气信息的逻辑 (保留原样)
     const missingIds = results
       .filter(n => !('weather' in n))
       .map(n => n.id)
@@ -448,7 +460,14 @@ async function executeSearch(termOverride?: string) {
     const list = Array.isArray(data) ? data : []
     const finalData = applyAllFilters(list, queryBase)
 
-    localStorage.setItem(cacheKey, JSON.stringify(list))
+    // 4. 【写入缓存】：保存数据时，带上当前的 currentDbVersion
+    // 结构变为： { v: '版本号', d: [数据数组] }
+    const cachePayload = {
+      v: currentDbVersion,
+      d: list,
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
+
     emit('searchCompleted', { data: finalData, error: null, fromCache: false })
   }
   catch (err: any) {

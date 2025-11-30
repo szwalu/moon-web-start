@@ -15,7 +15,7 @@ const isAnniversaryViewActive = ref(false)
 
 let midnightTimer: number | null = null // 零点刷新定时器
 
-// ===== localStorage 持久化 =====
+// ===== localStorage 持久化工具函数 =====
 function todayStr() {
   const d = new Date()
   const y = d.getFullYear()
@@ -41,18 +41,25 @@ function readState(uid: string): { active: boolean; forDate?: string } | null {
     return null
   }
 }
+
 function writeState(uid: string, data: { active: boolean; forDate?: string }) {
   try {
     localStorage.setItem(stateKey(uid), JSON.stringify(data))
   }
-  catch {}
+  catch {
+    // ignore
+  }
 }
+
 function writeResults(uid: string, ymd: string, arr: any[]) {
   try {
     localStorage.setItem(resultKey(uid, ymd), JSON.stringify(arr))
   }
-  catch {}
+  catch {
+    // ignore
+  }
 }
+
 function readResults(uid: string, ymd: string): any[] | null {
   try {
     const raw = localStorage.getItem(resultKey(uid, ymd))
@@ -98,51 +105,62 @@ function setView(isActive: boolean) {
   isAnniversaryViewActive.value = isActive
   writeState(user.value.id, { active: isActive, forDate: todayStr() })
   if (isActive && anniversaryNotes.value.length === 0) {
-    // 不等待返回，按需加载
+    // 强制刷新
     loadAnniversaryNotes(true)
   }
 }
 
+// 核心修复：支持“静默刷新”模式
+// checkCacheFirst: 如果为 true，则先尝试读缓存显示，然后在后台发请求更新
+// 简化回滚后的 loadAnniversaryNotes
 async function loadAnniversaryNotes(forceRefresh = false) {
   if (!user.value)
     return
   const uid = user.value.id
   const ymd = todayStr()
-  isLoading.value = true
-  try {
-    let data: any[] | null = null
-    if (!forceRefresh)
-      data = readResults(uid, ymd)
 
-    if (!data) {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const { data: rows, error } = await supabase.rpc('get_anniversary_notes_for_date', {
-        p_user_id: uid,
-        p_client_date: ymd,
-        p_timezone: tz,
-      })
-      if (error)
-        throw error
-      const sorted = (rows || []).sort((a: any, b: any) => {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      })
-      data = sorted
-      writeResults(uid, ymd, data)
-      sweepOldResults(uid, ymd)
-    }
-    anniversaryNotes.value = data
-    const st = readState(uid)
-    const shouldEmit = isAnniversaryViewActive.value || (!!st && st.active)
-    if (shouldEmit) {
-      if (anniversaryNotes.value.length > 0)
+  // 1. 尝试读缓存
+  if (!forceRefresh) {
+    const cached = readResults(uid, ymd)
+    if (cached) {
+      anniversaryNotes.value = cached
+      isLoading.value = false
+      // 发送事件同步视图
+      const st = readState(uid)
+      if (isAnniversaryViewActive.value || (st && st.active))
         emit('toggleView', anniversaryNotes.value)
-      else
-        emit('toggleView', null)
+
+      return // 命中缓存，直接结束，不发请求！
     }
   }
+
+  // 2. 只有无缓存或强制刷新时，才发请求
+  isLoading.value = true
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const { data: rows, error } = await supabase.rpc('get_anniversary_notes_for_date', {
+      p_user_id: uid,
+      p_client_date: ymd,
+      p_timezone: tz,
+    })
+    if (error)
+      throw error
+
+    const sorted = (rows || []).sort((a: any, b: any) => {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    anniversaryNotes.value = sorted
+    writeResults(uid, ymd, sorted)
+    sweepOldResults(uid, ymd)
+
+    const st = readState(uid)
+    const shouldEmit = isAnniversaryViewActive.value || (!!st && st.active)
+    if (shouldEmit)
+      emit('toggleView', anniversaryNotes.value.length > 0 ? anniversaryNotes.value : null)
+  }
   catch (err) {
-    // 保底：失败时不改变父视图，只输出日志
-    console.error('获取那年今日笔记失败:', err)
+    console.error(err)
   }
   finally {
     isLoading.value = false
@@ -173,63 +191,27 @@ function scheduleMidnightRefresh() {
     clearTimeout(midnightTimer)
     midnightTimer = null
   }
-
   const now = new Date()
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
   tomorrow.setHours(0, 0, 0, 0)
-
   let msUntilMidnight = tomorrow.getTime() - now.getTime()
-
-  // 防御：异常值（如系统时间变化）
-  if (msUntilMidnight <= 0 || msUntilMidnight > 25 * 60 * 60 * 1000) {
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[Anniv] msUntilMidnight 异常 =',
-        msUntilMidnight,
-        '。改为 60 秒后重试。',
-      )
-    }
+  if (msUntilMidnight <= 0 || msUntilMidnight > 25 * 60 * 60 * 1000)
     msUntilMidnight = 60 * 1000
-  }
-
-  if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
-    console.log(
-      '[Anniv] 安排零点刷新：now =',
-      now.toString(),
-      '| zeroTime =',
-      tomorrow.toString(),
-      '| 秒数 =',
-      Math.round(msUntilMidnight / 1000),
-    )
-  }
 
   midnightTimer = window.setTimeout(async () => {
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.log('[Anniv] 零点刷新触发：', new Date().toString())
-    }
-
     if (!user.value) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.warn('[Anniv] 零点触发时 user 为空 → 跳过刷新')
-      }
       scheduleMidnightRefresh()
       return
     }
-
-    await loadAnniversaryNotes(true)
-
+    // 零点强制刷新
+    await loadAnniversaryNotes(false)
     if (user.value) {
       writeState(user.value.id, {
         active: isAnniversaryViewActive.value,
         forDate: todayStr(),
       })
     }
-
     scheduleMidnightRefresh()
   }, msUntilMidnight)
 }
@@ -242,18 +224,13 @@ onMounted(async () => {
   const uid = user.value.id
   const st = readState(uid)
   const ymd = todayStr()
-  const needRefresh = !st || st.forDate !== ymd
+  // const needRefresh = !st || st.forDate !== ymd
 
-  if (needRefresh) {
-    if (st?.active)
-      isAnniversaryViewActive.value = true
-    await loadAnniversaryNotes(true)
-    writeState(uid, { active: !!st?.active, forDate: ymd })
-  }
-  else {
-    isAnniversaryViewActive.value = !!st?.active
-    await loadAnniversaryNotes(false)
-  }
+  // 恢复之前的视图激活状态
+  if (st?.active && st.forDate === ymd)
+    isAnniversaryViewActive.value = true
+
+  await loadAnniversaryNotes(false)
 
   if (!isAnniversaryViewActive.value)
     emit('toggleView', null)
@@ -268,41 +245,36 @@ onUnmounted(() => {
   }
 })
 
-function addNote(newNote: any) {
-  // 复用已有的 todayStr 函数来获取今天的日期字符串，例如 "2025-10-14"
-  const todayYmd = todayStr()
+// === 对外暴露的方法 ===
 
-  // 获取新笔记的日期字符串
+function addNote(newNote: any) {
+  const todayYmd = todayStr()
   const newNoteDate = new Date(newNote.created_at)
   const y = newNoteDate.getFullYear()
   const m = String(newNoteDate.getMonth() + 1).padStart(2, '0')
   const day = String(newNoteDate.getDate()).padStart(2, '0')
   const newNoteYmd = `${y}-${m}-${day}`
 
-  // 只有当新笔记是今天创建的，才执行操作
   if (newNoteYmd === todayYmd) {
-    // 1. 更新内存中的列表 (UI会实时响应)
     anniversaryNotes.value.unshift(newNote)
-
-    // 2. 将更新后的完整列表写回到 localStorage (这是关键的修复)
     if (user.value)
       writeResults(user.value.id, todayYmd, anniversaryNotes.value)
   }
 }
 
 function removeNoteById(noteId: string) {
-  // 找到被删除笔记在当前列表中的位置
+  // 1. 在内存数组中查找
   const index = anniversaryNotes.value.findIndex(n => n.id === noteId)
 
-  // 如果找到了，就将它从列表中移除
   if (index !== -1) {
+    // 2. 移除并更新
     anniversaryNotes.value.splice(index, 1)
 
-    // 关键：移除后，必须立刻用更新后的、变短了的列表去覆盖旧的本地缓存
+    // 3. 立即写回缓存（防止下次加载旧数据）
     if (user.value)
       writeResults(user.value.id, todayStr(), anniversaryNotes.value)
 
-    // 如果当前正处于“那年今日”视图，则需要通知父组件更新界面
+    // 4. 如果当前正在看这个视图，通知父组件数据变了
     if (isAnniversaryViewActive.value)
       emit('toggleView', anniversaryNotes.value.length > 0 ? anniversaryNotes.value : null)
   }
@@ -311,21 +283,14 @@ function removeNoteById(noteId: string) {
 function updateNote(updatedNote: any) {
   if (!updatedNote || !updatedNote.id)
     return
-
-  // 1. 在内存中的 anniversaryNotes 数组里找到并更新对应的笔记
   const index = anniversaryNotes.value.findIndex(n => n.id === updatedNote.id)
-
   if (index !== -1) {
-    // 找到了，用新数据部分更新旧数据，以保持响应性
     anniversaryNotes.value[index] = { ...anniversaryNotes.value[index], ...updatedNote }
-
-    // 2. 关键：将更新后的完整列表写回 localStorage，保持缓存同步
     if (user.value)
       writeResults(user.value.id, todayStr(), anniversaryNotes.value)
   }
 }
 
-// 暴露方法
 defineExpose({
   setView,
   loadAnniversaryNotes,
@@ -355,7 +320,6 @@ defineExpose({
         {{ t('notes.anniversary_found', { count: anniversaryNotes.length }) }}
       </span>
 
-      <!-- 右侧小按钮：文字“查看”，点击仍然触发整个条幅的 handleBannerClick -->
       <button
         type="button"
         class="banner-view-btn"
@@ -364,7 +328,6 @@ defineExpose({
       </button>
     </div>
 
-    <!-- 只有在“那年今日视图”时显示年份徽章 -->
     <div v-if="isAnniversaryViewActive" class="year-chips">
       <span
         v-for="ys in yearStats"
@@ -372,7 +335,6 @@ defineExpose({
         class="chip"
         :style="{ '--chip-h': hueForYear(ys.year) }"
       >
-        <!-- 例：2019(2) -->
         <span class="chip-year">
           {{ ys.year }}<span v-if="ys.count > 1">({{ ys.count }})</span>
         </span>
@@ -410,13 +372,11 @@ defineExpose({
   font-weight: 600;
 }
 
-/* 中间这句文字保持居中 */
 .banner-text {
   flex: 1;
   text-align: center;
 }
 
-/* 右侧“查看”按钮 */
 .banner-view-btn {
   margin-left: 8px;
   padding: 2px 10px;
@@ -425,8 +385,7 @@ defineExpose({
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-
-  background-color: rgba(79, 70, 229, 0.12); /* 轻微高亮即可 */
+  background-color: rgba(79, 70, 229, 0.12);
   color: #4338ca;
 }
 
@@ -434,13 +393,11 @@ defineExpose({
   transform: translateY(1px);
 }
 
-/* 暗色模式下的按钮颜色适配 */
 .dark .banner-view-btn {
   background-color: rgba(129, 140, 248, 0.25);
   color: #e5e7eb;
 }
 
-/* 年份徽章区 */
 .year-chips {
   margin-top: 6px;
   display: flex;

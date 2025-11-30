@@ -69,15 +69,93 @@ function saveCache(uid: string, items: TrashNote[]) {
   localStorage.setItem(cacheKeyFor(uid), JSON.stringify(payload))
 }
 
+// === 新增：文件桶常量 ===
+const STORAGE_BUCKET = 'note-images'
+const AUDIO_BUCKET = 'note-audios'
+
+// === 新增：提取图片路径函数 (从 auth.vue 复制过来) ===
+function extractStoragePathsFromContent(content: string | null | undefined): string[] {
+  if (!content)
+    return []
+
+  const rx = /https?:\/\/[^\s)"]+\/note-images\/([^)\s"']+)/g
+  const set = new Set<string>()
+  let m: RegExpExecArray | null = null
+
+  while (true) {
+    m = rx.exec(content)
+    if (m === null)
+      break
+
+    let rel = (m[1] || '').trim()
+    if (!rel)
+      continue
+
+    rel = rel.split(/[?#]/)[0]
+
+    if (rel.startsWith('/'))
+      rel = rel.slice(1)
+
+    try {
+      rel = decodeURIComponent(rel)
+    }
+    catch {}
+
+    if (rel)
+      set.add(rel)
+  }
+
+  return Array.from(set)
+}
+
+// === 新增：提取音频路径函数 ===
+function extractAudioPathsFromContent(content: string | null | undefined): string[] {
+  if (!content)
+    return []
+
+  const rx = /https?:\/\/[^\s)"]+\/note-audios\/([^)\s"']+)/g
+  const set = new Set<string>()
+  let m: RegExpExecArray | null = null
+
+  while (true) {
+    m = rx.exec(content)
+    if (m === null)
+      break
+
+    let rel = (m[1] || '').trim()
+    if (!rel)
+      continue
+
+    rel = rel.split(/[?#]/)[0]
+
+    if (rel.startsWith('/'))
+      rel = rel.slice(1)
+
+    try {
+      rel = decodeURIComponent(rel)
+    }
+    catch {
+      // ignore
+    }
+
+    if (rel)
+      set.add(rel)
+  }
+
+  return Array.from(set)
+}
+
 /** 先用缓存显示，如有需要再刷新 */
 async function initFromCacheThenMaybeRefresh() {
   if (!user.value)
     return
+
   const uid = user.value.id
   selected.value = []
 
   // 1) 优先加载缓存
   const cached = loadCache(uid)
+
   if (cached)
     list.value = cached.items
   else
@@ -209,7 +287,7 @@ async function restoreOne(id: string) {
 
     if (user.value)
       saveCache(user.value.id, list.value)
-
+    localStorage.setItem('NOTES_DB_VERSION', Date.now().toString())
     message.success(t('notes.trash.restore_success_one'))
     emit('restored')
   }
@@ -253,7 +331,7 @@ async function restoreSelected() {
       .from('notes')
       .select('*')
       .in('id', ids)
-
+    localStorage.setItem('NOTES_DB_VERSION', Date.now().toString())
     message.success(t('notes.trash.restore_success_many', { count: ids.length }))
     emit('restored', Array.isArray(restoredRows) ? restoredRows : [])
   }
@@ -282,17 +360,60 @@ function openPurgeConfirm() {
 }
 
 /** 批量彻底删除：本地列表 + 缓存同步 */
+/** 批量彻底删除：本地列表 + 缓存同步 + 删除云端文件 */
 async function confirmPurge() {
   if (selected.value.length === 0 || !user.value)
     return
+
   const ids = [...selected.value]
   loading.value = true
+
   try {
+    // 1. === 新增：在删除 DB 记录前，先收集并删除关联的图片/音频 ===
+    const notesToPurge = list.value.filter(n => ids.includes(n.id))
+
+    // 收集所有涉及的图片路径
+    const imagePaths = new Set<string>()
+    const audioPaths = new Set<string>()
+
+    notesToPurge.forEach((n) => {
+      extractStoragePathsFromContent(n.content).forEach(p => imagePaths.add(p))
+      extractAudioPathsFromContent(n.content).forEach(p => audioPaths.add(p))
+    })
+
+    // 执行 Storage 删除 (使用 Promise.all 并行处理，不阻塞)
+    const tasks: Promise<any>[] = []
+
+    if (imagePaths.size > 0) {
+      tasks.push(
+        supabase.storage.from(STORAGE_BUCKET).remove(Array.from(imagePaths))
+          .then(({ error }) => {
+            if (error)
+              console.warn('Purge: Failed to remove images', error)
+          }),
+      )
+    }
+
+    if (audioPaths.size > 0) {
+      tasks.push(
+        supabase.storage.from(AUDIO_BUCKET).remove(Array.from(audioPaths))
+          .then(({ error }) => {
+            if (error)
+              console.warn('Purge: Failed to remove audios', error)
+          }),
+      )
+    }
+
+    // 等待文件删除请求发出（可选：也可以不 await tasks，让它后台跑，加快 UI 响应）
+    await Promise.all(tasks)
+
+    // 2. === 原有逻辑：删除数据库记录 ===
     const { error } = await supabase
       .from('notes_trash')
       .delete()
       .in('id', ids)
       .eq('user_id', user.value.id)
+
     if (error)
       throw error
 
@@ -301,6 +422,7 @@ async function confirmPurge() {
 
     // 更新缓存
     saveCache(user.value.id, list.value)
+    localStorage.setItem('NOTES_DB_VERSION', Date.now().toString())
 
     message.success(t('notes.trash.purge_success_many', { count: ids.length }))
     emit('purged')

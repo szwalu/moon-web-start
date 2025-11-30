@@ -125,6 +125,52 @@ const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
 
+// === 新增辅助函数：不依赖组件实例，强制修正“那年今日”的本地缓存 ===
+function forceUpdateAnniversaryCache(idsToDelete: string[]) {
+  if (!user.value || idsToDelete.length === 0)
+    return
+
+  // 1. 计算缓存键名（需要与 AnniversaryBanner 里的逻辑一致）
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const ymd = `${y}-${m}-${day}`
+  const cacheKey = `anniv_results_${user.value.id}_${ymd}`
+
+  // 2. 读取缓存
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    if (raw) {
+      const list = JSON.parse(raw)
+      if (Array.isArray(list) && list.length > 0) {
+        // 3. 过滤掉被删除的笔记
+        const deleteSet = new Set(idsToDelete)
+        const newList = list.filter((n: any) => !deleteSet.has(n.id))
+
+        // 4. 写回缓存
+        if (newList.length !== list.length)
+          localStorage.setItem(cacheKey, JSON.stringify(newList))
+      }
+    }
+  }
+  catch (e) {
+    console.warn('手动更新那年今日缓存失败', e)
+  }
+}
+
+// === 封装一个统一的删除通知函数 ===
+function notifyAnniversaryDelete(ids: string[]) {
+  // 路径 A：如果组件活着（在屏幕上），直接调用组件方法（更新内存+缓存+视图）
+  if (anniversaryBannerRef.value)
+    ids.forEach(id => anniversaryBannerRef.value.removeNoteById(id))
+
+  // 路径 B：如果组件死了（被隐藏），我们手动修缓存
+  // 这样下次组件挂载时，读到的就是干净的数据
+  else
+    forceUpdateAnniversaryCache(ids)
+}
+
 function openComposer() {
   showComposer.value = true
   headerCollapsed.value = false
@@ -642,120 +688,6 @@ function invalidateAllTagCaches() {
     const key = localStorage.key(i)
     if (key && key.startsWith(tagPrefix))
       localStorage.removeItem(key)
-  }
-}
-
-// === [ADD] 提取笔记内容中的 Storage 文件相对路径 ===
-const STORAGE_BUCKET = 'note-images' // 如你的桶名不同，改这里即可
-const AUDIO_BUCKET = 'note-audios' // 👈 录音存放的 bucket 名（如果你叫别的名字，改这里）
-
-function extractStoragePathsFromContent(content: string | null | undefined): string[] {
-  if (!content)
-    return []
-
-  // 统一截 note-images/ 之后的相对路径；兼容 public/signed/proxy URL
-  const rx = /https?:\/\/[^\s)"]+\/note-images\/([^)\s"']+)/g
-  const set = new Set<string>()
-  let m: RegExpExecArray | null = null
-
-  while (true) {
-    m = rx.exec(content)
-    if (m === null)
-      break
-
-    let rel = (m[1] || '').trim()
-    if (!rel)
-      continue
-
-    // 去掉查询/锚点，去重、去前导斜杠并尝试解码
-    rel = rel.split(/[?#]/)[0]
-    if (rel.startsWith('/'))
-      rel = rel.slice(1)
-
-    try {
-      rel = decodeURIComponent(rel)
-    }
-    catch {
-      // ignore decode errors
-    }
-
-    if (rel)
-      set.add(rel)
-  }
-
-  return Array.from(set)
-}
-
-function extractAudioPathsFromContent(content: string | null | undefined): string[] {
-  if (!content)
-    return []
-
-  // 和图片一样，统一截 note-audios/ 后面的相对路径
-  const rx = /https?:\/\/[^\s)"]+\/note-audios\/([^)\s"']+)/g
-  const set = new Set<string>()
-  let m: RegExpExecArray | null = null
-
-  while (true) {
-    m = rx.exec(content)
-    if (m === null)
-      break
-
-    let rel = (m[1] || '').trim()
-    if (!rel)
-      continue
-
-    // 去掉 query/hash，去前导斜杠，再尝试 decode
-    rel = rel.split(/[?#]/)[0]
-    if (rel.startsWith('/'))
-      rel = rel.slice(1)
-
-    try {
-      rel = decodeURIComponent(rel)
-    }
-    catch {
-      // ignore
-    }
-
-    if (rel)
-      set.add(rel)
-  }
-
-  return Array.from(set)
-}
-
-function collectAudioPathsFromNotes(notesArr: any[]): string[] {
-  const set = new Set<string>()
-  for (const n of notesArr || [])
-    extractAudioPathsFromContent(n?.content).forEach(p => set.add(p))
-
-  return Array.from(set)
-}
-
-function collectImagePathsFromNotes(notesArr: any[]): string[] {
-  const set = new Set<string>()
-  for (const n of notesArr || [])
-    extractStoragePathsFromContent(n?.content).forEach(p => set.add(p))
-
-  return Array.from(set)
-}
-
-async function deleteNoteImagesForNotes(notesToProcess: Array<{ content?: string | null }>) {
-  // 收集所有待删路径，去重
-  const paths = Array.from(
-    notesToProcess.reduce((acc, n) => {
-      for (const p of extractStoragePathsFromContent(n?.content ?? '')) acc.add(p)
-      return acc
-    }, new Set<string>()),
-  )
-
-  if (paths.length === 0)
-    return
-
-  // Supabase 一次 remove 支持批量；如有超大批量可再分片，这里通常足够
-  const { error } = await supabase.storage.from('note-images').remove(paths)
-  if (error) {
-    // 若没有删除权限（存储策略问题）或路径不匹配，会报错
-    messageHook.warning(`部分图片未能删除：${error.message}`)
   }
 }
 
@@ -1653,25 +1585,46 @@ async function handlePinToggle(note: any) {
 }
 
 async function handleFavoriteNote(note: any) {
+  if (!note || !user.value?.id)
+    return
+
   const newValue = !note.is_favorited
 
-  const { _data, error } = await supabase
-    .from('notes')
-    .update({ is_favorited: newValue })
-    .eq('id', note.id)
-    .select()
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ is_favorited: newValue })
+      .eq('id', note.id)
+      .eq('user_id', user.value.id)
+      .select()
+      .single()
 
-  if (error) {
-    // 可选：用 message 显示失败提示
-    console.error(error)
-    return
+    if (error)
+      throw error
+
+    // 用服务器返回的最新记录为准（包含 updated_at 等字段）
+    const updatedNote = data ? { ...data } : { ...note, is_favorited: newValue }
+
+    // ✅ 统一走 updateNoteInList：
+    //  - 更新当前视图 notes.value
+    //  - 更新 localStorage HOME 缓存
+    //  - 刷新“那年今日”里的同一条笔记
+    //  - 在标签筛选/搜索视图下，安全更新主缓存
+    updateNoteInList(updatedNote)
+
+    // ✅ 关键：收藏状态变化也会影响“已收藏”搜索
+    //    所以必须让所有搜索缓存失效，下一次点“已收藏”才会重新向服务器要最新结果
+    try {
+      invalidateAllSearchCaches()
+    }
+    catch (e) {
+      console.warn('invalidateAllSearchCaches failed', e)
+    }
   }
-
-  // 本地 notes 列表里也同步一下 is_favorited
-  const idx = notes.value.findIndex(n => n.id === note.id)
-  if (idx !== -1)
-    notes.value[idx] = { ...notes.value[idx], is_favorited: newValue }
+  catch (err: any) {
+    console.error(err)
+    messageHook.error(`${t('notes.operation_error')}: ${err.message || t('notes.try_again')}`)
+  }
 }
 
 function updateNoteInList(updatedNote: any) {
@@ -2171,6 +2124,10 @@ async function applyLocalDeletion(idsToDelete: string[]) {
   const deletedNotes = notes.value.filter(n => toDelete.has(n.id)) // 用于缓存失效
   notes.value = notes.value.filter(n => !toDelete.has(n.id))
   cachedNotes.value = cachedNotes.value.filter(n => !toDelete.has(n.id))
+  notifyAnniversaryDelete(idsToDelete)
+  // 如果当前正在查看“那年今日”视图（虽然applyLocalDeletion通常发生在这里），也同步内存变量
+  if (anniversaryNotes.value && anniversaryNotes.value.length > 0)
+    anniversaryNotes.value = anniversaryNotes.value.filter(n => !toDelete.has(n.id))
 
   // 2) 维护 total / 分页元数据
   const delta = idsToDelete.length
@@ -2211,8 +2168,6 @@ async function triggerDeleteConfirmation(id: string) {
     return
 
   const noteToDelete = notes.value.find(note => note.id === id)
-  const imagePathsForThisNote = noteToDelete ? extractStoragePathsFromContent(noteToDelete.content) : []
-  const audioPathsForThisNote = noteToDelete ? extractAudioPathsFromContent(noteToDelete.content) : []
 
   dialog.warning({
     title: t('notes.delete_confirm_title'),
@@ -2238,29 +2193,8 @@ async function triggerDeleteConfirmation(id: string) {
 
         if (error)
           throw new Error(error.message)
+        notifyAnniversaryDelete([id])
         anniversaryBannerRef.value?.removeNoteById(id)
-
-        if (noteToDelete)
-          await deleteNoteImagesForNotes([noteToDelete])
-
-        // === [ADD] 同步删除 Storage 里的图片 ===
-        if (imagePathsForThisNote.length > 0) {
-          const { error: storageError } = await supabase
-            .storage
-            .from(STORAGE_BUCKET)
-            .remove(imagePathsForThisNote)
-          if (storageError)
-            console.warn('[storage] remove failed:', storageError.message)
-        }
-
-        if (audioPathsForThisNote.length > 0) {
-          const { error: audioError } = await supabase
-            .storage
-            .from(AUDIO_BUCKET)
-            .remove(audioPathsForThisNote)
-          if (audioError)
-            console.warn('[storage] audio remove failed:', audioError.message)
-        }
 
         // 更新本地缓存与 UI（保持原有逻辑）
         const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
@@ -2489,13 +2423,6 @@ async function handleDeleteSelected() {
           }
         })
 
-        // === [ADD] 在删库之前，批量收集这些笔记里引用的 Storage 图片路径
-        const notesToDelete = notes.value.filter(n => idsToDelete.includes(n.id))
-        const imagePathsForBatch = collectImagePathsFromNotes(notesToDelete)
-        const audioPathsForBatch = collectAudioPathsFromNotes(notesToDelete)
-
-        const notesToDeleteNow = notes.value.filter(n => idsToDelete.includes(n.id))
-
         // 步骤 2: 执行数据库批量删除操作
         const { error } = await supabase
           .from('notes')
@@ -2505,39 +2432,10 @@ async function handleDeleteSelected() {
 
         if (error)
           throw new Error(error.message)
-
+        notifyAnniversaryDelete(idsToDelete)
         idsToDelete.forEach((id) => {
           anniversaryBannerRef.value?.removeNoteById(id)
         })
-        await deleteNoteImagesForNotes(notesToDeleteNow)
-        // === [ADD] 删库成功后，同步删除 Storage 里的图片
-        if (imagePathsForBatch.length > 0) {
-          try {
-            const { error: storageError } = await supabase
-              .storage
-              .from(STORAGE_BUCKET) // 例如 'note-images'
-              .remove(imagePathsForBatch)
-            if (storageError)
-              console.warn('[storage] batch remove failed:', storageError.message)
-          }
-          catch (e: any) {
-            console.warn('[storage] batch remove exception:', e?.message || e)
-          }
-        }
-
-        if (audioPathsForBatch.length > 0) {
-          try {
-            const { error: audioError } = await supabase
-              .storage
-              .from(AUDIO_BUCKET)
-              .remove(audioPathsForBatch)
-            if (audioError)
-              console.warn('[storage] batch audio remove failed:', audioError.message)
-          }
-          catch (e: any) {
-            console.warn('[storage] batch audio remove exception:', e?.message || e)
-          }
-        }
 
         // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
         invalidateAllSearchCaches()
