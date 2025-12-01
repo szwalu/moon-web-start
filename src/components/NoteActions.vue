@@ -719,6 +719,22 @@ defineExpose({ executeSearch })
 <template>
   <div class="search-export-bar">
     <div class="search-input-wrapper">
+      <div class="search-icon-wrapper">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18" height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </div>
+
       <input
         ref="searchInputRef"
         v-model="searchModel"
@@ -833,7 +849,20 @@ defineExpose({ executeSearch })
         <div class="section-header">
           <span class="quick-search-title">{{ t('notes.search_history_title', '最近搜索') }}</span>
           <button class="clear-history-btn" :title="t('common.clear', '清空')" @click="clearAllHistory">
-            <span class="trash-icon">🗑</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14" height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="trash-icon"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
           </button>
         </div>
         <div class="quick-search-chips">
@@ -860,71 +889,27 @@ defineExpose({ executeSearch })
           <div class="sheet-title">
             {{ t('notes.search_date_title', '日期范围') }}
           </div>
-          <button
-            class="sheet-close"
-            type="button"
-            @click="showDateModal = false"
-          >
-            ×
-          </button>
+          <button class="sheet-close" type="button" @click="showDateModal = false">×</button>
         </div>
-
         <div class="sheet-body">
           <div class="seg-row">
-            <button
-              class="seg-btn"
-              :class="{ active: dateMode === 'all' }"
-              type="button"
-              @click="dateMode = 'all'; startDateStr = ''; endDateStr = ''"
-            >
-              {{ t('notes.search_date_all', '不限时间') }}
-            </button>
-            <button
-              class="seg-btn"
-              :class="{ active: dateMode === 'week' }"
-              type="button"
-              @click="dateMode = 'week'; startDateStr = ''; endDateStr = ''"
-            >
-              {{ t('notes.search_date_this_week', '本周') }}
-            </button>
-            <button
-              class="seg-btn"
-              :class="{ active: dateMode === 'month' }"
-              type="button"
-              @click="dateMode = 'month'; startDateStr = ''; endDateStr = ''"
-            >
-              {{ t('notes.search_date_this_month', '本月') }}
-            </button>
+            <button class="seg-btn" :class="{ active: dateMode === 'all' }" type="button" @click="dateMode = 'all'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_all', '不限时间') }}</button>
+            <button class="seg-btn" :class="{ active: dateMode === 'week' }" type="button" @click="dateMode = 'week'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_this_week', '本周') }}</button>
+            <button class="seg-btn" :class="{ active: dateMode === 'month' }" type="button" @click="dateMode = 'month'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_this_month', '本月') }}</button>
           </div>
-
           <div class="date-input-row">
             <div class="date-input-wrapper">
               <span class="date-label">{{ t('notes.search_date_start', '开始日期') }}</span>
-              <input
-                v-model="startDateStr"
-                type="date"
-                class="date-input"
-              >
+              <input v-model="startDateStr" type="date" class="date-input">
             </div>
             <div class="date-separator">—</div>
             <div class="date-input-wrapper">
               <span class="date-label">{{ t('notes.search_date_end', '结束日期') }}</span>
-              <input
-                v-model="endDateStr"
-                type="date"
-                class="date-input"
-              >
+              <input v-model="endDateStr" type="date" class="date-input">
             </div>
           </div>
         </div>
-
-        <button
-          class="sheet-confirm-btn"
-          type="button"
-          @click="confirmDateFilter"
-        >
-          {{ t('common.confirm', '确定') }}
-        </button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmDateFilter">{{ t('common.confirm', '确定') }}</button>
       </div>
     </div>
 
@@ -935,86 +920,25 @@ defineExpose({ executeSearch })
     >
       <div class="sheet-panel">
         <div class="sheet-header">
-          <div class="sheet-title">
-            {{ t('notes.search_tag_title', '标签范围') }}
-          </div>
-          <button
-            class="sheet-close"
-            type="button"
-            @click="showTagModal = false"
-          >
-            ×
-          </button>
+          <div class="sheet-title">{{ t('notes.search_tag_title', '标签范围') }}</div>
+          <button class="sheet-close" type="button" @click="showTagModal = false">×</button>
         </div>
-
         <div class="sheet-body">
           <div class="tag-mode-grid">
-            <button
-              class="tag-mode-btn"
-              :class="{ active: tagMode === 'all' }"
-              type="button"
-              @click="tagMode = 'all'; selectedTagForFilter = ''"
-            >
-              {{ t('notes.search_tag_all', '全部内容') }}
-            </button>
-            <button
-              class="tag-mode-btn"
-              :class="{ active: tagMode === 'untagged' }"
-              type="button"
-              @click="tagMode = 'untagged'; selectedTagForFilter = ''"
-            >
-              {{ t('notes.search_tag_untagged', '无标签') }}
-            </button>
-            <button
-              class="tag-mode-btn"
-              :class="{ active: tagMode === 'include' }"
-              type="button"
-              @click="tagMode = 'include'"
-            >
-              {{ t('notes.search_tag_include', '包含指定标签') }}
-            </button>
-            <button
-              class="tag-mode-btn"
-              :class="{ active: tagMode === 'exclude' }"
-              type="button"
-              @click="tagMode = 'exclude'"
-            >
-              {{ t('notes.search_tag_exclude', '排除指定标签') }}
-            </button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'all' }" type="button" @click="tagMode = 'all'; selectedTagForFilter = ''">{{ t('notes.search_tag_all', '全部内容') }}</button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'untagged' }" type="button" @click="tagMode = 'untagged'; selectedTagForFilter = ''">{{ t('notes.search_tag_untagged', '无标签') }}</button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'include' }" type="button" @click="tagMode = 'include'">{{ t('notes.search_tag_include', '包含指定标签') }}</button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'exclude' }" type="button" @click="tagMode = 'exclude'">{{ t('notes.search_tag_exclude', '排除指定标签') }}</button>
           </div>
-
-          <div
-            v-if="tagMode === 'include' || tagMode === 'exclude'"
-            class="tag-select-row"
-          >
-            <div class="tag-select-label">
-              {{ t('notes.search_tag_pick_label', '选择标签') }}
-            </div>
-            <select
-              v-model="selectedTagForFilter"
-              class="tag-select"
-            >
-              <option value="">
-                {{ t('notes.search_tag_pick_placeholder', '请选择标签') }}
-              </option>
-              <option
-                v-for="tag in props.allTags"
-                :key="tag"
-                :value="tag"
-              >
-                {{ tag }}
-              </option>
+          <div v-if="tagMode === 'include' || tagMode === 'exclude'" class="tag-select-row">
+            <div class="tag-select-label">{{ t('notes.search_tag_pick_label', '选择标签') }}</div>
+            <select v-model="selectedTagForFilter" class="tag-select">
+              <option value="">{{ t('notes.search_tag_pick_placeholder', '请选择标签') }}</option>
+              <option v-for="tag in props.allTags" :key="tag" :value="tag">{{ tag }}</option>
             </select>
           </div>
         </div>
-
-        <button
-          class="sheet-confirm-btn"
-          type="button"
-          @click="confirmTagFilter"
-        >
-          {{ t('common.confirm', '确定') }}
-        </button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmTagFilter">{{ t('common.confirm', '确定') }}</button>
       </div>
     </div>
 
@@ -1025,42 +949,17 @@ defineExpose({ executeSearch })
     >
       <div class="sheet-panel">
         <div class="sheet-header">
-          <div class="sheet-title">
-            {{ t('notes.search_more_title', '更多条件') }}
-          </div>
-          <button
-            class="sheet-close"
-            type="button"
-            @click="showMoreModal = false"
-          >
-            ×
-          </button>
+          <div class="sheet-title">{{ t('notes.search_more_title', '更多条件') }}</div>
+          <button class="sheet-close" type="button" @click="showMoreModal = false">×</button>
         </div>
-
         <div class="sheet-body">
           <ul class="more-list">
-            <li class="more-item" @click="moreHasImage = !moreHasImage">
-              {{ t('notes.search_quick_has_image', '有图片') }}
-              <span v-if="moreHasImage" class="check-icon">✓</span>
-            </li>
-            <li class="more-item" @click="moreHasLink = !moreHasLink">
-              {{ t('notes.search_quick_has_link', '有链接') }}
-              <span v-if="moreHasLink" class="check-icon">✓</span>
-            </li>
-            <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">
-              {{ t('notes.search_quick_has_audio', '有语音') }}
-              <span v-if="audioFilterEnabled" class="check-icon">✓</span>
-            </li>
+            <li class="more-item" @click="moreHasImage = !moreHasImage">{{ t('notes.search_quick_has_image', '有图片') }}<span v-if="moreHasImage" class="check-icon">✓</span></li>
+            <li class="more-item" @click="moreHasLink = !moreHasLink">{{ t('notes.search_quick_has_link', '有链接') }}<span v-if="moreHasLink" class="check-icon">✓</span></li>
+            <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">{{ t('notes.search_quick_has_audio', '有语音') }}<span v-if="audioFilterEnabled" class="check-icon">✓</span></li>
           </ul>
         </div>
-
-        <button
-          class="sheet-confirm-btn"
-          type="button"
-          @click="confirmMoreFilter"
-        >
-          {{ t('common.confirm', '确定') }}
-        </button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmMoreFilter">{{ t('common.confirm', '确定') }}</button>
       </div>
     </div>
   </div>
@@ -1092,9 +991,27 @@ defineExpose({ executeSearch })
   align-items: center;
 }
 
+/* === 放大镜图标容器 === */
+.search-icon-wrapper {
+  position: absolute;
+  left: 1rem; /* 稍微往右挪一点点，视觉更平衡 */
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dark .search-icon-wrapper {
+  color: #6b7280;
+}
+
 .search-input {
   flex: 1;
-  padding: 1rem 2rem 1rem 0.5rem;
+  /* ★ 修改这里：左边距加大到 3.2rem，避开图标 */
+  padding: 1rem 2rem 1rem 6.2rem;
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -1218,7 +1135,7 @@ defineExpose({ executeSearch })
 .quick-search-chips {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 0.75rem;
+  column-gap: 3.0rem;
   row-gap: 0.6rem;
   margin-top: 0.4rem;
 }
@@ -1238,7 +1155,7 @@ defineExpose({ executeSearch })
 
 /* === 最近搜索区域 === */
 .recent-search-section {
-  margin-top: 1rem; /* 与上方快捷搜索拉开距离 */
+  margin-top: 1rem;
 }
 
 .section-header {
@@ -1253,27 +1170,40 @@ defineExpose({ executeSearch })
   border: none;
   cursor: pointer;
   padding: 2px;
-  font-size: 14px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.clear-history-btn:hover {
+  color: #374151;
+}
+
+.dark .clear-history-btn {
+  color: #9ca3af;
+}
+
+.dark .clear-history-btn:hover {
+  color: #d1d5db;
 }
 
 .trash-icon {
-  filter: grayscale(1);
-  opacity: 0.6;
+  display: block;
 }
 
-/* ★★★ History Chip 彻底重构 ★★★ */
+/* History Chip */
 .history-chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.4rem 0.7rem 0.4rem 1.0rem; /* 左宽右窄，因为右边有按钮 */
-  gap: 0.5rem; /* 核心：使用 gap 分隔文字和按钮，不再重叠 */
+  padding: 0.4rem 0.7rem 0.4rem 1.0rem;
+  gap: 0.5rem;
   background-color: #e0e7ff;
   border-radius: 9999px;
   font-size: 13px;
   cursor: pointer;
   color: #3730a3;
-  max-width: 100%; /* 防止溢出屏幕 */
+  max-width: 100%;
 }
 
 .dark .history-chip {
