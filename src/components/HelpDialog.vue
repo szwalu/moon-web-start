@@ -89,6 +89,8 @@ const { t } = useI18n()
             </li>
             <li>{{ t('notes.HelpDialog.s4_i2') }}</li>
             <li>{{ t('notes.HelpDialog.s4_i3') }}</li>
+            <li>{{ t('notes.HelpDialog.s4_i4') }}</li>
+            <li>{{ t('notes.HelpDialog.s4_i5') }}</li>
           </ul>
         </section>
 
@@ -126,6 +128,7 @@ const { t } = useI18n()
             <li><strong>{{ t('notes.HelpDialog.delete') }}</strong>{{ t('notes.HelpDialog.s7_i3_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.set_date') }}</strong>{{ t('notes.HelpDialog.s7_i4_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.share') }}</strong>{{ t('notes.HelpDialog.s7_i5_tail') }}</li>
+            <li><strong>{{ t('notes.favorite') }}</strong>{{ t('notes.HelpDialog.s7_i6_tail') }}</li>
           </ul>
         </section>
 

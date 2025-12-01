@@ -634,6 +634,8 @@ notes:
     s4_i1_after: 'icon to open the search bar, enter a keyword and press Enter.'
     s4_i2: 'The banner shows ''Search Results'' and match count. You can select notes after searching.'
     s4_i3: 'Clear search: click ''Cancel'' or clear the keyword.'
+    s4_i4: You can select a date range, tag range, and more conditions when searching.
+    s4_i5: In Quick Search, you can choose “With Images”, “With Audio”, “With Links”, and “Favorited”.
 
     s5_title: 5 This Day in History
     s5_i1: 'Click the ''This Day in History'' banner to enter/exit the view, showing only notes from the same day in previous years.'
@@ -646,12 +648,13 @@ notes:
     s6_i2_and: and
     s6_i2_after: '; click ''Done'' to exit.'
 
-    s7_title: 7 Pin / Copy / Delete / Set Date /sharing
+    s7_title: 7 Pin / Copy / Delete / Set Date / sharing / Favorited
     s7_i1_tail: ': Toggle pinning in the list (works offline, syncs later).'
     s7_i2_tail: ': Copy note content to clipboard.'
     s7_i3_tail: ': Supports single or batch delete; tag/calendar/search caches will auto-refresh to stay consistent.'
     s7_i4_tail: ': Modify the note’s creation date.'
     s7_i5_tail: ': Generate an image of the current note and save it, or use system sharing to send it to other apps.'
+    s7_i6_tail: ': Save the note as a favorite. You can view it by clicking Favorited in Search.'
 
     s8_title: 8 Calendar View
     s8_i1: 'Click ''Calendar'' in the main menu to view, create, edit, copy, pin, or delete notes by date.'
@@ -666,7 +669,7 @@ notes:
     s10_i2: 'You can adjust font preferences and export notes in ''Settings''.'
 
     s11_title: 11 Offline and Cache
-    s11_i1_tail: ': Creating/editing/pinning/deleting works offline with immediate UI updates and local snapshots; syncs when back online.'
+    s11_i1_tail: ': Creating/editing/pinningfavorite/deleting works offline with immediate UI updates and local snapshots; syncs when back online.'
     s11_i2_tail: ': If a local cache/snapshot exists, it will be restored first.'
     s11_i3_tail: ': The homepage silently prefetches extra pages after load, once every 24 hours.'
 
