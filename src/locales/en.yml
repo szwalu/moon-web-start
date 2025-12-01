@@ -637,7 +637,7 @@ notes:
     s4_i1_after: 'icon to open the search bar, enter a keyword and press Enter.You can search for locations in the weather forecast.'
     s4_i2: 'The banner shows ''Search Results'' and match count. You can select notes after searching.'
     s4_i3: 'Clear search: click ''Cancel'' or clear the keyword.'
-    s4_i4: You can select a date range, tag range, and more conditions when searching.
+    s4_i4: In Advanced Search, you can pick a date range, tag range, and other options.
     s4_i5: In Quick Search, you can choose “With Images”, “With Audio”, “With Links”, and “Favorited”.
 
     s5_title: 5 This Day in History
