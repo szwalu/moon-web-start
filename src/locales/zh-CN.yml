@@ -375,6 +375,8 @@ notes:
   favorite: 收藏
   unfavorite: 取消收藏
   search_quick_favorited: 已收藏
+  search_advanced: 高级搜索
+  search_history_title: 最近搜索
 
   # 顶部三个筛选 chip
   search_filter_date: 日期

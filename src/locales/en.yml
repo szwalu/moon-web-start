@@ -378,6 +378,8 @@ notes:
   favorite: Favorite
   unfavorite: Unfavorite
   search_quick_favorited: Favorited
+  search_advanced: Advanced Search
+  search_history_title: Recent Searches
 
   # Top filter chips
   search_filter_date: Date

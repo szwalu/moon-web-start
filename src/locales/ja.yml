@@ -377,6 +377,8 @@ notes:
   favorite: お気に入り
   unfavorite: お気に入り解除
   search_quick_favorited: お気に入り
+  search_advanced: 詳細検索
+  search_history_title: 最近の検索
 
   # 上部フィルターチップ
   search_filter_date: 日付

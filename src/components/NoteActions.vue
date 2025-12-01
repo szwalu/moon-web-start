@@ -42,15 +42,14 @@ const emit = defineEmits([
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-onMounted(() => {
-  searchInputRef.value?.focus()
-})
-
 // --- 初始化 & 状态 ---
 const { t } = useI18n()
 const showSearchTagSuggestions = ref(false)
 const searchTagSuggestions = ref<string[]>([])
 const highlightedSearchIndex = ref(-1)
+
+// ====== 界面显示状态 ======
+const showAdvancedFilters = ref(false) // 控制“日期/标签/更多”栏的显示
 
 // ====== 筛选弹窗相关状态 ======
 const showDateModal = ref(false)
@@ -64,59 +63,95 @@ const endDateStr = ref('')
 
 // 标签筛选
 const tagMode = ref<'all' | 'untagged' | 'include' | 'exclude'>('all')
-const selectedTagForFilter = ref('') // 选择标签下拉框当前值
+const selectedTagForFilter = ref('')
 
-// 更多筛选（有图片 / 有链接）
+// 更多筛选
 const moreHasImage = ref(false)
 const moreHasLink = ref(false)
-
-// 有语音：前端本地 AND 过滤开关
 const audioFilterEnabled = ref(false)
-
-// 仅已收藏
 const favoriteOnly = ref(false)
 
-// 是否有任何筛选条件生效（用于允许“仅筛选、不输关键字”的搜索）
+// ====== 最近搜索历史 (LocalStorage) ======
+const HISTORY_KEY = 'NOTES_SEARCH_HISTORY_V1'
+const recentSearches = ref<string[]>([])
+
+onMounted(() => {
+  searchInputRef.value?.focus()
+  loadSearchHistory()
+})
+
+function loadSearchHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    if (raw)
+      recentSearches.value = JSON.parse(raw)
+  }
+  catch (e) {
+    console.error('Failed to load search history', e)
+  }
+}
+
+function saveSearchHistory() {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(recentSearches.value))
+}
+
+function addToHistory(term: string) {
+  const cleanTerm = term.trim()
+  if (!cleanTerm)
+    return
+
+  // 1. 如果已存在，先移除旧的
+  const idx = recentSearches.value.indexOf(cleanTerm)
+  if (idx > -1)
+    recentSearches.value.splice(idx, 1)
+
+  // 2. 插入到头部
+  recentSearches.value.unshift(cleanTerm)
+
+  // 3. 限制数量
+  if (recentSearches.value.length > 10)
+    recentSearches.value = recentSearches.value.slice(0, 10)
+
+  saveSearchHistory()
+}
+
+function removeHistoryItem(term: string) {
+  const idx = recentSearches.value.indexOf(term)
+  if (idx > -1) {
+    recentSearches.value.splice(idx, 1)
+    saveSearchHistory()
+  }
+}
+
+function clearAllHistory() {
+  recentSearches.value = []
+  localStorage.removeItem(HISTORY_KEY)
+}
+
+// ====== 计算属性 ======
+
 const hasAnyFilter = computed(() => {
-  const hasDate
-    = dateMode.value !== 'all'
-    || !!startDateStr.value
-    || !!endDateStr.value
-
-  const hasTag
-    = tagMode.value !== 'all'
-    || !!selectedTagForFilter.value
-
-  const hasMore
-    = moreHasImage.value || moreHasLink.value || audioFilterEnabled.value || favoriteOnly.value
-
+  const hasDate = dateMode.value !== 'all' || !!startDateStr.value || !!endDateStr.value
+  const hasTag = tagMode.value !== 'all' || !!selectedTagForFilter.value
+  const hasMore = moreHasImage.value || moreHasLink.value || audioFilterEnabled.value || favoriteOnly.value
   return hasDate || hasTag || hasMore
 })
 
-// 下拉按钮显示文字
 const dateLabel = computed(() => {
   switch (dateMode.value) {
-    case 'week':
-      return t('notes.search_filter_date_this_week', '本周')
-    case 'month':
-      return t('notes.search_filter_date_this_month', '本月')
-    case 'custom':
-      return t('notes.search_filter_date_custom', '自定义')
-    default:
-      return t('notes.search_filter_date', '日期')
+    case 'week': return t('notes.search_filter_date_this_week', '本周')
+    case 'month': return t('notes.search_filter_date_this_month', '本月')
+    case 'custom': return t('notes.search_filter_date_custom', '自定义')
+    default: return t('notes.search_filter_date', '日期')
   }
 })
 
 const tagLabel = computed(() => {
   switch (tagMode.value) {
-    case 'untagged':
-      return t('notes.search_filter_tag_untagged', '无标签')
-    case 'include':
-      return t('notes.search_filter_tag_include', '包含标签')
-    case 'exclude':
-      return t('notes.search_filter_tag_exclude', '排除标签')
-    default:
-      return t('notes.search_filter_tag', '标签')
+    case 'untagged': return t('notes.search_filter_tag_untagged', '无标签')
+    case 'include': return t('notes.search_filter_tag_include', '包含标签')
+    case 'exclude': return t('notes.search_filter_tag_exclude', '排除标签')
+    default: return t('notes.search_filter_tag', '标签')
   }
 })
 
@@ -124,8 +159,10 @@ const moreLabel = computed(() => {
   const parts: string[] = []
   if (moreHasImage.value)
     parts.push(t('notes.search_quick_has_image', '有图片'))
+
   if (moreHasLink.value)
     parts.push(t('notes.search_quick_has_link', '有链接'))
+
   if (audioFilterEnabled.value)
     parts.push(t('notes.search_quick_has_audio', '有语音'))
 
@@ -135,7 +172,6 @@ const moreLabel = computed(() => {
   return parts.join('、')
 })
 
-// --- v-model Logic ---
 const searchModel = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -143,13 +179,20 @@ const searchModel = computed({
   },
 })
 
-// ====== 本地判定工具 ======
+function applyHistorySearch(term: string) {
+  searchModel.value = term
+  executeSearch()
+}
+
+// ====== 辅助函数 & 自动标签逻辑 ======
 
 function getNoteRaw(note: any): string {
   if (!note)
     return ''
+
   if (typeof note.content === 'string')
     return note.content
+
   try {
     return JSON.stringify(note)
   }
@@ -158,7 +201,7 @@ function getNoteRaw(note: any): string {
   }
 }
 
-// “有语音”：稍微放宽，3 项里命中 ≥2 个就算有语音
+// 修复：移除 if 后面不必要的大括号，但保持换行
 function isAudioNote(note: any): boolean {
   const raw = getNoteRaw(note)
   let hit = 0
@@ -181,7 +224,6 @@ function noteHasLink(note: any): boolean {
   return raw.includes('https://') || raw.includes('http://')
 }
 
-// ====== 自动提示词：只用来填搜索框文案，不参与 RPC 语义 ======
 const autoLabelTokens = computed(() => [
   t('notes.search_quick_has_image', '有图片'),
   t('notes.search_quick_has_audio', '有语音'),
@@ -194,6 +236,7 @@ function stripAutoLabels(raw: string): string {
   autoLabelTokens.value.forEach((label) => {
     if (!label)
       return
+
     q = q.split(label).join('')
   })
   return q.replace(/\s+/g, ' ').trim()
@@ -203,17 +246,17 @@ function isPureAutoLabelQuery(raw: string): boolean {
   const q = raw.trim()
   if (!q)
     return false
+
   const tokens = q.split(/\s+/g).filter(Boolean)
   if (!tokens.length)
     return false
+
   const labels = autoLabelTokens.value
   return tokens.every(tok => labels.includes(tok))
 }
 
 function parseLocalDate(dateStr: string): Date {
-  // 期望格式：YYYY-MM-DD
   const [y, m, d] = dateStr.split('-').map(Number)
-  // 用本地时区构造当天 00:00:00.000
   return new Date(y, m - 1, d, 0, 0, 0, 0)
 }
 
@@ -224,7 +267,6 @@ function formatLocalDate(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
-// ====== 日期范围 & 标签过滤，用于前端本地过滤 ======
 function getDateRange() {
   const now = new Date()
   let start: Date | null = null
@@ -258,7 +300,6 @@ function getDateRange() {
       end = d
     }
   }
-
   return { start, end }
 }
 
@@ -266,22 +307,25 @@ function inDateRange(note: any): boolean {
   const { start, end } = getDateRange()
   if (!start && !end)
     return true
+
   if (!note?.created_at)
     return false
+
   const d = new Date(note.created_at)
   if (Number.isNaN(d.getTime()))
     return false
+
   if (start && d < start)
     return false
+
   if (end && d > end)
     return false
+
   return true
 }
 
-// 标签过滤：基于内容里的 # 文本
 function matchTagFilter(note: any): boolean {
   const raw = getNoteRaw(note)
-
   if (tagMode.value === 'all')
     return true
 
@@ -292,7 +336,6 @@ function matchTagFilter(note: any): boolean {
     return true
 
   const tag = selectedTagForFilter.value
-
   if (tagMode.value === 'include')
     return raw.includes(tag)
 
@@ -302,23 +345,22 @@ function matchTagFilter(note: any): boolean {
   return true
 }
 
-// 关键字拆 token，全部包含才算命中
 function matchKeyword(raw: string, keyword: string): boolean {
   const q = keyword.trim()
   if (!q)
     return true
+
   const tokens = q.split(/\s+/).filter(Boolean)
   if (!tokens.length)
     return true
+
   return tokens.every(token => raw.includes(token))
 }
 
-// === 统一本地过滤逻辑（关键字 + 日期 + 标签 + 更多） ===
 function applyAllFilters(list: any[], keyword: string) {
   return list
     .filter((note) => {
       const raw = getNoteRaw(note)
-
       if (!matchKeyword(raw, keyword))
         return false
 
@@ -330,12 +372,13 @@ function applyAllFilters(list: any[], keyword: string) {
 
       if (moreHasImage.value && !noteHasImage(note))
         return false
+
       if (audioFilterEnabled.value && !isAudioNote(note))
         return false
+
       if (moreHasLink.value && !noteHasLink(note))
         return false
 
-      // ✅ 这里改成：只有明确为 false 时才排除，undefined 视为“由后端已过滤”
       if (favoriteOnly.value && note.is_favorited === false)
         return false
 
@@ -349,29 +392,15 @@ function applyAllFilters(list: any[], keyword: string) {
     }))
 }
 
-/**
- * 构造 RPC payload：
- * - search_term 只用“真实关键字”，完全不含“有图片 / 有语音 / 有链接 / 已收藏”这些提示词；
- * - “更多”条件通过 payload.has_image / has_link / favorite_only / has_audio 通知后端做一层粗过滤，
- *   前端再用 applyAllFilters 做 AND 精过滤。
- */
 function buildSearchPayload(termOverride?: string) {
   const raw = typeof termOverride === 'string' ? termOverride : searchModel.value
   const rawQuery = raw.trim()
+  const queryWithoutAuto = isPureAutoLabelQuery(rawQuery) ? '' : stripAutoLabels(rawQuery)
 
-  const queryWithoutAuto = isPureAutoLabelQuery(rawQuery)
-    ? ''
-    : stripAutoLabels(rawQuery)
-
-  const payload: Record<string, any> = {
-    p_user_id: props.user.id,
-  }
-
+  const payload: Record<string, any> = { p_user_id: props.user.id }
   payload.search_term = queryWithoutAuto || null
 
-  // === 日期部分：自定义与本周/本月分开处理 ===
   if (dateMode.value === 'custom') {
-    // 自定义：直接传 date input 的值，避免多一次时区转换
     if (startDateStr.value || endDateStr.value) {
       payload.date_mode = 'custom'
       payload.date_start = startDateStr.value || null
@@ -384,7 +413,6 @@ function buildSearchPayload(termOverride?: string) {
     }
   }
   else {
-    // 本周 / 本月：用 getDateRange() 计算出的 start/end
     const { start, end } = getDateRange()
     if (start || end) {
       payload.date_mode = 'custom'
@@ -399,11 +427,7 @@ function buildSearchPayload(termOverride?: string) {
   }
 
   payload.tag_mode = tagMode.value
-  payload.tag_value
-    = (tagMode.value === 'include' || tagMode.value === 'exclude')
-      ? (selectedTagForFilter.value || null)
-      : null
-
+  payload.tag_value = (tagMode.value === 'include' || tagMode.value === 'exclude') ? (selectedTagForFilter.value || null) : null
   payload.has_image = moreHasImage.value
   payload.has_link = moreHasLink.value
   payload.favorite_only = favoriteOnly.value
@@ -412,7 +436,6 @@ function buildSearchPayload(termOverride?: string) {
   return { payload, queryBase: queryWithoutAuto }
 }
 
-// --- 工具函数：将数组分块 ---
 function chunkArray<T>(array: T[], size: number): T[][] {
   const result: T[][] = []
   for (let i = 0; i < array.length; i += size)
@@ -421,18 +444,19 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return result
 }
 
-// --- 搜索执行函数（带版本控制的智能缓存 + 状态补全） ---
 async function executeSearch(termOverride?: string) {
   if (!props.user?.id)
     return
 
   const { payload, queryBase } = buildSearchPayload(termOverride)
 
-  // 没关键字、也没任何筛选 → 清空搜索
   if (!queryBase && !hasAnyFilter.value) {
     emit('searchCleared')
     return
   }
+
+  if (queryBase && queryBase.length > 0)
+    addToHistory(queryBase)
 
   const currentDbVersion = localStorage.getItem('NOTES_DB_VERSION') || '0'
   const cacheKey = getSearchCacheKey(JSON.stringify({
@@ -450,7 +474,6 @@ async function executeSearch(termOverride?: string) {
 
   emit('searchStarted')
 
-  // 尝试读取缓存
   const cachedRaw = localStorage.getItem(cacheKey)
   if (cachedRaw) {
     try {
@@ -472,27 +495,15 @@ async function executeSearch(termOverride?: string) {
       throw error
 
     const results = Array.isArray(data) ? data : []
-
-    // ====== [修改优化] 状态补全逻辑：改为分批查询 ======
     const idsToCheck = results.map(n => n.id)
 
     if (idsToCheck.length) {
-      // 如果数据量巨大，仅处理前 200 条以保证性能，或者对全部数据进行分批处理
-      // 这里采用分批处理策略（并发请求），防止 URL 过长导致请求失败
       const BATCH_SIZE = 50
       const chunks = chunkArray(idsToCheck, BATCH_SIZE)
-
       const metaPromises = chunks.map(chunkIds =>
-        supabase
-          .from('notes')
-          .select('id, weather, is_favorited, is_pinned')
-          .in('id', chunkIds),
+        supabase.from('notes').select('id, weather, is_favorited, is_pinned').in('id', chunkIds),
       )
-
-      // 等待所有批次完成
       const responses = await Promise.all(metaPromises)
-
-      // 合并所有批次的结果
       let allMetaRows: any[] = []
       responses.forEach(({ data: chunkData, error: chunkError }) => {
         if (!chunkError && chunkData)
@@ -512,34 +523,26 @@ async function executeSearch(termOverride?: string) {
         })
       }
     }
-    // ====== [修改结束] ======
 
     const list = Array.isArray(data) ? data : []
     const finalData = applyAllFilters(list, queryBase)
 
-    // 写入缓存
-    const cachePayload = {
-      v: currentDbVersion,
-      d: list,
-    }
-    // 只有结果集不过大时才写入缓存，防止 localStorage 爆满
+    const cachePayload = { v: currentDbVersion, d: list }
     if (JSON.stringify(cachePayload).length < 500000)
       localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
 
     emit('searchCompleted', { data: finalData, error: null, fromCache: false })
   }
   catch (err: any) {
-    console.error('Search failed:', err) // 方便调试
+    console.error('Search failed:', err)
     emit('searchCompleted', { data: [], error: err, fromCache: false })
   }
 }
 
-// --- 快捷筛选按钮：有图片 / 有录音 / 有链接 / 已收藏 ---
 function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   showSearchTagSuggestions.value = false
   highlightedSearchIndex.value = -1
 
-  // 重置所有筛选
   moreHasImage.value = false
   moreHasLink.value = false
   audioFilterEnabled.value = false
@@ -554,16 +557,17 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   else if (type === 'favorite')
     favoriteOnly.value = true
 
-  // 填友好文案（仅用于 UI 提示，不参与 RPC 语义）
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
-
     if (moreHasImage.value)
       keywords.push(t('notes.search_quick_has_image', '有图片'))
+
     if (moreHasLink.value)
       keywords.push(t('notes.search_quick_has_link', '有链接'))
+
     if (audioFilterEnabled.value)
       keywords.push(t('notes.search_quick_has_audio', '有语音'))
+
     if (favoriteOnly.value)
       keywords.push(t('notes.search_quick_favorited', '已收藏'))
 
@@ -574,22 +578,47 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   executeSearch()
 }
 
-// 日期弹窗确认：更新模式 & 触发搜索
 function confirmDateFilter() {
   if (startDateStr.value || endDateStr.value)
     dateMode.value = 'custom'
   else if (dateMode.value === 'custom')
     dateMode.value = 'all'
 
+  if (!searchModel.value.trim()) {
+    if (dateMode.value === 'week') {
+      searchModel.value = t('notes.search_filter_date_this_week', '本周')
+    }
+    else if (dateMode.value === 'month') {
+      searchModel.value = t('notes.search_filter_date_this_month', '本月')
+    }
+    else if (dateMode.value === 'custom') {
+      const start = startDateStr.value || '...'
+      const end = endDateStr.value || '...'
+      searchModel.value = `${start} ~ ${end}`
+    }
+  }
   showDateModal.value = false
   executeSearch()
 }
 
-// 标签弹窗确认：非 include/exclude 时把已选标签清掉 & 触发搜索
 function confirmTagFilter() {
   if (tagMode.value !== 'include' && tagMode.value !== 'exclude')
     selectedTagForFilter.value = ''
 
+  if (!searchModel.value.trim()) {
+    if (tagMode.value === 'untagged') {
+      searchModel.value = t('notes.search_filter_tag_untagged', '无标签')
+    }
+    else if (selectedTagForFilter.value) {
+      if (tagMode.value === 'exclude') {
+        const prefix = t('notes.search_filter_tag_exclude', '排除')
+        searchModel.value = `${prefix} ${selectedTagForFilter.value}`
+      }
+      else {
+        searchModel.value = selectedTagForFilter.value
+      }
+    }
+  }
   showTagModal.value = false
   executeSearch()
 }
@@ -597,7 +626,6 @@ function confirmTagFilter() {
 function confirmMoreFilter() {
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
-
     if (moreHasImage.value)
       keywords.push(t('notes.search_quick_has_image', '有图片'))
 
@@ -613,12 +641,10 @@ function confirmMoreFilter() {
     if (keywords.length)
       searchModel.value = keywords.join(' ')
   }
-
   showMoreModal.value = false
   executeSearch()
 }
 
-// --- 标签建议逻辑（输入 # 时的自动补全，保留原有逻辑） ---
 function handleSearchQueryChange(query: string) {
   if (!query) {
     clearSearch()
@@ -647,6 +673,7 @@ function handleSearchQueryChange(query: string) {
 function selectSearchTag(tag: string) {
   if (!tag)
     return
+
   const lastHashIndex = searchModel.value.lastIndexOf('#')
   if (lastHashIndex !== -1)
     searchModel.value = `${searchModel.value.substring(0, lastHashIndex) + tag} `
@@ -664,7 +691,6 @@ function moveSearchSelection(offset: number) {
   }
 }
 
-// --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
     selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
@@ -672,7 +698,6 @@ function handleEnterKey() {
     executeSearch()
 }
 
-// --- 清除搜索 ---
 function clearSearch() {
   searchModel.value = ''
   searchInputRef.value?.focus()
@@ -685,19 +710,14 @@ function clearSearch() {
   moreHasLink.value = false
   audioFilterEnabled.value = false
   favoriteOnly.value = false
-
   emit('searchCleared')
 }
 
-// --- 暴露方法给父组件 ---
-defineExpose({
-  executeSearch,
-})
+defineExpose({ executeSearch })
 </script>
 
 <template>
   <div class="search-export-bar">
-    <!-- 搜索输入框 -->
     <div class="search-input-wrapper">
       <input
         ref="searchInputRef"
@@ -736,8 +756,17 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 三个下拉筛选：日期 / 标签 / 更多 -->
-    <div class="filter-row">
+    <div class="advanced-toggle-row">
+      <button
+        class="advanced-toggle-btn"
+        @click="showAdvancedFilters = !showAdvancedFilters"
+      >
+        <span>{{ t('notes.search_advanced', '高级搜索') }}</span>
+        <span class="toggle-icon">{{ showAdvancedFilters ? '▴' : '▾' }}</span>
+      </button>
+    </div>
+
+    <div v-show="showAdvancedFilters" class="filter-row">
       <button
         class="filter-chip"
         type="button"
@@ -764,50 +793,63 @@ defineExpose({
       </button>
     </div>
 
-    <!-- 快捷搜索标题 -->
-    <div
-      v-if="!searchModel"
-      class="quick-search-title"
-    >
-      {{ t('notes.search_quick_title', '快捷搜索') }}
+    <div v-if="!searchModel">
+      <div class="quick-search-title">
+        {{ t('notes.search_quick_title', '快捷搜索') }}
+      </div>
+
+      <div class="quick-search-chips">
+        <button
+          class="quick-chip"
+          type="button"
+          @click="handleQuickSearch('image')"
+        >
+          {{ t('notes.search_quick_has_image', '有图片') }}
+        </button>
+        <button
+          class="quick-chip"
+          type="button"
+          @click="handleQuickSearch('audio')"
+        >
+          {{ t('notes.search_quick_has_audio', '有语音') }}
+        </button>
+        <button
+          class="quick-chip"
+          type="button"
+          @click="handleQuickSearch('link')"
+        >
+          {{ t('notes.search_quick_has_link', '有链接') }}
+        </button>
+        <button
+          class="quick-chip"
+          type="button"
+          @click="handleQuickSearch('favorite')"
+        >
+          {{ t('notes.search_quick_favorited', '已收藏') }}
+        </button>
+      </div>
+
+      <div v-if="recentSearches.length > 0" class="recent-search-section">
+        <div class="section-header">
+          <span class="quick-search-title">{{ t('notes.search_history_title', '最近搜索') }}</span>
+          <button class="clear-history-btn" :title="t('common.clear', '清空')" @click="clearAllHistory">
+            <span class="trash-icon">🗑</span>
+          </button>
+        </div>
+        <div class="quick-search-chips">
+          <div
+            v-for="item in recentSearches"
+            :key="item"
+            class="history-chip"
+            @click="applyHistorySearch(item)"
+          >
+            <span>{{ item }}</span>
+            <button class="history-delete-btn" @click.stop="removeHistoryItem(item)">×</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- 快捷搜索：有图片 / 有语音 / 有链接 -->
-    <div
-      v-if="!searchModel"
-      class="quick-search-chips"
-    >
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('image')"
-      >
-        {{ t('notes.search_quick_has_image', '有图片') }}
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('audio')"
-      >
-        {{ t('notes.search_quick_has_audio', '有语音') }}
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('link')"
-      >
-        {{ t('notes.search_quick_has_link', '有链接') }}
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('favorite')"
-      >
-        {{ t('notes.search_quick_favorited', '已收藏') }}
-      </button>
-    </div>
-
-    <!-- ====== 日期筛选弹窗 ====== -->
     <div
       v-if="showDateModal"
       class="sheet-mask"
@@ -886,7 +928,6 @@ defineExpose({
       </div>
     </div>
 
-    <!-- ====== 标签筛选弹窗 ====== -->
     <div
       v-if="showTagModal"
       class="sheet-mask"
@@ -942,7 +983,6 @@ defineExpose({
             </button>
           </div>
 
-          <!-- 选择标签：仅在包含/排除模式下出现 -->
           <div
             v-if="tagMode === 'include' || tagMode === 'exclude'"
             class="tag-select-row"
@@ -978,7 +1018,6 @@ defineExpose({
       </div>
     </div>
 
-    <!-- ====== 更多筛选弹窗 ====== -->
     <div
       v-if="showMoreModal"
       class="sheet-mask"
@@ -1000,19 +1039,14 @@ defineExpose({
 
         <div class="sheet-body">
           <ul class="more-list">
-            <!-- 有图片 -->
             <li class="more-item" @click="moreHasImage = !moreHasImage">
               {{ t('notes.search_quick_has_image', '有图片') }}
               <span v-if="moreHasImage" class="check-icon">✓</span>
             </li>
-
-            <!-- 有链接 -->
             <li class="more-item" @click="moreHasLink = !moreHasLink">
               {{ t('notes.search_quick_has_link', '有链接') }}
               <span v-if="moreHasLink" class="check-icon">✓</span>
             </li>
-
-            <!-- 有语音：仅本地 AND 过滤 + 在 search_term 中附加“录音” -->
             <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">
               {{ t('notes.search_quick_has_audio', '有语音') }}
               <span v-if="audioFilterEnabled" class="check-icon">✓</span>
@@ -1033,7 +1067,7 @@ defineExpose({
 </template>
 
 <style scoped>
-/* 原样保留样式不变 */
+/* 保持原有基础样式 */
 .search-export-bar {
   display: flex;
   flex-direction: column;
@@ -1106,70 +1140,42 @@ defineExpose({
   justify-content: center;
 }
 
-.dark .clear-search-button {
-  color: #aaa;
+/* === 高级搜索开关 === */
+.advanced-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -0.2rem;
+  margin-bottom: 0.2rem;
 }
 
-.clear-search-button:hover {
-  color: #333;
-}
-
-.dark .clear-search-button:hover {
-  color: #fff;
-}
-
-.tag-suggestions {
-  position: absolute;
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 1000;
-  max-height: 200px;
-  overflow-y: auto;
-  min-width: 150px;
-}
-
-.dark .tag-suggestions {
-  background-color: #2c2c2e;
-  border-color: #48484a;
-}
-
-.tag-suggestions ul {
-  list-style: none;
-  margin: 0;
+.advanced-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
   padding: 4px 0;
 }
 
-.tag-suggestions li {
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  white-space: nowrap;
-}
+.dark .advanced-toggle-btn { color: #9ca3af; }
+.advanced-toggle-btn:hover { color: #374151; }
+.dark .advanced-toggle-btn:hover { color: #d1d5db; }
+.toggle-icon { font-size: 10px; }
 
-.tag-suggestions li:hover,
-.tag-suggestions li.highlighted {
-  background-color: #f0f0f0;
-}
-
-.dark .tag-suggestions li:hover,
-.dark .tag-suggestions li.highlighted {
-  background-color: #404040;
-}
-
-.search-suggestions {
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
-}
-
-/* 下拉筛选行 */
+/* === 下拉筛选行 === */
 .filter-row {
   display: flex;
   gap: 0.75rem;
-  margin-top: 0.4rem;
+  margin-top: 0.2rem;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .filter-chip {
@@ -1196,7 +1202,7 @@ defineExpose({
   margin-left: 0.25rem;
 }
 
-/* 快捷搜索标题 + 按钮 */
+/* === 标题通用样式 === */
 .quick-search-title {
   margin-top: 0.6rem;
   margin-bottom: 0.1rem;
@@ -1208,16 +1214,17 @@ defineExpose({
   color: #d1d5db;
 }
 
-/* 快捷筛选按钮样式 */
+/* === 快捷搜索 Chips === */
 .quick-search-chips {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 3.5rem;
-  row-gap: 0.5rem;
+  column-gap: 0.75rem;
+  row-gap: 0.6rem;
+  margin-top: 0.4rem;
 }
 
 .quick-chip {
-  padding: 0.5rem 2.0rem;
+  padding: 0.5rem 1.0rem;
   font-size: 13px;
   border-radius: 9999px;
   border: none;
@@ -1225,21 +1232,107 @@ defineExpose({
   color: #111827;
   cursor: pointer;
 }
+.quick-chip:hover { background-color: #d1d5db; }
+.dark .quick-chip { background-color: #4b5563; color: #e5e7eb; }
+.dark .quick-chip:hover { background-color: #6b7280; }
 
-.quick-chip:hover {
-  background-color: #d1d5db;
+/* === 最近搜索区域 === */
+.recent-search-section {
+  margin-top: 1rem; /* 与上方快捷搜索拉开距离 */
 }
 
-.dark .quick-chip {
-  background-color: #4b5563;
-  color: #e5e7eb;
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.1rem;
 }
 
-.dark .quick-chip:hover {
-  background-color: #6b7280;
+.clear-history-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  font-size: 14px;
+  line-height: 1;
 }
 
-/* 底部弹窗通用样式 */
+.trash-icon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+/* ★★★ History Chip 彻底重构 ★★★ */
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem 0.4rem 1.0rem; /* 左宽右窄，因为右边有按钮 */
+  gap: 0.5rem; /* 核心：使用 gap 分隔文字和按钮，不再重叠 */
+  background-color: #e0e7ff;
+  border-radius: 9999px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #3730a3;
+  max-width: 100%; /* 防止溢出屏幕 */
+}
+
+.dark .history-chip {
+  background-color: #312e81;
+  color: #e0e7ff;
+}
+
+.history-chip:hover {
+  filter: brightness(0.95);
+}
+
+.history-delete-btn {
+  background: transparent;
+  border: none;
+  color: #6366f1;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.history-delete-btn:hover {
+  background-color: rgba(0,0,0,0.1);
+}
+
+.dark .history-delete-btn {
+  color: #818cf8;
+}
+
+.dark .history-delete-btn:hover {
+  background-color: rgba(255,255,255,0.2);
+}
+
+/* === 自动提示下拉 === */
+.tag-suggestions {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
+.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.tag-suggestions li:hover, .tag-suggestions li.highlighted { background-color: #f0f0f0; }
+.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted { background-color: #404040; }
+.search-suggestions { top: 100%; left: 0; right: 0; margin-top: 4px; }
+
+/* === 底部弹窗通用样式 === */
 .sheet-mask {
   position: fixed;
   inset: 0;
@@ -1249,43 +1342,27 @@ defineExpose({
   justify-content: center;
   z-index: 50;
 }
-
-/* ★ 让弹窗整体更高一些，并允许内部滚动 */
 .sheet-panel {
   width: 100%;
   max-width: 640px;
   max-height: 80vh;
   background-color: #ffffff;
   border-radius: 16px 16px 0 0;
-  padding: 1.5rem 1.5rem 1.25rem; /* ⬅️ 内边距更大 */
+  padding: 1.5rem 1.5rem 1.25rem;
   margin-bottom: 4vh;
   display: flex;
   flex-direction: column;
 }
-
-.dark .sheet-panel {
-  background-color: #1f2933;
-}
-
+.dark .sheet-panel { background-color: #1f2933; }
 .sheet-header {
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  margin-bottom: 1.1rem; /* ⬅️ 标题和内容之间更宽 */
+  margin-bottom: 1.1rem;
 }
-
-.sheet-body {
-  flex: 1;
-  padding: 1rem 0 1.25rem; /* ⬅️ 上下留白更大 */
-  overflow-y: auto;
-}
-
-.sheet-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
+.sheet-body { flex: 1; padding: 1rem 0 1.25rem; overflow-y: auto; }
+.sheet-title { font-size: 16px; font-weight: 600; }
 .sheet-close {
   position: absolute;
   right: 0;
@@ -1297,9 +1374,6 @@ defineExpose({
   line-height: 1;
   cursor: pointer;
 }
-
-/* ★ 主体增加为可滚动区域，并撑满剩余高度 */
-
 .sheet-confirm-btn {
   width: 100%;
   margin-top: 0.5rem;
@@ -1313,198 +1387,38 @@ defineExpose({
   font-weight: 600;
 }
 
-/* ===== 日期弹窗内部 ===== */
-
-/* ★ 间距稍微加大一点 */
-.seg-row {
-  display: flex;
-  gap: 1rem;             /* ⬅️ 按钮之间更开 */
-  margin-bottom: 1.25rem;
-}
-
+/* 弹窗内部样式 */
+.seg-row { display: flex; gap: 1rem; margin-bottom: 1.25rem; }
 .seg-btn {
-  flex: 1;
-  padding: 0.8rem 1rem;  /* ⬅️ 高度明显增加 */
-  font-size: 15px;
-  border-radius: 9999px;
-  border: none;
-  background-color: #e5e7eb;
-  color: #111827;
+  flex: 1; padding: 0.8rem 1rem; font-size: 15px; border-radius: 9999px; border: none; background-color: #e5e7eb; color: #111827;
 }
+.seg-btn.active { background-color: #2563eb; color: #ffffff; }
+.dark .seg-btn { background-color: #4b5563; color: #e5e7eb; }
+.dark .seg-btn.active { background-color: #2563eb; color: #ffffff; }
 
-.seg-btn.active {
-  background-color: #2563eb;
-  color: #ffffff;
-}
+.date-input-row { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
+.date-input-wrapper { flex: 1; display: flex; flex-direction: column; }
+.date-label { font-size: 13px; margin-bottom: 0.4rem; color: #6b7280; }
+.dark .date-label { color: #9ca3af; }
+.date-input { padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid #d1d5db; font-size: 14px; }
+.dark .date-input { background-color: #111827; border-color: #4b5563; color: #e5e7eb; }
+.date-separator { font-size: 16px; padding-top: 1rem; }
 
-.dark .seg-btn {
-  background-color: #4b5563;
-  color: #e5e7eb;
-}
+.tag-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+.tag-mode-btn { padding: 0.7rem 0.9rem; font-size: 15px; border-radius: 12px; border: none; background-color: #e5e7eb; color: #111827; text-align: center; }
+.tag-mode-btn.active { background-color: #2563eb; color: #ffffff; }
+.dark .tag-mode-btn { background-color: #4b5563; color: #e5e7eb; }
+.dark .tag-mode-btn.active { background-color: #2563eb; color: #ffffff; }
 
-.dark .seg-btn.active {
-  background-color: #2563eb;
-  color: #ffffff;
-}
+.tag-select-row { margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.tag-select-label { font-size: 14px; color: #4b5563; }
+.dark .tag-select-label { color: #d1d5db; }
+.tag-select { width: 100%; padding: 0.7rem 0.9rem; font-size: 15px; border-radius: 8px; border: 1px solid #d1d5db; background-color: #fff; }
+.dark .tag-select { background-color: #111827; color: #f9fafb; border-color: #4b5563; }
 
-.date-input-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;             /* ⬅️ 左右空一点 */
-  margin-top: 0.75rem;
-}
-
-.date-input-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.date-label {
-  font-size: 13px;
-  margin-bottom: 0.4rem; /* ⬅️ label 与输入框间距微调 */
-  color: #6b7280;
-}
-
-.dark .date-label {
-  color: #9ca3af;
-}
-
-.date-input {
-  padding: 0.7rem 0.9rem;/* ⬅️ 输入框高度加大 */
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  font-size: 14px;
-}
-
-.dark .date-input {
-  background-color: #111827;
-  border-color: #4b5563;
-  color: #e5e7eb;
-}
-
-.date-separator {
-  font-size: 16px;
-  padding-top: 1rem;
-}
-
-/* ===== 标签弹窗 ===== */
-
-/* ★ 标签按钮网格拉宽间距 */
-.tag-mode-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.tag-mode-btn {
-  padding: 0.7rem 0.9rem;
-  font-size: 15px;
-  border-radius: 12px;
-  border: none;
-  background-color: #e5e7eb;
-  color: #111827;
-  text-align: center;
-}
-
-.tag-mode-btn.active {
-  background-color: #2563eb;
-  color: #ffffff;
-}
-
-.dark .tag-mode-btn {
-  background-color: #4b5563;
-  color: #e5e7eb;
-}
-
-.dark .tag-mode-btn.active {
-  background-color: #2563eb;
-  color: #ffffff;
-}
-
-/* 标签选择行 */
-.tag-select-row {
-  margin-top: 1.5rem;    /* ⬅️ 与上方按钮拉开距离 */
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;             /* ⬅️ label 与 select 间距更大 */
-}
-
-.tag-select-label {
-  font-size: 14px;
-  color: #4b5563;
-}
-.dark .tag-select-label {
-  color: #d1d5db;
-}
-
-/* ★ 下拉框也稍微增大一点 */
-.tag-select {
-  width: 100%;
-  padding: 0.7rem 0.9rem;/* ⬅️ 下拉框高度加大 */
-  font-size: 15px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  background-color: #fff;
-}
-
-.dark .tag-select {
-  background-color: #111827;
-  color: #f9fafb;
-  border-color: #4b5563;
-}
-
-/* ===== 更多弹窗 ===== */
-
-.more-list {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem 0;     /* ⬅️ 上下再多一点 */
-}
-
-.more-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;          /* ⬅️ 文本与勾之间更开 */
-  padding: 1rem 0.75rem; /* ⬅️ 行高明显增加，左右也更宽 */
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 15px;
-}
-
-.more-item:last-child {
-  border-bottom: none;
-}
-
-.more-item.selected {
-  font-weight: 600;
-}
-
-.dark .more-item {
-  border-color: #4b5563;
-}
-
-@media (max-width: 768px) {
-  .search-input {
-    font-size: 16px;
-  }
-}
-
-/* 勾号样式 */
-.check-icon {
-  color: #22c55e;      /* 绿色 */
-  font-weight: 700;
-  width: 1.2rem;
-  text-align: center;
-}
-
-/* 未选时占位对齐 */
-.check-placeholder {
-  width: 1.2rem;
-}
-
-/* Dark mode */
-.dark .more-item {
-  border-color: #4b5563;
-}
+.more-list { list-style: none; margin: 0; padding: 0.5rem 0; }
+.more-item { display: flex; align-items: center; gap: 0.75rem; padding: 1rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-size: 15px; }
+.more-item:last-child { border-bottom: none; }
+.dark .more-item { border-color: #4b5563; }
+.check-icon { color: #22c55e; font-weight: 700; width: 1.2rem; text-align: center; }
 </style>
