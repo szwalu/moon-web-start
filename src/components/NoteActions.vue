@@ -210,6 +210,20 @@ function isPureAutoLabelQuery(raw: string): boolean {
   return tokens.every(tok => labels.includes(tok))
 }
 
+function parseLocalDate(dateStr: string): Date {
+  // 期望格式：YYYY-MM-DD
+  const [y, m, d] = dateStr.split('-').map(Number)
+  // 用本地时区构造当天 00:00:00.000
+  return new Date(y, m - 1, d, 0, 0, 0, 0)
+}
+
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 // ====== 日期范围 & 标签过滤，用于前端本地过滤 ======
 function getDateRange() {
   const now = new Date()
@@ -234,12 +248,14 @@ function getDateRange() {
   }
   else if (dateMode.value === 'custom') {
     if (startDateStr.value) {
-      start = new Date(startDateStr.value)
-      start.setHours(0, 0, 0, 0)
+      const d = parseLocalDate(startDateStr.value)
+      d.setHours(0, 0, 0, 0)
+      start = d
     }
     if (endDateStr.value) {
-      end = new Date(endDateStr.value)
-      end.setHours(23, 59, 59, 999)
+      const d = parseLocalDate(endDateStr.value)
+      d.setHours(23, 59, 59, 999)
+      end = d
     }
   }
 
@@ -353,9 +369,34 @@ function buildSearchPayload(termOverride?: string) {
 
   payload.search_term = queryWithoutAuto || null
 
-  payload.date_mode = dateMode.value
-  payload.date_start = startDateStr.value || null
-  payload.date_end = endDateStr.value || null
+  // === 日期部分：自定义与本周/本月分开处理 ===
+  if (dateMode.value === 'custom') {
+    // 自定义：直接传 date input 的值，避免多一次时区转换
+    if (startDateStr.value || endDateStr.value) {
+      payload.date_mode = 'custom'
+      payload.date_start = startDateStr.value || null
+      payload.date_end = endDateStr.value || null
+    }
+    else {
+      payload.date_mode = 'all'
+      payload.date_start = null
+      payload.date_end = null
+    }
+  }
+  else {
+    // 本周 / 本月：用 getDateRange() 计算出的 start/end
+    const { start, end } = getDateRange()
+    if (start || end) {
+      payload.date_mode = 'custom'
+      payload.date_start = start ? formatLocalDate(start) : null
+      payload.date_end = end ? formatLocalDate(end) : null
+    }
+    else {
+      payload.date_mode = 'all'
+      payload.date_start = null
+      payload.date_end = null
+    }
+  }
 
   payload.tag_mode = tagMode.value
   payload.tag_value
@@ -363,7 +404,6 @@ function buildSearchPayload(termOverride?: string) {
       ? (selectedTagForFilter.value || null)
       : null
 
-  // 图片 / 链接 / 收藏 / 语音 → 后端先过滤一层
   payload.has_image = moreHasImage.value
   payload.has_link = moreHasLink.value
   payload.favorite_only = favoriteOnly.value
@@ -609,7 +649,7 @@ function moveSearchSelection(offset: number) {
 // --- 回车键处理逻辑 ---
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
-    selectSearchTag(searchTagSuggestions.value[highlightedIndex.value])
+    selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
   else
     executeSearch()
 }
