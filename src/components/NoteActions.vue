@@ -412,8 +412,15 @@ function buildSearchPayload(termOverride?: string) {
   return { payload, queryBase: queryWithoutAuto }
 }
 
-// --- 搜索执行函数（localStorage 缓存 + 前端 AND 过滤） ---
-// --- 搜索执行函数（带版本控制的智能缓存） ---
+// --- 工具函数：将数组分块 ---
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const result: T[][] = []
+  for (let i = 0; i < array.length; i += size)
+    result.push(array.slice(i, i + size))
+
+  return result
+}
+
 // --- 搜索执行函数（带版本控制的智能缓存 + 状态补全） ---
 async function executeSearch(termOverride?: string) {
   if (!props.user?.id)
@@ -427,10 +434,7 @@ async function executeSearch(termOverride?: string) {
     return
   }
 
-  // 1. 获取当前全局数据版本号
   const currentDbVersion = localStorage.getItem('NOTES_DB_VERSION') || '0'
-
-  // 生成缓存 key
   const cacheKey = getSearchCacheKey(JSON.stringify({
     q: queryBase || '',
     dm: dateMode.value,
@@ -446,7 +450,7 @@ async function executeSearch(termOverride?: string) {
 
   emit('searchStarted')
 
-  // 2. 尝试读取缓存
+  // 尝试读取缓存
   const cachedRaw = localStorage.getItem(cacheKey)
   if (cachedRaw) {
     try {
@@ -462,7 +466,6 @@ async function executeSearch(termOverride?: string) {
     }
   }
 
-  // 3. 缓存失效或无缓存，走 Supabase RPC
   try {
     let { data, error } = await supabase.rpc('search_notes_with_highlight', payload)
     if (error)
@@ -470,29 +473,41 @@ async function executeSearch(termOverride?: string) {
 
     const results = Array.isArray(data) ? data : []
 
-    // ====== [修改开始] 核心修复：补全 收藏/置顶/天气 状态 ======
-    // 即使 RPC 函数没有返回 is_favorited，我们在这里手动查一次，保证状态最新
+    // ====== [修改优化] 状态补全逻辑：改为分批查询 ======
     const idsToCheck = results.map(n => n.id)
 
     if (idsToCheck.length) {
-      const { data: metaRows, error: mErr } = await supabase
-        .from('notes')
-        .select('id, weather, is_favorited, is_pinned') // 👈 明确查这几个字段
-        .in('id', idsToCheck)
+      // 如果数据量巨大，仅处理前 200 条以保证性能，或者对全部数据进行分批处理
+      // 这里采用分批处理策略（并发请求），防止 URL 过长导致请求失败
+      const BATCH_SIZE = 50
+      const chunks = chunkArray(idsToCheck, BATCH_SIZE)
 
-      if (!mErr && metaRows?.length) {
-        // 建立 ID -> 数据的映射
-        const metaMap = new Map(metaRows.map(r => [r.id, r]))
+      const metaPromises = chunks.map(chunkIds =>
+        supabase
+          .from('notes')
+          .select('id, weather, is_favorited, is_pinned')
+          .in('id', chunkIds),
+      )
 
-        // 合并数据
+      // 等待所有批次完成
+      const responses = await Promise.all(metaPromises)
+
+      // 合并所有批次的结果
+      let allMetaRows: any[] = []
+      responses.forEach(({ data: chunkData, error: chunkError }) => {
+        if (!chunkError && chunkData)
+          allMetaRows = allMetaRows.concat(chunkData)
+      })
+
+      if (allMetaRows.length) {
+        const metaMap = new Map(allMetaRows.map(r => [r.id, r]))
         data = results.map((n) => {
           const meta = metaMap.get(n.id)
           return {
             ...n,
-            // 逻辑：优先用 RPC 的（如果RPC改好了），否则用新查到的，最后兜底 null/false
             weather: n.weather ?? meta?.weather ?? null,
-            is_favorited: n.is_favorited ?? meta?.is_favorited ?? false, // 👈 修复收藏状态
-            is_pinned: n.is_pinned ?? meta?.is_pinned ?? false, // 👈 顺便修复置顶状态
+            is_favorited: n.is_favorited ?? meta?.is_favorited ?? false,
+            is_pinned: n.is_pinned ?? meta?.is_pinned ?? false,
           }
         })
       }
@@ -502,16 +517,19 @@ async function executeSearch(termOverride?: string) {
     const list = Array.isArray(data) ? data : []
     const finalData = applyAllFilters(list, queryBase)
 
-    // 4. 【写入缓存】
+    // 写入缓存
     const cachePayload = {
       v: currentDbVersion,
       d: list,
     }
-    localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
+    // 只有结果集不过大时才写入缓存，防止 localStorage 爆满
+    if (JSON.stringify(cachePayload).length < 500000)
+      localStorage.setItem(cacheKey, JSON.stringify(cachePayload))
 
     emit('searchCompleted', { data: finalData, error: null, fromCache: false })
   }
   catch (err: any) {
+    console.error('Search failed:', err) // 方便调试
     emit('searchCompleted', { data: [], error: err, fromCache: false })
   }
 }
