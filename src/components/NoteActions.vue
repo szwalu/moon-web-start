@@ -1194,12 +1194,12 @@ defineExpose({
 .quick-search-chips {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 0.75rem;
+  column-gap: 3.5rem;
   row-gap: 0.5rem;
 }
 
 .quick-chip {
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 2.0rem;
   font-size: 13px;
   border-radius: 9999px;
   border: none;
