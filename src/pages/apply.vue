@@ -18,6 +18,15 @@ const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
 
+// [修改 1] 新增：用于追踪下拉菜单选中的值
+const selectedType = ref('')
+
+// [修改 2] 新增：计算邮箱是否必填
+// 逻辑：如果不是从Auth进入 且 选择了'applyinvitecode'，则必须填写邮箱
+const isEmailRequired = computed(() => {
+  return !isFromAuth.value && selectedType.value === 'applyinvitecode'
+})
+
 // ===== 锁定 body 滚动，改用内部滚动容器（改善 iOS 键盘滚动行为） =====
 const originalBodyOverflow = ref<string | null>(null)
 
@@ -50,7 +59,11 @@ async function handleSubmit() {
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    // 邮箱永远可选，不做非空校验
+    // [修改 3] 移除原本的“不做非空校验”注释，改为逻辑校验
+    // 如果前端 required 属性被绕过，这里做二次拦截（可选，html5 required 通常足够）
+    if (isEmailRequired.value && !email)
+      throw new Error('请填写联系邮箱')
+
     const { error } = await supabase.from('feedbacks').insert([{ type, message, email }])
     if (error)
       throw error
@@ -70,6 +83,8 @@ async function handleSubmit() {
 
     successMessage.value = `✅ ${t('form.success')}`
     form.value.reset()
+    // 重置 selectedType 防止样式残留
+    selectedType.value = ''
 
     setTimeout(() => {
       // 提交完成后：和返回按钮逻辑一致
@@ -78,7 +93,10 @@ async function handleSubmit() {
   }
   catch (err) {
     console.error(err)
-    errorMessage.value = `❌ ${t('form.error')}`
+    // 如果是自定义错误信息（如邮箱为空），优先显示
+    errorMessage.value = err instanceof Error && err.message !== '邮件发送失败'
+      ? `❌ ${err.message}`
+      : `❌ ${t('form.error')}`
   }
   finally {
     loading.value = false
@@ -98,10 +116,9 @@ async function handleSubmit() {
         </p>
 
         <form ref="form" class="form-body" @submit.prevent="handleSubmit">
-          <!-- 仅非 /auth 来源时显示选择类型 -->
           <label v-if="!isFromAuth">
             <span class="required">*</span>{{ t('form.selectLabel') }}
-            <select name="type" required>
+            <select v-model="selectedType" name="type" required>
               <option value="" disabled selected hidden>
                 {{ t('form.selectPlaceholder') }}
               </option>
@@ -120,12 +137,13 @@ async function handleSubmit() {
           </label>
 
           <label>
+            <span v-if="isEmailRequired" class="required">*</span>
             {{ t('form.emailLabel') }}
-            <span>（{{ t('form.optional') }}）</span>
-            <input type="email" name="email">
+            <span v-if="!isEmailRequired">（{{ t('form.optional') }}）</span>
+
+            <input type="email" name="email" :required="isEmailRequired">
           </label>
 
-          <!-- 提交与返回按钮：5:1 -->
           <div class="button-row">
             <button type="submit" :disabled="loading">
               {{ loading ? '提交中...' : t('form.submit') }}
@@ -149,6 +167,7 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
+/* 样式保持不变，此处省略以节省空间，直接使用原来的 CSS 即可 */
 /* 顶部安全区容器：固定视口高度，内部滚动 */
 .page-safearea {
   height: 100vh;
@@ -164,7 +183,6 @@ async function handleSubmit() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* ============== 原样式保持 ============== */
 .form-container {
   max-width: 640px;
   margin: 2rem auto;

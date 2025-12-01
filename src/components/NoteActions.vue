@@ -186,22 +186,30 @@ function applyHistorySearch(term: string) {
 
 // ====== 辅助函数 & 自动标签逻辑 ======
 
+// 【关键修改】让搜索匹配逻辑同时也检查 weather 字段
 function getNoteRaw(note: any): string {
   if (!note)
     return ''
 
+  let text = ''
   if (typeof note.content === 'string')
-    return note.content
+    text += note.content
 
-  try {
-    return JSON.stringify(note)
+  // ★ 这里追加了 weather，这样前端过滤时，搜地点也能命中
+  if (typeof note.weather === 'string')
+    text += ` ${note.weather}`
+
+  if (!text) {
+    try {
+      return JSON.stringify(note)
+    }
+    catch {
+      return ''
+    }
   }
-  catch {
-    return ''
-  }
+  return text
 }
 
-// 修复：移除 if 后面不必要的大括号，但保持换行
 function isAudioNote(note: any): boolean {
   const raw = getNoteRaw(note)
   let hit = 0
@@ -361,6 +369,7 @@ function applyAllFilters(list: any[], keyword: string) {
   return list
     .filter((note) => {
       const raw = getNoteRaw(note)
+      // 这个 matchKeyword 现在会检查 (content + weather)
       if (!matchKeyword(raw, keyword))
         return false
 
@@ -490,12 +499,43 @@ async function executeSearch(termOverride?: string) {
   }
 
   try {
-    let { data, error } = await supabase.rpc('search_notes_with_highlight', payload)
-    if (error)
-      throw error
+    // 【关键修改】并行查询：一个查内容（RPC），一个查天气（ilike）
+    const rpcPromise = supabase.rpc('search_notes_with_highlight', payload)
 
-    const results = Array.isArray(data) ? data : []
-    const idsToCheck = results.map(n => n.id)
+    // 只有当输入了关键字时，才去查天气字段
+    let weatherPromise = Promise.resolve({ data: [], error: null })
+    if (queryBase) {
+      // 简单的 ilike 查询，不考虑日期标签过滤（反正后面 applyAllFilters 会过滤掉）
+      // 这样就能把“内容没提到地点，但天气里有地点”的笔记捞出来
+      weatherPromise = supabase
+        .from('notes')
+        .select('*')
+        .eq('user_id', props.user.id)
+        .ilike('weather', `%${queryBase}%`)
+        .order('created_at', { ascending: false })
+        .limit(50) as any // 限制数量防止数据过大
+    }
+
+    const [rpcRes, weatherRes] = await Promise.all([rpcPromise, weatherPromise])
+
+    if (rpcRes.error)
+      throw rpcRes.error
+
+    const rpcData = Array.isArray(rpcRes.data) ? rpcRes.data : []
+    const weatherData = Array.isArray(weatherRes.data) ? weatherRes.data : []
+
+    // 合并结果并去重（优先使用 RPC 的结果，因为可能包含高亮信息，虽然后面也会重置）
+    const combinedMap = new Map()
+    rpcData.forEach((item: any) => combinedMap.set(item.id, item))
+    weatherData.forEach((item: any) => {
+      if (!combinedMap.has(item.id))
+        combinedMap.set(item.id, item)
+    })
+
+    let data = Array.from(combinedMap.values())
+
+    // 下面是原有的“状态补全”逻辑（批量查 favorite/pinned 等）
+    const idsToCheck = data.map((n: any) => n.id)
 
     if (idsToCheck.length) {
       const BATCH_SIZE = 50
@@ -512,7 +552,7 @@ async function executeSearch(termOverride?: string) {
 
       if (allMetaRows.length) {
         const metaMap = new Map(allMetaRows.map(r => [r.id, r]))
-        data = results.map((n) => {
+        data = data.map((n: any) => {
           const meta = metaMap.get(n.id)
           return {
             ...n,
@@ -525,6 +565,7 @@ async function executeSearch(termOverride?: string) {
     }
 
     const list = Array.isArray(data) ? data : []
+    // 这里 applyAllFilters 会再次利用 updated getNoteRaw 验证一遍
     const finalData = applyAllFilters(list, queryBase)
 
     const cachePayload = { v: currentDbVersion, d: list }
