@@ -159,6 +159,114 @@ function forceUpdateAnniversaryCache(idsToDelete: string[]) {
   }
 }
 
+// ✨✨✨ 新增函数：处理更新（即使组件不在也能更新缓存） ===
+function forceUpdateAnniversaryCacheForUpdate(updatedNote: any) {
+  if (!user.value || !updatedNote)
+    return
+
+  // 1. 计算缓存键名 (与 AnniversaryBanner 保持一致)
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const ymd = `${y}-${m}-${day}`
+  const cacheKey = `anniv_results_${user.value.id}_${ymd}`
+
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    if (raw) {
+      const list = JSON.parse(raw)
+      if (Array.isArray(list)) {
+        // 2. 查找并更新
+        const index = list.findIndex((n: any) => n.id === updatedNote.id)
+        if (index !== -1) {
+          list[index] = { ...list[index], ...updatedNote }
+          // 3. 写回缓存
+          localStorage.setItem(cacheKey, JSON.stringify(list))
+        }
+      }
+    }
+  }
+  catch (e) {
+    console.warn('手动更新那年今日(编辑)缓存失败', e)
+  }
+}
+
+// 1. 手动写入新增缓存（即使组件未挂载）
+function forceUpdateAnniversaryCacheForAdd(newNote: any) {
+  if (!user.value || !newNote)
+    return
+
+  // 只有“今天”创建的笔记才需要加入那年今日
+  const d = new Date()
+  const todayYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // 简单截取 created_at 前10位对比
+  const noteYmd = newNote.created_at ? newNote.created_at.substring(0, 10) : ''
+
+  if (noteYmd !== todayYmd)
+    return
+
+  const cacheKey = `anniv_results_${user.value.id}_${todayYmd}`
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    // 如果没有缓存，就不强制创建了，等组件自己加载；如果有缓存，才追加
+    if (raw) {
+      const list = JSON.parse(raw)
+      if (Array.isArray(list)) {
+        // 避免重复
+        if (!list.some((n: any) => n.id === newNote.id)) {
+          list.unshift(newNote) // 加到最前
+          localStorage.setItem(cacheKey, JSON.stringify(list))
+        }
+      }
+    }
+  }
+  catch (e) {
+    console.warn('手动更新那年今日(新增)缓存失败', e)
+  }
+}
+
+// 2. 统一的新增通知函数
+function notifyAnniversaryAdd(newNote: any) {
+  // 路径 A：组件在线，直接调用
+  if (anniversaryBannerRef.value)
+    anniversaryBannerRef.value.addNote(newNote)
+
+  // 路径 B：组件离线，手动修缓存
+  else
+    forceUpdateAnniversaryCacheForAdd(newNote)
+
+  // 路径 C：同步当前视图变量（如果在显示）
+  if (Array.isArray(anniversaryNotes.value)) {
+    const d = new Date()
+    const todayYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const noteYmd = newNote.created_at ? newNote.created_at.substring(0, 10) : ''
+
+    // 如果当前视图显示的是今天的数据，且内存里还没有这条笔记
+    if (noteYmd === todayYmd && !anniversaryNotes.value.some(n => n.id === newNote.id))
+      anniversaryNotes.value.unshift(newNote)
+  }
+}
+// === 封装一个统一的更新通知函数 ===
+function notifyAnniversaryUpdate(updatedNote: any) {
+  // 路径 A：如果组件活着（在屏幕上），调用组件方法（它会处理内存+缓存）
+  if (anniversaryBannerRef.value)
+    anniversaryBannerRef.value.updateNote(updatedNote)
+
+  // 路径 B：如果组件死了（例如正在编辑时被隐藏），我们手动修缓存
+  // 这样当编辑完成、组件重新挂载时，就能读到最新的数据
+  else
+    forceUpdateAnniversaryCacheForUpdate(updatedNote)
+
+  // 路径 C：无论组件是否活着，如果父组件正持有这份数据，也同步更新它
+  // (这是为了防止视图切换瞬间的数据不一致)
+  if (Array.isArray(anniversaryNotes.value)) {
+    const annivIndex = anniversaryNotes.value.findIndex(n => n.id === updatedNote.id)
+    if (annivIndex !== -1)
+      anniversaryNotes.value[annivIndex] = { ...anniversaryNotes.value[annivIndex], ...updatedNote }
+  }
+}
+
 // === 封装一个统一的删除通知函数 ===
 function notifyAnniversaryDelete(ids: string[]) {
   // 路径 A：如果组件活着（在屏幕上），直接调用组件方法（更新内存+缓存+视图）
@@ -824,6 +932,10 @@ async function saveNote(
     // 5) 友好提示，并返回更新后的对象（供调用方使用）
     messageHook.success(t('notes.offline_update_success'))
     const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
+    // ✨✨✨ 新增：离线也要通知那年今日更新！ ✨✨✨
+    if (updatedObj)
+      notifyAnniversaryUpdate(updatedObj)
+
     return updatedObj
   }
 
@@ -866,7 +978,8 @@ async function saveNote(
     catch (e) {
       console.warn('[offline] queuePendingNote failed', e)
     }
-
+    // ✨✨✨ 新增：离线也要通知那年今日添加！ ✨✨✨
+    notifyAnniversaryAdd(localNote)
     // 5) 友好提示
     messageHook.success(t('notes.offline_save_success'))
 
@@ -1489,7 +1602,21 @@ function addNoteToList(newNote: any) {
 
   // 1. 实时更新当前界面显示的列表 (这部分不变)
   notes.value.unshift(newNote)
-  anniversaryBannerRef.value?.addNote(newNote)
+  if (anniversaryBannerRef.value) {
+    anniversaryBannerRef.value.addNote(newNote)
+  }
+  else {
+    // 如果组件不在屏幕上，手动写缓存，确保下次出来时有这条笔记
+    forceUpdateAnniversaryCacheForAdd(newNote)
+  }
+
+  // 如果当前刚好在看那年今日视图（虽然新建时通常不在，但防万一），同步显示变量
+  if (Array.isArray(anniversaryNotes.value)) {
+    // 简单判断是否属于今天（通常新建的都是今天）
+    const isToday = new Date(newNote.created_at).toDateString() === new Date().toDateString()
+    if (isToday)
+      anniversaryNotes.value.unshift(newNote)
+  }
   totalNotes.value += 1
   localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
@@ -1728,7 +1855,7 @@ function updateNoteInList(updatedNote: any) {
     // 如果当前就在主列表视图，直接保存即可，这是最安全且高效的
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
-  anniversaryBannerRef.value?.updateNote(updatedNote)
+  notifyAnniversaryUpdate(updatedNote)
 }
 
 // 重写：支持 reset / silent，并使用 created_at 游标向过去翻页
