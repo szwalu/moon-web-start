@@ -621,6 +621,7 @@ notes:
     s2_i3_after: can be clicked to toggle completion.
 
     s3_title: 3 Tags and Filters
+    s3_i1_example: '#life/shopping'
     s3_i1_label: Insert Tag
     s3_i1_before: ': Select from the menu; if the input is empty, it auto-fills with something like'
     s3_i1_after: and focuses.
@@ -686,7 +687,8 @@ notes:
     faq_1_a1_prefix: Enter
     faq_1_a1_suffix: in your browser and follow the registration steps.
     faq_1_a2: 'On mobile, choose ''Add to Home Screen'' to use like a native app.'
-    faq_1_a3: 'From the site navigation or logo, open Cloud Notes; click ''x'' on the note screen to return.'
+    faq_1_a3_prefix: 'Click Nebula Notes or the mobile Logo to enter; on the main screen, click the “'
+    faq_1_a3_suffix: ” button to the right of 🔍 to return to the directory.
 
     faq_2_q: Will edits/deletes be lost offline?
     faq_2_a1: No. Offline actions are stored locally and auto-synced when online.

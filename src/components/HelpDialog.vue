@@ -68,7 +68,7 @@ const { t } = useI18n()
           <ul>
             <li>
               <strong>{{ t('notes.HelpDialog.s3_i1_label') }}</strong>{{ t('notes.HelpDialog.s3_i1_before') }}
-              <code>#生活/购物</code>
+              <code>{{ t('notes.HelpDialog.s3_i1_example') }}</code>
               {{ t('notes.HelpDialog.s3_i1_after') }}
             </li>
             <li>{{ t('notes.HelpDialog.s3_i2') }}</li>
@@ -194,7 +194,14 @@ const { t } = useI18n()
             <summary>{{ t('notes.HelpDialog.faq_1_q') }}</summary>
             <p>{{ t('notes.HelpDialog.faq_1_a1_prefix') }} https://www.woabc.com/auth {{ t('notes.HelpDialog.faq_1_a1_suffix') }}</p>
             <p>{{ t('notes.HelpDialog.faq_1_a2') }}</p>
-            <p>{{ t('notes.HelpDialog.faq_1_a3') }}</p>
+            <p>
+              {{ t('notes.HelpDialog.faq_1_a3_prefix') }}
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: -4px; margin: 0 2px;">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              {{ t('notes.HelpDialog.faq_1_a3_suffix') }}
+            </p>
           </details>
 
           <details>
