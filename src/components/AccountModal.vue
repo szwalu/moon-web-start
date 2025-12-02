@@ -261,7 +261,7 @@ async function doSignOut() {
 
           <div class="storage-section">
             <div class="info-item" style="margin-bottom: 0.4rem;">
-              <span class="info-label">存储空间</span>
+              <span class="info-label">{{ t('notes.total_storage') }}</span>
               <span class="info-value-simple">
                 {{ storageUsedMB }} MB / {{ storageLimitMB }} MB
               </span>
