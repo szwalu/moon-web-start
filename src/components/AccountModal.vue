@@ -296,7 +296,9 @@ async function doSignOut() {
         </div>
 
         <div class="modal-footer">
-          <a href="/" class="btn-green">{{ t('notes.account.go_to_site') }}</a>
+          <button class="btn-green" @click="emit('close')">
+            {{ t('auth.return') }}
+          </button>
           <button class="btn-grey" @click="openLogoutConfirm">
             {{ t('notes.account.logout') }}
           </button>
@@ -460,6 +462,7 @@ async function doSignOut() {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
+  border: none;
 }
 .btn-green:hover {
   background-color: #009a74;

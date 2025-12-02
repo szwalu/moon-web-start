@@ -322,6 +322,9 @@ async function onImageChosen(e: Event) {
       title: t('notes.upload.error_title'), // 或 t('errors.upload_failed')
       content: errorContent,
       positiveText: t('notes.upload.ok'),
+      onPositiveClick: () => {
+        focusToEnd()
+      },
       // 核心修复：强制提升层级，防止被输入框遮挡
       style: {
         zIndex: 99999,
@@ -762,6 +765,9 @@ async function handleAudioFinished(blob: Blob) {
       title: t('notes.editor.record.upload_failed_title'),
       content: errorContent,
       positiveText: t('notes.ok'),
+      onPositiveClick: () => {
+        focusToEnd()
+      },
       // 核心修复：强制提升层级
       style: {
         zIndex: 99999,
