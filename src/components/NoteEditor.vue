@@ -134,6 +134,8 @@ async function focusToEnd() {
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
 
+// src/components/NoteEditor.vue
+
 function checkAndPromptDraft() {
   if (!props.enableDrafts)
     return
@@ -155,116 +157,68 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // —— 定义局部聚焦工具 ——
+  // 定义一个“死缠烂打”的聚焦函数
+  // 它可以覆盖弹窗关闭动画的整个生命周期
+  const aggressiveFocus = () => {
+    const el = textarea.value
+    if (!el)
+      return
 
-  // —— 辅助：判断页面上是否还存在 NaiveUI 的 modal（可能类名随库版本不同） ——
-  const isDialogStillPresent = () => {
-    const modal = document.querySelector('.n-modal')
-    if (modal)
-      return true
+    // 定义一组时间点，覆盖 0ms ~ 400ms 的范围
+    // Naive UI 的弹窗动画通常在 250ms - 300ms 左右结束
+    const timePoints = [0, 50, 100, 200, 300, 400]
 
-    const dialogEl = document.querySelector('.n-dialog')
-    if (dialogEl)
-      return true
-
-    return false
-  }
-
-  // —— 等待弹窗 DOM 真正销毁（轮询） ——
-  const waitForDialogClose = (maxMs = 1200, interval = 50) => {
-    return new Promise<void>((resolve) => {
-      const start = Date.now()
-      const tick = () => {
-        if (!isDialogStillPresent()) {
-          resolve()
-          return
+    timePoints.forEach((delay) => {
+      setTimeout(() => {
+        // 只有当前焦点不在输入框时，才执行聚焦，避免重复闪烁
+        if (document.activeElement !== el) {
+          el.focus()
+          // 确保光标在最后
+          const len = el.value.length
+          try {
+            el.setSelectionRange(len, len)
+          }
+          catch (e) {
+            // 某些情况下 setSelectionRange 可能会抛错，忽略
+          }
         }
-
-        if (Date.now() - start >= maxMs) {
-          resolve()
-          return
-        }
-
-        setTimeout(() => {
-          tick()
-        }, interval)
-      }
-
-      tick()
+      }, delay)
     })
   }
 
-  // —— 单次聚焦尝试 ——
-  const tryFocusOnce = () => {
-    const el = textarea.value
-    if (!el)
-      return false
+  if (draftText && draftText !== props.modelValue) {
+    dialog.warning({
+      title: t('notes.draft.title', '提示'),
+      content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
+      positiveText: t('notes.draft.continue', '恢复草稿'),
+      negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
+      closable: false,
+      onPositiveClick: () => {
+        // 恢复草稿
+        emit('update:modelValue', draftText)
 
-    try {
-      el.focus()
-    }
-    catch {}
+        nextTick(() => {
+          try {
+            triggerResize?.()
+          }
+          catch (e) {
+            // ignore
+          }
 
-    const len = el.value.length
-    try {
-      el.setSelectionRange(len, len)
-    }
-    catch {}
+          // 恢复数据会导致重绘，使用 nextTick 后启动连续聚焦
+          aggressiveFocus()
+        })
+      },
 
-    return document.activeElement === el
+      onNegativeClick: () => {
+        // 丢弃草稿
+        clearDraft()
+
+        // 🔥 立即启动连续聚焦，确保在遮罩消失的瞬间抢到焦点
+        aggressiveFocus()
+      },
+    })
   }
-
-  // —— 重试聚焦（最多尝试若干次） ——
-  const retryFocus = (attemptsLeft: number, delay = 60) => {
-    if (attemptsLeft <= 0)
-      return
-
-    const ok = tryFocusOnce()
-    if (ok)
-      return
-
-    setTimeout(() => {
-      retryFocus(attemptsLeft - 1, delay)
-    }, delay)
-  }
-
-  dialog.warning({
-    title: t('notes.draft.title', '提示'),
-    content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
-    positiveText: t('notes.draft.continue', '恢复草稿'),
-    negativeText: t('notes.draft.discard', '丢弃（使用当前版本）'),
-    closable: false,
-
-    onPositiveClick: async () => {
-      emit('update:modelValue', draftText)
-
-      nextTick(() => {
-        try {
-          triggerResize?.()
-        }
-        catch {}
-
-        focusToEnd()
-      })
-
-      // 等弹窗 DOM 真正消失（最多等 1.2s），然后再保证聚焦
-      await waitForDialogClose(1200, 50)
-      retryFocus(12, 60)
-    },
-
-    onNegativeClick: async () => {
-      clearDraft()
-
-      // 优先做一次立即聚焦（减少感知延迟）
-      tryFocusOnce()
-
-      // 等弹窗 DOM 真正消失（最多等 1.2s）
-      await waitForDialogClose(1200, 50)
-
-      // 一旦 modal 不在，再反复尝试聚焦直到成功或超次
-      retryFocus(12, 60)
-    },
-  })
 }
 
 // --- 安全触发文件选择 ---
