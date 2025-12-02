@@ -2965,8 +2965,6 @@ function handleBeforeInput(e: InputEvent) {
   margin: 0 3px; /* 原本一般是 4px～6px，这里加大到 10px */
 }
 
-/* src/components/NoteEditor.vue 的 style */
-
 /* 草稿提示遮罩：覆盖在编辑器区域上方 */
 .draft-prompt-overlay {
   position: absolute;
@@ -2974,16 +2972,24 @@ function handleBeforeInput(e: InputEvent) {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.92); /* 稍微透一点背景 */
+
+  /* ✅ 修改 1：改成淡淡的半透明黑色，让背后的字能透出来 */
+  background-color: rgba(0, 0, 0, 0.05);
+
   z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px; /* 跟编辑器圆角保持一致 */
-  backdrop-filter: blur(2px);
+  border-radius: 12px;
+
+  /* ✅ 修改 2：删除了 backdrop-filter: blur(2px); */
+  /* backdrop-filter: blur(2px); */
 }
+
+/* 深色模式 */
 .dark .draft-prompt-overlay {
-  background-color: rgba(44, 44, 46, 0.92);
+  /* ✅ 修改 3：深色模式也稍微加深一点点遮罩即可 */
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
 .draft-prompt-card {
