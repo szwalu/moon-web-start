@@ -645,18 +645,30 @@ onUnmounted(() => {
 // 顶置编辑：增加一个会话 key，强制每次打开都 remount
 const editSessionKey = ref(0)
 
+// src/components/NoteList.vue
+
 async function handleEditTop(note: any) {
   emit('editingStateChange', true)
   editingNoteId.value = null
   expandedNote.value = null
 
+  // 手动计算草稿 Key，规则必须与 computed editTopDraftKey 里的逻辑一致 (`list_edit_${id}`)
+  const draftKey = `list_edit_${note.id}`
+  try {
+    // 强制移除该笔记在本地的旧草稿
+    // 这样 NoteEditor 组件初始化时，发现没有草稿，就会乖乖读取 :original-content (即服务器的最新内容)
+    localStorage.removeItem(draftKey)
+  }
+  catch (e) {
+    // 忽略错误
+  }
+
   editingNoteTop.value = note
   editTopContent.value = note?.content || ''
 
-  // 🔑 每次进入编辑都自增，触发 :key 变化 → 组件 remount → 重置 isDirty 基线
+  // 触发 key 变化
   editSessionKey.value++
 
-  // （可选）你原来的滚到顶部、聚焦等逻辑……
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
   if (scroller)
     scroller.scrollTo({ top: 0, behavior: 'smooth' })
@@ -996,7 +1008,7 @@ async function restoreScrollIfNeeded() {
     <div v-show="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
       <NoteEditor
         ref="editTopEditorRef"
-        :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}`"
+        :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}:${editingNoteTop?.updated_at}`"
         v-model="editTopContent"
         :is-editing="true"
         :is-loading="false"
@@ -1005,7 +1017,6 @@ async function restoreScrollIfNeeded() {
         :all-tags="allTags"
         enable-drafts
         :draft-key="editTopDraftKey"
-
         :clear-draft-on-save="false"
         :original-content="editingNoteTop?.content || ''"
 
