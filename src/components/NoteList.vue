@@ -3,6 +3,7 @@ import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } 
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
+import { useDialog } from 'naive-ui'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
@@ -42,7 +43,7 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
 })
 
 const { t } = useI18n()
-
+const dialog = useDialog()
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const collapseBtnRef = ref<HTMLElement | null>(null)
@@ -645,54 +646,68 @@ onUnmounted(() => {
 // 顶置编辑：增加一个会话 key，强制每次打开都 remount
 const editSessionKey = ref(0)
 
-// src/components/NoteList.vue
-
-// src/components/NoteList.vue
-
 async function handleEditTop(note: any) {
-  emit('editingStateChange', true)
-  editingNoteId.value = null
-  expandedNote.value = null
+  // 定义核心打开逻辑（封装起来，后面两处都会用到）
+  const startEditing = async () => {
+    emit('editingStateChange', true)
+    editingNoteId.value = null
+    expandedNote.value = null
 
-  // 🔥🔥🔥【智能比对逻辑开始】🔥🔥🔥
+    editingNoteTop.value = note
+    editTopContent.value = note?.content || ''
+
+    // 触发 key 变化 (重置编辑器)
+    editSessionKey.value++
+
+    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+    if (scroller)
+      scroller.scrollTo({ top: 0, behavior: 'smooth' })
+    await nextTick()
+    editTopEditorRef.value?.focus()
+  }
+
+  // --- 🔥 开始冲突检测 🔥 ---
   const draftKey = `list_edit_${note.id}`
-  const draftTsKey = `${draftKey}_ts` // 对应 Editor 里存的那个 key
+  const draftTsKey = `${draftKey}_ts`
 
-  // 1. 获取本地草稿的时间戳
+  // 1. 获取时间戳
   const localDraftTs = localStorage.getItem(draftTsKey)
 
-  // 2. 获取服务器笔记的更新时间 (转成毫秒)
-  const serverTime = new Date(note.updated_at).getTime()
-  const draftTime = localDraftTs ? Number(localDraftTs) : 0
-
-  // 3. 开始比对
+  // 2. 只有当存在本地草稿时，才需要判断
   if (localDraftTs) {
-    // 场景 A：服务器的时间 比 草稿时间 还要新
-    // 说明：你在 b 手机改完保存了(10:00)，但 a 手机还留着一个更早的草稿(09:50)
-    // 结果：草稿过期，删掉！
+    const serverTime = new Date(note.updated_at).getTime()
+    const draftTime = Number(localDraftTs) || 0
+
+    // 3. 冲突条件：服务器时间 > 本地草稿时间
+    // 意味着：你在 B 手机保存了新内容，但 A 手机还留着一个很久以前的旧草稿
     if (serverTime > draftTime) {
-      localStorage.removeItem(draftKey)
-      localStorage.removeItem(draftTsKey)
-    }
-    else {
-      // 场景 B：草稿时间 比 服务器时间 新 (或者相等)
-      // 说明：这是你刚才在 a 手机没保存的修改
-      // 结果：保留草稿，NoteEditor 会自动加载它
+      dialog.warning({
+        title: t('notes.conflict_title') || '版本冲突',
+        content: t('notes.conflict_content') || '检测到云端有更新的版本，但本地还有未保存的旧草稿。您希望使用哪个版本？',
+        positiveText: t('notes.use_server_version') || '使用云端新版 (丢弃草稿)',
+        negativeText: t('notes.use_local_draft') || '继续编辑草稿',
+        closable: false, // 强制选择
+        onPositiveClick: () => {
+          // 用户选择【使用云端】：清理旧草稿
+          try {
+            localStorage.removeItem(draftKey)
+            localStorage.removeItem(draftTsKey)
+          }
+          catch (e) {}
+          startEditing() // 正常打开，此时 NoteEditor 会加载 original-content
+        },
+        onNegativeClick: () => {
+          // 用户选择【保留草稿】：什么都不删
+          startEditing() // 正常打开，此时 NoteEditor 会优先加载 localStorage 里的草稿
+        },
+      })
+      return // ⛔️ 中断执行，等待用户选择
     }
   }
-  // 🔥🔥🔥【智能比对逻辑结束】🔥🔥🔥
+  // --- 🔥 结束冲突检测 🔥 ---
 
-  editingNoteTop.value = note
-  editTopContent.value = note?.content || ''
-
-  // 触发 key 变化 (重置编辑器)
-  editSessionKey.value++
-
-  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-  if (scroller)
-    scroller.scrollTo({ top: 0, behavior: 'smooth' })
-  await nextTick()
-  editTopEditorRef.value?.focus()
+  // 如果没有冲突（或者草稿比服务器新），直接打开
+  await startEditing()
 }
 
 // 保存（顶置）
