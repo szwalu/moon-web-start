@@ -188,7 +188,7 @@ function checkAndPromptDraft() {
         // 如果直接调 focusToEnd，可能会被 Dialog 的关闭动作抢走焦点
         setTimeout(() => {
           focusToEnd()
-        }, 50)
+        }, 200)
       },
     })
   }
