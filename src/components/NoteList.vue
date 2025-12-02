@@ -2,8 +2,8 @@
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
-import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import { useDialog } from 'naive-ui'
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import NoteItem from '@/components/NoteItem.vue'
 import NoteEditor from '@/components/NoteEditor.vue'
@@ -647,7 +647,7 @@ onUnmounted(() => {
 const editSessionKey = ref(0)
 
 async function handleEditTop(note: any) {
-  // 定义核心打开逻辑（封装起来，后面两处都会用到）
+  // 1. 定义核心打开逻辑
   const startEditing = async () => {
     emit('editingStateChange', true)
     editingNoteId.value = null
@@ -656,7 +656,6 @@ async function handleEditTop(note: any) {
     editingNoteTop.value = note
     editTopContent.value = note?.content || ''
 
-    // 触发 key 变化 (重置编辑器)
     editSessionKey.value++
 
     const scroller = scrollerRef.value?.$el as HTMLElement | undefined
@@ -666,47 +665,42 @@ async function handleEditTop(note: any) {
     editTopEditorRef.value?.focus()
   }
 
-  // --- 🔥 开始冲突检测 🔥 ---
+  // 2. 冲突检测：只要有草稿，就弹窗
   const draftKey = `list_edit_${note.id}`
-  const draftTsKey = `${draftKey}_ts`
+  const hasDraft = !!localStorage.getItem(draftKey)
 
-  // 1. 获取时间戳
-  const localDraftTs = localStorage.getItem(draftTsKey)
+  if (hasDraft) {
+    dialog.warning({
+      // 标题：提示
+      title: t('notes.draft.title', '提示'),
+      // 内容：你有之前未保存草稿，是否恢复？
+      content: t('notes.draft.restore_confirm', '你有之前未保存草稿，是否恢复？'),
+      // 主按钮（右）：继续编辑
+      positiveText: t('notes.draft.continue', '继续编辑'),
+      // 次按钮（左）：丢弃草稿
+      negativeText: t('notes.draft.discard', '丢弃草稿'),
 
-  // 2. 只有当存在本地草稿时，才需要判断
-  if (localDraftTs) {
-    const serverTime = new Date(note.updated_at).getTime()
-    const draftTime = Number(localDraftTs) || 0
-
-    // 3. 冲突条件：服务器时间 > 本地草稿时间
-    // 意味着：你在 B 手机保存了新内容，但 A 手机还留着一个很久以前的旧草稿
-    if (serverTime > draftTime) {
-      dialog.warning({
-        title: t('notes.conflict_title') || '版本冲突',
-        content: t('notes.conflict_content') || '检测到云端有更新的版本，但本地还有未保存的旧草稿。您希望使用哪个版本？',
-        positiveText: t('notes.use_server_version') || '使用云端新版 (丢弃草稿)',
-        negativeText: t('notes.use_local_draft') || '继续编辑草稿',
-        closable: false, // 强制选择
-        onPositiveClick: () => {
-          // 用户选择【使用云端】：清理旧草稿
-          try {
-            localStorage.removeItem(draftKey)
-            localStorage.removeItem(draftTsKey)
-          }
-          catch (e) {}
-          startEditing() // 正常打开，此时 NoteEditor 会加载 original-content
-        },
-        onNegativeClick: () => {
-          // 用户选择【保留草稿】：什么都不删
-          startEditing() // 正常打开，此时 NoteEditor 会优先加载 localStorage 里的草稿
-        },
-      })
-      return // ⛔️ 中断执行，等待用户选择
-    }
+      closable: false, // 强制选择
+      onPositiveClick: () => {
+        // 选择继续编辑：直接打开，Editor 会自动读取草稿
+        startEditing()
+      },
+      onNegativeClick: () => {
+        // 选择丢弃：清理本地存储后打开
+        try {
+          localStorage.removeItem(draftKey)
+          // 顺手清理可能存在的附属 key
+          localStorage.removeItem(`${draftKey}_ts`)
+          localStorage.removeItem(`${draftKey}_base`)
+        }
+        catch (e) {}
+        startEditing()
+      },
+    })
+    return // ⛔️ 中断执行
   }
-  // --- 🔥 结束冲突检测 🔥 ---
 
-  // 如果没有冲突（或者草稿比服务器新），直接打开
+  // 3. 无草稿，直接进入
   await startEditing()
 }
 
