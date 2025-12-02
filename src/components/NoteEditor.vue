@@ -176,41 +176,22 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
-          // ✅ 修复：弹窗关闭后重新聚焦到文本区域
-          setTimeout(() => {
-            const el = textarea.value
-            if (el) {
-              el.focus()
-              const len = el.value.length
-              try {
-                el.setSelectionRange(len, len)
-              }
-              catch {}
-              ensureCaretVisibleInTextarea()
-              recomputeBottomSafePadding()
-            }
-          }, 100)
         })
         return true
       },
       onNegativeClick: () => {
         // 用户选丢弃：清理本地存储
         clearDraft()
-        // ✅ 修复：弹窗关闭后重新聚焦到文本区域
-        setTimeout(() => {
-          const el = textarea.value
-          if (el) {
-            el.focus()
-            const len = el.value.length
-            try {
-              el.setSelectionRange(len, len)
-            }
-            catch {}
-            ensureCaretVisibleInTextarea()
-            recomputeBottomSafePadding()
-          }
-        }, 100)
         return true
+      },
+      // ✅ 关键修复：弹窗完全关闭后重新聚焦
+      onAfterLeave: () => {
+        if (props.isEditing) {
+          // 使用 setTimeout 确保弹窗动画完成
+          setTimeout(() => {
+            focusToEnd()
+          }, 100)
+        }
       },
     })
   }
