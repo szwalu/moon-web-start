@@ -2557,8 +2557,15 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-}
+} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
 
+/* 👇 然后在外面写针对大屏幕的规则 */
+@media (min-width: 768px) {
+  .editor-textarea {
+    line-height: 2.0; /* 桌面端行距 */
+    padding: 16px 24px; /* 桌面端内边距 */
+  }
+}
 .editor-textarea.font-size-small { font-size: 14px; }
 .editor-textarea.font-size-medium { font-size: 16px; }
 .editor-textarea.font-size-large { font-size: 20px; }

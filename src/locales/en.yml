@@ -380,6 +380,11 @@ notes:
   search_quick_favorited: Favorited
   search_advanced: Advanced Search
   search_history_title: Recent Searches
+  draft:
+    title: Hint
+    restore_confirm: You have an unsaved draft from before. Would you like to restore it?
+    continue: Continue editing
+    discard: Discard draft
 
   # Top filter chips
   search_filter_date: Date
