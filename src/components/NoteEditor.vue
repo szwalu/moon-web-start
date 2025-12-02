@@ -310,10 +310,31 @@ async function onImageChosen(e: Event) {
     insertText(`![](${url})`, '')
   }
   catch (err: any) {
+    const isQuotaError = err.message && err.message.includes('row-level security policy')
+
+    // 使用我们在语言包里定义好的文案
+    // 如果你还没定义 'errors.quota_exceeded'，这里可以直接写死中文字符串兜底
+    const errorContent = isQuotaError
+      ? t('notes.account.errors.quota_exceeded')
+      : (err?.message || t('notes.upload.error_content'))
+
     dialog.error({
-      title: t('notes.upload.error_title'),
-      content: err?.message || t('notes.upload.error_content'),
+      title: t('notes.upload.error_title'), // 或 t('errors.upload_failed')
+      content: errorContent,
       positiveText: t('notes.upload.ok'),
+      // 核心修复：强制提升层级，防止被输入框遮挡
+      style: {
+        zIndex: 99999,
+        position: 'fixed',
+        top: '25%', // 距离顶部 25%，避开键盘
+        left: '50%', // 左侧定位到屏幕正中
+        transform: 'translateX(-50%)', // 向左回退自身宽度的 50%，实现完美居中
+        width: 'min(85vw, 360px)', // 宽度限制：手机上占 85%，电脑上最大 360px
+        margin: '0', // 清除可能存在的默认边距
+      },
+      maskStyle: {
+        zIndex: 99998,
+      },
     })
   }
   finally {
@@ -732,11 +753,28 @@ async function handleAudioFinished(blob: Blob) {
     }
   }
   catch (err: any) {
-    // 失败时仍保留错误提示
+    const isQuotaError = err.message && err.message.includes('row-level security policy')
+    const errorContent = isQuotaError
+      ? t('notes.account.errors.quota_exceeded')
+      : (err?.message || t('notes.editor.record.upload_failed_content'))
+
     dialog.error({
       title: t('notes.editor.record.upload_failed_title'),
-      content: err?.message || t('notes.editor.record.upload_failed_content'),
+      content: errorContent,
       positiveText: t('notes.ok'),
+      // 核心修复：强制提升层级
+      style: {
+        zIndex: 99999,
+        position: 'fixed',
+        top: '25%',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'min(85vw, 360px)',
+        margin: '0',
+      },
+      maskStyle: {
+        zIndex: 99998,
+      },
     })
   }
   finally {

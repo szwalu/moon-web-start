@@ -1,7 +1,7 @@
-// 文件位置: src/components/AccountModal.vue
-
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+// 1. 引入 computed
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import { useDialog } from 'naive-ui'
@@ -11,7 +11,6 @@ import { CACHE_KEYS } from '@/utils/cacheKeys'
 const props = defineProps({
   show: { type: Boolean, required: true },
   email: { type: String, default: '' },
-  // 父组件传进来的总数可作为兜底
   totalNotes: { type: Number, default: 0 },
   user: { type: Object as () => User | null, required: true },
 })
@@ -28,8 +27,23 @@ const firstNoteDateText = ref<string | null>(null)
 
 const hasFetched = ref(false)
 const totalCount = ref<number | null>(null)
+const totalChars = ref<number | null>(null)
 
-// 使用多语言的日期格式：{year}年{month}月{day}日
+// --- 新增：存储空间状态 ---
+const storageUsedBytes = ref(0)
+const storageLimitBytes = ref(104857600) // 默认 100MB (兜底显示)
+
+// --- 新增：计算属性 (MB转换 & 百分比) ---
+const storageUsedMB = computed(() => (storageUsedBytes.value / 1024 / 1024).toFixed(2))
+const storageLimitMB = computed(() => (storageLimitBytes.value / 1024 / 1024).toFixed(0))
+const storagePercent = computed(() => {
+  if (storageLimitBytes.value === 0)
+    return 0
+  const pct = (storageUsedBytes.value / storageLimitBytes.value) * 100
+  return Math.min(100, Math.max(0, pct)) // 限制在 0-100 之间
+})
+
+// 使用多语言的日期格式
 function formatDateI18n(d: Date) {
   return t('notes.account.date_format', {
     year: d.getFullYear(),
@@ -80,7 +94,6 @@ async function fetchFirstNoteAndStreak() {
 
       if (journalingYears.value === 0) {
         const diffTime = Math.abs(today.getTime() - first.getTime())
-        // +1 让“同一天首次记录”也显示为 1 天
         journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
       }
     }
@@ -96,7 +109,7 @@ async function fetchFirstNoteAndStreak() {
   }
 }
 
-// 查询：笔记总数（head+count）
+// 查询：笔记总数
 async function fetchNotesCount() {
   if (!props.user) {
     totalCount.value = 0
@@ -118,9 +131,7 @@ async function fetchNotesCount() {
   }
 }
 
-const totalChars = ref<number | null>(null)
-
-// 查询：总字数（统计所有 content 长度）
+// 查询：总字数
 async function fetchTotalChars() {
   if (!props.user) {
     totalChars.value = 0
@@ -135,7 +146,6 @@ async function fetchTotalChars() {
     if (error)
       throw error
 
-    // 统计字数
     totalChars.value = data?.reduce((sum, n) => {
       if (n.content)
         sum += n.content.length
@@ -148,17 +158,44 @@ async function fetchTotalChars() {
   }
 }
 
+// --- 新增：查询存储空间 ---
+async function fetchStorageStats() {
+  if (!props.user)
+    return
+  try {
+    const { data, error } = await supabase
+      .from('user_storage_stats')
+      .select('storage_used_bytes, storage_limit_bytes')
+      .eq('id', props.user.id)
+      .single()
+
+    // 如果没有查到数据（error code PGRST116），说明用户还没上传过文件，保持默认 0 即可
+    if (error && error.code !== 'PGRST116')
+      throw error
+
+    if (data) {
+      storageUsedBytes.value = data.storage_used_bytes || 0
+      // 如果数据库里有设置 limit 就用数据库的，否则用默认 100MB
+      storageLimitBytes.value = data.storage_limit_bytes || 104857600
+    }
+  }
+  catch (err) {
+    console.error('Fetch storage stats failed:', err)
+  }
+}
+
 // 打开弹窗后首次查询
 watch(() => props.show, (visible) => {
   if (visible && !hasFetched.value) {
     fetchFirstNoteAndStreak()
     fetchNotesCount()
     fetchTotalChars()
+    fetchStorageStats() // 2. 调用新函数
     hasFetched.value = true
   }
 })
 
-// 登出确认（Naive UI）
+// 登出确认
 function openLogoutConfirm() {
   dialog.warning({
     title: t('notes.account.logout_confirm.title'),
@@ -171,12 +208,9 @@ function openLogoutConfirm() {
   })
 }
 
-// 执行登出并清理缓存
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
-
-    // 清理本地缓存
     localStorage.removeItem('last_known_user_id_v1')
     localStorage.removeItem('pinned_tags_v1')
     localStorage.removeItem('tag_icons_v1')
@@ -188,8 +222,6 @@ async function doSignOut() {
       if (key.startsWith(CACHE_KEYS.TAG_PREFIX) || key.startsWith(CACHE_KEYS.SEARCH_PREFIX))
         localStorage.removeItem(key)
     })
-
-    // 跳转首页，重置应用状态
     window.location.assign('/')
   }
   catch (e) {
@@ -227,6 +259,23 @@ async function doSignOut() {
             <span class="info-value">{{ totalChars ?? '—' }}</span>
           </div>
 
+          <div class="storage-section">
+            <div class="info-item" style="margin-bottom: 0.4rem;">
+              <span class="info-label">存储空间</span>
+              <span class="info-value-simple">
+                {{ storageUsedMB }} MB / {{ storageLimitMB }} MB
+              </span>
+            </div>
+            <div class="progress-track">
+              <div
+                class="progress-fill"
+                :style="{
+                  width: `${storagePercent}%`,
+                  backgroundColor: storagePercent > 90 ? '#ef4444' : '#00b386',
+                }"
+              />
+            </div>
+          </div>
           <div class="info-item">
             <span class="info-label">{{ t('notes.account.first_note_created_at') }}</span>
             <span class="info-value">{{ firstNoteDateText ?? '—' }}</span>
@@ -352,18 +401,57 @@ async function doSignOut() {
   color: #f0f0f0;
 }
 
+/* --- 新增：存储部分专用样式 --- */
+.storage-section {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed #eee; /* 加个虚线分割 */
+}
+.dark .storage-section {
+  border-bottom-color: #444;
+}
+
+.info-value-simple {
+  /* 比 info-value 简单的纯文本样式 */
+  color: #111;
+  font-weight: 600;
+  font-size: 13px;
+}
+.dark .info-value-simple {
+  color: #fff;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.dark .progress-track {
+  background-color: #3a3a3c;
+}
+
+.progress-fill {
+  height: 100%;
+  /* background-color 在行内样式里控制 */
+  border-radius: 4px;
+  transition: width 0.4s ease, background-color 0.3s ease;
+}
+/* --- 结束新增样式 --- */
+
 .modal-footer {
   display: grid;
-  grid-template-columns: 5fr 2fr; /* 按 5:2 比例分配 */
+  grid-template-columns: 5fr 2fr;
   gap: 0.9rem;
   margin-top: 1.25rem;
 }
 
 .btn-green {
-  display: inline-block;    /* 让 a 标签表现得像按钮 */
-  text-decoration: none;    /* 去掉默认下划线 */
-  text-align: center;       /* 文字居中 */
-  width: 100%;              /* 在 5:1 的网格下占满所在列 */
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+  width: 100%;
   background-color: #00b386;
   color: #fff;
   border-radius: 6px;
@@ -378,7 +466,7 @@ async function doSignOut() {
 }
 
 .btn-grey {
-  background-color: #f0f0f0; /* 灰色次级 */
+  background-color: #f0f0f0;
   color: #333;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -399,13 +487,6 @@ async function doSignOut() {
 .dark .btn-grey:hover {
   background-color: #444;
 }
-
-.btn-danger {
-  background-color: #ef4444;
-  color: #fff;
-  border-color: #ef4444;
-}
-.btn-danger:hover { filter: brightness(0.95); }
 
 .fade-enter-active,
 .fade-leave-active {

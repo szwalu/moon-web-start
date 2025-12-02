@@ -538,6 +538,7 @@ notes:
       fetch_notes_count_failed: Failed to fetch total notes
       fetch_total_chars_failed: Failed to fetch total character count
       signout_failed: Error while signing out
+      quota_exceeded: Storage quota exceeded. Please delete old files to free up space
     date_format: '{year}/{month}/{day}'
 
   editor:
