@@ -157,22 +157,7 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 1. 定义一个强力聚焦函数
-  const forceFocusSync = () => {
-    const el = textarea.value
-    if (el) {
-      // 这里的重点是：不加任何条件判断，直接执行 focus
-      el.focus()
-      const len = el.value.length
-      try {
-        el.setSelectionRange(len, len)
-      }
-      catch {
-        // noop
-      }
-    }
-  }
-
+  // 核心判断
   if (draftText && draftText !== props.modelValue) {
     dialog.warning({
       title: t('notes.draft.title', '提示'),
@@ -183,7 +168,11 @@ function checkAndPromptDraft() {
 
       onPositiveClick: () => {
         // 【情况 A：继续编辑】
+        // 恢复到最原始、你确认有效的逻辑：
+        // 1. 更新数据
         emit('update:modelValue', draftText)
+
+        // 2. 等待 Vue 更新 DOM
         nextTick(() => {
           try {
             triggerResize?.()
@@ -191,8 +180,8 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
-          // DOM 更新后立即聚焦，iOS 允许 nextTick 内聚焦
-          forceFocusSync()
+          // 3. 使用组件自带的 robust 聚焦函数
+          focusToEnd()
         })
       },
 
@@ -200,24 +189,23 @@ function checkAndPromptDraft() {
         // 【情况 B：丢弃草稿】
         clearDraft()
 
-        // 🔥 针对 iOS 的组合拳修复 🔥
+        // 1. 【针对 iOS】：立即同步聚焦！
+        const el = textarea.value
+        if (el) {
+          el.focus()
+          // 顺便尝试把光标移到最后
+          const len = el.value.length
+          try {
+            el.setSelectionRange(len, len)
+          }
+          catch {
+            // noop
+          }
+        }
 
-        // 第一拳：立即同步执行。
-        // 这是为了告诉 iOS：“是用户刚点的这一下，我要键盘！”
-        // 哪怕此时遮罩还在，这一步也能注册“意图”。
-        forceFocusSync()
-
-        // 第二拳：稍后执行 (50ms)。
-        // 此时 Naive UI 刚开始处理关闭，有时候第一拳会被遮罩拦截，这一拳补上。
+        // 2. 【针对 桌面端/Android】：延迟聚焦
         setTimeout(() => {
-          forceFocusSync()
-        }, 50)
-
-        // 第三拳：动画结束后执行 (300ms)。
-        // 这是为了对抗 Naive UI 关闭后的“焦点归还”特性（它会试图把焦点还给 Body）。
-        // 这一拳是给桌面端/Android 用的，确保最后焦点在输入框里。
-        setTimeout(() => {
-          forceFocusSync()
+          focusToEnd()
         }, 300)
       },
     })
