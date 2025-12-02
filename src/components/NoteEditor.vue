@@ -157,7 +157,6 @@ function checkAndPromptDraft() {
   }
 
   // 核心判断：只有当【草稿内容】和【当前传入的服务器内容】不一样时，才弹窗
-  // 如果内容一样，直接忽略草稿（或者静默加载）即可，没必要打扰用户
   if (draftText && draftText !== props.modelValue) {
     dialog.warning({
       title: t('notes.draft.title', '提示'),
@@ -168,7 +167,8 @@ function checkAndPromptDraft() {
       onPositiveClick: () => {
         // 用户选恢复：把草稿写入编辑器
         emit('update:modelValue', draftText)
-        // 触发一下自动高度调整
+
+        // 触发一下自动高度调整 + 聚焦
         nextTick(() => {
           try {
             triggerResize?.()
@@ -176,12 +176,19 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
+          // 🔥 修复点 1：恢复草稿后，强制聚焦到底部
+          focusToEnd()
         })
       },
       onNegativeClick: () => {
         // 用户选丢弃：清理本地存储
         clearDraft()
-        // 此时编辑器里已经是 props.modelValue (服务器内容)，不用动
+
+        // 🔥 修复点 2：丢弃草稿后，也需要强制聚焦到底部
+        // 使用 nextTick 确保弹窗销毁逻辑执行完后再聚焦
+        nextTick(() => {
+          focusToEnd()
+        })
       },
     })
   }
