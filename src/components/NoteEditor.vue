@@ -157,11 +157,11 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 🔥 1. 定义一个“立即聚焦”的辅助函数 (不包含 nextTick)
-  // 专门给 setTimeout 使用，避免微任务带来的时序错乱
+  // 1. 定义一个强力聚焦函数
   const forceFocusSync = () => {
     const el = textarea.value
     if (el) {
+      // 这里的重点是：不加任何条件判断，直接执行 focus
       el.focus()
       const len = el.value.length
       try {
@@ -173,7 +173,6 @@ function checkAndPromptDraft() {
     }
   }
 
-  // 核心判断
   if (draftText && draftText !== props.modelValue) {
     dialog.warning({
       title: t('notes.draft.title', '提示'),
@@ -184,7 +183,6 @@ function checkAndPromptDraft() {
 
       onPositiveClick: () => {
         // 【情况 A：继续编辑】
-        // 这一步是你确认好用的逻辑，保持不变
         emit('update:modelValue', draftText)
         nextTick(() => {
           try {
@@ -193,7 +191,8 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
-          focusToEnd()
+          // DOM 更新后立即聚焦，iOS 允许 nextTick 内聚焦
+          forceFocusSync()
         })
       },
 
@@ -201,9 +200,22 @@ function checkAndPromptDraft() {
         // 【情况 B：丢弃草稿】
         clearDraft()
 
-        // 🔥 修复关键：
-        // 1. 使用 300ms 延时，完全避开 Naive UI 弹窗关闭时的“焦点归还”动画。
-        // 2. 使用 forceFocusSync() 而不是 focusToEnd()，确保时间一到立即执行，不再等待 nextTick。
+        // 🔥 针对 iOS 的组合拳修复 🔥
+
+        // 第一拳：立即同步执行。
+        // 这是为了告诉 iOS：“是用户刚点的这一下，我要键盘！”
+        // 哪怕此时遮罩还在，这一步也能注册“意图”。
+        forceFocusSync()
+
+        // 第二拳：稍后执行 (50ms)。
+        // 此时 Naive UI 刚开始处理关闭，有时候第一拳会被遮罩拦截，这一拳补上。
+        setTimeout(() => {
+          forceFocusSync()
+        }, 50)
+
+        // 第三拳：动画结束后执行 (300ms)。
+        // 这是为了对抗 Naive UI 关闭后的“焦点归还”特性（它会试图把焦点还给 Body）。
+        // 这一拳是给桌面端/Android 用的，确保最后焦点在输入框里。
         setTimeout(() => {
           forceFocusSync()
         }, 300)
