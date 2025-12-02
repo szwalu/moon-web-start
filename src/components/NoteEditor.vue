@@ -155,50 +155,65 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 定义一个不等待 nextTick 的直接聚焦函数
+  // —— 定义局部聚焦工具 ——
+
+  // 立即聚焦（尽量抢在弹窗关闭前）
   const forceFocusNow = () => {
     const el = textarea.value
-    if (el) {
-      el.focus()
-      // 手动把光标移到最后
-      const len = el.value.length
+    if (!el)
+      return
+
+    el.focus()
+
+    const len = el.value.length
+    try {
       el.setSelectionRange(len, len)
     }
+    catch {}
   }
 
-  if (draftText && draftText !== props.modelValue) {
-    dialog.warning({
-      title: t('notes.draft.title', '提示'),
-      content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
-      positiveText: t('notes.draft.continue', '恢复草稿'),
-      negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
-      closable: false,
-      onPositiveClick: () => {
-        emit('update:modelValue', draftText)
-        nextTick(() => {
-          try {
-            triggerResize?.()
-          }
-          catch {
-            // noop
-          }
-          focusToEnd() // 恢复数据后需要 nextTick，继续用这个
-        })
-      },
-      onNegativeClick: () => {
-        clearDraft()
-
-        // 🔥 核心修改：双重聚焦策略
-        // 1. 立即尝试聚焦（抢在弹窗销毁逻辑之前）
+  const focusAfterDialog = () => {
+    Promise.resolve().then(() => {
+      requestAnimationFrame(() => {
         forceFocusNow()
 
-        // 2. 在浏览器下一帧再次聚焦（兜底，覆盖弹窗关闭后的焦点归还）
-        requestAnimationFrame(() => {
+        setTimeout(() => {
           forceFocusNow()
-        })
-      },
+        }, 60)
+      })
     })
   }
+
+  dialog.warning({
+    title: t('notes.draft.title', '提示'),
+    content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
+    positiveText: t('notes.draft.continue', '恢复草稿'),
+    negativeText: t('notes.draft.discard', '丢弃（使用当前版本）'),
+    closable: false,
+
+    onPositiveClick: () => {
+      emit('update:modelValue', draftText)
+
+      nextTick(() => {
+        try {
+          triggerResize?.()
+        }
+        catch {}
+
+        focusToEnd()
+
+        focusAfterDialog()
+      })
+    },
+
+    onNegativeClick: () => {
+      clearDraft()
+
+      forceFocusNow()
+
+      focusAfterDialog()
+    },
+  })
 }
 
 // --- 安全触发文件选择 ---
