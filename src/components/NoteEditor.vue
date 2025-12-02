@@ -157,9 +157,9 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 1. 定义一个纯净的同步聚焦函数，不包含 await nextTick
-  // 这样我们可以精确控制它何时执行
-  const simpleFocus = () => {
+  // 🔥 1. 定义一个“立即聚焦”的辅助函数 (不包含 nextTick)
+  // 专门给 setTimeout 使用，避免微任务带来的时序错乱
+  const forceFocusSync = () => {
     const el = textarea.value
     if (el) {
       el.focus()
@@ -173,6 +173,7 @@ function checkAndPromptDraft() {
     }
   }
 
+  // 核心判断
   if (draftText && draftText !== props.modelValue) {
     dialog.warning({
       title: t('notes.draft.title', '提示'),
@@ -182,8 +183,8 @@ function checkAndPromptDraft() {
       closable: false,
 
       onPositiveClick: () => {
-        // 【情况 1：恢复草稿】
-        // 数据变了，必须等 Vue 更新 DOM，所以用 nextTick
+        // 【情况 A：继续编辑】
+        // 这一步是你确认好用的逻辑，保持不变
         emit('update:modelValue', draftText)
         nextTick(() => {
           try {
@@ -192,21 +193,19 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
-
-          // DOM 更新完毕，立即聚焦
-          simpleFocus()
+          focusToEnd()
         })
       },
 
       onNegativeClick: () => {
-        // 【情况 2：丢弃草稿】
+        // 【情况 B：丢弃草稿】
         clearDraft()
 
-        // 数据没变，不需要 nextTick。
-        // 关键点：延迟 300ms，避开 Dialog 关闭时的“焦点归还”机制。
-        // 如果时间太短（如 50ms），焦点会被 Dialog 关闭动作抢走。
+        // 🔥 修复关键：
+        // 1. 使用 300ms 延时，完全避开 Naive UI 弹窗关闭时的“焦点归还”动画。
+        // 2. 使用 forceFocusSync() 而不是 focusToEnd()，确保时间一到立即执行，不再等待 nextTick。
         setTimeout(() => {
-          simpleFocus()
+          forceFocusSync()
         }, 300)
       },
     })
