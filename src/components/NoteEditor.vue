@@ -158,30 +158,34 @@ function checkAndPromptDraft() {
   // —— 定义局部聚焦工具 ——
 
   // 立即聚焦（尽量抢在弹窗关闭前）
-  const forceFocusNow = () => {
+  // —— 聚焦工具：一次尝试 ——
+  const tryFocusOnce = () => {
     const el = textarea.value
     if (!el)
-      return
+      return false
 
     el.focus()
-
     const len = el.value.length
     try {
       el.setSelectionRange(len, len)
     }
     catch {}
+
+    return document.activeElement === el
   }
 
-  const focusAfterDialog = () => {
-    Promise.resolve().then(() => {
-      requestAnimationFrame(() => {
-        forceFocusNow()
+  // —— 聚焦重试（递归）——
+  const retryFocus = (attemptsLeft: number) => {
+    if (attemptsLeft <= 0)
+      return
 
-        setTimeout(() => {
-          forceFocusNow()
-        }, 60)
-      })
-    })
+    const ok = tryFocusOnce()
+    if (ok)
+      return
+
+    setTimeout(() => {
+      retryFocus(attemptsLeft - 1)
+    }, 60)
   }
 
   dialog.warning({
@@ -202,16 +206,16 @@ function checkAndPromptDraft() {
 
         focusToEnd()
 
-        focusAfterDialog()
+        retryFocus(8)
       })
     },
 
     onNegativeClick: () => {
       clearDraft()
 
-      forceFocusNow()
+      tryFocusOnce()
 
-      focusAfterDialog()
+      retryFocus(8)
     },
   })
 }
