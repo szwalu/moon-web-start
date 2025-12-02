@@ -134,81 +134,70 @@ async function focusToEnd() {
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
 
-// src/components/NoteEditor.vue
+// 1. 先定义所有需要的响应式变量
+const showFormatPalette = ref(false)
+const showDraftPrompt = ref(false)
+const pendingDraftText = ref('')
 
+// 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
+function handleRecoverDraft() {
+  emit('update:modelValue', pendingDraftText.value)
+  showDraftPrompt.value = false // 关闭遮罩
+
+  nextTick(() => {
+    try {
+      triggerResize?.()
+    }
+    catch {
+      // noop
+    }
+    focusToEnd() // 恢复数据后聚焦
+  })
+}
+
+// 3. 再定义函数：handleDiscardDraft
+function handleDiscardDraft() {
+  clearDraft()
+  showDraftPrompt.value = false // 立即关闭遮罩
+
+  // 立即同步聚焦！
+  const el = textarea.value
+  if (el) {
+    el.focus()
+    try {
+      const len = el.value.length
+      el.setSelectionRange(len, len)
+    }
+    catch {
+      // noop
+    }
+  }
+}
+
+// 4. 最后定义函数：checkAndPromptDraft (使用了变量)
 function checkAndPromptDraft() {
   if (!props.enableDrafts)
     return
-
   const key = draftStorageKey.value
   if (!key)
     return
-
   const raw = localStorage.getItem(key)
   if (!raw)
     return
 
-  let draftText = ''
+  let tVal = ''
   try {
     const obj = JSON.parse(raw)
-    draftText = typeof obj?.content === 'string' ? obj.content : ''
+    tVal = typeof obj?.content === 'string' ? obj.content : ''
   }
   catch {
-    draftText = raw
+    tVal = raw
   }
 
-  // 核心判断
-  if (draftText && draftText !== props.modelValue) {
-    dialog.warning({
-      title: t('notes.draft.title', '提示'),
-      content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
-      positiveText: t('notes.draft.continue', '恢复草稿'),
-      negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
-      closable: false,
-
-      onPositiveClick: () => {
-        // 【情况 A：继续编辑】
-        // 恢复到最原始、你确认有效的逻辑：
-        // 1. 更新数据
-        emit('update:modelValue', draftText)
-
-        // 2. 等待 Vue 更新 DOM
-        nextTick(() => {
-          try {
-            triggerResize?.()
-          }
-          catch {
-            // noop
-          }
-          // 3. 使用组件自带的 robust 聚焦函数
-          focusToEnd()
-        })
-      },
-
-      onNegativeClick: () => {
-        // 【情况 B：丢弃草稿】
-        clearDraft()
-
-        // 1. 【针对 iOS】：立即同步聚焦！
-        const el = textarea.value
-        if (el) {
-          el.focus()
-          // 顺便尝试把光标移到最后
-          const len = el.value.length
-          try {
-            el.setSelectionRange(len, len)
-          }
-          catch {
-            // noop
-          }
-        }
-
-        // 2. 【针对 桌面端/Android】：延迟聚焦
-        setTimeout(() => {
-          focusToEnd()
-        }, 300)
-      },
-    })
+  // 只有内容不一致时才显示覆盖层
+  if (tVal && tVal !== props.modelValue) {
+    pendingDraftText.value = tVal
+    showDraftPrompt.value = true
   }
 }
 
@@ -569,7 +558,6 @@ const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
 // —— 格式弹层（B / 1. / H / I / • / 🖊️）
-const showFormatPalette = ref(false)
 const formatPalettePos = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 const formatBtnRef = ref<HTMLElement | null>(null)
 const formatPaletteRef = ref<HTMLElement | null>(null)
@@ -2167,6 +2155,28 @@ function handleBeforeInput(e: InputEvent) {
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
+      <div v-if="showDraftPrompt" class="draft-prompt-overlay">
+        <div class="draft-prompt-card">
+          <div class="draft-prompt-title">{{ t('notes.draft.title') }}</div>
+          <div class="draft-prompt-content">
+            {{ t('notes.draft.restore_confirm') }}
+          </div>
+          <div class="draft-prompt-actions">
+            <button
+              class="btn-secondary draft-btn"
+              @click.prevent="handleDiscardDraft"
+            >
+              {{ t('notes.draft.discard') }}
+            </button>
+            <button
+              class="draft-btn btn-primary"
+              @click.prevent="handleRecoverDraft"
+            >
+              {{ t('notes.draft.continue') }}
+            </button>
+          </div>
+        </div>
+      </div>
       <textarea
         ref="textarea"
         v-model="input"
@@ -2953,5 +2963,70 @@ function handleBeforeInput(e: InputEvent) {
 /* 底部工具栏：拉大四个图标左右间距 */
 .editor-footer .toolbar-btn {
   margin: 0 3px; /* 原本一般是 4px～6px，这里加大到 10px */
+}
+
+/* src/components/NoteEditor.vue 的 style */
+
+/* 草稿提示遮罩：覆盖在编辑器区域上方 */
+.draft-prompt-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.92); /* 稍微透一点背景 */
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px; /* 跟编辑器圆角保持一致 */
+  backdrop-filter: blur(2px);
+}
+.dark .draft-prompt-overlay {
+  background-color: rgba(44, 44, 46, 0.92);
+}
+
+.draft-prompt-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  padding: 20px 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 80%;
+  min-width: 280px;
+}
+.dark .draft-prompt-card {
+  background: #1e1e1e;
+  border-color: #3f3f46;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.draft-prompt-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1f2937;
+}
+.dark .draft-prompt-title { color: #f3f4f6; }
+
+.draft-prompt-content {
+  font-size: 14px;
+  color: #4b5563;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.dark .draft-prompt-content { color: #d1d5db; }
+
+.draft-prompt-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.draft-btn {
+  padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
+  height: auto;
+  font-size: 14px;
 }
 </style>
