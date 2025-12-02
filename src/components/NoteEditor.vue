@@ -157,14 +157,54 @@ function checkAndPromptDraft() {
 
   // —— 定义局部聚焦工具 ——
 
-  // 立即聚焦（尽量抢在弹窗关闭前）
-  // —— 聚焦工具：一次尝试 ——
+  // —— 辅助：判断页面上是否还存在 NaiveUI 的 modal（可能类名随库版本不同） ——
+  const isDialogStillPresent = () => {
+    const modal = document.querySelector('.n-modal')
+    if (modal)
+      return true
+
+    const dialogEl = document.querySelector('.n-dialog')
+    if (dialogEl)
+      return true
+
+    return false
+  }
+
+  // —— 等待弹窗 DOM 真正销毁（轮询） ——
+  const waitForDialogClose = (maxMs = 1200, interval = 50) => {
+    return new Promise<void>((resolve) => {
+      const start = Date.now()
+      const tick = () => {
+        if (!isDialogStillPresent()) {
+          resolve()
+          return
+        }
+
+        if (Date.now() - start >= maxMs) {
+          resolve()
+          return
+        }
+
+        setTimeout(() => {
+          tick()
+        }, interval)
+      }
+
+      tick()
+    })
+  }
+
+  // —— 单次聚焦尝试 ——
   const tryFocusOnce = () => {
     const el = textarea.value
     if (!el)
       return false
 
-    el.focus()
+    try {
+      el.focus()
+    }
+    catch {}
+
     const len = el.value.length
     try {
       el.setSelectionRange(len, len)
@@ -174,8 +214,8 @@ function checkAndPromptDraft() {
     return document.activeElement === el
   }
 
-  // —— 聚焦重试（递归）——
-  const retryFocus = (attemptsLeft: number) => {
+  // —— 重试聚焦（最多尝试若干次） ——
+  const retryFocus = (attemptsLeft: number, delay = 60) => {
     if (attemptsLeft <= 0)
       return
 
@@ -184,8 +224,8 @@ function checkAndPromptDraft() {
       return
 
     setTimeout(() => {
-      retryFocus(attemptsLeft - 1)
-    }, 60)
+      retryFocus(attemptsLeft - 1, delay)
+    }, delay)
   }
 
   dialog.warning({
@@ -195,7 +235,7 @@ function checkAndPromptDraft() {
     negativeText: t('notes.draft.discard', '丢弃（使用当前版本）'),
     closable: false,
 
-    onPositiveClick: () => {
+    onPositiveClick: async () => {
       emit('update:modelValue', draftText)
 
       nextTick(() => {
@@ -205,17 +245,24 @@ function checkAndPromptDraft() {
         catch {}
 
         focusToEnd()
-
-        retryFocus(8)
       })
+
+      // 等弹窗 DOM 真正消失（最多等 1.2s），然后再保证聚焦
+      await waitForDialogClose(1200, 50)
+      retryFocus(12, 60)
     },
 
-    onNegativeClick: () => {
+    onNegativeClick: async () => {
       clearDraft()
 
+      // 优先做一次立即聚焦（减少感知延迟）
       tryFocusOnce()
 
-      retryFocus(8)
+      // 等弹窗 DOM 真正消失（最多等 1.2s）
+      await waitForDialogClose(1200, 50)
+
+      // 一旦 modal 不在，再反复尝试聚焦直到成功或超次
+      retryFocus(12, 60)
     },
   })
 }
