@@ -2,7 +2,7 @@
 import { computed, defineExpose, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { throttle } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
-import { useDialog } from 'naive-ui'
+
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import NoteItem from '@/components/NoteItem.vue'
@@ -43,7 +43,7 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
 })
 
 const { t } = useI18n()
-const dialog = useDialog()
+
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const collapseBtnRef = ref<HTMLElement | null>(null)
@@ -646,62 +646,28 @@ onUnmounted(() => {
 // 顶置编辑：增加一个会话 key，强制每次打开都 remount
 const editSessionKey = ref(0)
 
+// src/components/NoteList.vue
+
 async function handleEditTop(note: any) {
-  // 1. 定义核心打开逻辑
-  const startEditing = async () => {
-    emit('editingStateChange', true)
-    editingNoteId.value = null
-    expandedNote.value = null
+  // 1. 设置状态
+  emit('editingStateChange', true)
+  editingNoteId.value = null
+  expandedNote.value = null
 
-    editingNoteTop.value = note
-    editTopContent.value = note?.content || ''
+  editingNoteTop.value = note
+  // 默认填入服务器数据
+  editTopContent.value = note?.content || ''
 
-    editSessionKey.value++
+  // 2. 触发组件重建（关键！）
+  // 这样 NoteEditor 每次打开都会重新执行 onMounted，从而触发内部的草稿检查
+  editSessionKey.value++
 
-    const scroller = scrollerRef.value?.$el as HTMLElement | undefined
-    if (scroller)
-      scroller.scrollTo({ top: 0, behavior: 'smooth' })
-    await nextTick()
-    editTopEditorRef.value?.focus()
-  }
-
-  // 2. 冲突检测：只要有草稿，就弹窗
-  const draftKey = `list_edit_${note.id}`
-  const hasDraft = !!localStorage.getItem(draftKey)
-
-  if (hasDraft) {
-    dialog.warning({
-      // 标题：提示
-      title: t('notes.draft.title', '提示'),
-      // 内容：你有之前未保存草稿，是否恢复？
-      content: t('notes.draft.restore_confirm', '你有之前未保存草稿，是否恢复？'),
-      // 主按钮（右）：继续编辑
-      positiveText: t('notes.draft.continue', '继续编辑'),
-      // 次按钮（左）：丢弃草稿
-      negativeText: t('notes.draft.discard', '丢弃草稿'),
-
-      closable: false, // 强制选择
-      onPositiveClick: () => {
-        // 选择继续编辑：直接打开，Editor 会自动读取草稿
-        startEditing()
-      },
-      onNegativeClick: () => {
-        // 选择丢弃：清理本地存储后打开
-        try {
-          localStorage.removeItem(draftKey)
-          // 顺手清理可能存在的附属 key
-          localStorage.removeItem(`${draftKey}_ts`)
-          localStorage.removeItem(`${draftKey}_base`)
-        }
-        catch (e) {}
-        startEditing()
-      },
-    })
-    return // ⛔️ 中断执行
-  }
-
-  // 3. 无草稿，直接进入
-  await startEditing()
+  // 3. 滚动与聚焦
+  const scroller = scrollerRef.value?.$el as HTMLElement | undefined
+  if (scroller)
+    scroller.scrollTo({ top: 0, behavior: 'smooth' })
+  await nextTick()
+  editTopEditorRef.value?.focus()
 }
 
 // 保存（顶置）

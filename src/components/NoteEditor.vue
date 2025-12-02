@@ -134,41 +134,59 @@ async function focusToEnd() {
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
 
-function loadDraft() {
+function checkAndPromptDraft() {
   if (!props.enableDrafts)
     return
+
   const key = draftStorageKey.value
   if (!key)
     return
 
+  const raw = localStorage.getItem(key)
+  if (!raw)
+    return
+
+  // 解析草稿内容
+  let draftText = ''
   try {
-    const raw = localStorage.getItem(key)
-    if (!raw)
-      return
-    // 兼容两种格式：纯字符串或 JSON 包 content 字段
-    let text = ''
-    try {
-      const obj = JSON.parse(raw)
-      text = typeof obj?.content === 'string' ? obj.content : ''
-    }
-    catch {
-      text = raw
-    }
-    if (text && text !== contentModel.value) {
-      emit('update:modelValue', text)
-      // 如果你用了 autosize，触发一下
-      try {
-        triggerResize?.()
-      }
-      catch {
-        // noop
-      }
-    }
+    const obj = JSON.parse(raw)
+    draftText = typeof obj?.content === 'string' ? obj.content : ''
   }
-  catch (e) {
-    console.warn('[NoteEditor] 读取草稿失败：', e)
+  catch {
+    draftText = raw
+  }
+
+  // 核心判断：只有当【草稿内容】和【当前传入的服务器内容】不一样时，才弹窗
+  // 如果内容一样，直接忽略草稿（或者静默加载）即可，没必要打扰用户
+  if (draftText && draftText !== props.modelValue) {
+    dialog.warning({
+      title: t('notes.draft.title', '提示'),
+      content: t('notes.draft.restore_confirm', '检测到之前的未保存草稿，是否恢复？'),
+      positiveText: t('notes.draft.continue', '恢复草稿'),
+      negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
+      closable: false,
+      onPositiveClick: () => {
+        // 用户选恢复：把草稿写入编辑器
+        emit('update:modelValue', draftText)
+        // 触发一下自动高度调整
+        nextTick(() => {
+          try {
+            triggerResize?.()
+          }
+          catch {
+            // noop
+          }
+        })
+      },
+      onNegativeClick: () => {
+        // 用户选丢弃：清理本地存储
+        clearDraft()
+        // 此时编辑器里已经是 props.modelValue (服务器内容)，不用动
+      },
+    })
   }
 }
+
 // --- 安全触发文件选择 ---
 const imageInputRef = ref<HTMLInputElement | null>(null)
 
@@ -442,7 +460,14 @@ function clearDraft() {
 
 // 初次挂载：尝试恢复
 onMounted(() => {
-  loadDraft()
+  // 旧代码：loadDraft()
+
+  // ✅ 新代码：检查并询问
+  checkAndPromptDraft()
+
+  // (注意：如果是 props.isEditing 为 true 时的 focusToEnd 逻辑保持不变)
+  if (props.isEditing)
+    focusToEnd()
 })
 
 // 内容变化：400ms 节流保存
