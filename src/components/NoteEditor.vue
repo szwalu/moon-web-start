@@ -419,6 +419,8 @@ function saveDraft() {
     // 存 JSON，后续扩展更安全
     const payload = JSON.stringify({ content: contentModel.value || '' })
     localStorage.setItem(key, payload)
+    // 这样外部组件（如 NoteList）就可以通过这个 key 来判断草稿的新旧了
+    localStorage.setItem(`${key}_ts`, String(Date.now()))
   }
   catch (e) {
     console.warn('[NoteEditor] 保存草稿失败：', e)
@@ -431,6 +433,7 @@ function clearDraft() {
     return
   try {
     localStorage.removeItem(key)
+    localStorage.removeItem(`${key}_ts`)
   }
   catch {
     // noop

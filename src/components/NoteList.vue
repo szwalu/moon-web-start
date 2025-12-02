@@ -647,26 +647,45 @@ const editSessionKey = ref(0)
 
 // src/components/NoteList.vue
 
+// src/components/NoteList.vue
+
 async function handleEditTop(note: any) {
   emit('editingStateChange', true)
   editingNoteId.value = null
   expandedNote.value = null
 
-  // 手动计算草稿 Key，规则必须与 computed editTopDraftKey 里的逻辑一致 (`list_edit_${id}`)
+  // 🔥🔥🔥【智能比对逻辑开始】🔥🔥🔥
   const draftKey = `list_edit_${note.id}`
-  try {
-    // 强制移除该笔记在本地的旧草稿
-    // 这样 NoteEditor 组件初始化时，发现没有草稿，就会乖乖读取 :original-content (即服务器的最新内容)
-    localStorage.removeItem(draftKey)
+  const draftTsKey = `${draftKey}_ts` // 对应 Editor 里存的那个 key
+
+  // 1. 获取本地草稿的时间戳
+  const localDraftTs = localStorage.getItem(draftTsKey)
+
+  // 2. 获取服务器笔记的更新时间 (转成毫秒)
+  const serverTime = new Date(note.updated_at).getTime()
+  const draftTime = localDraftTs ? Number(localDraftTs) : 0
+
+  // 3. 开始比对
+  if (localDraftTs) {
+    // 场景 A：服务器的时间 比 草稿时间 还要新
+    // 说明：你在 b 手机改完保存了(10:00)，但 a 手机还留着一个更早的草稿(09:50)
+    // 结果：草稿过期，删掉！
+    if (serverTime > draftTime) {
+      localStorage.removeItem(draftKey)
+      localStorage.removeItem(draftTsKey)
+    }
+    else {
+      // 场景 B：草稿时间 比 服务器时间 新 (或者相等)
+      // 说明：这是你刚才在 a 手机没保存的修改
+      // 结果：保留草稿，NoteEditor 会自动加载它
+    }
   }
-  catch (e) {
-    // 忽略错误
-  }
+  // 🔥🔥🔥【智能比对逻辑结束】🔥🔥🔥
 
   editingNoteTop.value = note
   editTopContent.value = note?.content || ''
 
-  // 触发 key 变化
+  // 触发 key 变化 (重置编辑器)
   editSessionKey.value++
 
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
@@ -676,7 +695,6 @@ async function handleEditTop(note: any) {
   editTopEditorRef.value?.focus()
 }
 
-// 保存（顶置）
 // 保存（顶置）
 function saveEditTop(content: string /* , _weather: string | null */) {
   if (!editingNoteTop.value)
@@ -697,6 +715,7 @@ function saveEditTop(content: string /* , _weather: string | null */) {
     if (key) {
       try {
         localStorage.removeItem(key)
+        localStorage.removeItem(`${key}_ts`)
       }
       catch (err) {
         // 本地存储异常直接忽略，不影响后续逻辑
