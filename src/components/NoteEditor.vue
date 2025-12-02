@@ -157,33 +157,20 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 定义一个“死缠烂打”的聚焦函数
-  // 它可以覆盖弹窗关闭动画的整个生命周期
-  const aggressiveFocus = () => {
+  // 1. 定义一个纯净的同步聚焦函数，不包含 await nextTick
+  // 这样我们可以精确控制它何时执行
+  const simpleFocus = () => {
     const el = textarea.value
-    if (!el)
-      return
-
-    // 定义一组时间点，覆盖 0ms ~ 400ms 的范围
-    // Naive UI 的弹窗动画通常在 250ms - 300ms 左右结束
-    const timePoints = [0, 50, 100, 200, 300, 400]
-
-    timePoints.forEach((delay) => {
-      setTimeout(() => {
-        // 只有当前焦点不在输入框时，才执行聚焦，避免重复闪烁
-        if (document.activeElement !== el) {
-          el.focus()
-          // 确保光标在最后
-          const len = el.value.length
-          try {
-            el.setSelectionRange(len, len)
-          }
-          catch (e) {
-            // 某些情况下 setSelectionRange 可能会抛错，忽略
-          }
-        }
-      }, delay)
-    })
+    if (el) {
+      el.focus()
+      const len = el.value.length
+      try {
+        el.setSelectionRange(len, len)
+      }
+      catch {
+        // noop
+      }
+    }
   }
 
   if (draftText && draftText !== props.modelValue) {
@@ -193,29 +180,34 @@ function checkAndPromptDraft() {
       positiveText: t('notes.draft.continue', '恢复草稿'),
       negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
       closable: false,
-      onPositiveClick: () => {
-        // 恢复草稿
-        emit('update:modelValue', draftText)
 
+      onPositiveClick: () => {
+        // 【情况 1：恢复草稿】
+        // 数据变了，必须等 Vue 更新 DOM，所以用 nextTick
+        emit('update:modelValue', draftText)
         nextTick(() => {
           try {
             triggerResize?.()
           }
-          catch (e) {
-            // ignore
+          catch {
+            // noop
           }
 
-          // 恢复数据会导致重绘，使用 nextTick 后启动连续聚焦
-          aggressiveFocus()
+          // DOM 更新完毕，立即聚焦
+          simpleFocus()
         })
       },
 
       onNegativeClick: () => {
-        // 丢弃草稿
+        // 【情况 2：丢弃草稿】
         clearDraft()
 
-        // 🔥 立即启动连续聚焦，确保在遮罩消失的瞬间抢到焦点
-        aggressiveFocus()
+        // 数据没变，不需要 nextTick。
+        // 关键点：延迟 300ms，避开 Dialog 关闭时的“焦点归还”机制。
+        // 如果时间太短（如 50ms），焦点会被 Dialog 关闭动作抢走。
+        setTimeout(() => {
+          simpleFocus()
+        }, 300)
       },
     })
   }
