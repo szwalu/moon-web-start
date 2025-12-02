@@ -29,6 +29,7 @@ const props = defineProps({
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
+  baseTimestamp: { type: [String, Number], default: 0 },
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
@@ -416,11 +417,19 @@ function saveDraft() {
   if (!key)
     return
   try {
-    // 存 JSON，后续扩展更安全
     const payload = JSON.stringify({ content: contentModel.value || '' })
     localStorage.setItem(key, payload)
-    // 这样外部组件（如 NoteList）就可以通过这个 key 来判断草稿的新旧了
+
+    // 记录“最后编辑时间”（用于判断是否是最新的修改）
     localStorage.setItem(`${key}_ts`, String(Date.now()))
+
+    // 🔥🔥🔥【核心逻辑修改】🔥🔥🔥
+    // 记录“基准时间”：即这份草稿是基于服务器哪个版本衍生的
+    // 只有当本地没有基准记录时（说明是新草稿），才写入当前的 props.baseTimestamp
+    // 如果已经有记录了，千万不要覆盖！这样才能保持“冲突状态”的记忆。
+    const baseKey = `${key}_base`
+    if (!localStorage.getItem(baseKey) && props.baseTimestamp)
+      localStorage.setItem(baseKey, String(new Date(props.baseTimestamp).getTime()))
   }
   catch (e) {
     console.warn('[NoteEditor] 保存草稿失败：', e)
@@ -434,6 +443,9 @@ function clearDraft() {
   try {
     localStorage.removeItem(key)
     localStorage.removeItem(`${key}_ts`)
+
+    // 🔥🔥🔥【新增】清理草稿时，连同基准时间一起清理
+    localStorage.removeItem(`${key}_base`)
   }
   catch {
     // noop

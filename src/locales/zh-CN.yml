@@ -377,6 +377,10 @@ notes:
   search_quick_favorited: 已收藏
   search_advanced: 高级搜索
   search_history_title: 最近搜索
+  conflict_title: 版本冲突
+  conflict_content: 云端内容已更新，但您还有基于旧版本未保存的草稿
+  use_server_version: 使用云端新版 (丢弃草稿)
+  use_local_draft: 继续编辑草稿
 
   # 顶部三个筛选 chip
   search_filter_date: 日期
