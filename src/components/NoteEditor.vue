@@ -146,7 +146,6 @@ function checkAndPromptDraft() {
   if (!raw)
     return
 
-  // 解析草稿内容
   let draftText = ''
   try {
     const obj = JSON.parse(raw)
@@ -156,7 +155,17 @@ function checkAndPromptDraft() {
     draftText = raw
   }
 
-  // 核心判断：只有当【草稿内容】和【当前传入的服务器内容】不一样时，才弹窗
+  // 定义一个不等待 nextTick 的直接聚焦函数
+  const forceFocusNow = () => {
+    const el = textarea.value
+    if (el) {
+      el.focus()
+      // 手动把光标移到最后
+      const len = el.value.length
+      el.setSelectionRange(len, len)
+    }
+  }
+
   if (draftText && draftText !== props.modelValue) {
     dialog.warning({
       title: t('notes.draft.title', '提示'),
@@ -165,10 +174,7 @@ function checkAndPromptDraft() {
       negativeText: t('notes.draft.discard', '丢弃 (使用当前版本)'),
       closable: false,
       onPositiveClick: () => {
-        // 用户选恢复：把草稿写入编辑器
         emit('update:modelValue', draftText)
-
-        // 触发一下自动高度调整
         nextTick(() => {
           try {
             triggerResize?.()
@@ -176,19 +182,20 @@ function checkAndPromptDraft() {
           catch {
             // noop
           }
-          // 恢复后聚焦：nextTick 足够，因为触发了数据更新
-          focusToEnd()
+          focusToEnd() // 恢复数据后需要 nextTick，继续用这个
         })
       },
       onNegativeClick: () => {
-        // 用户选丢弃：清理本地存储
         clearDraft()
 
-        // 🔥 修复点：加一个微小的延时 (50ms)，等待 Dialog 完全关闭/销毁后再聚焦
-        // 如果直接调 focusToEnd，可能会被 Dialog 的关闭动作抢走焦点
-        setTimeout(() => {
-          focusToEnd()
-        }, 200)
+        // 🔥 核心修改：双重聚焦策略
+        // 1. 立即尝试聚焦（抢在弹窗销毁逻辑之前）
+        forceFocusNow()
+
+        // 2. 在浏览器下一帧再次聚焦（兜底，覆盖弹窗关闭后的焦点归还）
+        requestAnimationFrame(() => {
+          forceFocusNow()
+        })
       },
     })
   }
