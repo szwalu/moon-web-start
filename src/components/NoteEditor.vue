@@ -323,7 +323,9 @@ async function onImageChosen(e: Event) {
       content: errorContent,
       positiveText: t('notes.upload.ok'),
       onPositiveClick: () => {
-        focusToEnd()
+        nextTick(() => {
+          focusToEnd()
+        })
       },
       // 核心修复：强制提升层级，防止被输入框遮挡
       style: {
@@ -766,7 +768,9 @@ async function handleAudioFinished(blob: Blob) {
       content: errorContent,
       positiveText: t('notes.ok'),
       onPositiveClick: () => {
-        focusToEnd()
+        nextTick(() => {
+          focusToEnd()
+        })
       },
       // 核心修复：强制提升层级
       style: {
