@@ -327,7 +327,7 @@ async function onImageChosen(e: Event) {
 
     // 1. 设置错误信息
     promptErrorMsg.value = isQuotaError
-      ? t('notes.account.errors.quota_exceeded')
+      ? `${t('notes.account.errors.quota_exceeded_1')}\n${t('notes.account.errors.quota_exceeded_2')}`
       : (err?.message || t('notes.upload.error_content'))
 
     // 2. 设置为“报错模式”并显示弹窗
@@ -752,7 +752,7 @@ async function handleAudioFinished(blob: Blob) {
   catch (err: any) {
     const isQuotaError = err.message && err.message.includes('row-level security policy')
     promptErrorMsg.value = isQuotaError
-      ? t('notes.account.errors.quota_exceeded')
+      ? `${t('notes.account.errors.quota_exceeded_1')}\n${t('notes.account.errors.quota_exceeded_2')}`
       : (err?.message || t('notes.editor.record.upload_failed_content'))
 
     promptMode.value = 'error'

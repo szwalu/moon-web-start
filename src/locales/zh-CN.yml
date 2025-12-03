@@ -536,7 +536,8 @@ notes:
       fetch_notes_count_failed: 获取笔记总数失败
       fetch_total_chars_failed: 获取总字数失败
       signout_failed: 登出时发生错误
-      quota_exceeded: 存储空间不足，无法上传。请删除旧文件后重试
+      quota_exceeded_1: 存储空间不足，无法上传。
+      quota_exceeded_2: 请删除部分旧文件后重试。
     date_format: '{year}年{month}月{day}日'
 
   editor:
