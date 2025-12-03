@@ -7,9 +7,16 @@ import { supabase } from '../utils/supabaseClient'
 const route = useRoute()
 const isFromAuth = computed(() => route.query.from === 'auth')
 
+// [修改 1] 初始化下拉菜单选中值：如果来自 register，默认选中 'applyinvitecode'
+const selectedType = ref(route.query.from === 'register' ? 'applyinvitecode' : '')
+
+// [修改 2] 返回链接逻辑更新
+// 如果来自 auth 页面，或者当前选择了“申请邀请码”，都返回 /auth；否则返回首页
 const backTarget = computed(() => {
-  // ?from=auth 时，返回 /auth，否则返回首页
-  return isFromAuth.value ? '/auth' : '/'
+  if (isFromAuth.value || selectedType.value === 'applyinvitecode')
+    return '/auth'
+
+  return '/'
 })
 
 const { t } = useI18n()
@@ -18,10 +25,7 @@ const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
 
-// [修改 1] 初始化下拉菜单选中值：如果来自 register，默认选中 'applyinvitecode'
-const selectedType = ref(route.query.from === 'register' ? 'applyinvitecode' : '')
-
-// [修改 2] 计算邮箱是否必填
+// [修改 3] 计算邮箱是否必填
 // 逻辑：如果不是从Auth进入 且 选择了'applyinvitecode'，则必须填写邮箱
 const isEmailRequired = computed(() => {
   return !isFromAuth.value && selectedType.value === 'applyinvitecode'
@@ -59,7 +63,7 @@ async function handleSubmit() {
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    // [修改 3] 逻辑校验
+    // 逻辑校验
     // 如果前端 required 属性被绕过，这里做二次拦截
     if (isEmailRequired.value && !email)
       throw new Error('请填写联系邮箱')
@@ -83,8 +87,7 @@ async function handleSubmit() {
 
     successMessage.value = `✅ ${t('form.success')}`
     form.value.reset()
-    // 重置 selectedType，但如果仍在 register 来源页面，用户可能希望保持默认，
-    // 不过通常提交后重置为空或者保持原样皆可，这里保持清空逻辑以防误操作，或者你可以选择不重置
+    // 重置 selectedType
     selectedType.value = ''
 
     setTimeout(() => {
@@ -94,7 +97,6 @@ async function handleSubmit() {
   }
   catch (err) {
     console.error(err)
-    // 如果是自定义错误信息（如邮箱为空），优先显示
     errorMessage.value = err instanceof Error && err.message !== '邮件发送失败'
       ? `❌ ${err.message}`
       : `❌ ${t('form.error')}`
