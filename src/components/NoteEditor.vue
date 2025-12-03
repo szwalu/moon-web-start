@@ -3074,4 +3074,12 @@ function handleBeforeInput(e: InputEvent) {
   height: auto;
   font-size: 14px;
 }
+
+.draft-prompt-content.text-left {
+  text-align: left;
+  white-space: pre-wrap;   /* 👈 核心：有了这行，\n 才会变成换行 */
+  word-break: break-word;
+  line-height: 1.6;
+  padding: 0 0.2rem;
+}
 </style>

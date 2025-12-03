@@ -538,7 +538,8 @@ notes:
       fetch_notes_count_failed: ノート総数の取得に失敗しました
       fetch_total_chars_failed: 総語数を取得できませんでした
       signout_failed: サインアウト中にエラーが発生しました
-      quota_exceeded: ストレージ容量が不足しています。不要なファイルを削除してください
+      quota_exceeded_1: ストレージ容量が不足しています。
+      quota_exceeded_2: 不要なファイルを削除してください
     date_format: '{year}年{month}月{day}日'
 
   editor:
