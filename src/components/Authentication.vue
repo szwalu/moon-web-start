@@ -110,10 +110,6 @@ async function handleSubmitAuth() {
     loading.value = false
   }
 }
-
-function goHomeAndRefresh() {
-  router.push('/').then(() => window.location.reload())
-}
 </script>
 
 <template>
@@ -142,8 +138,12 @@ function goHomeAndRefresh() {
           required
         >
       </label>
+
       <label v-if="mode === 'register'">
         {{ $t('auth.invite_code') }}
+        <span style="font-size: 13px; font-weight: normal; margin-left: 8px;">
+          👉 <a href="/apply?from=register" target="_blank" style="color: #00b386; text-decoration: underline; cursor: pointer;">点击这里</a> 申请邀请码
+        </span>
         <input v-model="inviteCode" type="text" :placeholder="$t('auth.invite_code_placeholder')" required>
       </label>
       <template v-if="mode === 'forgotPassword' && resetEmailSent">
@@ -172,13 +172,6 @@ function goHomeAndRefresh() {
       <p v-else class="toggle">
         <span>{{ $t('auth.prompt_to_login') }}</span>
         <a href="#" @click.prevent="setMode('login')">{{ t('auth.login') }}</a>
-      </p>
-      <p class="text-center leading-relaxed text-gray-500" style="font-size: 13px;">
-        {{ t('auth.Log_in_again_prefix') }}
-        <a href="/" class="cursor-pointer text-green-600 underline" @click.prevent="goHomeAndRefresh">
-          {{ t('auth.Log_in_again_link') }}
-        </a>
-        {{ t('auth.Log_in_again_suffix') }}
       </p>
     </form>
   </div>

@@ -18,10 +18,10 @@ const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
 
-// [修改 1] 新增：用于追踪下拉菜单选中的值
-const selectedType = ref('')
+// [修改 1] 初始化下拉菜单选中值：如果来自 register，默认选中 'applyinvitecode'
+const selectedType = ref(route.query.from === 'register' ? 'applyinvitecode' : '')
 
-// [修改 2] 新增：计算邮箱是否必填
+// [修改 2] 计算邮箱是否必填
 // 逻辑：如果不是从Auth进入 且 选择了'applyinvitecode'，则必须填写邮箱
 const isEmailRequired = computed(() => {
   return !isFromAuth.value && selectedType.value === 'applyinvitecode'
@@ -59,8 +59,8 @@ async function handleSubmit() {
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    // [修改 3] 移除原本的“不做非空校验”注释，改为逻辑校验
-    // 如果前端 required 属性被绕过，这里做二次拦截（可选，html5 required 通常足够）
+    // [修改 3] 逻辑校验
+    // 如果前端 required 属性被绕过，这里做二次拦截
     if (isEmailRequired.value && !email)
       throw new Error('请填写联系邮箱')
 
@@ -83,7 +83,8 @@ async function handleSubmit() {
 
     successMessage.value = `✅ ${t('form.success')}`
     form.value.reset()
-    // 重置 selectedType 防止样式残留
+    // 重置 selectedType，但如果仍在 register 来源页面，用户可能希望保持默认，
+    // 不过通常提交后重置为空或者保持原样皆可，这里保持清空逻辑以防误操作，或者你可以选择不重置
     selectedType.value = ''
 
     setTimeout(() => {
@@ -167,7 +168,7 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
-/* 样式保持不变，此处省略以节省空间，直接使用原来的 CSS 即可 */
+/* 样式保持不变 */
 /* 顶部安全区容器：固定视口高度，内部滚动 */
 .page-safearea {
   height: 100vh;
