@@ -2180,7 +2180,10 @@ function handleBeforeInput(e: InputEvent) {
             {{ promptMode === 'draft' ? t('notes.draft.title') : t('notes.upload.error_title') }}
           </div>
 
-          <div class="draft-prompt-content">
+          <div
+            class="draft-prompt-content"
+            :style="promptMode === 'error' ? 'white-space: pre-wrap; text-align: center; line-height: 1.6;' : ''"
+          >
             <template v-if="promptMode === 'draft'">
               {{ t('notes.draft.restore_confirm') }}
             </template>
@@ -3073,13 +3076,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-
-.draft-prompt-content.text-left {
-  text-align: left;
-  white-space: pre-wrap;   /* 👈 核心：有了这行，\n 才会变成换行 */
-  word-break: break-word;
-  line-height: 1.6;
-  padding: 0 0.2rem;
 }
 </style>
