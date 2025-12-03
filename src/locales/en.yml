@@ -201,7 +201,7 @@ auth:
   account_title: My Account
   account_email_label: Account Email
   account_last_login_label: Last Login
-  email: Email
+  email: account number
   password: Password
   prompt_to_register: Don’t have an account?
   Log_in_again_prefix: 'If you’ve logged in before,'
@@ -211,7 +211,7 @@ auth:
   Log_in_again_setting: Go to Settings
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
-  email_placeholder: Please enter your email address
+  email_placeholder: Please enter your account number
   forgot_password: Forgot Password?
   confirm: Confirm
   cancel: Cancel

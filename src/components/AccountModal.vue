@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-
-// 1. 引入 computed
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
-import { useDialog } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS } from '@/utils/cacheKeys'
 
@@ -19,6 +17,7 @@ const emit = defineEmits(['close'])
 
 const { t } = useI18n()
 const dialog = useDialog()
+const messageHook = useMessage()
 
 const journalingDays = ref(0)
 const journalingYears = ref(0)
@@ -29,21 +28,29 @@ const hasFetched = ref(false)
 const totalCount = ref<number | null>(null)
 const totalChars = ref<number | null>(null)
 
-// --- 新增：存储空间状态 ---
+// --- 存储空间状态 ---
 const storageUsedBytes = ref(0)
-const storageLimitBytes = ref(104857600) // 默认 100MB (兜底显示)
+const storageLimitBytes = ref(104857600) // 默认 100MB
 
-// --- 新增：计算属性 (MB转换 & 百分比) ---
+// --- 密码修改相关的状态 ---
+const showPwdModal = ref(false)
+const pwdLoading = ref(false)
+const pwdForm = reactive({
+  old: '',
+  new: '',
+  confirm: '',
+})
+
+// --- 计算属性 (MB转换 & 百分比) ---
 const storageUsedMB = computed(() => (storageUsedBytes.value / 1024 / 1024).toFixed(2))
 const storageLimitMB = computed(() => (storageLimitBytes.value / 1024 / 1024).toFixed(0))
 const storagePercent = computed(() => {
   if (storageLimitBytes.value === 0)
     return 0
   const pct = (storageUsedBytes.value / storageLimitBytes.value) * 100
-  return Math.min(100, Math.max(0, pct)) // 限制在 0-100 之间
+  return Math.min(100, Math.max(0, pct))
 })
 
-// 使用多语言的日期格式
 function formatDateI18n(d: Date) {
   return t('notes.account.date_format', {
     year: d.getFullYear(),
@@ -158,7 +165,7 @@ async function fetchTotalChars() {
   }
 }
 
-// --- 新增：查询存储空间 ---
+// 查询存储空间
 async function fetchStorageStats() {
   if (!props.user)
     return
@@ -169,13 +176,11 @@ async function fetchStorageStats() {
       .eq('id', props.user.id)
       .single()
 
-    // 如果没有查到数据（error code PGRST116），说明用户还没上传过文件，保持默认 0 即可
     if (error && error.code !== 'PGRST116')
       throw error
 
     if (data) {
       storageUsedBytes.value = data.storage_used_bytes || 0
-      // 如果数据库里有设置 limit 就用数据库的，否则用默认 100MB
       storageLimitBytes.value = data.storage_limit_bytes || 104857600
     }
   }
@@ -190,7 +195,7 @@ watch(() => props.show, (visible) => {
     fetchFirstNoteAndStreak()
     fetchNotesCount()
     fetchTotalChars()
-    fetchStorageStats() // 2. 调用新函数
+    fetchStorageStats()
     hasFetched.value = true
   }
 })
@@ -208,6 +213,7 @@ function openLogoutConfirm() {
   })
 }
 
+// --- 修改点：登出/清理逻辑 ---
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
@@ -222,12 +228,113 @@ async function doSignOut() {
       if (key.startsWith(CACHE_KEYS.TAG_PREFIX) || key.startsWith(CACHE_KEYS.SEARCH_PREFIX))
         localStorage.removeItem(key)
     })
-    window.location.assign('/')
+
+    // [修改]：跳转到 /auth (登录界面) 而不是首页 /
+    window.location.assign('/auth')
   }
   catch (e) {
     console.error(t('notes.account.errors.signout_failed'), e)
-    window.location.assign('/')
+    // [修改]：异常情况下也跳转到 /auth
+    window.location.assign('/auth')
   }
+}
+
+function openPwdModal() {
+  pwdForm.old = ''
+  pwdForm.new = ''
+  pwdForm.confirm = ''
+  showPwdModal.value = true
+}
+
+function closePwdModal() {
+  showPwdModal.value = false
+}
+
+async function handleUpdatePassword() {
+  if (!pwdForm.old || !pwdForm.new || !pwdForm.confirm) {
+    messageHook.warning('请填写所有密码字段')
+    return
+  }
+  if (pwdForm.new.length < 6) {
+    messageHook.warning('新密码至少需要 6 位')
+    return
+  }
+  if (pwdForm.new !== pwdForm.confirm) {
+    messageHook.error('两次输入的新密码不一致')
+    return
+  }
+
+  pwdLoading.value = true
+
+  try {
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: props.email,
+      password: pwdForm.old,
+    })
+
+    if (signInError)
+      throw new Error('旧密码错误，请检查')
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: pwdForm.new,
+    })
+
+    if (updateError)
+      throw updateError
+
+    messageHook.success('密码修改成功，即将跳转登录...')
+
+    closePwdModal()
+    // 延时后调用 doSignOut，现在 doSignOut 会跳到 /auth
+    setTimeout(() => {
+      doSignOut()
+    }, 1500)
+  }
+  catch (err: any) {
+    console.error(err)
+    messageHook.error(err.message || '修改失败，请重试')
+  }
+  finally {
+    pwdLoading.value = false
+  }
+}
+
+function handleForgotOldPwd() {
+  dialog.warning({
+    title: '需要重新登录',
+    content: '找回密码需要退出当前帐号，并跳转至登录页面的“忘记密码”入口。是否确认退出？',
+    positiveText: '确认退出',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      messageHook.loading('正在跳转...')
+
+      try {
+        // 1. 强制登出 Supabase
+        await supabase.auth.signOut()
+
+        // 2. 清理本地缓存
+        localStorage.removeItem('last_known_user_id_v1')
+        localStorage.removeItem('pinned_tags_v1')
+        localStorage.removeItem('tag_icons_v1')
+        localStorage.removeItem(CACHE_KEYS.HOME)
+        localStorage.removeItem(CACHE_KEYS.HOME_META)
+        localStorage.removeItem('new_note_content_draft')
+
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith(CACHE_KEYS.TAG_PREFIX) || key.startsWith(CACHE_KEYS.SEARCH_PREFIX))
+            localStorage.removeItem(key)
+        })
+
+        // 3. 强制跳转到带参数的 auth 页面
+        window.location.href = '/auth?mode=forgot'
+      }
+      catch (e) {
+        console.error(e)
+        // 即使出错也要强制跳转
+        window.location.href = '/auth?mode=forgot'
+      }
+    },
+  })
 }
 </script>
 
@@ -248,6 +355,11 @@ async function doSignOut() {
           <div class="info-item">
             <span class="info-label">{{ t('notes.account.email_label') }}</span>
             <span class="info-value">{{ email }}</span>
+          </div>
+
+          <div class="info-item">
+            <span class="info-label">{{ t('auth.password') }}</span>
+            <button class="link-btn" @click="openPwdModal">修改</button>
           </div>
 
           <div class="info-item">
@@ -306,6 +418,57 @@ async function doSignOut() {
       </div>
     </div>
   </Transition>
+
+  <Transition name="fade">
+    <div v-if="showPwdModal" class="modal-overlay pwd-overlay">
+      <div class="modal-content pwd-content">
+        <div class="pwd-header">
+          <h3>修改密码</h3>
+          <button class="close-button" @click="closePwdModal">&times;</button>
+        </div>
+
+        <p class="pwd-tip">修改后各平台都需重新登录，请确认笔记都已完成同步</p>
+
+        <div class="pwd-form">
+          <input
+            v-model="pwdForm.old"
+            type="password"
+            class="pwd-input"
+            placeholder="旧密码"
+          >
+          <input
+            v-model="pwdForm.new"
+            type="password"
+            class="pwd-input"
+            placeholder="新密码（至少 6 位）"
+          >
+          <input
+            v-model="pwdForm.confirm"
+            type="password"
+            class="pwd-input"
+            placeholder="再次输入新密码"
+          >
+        </div>
+
+        <div class="pwd-actions">
+          <span class="forgot-link" @click="handleForgotOldPwd">忘记旧密码</span>
+          <div class="pwd-btns">
+            <button class="btn-grey pwd-btn-item" @click="closePwdModal">
+              取消
+            </button>
+
+            <button
+              class="btn-green pwd-btn-item"
+              :disabled="pwdLoading"
+              @click="handleUpdatePassword"
+            >
+              {{ pwdLoading ? '提交中...' : '确定' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -322,6 +485,10 @@ async function doSignOut() {
   z-index: 1000;
 }
 
+.pwd-overlay {
+  z-index: 1010;
+}
+
 .modal-content {
   background: white;
   padding: 2rem;
@@ -334,6 +501,101 @@ async function doSignOut() {
 .dark .modal-content {
   background: #2a2a2a;
   color: #e0e0e0;
+}
+
+.pwd-content {
+    max-width: 380px;
+    padding: 1.5rem;
+}
+
+.pwd-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.pwd-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.pwd-tip {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+}
+.dark .pwd-tip {
+    color: #999;
+}
+
+.pwd-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pwd-input {
+    width: 100%;
+    padding: 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 15px;
+    outline: none;
+    background: #fff;
+    color: #333;
+    box-sizing: border-box;
+}
+.pwd-input:focus {
+    border-color: #00b386;
+}
+.dark .pwd-input {
+    background: #333;
+    border-color: #555;
+    color: #eee;
+}
+.dark .pwd-input:focus {
+    border-color: #00b386;
+}
+
+.pwd-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pwd-btns {
+    display: flex;
+    gap: 2rem;
+}
+
+.pwd-btn-item {
+    width: 130px;    /* 这里控制宽度：数值越大，按钮越宽 */
+    padding: 0.6rem 0; /* 上下保留一点内边距 */
+}
+
+.forgot-link {
+    font-size: 13px;
+    color: #4a90e2;
+    cursor: pointer;
+}
+.dark .forgot-link {
+    color: #64b5f6;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    color: #00b386;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    text-decoration: underline;
+}
+.dark .link-btn {
+    color: #2dd4bf;
 }
 
 .modal-header {
@@ -403,17 +665,15 @@ async function doSignOut() {
   color: #f0f0f0;
 }
 
-/* --- 新增：存储部分专用样式 --- */
 .storage-section {
   padding-bottom: 0.5rem;
-  border-bottom: 1px dashed #eee; /* 加个虚线分割 */
+  border-bottom: 1px dashed #eee;
 }
 .dark .storage-section {
   border-bottom-color: #444;
 }
 
 .info-value-simple {
-  /* 比 info-value 简单的纯文本样式 */
   color: #111;
   font-weight: 600;
   font-size: 13px;
@@ -436,11 +696,9 @@ async function doSignOut() {
 
 .progress-fill {
   height: 100%;
-  /* background-color 在行内样式里控制 */
   border-radius: 4px;
   transition: width 0.4s ease, background-color 0.3s ease;
 }
-/* --- 结束新增样式 --- */
 
 .modal-footer {
   display: grid;
@@ -466,6 +724,10 @@ async function doSignOut() {
 }
 .btn-green:hover {
   background-color: #009a74;
+}
+.btn-green:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .btn-grey {

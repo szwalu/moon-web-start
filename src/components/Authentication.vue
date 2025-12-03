@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+
+// 引入 onMounted (可选，但在 setup 中直接执行也可以)
+import { useRoute, useRouter } from 'vue-router'
+
+// [修改 1] 引入 useRoute
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
@@ -9,12 +13,19 @@ import { useAutoSave } from '@/composables/useAutoSave'
 
 // --- 初始化 & 状态 ---
 const router = useRouter()
+const route = useRoute() // [修改 2] 获取当前路由对象
 const { t } = useI18n()
 const messageHook = useMessage()
 const authStore = useAuthStore()
 const { autoLoadData } = useAutoSave()
 
+// 默认是 login
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
+
+// [修改 3] 检测 URL 参数，如果是 ?mode=forgot，则自动切换到忘记密码模式
+if (route.query.mode === 'forgot')
+  mode.value = 'forgotPassword'
+
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
@@ -171,7 +182,7 @@ async function handleSubmitAuth() {
 </template>
 
 <style scoped>
-/* 从 auth.vue 中复制过来的认证表单专用样式 */
+/* 样式保持不变 */
 h1 {
   text-align: center;
   margin-bottom: 2rem;

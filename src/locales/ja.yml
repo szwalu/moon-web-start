@@ -200,7 +200,7 @@ auth:
   account_title: マイアカウント
   account_email_label: メールアドレス
   account_last_login_label: 最終ログイン
-  email: メール
+  email: 口座番号
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
   Log_in_again_prefix: 以前ログインしたことがある場合、
@@ -210,7 +210,7 @@ auth:
   Log_in_again_setting: 設定画面へ
   prompt_to_login: すでにアカウントがありますか？
   confirm_password: パスワード確認
-  email_placeholder: メールアドレスを入力してください
+  email_placeholder: アカウントを入力してください
   forgot_password: パスワードを忘れましたか？
   confirm: 確認
   cancel: キャンセル

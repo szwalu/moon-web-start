@@ -107,7 +107,7 @@ messages:
   warnCustomize: 请先将网站偏好设置为“自定义”
   warnInvalidImport: 请导入合法的数据文件
   warnResetData: 数据重置后无法恢复，确认要重置数据吗？
-  warn_logout_to_reset: 请先登出您的账户，再进行重置数据操作。
+  warn_logout_to_reset: 请先登出您的帐户，再进行重置数据操作。
   exported: 已导出~
   imported: 导入成功
   reset: 已重置~
@@ -133,7 +133,7 @@ navbar:
   about: 关于
   auth: 注册/登录
   logout: 登出
-  account: 我的账户
+  account: 我的帐户
   cloud_Notes: 星云笔记
 
 footer:
@@ -197,20 +197,20 @@ auth:
   register: 注册
   loading: 处理中...
   logout: 登出系统
-  account_title: 我的账户
-  account_email_label: 账户邮箱
+  account_title: 我的帐户
+  account_email_label: 帐户邮箱
   account_last_login_label: 上次登录
-  email: 邮箱
+  email: 帐号
   password: 密码
-  prompt_to_register: 还没有账号？
+  prompt_to_register: 还没有帐号？
   Log_in_again_prefix: 若曾经登陆，
   Log_in_again_link: 👉️点这里
   Log_in_again_suffix: 刷新重新登陆
   Log_in_again_link2: 👉️点这里
   Log_in_again_setting: 到设置界面
-  prompt_to_login: 已有账号？
+  prompt_to_login: 已有帐号？
   confirm_password: 确认密码
-  email_placeholder: 请输入您的邮箱地址
+  email_placeholder: 请输入您的帐号
   forgot_password: 忘记密码？
   confirm: 确定
   cancel: 取消
@@ -256,7 +256,7 @@ auth:
     passwords_do_not_match: ❌ 两次输入的密码不一致！
     reset_success: 重置密码邮件已发送，请前往邮箱查收。
     reset_failed: 发送失败
-    enter_email: 请输入您的邮箱地址
+    enter_email: 请输入您的帐号
     enter_registered_email: 请输入您的注册邮箱：
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
     no_backup_yet: 暂无备份
@@ -518,8 +518,8 @@ notes:
   total_storage: 存储空间
 
   account:
-    title: 我的账户
-    email_label: 邮箱
+    title: 我的帐户
+    email_label: 帐号
     first_note_created_at: 第一条笔记创建于
     streak_title: 您已坚持记录
     streak_years_days: '{years} 年 {days} 天'
@@ -674,7 +674,7 @@ notes:
     s9_i2_tail: ：主菜单点「设置」-「「导出笔记」，选择日期范围后导出为MD格式；单次最多 1500 条。
 
     s10_title: 10) 登录与设置
-    s10_i1: 主菜单可打开「设置」-「我的账户」查看账号信息与统计。
+    s10_i1: 主菜单可打开「设置」-「我的帐户」查看帐号信息与统计。
     s10_i2: 在「设置」里可调整字体等偏好及导出笔记等。
 
     s11_title: 11) 离线与缓存
