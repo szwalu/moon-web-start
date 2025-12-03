@@ -196,72 +196,88 @@ about:
 auth:
   login: Login
   register: Register
-  loading: Processing...
+  loading: Loading...
   logout: Logout
   account_title: My Account
-  account_email_label: Account Email
+  account_email_label: Email
   account_last_login_label: Last Login
-  email: account number
+  email: Account
   password: Password
-  prompt_to_register: Don’t have an account?
-  Log_in_again_prefix: 'If you’ve logged in before,'
-  Log_in_again_link: 👉 Click here
-  Log_in_again_suffix: to refresh and log in again
-  Log_in_again_link2: 👉 Click here
-  Log_in_again_setting: Go to Settings
+  prompt_to_register: No account yet?
+  Log_in_again_prefix: 'If logged in before, '
+  Log_in_again_link: 👉️Click here
+  Log_in_again_suffix: ' to refresh login'
+  Log_in_again_link2: 👉️Click here
+  Log_in_again_setting: ' to settings'
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
-  email_placeholder: Please enter your account number
+  email_placeholder: Enter your account
   forgot_password: Forgot Password?
   confirm: Confirm
   cancel: Cancel
   return: Return
   reset_password: Reset Password
-  invalid_link: Password reset link is invalid or expired. Please request again.
-  enter_and_confirm: Please enter and confirm a new password.
+  invalid_link: The reset link is invalid or expired. Please request a new one.
+  enter_and_confirm: Please enter and confirm your new password.
   mismatch: Passwords do not match.
   reset_failed: Reset failed
-  reset_success: Password reset successfully. Redirecting in 2 seconds...
+  reset_success: Password reset successfully. Redirecting to home in 2s...
   enter_new_password: Enter new password
   confirm_new_password: Confirm new password
   submitting: Submitting...
-  submit_new_password: Submit New Password
+  submit_new_password: Submit Password
   account_last_backup_label: Last Backup
   return_home: Return Home
-  please_login: Please log in to save data in real time!
-  info_label: Notes
+  please_login: Login to save data in real-time!
+  info_label: Memo
   note_placeholder: Write something...
   save: Save
   insert_emoji: Insert Emoji
-  saved_message: Note saved
-  last_saved: Last Saved
-  session_restore_error: 'Cannot restore session, please log in again'
-  session_refresh_error: 'Session refresh failed, please log in again'
+  saved_message: Memo saved
+  last_saved: Last saved
+  session_restore_error: Cannot restore session, please login again.
+  session_refresh_error: Session refresh failed, please login again.
   invite_code: Invite Code
   invite_code_placeholder: Enter invite code
-  password_placeholder: Please enter password
-  login_password_placeholder: Please enter password
-  session_expired: 'Session expired, please log in again'
-  update_failed: Update failed due to network issues
-  insert_failed_create_note: 'Network error, failed to create note'
+  password_placeholder: Enter password
+  login_password_placeholder: Enter password
+  session_expired: Session expired, please login again.
+  update_failed: Network error, update failed
+  insert_failed_create_note: Network error, cannot create note
   Calendar: Calendar
   trash: Trash
-  go_to_links: Go to Sites
+  go_to_links: Go to Links
   back_to_top: Back to Top
+  change: Change
+  change_password_title: Change Password
+  change_password_tip: You will need to log in again on all devices. Please ensure notes are synced.
+  old_password_placeholder: Old Password
+  new_password_placeholder: New Password (min 6 chars)
+  confirm_new_password_placeholder: Confirm New Password
+  forgot_old_password: Forgot old password
+  relogin_required_title: Re-login Required
+  relogin_required_content: Resetting password requires logging out and redirecting to the "Forgot Password" page. Confirm?
+  confirm_logout: Confirm Logout
+  redirecting: Redirecting...
   messages:
     check_email_for_verification: ✅ Registration successful! Please check your inbox (including spam) to verify your email.
-    check_email_or_login: This email may already be registered. Check inbox (including spam) or try logging in directly.
-    user_already_registered: ❌ Email already registered. Please log in or reset password.
-    email_not_confirmed: ❌ Please verify your email first.
+    check_email_or_login: Email might be registered. Check your inbox to verify or try logging in.
+    user_already_registered: ❌ Email already registered. Please login or reset password.
+    email_not_confirmed: ❌ Please confirm your email first.
     operation_failed: ❌ Operation failed.
     passwords_do_not_match: ❌ Passwords do not match!
-    reset_success: Password reset email sent. Check your inbox.
+    reset_success: Reset email sent. Please check your inbox.
     reset_failed: Send failed
-    enter_email: Please enter your email
-    enter_registered_email: 'Please enter your registered email:'
-    reset_success_redirect: ✅ Password reset successful! Redirecting to login page...
+    enter_email: Please enter your account
+    enter_registered_email: 'Enter your registered email:'
+    reset_success_redirect: ✅ Password reset successful! Redirecting to login...
     no_backup_yet: No backup yet
     invalid_invite_code: Invalid invite code
+    fill_all_fields: Please fill in all password fields
+    password_too_short: New password must be at least 6 characters
+    old_password_wrong: Old password incorrect
+    change_password_success: Password changed successfully. Redirecting to login...
+    change_password_failed: Change failed, please try again
 
 autoSave:
   restored: 'Welcome, {email}, data restored ✨'

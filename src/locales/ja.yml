@@ -200,67 +200,85 @@ auth:
   account_title: マイアカウント
   account_email_label: メールアドレス
   account_last_login_label: 最終ログイン
-  email: 口座番号
+  email: アカウント
   password: パスワード
   prompt_to_register: アカウントをお持ちでないですか？
   Log_in_again_prefix: 以前ログインしたことがある場合、
-  Log_in_again_link: 👉 こちらをクリック
+  Log_in_again_link: 👉️ここをクリック
   Log_in_again_suffix: して再ログイン
-  Log_in_again_link2: 👉 こちらをクリック
-  Log_in_again_setting: 設定画面へ
-  prompt_to_login: すでにアカウントがありますか？
+  Log_in_again_link2: 👉️ここをクリック
+  Log_in_again_setting: 設定へ
+  prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワード確認
   email_placeholder: アカウントを入力してください
-  forgot_password: パスワードを忘れましたか？
-  confirm: 確認
+  forgot_password: パスワードをお忘れですか？
+  confirm: 確定
   cancel: キャンセル
   return: 戻る
-  reset_password: パスワードをリセット
-  invalid_link: リンクが無効または期限切れです。再度リクエストしてください。
-  enter_and_confirm: 新しいパスワードを入力して確認してください。
+  reset_password: パスワード再設定
+  invalid_link: リンクが無効か期限切れです。再申請してください。
+  enter_and_confirm: 新しいパスワードを入力・確認してください。
   mismatch: パスワードが一致しません。
-  reset_failed: リセット失敗
-  reset_success: パスワードをリセットしました。2秒後にホームへ移動します...
-  enter_new_password: 新しいパスワードを入力
-  confirm_new_password: もう一度入力
+  reset_failed: 再設定失敗
+  reset_success: 再設定完了。2秒後にホームへ移動します...
+  enter_new_password: 新しいパスワード
+  confirm_new_password: 新しいパスワード（確認）
   submitting: 送信中...
-  submit_new_password: 新しいパスワードを送信
+  submit_new_password: パスワードを送信
   account_last_backup_label: 最終バックアップ
-  return_home: ホームに戻る
-  please_login: ログインするとリアルタイム保存が可能です！
+  return_home: ホームへ戻る
+  please_login: ログインしてデータをリアルタイム保存！
   info_label: メモ
-  note_placeholder: 何か書いてください...
+  note_placeholder: 何か書く...
   save: 保存
   insert_emoji: 絵文字を挿入
   saved_message: メモを保存しました
-  last_saved: 前回の保存
-  session_restore_error: セッションを復元できません。再ログインしてください
-  session_refresh_error: セッション更新に失敗しました。再ログインしてください
+  last_saved: 最終保存
+  session_restore_error: セッションを復元できません。再ログインしてください。
+  session_refresh_error: セッション更新に失敗しました。再ログインしてください。
   invite_code: 招待コード
-  invite_code_placeholder: 招待コードを入力してください
-  password_placeholder: のパスワードを入力
+  invite_code_placeholder: 招待コードを入力
+  password_placeholder: パスワードを入力
   login_password_placeholder: パスワードを入力
-  session_expired: セッションが期限切れです。再ログインしてください
-  update_failed: ネットワークエラーにより更新に失敗しました
-  insert_failed_create_note: ネットワークエラーで新しいメモを作成できません
+  session_expired: セッションが切れました。再ログインしてください。
+  update_failed: ネットワークエラー、更新失敗
+  insert_failed_create_note: ネットワークエラー、作成失敗
   Calendar: カレンダー
   trash: ゴミ箱
-  go_to_links: リンクページへ
+  go_to_links: リンク集へ
   back_to_top: トップへ戻る
+  # --- 追加部分 ---
+  change: 変更
+  change_password_title: パスワード変更
+  change_password_tip: 変更後はすべての端末で再ログインが必要です。ノートの同期を確認してください。
+  old_password_placeholder: 旧パスワード
+  new_password_placeholder: 新パスワード（6文字以上）
+  confirm_new_password_placeholder: 新パスワード（確認用）
+  forgot_old_password: 旧パスワードをお忘れの場合
+  relogin_required_title: 再ログインが必要です
+  relogin_required_content: パスワード再設定にはログアウトが必要です。「パスワードを忘れた場合」ページへ移動しますか？
+  confirm_logout: ログアウトして移動
+  redirecting: 移動中...
   messages:
-    check_email_for_verification: ✅ 登録成功！受信箱（迷惑メールを含む）で確認メールをご覧ください。
-    check_email_or_login: このメールはすでに登録済みの可能性があります。受信箱を確認するかログインしてください。
-    user_already_registered: ❌ このメールはすでに登録されています。ログインまたはパスワードリセットを行ってください。
-    email_not_confirmed: ❌ メールを確認してください。
+    check_email_for_verification: ✅ 登録成功！メールを確認して認証を完了してください。
+    check_email_or_login: 登録済みメールの可能性があります。受信箱を確認するか、ログインしてください。
+    user_already_registered: ❌ このメールは登録済みです。ログインまたはパスワード再設定を行ってください。
+    email_not_confirmed: ❌ まずメール認証を完了してください。
     operation_failed: ❌ 操作に失敗しました。
     passwords_do_not_match: ❌ パスワードが一致しません！
-    reset_success: パスワードリセットメールを送信しました。メールを確認してください。
-    reset_failed: 送信に失敗しました
-    enter_email: メールアドレスを入力してください
-    enter_registered_email: '登録済みメールアドレスを入力してください:'
-    reset_success_redirect: ✅ パスワードをリセットしました！ログインページへ移動します...
+    reset_success: 再設定メールを送信しました。受信箱を確認してください。
+    reset_failed: 送信失敗
+    enter_email: アカウントを入力してください
+    enter_registered_email: 登録メールアドレスを入力：
+    reset_success_redirect: ✅ パスワード再設定成功！ログイン画面へ移動します...
     no_backup_yet: バックアップなし
-    invalid_invite_code: 無効な招待コードです
+    invalid_invite_code: 無効な招待コード
+    # --- 追加メッセージ ---
+    fill_all_fields: すべてのパスワード欄を入力してください
+    password_too_short: 新パスワードは6文字以上必要です
+    old_password_wrong: 旧パスワードが間違っています
+    change_password_success: パスワード変更成功。ログイン画面へ移動します...
+    change_password_failed: 変更失敗。もう一度お試しください
 
 autoSave:
   restored: 'ようこそ {email} さん、データを復元しました ✨'

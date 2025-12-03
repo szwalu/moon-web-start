@@ -146,7 +146,14 @@ async function handleSubmitAuth() {
       <label v-if="mode === 'register'">
         {{ $t('auth.invite_code') }}
         <span style="font-size: 13px; font-weight: normal; margin-left: 8px;">
-          👉 <a href="/apply?from=register" target="_blank" style="color: #00b386; text-decoration: underline; cursor: pointer;">点击这里</a> 申请邀请码
+          <a
+            href="/apply?from=register"
+            target="_blank"
+            style="color: #00b386; text-decoration: underline; cursor: pointer;"
+          >
+            {{ $t('auth.Log_in_again_link') }}
+          </a>
+          {{ $t('form.options.applyinvitecode') }}
         </span>
         <input v-model="inviteCode" type="text" :placeholder="$t('auth.invite_code_placeholder')" required>
       </label>

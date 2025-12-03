@@ -213,7 +213,7 @@ function openLogoutConfirm() {
   })
 }
 
-// --- 修改点：登出/清理逻辑 ---
+// --- 登出/清理逻辑 ---
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
@@ -229,12 +229,10 @@ async function doSignOut() {
         localStorage.removeItem(key)
     })
 
-    // [修改]：跳转到 /auth (登录界面) 而不是首页 /
     window.location.assign('/auth')
   }
   catch (e) {
     console.error(t('notes.account.errors.signout_failed'), e)
-    // [修改]：异常情况下也跳转到 /auth
     window.location.assign('/auth')
   }
 }
@@ -252,15 +250,15 @@ function closePwdModal() {
 
 async function handleUpdatePassword() {
   if (!pwdForm.old || !pwdForm.new || !pwdForm.confirm) {
-    messageHook.warning('请填写所有密码字段')
+    messageHook.warning(t('auth.messages.fill_all_fields'))
     return
   }
   if (pwdForm.new.length < 6) {
-    messageHook.warning('新密码至少需要 6 位')
+    messageHook.warning(t('auth.messages.password_too_short'))
     return
   }
   if (pwdForm.new !== pwdForm.confirm) {
-    messageHook.error('两次输入的新密码不一致')
+    messageHook.error(t('auth.messages.passwords_do_not_match'))
     return
   }
 
@@ -273,7 +271,7 @@ async function handleUpdatePassword() {
     })
 
     if (signInError)
-      throw new Error('旧密码错误，请检查')
+      throw new Error(t('auth.messages.old_password_wrong'))
 
     const { error: updateError } = await supabase.auth.updateUser({
       password: pwdForm.new,
@@ -282,17 +280,17 @@ async function handleUpdatePassword() {
     if (updateError)
       throw updateError
 
-    messageHook.success('密码修改成功，即将跳转登录...')
+    messageHook.success(t('auth.messages.change_password_success'))
 
     closePwdModal()
-    // 延时后调用 doSignOut，现在 doSignOut 会跳到 /auth
+    // 延时后调用 doSignOut
     setTimeout(() => {
       doSignOut()
     }, 1500)
   }
   catch (err: any) {
     console.error(err)
-    messageHook.error(err.message || '修改失败，请重试')
+    messageHook.error(err.message || t('auth.messages.change_password_failed'))
   }
   finally {
     pwdLoading.value = false
@@ -301,18 +299,15 @@ async function handleUpdatePassword() {
 
 function handleForgotOldPwd() {
   dialog.warning({
-    title: '需要重新登录',
-    content: '找回密码需要退出当前帐号，并跳转至登录页面的“忘记密码”入口。是否确认退出？',
-    positiveText: '确认退出',
-    negativeText: '取消',
+    title: t('auth.relogin_required_title'),
+    content: t('auth.relogin_required_content'),
+    positiveText: t('auth.confirm_logout'),
+    negativeText: t('auth.cancel'),
     onPositiveClick: async () => {
-      messageHook.loading('正在跳转...')
+      messageHook.loading(t('auth.redirecting'))
 
       try {
-        // 1. 强制登出 Supabase
         await supabase.auth.signOut()
-
-        // 2. 清理本地缓存
         localStorage.removeItem('last_known_user_id_v1')
         localStorage.removeItem('pinned_tags_v1')
         localStorage.removeItem('tag_icons_v1')
@@ -325,12 +320,10 @@ function handleForgotOldPwd() {
             localStorage.removeItem(key)
         })
 
-        // 3. 强制跳转到带参数的 auth 页面
         window.location.href = '/auth?mode=forgot'
       }
       catch (e) {
         console.error(e)
-        // 即使出错也要强制跳转
         window.location.href = '/auth?mode=forgot'
       }
     },
@@ -359,7 +352,9 @@ function handleForgotOldPwd() {
 
           <div class="info-item">
             <span class="info-label">{{ t('auth.password') }}</span>
-            <button class="link-btn" @click="openPwdModal">修改</button>
+            <button class="link-btn" @click="openPwdModal">
+              {{ t('auth.change') }}
+            </button>
           </div>
 
           <div class="info-item">
@@ -423,38 +418,42 @@ function handleForgotOldPwd() {
     <div v-if="showPwdModal" class="modal-overlay pwd-overlay">
       <div class="modal-content pwd-content">
         <div class="pwd-header">
-          <h3>修改密码</h3>
-          <button class="close-button" @click="closePwdModal">&times;</button>
+          <h3>{{ t('auth.change_password_title') }}</h3>
+          <button class="close-button" @click="closePwdModal">
+            &times;
+          </button>
         </div>
 
-        <p class="pwd-tip">修改后各平台都需重新登录，请确认笔记都已完成同步</p>
+        <p class="pwd-tip">
+          {{ t('auth.change_password_tip') }}
+        </p>
 
         <div class="pwd-form">
           <input
             v-model="pwdForm.old"
             type="password"
             class="pwd-input"
-            placeholder="旧密码"
+            :placeholder="t('auth.old_password_placeholder')"
           >
           <input
             v-model="pwdForm.new"
             type="password"
             class="pwd-input"
-            placeholder="新密码（至少 6 位）"
+            :placeholder="t('auth.new_password_placeholder')"
           >
           <input
             v-model="pwdForm.confirm"
             type="password"
             class="pwd-input"
-            placeholder="再次输入新密码"
+            :placeholder="t('auth.confirm_new_password_placeholder')"
           >
         </div>
 
         <div class="pwd-actions">
-          <span class="forgot-link" @click="handleForgotOldPwd">忘记旧密码</span>
+          <span class="forgot-link" @click="handleForgotOldPwd">{{ t('auth.forgot_old_password') }}</span>
           <div class="pwd-btns">
             <button class="btn-grey pwd-btn-item" @click="closePwdModal">
-              取消
+              {{ t('auth.cancel') }}
             </button>
 
             <button
@@ -462,7 +461,7 @@ function handleForgotOldPwd() {
               :disabled="pwdLoading"
               @click="handleUpdatePassword"
             >
-              {{ pwdLoading ? '提交中...' : '确定' }}
+              {{ pwdLoading ? t('auth.submitting') : t('auth.confirm') }}
             </button>
           </div>
         </div>

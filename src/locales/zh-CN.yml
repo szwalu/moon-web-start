@@ -204,7 +204,7 @@ auth:
   password: 密码
   prompt_to_register: 还没有帐号？
   Log_in_again_prefix: 若曾经登陆，
-  Log_in_again_link: 👉️点这里
+  Log_in_again_link: 👉️点击这里
   Log_in_again_suffix: 刷新重新登陆
   Log_in_again_link2: 👉️点这里
   Log_in_again_setting: 到设置界面
@@ -247,6 +247,17 @@ auth:
   trash: 回收站
   go_to_links: 前往网址站
   back_to_top: 回到顶部
+  change: 修改
+  change_password_title: 修改密码
+  change_password_tip: 修改后各平台都需重新登录，请确认笔记都已完成同步
+  old_password_placeholder: 旧密码
+  new_password_placeholder: 新密码（至少 6 位）
+  confirm_new_password_placeholder: 再次输入新密码
+  forgot_old_password: 忘记旧密码
+  relogin_required_title: 需要重新登录
+  relogin_required_content: 找回密码需要退出当前帐号，并跳转至登录页面的“忘记密码”入口。是否确认退出？
+  confirm_logout: 确认退出
+  redirecting: 正在跳转...
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -261,6 +272,11 @@ auth:
     reset_success_redirect: ✅ 密码重置成功！即将跳转到登录页面...
     no_backup_yet: 暂无备份
     invalid_invite_code: 无效的邀请码
+    fill_all_fields: 请填写所有密码字段
+    password_too_short: 新密码至少需要 6 位
+    old_password_wrong: 旧密码错误，请检查
+    change_password_success: 密码修改成功，即将跳转登录...
+    change_password_failed: 修改失败，请重试
 
 autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨
