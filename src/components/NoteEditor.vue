@@ -138,6 +138,18 @@ const DRAFT_SAVE_DELAY = 400 // ms
 const showFormatPalette = ref(false)
 const showDraftPrompt = ref(false)
 const pendingDraftText = ref('')
+// 🔥 新增：提示框模式 ('draft' | 'error') 和 错误信息
+const promptMode = ref<'draft' | 'error'>('draft')
+const promptErrorMsg = ref('')
+
+// 🔥 新增：报错时的“好的”按钮点击事件
+function handleErrorConfirm() {
+  showDraftPrompt.value = false // 关闭弹窗
+  // 核心：像草稿恢复一样，利用 nextTick 完美拉回焦点
+  nextTick(() => {
+    focusToEnd()
+  })
+}
 
 // 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
 function handleRecoverDraft() {
@@ -197,6 +209,7 @@ function checkAndPromptDraft() {
   // 只有内容不一致时才显示覆盖层
   if (tVal && tVal !== props.modelValue) {
     pendingDraftText.value = tVal
+    promptMode.value = 'draft'
     showDraftPrompt.value = true
   }
 }
@@ -312,30 +325,14 @@ async function onImageChosen(e: Event) {
   catch (err: any) {
     const isQuotaError = err.message && err.message.includes('row-level security policy')
 
-    // 使用我们在语言包里定义好的文案
-    // 如果你还没定义 'errors.quota_exceeded'，这里可以直接写死中文字符串兜底
-    const errorContent = isQuotaError
+    // 1. 设置错误信息
+    promptErrorMsg.value = isQuotaError
       ? t('notes.account.errors.quota_exceeded')
       : (err?.message || t('notes.upload.error_content'))
 
-    dialog.error({
-      title: t('notes.upload.error_title'), // 或 t('errors.upload_failed')
-      content: errorContent,
-      positiveText: t('notes.upload.ok'),
-      // 核心修复：强制提升层级，防止被输入框遮挡
-      style: {
-        zIndex: 99999,
-        position: 'fixed',
-        top: '25%', // 距离顶部 25%，避开键盘
-        left: '50%', // 左侧定位到屏幕正中
-        transform: 'translateX(-50%)', // 向左回退自身宽度的 50%，实现完美居中
-        width: 'min(85vw, 360px)', // 宽度限制：手机上占 85%，电脑上最大 360px
-        margin: '0', // 清除可能存在的默认边距
-      },
-      maskStyle: {
-        zIndex: 99998,
-      },
-    })
+    // 2. 设置为“报错模式”并显示弹窗
+    promptMode.value = 'error'
+    showDraftPrompt.value = true
   }
   finally {
     // 允许连续选择同一张图片
@@ -754,28 +751,12 @@ async function handleAudioFinished(blob: Blob) {
   }
   catch (err: any) {
     const isQuotaError = err.message && err.message.includes('row-level security policy')
-    const errorContent = isQuotaError
+    promptErrorMsg.value = isQuotaError
       ? t('notes.account.errors.quota_exceeded')
       : (err?.message || t('notes.editor.record.upload_failed_content'))
 
-    dialog.error({
-      title: t('notes.editor.record.upload_failed_title'),
-      content: errorContent,
-      positiveText: t('notes.ok'),
-      // 核心修复：强制提升层级
-      style: {
-        zIndex: 99999,
-        position: 'fixed',
-        top: '25%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(85vw, 360px)',
-        margin: '0',
-      },
-      maskStyle: {
-        zIndex: 99998,
-      },
-    })
+    promptMode.value = 'error'
+    showDraftPrompt.value = true
   }
   finally {
     isUploadingAudio.value = false
@@ -2193,25 +2174,45 @@ function handleBeforeInput(e: InputEvent) {
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
-      <div v-if="showDraftPrompt" class="draft-prompt-overlay">
+      <div v-if="showDraftPrompt" class="draft-prompt-overlay" @click.stop>
         <div class="draft-prompt-card">
-          <div class="draft-prompt-title">{{ t('notes.draft.title') }}</div>
-          <div class="draft-prompt-content">
-            {{ t('notes.draft.restore_confirm') }}
+          <div class="draft-prompt-title">
+            {{ promptMode === 'draft' ? t('notes.draft.title') : t('notes.upload.error_title') }}
           </div>
+
+          <div class="draft-prompt-content">
+            <template v-if="promptMode === 'draft'">
+              {{ t('notes.draft.restore_confirm') }}
+            </template>
+            <template v-else>
+              {{ promptErrorMsg }}
+            </template>
+          </div>
+
           <div class="draft-prompt-actions">
-            <button
-              class="btn-secondary draft-btn"
-              @click.prevent="handleDiscardDraft"
-            >
-              {{ t('notes.draft.discard') }}
-            </button>
-            <button
-              class="draft-btn btn-primary"
-              @click.prevent="handleRecoverDraft"
-            >
-              {{ t('notes.draft.continue') }}
-            </button>
+            <template v-if="promptMode === 'draft'">
+              <button
+                class="btn-secondary draft-btn"
+                @click.prevent="handleDiscardDraft"
+              >
+                {{ t('notes.draft.discard') }}
+              </button>
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleRecoverDraft"
+              >
+                {{ t('notes.draft.continue') }}
+              </button>
+            </template>
+
+            <template v-else>
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleErrorConfirm"
+              >
+                {{ t('notes.ok') }}
+              </button>
+            </template>
           </div>
         </div>
       </div>
