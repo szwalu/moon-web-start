@@ -237,8 +237,8 @@ auth:
   session_restore_error: 无法恢复会话，请重新登录
   session_refresh_error: 会话刷新失败，请重新登录
   invite_code: 邀请码
-  invite_code_placeholder: 请输入5位数字邀请码
-  password_placeholder: 请输入数字或字母
+  invite_code_placeholder: 请输入邀请码
+  password_placeholder: 请输入密码
   login_password_placeholder: 请输入密码
   session_expired: 会话已过期，请重新登录
   update_failed: 网络问题，更新失败

@@ -7,7 +7,7 @@ import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { useAutoSave } from '@/composables/useAutoSave'
 
-// --- 初始化 & 状态 (全部从 auth.vue 迁移过来) ---
+// --- 初始化 & 状态 ---
 const router = useRouter()
 const { t } = useI18n()
 const messageHook = useMessage()
@@ -31,7 +31,7 @@ const pageTitle = computed(() => {
   return t('auth.forgot_password')
 })
 
-// --- 方法 (全部从 auth.vue 迁移过来) ---
+// --- 方法 ---
 function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   mode.value = newMode
   message.value = ''
@@ -48,13 +48,12 @@ async function handleSubmitAuth() {
       return
     }
 
-    // --- 修改点 1: 预检查代码逻辑 ---
-    // 检查代码是否存在，并且 is_used 必须为 false
+    // 预检查代码逻辑
     const { data, error } = await supabase
       .from('invite_codes')
       .select('code')
       .eq('code', inviteCode.value)
-      .eq('is_used', false) // 关键：必须是未使用的
+      .eq('is_used', false)
       .single()
 
     if (error || !data) {
@@ -76,14 +75,11 @@ async function handleSubmitAuth() {
       await router.replace('/')
     }
     else if (mode.value === 'register') {
-      // --- 修改点 2: 传递 invite_code 到后端触发器 ---
       const { error } = await supabase.auth.signUp({
         email: email.value,
         password: password.value,
         options: {
           data: {
-            // 这里的数据会被存入 auth.users 表的 raw_user_meta_data 字段
-            // 我们的数据库触发器会读取这个字段
             invite_code: inviteCode.value,
           },
         },
@@ -94,7 +90,6 @@ async function handleSubmitAuth() {
       message.value = t('auth.messages.check_email_for_verification')
     }
     else {
-      // ... 忘记密码逻辑保持不变
       const { error } = await supabase.auth.resetPasswordForEmail(email.value, { redirectTo: `${window.location.origin}/update-password` })
       if (error)
         throw error
@@ -103,7 +98,6 @@ async function handleSubmitAuth() {
     }
   }
   catch (err: any) {
-    // 如果触发器抛出错误（例如并发情况下邀请码刚被别人用了），这里会捕获到
     message.value = err.message || t('auth.messages.reset_failed')
   }
   finally {
@@ -125,7 +119,7 @@ async function handleSubmitAuth() {
         <input
           v-model="password"
           type="password"
-          :placeholder="mode === 'register' ? $t('auth.password_placeholder') : $t('auth.login_password_placeholder')"
+          :placeholder="mode === 'login' ? $t('auth.login_password_placeholder') : ''"
           required
         >
       </label>
@@ -134,7 +128,6 @@ async function handleSubmitAuth() {
         <input
           v-model="passwordConfirm"
           type="password"
-          :placeholder="$t('auth.password_placeholder')"
           required
         >
       </label>

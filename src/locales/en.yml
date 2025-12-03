@@ -238,7 +238,7 @@ auth:
   session_restore_error: 'Cannot restore session, please log in again'
   session_refresh_error: 'Session refresh failed, please log in again'
   invite_code: Invite Code
-  invite_code_placeholder: Please enter 5-digit invite code
+  invite_code_placeholder: Enter invite code
   password_placeholder: Please enter password
   login_password_placeholder: Please enter password
   session_expired: 'Session expired, please log in again'
