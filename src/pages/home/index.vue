@@ -81,6 +81,7 @@ function isPWAInstalled() {
 }
 
 // 处理点击安装按钮
+// 处理点击安装按钮
 async function handleInstallApp() {
   // 方案一：Android / Chrome 原生安装
   if (deferredPrompt.value) {
@@ -98,17 +99,23 @@ async function handleInstallApp() {
     Swal.fire({
       title: t('index.add_to_home') || '安装到桌面',
       html: `
-        <div style="font-size: 14px; line-height: 1.6; text-align: left;">
+        <div style="font-size: 15px; line-height: 1.6; text-align: left; margin-top: 10px;">
           <p>由于 iOS 限制，请手动添加：</p>
           <ol style="padding-left: 20px; margin-top: 10px;">
             <li style="margin-bottom: 8px;">点击浏览器底部的 <img src="${shareIconPath}" style="width:18px; vertical-align:middle; display:inline;" /> <strong>分享</strong>图标</li>
-            <li>向下滑动，选择 <strong>"添加到主屏幕"</strong> (Add to Home Screen)</li>
+            <li>向下滑动，选择 <strong>"添加到主屏幕"</strong></li>
           </ol>
         </div>
       `,
       icon: 'info',
-      confirmButtonText: '知道了',
+      confirmButtonText: '我知道了', // 或者 "好的"
       confirmButtonColor: '#3085d6',
+      // 【修改点】添加自定义类名，方便控制样式
+      customClass: {
+        title: 'pwa-ios-title', // 标题类名
+        confirmButton: 'pwa-ios-btn', // 按钮类名
+        popup: 'pwa-ios-popup', // 整个弹窗容器（可选，用于控制宽度）
+      },
     })
   }
 }
@@ -760,6 +767,30 @@ function showMobileToast() {
 /* 小 */
 .main-content-area.home-font-sm :deep(.site-card-title) {
   font-size: 12px;
+}
+</style>
+
+<style>
+/* 1. 加大标题字号 */
+.pwa-ios-title {
+  font-size: 24px !important;  /* 默认约 18px，改为 24px */
+  font-weight: 700 !important;
+  padding-top: 1.5em !important;
+}
+
+/* 2. 加大底部按钮 */
+.pwa-ios-btn {
+  font-size: 18px !important;       /* 增大文字 */
+  padding: 14px 40px !important;    /* 增大按钮面积：上下14px，左右40px */
+  border-radius: 12px !important;   /* 圆角稍微大一点，更现代 */
+  margin-bottom: 10px !important;
+  font-weight: bold !important;
+}
+
+/* 3. (可选) 稍微调整弹窗宽度和内边距，让整体更协调 */
+.pwa-ios-popup {
+  padding: 20px !important;
+  border-radius: 20px !important;
 }
 </style>
 
