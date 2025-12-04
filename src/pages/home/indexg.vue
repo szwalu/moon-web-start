@@ -30,7 +30,6 @@ usePageResume({ storageKey: 'woabc-home-v1' /* , scrollSelector: '.main-content-
 
 // --- 初始化 & 状态定义 ---
 const { t } = useI18n()
-// const messageHook = useMessage() // messageHook 变量被保留，因为它可能在 fetchWeather 中使用
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
 const siteStore = useSiteStore()
@@ -48,12 +47,6 @@ const fontSizeClass = computed(() => {
   }
 })
 
-// 【核心修改】 1. 移除所有本地认证相关的 ref
-// const user = ref<any>(null) -> 已移除
-// const sessionExpired = ref(false) -> 已移除
-
-// 【核心修改】 2. 使用 computed 从 Pinia store 中获取用户状态
-// 这确保了 user 变量永远和全局状态保持同步
 const _user = computed(() => authStore.user)
 
 // 其他非认证相关的本地状态保持不变
@@ -64,6 +57,69 @@ const weatherInfo = ref('...')
 const isWeatherRefreshing = ref(false)
 const isMobile = ref(false)
 const GEO_CONSENT_KEY = 'geo_consent_for_navigation_v1'
+
+// ================= [新增 PWA 逻辑开始] =================
+const showInstallBtn = ref(false)
+const deferredPrompt = ref<any>(null)
+const isIOS = ref(false)
+
+// 检测是否为 iOS 设备
+function detectIOS() {
+  return [
+    'iPad Simulator',
+    'iPhone Simulator',
+    'iPod Simulator',
+    'iPad',
+    'iPhone',
+    'iPod',
+  ].includes(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document)
+}
+
+// 检测是否已经在 PWA 模式下运行
+function isPWAInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
+}
+
+// 处理点击安装按钮
+// 处理点击安装按钮
+async function handleInstallApp() {
+  // 方案一：Android / Chrome 原生安装
+  if (deferredPrompt.value) {
+    deferredPrompt.value.prompt()
+    const { outcome } = await deferredPrompt.value.userChoice
+    if (outcome === 'accepted') {
+      deferredPrompt.value = null
+      showInstallBtn.value = false
+    }
+    return
+  }
+
+  // 方案二：iOS 引导弹窗
+  if (isIOS.value) {
+    Swal.fire({
+      title: t('index.add_to_home') || '安装到桌面',
+      html: `
+        <div style="font-size: 15px; line-height: 1.6; text-align: left; margin-top: 10px;">
+          <p>由于 iOS 限制，请手动添加：</p>
+          <ol style="padding-left: 20px; margin-top: 10px;">
+            <li style="margin-bottom: 8px;">点击浏览器底部的 <img src="${shareIconPath}" style="width:18px; vertical-align:middle; display:inline;" /> <strong>分享</strong>图标</li>
+            <li>向下滑动，选择 <strong>"添加到主屏幕"</strong></li>
+          </ol>
+        </div>
+      `,
+      icon: 'info',
+      confirmButtonText: '我知道了', // 或者 "好的"
+      confirmButtonColor: '#3085d6',
+      // 【修改点】添加自定义类名，方便控制样式
+      customClass: {
+        title: 'pwa-ios-title', // 标题类名
+        confirmButton: 'pwa-ios-btn', // 按钮类名
+        popup: 'pwa-ios-popup', // 整个弹窗容器（可选，用于控制宽度）
+      },
+    })
+  }
+}
+// ================= [新增 PWA 逻辑结束] =================
 
 async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ lat: number; lon: number } | null> {
   if (!navigator?.geolocation)
@@ -107,10 +163,6 @@ async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ la
 let lastJson = ''
 let lastSettingJson = ''
 
-// 【核心修改】 3. 移除本地的 onAuthStateChange 监听器和 onUnmounted 清理逻辑
-// 这一部分逻辑已经由全局的 useSupabaseTokenRefresh.ts 统一处理
-
-// 监听 Pinia store 的变化以自动保存
 watch(
   () => JSON.stringify(siteStore.customData),
   (newJson) => {
@@ -131,16 +183,38 @@ watch(
   },
 )
 
-// onMounted 钩子现在只负责页面自身的初始化逻辑
 onMounted(async () => {
-  // a. 主动刷新一次 authStore，确保获取到最新的用户状态
   await authStore.refreshUser()
 
-  // b. 初始化移动端检测
   isMobile.value = window.innerWidth <= 768
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth <= 768
   })
+
+  // ================= [新增 PWA 初始化] =================
+  // 1. 如果已经在 PWA 模式，直接不显示
+  if (!isPWAInstalled()) {
+    isIOS.value = detectIOS()
+
+    // 如果是 iOS，直接显示按钮（因为 iOS 没有 beforeinstallprompt 事件）
+    if (isIOS.value)
+      showInstallBtn.value = true
+
+    // 如果是 Android/Chrome，监听事件
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault() // 阻止默认的迷你横幅
+      deferredPrompt.value = e
+      showInstallBtn.value = true // 只有捕捉到事件才显示按钮
+    })
+
+    // 监听安装成功事件，隐藏按钮
+    window.addEventListener('appinstalled', () => {
+      showInstallBtn.value = false
+      deferredPrompt.value = null
+    })
+  }
+  // ================= [新增 PWA 初始化结束] =================
+
   showMobileToast()
 })
 
@@ -295,7 +369,6 @@ async function reverseGeocodeCity(
     city = null
   }
 
-  // 第一次请求失败 / 拿不到城市 → 等一会儿再重试一次
   if (!city && options.allowRetry !== false) {
     await sleep(300)
     return reverseGeocodeCity(lat, lon, {
@@ -304,11 +377,9 @@ async function reverseGeocodeCity(
     })
   }
 
-  // 还没有城市名，用外部传进来的 IP 城市兜底
   if (!city && options.fallbackName)
     city = options.fallbackName
 
-  // 只缓存非空值，防止把 null 长期写进缓存
   if (city) {
     cache[key] = {
       zh: preferZh ? city : cache[key]?.zh || null,
@@ -340,14 +411,12 @@ async function fetchWeather(bypassCache = false) {
     let lon: number | null = null
     let fallbackCityFromIp: string | null = null
 
-    // ===== 1. 精确定位（主动弹窗） =====
     const geo = await getBrowserLocationWithPromptOnce(8000)
     if (geo) {
       lat = geo.lat
       lon = geo.lon
     }
 
-    // ===== 2. 若用户拒绝 / 失败 → 使用 IP 定位兜底 =====
     if (lat == null || lon == null) {
       let locData: any = null
 
@@ -376,14 +445,12 @@ async function fetchWeather(bypassCache = false) {
       }
     }
 
-    // 仍然拿不到坐标，直接失败
     if (lat == null || lon == null) {
       weatherCity.value = t('index.weather_failed')
       weatherInfo.value = ''
       return
     }
 
-    // ===== 3. 坐标 → 城市（官方 Nominatim） =====
     let city = await reverseGeocodeCity(lat, lon, {
       fallbackName: fallbackCityFromIp || undefined,
       allowRetry: true,
@@ -392,7 +459,6 @@ async function fetchWeather(bypassCache = false) {
     if (!city)
       city = fallbackCityFromIp || t('index.weather_unknown_city')
 
-    // ===== 4. open-meteo 天气数据 =====
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
@@ -434,6 +500,7 @@ function getWeatherText(code: number): { text: string; icon: string } {
 
 function showMobileToast() {
   if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
+    // 这里的旧逻辑可以保留作为辅助，或者如果您觉得有了新按钮不再需要，可以删除
     const Toast = Swal.mixin({
       toast: true,
       position: 'bottom',
@@ -501,6 +568,12 @@ function showMobileToast() {
         bg="$main-bg-c"
       >
         <MainHeader />
+
+        <div v-if="showInstallBtn" class="pwa-install-bar">
+          <button class="pwa-install-btn" @click="handleInstallApp">
+            <span>📲 安装应用到桌面</span>
+          </button>
+        </div>
       </div>
 
       <MainClock
@@ -557,6 +630,33 @@ function showMobileToast() {
 </template>
 
 <style scoped>
+/* [新增 PWA] 样式 */
+.pwa-install-bar {
+  text-align: center;
+  padding: 8px 0;
+  background-color: var(--main-bg-c); /* 与背景融合 */
+}
+
+.pwa-install-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pwa-install-btn:active {
+  transform: scale(0.96);
+}
+
 .main-content-area {
   transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out, padding-left 0.3s ease-in-out;
   position: relative;
@@ -667,6 +767,35 @@ function showMobileToast() {
 /* 小 */
 .main-content-area.home-font-sm :deep(.site-card-title) {
   font-size: 12px;
+}
+</style>
+
+<style>
+/* 1. 关键：增加弹窗宽度，防止文字被挤成竖排 */
+.pwa-ios-popup {
+  width: 90% !important;          /* 宽度设为屏幕的 90%，让文字横向排开 */
+  max-width: 380px !important;    /* 限制最大宽度，平板上不至于太宽 */
+  padding: 15px !important;       /* 内边距适中 */
+  border-radius: 16px !important;
+}
+
+/* 2. 标题字号：调回适中大小 */
+.pwa-ios-title {
+  font-size: 20px !important;     /* 20px 既醒目又不会过大 */
+  font-weight: 600 !important;
+  padding-top: 1.2em !important;
+  line-height: 1.4 !important;    /* 增加行高 */
+  color: #333 !important;         /* 确保颜色深黑清晰 */
+}
+
+/* 3. 按钮：大小适中，但保证手指容易点 */
+.pwa-ios-btn {
+  font-size: 15px !important;
+  padding: 10px 24px !important;  /* 减小内边距 */
+  border-radius: 8px !important;
+  margin-bottom: 5px !important;
+  min-height: 40px !important;    /* 保持最小触控高度 */
+  font-weight: 500 !important;
 }
 </style>
 
