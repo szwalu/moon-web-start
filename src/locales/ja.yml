@@ -551,7 +551,7 @@ notes:
     month_label: '{year}年{month}月'
   total_notes: ノート総数
   total_chars: 総語数
-  total_storage: 収納スペース
+  total_storage: 画像保存スペース
 
   account:
     title: アカウント

@@ -550,7 +550,7 @@ notes:
     month_label: '{month}/{year}'
   total_notes: Total notes
   total_chars: Total Characters
-  total_storage: storage space
+  total_storage: Image storage space
 
   account:
     title: My Account

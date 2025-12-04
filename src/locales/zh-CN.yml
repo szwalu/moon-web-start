@@ -547,7 +547,7 @@ notes:
   total_notes: 总笔记数
 
   total_chars: 总字数
-  total_storage: 存储空间
+  total_storage: 图片存储空间
 
   account:
     title: 我的帐户
