@@ -211,7 +211,7 @@ auth:
   Log_in_again_setting: ' to settings'
   prompt_to_login: Already have an account?
   confirm_password: Confirm Password
-  email_placeholder: Enter your account
+  email_placeholder: Enter your Email
   forgot_password: Forgot Password?
   confirm: Confirm
   cancel: Cancel
@@ -278,6 +278,22 @@ auth:
     old_password_wrong: Old password incorrect
     change_password_success: Password changed successfully. Redirecting to login...
     change_password_failed: Change failed, please try again
+
+  activation:
+    title: 🎉 Welcome to Moon Note
+    description: |
+      Google login detected.
+      This site is currently invite-only. Please enter an invite code to activate.
+    verifying: Verifying...
+    activate_button: Activate Account
+    apply_link: No invite code? Apply here
+    success_message: Activation successful! Welcome.
+    verify_failed: Verification failed
+
+  default_nickname: User
+  profile_updated: Profile updated successfully
+  avatar_too_big: Image too large, please upload < 2MB
+  upload_failed: Upload failed
 
 autoSave:
   restored: 'Welcome, {email}, data restored ✨'

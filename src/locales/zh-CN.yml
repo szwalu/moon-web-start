@@ -210,7 +210,7 @@ auth:
   Log_in_again_setting: 到设置界面
   prompt_to_login: 已有帐号？
   confirm_password: 确认密码
-  email_placeholder: 请输入您的帐号
+  email_placeholder: 请输入您的邮箱
   forgot_password: 忘记密码？
   confirm: 确定
   cancel: 取消
@@ -277,6 +277,22 @@ auth:
     old_password_wrong: 旧密码错误，请检查
     change_password_success: 密码修改成功，即将跳转登录...
     change_password_failed: 修改失败，请重试
+
+  activation:
+    title: 🎉 欢迎使用星云笔记
+    description: |
+      检测到您使用 Google 账号登录。
+      本站目前采用邀请制，请输入邀请码完成激活。
+    verifying: 验证中...
+    activate_button: 激活账号
+    apply_link: 没有邀请码？点击申请
+    success_message: 激活成功！欢迎使用
+    verify_failed: 验证失败
+
+  default_nickname: 用户
+  profile_updated: 资料更新成功
+  avatar_too_big: 图片太大，请上传 2MB 以内的图片
+  upload_failed: 图片上传失败
 
 autoSave:
   restored: 欢迎，{email}，数据已恢复 ✨

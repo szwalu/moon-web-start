@@ -210,7 +210,7 @@ auth:
   Log_in_again_setting: 設定へ
   prompt_to_login: すでにアカウントをお持ちですか？
   confirm_password: パスワード確認
-  email_placeholder: アカウントを入力してください
+  email_placeholder: メールアドレスを入力してください
   forgot_password: パスワードをお忘れですか？
   confirm: 確定
   cancel: キャンセル
@@ -279,6 +279,22 @@ auth:
     old_password_wrong: 旧パスワードが間違っています
     change_password_success: パスワード変更成功。ログイン画面へ移動します...
     change_password_failed: 変更失敗。もう一度お試しください
+
+  activation:
+    title: 🎉 Moon Noteへようこそ
+    description: |
+      Googleログインを確認しました。
+      現在、招待制となっております。招待コードを入力して有効化してください。
+    verifying: 検証中...
+    activate_button: アカウント有効化
+    apply_link: 招待コードがない方はこちら
+    success_message: 有効化に成功しました！ようこそ。
+    verify_failed: 検証に失敗しました
+
+  default_nickname: ユーザー
+  profile_updated: プロフィールを更新しました
+  avatar_too_big: 画像サイズが大きすぎます（2MB以下）
+  upload_failed: アップロードに失敗しました
 
 autoSave:
   restored: 'ようこそ {email} さん、データを復元しました ✨'

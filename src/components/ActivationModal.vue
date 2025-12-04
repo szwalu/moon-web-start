@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
 
-// [修改 1] 去掉了 "const props ="，直接调用宏即可
 defineProps({
   show: { type: Boolean, required: true },
 })
@@ -12,7 +12,7 @@ const emit = defineEmits(['success'])
 const inviteCode = ref('')
 const loading = ref(false)
 const messageHook = useMessage()
-// [修改 2] 删除了未使用的 const { t } = useI18n()
+const { t } = useI18n()
 
 async function handleActivate() {
   if (!inviteCode.value)
@@ -20,7 +20,6 @@ async function handleActivate() {
 
   loading.value = true
   try {
-    // 调用后端函数
     const { data, error } = await supabase.rpc('verify_invite_code', {
       code_input: inviteCode.value,
     })
@@ -28,18 +27,17 @@ async function handleActivate() {
     if (error)
       throw error
 
-    // 检查业务逻辑返回
     if (data && data.success) {
-      messageHook.success('激活成功！欢迎使用')
+      messageHook.success(t('auth.activation.success_message'))
       emit('success')
     }
     else {
-      throw new Error(data?.message || '激活失败')
+      throw new Error(data?.message || t('auth.activation.verify_failed'))
     }
   }
   catch (e: any) {
     console.error(e)
-    messageHook.error(e.message || '验证失败')
+    messageHook.error(e.message || t('auth.activation.verify_failed'))
   }
   finally {
     loading.value = false
@@ -48,7 +46,6 @@ async function handleActivate() {
 
 async function handleLogout() {
   await supabase.auth.signOut()
-  // 强制跳转回登录页并刷新，确保路由守卫生效
   window.location.href = '/auth'
 }
 </script>
@@ -56,25 +53,26 @@ async function handleLogout() {
 <template>
   <div v-if="show" class="activation-overlay">
     <div class="activation-box">
-      <h2>🎉 欢迎使用星云笔记</h2>
-      <p class="desc">检测到您使用 Google 账号登录。<br>本站目前采用邀请制，请输入邀请码完成激活。</p>
+      <h2>{{ t('auth.activation.title') }}</h2>
+
+      <p class="desc">{{ t('auth.activation.description') }}</p>
 
       <input
         v-model="inviteCode"
         type="text"
-        placeholder="请输入邀请码"
+        :placeholder="t('auth.invite_code_placeholder')"
         class="code-input"
       >
 
       <div class="actions">
         <button class="btn-activate" :disabled="loading" @click="handleActivate">
-          {{ loading ? '验证中...' : '激活账号' }}
+          {{ loading ? t('auth.activation.verifying') : t('auth.activation.activate_button') }}
         </button>
 
         <div style="margin-top: 1rem;">
-          <a class="link-btn" href="/apply" target="_blank">没有邀请码？点击申请</a>
+          <a class="link-btn" href="/apply?from=register" target="_blank">{{ t('auth.activation.apply_link') }}</a>
           <span style="margin: 0 8px; color: #ddd;">|</span>
-          <a class="link-btn" @click="handleLogout">退出登录</a>
+          <a class="link-btn" @click="handleLogout">{{ t('auth.logout') }}</a>
         </div>
       </div>
     </div>
@@ -117,6 +115,7 @@ h2 {
     color: #666;
     margin-bottom: 2rem;
     line-height: 1.6;
+    white-space: pre-line; /* 识别换行符 */
 }
 .dark .desc { color: #aaa; }
 
