@@ -62,50 +62,64 @@ const GEO_CONSENT_KEY = 'geo_consent_for_navigation_v1'
 const showInstallBtn = ref(false)
 const deferredPrompt = ref<any>(null)
 const isIOS = ref(false)
+const isAndroid = ref(false) // 新增安卓标记
 
-// 检测 iOS
-function detectIOS() {
-  return [
-    'iPad Simulator',
-    'iPhone Simulator',
-    'iPod Simulator',
-    'iPad',
-    'iPhone',
-    'iPod',
-  ].includes(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document)
+// 检测设备类型
+function checkPlatform() {
+  const u = navigator.userAgent
+  isIOS.value = !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/)
+  isAndroid.value = u.includes('Android') || u.includes('Adr')
 }
 
-// 检测是否已安装
+// 检测是否已安装 (PWA模式)
 function isPWAInstalled() {
   return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
 }
 
-// 【新增】专门用于显示 iOS 引导弹窗的函数
-function showIosInstallGuide() {
-  Swal.fire({
-    title: t('index.add_to_home') || '安装到桌面',
-    html: `
-      <div style="font-size: 15px; line-height: 1.6; text-align: left; margin-top: 10px;">
-        <p>由于 iOS 限制，请手动添加：</p>
-        <ol style="padding-left: 20px; margin-top: 10px;">
-          <li style="margin-bottom: 8px;">点击浏览器底部的 <img src="${shareIconPath}" style="width:18px; vertical-align:middle; display:inline;" /> <strong>分享</strong>图标</li>
-          <li>向下滑动，选择 <strong>"添加到主屏幕"</strong></li>
-        </ol>
-      </div>
-    `,
-    icon: 'info',
-    confirmButtonText: '我知道了',
-    confirmButtonColor: '#3085d6',
-    customClass: {
-      title: 'pwa-ios-title',
-      confirmButton: 'pwa-ios-btn',
-      popup: 'pwa-ios-popup',
-    },
-  })
+// 通用引导弹窗 (Android/iOS 样式不同)
+function showManualGuide(isIOSMode: boolean) {
+  // 1. iOS 引导文案
+  if (isIOSMode) {
+    Swal.fire({
+      title: t('index.add_to_home') || '安装到桌面',
+      html: `
+        <div style="font-size: 15px; line-height: 1.6; text-align: left; margin-top: 10px;">
+          <p>由于 iOS 限制，请手动添加：</p>
+          <ol style="padding-left: 20px; margin-top: 10px;">
+            <li style="margin-bottom: 8px;">点击底部 <img src="${shareIconPath}" style="width:18px; display:inline;" /> <strong>分享</strong>图标</li>
+            <li>下滑选择 <strong>"添加到主屏幕"</strong></li>
+          </ol>
+        </div>
+      `,
+      icon: 'info',
+      confirmButtonText: '我知道了',
+      confirmButtonColor: '#3085d6',
+      customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
+    })
+  }
+  // 2. Android 引导文案 (当原生安装失败时显示)
+  else {
+    Swal.fire({
+      title: '安装到桌面',
+      html: `
+        <div style="font-size: 15px; line-height: 1.6; text-align: left;">
+          <p>如果点击按钮没反应，请手动尝试：</p>
+          <ol style="padding-left: 20px; margin-top: 10px;">
+            <li style="margin-bottom: 8px;">点击浏览器右上角的 <strong>⋮</strong> 菜单</li>
+            <li>选择 <strong>"安装应用"</strong> 或 <strong>"添加到主屏幕"</strong></li>
+          </ol>
+        </div>
+      `,
+      icon: 'info',
+      confirmButtonText: '好的',
+      customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
+    })
+  }
 }
 
-// 处理点击安装按钮 (现在只服务于 Android)
+// 处理点击安装按钮
 async function handleInstallApp() {
+  // 情况 A: 捕获到了系统原生安装事件 (完美体验)
   if (deferredPrompt.value) {
     deferredPrompt.value.prompt()
     const { outcome } = await deferredPrompt.value.userChoice
@@ -113,6 +127,14 @@ async function handleInstallApp() {
       deferredPrompt.value = null
       showInstallBtn.value = false
     }
+  }
+  // 情况 B: 没捕获到事件 (可能是 Manifest 问题或浏览器限制)，改为弹出 Android 手动引导
+  else if (isAndroid.value) {
+    showManualGuide(false) // 显示 Android 版引导
+  }
+  // 情况 C: iOS
+  else if (isIOS.value) {
+    showManualGuide(true)
   }
 }
 // ================= [新增 PWA 逻辑结束] =================
@@ -188,31 +210,40 @@ onMounted(async () => {
   })
 
   // ================= [PWA 初始化逻辑修改] =================
+  checkPlatform() // 1. 先判断机型
+
   if (!isPWAInstalled()) {
-    isIOS.value = detectIOS()
+    // 移除 console.log 以通过 eslint 检查
 
-    if (isIOS.value) {
-      // 1. 如果是 iOS：不显示按钮，直接弹窗
+    // 策略：如果是安卓，先强制显示按钮，以防事件触发失败用户找不到入口
+    // 点击按钮时，如果有事件就触发原生，没有事件就弹引导教程
+    if (isAndroid.value)
+      showInstallBtn.value = true
+
+    // 监听原生事件 (如果有，就存起来，这是最佳体验)
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault()
+      deferredPrompt.value = e
+      showInstallBtn.value = true // 确保按钮是显示的
+    })
+
+    // 监听安装完成
+    window.addEventListener('appinstalled', () => {
       showInstallBtn.value = false
+      deferredPrompt.value = null
+    })
 
-      // 延迟 1.5秒 弹出，等待页面元素加载完，体验更平滑
+    // iOS 逻辑：不显示按钮，自动弹窗
+    if (isIOS.value) {
+      showInstallBtn.value = false
       setTimeout(() => {
-        showIosInstallGuide()
+        showManualGuide(true)
       }, 1500)
     }
-    else {
-      // 2. 如果是 Android/Chrome：监听事件并显示按钮
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault()
-        deferredPrompt.value = e
-        showInstallBtn.value = true // 只有安卓才让按钮显示
-      })
-
-      window.addEventListener('appinstalled', () => {
-        showInstallBtn.value = false
-        deferredPrompt.value = null
-      })
-    }
+  }
+  else {
+    // 移除 console.log 以通过 eslint 检查
+    showInstallBtn.value = false
   }
   // ================= [PWA 初始化逻辑结束] =================
 
