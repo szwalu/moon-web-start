@@ -22,19 +22,21 @@ defineOptions({
   name: 'HomePage',
 })
 
-// ================= [PWA 全局事件捕获] =================
-// 使用全局变量和自定义事件来确保“事件”绝不丢失
-let globalDeferredPrompt: any = null
+// ================= [核心修复：PWA 信号全局捕获器] =================
+// 放在组件外部，确保 script 一执行就立刻监听，绝不错过任何信号
+let globalInstallEvent: any = null
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
+    // 1. 阻止 Chrome 默认的底部横幅（我们需要自定义按钮）
     e.preventDefault()
-    globalDeferredPrompt = e
-    // 派发一个自定义事件通知 Vue 组件
-    window.dispatchEvent(new Event('pwa-ready'))
+    // 2. 将这个宝贵的信号存到全局变量里
+    globalInstallEvent = e
+    // 3. 广播一个自定义事件，通知组件“信号抓到了”
+    window.dispatchEvent(new Event('pwa-event-captured'))
   })
 }
-// ======================================================
+// ================================================================
 
 usePageResume({ storageKey: 'woabc-home-v1' })
 
@@ -80,11 +82,8 @@ function checkPlatform() {
   const u = navigator.userAgent
   const p = navigator.platform || ''
 
-  // iOS 检测
   const iosPlatforms = ['iPhone', 'iPad', 'iPod', 'iPhone Simulator', 'iPad Simulator']
   isIOS.value = iosPlatforms.includes(p) || (u.includes('Mac') && 'ontouchend' in document)
-
-  // Android 检测
   isAndroid.value = u.includes('Android') || u.includes('Adr')
 }
 
@@ -98,24 +97,46 @@ function isPWAInstalled() {
 // 通用引导弹窗
 function showManualGuide(isIOSMode: boolean) {
   if (isIOSMode) {
+    // iOS 版：样式已优化（图标左置，内容居中）
     Swal.fire({
-      title: t('index.add_to_home') || '安装到桌面',
+      title: '',
+      icon: undefined,
       html: `
-        <div style="font-size: 15px; line-height: 1.6; text-align: left; margin-top: 10px;">
-          <p>由于 iOS 限制，请手动添加：</p>
-          <ol style="padding-left: 20px; margin-top: 10px;">
-            <li style="margin-bottom: 8px;">点击底部 <img src="${shareIconPath}" style="width:18px; display:inline;" /> <strong>分享</strong>图标</li>
-            <li>下滑选择 <strong>"添加到主屏幕"</strong></li>
-          </ol>
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+          <div style="
+            width: 22px; 
+            height: 22px; 
+            border: 2px solid #3fc3ee; 
+            border-radius: 50%; 
+            color: #3fc3ee; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-weight: 800; 
+            font-family: sans-serif; 
+            margin-right: 12px;
+            font-size: 14px;">!</div>
+          <span style="font-size: 20px; font-weight: 600; color: #333;">添加笔记到桌面</span>
+        </div>
+        <div style="text-align: center; font-size: 15px; line-height: 1.8; color: #555;">
+          <div>
+            点击底部 <img src="${shareIconPath}" style="width:18px; display:inline-block; vertical-align: text-bottom; margin: 0 4px;" /> <strong>分享</strong>图标
+          </div>
+          <div>
+            下滑选择 <strong>"添加到主屏幕"</strong>
+          </div>
         </div>
       `,
-      icon: 'info',
       confirmButtonText: '我知道了',
       confirmButtonColor: '#3085d6',
-      customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
+      customClass: {
+        confirmButton: 'pwa-ios-btn',
+        popup: 'pwa-ios-popup',
+      },
     })
   }
   else {
+    // Android 版手动引导 (仅当原生安装彻底失败时才显示)
     Swal.fire({
       title: '安装到桌面',
       html: `
@@ -136,19 +157,24 @@ function showManualGuide(isIOSMode: boolean) {
 
 // 处理点击安装按钮
 async function handleInstallApp() {
-  // 1. 优先尝试使用原生事件
-  if (globalDeferredPrompt) {
-    globalDeferredPrompt.prompt()
-    const { outcome } = await globalDeferredPrompt.userChoice
+  // 1. 优先：检查是否捕获到了原生信号
+  if (globalInstallEvent) {
+    // 触发原生安装弹窗
+    globalInstallEvent.prompt()
+    // 等待用户选择
+    const { outcome } = await globalInstallEvent.userChoice
     if (outcome === 'accepted') {
-      globalDeferredPrompt = null
+      // 用户同意了，清空信号，隐藏按钮
+      globalInstallEvent = null
       showInstallBtn.value = false
     }
+    // 如果用户点了取消，我们保留按钮，允许他再次点击
   }
-  // 2. 如果没有原生事件，只能手动引导
+  // 2. 备选：如果是安卓但没信号，只能弹手动引导
   else if (isAndroid.value) {
     showManualGuide(false)
   }
+  // 3. iOS 备选
   else if (isIOS.value) {
     showManualGuide(true)
   }
@@ -225,35 +251,33 @@ onMounted(async () => {
     isMobile.value = window.innerWidth <= 768
   })
 
-  // ================= [PWA 初始化 - 增强稳定性版] =================
+  // ================= [PWA 初始化 - 最终稳定版] =================
   checkPlatform()
 
   if (!isPWAInstalled()) {
-    // ---------------- 安卓逻辑 ----------------
+    // ---- Android 逻辑 ----
     if (isAndroid.value) {
-      // 策略：初始不显示按钮，等待原生事件触发
-
-      // 1. 如果事件在 mounted 之前就已经触发了，直接显示
-      if (globalDeferredPrompt) {
+      // 场景 A：组件加载时，信号已经来了（保存在 globalInstallEvent）
+      if (globalInstallEvent) {
         showInstallBtn.value = true
       }
+      // 场景 B：组件加载了，信号还没来 -> 监听我们自定义的广播
       else {
-        // 2. 否则，监听我们自定义的 pwa-ready 事件
-        window.addEventListener('pwa-ready', () => {
+        window.addEventListener('pwa-event-captured', () => {
           showInstallBtn.value = true
         })
 
-        // 3. 超时兜底：如果 2.5秒后还没等到事件（可能浏览器太慢或已屏蔽），强制显示按钮
-        // 这样可以避免用户永远看不到按钮，虽然此时点击只能走手动引导
+        // 场景 C：兜底策略
+        // 如果 3 秒后还没收到信号，强制显示按钮（哪怕只能走手动引导）
+        // 这防止按钮永远不出来
         setTimeout(() => {
           if (!showInstallBtn.value)
             showInstallBtn.value = true
-        }, 2500)
+        }, 3000)
       }
     }
 
-    // ---------------- iOS 逻辑 ----------------
-    // 保持原来的：不显示按钮，延迟自动弹窗
+    // ---- iOS 逻辑 ----
     if (isIOS.value) {
       showInstallBtn.value = false
       setTimeout(() => {
@@ -262,18 +286,16 @@ onMounted(async () => {
     }
   }
   else {
-    // 已安装模式：确保按钮隐藏
+    // 已安装，隐藏按钮
     showInstallBtn.value = false
   }
 
-  // 监听安装完成事件
+  // 监听安装成功事件
   window.addEventListener('appinstalled', () => {
     showInstallBtn.value = false
-    globalDeferredPrompt = null
+    globalInstallEvent = null
   })
   // ================= [PWA 初始化结束] =================
-
-  showMobileToast()
 })
 
 // 天气功能
@@ -554,47 +576,6 @@ function showQuote() {
 
 function getWeatherText(code: number): { text: string; icon: string } {
   return weatherMap[code] || { text: '未知天气', icon: '❓' }
-}
-
-function showMobileToast() {
-  if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
-    const Toast = Swal.mixin({
-      toast: true,
-      position: 'bottom',
-      showConfirmButton: false,
-      timer: 10000,
-      timerProgressBar: true,
-      width: '165px',
-      background: 'transparent',
-      customClass: {
-        popup: 'mobile-guide-toast',
-      },
-      didOpen: (toast) => {
-        toast.addEventListener('mouseenter', Swal.stopTimer)
-        toast.addEventListener('mouseleave', Swal.resumeTimer)
-      },
-      didClose: () => {
-        localStorage.setItem('mobileToastShown', 'true')
-      },
-    })
-    Toast.fire({
-      html: `
-        <div style="position: relative; background-color: white; color: black; border-radius: 12px; padding: 8px 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 9.5px; line-height: 1.35;">
-          <div style="text-align: center;">
-            <div style="margin-bottom: 4px;">${t('index.add_to_home')}</div>
-            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 4px;">
-              <span>${t('index.click_below')}</span>
-              <img alt="分享图标" src="${shareIconPath}" style="height: 14px; width: 14px; margin: 0 4px;"/>
-            </div>
-            <div>${t('index.choose_add_to_screen')}</div>
-          </div>
-          <svg width="16" height="8" style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%);">
-            <polygon points="0,0 16,0 8,8" style="fill:white;"/>
-          </svg>
-        </div>
-      `,
-    })
-  }
 }
 </script>
 
