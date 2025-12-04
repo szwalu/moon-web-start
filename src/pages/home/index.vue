@@ -22,17 +22,17 @@ defineOptions({
   name: 'HomePage',
 })
 
-// ================= [PWA 全局事件捕获] =================
-let globalDeferredPrompt: any = null
-
+// ================= [PWA 全局事件捕获 - 增强稳定性版] =================
+// 1. 将事件变量显式挂载到 window 对象上，防止作用域丢失
+// 2. 依然派发 pwa-ready 事件通知组件
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    globalDeferredPrompt = e
+    e.preventDefault();
+    (window as any).deferredPrompt = e // 存入全局 window
     window.dispatchEvent(new Event('pwa-ready'))
   })
 }
-// ======================================================
+// =================================================================
 
 usePageResume({ storageKey: 'woabc-home-v1' })
 
@@ -93,27 +93,26 @@ function isPWAInstalled() {
 // 通用引导弹窗
 function showManualGuide(isIOSMode: boolean) {
   if (isIOSMode) {
-    // iOS 版：自定义 HTML 结构以满足“图标在标题左边”的需求
+    // iOS 版：自定义 HTML 结构 - 图标在左，标题更新，无冗余文案
     Swal.fire({
-      // 禁用默认 title 和 icon，完全用 html 自定义
       title: '',
       icon: undefined,
       html: `
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
           <div style="
-            width: 24px; 
-            height: 24px; 
+            width: 22px; 
+            height: 22px; 
             border: 2px solid #3fc3ee; 
             border-radius: 50%; 
             color: #3fc3ee; 
             display: flex; 
             align-items: center; 
             justify-content: center; 
-            font-weight: bold; 
+            font-weight: 800; 
             font-family: sans-serif; 
-            margin-right: 10px;
-            font-size: 16px;">!</div>
-          <span style="font-size: 19px; font-weight: 600; color: #333;">添加笔记到桌面</span>
+            margin-right: 12px;
+            font-size: 14px;">!</div>
+          <span style="font-size: 20px; font-weight: 600; color: #333;">添加笔记到桌面</span>
         </div>
 
         <div style="text-align: center; font-size: 15px; line-height: 1.8; color: #555;">
@@ -134,7 +133,7 @@ function showManualGuide(isIOSMode: boolean) {
     })
   }
   else {
-    // Android 版
+    // Android 版手动引导 (仅作备用)
     Swal.fire({
       title: '安装到桌面',
       html: `
@@ -154,14 +153,18 @@ function showManualGuide(isIOSMode: boolean) {
 }
 
 async function handleInstallApp() {
-  if (globalDeferredPrompt) {
-    globalDeferredPrompt.prompt()
-    const { outcome } = await globalDeferredPrompt.userChoice
+  // 1. 优先尝试使用 window 上的原生事件对象
+  const promptEvent = (window as any).deferredPrompt
+
+  if (promptEvent) {
+    promptEvent.prompt()
+    const { outcome } = await promptEvent.userChoice
     if (outcome === 'accepted') {
-      globalDeferredPrompt = null
+      (window as any).deferredPrompt = null
       showInstallBtn.value = false
     }
   }
+  // 2. 如果没有原生事件，只能手动引导
   else if (isAndroid.value) {
     showManualGuide(false)
   }
@@ -241,19 +244,26 @@ onMounted(async () => {
     isMobile.value = window.innerWidth <= 768
   })
 
-  // ================= [PWA 初始化] =================
+  // ================= [PWA 初始化 - 恢复智能延迟策略] =================
   checkPlatform()
 
   if (!isPWAInstalled()) {
     // ---------------- 安卓逻辑 ----------------
     if (isAndroid.value) {
-      if (globalDeferredPrompt) {
+      // 策略：优先等待原生事件
+
+      // 1. 如果事件在 mounted 之前就已经触发了，直接显示
+      if ((window as any).deferredPrompt) {
         showInstallBtn.value = true
       }
       else {
+        // 2. 否则，监听 pwa-ready 事件 (这是最理想的情况)
         window.addEventListener('pwa-ready', () => {
           showInstallBtn.value = true
         })
+
+        // 3. 超时兜底：如果 2.5秒后还没等到事件，强制显示按钮
+        // 此时虽然没有原生事件，但至少给用户一个入口（走手动引导）
         setTimeout(() => {
           if (!showInstallBtn.value)
             showInstallBtn.value = true
@@ -270,16 +280,18 @@ onMounted(async () => {
     }
   }
   else {
+    // 已安装模式：确保按钮隐藏
     showInstallBtn.value = false
   }
 
+  // 监听安装成功
   window.addEventListener('appinstalled', () => {
     showInstallBtn.value = false
-    globalDeferredPrompt = null
+    ;(window as any).deferredPrompt = null
   })
   // ================= [PWA 初始化结束] =================
 
-  // 用户要求去掉旧的小弹窗，所以这里不再调用 showMobileToast()
+  // 已删除 showMobileToast() 调用
 })
 
 // 天气功能
