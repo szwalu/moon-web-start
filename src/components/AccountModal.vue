@@ -67,6 +67,19 @@ const userName = computed(() => {
   return t('auth.default_nickname')
 })
 
+// [修改] 判断是否允许修改密码 (更精准的逻辑)
+const canChangePassword = computed(() => {
+  // 1. 获取用户的身份列表
+  const identities = props.user?.identities
+
+  // 2. 如果能获取到列表，检查其中是否包含 'email' 身份
+  if (Array.isArray(identities) && identities.length > 0)
+    return identities.some(identity => identity.provider === 'email')
+
+  // 3. 兜底：如果列表为空（极少见），回退到检查 app_metadata
+  return props.user?.app_metadata?.provider === 'email'
+})
+
 function onAvatarError() {
   avatarLoadError.value = true
 }
@@ -89,7 +102,7 @@ function compressImage(file: File): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const maxSize = 300 // 限制最大 300px
+        const maxSize = 300
         let width = img.width
         let height = img.height
 
@@ -111,7 +124,6 @@ function compressImage(file: File): Promise<Blob> {
         const ctx = canvas.getContext('2d')
         ctx?.drawImage(img, 0, 0, width, height)
 
-        // 压缩质量 0.7
         canvas.toBlob((blob) => {
           if (blob)
             resolve(blob)
@@ -158,7 +170,7 @@ async function saveName() {
   }
 }
 
-// --- 上传头像逻辑 (含压缩 + 删除旧图) ---
+// --- 上传头像逻辑 ---
 function triggerFileUpload() {
   fileInputRef.value?.click()
 }
@@ -169,7 +181,7 @@ async function handleFileChange(event: Event) {
     return
 
   const originalFile = input.files[0]
-  const oldAvatarUrl = props.user?.user_metadata?.avatar_url // 记录旧头像
+  const oldAvatarUrl = props.user?.user_metadata?.avatar_url
 
   if (originalFile.size > 10 * 1024 * 1024) {
     messageHook.warning(t('auth.avatar_too_big'))
@@ -178,13 +190,11 @@ async function handleFileChange(event: Event) {
 
   isUploadingAvatar.value = true
   try {
-    // 1. 压缩
     const compressedBlob = await compressImage(originalFile)
     const fileToUpload = new File([compressedBlob], 'avatar.jpg', { type: 'image/jpeg' })
     const fileName = `${props.user!.id}-${Date.now()}.jpg`
     const filePath = `${fileName}`
 
-    // 2. 上传
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(filePath, fileToUpload, {
@@ -195,12 +205,10 @@ async function handleFileChange(event: Event) {
     if (uploadError)
       throw uploadError
 
-    // 3. 获取链接
     const { data: { publicUrl } } = supabase.storage
       .from('avatars')
       .getPublicUrl(filePath)
 
-    // 4. 更新资料
     const { error: updateError } = await supabase.auth.updateUser({
       data: { avatar_url: publicUrl },
     })
@@ -208,7 +216,6 @@ async function handleFileChange(event: Event) {
     if (updateError)
       throw updateError
 
-    // 5. 删除旧头像
     if (oldAvatarUrl) {
       try {
         const urlParts = oldAvatarUrl.split('/avatars/')
@@ -225,7 +232,6 @@ async function handleFileChange(event: Event) {
       }
     }
 
-    // 6. 刷新
     await authStore.refreshUser()
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
@@ -259,7 +265,6 @@ async function fetchFirstNoteAndStreak() {
       const first = new Date(data.created_at)
       firstNoteDateText.value = formatDateI18n(first)
       const today = new Date()
-      // [修复] 分行写
       first.setHours(0, 0, 0, 0)
       today.setHours(0, 0, 0, 0)
 
@@ -281,7 +286,6 @@ async function fetchFirstNoteAndStreak() {
       }
     }
     else {
-      // [修复] 分行写
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
@@ -293,7 +297,6 @@ async function fetchFirstNoteAndStreak() {
 
 async function fetchNotesCount() {
   if (!props.user) {
-    // [修复] 分行写
     totalCount.value = 0
     return
   }
@@ -310,7 +313,6 @@ async function fetchNotesCount() {
 
 async function fetchTotalChars() {
   if (!props.user) {
-    // [修复] 分行写
     totalChars.value = 0
     return
   }
@@ -346,7 +348,6 @@ watch(() => props.show, (visible) => {
   if (visible) {
     avatarLoadError.value = false
     if (!hasFetched.value) {
-      // [修复] 分行写
       fetchFirstNoteAndStreak()
       fetchNotesCount()
       fetchTotalChars()
@@ -389,7 +390,6 @@ async function doSignOut() {
 }
 
 function openPwdModal() {
-  // [修复] 分行写
   pwdForm.old = ''
   pwdForm.new = ''
   pwdForm.confirm = ''
@@ -509,7 +509,7 @@ function handleForgotOldPwd() {
             <span class="info-value">{{ email }}</span>
           </div>
 
-          <div class="info-item">
+          <div v-if="canChangePassword" class="info-item">
             <span class="info-label">{{ t('auth.password') }}</span>
             <button class="link-btn" @click="openPwdModal">
               {{ t('auth.change') }}
