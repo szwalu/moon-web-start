@@ -750,48 +750,67 @@ function getNoteSignature(n: any) {
   return `${n.id}|${n.updated_at}|${n.is_pinned}|${n.is_favorited}|${n.content?.length}|${n.weather}`
 }
 
-// ✨✨✨ 修复版 Watcher：解决了“初始化风暴”和“筛选误删”问题
+// ✨✨✨ 最终加固版 Watcher ✨✨✨
+// 修复了：多端同步不更新、初始化风暴、筛选误删、刷新误删
 watch(notes, (newNotes) => {
-  // 1. 安全卫士：如果当前处于 搜索、标签筛选、那年今日、或年月跳转 视图中
-  // 此时 notes 列表不代表全量数据，缺少的笔记并不是被删除了，所以必须停止同步
+  // 1. 【一级卫士】视图保护
+  // 如果处于 搜索、标签筛选、那年今日、年月跳转 视图，
+  // 此时的 notes 列表是不完整的，绝对不能用来判断“删除”
   if (isShowingSearchResults.value || activeTagFilter.value || isAnniversaryViewActive.value || isMonthJumpView.value)
     return
+
+  // 2. 【二级卫士】加载保护 (关键！防止刷新/重置列表时误删数据)
+  // 如果 isLoadingNotes 为 true，说明正在重置列表（如回到第一页），
+  // 此时列表变短是正常的，不代表数据被删。
+  // 我们只更新指纹库，不发送任何通知。
+  if (isLoadingNotes.value) {
+    // 重建指纹库，与当前列表保持同步，防止加载完后 Watcher 乱叫
+    noteSignatures.value.clear()
+    newNotes.forEach((n) => {
+      noteSignatures.value.set(n.id, getNoteSignature(n))
+    })
+    return
+  }
 
   const currentIds = new Set<string>()
   const isFirstRun = noteSignatures.value.size === 0 && newNotes.length > 0
 
-  // 2. 遍历新列表
+  // 3. 遍历检测 新增 / 编辑
   for (const note of newNotes) {
     const id = note.id
     currentIds.add(id)
 
     const newSig = getNoteSignature(note)
 
-    // 如果不是第一次运行（初始化），才去对比差异
+    // 非初始化阶段，才对比差异
     if (!isFirstRun) {
       const oldSig = noteSignatures.value.get(id)
+
       if (oldSig === undefined) {
-        // 新增
+        // 发现新 ID -> 新增
         notifyAnniversaryAdd(note)
       }
       else if (oldSig !== newSig) {
-        // 编辑
+        // 指纹变了 -> 内容被编辑
         notifyAnniversaryUpdate(note)
       }
     }
 
-    // 无论是否初始化，都更新指纹，为下一次对比做准备
+    // 更新指纹
     noteSignatures.value.set(id, newSig)
   }
 
-  // 3. 检测删除 (仅在非初始化阶段执行)
+  // 4. 遍历检测 删除 (仅在非初始化阶段执行)
   if (!isFirstRun) {
     const idsToDelete: string[] = []
+
+    // 检查旧指纹库里的 ID 是否还存在于新列表中
     for (const id of noteSignatures.value.keys()) {
       if (!currentIds.has(id))
         idsToDelete.push(id)
     }
 
+    // 只有确认被删除了，才通知组件
     if (idsToDelete.length > 0) {
       notifyAnniversaryDelete(idsToDelete)
       idsToDelete.forEach(id => noteSignatures.value.delete(id))
