@@ -24,8 +24,34 @@ import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, rea
 import { useOfflineSync } from '@/composables/useSync'
 
 import HelpDialog from '@/components/HelpDialog.vue'
+import ActivationModal from '@/components/ActivationModal.vue'
 
+const authStore = useAuthStore()
 const showHelpDialog = ref(false)
+// [新增 2] 激活弹窗状态与检查逻辑
+const showActivation = ref(false)
+const user = computed(() => authStore.user)
+// 监听 user 变化：一旦检测到有用户，立即查库看是否激活
+watch(user, async (currentUser) => {
+  if (currentUser) {
+    // 查询 public.users 表的 is_active 字段
+    const { data } = await supabase
+      .from('users')
+      .select('is_active')
+      .eq('id', currentUser.id)
+      .single()
+
+    // 如果明确标记为 false，则弹出强制激活窗口
+    if (data && data.is_active === false)
+      showActivation.value = true
+  }
+}, { immediate: true })
+
+function onActivationSuccess() {
+  showActivation.value = false
+  // 激活成功后，刷新页面以确保所有数据流（如那年今日、标签等）重新初始化
+  window.location.reload()
+}
 
 const { manualSync: _manualSync } = useOfflineSync()
 
@@ -49,7 +75,6 @@ const showTrashModal = ref(false)
 useDark()
 const messageHook = useMessage()
 const dialog = useDialog()
-const authStore = useAuthStore()
 
 const noteListRef = ref(null)
 
@@ -93,7 +118,6 @@ const showAccountModal = ref(false)
 const showDropdown = ref(false)
 const showSearchBar = ref(false)
 const compactWhileTyping = ref(false)
-const user = computed(() => authStore.user)
 const isCreating = ref(false)
 const notes = ref<any[]>([])
 const newNoteContent = ref('')
@@ -3147,6 +3171,18 @@ function onCalendarUpdated(updated: any) {
       >
         +
       </button>
+
+      <TrashModal
+        :show="showTrashModal"
+        @close="showTrashModal = false"
+        @restored="invalidateAllTagCaches(); handleTrashRestored()"
+        @purged="invalidateAllTagCaches(); handleTrashPurged()"
+      />
+
+      <ActivationModal
+        :show="showActivation"
+        @success="onActivationSuccess"
+      />
     </template>
     <template v-else>
       <Authentication />
