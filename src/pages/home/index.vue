@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch, watchEffect } from 'vue'
-
-// 删除了 onUnmounted，因为不再需要
 import Swal from 'sweetalert2'
 import { useI18n } from 'vue-i18n'
 import MainHeader from './components/MainHeader.vue'
@@ -12,8 +10,6 @@ import MainSetting from './components/MainSetting.vue'
 import SiteNavBar from './components/SiteNavBar.vue'
 import shareIconPath from './1122.jpg'
 import { usePageResume } from '@/composables/usePageResume'
-
-// 删除了 supabase 的直接引入，因为 store 已经处理了相关逻辑
 import 'sweetalert2/dist/sweetalert2.min.css'
 import { weatherMap } from '@/utils/weatherMap'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -26,7 +22,21 @@ defineOptions({
   name: 'HomePage',
 })
 
-usePageResume({ storageKey: 'woabc-home-v1' /* , scrollSelector: '.main-content-area' */ })
+// ================= [全局 PWA 事件捕获] =================
+// 将变量放在组件外部，确保脚本一加载就能捕获事件，防止组件挂载晚了导致丢失
+let globalDeferredPrompt: any = null
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // 阻止 Chrome 67+ 自动显示底部的横幅
+    e.preventDefault()
+    // 把事件存到全局变量里
+    globalDeferredPrompt = e
+  })
+}
+// ======================================================
+
+usePageResume({ storageKey: 'woabc-home-v1' })
 
 // --- 初始化 & 状态定义 ---
 const { t } = useI18n()
@@ -49,7 +59,6 @@ const fontSizeClass = computed(() => {
 
 const _user = computed(() => authStore.user)
 
-// 其他非认证相关的本地状态保持不变
 const dailyQuote = ref('')
 const hasFetchedWeather = ref(false)
 const weatherCity = ref(t('index.weather_loading'))
@@ -58,24 +67,12 @@ const isWeatherRefreshing = ref(false)
 const isMobile = ref(false)
 const GEO_CONSENT_KEY = 'geo_consent_for_navigation_v1'
 
-/// ================= [PWA 逻辑修复版] =================
+/// ================= [PWA 逻辑变量] =================
 const showInstallBtn = ref(false)
-const deferredPrompt = ref<any>(null)
 const isIOS = ref(false)
 const isAndroid = ref(false)
 
-// 1. 在组件初始化最早期就尝试捕获事件，防止错过
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    deferredPrompt.value = e
-    // 如果是安卓，且之前已经强制显示了按钮，这里更新状态即可
-    if (isAndroid.value)
-      showInstallBtn.value = true
-  })
-}
-
-// 2. 稳健的设备检测 (修复 iOS 判断失效问题)
+// 稳健的设备检测
 function checkPlatform() {
   if (typeof navigator === 'undefined')
     return
@@ -83,7 +80,7 @@ function checkPlatform() {
   const u = navigator.userAgent
   const p = navigator.platform || ''
 
-  // iOS 检测：检测 platform 列表，或者 Mac + 触屏 (iPadOS)
+  // iOS 检测
   const iosPlatforms = ['iPhone', 'iPad', 'iPod', 'iPhone Simulator', 'iPad Simulator']
   isIOS.value = iosPlatforms.includes(p) || (u.includes('Mac') && 'ontouchend' in document)
 
@@ -100,7 +97,6 @@ function isPWAInstalled() {
 
 // 通用引导弹窗
 function showManualGuide(isIOSMode: boolean) {
-  // 1. iOS 引导文案
   if (isIOSMode) {
     Swal.fire({
       title: t('index.add_to_home') || '安装到桌面',
@@ -119,13 +115,12 @@ function showManualGuide(isIOSMode: boolean) {
       customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
     })
   }
-  // 2. Android 引导文案 (只有当无法自动安装时才显示)
   else {
     Swal.fire({
       title: '安装到桌面',
       html: `
         <div style="font-size: 15px; line-height: 1.6; text-align: left;">
-          <p>如果点击按钮没反应，请手动尝试：</p>
+          <p>自动安装未触发，请尝试手动添加：</p>
           <ol style="padding-left: 20px; margin-top: 10px;">
             <li style="margin-bottom: 8px;">点击浏览器右上角的 <strong>⋮</strong> 菜单</li>
             <li>选择 <strong>"安装应用"</strong> 或 <strong>"添加到主屏幕"</strong></li>
@@ -141,20 +136,21 @@ function showManualGuide(isIOSMode: boolean) {
 
 // 处理点击安装按钮
 async function handleInstallApp() {
-  // 情况 A: 捕获到了系统原生安装事件 (完美体验)
-  if (deferredPrompt.value) {
-    deferredPrompt.value.prompt()
-    const { outcome } = await deferredPrompt.value.userChoice
+  // 优先检查全局捕获的事件
+  if (globalDeferredPrompt) {
+    // 触发原生安装弹窗
+    globalDeferredPrompt.prompt()
+    // 等待用户响应
+    const { outcome } = await globalDeferredPrompt.userChoice
     if (outcome === 'accepted') {
-      deferredPrompt.value = null
+      globalDeferredPrompt = null
       showInstallBtn.value = false
     }
   }
-  // 情况 B: Android 但没捕获到事件 (可能是 Manifest/HTTPS 问题)，显示手动引导
+  // 如果没有捕获到事件，说明浏览器不支持或未准备好，回退到手动引导
   else if (isAndroid.value) {
     showManualGuide(false)
   }
-  // 情况 C: iOS (理论上按钮不显示，但以防万一)
   else if (isIOS.value) {
     showManualGuide(true)
   }
@@ -232,42 +228,30 @@ onMounted(async () => {
   })
 
   // ================= [PWA 初始化] =================
-  checkPlatform() // 1. 先判断机型
+  checkPlatform()
 
-  // 检查是否已安装
   if (!isPWAInstalled()) {
-    // A. 如果是 Android：
-    if (isAndroid.value) {
-      // 强制显示按钮。如果 deferredPrompt 已经有值了，点击就是原生安装；
-      // 如果还没有值，点击就是手动引导。
+    // Android: 总是显示按钮
+    if (isAndroid.value)
       showInstallBtn.value = true
-    }
 
-    // B. 如果是 iOS：
+    // iOS: 不显示按钮，只自动弹窗
     if (isIOS.value) {
-      // 确保按钮隐藏
       showInstallBtn.value = false
-      // 延迟弹出引导
       setTimeout(() => {
         showManualGuide(true)
       }, 1500)
     }
   }
   else {
+    // 已安装，隐藏按钮
     showInstallBtn.value = false
   }
 
-  // 再次绑定监听器以防万一（覆盖 setup 阶段未绑定的情况）
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    deferredPrompt.value = e
-    if (isAndroid.value)
-      showInstallBtn.value = true
-  })
-
+  // 监听安装完成事件，隐藏按钮
   window.addEventListener('appinstalled', () => {
     showInstallBtn.value = false
-    deferredPrompt.value = null
+    globalDeferredPrompt = null
   })
   // ================= [PWA 初始化结束] =================
 
