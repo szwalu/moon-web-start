@@ -300,7 +300,7 @@ autoSave:
   load_failed: 加载数据时出错
 
 index:
-  add_to_home: 添加网址导航到桌面
+  add_to_home: 添加笔记到桌面
   click_below: 点击下面的
   choose_add_to_screen: 然后选择“添加到主屏幕”
   quote_prefix: 每日一句：
