@@ -58,25 +58,47 @@ const isWeatherRefreshing = ref(false)
 const isMobile = ref(false)
 const GEO_CONSENT_KEY = 'geo_consent_for_navigation_v1'
 
-/// ================= [PWA 逻辑修改] =================
+/// ================= [PWA 逻辑修复版] =================
 const showInstallBtn = ref(false)
 const deferredPrompt = ref<any>(null)
 const isIOS = ref(false)
-const isAndroid = ref(false) // 新增安卓标记
+const isAndroid = ref(false)
 
-// 检测设备类型
+// 1. 在组件初始化最早期就尝试捕获事件，防止错过
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredPrompt.value = e
+    // 如果是安卓，且之前已经强制显示了按钮，这里更新状态即可
+    if (isAndroid.value)
+      showInstallBtn.value = true
+  })
+}
+
+// 2. 稳健的设备检测 (修复 iOS 判断失效问题)
 function checkPlatform() {
+  if (typeof navigator === 'undefined')
+    return
+
   const u = navigator.userAgent
-  isIOS.value = !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/)
+  const p = navigator.platform || ''
+
+  // iOS 检测：检测 platform 列表，或者 Mac + 触屏 (iPadOS)
+  const iosPlatforms = ['iPhone', 'iPad', 'iPod', 'iPhone Simulator', 'iPad Simulator']
+  isIOS.value = iosPlatforms.includes(p) || (u.includes('Mac') && 'ontouchend' in document)
+
+  // Android 检测
   isAndroid.value = u.includes('Android') || u.includes('Adr')
 }
 
 // 检测是否已安装 (PWA模式)
 function isPWAInstalled() {
+  if (typeof window === 'undefined')
+    return false
   return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
 }
 
-// 通用引导弹窗 (Android/iOS 样式不同)
+// 通用引导弹窗
 function showManualGuide(isIOSMode: boolean) {
   // 1. iOS 引导文案
   if (isIOSMode) {
@@ -97,7 +119,7 @@ function showManualGuide(isIOSMode: boolean) {
       customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
     })
   }
-  // 2. Android 引导文案 (当原生安装失败时显示)
+  // 2. Android 引导文案 (只有当无法自动安装时才显示)
   else {
     Swal.fire({
       title: '安装到桌面',
@@ -128,16 +150,16 @@ async function handleInstallApp() {
       showInstallBtn.value = false
     }
   }
-  // 情况 B: 没捕获到事件 (可能是 Manifest 问题或浏览器限制)，改为弹出 Android 手动引导
+  // 情况 B: Android 但没捕获到事件 (可能是 Manifest/HTTPS 问题)，显示手动引导
   else if (isAndroid.value) {
-    showManualGuide(false) // 显示 Android 版引导
+    showManualGuide(false)
   }
-  // 情况 C: iOS
+  // 情况 C: iOS (理论上按钮不显示，但以防万一)
   else if (isIOS.value) {
     showManualGuide(true)
   }
 }
-// ================= [新增 PWA 逻辑结束] =================
+// ================= [PWA 逻辑结束] =================
 
 async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ lat: number; lon: number } | null> {
   if (!navigator?.geolocation)
@@ -209,43 +231,45 @@ onMounted(async () => {
     isMobile.value = window.innerWidth <= 768
   })
 
-  // ================= [PWA 初始化逻辑修改] =================
+  // ================= [PWA 初始化] =================
   checkPlatform() // 1. 先判断机型
 
+  // 检查是否已安装
   if (!isPWAInstalled()) {
-    // 移除 console.log 以通过 eslint 检查
-
-    // 策略：如果是安卓，先强制显示按钮，以防事件触发失败用户找不到入口
-    // 点击按钮时，如果有事件就触发原生，没有事件就弹引导教程
-    if (isAndroid.value)
+    // A. 如果是 Android：
+    if (isAndroid.value) {
+      // 强制显示按钮。如果 deferredPrompt 已经有值了，点击就是原生安装；
+      // 如果还没有值，点击就是手动引导。
       showInstallBtn.value = true
+    }
 
-    // 监听原生事件 (如果有，就存起来，这是最佳体验)
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault()
-      deferredPrompt.value = e
-      showInstallBtn.value = true // 确保按钮是显示的
-    })
-
-    // 监听安装完成
-    window.addEventListener('appinstalled', () => {
-      showInstallBtn.value = false
-      deferredPrompt.value = null
-    })
-
-    // iOS 逻辑：不显示按钮，自动弹窗
+    // B. 如果是 iOS：
     if (isIOS.value) {
+      // 确保按钮隐藏
       showInstallBtn.value = false
+      // 延迟弹出引导
       setTimeout(() => {
         showManualGuide(true)
       }, 1500)
     }
   }
   else {
-    // 移除 console.log 以通过 eslint 检查
     showInstallBtn.value = false
   }
-  // ================= [PWA 初始化逻辑结束] =================
+
+  // 再次绑定监听器以防万一（覆盖 setup 阶段未绑定的情况）
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredPrompt.value = e
+    if (isAndroid.value)
+      showInstallBtn.value = true
+  })
+
+  window.addEventListener('appinstalled', () => {
+    showInstallBtn.value = false
+    deferredPrompt.value = null
+  })
+  // ================= [PWA 初始化结束] =================
 
   showMobileToast()
 })
@@ -532,7 +556,6 @@ function getWeatherText(code: number): { text: string; icon: string } {
 
 function showMobileToast() {
   if (isMobile.value && !localStorage.getItem('mobileToastShown')) {
-    // 这里的旧逻辑可以保留作为辅助，或者如果您觉得有了新按钮不再需要，可以删除
     const Toast = Swal.mixin({
       toast: true,
       position: 'bottom',
