@@ -742,6 +742,63 @@ watch(newNoteContent, (val) => {
   }
 })
 
+// 特征指纹 Map
+const noteSignatures = ref(new Map<string, string>())
+
+function getNoteSignature(n: any) {
+  // 包含内容长度、更新时间、置顶、收藏、天气等，确保能感知任何变化
+  return `${n.id}|${n.updated_at}|${n.is_pinned}|${n.is_favorited}|${n.content?.length}|${n.weather}`
+}
+
+// ✨✨✨ 修复版 Watcher：解决了“初始化风暴”和“筛选误删”问题
+watch(notes, (newNotes) => {
+  // 1. 安全卫士：如果当前处于 搜索、标签筛选、那年今日、或年月跳转 视图中
+  // 此时 notes 列表不代表全量数据，缺少的笔记并不是被删除了，所以必须停止同步
+  if (isShowingSearchResults.value || activeTagFilter.value || isAnniversaryViewActive.value || isMonthJumpView.value)
+    return
+
+  const currentIds = new Set<string>()
+  const isFirstRun = noteSignatures.value.size === 0 && newNotes.length > 0
+
+  // 2. 遍历新列表
+  for (const note of newNotes) {
+    const id = note.id
+    currentIds.add(id)
+
+    const newSig = getNoteSignature(note)
+
+    // 如果不是第一次运行（初始化），才去对比差异
+    if (!isFirstRun) {
+      const oldSig = noteSignatures.value.get(id)
+      if (oldSig === undefined) {
+        // 新增
+        notifyAnniversaryAdd(note)
+      }
+      else if (oldSig !== newSig) {
+        // 编辑
+        notifyAnniversaryUpdate(note)
+      }
+    }
+
+    // 无论是否初始化，都更新指纹，为下一次对比做准备
+    noteSignatures.value.set(id, newSig)
+  }
+
+  // 3. 检测删除 (仅在非初始化阶段执行)
+  if (!isFirstRun) {
+    const idsToDelete: string[] = []
+    for (const id of noteSignatures.value.keys()) {
+      if (!currentIds.has(id))
+        idsToDelete.push(id)
+    }
+
+    if (idsToDelete.length > 0) {
+      notifyAnniversaryDelete(idsToDelete)
+      idsToDelete.forEach(id => noteSignatures.value.delete(id))
+    }
+  }
+}, { deep: true, immediate: true })
+
 // ✨ 2. 添加一个新的函数，用于遍历并清除所有 localStorage 中的搜索缓存
 function invalidateAllSearchCaches() {
   const searchPrefix = CACHE_KEYS.SEARCH_PREFIX

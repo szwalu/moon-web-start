@@ -256,8 +256,15 @@ function addNote(newNote: any) {
   const newNoteYmd = `${y}-${m}-${day}`
 
   if (newNoteYmd === todayYmd) {
+    // 1. 防重
+    if (anniversaryNotes.value.some(n => n.id === newNote.id))
+      return
+
     anniversaryNotes.value.unshift(newNote)
-    if (user.value)
+
+    // ✨✨✨ 关键修复：只有当数据加载完毕后，才允许写缓存
+    // 这样可以防止初始化期间的“新增通知”意外覆盖掉包含往年数据的完整缓存
+    if (user.value && !isLoading.value)
       writeResults(user.value.id, todayYmd, anniversaryNotes.value)
   }
 }
