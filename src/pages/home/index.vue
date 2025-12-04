@@ -22,16 +22,16 @@ defineOptions({
   name: 'HomePage',
 })
 
-// ================= [全局 PWA 事件捕获] =================
-// 将变量放在组件外部，确保脚本一加载就能捕获事件，防止组件挂载晚了导致丢失
+// ================= [PWA 全局事件捕获] =================
+// 使用全局变量和自定义事件来确保“事件”绝不丢失
 let globalDeferredPrompt: any = null
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
-    // 阻止 Chrome 67+ 自动显示底部的横幅
     e.preventDefault()
-    // 把事件存到全局变量里
     globalDeferredPrompt = e
+    // 派发一个自定义事件通知 Vue 组件
+    window.dispatchEvent(new Event('pwa-ready'))
   })
 }
 // ======================================================
@@ -136,18 +136,16 @@ function showManualGuide(isIOSMode: boolean) {
 
 // 处理点击安装按钮
 async function handleInstallApp() {
-  // 优先检查全局捕获的事件
+  // 1. 优先尝试使用原生事件
   if (globalDeferredPrompt) {
-    // 触发原生安装弹窗
     globalDeferredPrompt.prompt()
-    // 等待用户响应
     const { outcome } = await globalDeferredPrompt.userChoice
     if (outcome === 'accepted') {
       globalDeferredPrompt = null
       showInstallBtn.value = false
     }
   }
-  // 如果没有捕获到事件，说明浏览器不支持或未准备好，回退到手动引导
+  // 2. 如果没有原生事件，只能手动引导
   else if (isAndroid.value) {
     showManualGuide(false)
   }
@@ -227,15 +225,35 @@ onMounted(async () => {
     isMobile.value = window.innerWidth <= 768
   })
 
-  // ================= [PWA 初始化] =================
+  // ================= [PWA 初始化 - 增强稳定性版] =================
   checkPlatform()
 
   if (!isPWAInstalled()) {
-    // Android: 总是显示按钮
-    if (isAndroid.value)
-      showInstallBtn.value = true
+    // ---------------- 安卓逻辑 ----------------
+    if (isAndroid.value) {
+      // 策略：初始不显示按钮，等待原生事件触发
 
-    // iOS: 不显示按钮，只自动弹窗
+      // 1. 如果事件在 mounted 之前就已经触发了，直接显示
+      if (globalDeferredPrompt) {
+        showInstallBtn.value = true
+      }
+      else {
+        // 2. 否则，监听我们自定义的 pwa-ready 事件
+        window.addEventListener('pwa-ready', () => {
+          showInstallBtn.value = true
+        })
+
+        // 3. 超时兜底：如果 2.5秒后还没等到事件（可能浏览器太慢或已屏蔽），强制显示按钮
+        // 这样可以避免用户永远看不到按钮，虽然此时点击只能走手动引导
+        setTimeout(() => {
+          if (!showInstallBtn.value)
+            showInstallBtn.value = true
+        }, 2500)
+      }
+    }
+
+    // ---------------- iOS 逻辑 ----------------
+    // 保持原来的：不显示按钮，延迟自动弹窗
     if (isIOS.value) {
       showInstallBtn.value = false
       setTimeout(() => {
@@ -244,11 +262,11 @@ onMounted(async () => {
     }
   }
   else {
-    // 已安装，隐藏按钮
+    // 已安装模式：确保按钮隐藏
     showInstallBtn.value = false
   }
 
-  // 监听安装完成事件，隐藏按钮
+  // 监听安装完成事件
   window.addEventListener('appinstalled', () => {
     showInstallBtn.value = false
     globalDeferredPrompt = null
