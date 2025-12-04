@@ -771,26 +771,31 @@ function showMobileToast() {
 </style>
 
 <style>
-/* 1. 加大标题字号 */
-.pwa-ios-title {
-  font-size: 24px !important;  /* 默认约 18px，改为 24px */
-  font-weight: 700 !important;
-  padding-top: 1.5em !important;
-}
-
-/* 2. 加大底部按钮 */
-.pwa-ios-btn {
-  font-size: 18px !important;       /* 增大文字 */
-  padding: 14px 40px !important;    /* 增大按钮面积：上下14px，左右40px */
-  border-radius: 12px !important;   /* 圆角稍微大一点，更现代 */
-  margin-bottom: 10px !important;
-  font-weight: bold !important;
-}
-
-/* 3. (可选) 稍微调整弹窗宽度和内边距，让整体更协调 */
+/* 1. 关键：增加弹窗宽度，防止文字被挤成竖排 */
 .pwa-ios-popup {
-  padding: 20px !important;
-  border-radius: 20px !important;
+  width: 90% !important;          /* 宽度设为屏幕的 90%，让文字横向排开 */
+  max-width: 380px !important;    /* 限制最大宽度，平板上不至于太宽 */
+  padding: 15px !important;       /* 内边距适中 */
+  border-radius: 16px !important;
+}
+
+/* 2. 标题字号：调回适中大小 */
+.pwa-ios-title {
+  font-size: 20px !important;     /* 20px 既醒目又不会过大 */
+  font-weight: 600 !important;
+  padding-top: 1.2em !important;
+  line-height: 1.4 !important;    /* 增加行高 */
+  color: #333 !important;         /* 确保颜色深黑清晰 */
+}
+
+/* 3. 按钮：大小适中，但保证手指容易点 */
+.pwa-ios-btn {
+  font-size: 15px !important;
+  padding: 10px 24px !important;  /* 减小内边距 */
+  border-radius: 8px !important;
+  margin-bottom: 5px !important;
+  min-height: 40px !important;    /* 保持最小触控高度 */
+  font-weight: 500 !important;
 }
 </style>
 
