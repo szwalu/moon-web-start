@@ -1162,6 +1162,7 @@ export function useTagMenu(
             `width: calc(100% + ${SHIFT_LEFT_PX}px);`,
             `margin-left: -${SHIFT_LEFT_PX}px;`,
             rowPadding,
+            'padding-right: 16px;',
             'box-sizing: border-box;',
           ].join(''),
         }, [
@@ -1281,7 +1282,7 @@ export function useTagMenu(
         return h('div', {
           style: [
           `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
-          'padding-right: 4px;',
+          'padding-right: 16px;',
           'box-sizing: border-box;',
           'width: 100%;',
           'user-select: none;',
