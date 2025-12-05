@@ -1170,11 +1170,8 @@ export function useTagMenu(
             style: 'display: table; width: 100%; table-layout: fixed;',
             title: fullTitle,
           }, [
-            // Cell 1: Icon
             h('div', { style: 'display: table-cell; width: 22px; vertical-align: middle; padding-right: 6px;' }, icon),
-            // Cell 2: Text (will truncate)
             h('div', { style: 'display: table-cell; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, textLabel),
-            // Cell 3: "More" button
             h('div', { style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;' }, [
               h(NDropdown, {
                 options: getRowMenuOptions(tag, closeMenu),
@@ -1210,8 +1207,22 @@ export function useTagMenu(
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
                   'onClick': (e: MouseEvent) => {
-                    e.stopPropagation(); btnEl = e.currentTarget as HTMLElement; if (showRef.value) { lastMoreClosedByOutside = false; closeMenu() }
-                    else { placementRef.value = computeSmartPlacementStrict(btnEl); nextTick(() => { openMenu(); requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() }) }) }
+                    e.stopPropagation()
+                    // 💥 关键修复: 如果刚刚是因为点击外部关闭的（即点击了本按钮），则不再重复打开
+                    if (lastMoreClosedByOutside)
+                      return
+
+                    btnEl = e.currentTarget as HTMLElement
+                    if (showRef.value) {
+                      closeMenu()
+                    }
+                    else {
+                      placementRef.value = computeSmartPlacementStrict(btnEl)
+                      nextTick(() => {
+                        openMenu()
+                        requestAnimationFrame(() => { (btnEl as HTMLElement | null)?.focus?.() })
+                      })
+                    }
                   },
                 }, [h('span', { style: 'font-size:inherit !important; display:inline-block; transform: translateY(-1px);' }, '⋯')]),
               }),

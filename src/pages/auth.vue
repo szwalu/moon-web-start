@@ -2,9 +2,9 @@
 import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
-import { NDropdown, NSelect, useDialog, useMessage } from 'naive-ui'
+import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { Calendar, CheckSquare, ChevronRight, Download, HelpCircle, House, MessageSquare, Settings, Shuffle, Trash2, Type, User } from 'lucide-vue-next'
+import { House } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -26,6 +26,8 @@ import { useOfflineSync } from '@/composables/useSync'
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
 
+const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
+const showSidebar = ref(false) // [新增] 控制侧边栏显示
 const authStore = useAuthStore()
 const showHelpDialog = ref(false)
 // [新增 2] 激活弹窗状态与检查逻辑
@@ -333,8 +335,6 @@ const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
 const SILENT_PREFETCH_PAGES = 5 // 5 页 * 30 条 = 150 条
-const settingsExpanded = ref(false)
-const settingMenuVisible = ref(false)
 
 const isTopEditing = ref(false)
 const authResolved = ref(false)
@@ -356,7 +356,7 @@ let scrollTimer: any = null
 const _TAG_CACHE_DIRTY_TS = 'tag_cache_dirty_ts'
 // 组合式：放在 t / allTags 之后
 const {
-  mainMenuVisible,
+  _mainMenuVisible,
   tagMenuChildren,
   UNTAGGED_SENTINEL,
   refreshTags,
@@ -407,120 +407,6 @@ watch(activeTagFilter, (newValue) => {
   else
     sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
 })
-
-const mainMenuOptions = computed(() => [
-  // 顶层：日历
-  { label: t('auth.Calendar'), key: 'calendar', icon: () => h(Calendar, { size: 18 }) },
-
-  // 顶层：选择模式开关
-  {
-    label: isSelectionModeActive.value ? t('notes.cancel_selection') : t('notes.select_notes'),
-    key: 'toggleSelection',
-    icon: () => h(CheckSquare, { size: 18 }),
-  },
-
-  // 顶层：「设置」（拦截点击，避免触发 select→收起）
-  {
-    key: 'settings-group-toggle',
-    // 与其它一级项一致：图标放在 icon 栏位
-    icon: () => h(Settings, { size: 18 }),
-    // 文字 + 右侧箭头（不再给容器设 width:100%）
-    label: () =>
-      h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [
-        // 左侧文字（保持默认对齐，不加额外 margin/padding）
-        h('span', null, t('settings.title') || '设置'),
-        // 右侧箭头：用 margin-left:auto 推到最右侧
-        h(ChevronRight, {
-          'size': 18,
-          'strokeWidth': 2.2,
-          'color': '#888',
-          'class': settingsExpanded.value ? 'menu-caret rot90' : 'menu-caret',
-          'style': 'margin-left:auto;',
-          'aria-hidden': 'true',
-        }),
-      ]),
-    // 整行可点击（图标/文字/箭头效果一致）
-    props: {
-      onMousedown: (e: MouseEvent) => e.preventDefault(),
-      onClick: (e: MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        settingsExpanded.value = !settingsExpanded.value
-        mainMenuVisible.value = true
-      },
-      onTouchend: (e: TouchEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        settingsExpanded.value = !settingsExpanded.value
-        mainMenuVisible.value = true
-      },
-    },
-  },
-
-  // —— 向下展开的“二级”选项（受 show 控制） —— //
-  { type: 'divider', key: 'div-settings', show: settingsExpanded.value },
-
-  {
-    key: 'settings',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { class: 'submenu-inline' }, [
-        h(Type, { size: 18 }),
-        h('span', null, t('settings.font_title')),
-      ]),
-  },
-  {
-    key: 'export',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { class: 'submenu-inline' }, [
-        h(Download, { size: 18 }),
-        h('span', null, t('notes.export_all')),
-      ]),
-  },
-  {
-    key: 'account',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { class: 'submenu-inline' }, [
-        h(User, { size: 18 }),
-        h('span', null, t('auth.account_title')),
-      ]),
-  },
-  {
-    key: 'help',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { class: 'submenu-inline' }, [
-        h(HelpCircle, { size: 18 }), // ← 图标为问号圆圈
-        h('span', null, t('notes.help_title') || '使用帮助'),
-      ]),
-  },
-  {
-    key: 'feedback',
-    show: settingsExpanded.value,
-    label: () =>
-      h('div', { class: 'submenu-inline' }, [
-        h(MessageSquare, { size: 18 }),
-        h('span', null, t('notes.feedback_title') || '反馈建议'),
-      ]),
-  },
-  // ⭐⭐ 新增：一级菜单「随机漫游」，在回收站前面
-  {
-    label: t('notes.random_roam.title') || '随机漫游',
-    key: 'randomRoam',
-    icon: () => h(Shuffle, { size: 18 }), // 先借用 HelpCircle 图标，需要再换我们再调
-  },
-
-  // 顶层：回收站（保持为一级）
-  { label: t('auth.trash'), key: 'trash', icon: () => h(Trash2, { size: 18 }) },
-
-  // —— 分界线 —— //
-  { type: 'divider', key: 'div-tags' },
-
-  // 标签子菜单（保持原样）
-  ...tagMenuChildren.value,
-])
 
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
@@ -2741,48 +2627,34 @@ async function handleDeleteSelected() {
   })
 }
 
-function handleMainMenuSelect(rawKey: string) {
-  // 标签项（来自子菜单）
-  if (rawKey.startsWith('tag:') || rawKey.startsWith('#') || rawKey === UNTAGGED_SENTINEL)
-    return
+function handleMainMenuSelect(key: string) {
+  // 处理来自 Sidebar 的点击事件
+  if (key === 'calendar')
+    showCalendarView.value = true
 
-  // 其它一级菜单项
-  switch (rawKey) {
-    case 'calendar':
-      showCalendarView.value = true
-      break
-    case 'toggleSelection':
-      toggleSelectionMode()
-      break
-    case 'settings':
-      showSettingsModal.value = true
-      break
-    case 'export':
-      handleBatchExport()
-      break
-    case 'account':
-      showAccountModal.value = true
-      break
-    case 'tags':
-      // “标签”一级项点了不触发；仅子项（真正的标签）触发
-      break
-      // ⭐⭐ 新增：随机漫游
-    case 'randomRoam':
-      showRandomRoam.value = true
-      mainMenuVisible.value = false // 点完收起菜单
-      break
-    case 'trash':
-      showTrashModal.value = true
-      break
-    case 'help':
-      showHelpDialog.value = true
-      break
-    case 'feedback':
-      window.location.href = '/apply?from=auth'
-      break
-    default:
-      break
-  }
+  else if (key === 'toggleSelection')
+    toggleSelectionMode()
+
+  else if (key === 'settings')
+    showSettingsModal.value = true
+
+  else if (key === 'export')
+    handleBatchExport()
+
+  else if (key === 'account')
+    showAccountModal.value = true
+
+  else if (key === 'randomRoam')
+    showRandomRoam.value = true
+
+  else if (key === 'trash')
+    showTrashModal.value = true
+
+  else if (key === 'help')
+    showHelpDialog.value = true
+
+  else if (key === 'feedback')
+    window.location.href = '/apply?from=auth'
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
@@ -2966,34 +2838,21 @@ function onCalendarUpdated(updated: any) {
   >
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
-        <div class="dropdown-menu-container">
-          <NDropdown
-            v-model:show="mainMenuVisible"
-            trigger="click"
-            placement="bottom-start"
-            :options="mainMenuOptions"
-            :show-arrow="false"
-            :width="300"
-            @select="handleMainMenuSelect"
-            @update:show="(show:boolean) => { if (!show) settingMenuVisible = false }"
+        <div class="header-left" @click.stop="showSidebar = true">
+          <img
+            v-if="user?.user_metadata?.avatar_url"
+            :src="user.user_metadata.avatar_url"
+            class="header-avatar"
+            alt="User"
           >
-            <button class="header-action-btn" @click.stop>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M4 6h16v2H4zm0 5h12v2H4zm0 5h8v2H4z" />
-              </svg>
-            </button>
-          </NDropdown>
+          <img
+            v-else
+            src="/icons/pwa-192.png"
+            class="header-logo-btn"
+            alt="Menu"
+          >
         </div>
-        <h1 class="page-title">
-          <span class="page-title-inner">
-            <img
-              src="/icons/pwa-192.png"
-              alt="Logo"
-              class="page-title-logo"
-            >
-            <span class="page-title-text">{{ $t('notes.notes') }}</span>
-          </span>
-        </h1>
+
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button
@@ -3005,6 +2864,14 @@ function onCalendarUpdated(updated: any) {
           </button>
         </div>
       </div>
+      <Sidebar
+        :show="showSidebar"
+        :user="user"
+        :total-notes="totalNotes"
+        :tag-count="allTags.length"
+        :tag-menu-options="tagMenuChildren" @close="showSidebar = false"
+        @menu-click="handleMainMenuSelect"
+      />
 
       <AnniversaryBanner
         v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner && !headerCollapsed"
@@ -3364,6 +3231,28 @@ function onCalendarUpdated(updated: any) {
 }
 .dark .header-action-btn:hover {
   background-color: rgba(255,255,255,0.1);
+}
+
+/* [新增] Header 样式调整 */
+.header-left {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #eee;
+}
+
+.header-logo-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px; /* Logo 可以稍微方一点 */
 }
 
 /* 顶部选择模式条幅 */

@@ -422,6 +422,7 @@ notes:
   search_quick_favorited: 已收藏
   search_advanced: 高级搜索
   search_history_title: 最近搜索
+  days: 天
   draft:
     title: 提示
     restore_confirm: 你有之前未保存草稿，是否恢复？
