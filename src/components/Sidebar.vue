@@ -239,13 +239,24 @@ function handleItemClick(key: string) {
 :global(.dark) .sidebar-container { background: #1e1e1e; }
 
 /* 🎨 [修改] 顶部卡片配色：紫色渐变
-  从上 (#6366f1) 到下 (#818cf8) 变淡，模拟主页按钮色调
+   从上 (#6366f1) 到下 (#818cf8) 变淡，模拟主页按钮色调
 */
 .sidebar-header-card {
   background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%);
-  padding: 2rem 1.5rem 1.5rem 1.5rem; color: white; position: relative; flex-shrink: 0;
+  /* ⚡️ [关键修改] padding-top 增加安全区域计算，防止顶到状态栏 */
+  padding-top: calc(2rem + env(safe-area-inset-top));
+  padding-right: 1.5rem;
+  padding-bottom: 1.5rem;
+  padding-left: 1.5rem;
+  color: white; position: relative; flex-shrink: 0;
 }
-.close-btn { position: absolute; top: 1rem; right: 1rem; background: none; border: none; cursor: pointer; opacity: 0.8; }
+.close-btn {
+  position: absolute;
+  /* ⚡️ [关键修改] top 增加安全区域计算，防止关闭按钮太靠上 */
+  top: calc(1rem + env(safe-area-inset-top));
+  right: 1rem;
+  background: none; border: none; cursor: pointer; opacity: 0.8;
+}
 .user-info-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; margin-top: 10px; }
 .avatar-circle { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.2); }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }

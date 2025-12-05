@@ -426,6 +426,7 @@ notes:
   search_quick_favorited: お気に入り
   search_advanced: 詳細検索
   search_history_title: 最近の検索
+  days: 日数
   draft:
     title: ヒント
     restore_confirm: 以前の保存されていない下書きがあります。復元しますか？
