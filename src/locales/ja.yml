@@ -302,9 +302,22 @@ autoSave:
   load_failed: データの読み込み中にエラーが発生しました
 
 index:
-  add_to_home: ホーム画面にナビを追加
-  click_below: 下をクリック
-  choose_add_to_screen: 「ホーム画面に追加」を選択
+  pwa_install_btn: 📲 アプリをホーム画面に追加
+  pwa_ios_title: ノートをホーム画面に追加
+  pwa_click_bottom: 下部の
+  pwa_share: 共有
+  pwa_icon: アイコンをタップ
+  pwa_scroll_select: スクロールして
+  pwa_add_to_home: ホーム画面に追加
+  pwa_got_it: 了解
+  pwa_install_title: ホーム画面に追加
+  pwa_android_manual_hint: 自動インストールできませんでした。手動で追加してください：
+  pwa_android_click_menu: 右上の
+  pwa_menu: メニューをタップ
+  pwa_select: 選択：
+  pwa_install_app: アプリをインストール
+  pwa_or: または
+  pwa_ok: OK
   quote_prefix: '今日の名言:'
   weather_loading: 読み込み中...
   weather_failed: 天気の取得に失敗しました

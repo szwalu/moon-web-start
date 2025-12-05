@@ -94,7 +94,7 @@ function isPWAInstalled() {
   return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
 }
 
-// 通用引导弹窗
+// 通用引导弹窗 (已国际化)
 function showManualGuide(isIOSMode: boolean) {
   if (isIOSMode) {
     // iOS 版：样式已优化（图标左置，内容居中）
@@ -116,18 +116,18 @@ function showManualGuide(isIOSMode: boolean) {
             font-family: sans-serif; 
             margin-right: 12px;
             font-size: 14px;">!</div>
-          <span style="font-size: 20px; font-weight: 600; color: #333;">添加笔记到桌面</span>
+          <span style="font-size: 20px; font-weight: 600; color: #333;">${t('index.pwa_ios_title')}</span>
         </div>
         <div style="text-align: center; font-size: 15px; line-height: 1.8; color: #555;">
           <div>
-            点击底部 <img src="${shareIconPath}" style="width:18px; display:inline-block; vertical-align: text-bottom; margin: 0 4px;" /> <strong>分享</strong>图标
+            ${t('index.pwa_click_bottom')} <img src="${shareIconPath}" style="width:18px; display:inline-block; vertical-align: text-bottom; margin: 0 4px;" /> <strong>${t('index.pwa_share')}</strong>${t('index.pwa_icon')}
           </div>
           <div>
-            下滑选择 <strong>"添加到主屏幕"</strong>
+            ${t('index.pwa_scroll_select')} <strong>"${t('index.pwa_add_to_home')}"</strong>
           </div>
         </div>
       `,
-      confirmButtonText: '我知道了',
+      confirmButtonText: t('index.pwa_got_it'),
       confirmButtonColor: '#3085d6',
       customClass: {
         confirmButton: 'pwa-ios-btn',
@@ -138,18 +138,18 @@ function showManualGuide(isIOSMode: boolean) {
   else {
     // Android 版手动引导 (仅当原生安装彻底失败时才显示)
     Swal.fire({
-      title: '安装到桌面',
+      title: t('index.pwa_install_title'),
       html: `
         <div style="font-size: 15px; line-height: 1.6; text-align: left;">
-          <p>自动安装未触发，请尝试手动添加：</p>
+          <p>${t('index.pwa_android_manual_hint')}</p>
           <ol style="padding-left: 20px; margin-top: 10px;">
-            <li style="margin-bottom: 8px;">点击浏览器右上角的 <strong>⋮</strong> 菜单</li>
-            <li>选择 <strong>"安装应用"</strong> 或 <strong>"添加到主屏幕"</strong></li>
+            <li style="margin-bottom: 8px;">${t('index.pwa_android_click_menu')} <strong>⋮</strong> ${t('index.pwa_menu')}</li>
+            <li>${t('index.pwa_select')} <strong>"${t('index.pwa_install_app')}"</strong> ${t('index.pwa_or')} <strong>"${t('index.pwa_add_to_home')}"</strong></li>
           </ol>
         </div>
       `,
       icon: 'info',
-      confirmButtonText: '好的',
+      confirmButtonText: t('index.pwa_ok'),
       customClass: { title: 'pwa-ios-title', confirmButton: 'pwa-ios-btn', popup: 'pwa-ios-popup' },
     })
   }
@@ -609,7 +609,7 @@ function getWeatherText(code: number): { text: string; icon: string } {
 
         <div v-if="showInstallBtn" class="pwa-install-bar">
           <button class="pwa-install-btn" @click="handleInstallApp">
-            <span>📲 安装应用到桌面</span>
+            <span>{{ t('index.pwa_install_btn') }}</span>
           </button>
         </div>
       </div>

@@ -300,9 +300,22 @@ autoSave:
   load_failed: 加载数据时出错
 
 index:
-  add_to_home: 添加笔记到桌面
-  click_below: 点击下面的
-  choose_add_to_screen: 然后选择“添加到主屏幕”
+  pwa_install_btn: 📲 安装应用到桌面
+  pwa_ios_title: 添加笔记到桌面
+  pwa_click_bottom: 点击底部
+  pwa_share: 分享
+  pwa_icon: 图标
+  pwa_scroll_select: 下滑选择
+  pwa_add_to_home: 添加到主屏幕
+  pwa_got_it: 我知道了
+  pwa_install_title: 安装到桌面
+  pwa_android_manual_hint: 自动安装未触发，请尝试手动添加：
+  pwa_android_click_menu: 点击浏览器右上角的
+  pwa_menu: 菜单
+  pwa_select: 选择
+  pwa_install_app: 安装应用
+  pwa_or: 或
+  pwa_ok: 好的
   quote_prefix: 每日一句：
   weather_loading: 加载中...
   weather_failed: 天气加载失败

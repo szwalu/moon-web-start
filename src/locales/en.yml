@@ -301,9 +301,22 @@ autoSave:
   load_failed: Error loading data
 
 index:
-  add_to_home: Add Navigation to Home Screen
-  click_below: Click below
-  choose_add_to_screen: Then select “Add to Home Screen”
+  pwa_install_btn: 📲 Install App to Desktop
+  pwa_ios_title: Add Note to Home Screen
+  pwa_click_bottom: Tap the
+  pwa_share: Share
+  pwa_icon: icon below
+  pwa_scroll_select: Scroll down and select
+  pwa_add_to_home: Add to Home Screen
+  pwa_got_it: Got it
+  pwa_install_title: Install to Desktop
+  pwa_android_manual_hint: 'Auto-install failed. Please try manually:'
+  pwa_android_click_menu: Tap the top-right
+  pwa_menu: menu
+  pwa_select: Select
+  pwa_install_app: Install App
+  pwa_or: or
+  pwa_ok: OK
   quote_prefix: 'Daily Quote:'
   weather_loading: Loading...
   weather_failed: Failed to load weather
