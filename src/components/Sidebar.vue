@@ -28,6 +28,9 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 const { t } = useI18n()
 
+function onAvatarClick() {
+  handleItemClick('account')
+}
 // ===========================================================================
 // 🔥 递归渲染组件
 // ===========================================================================
@@ -136,7 +139,7 @@ function handleItemClick(key: string) {
       <Transition name="slide-sidebar">
         <div v-if="show" class="sidebar-container">
           <div class="sidebar-header-card">
-            <div class="user-info-row">
+            <div class="user-info-row" @click="onAvatarClick">
               <div class="avatar-circle">
                 <img v-if="userAvatar" :src="userAvatar" alt="Avatar">
                 <div v-else class="avatar-placeholder">
@@ -247,7 +250,32 @@ function handleItemClick(key: string) {
   color: white; position: relative; flex-shrink: 0;
 }
 
-.user-info-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; margin-top: 10px; }
+/* ⚡️ [修改] 增加 cursor: pointer 和交互效果 */
+.user-info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  margin-top: 10px;
+
+  /* 新增交互样式 */
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  border-radius: 8px; /* 可选：加一点圆角让点击区域更明显 */
+  margin-left: -8px;  /* 补偿 padding 的位移 */
+  padding: 8px;       /* 增加点击热区 */
+}
+
+/* 悬停微调 */
+.user-info-row:hover {
+  background: rgba(255, 255, 255, 0.1); /* 在紫色背景上加一点微亮的层 */
+}
+
+/* 点击时的缩放反馈 */
+.user-info-row:active {
+  opacity: 0.8;
+  transform: scale(0.98);
+}
 .avatar-circle { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.2); }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; }
@@ -258,22 +286,9 @@ function handleItemClick(key: string) {
 .stat-num { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .stat-label { font-size: 12px; opacity: 0.9; }
 
-/* 原来的代码 */
-/* .menu-list { padding: 10px 0; flex: 1; } */
-
-/* 修改后的代码 */
 .menu-list {
-  /* 上内边距 10px，左右 0 */
-  padding-top: 10px;
-  padding-left: 0;
-  padding-right: 0;
-
-  /* ⚡️ [关键修改] 底部内边距：
-     如果你想完全去掉空白，设为 0。
-     但为了防止 iPhone 底部横条遮挡最后一行，建议保留 20px 左右，或者使用 safe-area-inset-bottom
-  */
-  padding-bottom: env(safe-area-inset-bottom);
-
+  /* 确保底部没有 padding，使用 !important 覆盖默认样式 */
+  padding: 10px 0 0 0 !important;
   flex: 1;
 }
 

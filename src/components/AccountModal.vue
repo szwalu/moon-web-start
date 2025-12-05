@@ -483,9 +483,13 @@ function handleForgotOldPwd() {
               <div v-else class="profile-avatar placeholder">
                 {{ userName.charAt(0).toUpperCase() }}
               </div>
-              <div class="avatar-overlay">
-                <span v-if="isUploadingAvatar">...</span>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+
+              <div v-if="isUploadingAvatar" class="avatar-overlay loading">
+                <span>...</span>
+              </div>
+
+              <div v-else class="avatar-edit-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
               </div>
             </div>
 
@@ -494,12 +498,14 @@ function handleForgotOldPwd() {
                 <input v-model="tempName" class="name-input" autofocus @blur="saveName" @keyup.enter="saveName">
               </template>
               <template v-else>
-                <div class="profile-name">
-                  {{ userName }}
+                <div class="name-display-wrapper" @click="startEditName">
+                  <div class="profile-name">
+                    {{ userName }}
+                  </div>
+                  <button class="edit-icon-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                  </button>
                 </div>
-                <button class="edit-icon-btn" @click="startEditName">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                </button>
               </template>
             </div>
           </div>
@@ -594,140 +600,227 @@ function handleForgotOldPwd() {
 </template>
 
 <style scoped>
+/* ===========================================================================
+   1. 个人资料头部 (头像 + 昵称) - 核心修复区域
+   =========================================================================== */
 .profile-header {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: center; /* 垂直方向居中对齐 */
   margin-bottom: 1.5rem;
+  width: 100%;
 }
+
+/* --- 头像部分 --- */
 .avatar-wrapper {
   position: relative;
-  width: 72px;
-  height: 72px;
-  margin-bottom: 0.8rem;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 1rem;
   cursor: pointer;
   border-radius: 50%;
+  transition: transform 0.2s;
+  /* 确保头像容器本身居中 (虽然父级flex已经处理，双重保险) */
+  margin-left: auto;
+  margin-right: auto;
 }
+.avatar-wrapper:active { transform: scale(0.95); }
+
 .profile-avatar {
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid #f0f0f0;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
   display: block;
 }
-.dark .profile-avatar { border-color: #3a3a3c; }
+:global(.dark) .profile-avatar { border-color: #333; }
+
+/* 占位头像 */
 .profile-avatar.placeholder {
+  background: linear-gradient(135deg, #00b386, #009a74);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px; font-weight: bold;
+}
+
+/* 相机编辑徽章 (常驻) */
+.avatar-edit-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 26px;
+  height: 26px;
+  background-color: #fff;
+  border-radius: 50%;
+  border: 1px solid #eee;
+  display: flex; align-items: center; justify-content: center;
+  color: #666;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  transition: all 0.2s;
+  z-index: 2;
+}
+:global(.dark) .avatar-edit-badge {
+  background-color: #444;
+  border-color: #555;
+  color: #ccc;
+}
+/* 悬停头像时，徽章变绿 */
+.avatar-wrapper:hover .avatar-edit-badge {
   background-color: #00b386;
   color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  font-weight: bold;
+  border-color: #00b386;
 }
-.avatar-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-  color: white;
-}
-.avatar-wrapper:hover .avatar-overlay, .avatar-wrapper.is-loading .avatar-overlay { opacity: 1; }
 
+/* 加载遮罩 */
+.avatar-overlay.loading {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #00b386; font-weight: bold;
+  z-index: 3;
+}
+
+/* --- 昵称部分 --- */
 .profile-name-row {
-  position: relative;
   display: flex;
+  justify-content: center; /* ⚡️ 核心：让内部内容水平居中 */
+  align-items: center;
+  width: 100%;
+  position: relative;
+  min-height: 32px;
+}
+
+/* 名字显示容器：使用 Inline-Flex 自适应宽度 */
+.name-display-wrapper {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 28px;
+  gap: 8px; /* 名字和图标之间的间距 */
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  max-width: 100%;
 }
+
+.name-display-wrapper:hover {
+  background-color: #f5f5f5;
+}
+:global(.dark) .name-display-wrapper:hover { background-color: #333; }
+
 .profile-name {
   font-size: 18px;
   font-weight: 600;
   color: #111;
+  line-height: 1.2;
   text-align: center;
 }
-.dark .profile-name { color: #eee; }
+:global(.dark) .profile-name { color: #eee; }
+
+/* 编辑笔图标 */
+.edit-icon-btn {
+  /* ⚡️ 关键：静态定位，跟随文档流 */
+  position: static !important;
+  margin: 0 !important;
+  transform: none !important;
+
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+
+  /* ⚡️ 关键：常驻显示 (opacity: 1) */
+  opacity: 1 !important;
+  color: #bbb; /* 默认浅灰色 */
+
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+/* 悬停整个区域时，图标变深/变绿 */
+.name-display-wrapper:hover .edit-icon-btn {
+  color: #00b386;
+  background-color: rgba(0, 179, 134, 0.1);
+}
+:global(.dark) .edit-icon-btn { color: #666; }
+
+/* 输入框 */
 .name-input {
   font-size: 16px;
-  padding: 2px 6px;
+  padding: 4px 8px;
   border: 1px solid #00b386;
   border-radius: 4px;
   outline: none;
-  width: 120px;
+  width: 140px;
   text-align: center;
   background: transparent;
   color: inherit;
 }
-.edit-icon-btn {
-  position: absolute;
-  left: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 6px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #999;
-  padding: 4px;
-  display: flex;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.profile-name-row:hover .edit-icon-btn { opacity: 1; }
-.dark .edit-icon-btn { color: #666; }
-.edit-icon-btn:hover { color: #00b386; }
 
-/* 模态框基础样式 */
+/* ===========================================================================
+   2. 模态框通用样式 (保持原有逻辑)
+   =========================================================================== */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background-color: rgba(0, 0, 0, 0.6);
   display: flex; justify-content: center; align-items: center; z-index: 1000;
 }
 .pwd-overlay { z-index: 1010; }
+
 .modal-content {
   background: white; padding: 2rem; border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   width: 90%; max-width: 420px; position: relative;
+  display: flex; flex-direction: column;
 }
-.dark .modal-content { background: #2a2a2a; color: #e0e0e0; }
+:global(.dark) .modal-content { background: #2a2a2a; color: #e0e0e0; }
 .pwd-content { max-width: 380px; padding: 1.5rem; }
+
 .modal-header, .pwd-header {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 1rem;
 }
 .modal-header { margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid #eee; }
-.dark .modal-header { border-bottom-color: #444; }
+:global(.dark) .modal-header { border-bottom-color: #444; }
+
 .modal-title, .pwd-header h3 { font-size: 18px; font-weight: 600; margin: 0; }
+
 .close-button { background: none; border: none; font-size: 28px; cursor: pointer; color: #888; padding: 0; line-height: 1; }
-.dark .close-button { color: #bbb; }
+:global(.dark) .close-button { color: #bbb; }
+
 .modal-body { display: flex; flex-direction: column; gap: 1rem; }
+
+/* 信息列表项 */
 .info-item { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .info-label { color: #555; font-weight: 500; }
-.dark .info-label { color: #aaa; }
+:global(.dark) .info-label { color: #aaa; }
+
 .info-value {
   color: #111; font-weight: 500; background-color: #f0f0f0;
   padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 14px; text-align: right; min-width: 80px;
 }
-.dark .info-value { background-color: #3a3a3c; color: #f0f0f0; }
+:global(.dark) .info-value { background-color: #3a3a3c; color: #f0f0f0; }
+
+/* 存储进度条 */
 .storage-section { padding-bottom: 0.5rem; border-bottom: 1px dashed #eee; }
-.dark .storage-section { border-bottom-color: #444; }
+:global(.dark) .storage-section { border-bottom-color: #444; }
 .info-value-simple { color: #111; font-weight: 600; font-size: 13px; }
-.dark .info-value-simple { color: #fff; }
+:global(.dark) .info-value-simple { color: #fff; }
+
 .progress-track {
   width: 100%; height: 8px; background-color: #f0f0f0;
   border-radius: 4px; overflow: hidden; margin-top: 4px;
 }
-.dark .progress-track { background-color: #3a3a3c; }
+:global(.dark) .progress-track { background-color: #3a3a3c; }
 .progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease, background-color 0.3s ease; }
+
+/* 底部按钮 */
 .modal-footer { display: grid; grid-template-columns: 5fr 2fr; gap: 0.9rem; margin-top: 1.25rem; }
+
 .btn-green {
   display: inline-block; text-decoration: none; text-align: center; width: 100%;
   background-color: #00b386; color: #fff; border-radius: 6px; padding: 0.8rem;
@@ -735,31 +828,39 @@ function handleForgotOldPwd() {
 }
 .btn-green:hover { background-color: #009a74; }
 .btn-green:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .btn-grey {
   background-color: #f0f0f0; color: #333; border: 1px solid #ccc;
   border-radius: 6px; padding: 0.8rem; font-size: 15px; font-weight: 500;
   cursor: pointer; transition: background-color 0.2s;
 }
 .btn-grey:hover { background-color: #e5e5e5; }
-.dark .btn-grey { background-color: #3a3a3c; color: #e0e0e0; border-color: #555; }
-.dark .btn-grey:hover { background-color: #444; }
+:global(.dark) .btn-grey { background-color: #3a3a3c; color: #e0e0e0; border-color: #555; }
+:global(.dark) .btn-grey:hover { background-color: #444; }
+
+/* 密码修改部分 */
 .pwd-tip { font-size: 13px; color: #666; margin-bottom: 1.5rem; line-height: 1.5; }
-.dark .pwd-tip { color: #999; }
+:global(.dark) .pwd-tip { color: #999; }
 .pwd-form { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; }
 .pwd-input {
   width: 100%; padding: 0.8rem; border: 1px solid #ddd; border-radius: 6px;
   font-size: 15px; outline: none; background: #fff; color: #333; box-sizing: border-box;
 }
 .pwd-input:focus { border-color: #00b386; }
-.dark .pwd-input { background: #333; border-color: #555; color: #eee; }
-.dark .pwd-input:focus { border-color: #00b386; }
+:global(.dark) .pwd-input { background: #333; border-color: #555; color: #eee; }
+:global(.dark) .pwd-input:focus { border-color: #00b386; }
+
 .pwd-actions { display: flex; justify-content: space-between; align-items: center; }
 .pwd-btns { display: flex; gap: 2rem; justify-content: center; }
 .pwd-btn-item { width: 90px; padding: 0.6rem 0; }
+
 .forgot-link { font-size: 13px; color: #4a90e2; cursor: pointer; }
-.dark .forgot-link { color: #64b5f6; }
+:global(.dark) .forgot-link { color: #64b5f6; }
+
 .link-btn { background: none; border: none; color: #00b386; cursor: pointer; font-size: 14px; padding: 0; text-decoration: underline; }
-.dark .link-btn { color: #2dd4bf; }
+:global(.dark) .link-btn { color: #2dd4bf; }
+
+/* 动画 */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
