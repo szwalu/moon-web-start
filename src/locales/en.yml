@@ -327,6 +327,7 @@ app:
   name_short: Cloud Notes
 notes:
   notes: Cloud Notes
+  notes_bj: Notes
   save_note: Save Note
   more_notes: More Notes
   content_placeholder: Write something...

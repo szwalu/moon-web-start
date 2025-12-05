@@ -14,7 +14,6 @@ import {
   Trash2,
   Type,
   User as UserIcon,
-  X,
 } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -137,9 +136,6 @@ function handleItemClick(key: string) {
       <Transition name="slide-sidebar">
         <div v-if="show" class="sidebar-container">
           <div class="sidebar-header-card">
-            <button class="close-btn" @click="emit('close')">
-              <X :size="24" color="white" />
-            </button>
             <div class="user-info-row">
               <div class="avatar-circle">
                 <img v-if="userAvatar" :src="userAvatar" alt="Avatar">
@@ -153,7 +149,7 @@ function handleItemClick(key: string) {
             <div class="stats-grid">
               <div class="stat-item">
                 <div class="stat-num">{{ totalNotes }}</div>
-                <div class="stat-label">{{ t('notes.notes') || '笔记' }}</div>
+                <div class="stat-label">{{ t('notes.notes_bj') || '笔记' }}</div>
               </div>
               <div class="stat-item">
                 <div class="stat-num">{{ totalChars }}</div>
@@ -250,13 +246,7 @@ function handleItemClick(key: string) {
   padding-left: 1.5rem;
   color: white; position: relative; flex-shrink: 0;
 }
-.close-btn {
-  position: absolute;
-  /* ⚡️ [关键修改] top 增加安全区域计算，防止关闭按钮太靠上 */
-  top: calc(1rem + env(safe-area-inset-top));
-  right: 1rem;
-  background: none; border: none; cursor: pointer; opacity: 0.8;
-}
+
 .user-info-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; margin-top: 10px; }
 .avatar-circle { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.2); }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
@@ -268,7 +258,24 @@ function handleItemClick(key: string) {
 .stat-num { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .stat-label { font-size: 12px; opacity: 0.9; }
 
-.menu-list { padding: 10px 0; flex: 1; }
+/* 原来的代码 */
+/* .menu-list { padding: 10px 0; flex: 1; } */
+
+/* 修改后的代码 */
+.menu-list {
+  /* 上内边距 10px，左右 0 */
+  padding-top: 10px;
+  padding-left: 0;
+  padding-right: 0;
+
+  /* ⚡️ [关键修改] 底部内边距：
+     如果你想完全去掉空白，设为 0。
+     但为了防止 iPhone 底部横条遮挡最后一行，建议保留 20px 左右，或者使用 safe-area-inset-bottom
+  */
+  padding-bottom: env(safe-area-inset-bottom);
+
+  flex: 1;
+}
 
 /* 紧凑行距 */
 .menu-item {

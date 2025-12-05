@@ -324,6 +324,7 @@ index:
 
 notes:
   notes: 星云笔记
+  notes_bj: 笔记
   save_note: 保存
   more_notes: 更多笔记
   content_placeholder: 写点什么...

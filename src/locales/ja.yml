@@ -328,6 +328,7 @@ app:
   name_short: クラウドノート
 notes:
   notes: クラウドノート
+  notes_bj: メモ
   save_note: メモを保存
   more_notes: もっと見る
   content_placeholder: 何か書いてください...
