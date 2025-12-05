@@ -227,7 +227,7 @@ function handleItemClick(key: string) {
 /* Sidebar 层级 3500 */
 .sidebar-container {
   position: fixed;
-  top: 0; left: 0; width: 280px; height: 100dvh;
+  top: 0; left: 0; width: 310px; height: 100dvh;
   background: white;
   z-index: 3500;
   display: flex; flex-direction: column;
