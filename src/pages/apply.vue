@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../utils/supabaseClient'
 
 const route = useRoute()
+const router = useRouter()
 const isFromAuth = computed(() => route.query.from === 'auth')
 
 // [修改 1] 初始化下拉菜单选中值：如果来自 register，默认选中 'applyinvitecode'
@@ -92,7 +93,7 @@ async function handleSubmit() {
 
     setTimeout(() => {
       // 提交完成后：和返回按钮逻辑一致
-      window.location.href = backTarget.value
+      router.push(backTarget.value)
     }, 2000)
   }
   catch (err) {

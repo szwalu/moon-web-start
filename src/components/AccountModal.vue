@@ -755,7 +755,7 @@ function handleForgotOldPwd() {
 .dark .pwd-input:focus { border-color: #00b386; }
 .pwd-actions { display: flex; justify-content: space-between; align-items: center; }
 .pwd-btns { display: flex; gap: 2rem; justify-content: center; }
-.pwd-btn-item { width: 130px; padding: 0.6rem 0; }
+.pwd-btn-item { width: 90px; padding: 0.6rem 0; }
 .forgot-link { font-size: 13px; color: #4a90e2; cursor: pointer; }
 .dark .forgot-link { color: #64b5f6; }
 .link-btn { background: none; border: none; color: #00b386; cursor: pointer; font-size: 14px; padding: 0; text-decoration: underline; }

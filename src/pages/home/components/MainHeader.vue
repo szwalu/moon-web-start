@@ -86,21 +86,25 @@ onMounted(async () => {
     logoPath.value = '/logo.jpg'
 })
 
-// ✅ 新增这一段：只要是 from=notes 且移动端，显示 20 秒提示
+// ✅ 修改后的逻辑：只要是移动端就显示提示，不再依赖 from 参数
 onMounted(() => {
-  if (isMobile.value && route.query.from === 'notes') {
-    // ✅ 第一次识别到 from=notes 时，把这个标记从 URL 中移除
-    const { from: _from, ...restQuery } = route.query
-    router.replace({
-      path: route.path,
-      query: restQuery,
-    })
+  if (isMobile.value) {
+    // 1. 如果 URL 里正好带有 from=notes，顺手把它清理掉（保持 URL 干净）
+    // 但这一步不再是显示提示的前提条件
+    if (route.query.from === 'notes') {
+      const { from: _from, ...restQuery } = route.query
+      router.replace({
+        path: route.path,
+        query: restQuery,
+      })
+    }
 
+    // 2. 核心逻辑：直接判断次数并显示提示
     const countStr = localStorage.getItem('notes_to_main_tip_count')
     const currentCount = countStr ? Number(countStr) : 0
 
-    // 只显示前 10 次
-    if (currentCount < 10) {
+    // 只显示前 1000 次
+    if (currentCount < 1000) {
       showBackTip.value = true
 
       tipTimer = window.setTimeout(() => {
