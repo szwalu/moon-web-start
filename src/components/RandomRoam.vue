@@ -810,4 +810,62 @@ function getCardStyle(index: number) {
 .random-roam-page--dark .rr-page-shadow {
   background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,0.5) 80%, rgba(0,0,0,0.8));
 }
+
+/* 第一层纸张边缘 (较浅, 较窄) */
+.card-stack::before {
+  content: '';
+  position: absolute;
+  /* 上下各缩进一点，模拟纸张错落感 */
+  top: 3px;
+  bottom: 3px;
+  /* 定位到右侧外部 */
+  right: -5px;
+  /* 宽度不要太宽 */
+  width: 6px;
+  /* 颜色比卡片稍深一点的灰色 */
+  background: #e5e7eb;
+  /* 给个细边框增加层次感 */
+  border: 1px solid #d1d5db;
+  border-left: none; /* 左侧贴合卡片，不需要边框 */
+  /* 右侧圆角，与卡片保持一致 */
+  border-radius: 0 12px 12px 0;
+  /* 放在卡片后面 */
+  z-index: -1;
+  /* 稍微增加一点点深度变换 */
+  transform: translateZ(-2px);
+}
+
+/* 第二层纸张边缘 (更深, 更宽一点) */
+.card-stack::after {
+  content: '';
+  position: absolute;
+  /* 上下缩进更多一点 */
+  top: 6px;
+  bottom: 6px;
+  /* 定位到更右侧 */
+  right: -9px;
+  /* 宽度 */
+  width: 6px;
+  /* 颜色更深一点 */
+  background: #d1d5db;
+  /* 边框 */
+  border: 1px solid #9ca3af;
+  border-left: none;
+  /* 圆角 */
+  border-radius: 0 12px 12px 0;
+  /* 放在更后面 */
+  z-index: -2;
+  /* 深度变换 */
+  transform: translateZ(-4px);
+}
+
+/* 暗色模式适配 */
+.random-roam-page--dark .card-stack::before {
+  background: #374151;
+  border-color: #4b5563;
+}
+.random-roam-page--dark .card-stack::after {
+  background: #1f2937;
+  border-color: #374151;
+}
 </style>
