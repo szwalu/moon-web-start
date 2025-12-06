@@ -42,19 +42,51 @@ const RecursiveMenu = defineComponent({
     const resolve = (val: any) => (typeof val === 'function' ? val() : val)
 
     const renderNode = (item: any): any => {
-      // 1. Render 类型 (如搜索框、分割线等，不处理点击关闭)
-      if (item.type === 'render')
-        return h('div', { key: item.key, class: 'render-node' }, [resolve(item.render)])
+      // 1. Render 类型 (如搜索框、分割线、一级父标签等)
+      if (item.type === 'render') {
+        return h(
+          'div',
+          {
+            key: item.key,
+            class: 'render-node',
+            onClick: () => {
+              // 🛡️ [安全防护]
+              // 只有当 key 不是 'tag-search' (搜索框)
+              // 且不是 'pinned-header' (那个"常用"的小标题，点它没反应更好) 时，
+              // 才触发关闭侧边栏。这样点击搜索框打字不会误关。
+              if (item.key !== 'tag-search' && item.key !== 'pinned-header')
+                emit('itemClick')
+            },
+          },
+          [resolve(item.render)],
+        )
+      }
 
-      // 2. Group 类型 (分组标题，不处理点击关闭)
+      // 2. Group 类型 (包含子级的分组)
       if (item.type === 'group') {
+        const groupProps = item.props || {}
         return h('div', { key: item.key, class: 'group-node' }, [
-          h('div', { class: 'group-label' }, [resolve(item.label)]),
+          h(
+            'div',
+            {
+              class: 'group-label',
+              // ✨ [新增] 给分组标题添加点击事件，支持点击父标签关闭侧边栏
+              onClick: (e: MouseEvent) => {
+                // 如果父标签本身有点击逻辑（很少见，但为了兼容），先执行
+                if (groupProps.onClick)
+                  groupProps.onClick(e)
+
+                // 发送关闭信号
+                emit('itemClick')
+              },
+            },
+            [resolve(item.label)],
+          ),
           h('div', { class: 'group-children' }, item.children.map(renderNode)),
         ])
       }
 
-      // 3. 普通标签项 (✨ 关键修改：拦截点击事件)
+      // 3. 普通标签项 (✨ 拦截点击事件)
       // 提取原始的 props
       const originalProps = item.props || {}
 

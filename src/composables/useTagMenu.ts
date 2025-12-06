@@ -1317,7 +1317,7 @@ export function useTagMenu(
             h('div', {
               style: 'display: table-cell; vertical-align: middle; overflow: hidden; white-space: nowrap; cursor: pointer;',
               title: fullTitle,
-              onClick: (e: MouseEvent) => { e.stopPropagation(); selectTag(tagFull) },
+              onClick: () => { selectTag(tagFull) },
             }, [
               h('span', { style: 'text-overflow: ellipsis; overflow: hidden; display: inline-block; max-width: 100%;' }, [
                 h('span', null, icon),
