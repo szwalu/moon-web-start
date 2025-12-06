@@ -95,9 +95,10 @@ function isPWAInstalled() {
 }
 
 // 通用引导弹窗 (已国际化)
+// 通用引导弹窗 (已国际化)
 function showManualGuide(isIOSMode: boolean) {
   if (isIOSMode) {
-    // iOS 版：样式已优化（图标左置，内容居中）
+    // iOS 版：样式已优化（颜色改为变量引用）
     Swal.fire({
       title: '',
       icon: undefined,
@@ -116,9 +117,9 @@ function showManualGuide(isIOSMode: boolean) {
             font-family: sans-serif; 
             margin-right: 12px;
             font-size: 14px;">!</div>
-          <span style="font-size: 20px; font-weight: 600; color: #333;">${t('index.pwa_ios_title')}</span>
+          <span style="font-size: 20px; font-weight: 600; color: var(--pwa-text);">${t('index.pwa_ios_title')}</span>
         </div>
-        <div style="text-align: center; font-size: 15px; line-height: 1.8; color: #555;">
+        <div style="text-align: center; font-size: 15px; line-height: 1.8; color: var(--pwa-text-sub);">
           <div>
             ${t('index.pwa_click_bottom')} <img src="${shareIconPath}" style="width:18px; display:inline-block; vertical-align: text-bottom; margin: 0 4px;" /> <strong>${t('index.pwa_share')}</strong>${t('index.pwa_icon')}
           </div>
@@ -136,11 +137,11 @@ function showManualGuide(isIOSMode: boolean) {
     })
   }
   else {
-    // Android 版手动引导 (仅当原生安装彻底失败时才显示)
+    // Android 版手动引导
     Swal.fire({
       title: t('index.pwa_install_title'),
       html: `
-        <div style="font-size: 15px; line-height: 1.6; text-align: left;">
+        <div style="font-size: 15px; line-height: 1.6; text-align: left; color: var(--pwa-text-sub);">
           <p>${t('index.pwa_android_manual_hint')}</p>
           <ol style="padding-left: 20px; margin-top: 10px;">
             <li style="margin-bottom: 8px;">${t('index.pwa_android_click_menu')} <strong>⋮</strong> ${t('index.pwa_menu')}</li>
@@ -809,32 +810,70 @@ function getWeatherText(code: number): { text: string; icon: string } {
 </style>
 
 <style>
-/* 1. 关键：增加弹窗宽度，防止文字被挤成竖排 */
-.pwa-ios-popup {
-  width: 90% !important;          /* 宽度设为屏幕的 90%，让文字横向排开 */
-  max-width: 380px !important;    /* 限制最大宽度，平板上不至于太宽 */
-  padding: 15px !important;       /* 内边距适中 */
-  border-radius: 16px !important;
+/* ===========================================================================
+   🎨 PWA 弹窗主题变量定义 (Swal 是全局组件，需要全局样式)
+   =========================================================================== */
+body {
+  /* --- ☀️ 默认浅色 --- */
+  --pwa-bg: #ffffff;
+  --pwa-text: #333333;
+  --pwa-text-sub: #555555;
 }
 
-/* 2. 标题字号：调回适中大小 */
+/* 🌑 系统深色模式 */
+@media (prefers-color-scheme: dark) {
+  body {
+    --pwa-bg: #2a2a2a;
+    --pwa-text: #e0e0e0;
+    --pwa-text-sub: #bbbbbb;
+  }
+}
+
+/* 🌑 手动 .dark 类 (优先级更高) */
+:global(.dark) body {
+  --pwa-bg: #2a2a2a;
+  --pwa-text: #e0e0e0;
+  --pwa-text-sub: #bbbbbb;
+}
+
+/* 1. 关键：增加弹窗宽度，防止文字被挤成竖排 */
+.pwa-ios-popup {
+  width: 90% !important;          /* 宽度设为屏幕的 90% */
+  max-width: 380px !important;    /* 限制最大宽度 */
+  padding: 15px !important;       /* 内边距适中 */
+  border-radius: 16px !important;
+
+  /* ✨ 应用背景色变量 */
+  background: var(--pwa-bg) !important;
+  color: var(--pwa-text) !important;
+}
+
+/* 2. 标题字号 */
 .pwa-ios-title {
-  /* 由于我们已经禁用了默认标题，这个类现在主要影响 Android 弹窗 */
   font-size: 20px !important;
   font-weight: 600 !important;
   padding-top: 1.2em !important;
   line-height: 1.4 !important;
-  color: #333 !important;
+
+  /* ✨ 应用标题色变量 */
+  color: var(--pwa-text) !important;
 }
 
-/* 3. 按钮：大小适中，但保证手指容易点 */
+/* 3. 按钮样式 */
 .pwa-ios-btn {
   font-size: 15px !important;
-  padding: 10px 24px !important;  /* 减小内边距 */
+  padding: 10px 24px !important;
   border-radius: 8px !important;
   margin-bottom: 5px !important;
-  min-height: 40px !important;    /* 保持最小触控高度 */
+  min-height: 40px !important;
   font-weight: 500 !important;
+}
+
+/* ⚠️ 强制覆盖 SweetAlert 默认的文字颜色
+   因为 Swal 内部 HTML 可能包含默认样式，这里做一个兜底
+*/
+.pwa-ios-popup .swal2-html-container {
+  color: var(--pwa-text-sub) !important;
 }
 </style>
 

@@ -283,104 +283,141 @@ function handleItemClick(key: string) {
 </template>
 
 <style scoped>
-/* Sidebar 层级 3500 */
+/* ===========================================================================
+   🎨 主题变量定义
+   支持：默认浅色、系统深色模式、手动 .dark 类
+   =========================================================================== */
+.sidebar-container {
+  /* --- 默认浅色模式变量 --- */
+  --sb-bg: white;                 /* 背景色 */
+  --sb-text: #333;                /* 主文字颜色 */
+  --sb-text-sub: #999;            /* 次要/图标颜色 */
+  --sb-hover: rgba(0,0,0,0.03);   /* 悬停背景 */
+  --sb-submenu-bg: #fafafa;       /* 二级菜单背景 */
+  --sb-divider: #f0f0f0;          /* 分割线颜色 */
+  --sb-shadow: rgba(0,0,0,0.1);   /* 阴影颜色 */
+}
+
+/* 🌑 情况1：系统设置为深色模式 (自动跟随) */
+@media (prefers-color-scheme: dark) {
+  .sidebar-container {
+    --sb-bg: #1e1e1e;
+    --sb-text: #e0e0e0;
+    --sb-text-sub: #bbb;
+    --sb-hover: rgba(255,255,255,0.06);
+    --sb-submenu-bg: #151515;
+    --sb-divider: #333;
+    --sb-shadow: rgba(0,0,0,0.4);
+  }
+}
+
+/* 🌑 情况2：全局手动开启了 .dark 类 (优先级更高) */
+:global(.dark) .sidebar-container {
+  --sb-bg: #1e1e1e;
+  --sb-text: #e0e0e0;
+  --sb-text-sub: #bbb;
+  --sb-hover: rgba(255,255,255,0.06);
+  --sb-submenu-bg: #151515;
+  --sb-divider: #333;
+  --sb-shadow: rgba(0,0,0,0.4);
+}
+
+/* ===========================================================================
+   📐 布局与样式
+   =========================================================================== */
+
+/* Sidebar 容器 */
 .sidebar-container {
   position: fixed;
   top: 0; left: 0; width: 310px; height: 100dvh;
-  background: white;
   z-index: 3500;
   display: flex; flex-direction: column;
-  box-shadow: 4px 0 15px rgba(0,0,0,0.1);
   overflow-y: auto;
   scrollbar-width: none;
+
+  /* 应用变量 */
+  background: var(--sb-bg);
+  color: var(--sb-text);
+  box-shadow: 4px 0 15px var(--sb-shadow);
+  transition: background-color 0.3s, color 0.3s; /* 添加颜色过渡，切换更丝滑 */
 }
 .sidebar-container::-webkit-scrollbar { display: none; }
-:global(.dark) .sidebar-container { background: #1e1e1e; }
 
-/* 🎨 [修改] 顶部卡片配色：紫色渐变
-   从上 (#6366f1) 到下 (#818cf8) 变淡，模拟主页按钮色调
-*/
+/* 头部卡片 (保持紫色渐变，深色模式下稍微降低亮度以免刺眼) */
 .sidebar-header-card {
   background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%);
-  /* ⚡️ [关键修改] padding-top 增加安全区域计算，防止顶到状态栏 */
   padding-top: calc(2rem + env(safe-area-inset-top));
   padding-right: 1.5rem;
   padding-bottom: 1.5rem;
   padding-left: 1.5rem;
-  color: white; position: relative; flex-shrink: 0;
+  color: white;
+  position: relative;
+  flex-shrink: 0;
 }
 
-/* ⚡️ [修改] 增加 cursor: pointer 和交互效果 */
+/* 用户信息行 */
 .user-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-  margin-top: 10px;
-
-  /* 新增交互样式 */
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 24px; margin-top: 10px;
   cursor: pointer;
   transition: opacity 0.2s, transform 0.1s;
-  border-radius: 8px; /* 可选：加一点圆角让点击区域更明显 */
-  margin-left: -8px;  /* 补偿 padding 的位移 */
-  padding: 8px;       /* 增加点击热区 */
+  border-radius: 8px;
+  margin-left: -8px; padding: 8px;
 }
+.user-info-row:hover { background: rgba(255, 255, 255, 0.1); }
+.user-info-row:active { opacity: 0.8; transform: scale(0.98); }
 
-/* 悬停微调 */
-.user-info-row:hover {
-  background: rgba(255, 255, 255, 0.1); /* 在紫色背景上加一点微亮的层 */
-}
-
-/* 点击时的缩放反馈 */
-.user-info-row:active {
-  opacity: 0.8;
-  transform: scale(0.98);
-}
 .avatar-circle { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.2); }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; }
 .user-name { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
 .user-badge { background: rgba(255,255,255,0.3); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
-/* 4️⃣ [新增] 签名样式：小字号 */
-.user-signature {
-  font-size: 12px;
-  opacity: 0.85; /* 稍微透明一点 */
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 190px; /* 限制宽度 */
-}
+.user-signature { font-size: 12px; opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+
 .stats-grid { display: flex; justify-content: space-between; }
 .stat-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
 .stat-num { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .stat-label { font-size: 12px; opacity: 0.9; }
 
+/* 菜单列表区域 */
 .menu-list {
-  /* 确保底部没有 padding，使用 !important 覆盖默认样式 */
   padding: 10px 0 0 0 !important;
   flex: 1;
 }
 
-/* 紧凑行距 */
+/* 菜单项 */
 .menu-item {
   display: flex; align-items: center;
   padding: 6px 20px;
-  cursor: pointer; color: #333;
+  cursor: pointer;
   transition: background 0.1s;
   font-size: 15px; gap: 16px;
   position: relative;
   min-height: 36px;
+
+  /* 应用变量 */
+  color: var(--sb-text);
 }
-:global(.dark) .menu-item { color: #e0e0e0; }
-.menu-item:hover { background: rgba(0,0,0,0.03); }
-:global(.dark) .menu-item:hover { background: rgba(255,255,255,0.05); }
+.menu-item:hover {
+  background: var(--sb-hover);
+}
 .menu-item.has-arrow { justify-content: space-between; }
 .item-left { display: flex; align-items: center; gap: 16px; }
-.caret { transition: transform 0.2s; color: #999; }
+
+/* 图标颜色跟随 */
+.menu-item svg {
+   /* 如果你想让图标颜色比文字浅一点，可以使用 sub 变量，或者直接继承 text */
+   /* color: var(--sb-text-sub); */
+}
+
+.caret { transition: transform 0.2s; color: var(--sb-text-sub); }
 .caret.rotated { transform: rotate(90deg); }
-.submenu { background: #fafafa; overflow: hidden; }
-:global(.dark) .submenu { background: #151515; }
+
+/* 子菜单 */
+.submenu {
+  background: var(--sb-submenu-bg);
+  overflow: hidden;
+}
 
 .menu-item.sub {
   padding-left: 56px;
@@ -389,15 +426,22 @@ function handleItemClick(key: string) {
   padding-bottom: 6px;
 }
 
-.divider { height: 1px; background: #f0f0f0; margin: 8px 24px; }
-:global(.dark) .divider { background: #333; }
-.menu-section-label { padding: 12px 24px 4px 24px; font-size: 12px; color: #999; font-weight: 500; }
+/* 分割线 */
+.divider {
+  height: 1px;
+  background: var(--sb-divider);
+  margin: 8px 24px;
+}
+
+.menu-section-label { padding: 12px 24px 4px 24px; font-size: 12px; color: var(--sb-text-sub); font-weight: 500; }
 
 .sidebar-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-  z-index: 3499; /* 比 Sidebar 低 1 */
+  z-index: 3499;
   backdrop-filter: blur(2px);
 }
+
+/* 动画 */
 .slide-sidebar-enter-active, .slide-sidebar-leave-active { transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1); }
 .slide-sidebar-enter-from, .slide-sidebar-leave-to { transform: translateX(-100%); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
@@ -410,6 +454,7 @@ function handleItemClick(key: string) {
   overflow: visible;
 }
 
+/* 递归组件样式透传 (:deep) */
 :deep(.render-node) {
   position: relative;
   margin-left: -35px !important;
@@ -417,6 +462,7 @@ function handleItemClick(key: string) {
 }
 :deep(.menu-node), :deep(.group-node) {
   position: relative;
+  color: var(--sb-text); /* 确保递归菜单文字颜色正确 */
 }
 :deep(.hover-effect) {
   cursor: pointer;
@@ -425,13 +471,11 @@ function handleItemClick(key: string) {
   align-items: center;
 }
 :deep(.hover-effect:hover) {
-  background-color: rgba(0,0,0,0.03);
-}
-:global(.dark) :deep(.hover-effect:hover) {
-  background-color: rgba(255,255,255,0.06);
+  background-color: var(--sb-hover); /* 使用变量统一 Hover 效果 */
 }
 :deep(.group-label) {
   pointer-events: none;
+  color: var(--sb-text);
 }
 </style>
 

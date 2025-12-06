@@ -576,137 +576,178 @@ function handleForgotOldPwd() {
 
 <style scoped>
 /* ===========================================================================
+   🎨 账户组件主题变量定义
+   支持：默认浅色、系统深色模式、手动 .dark 类
+   =========================================================================== */
+.modal-overlay {
+  /* --- ☀️ 默认浅色模式变量 --- */
+  --ac-bg: #ffffff;                 /* 弹窗背景 */
+  --ac-text: #333333;               /* 主文字 */
+  --ac-text-sub: #666666;           /* 次要文字/标签 */
+  --ac-border: #eeeeee;             /* 分割线/边框 */
+
+  --ac-block-bg: #f0f0f0;           /* 信息块背景 (右侧数值背景) */
+  --ac-block-text: #111111;         /* 信息块文字 */
+
+  --ac-hover: #f5f5f5;              /* 列表/按钮悬停 */
+
+  --ac-input-bg: #ffffff;           /* 输入框背景 */
+  --ac-input-border: #dddddd;       /* 输入框边框 */
+
+  --ac-btn-grey-bg: #f0f0f0;        /* 灰色按钮背景 */
+  --ac-btn-grey-text: #333333;      /* 灰色按钮文字 */
+  --ac-btn-grey-border: #cccccc;    /* 灰色按钮边框 */
+
+  --ac-avatar-border: #ffffff;      /* 头像白边 */
+  --ac-icon-color: #bbbbbb;         /* 图标默认颜色 */
+}
+
+/* 🌑 情况1：系统设置为深色模式 */
+@media (prefers-color-scheme: dark) {
+  .modal-overlay {
+    --ac-bg: #2a2a2a;
+    --ac-text: #e0e0e0;
+    --ac-text-sub: #aaaaaa;
+    --ac-border: #444444;
+
+    --ac-block-bg: #3a3a3c;
+    --ac-block-text: #f0f0f0;
+
+    --ac-hover: #3a3a3c;
+
+    --ac-input-bg: #333333;
+    --ac-input-border: #555555;
+
+    --ac-btn-grey-bg: #3a3a3c;
+    --ac-btn-grey-text: #e0e0e0;
+    --ac-btn-grey-border: #555555;
+
+    --ac-avatar-border: #333333;
+    --ac-icon-color: #666666;
+  }
+}
+
+/* 🌑 情况2：全局手动开启了 .dark 类 (优先级更高) */
+:global(.dark) .modal-overlay {
+  --ac-bg: #2a2a2a;
+  --ac-text: #e0e0e0;
+  --ac-text-sub: #aaaaaa;
+  --ac-border: #444444;
+  --ac-block-bg: #3a3a3c;
+  --ac-block-text: #f0f0f0;
+  --ac-hover: #3a3a3c;
+  --ac-input-bg: #333333;
+  --ac-input-border: #555555;
+  --ac-btn-grey-bg: #3a3a3c;
+  --ac-btn-grey-text: #e0e0e0;
+  --ac-btn-grey-border: #555555;
+  --ac-avatar-border: #333333;
+  --ac-icon-color: #666666;
+}
+
+/* ===========================================================================
    1. 个人资料头部 (头像 + 昵称)
    =========================================================================== */
 .profile-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* 垂直方向居中对齐 */
-  margin-bottom: 1.5rem;
-  width: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  margin-bottom: 1.5rem; width: 100%;
 }
 
 /* --- 头像部分 --- */
 .avatar-wrapper {
-  position: relative;
-  width: 80px;
-  height: 80px;
-  margin-bottom: 1rem;
-  cursor: pointer;
-  border-radius: 50%;
-  transition: transform 0.2s;
-  margin-left: auto;
-  margin-right: auto;
+  position: relative; width: 80px; height: 80px;
+  margin-bottom: 1rem; cursor: pointer; border-radius: 50%;
+  transition: transform 0.2s; margin-left: auto; margin-right: auto;
 }
 .avatar-wrapper:active { transform: scale(0.95); }
 
 .profile-avatar {
-  width: 100%; height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid #fff;
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+  /* 应用变量 */
+  border: 3px solid var(--ac-avatar-border);
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
   display: block;
 }
-:global(.dark) .profile-avatar { border-color: #333; }
 
-/* 占位头像 */
 .profile-avatar.placeholder {
   background: linear-gradient(135deg, #00b386, #009a74);
-  color: white;
-  display: flex; align-items: center; justify-content: center;
+  color: white; display: flex; align-items: center; justify-content: center;
   font-size: 36px; font-weight: bold;
 }
 
-/* 相机编辑徽章 (常驻) */
+/* 相机编辑徽章 */
 .avatar-edit-badge {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 26px;
-  height: 26px;
-  background-color: #fff;
-  border-radius: 50%;
-  border: 1px solid #eee;
+  position: absolute; bottom: 0; right: 0;
+  width: 26px; height: 26px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  color: #666;
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  transition: all 0.2s;
-  z-index: 2;
+  transition: all 0.2s; z-index: 2;
+
+  /* 应用变量: 这里稍特殊，为了保证可见性，深色模式也用较亮背景或跟随主背景 */
+  background-color: var(--ac-bg);
+  border: 1px solid var(--ac-border);
+  color: var(--ac-text-sub);
 }
-:global(.dark) .avatar-edit-badge { background-color: #444; border-color: #555; color: #ccc; }
 .avatar-wrapper:hover .avatar-edit-badge { background-color: #00b386; color: white; border-color: #00b386; }
 
 .avatar-overlay.loading {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #00b386; font-weight: bold;
-  z-index: 3;
+  background: rgba(255, 255, 255, 0.7); /* 加载层保持半透明白即可 */
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #00b386; font-weight: bold; z-index: 3;
 }
+:global(.dark) .avatar-overlay.loading { background: rgba(0, 0, 0, 0.7); }
 
 /* --- 昵称部分 --- */
 .profile-name-row {
-  display: flex;
-  justify-content: center; /* 核心：让内部内容水平居中 */
-  align-items: center;
-  width: 100%;
-  position: relative;
-  min-height: 32px;
+  display: flex; justify-content: center; align-items: center;
+  width: 100%; position: relative; min-height: 32px;
 }
 
 .name-display-wrapper {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 6px 12px 6px 48px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  max-width: 100%;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 6px 12px 6px 48px; border-radius: 8px;
+  cursor: pointer; transition: background-color 0.2s; max-width: 100%;
 }
-.name-display-wrapper:hover { background-color: #f5f5f5; }
-:global(.dark) .name-display-wrapper:hover { background-color: #333; }
+.name-display-wrapper:hover {
+  background-color: var(--ac-hover);
+}
 
-.profile-name { font-size: 18px; font-weight: 600; color: #111; line-height: 1.2; text-align: center; }
-:global(.dark) .profile-name { color: #eee; }
+.profile-name {
+  font-size: 18px; font-weight: 600; line-height: 1.2; text-align: center;
+  color: var(--ac-text);
+}
 
 /* 编辑笔图标 */
 .edit-icon-btn {
   position: static !important; margin: 0 !important; transform: none !important;
   background: none; border: none; padding: 4px;
-  cursor: pointer; opacity: 1 !important; color: #bbb;
+  cursor: pointer; opacity: 1 !important;
   display: flex; align-items: center; transition: all 0.2s; border-radius: 4px;
+  color: var(--ac-icon-color);
 }
-.edit-icon-btn.small { padding: 2px; } /* 签名处稍微小一点 */
-
+.edit-icon-btn.small { padding: 2px; }
 .name-display-wrapper:hover .edit-icon-btn { color: #00b386; background-color: rgba(0, 179, 134, 0.1); }
-:global(.dark) .edit-icon-btn { color: #666; }
 
 .name-input {
   font-size: 16px; padding: 4px 8px; border: 1px solid #00b386; border-radius: 4px;
   outline: none; width: 140px; text-align: center; background: transparent; color: inherit;
 }
 
-/* [新增] 签名部分样式 */
-.signature-display-wrapper {
-  display: flex; justify-content: flex-end; align-items: center; width: 100%;
-}
+/* 签名部分 */
+.signature-display-wrapper { display: flex; justify-content: flex-end; align-items: center; width: 100%; }
 .signature-clickable {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   padding: 2px 6px; border-radius: 6px; transition: background-color 0.2s;
 }
-.signature-clickable:hover { background-color: #f5f5f5; }
-:global(.dark) .signature-clickable:hover { background-color: #333; }
+.signature-clickable:hover { background-color: var(--ac-hover); }
 .signature-clickable:hover .edit-icon-btn { color: #00b386; }
 
 .signature-text {
-  font-size: 14px; color: #555; max-width: 200px;
+  font-size: 14px; max-width: 200px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ac-text-sub);
 }
-:global(.dark) .signature-text { color: #aaa; }
 
 .signature-input {
   font-size: 14px; padding: 4px 8px; border: 1px solid #00b386; border-radius: 4px;
@@ -719,54 +760,65 @@ function handleForgotOldPwd() {
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000;
+  backdrop-filter: blur(2px);
 }
 .pwd-overlay { z-index: 1010; }
 
 .modal-content {
-  background: white; padding: 2rem; border-radius: 12px;
+  padding: 2rem; border-radius: 12px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); width: 90%; max-width: 420px; position: relative;
   display: flex; flex-direction: column;
+
+  /* 应用变量 */
+  background: var(--ac-bg);
+  color: var(--ac-text);
 }
-:global(.dark) .modal-content { background: #2a2a2a; color: #e0e0e0; }
 .pwd-content { max-width: 380px; padding: 1.5rem; }
 
 .modal-header, .pwd-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.modal-header { margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid #eee; }
-:global(.dark) .modal-header { border-bottom-color: #444; }
+.modal-header {
+  margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--ac-border);
+}
+
 .modal-title, .pwd-header h3 { font-size: 18px; font-weight: 600; margin: 0; }
-.close-button { background: none; border: none; font-size: 28px; cursor: pointer; color: #888; padding: 0; line-height: 1; }
-:global(.dark) .close-button { color: #bbb; }
+.close-button {
+  background: none; border: none; font-size: 28px; cursor: pointer; padding: 0; line-height: 1;
+  color: var(--ac-text-sub);
+}
+.close-button:hover { color: var(--ac-text); }
 
 .modal-body { display: flex; flex-direction: column; gap: 1rem; }
 
 .info-item { display: flex; justify-content: space-between; align-items: center; font-size: 14px; min-height: 28px; }
 
 .info-label {
-  color: #555;
-  font-weight: 500;
-
-  /* ⚡️ [新增] 防止文字换行 */
-  white-space: nowrap;
-  /* ⚡️ [新增] 防止被右侧内容挤压 */
-  flex-shrink: 0;
-  /* 可选：给个右边距，离内容远一点 */
-  margin-right: 12px;
+  font-weight: 500; white-space: nowrap; flex-shrink: 0; margin-right: 12px;
+  color: var(--ac-text-sub);
 }
-:global(.dark) .info-label { color: #aaa; }
 
 .info-value {
-  color: #111; font-weight: 500; background-color: #f0f0f0;
+  font-weight: 500;
   padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 14px; text-align: right; min-width: 80px;
+
+  /* 应用变量 */
+  background-color: var(--ac-block-bg);
+  color: var(--ac-block-text);
 }
-:global(.dark) .info-value { background-color: #3a3a3c; color: #f0f0f0; }
 
-.storage-section { padding-bottom: 0.5rem; border-bottom: 1px dashed #eee; }
-:global(.dark) .storage-section { border-bottom-color: #444; }
-.info-value-simple { color: #111; font-weight: 600; font-size: 13px; }
-:global(.dark) .info-value-simple { color: #fff; }
+.storage-section {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--ac-border);
+}
+.info-value-simple {
+  font-weight: 600; font-size: 13px;
+  color: var(--ac-text);
+}
 
-.progress-track { width: 100%; height: 8px; background-color: #f0f0f0; border-radius: 4px; overflow: hidden; margin-top: 4px; }
-:global(.dark) .progress-track { background-color: #3a3a3c; }
+.progress-track {
+  width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 4px;
+  background-color: var(--ac-block-bg);
+}
 .progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease, background-color 0.3s ease; }
 
 .modal-footer { display: grid; grid-template-columns: 5fr 2fr; gap: 0.9rem; margin-top: 1.25rem; }
@@ -780,27 +832,36 @@ function handleForgotOldPwd() {
 .btn-green:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-grey {
-  background-color: #f0f0f0; color: #333; border: 1px solid #ccc;
   border-radius: 6px; padding: 0.8rem; font-size: 15px; font-weight: 500;
   cursor: pointer; transition: background-color 0.2s;
-}
-.btn-grey:hover { background-color: #e5e5e5; }
-:global(.dark) .btn-grey { background-color: #3a3a3c; color: #e0e0e0; border-color: #555; }
-:global(.dark) .btn-grey:hover { background-color: #444; }
 
-.pwd-tip { font-size: 13px; color: #666; margin-bottom: 1.5rem; line-height: 1.5; }
-:global(.dark) .pwd-tip { color: #999; }
+  /* 应用变量 */
+  background-color: var(--ac-btn-grey-bg);
+  color: var(--ac-btn-grey-text);
+  border: 1px solid var(--ac-btn-grey-border);
+}
+.btn-grey:hover {
+  background-color: var(--ac-hover);
+}
+
+.pwd-tip { font-size: 13px; margin-bottom: 1.5rem; line-height: 1.5; color: var(--ac-text-sub); }
 .pwd-form { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem; }
-.pwd-input { width: 100%; padding: 0.8rem; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; outline: none; background: #fff; color: #333; box-sizing: border-box; }
+
+.pwd-input {
+  width: 100%; padding: 0.8rem; border-radius: 6px; font-size: 15px; outline: none; box-sizing: border-box;
+
+  /* 应用变量 */
+  background: var(--ac-input-bg);
+  border: 1px solid var(--ac-input-border);
+  color: var(--ac-text);
+}
 .pwd-input:focus { border-color: #00b386; }
-:global(.dark) .pwd-input { background: #333; border-color: #555; color: #eee; }
-:global(.dark) .pwd-input:focus { border-color: #00b386; }
 
 .pwd-actions { display: flex; justify-content: space-between; align-items: center; }
 .pwd-btns { display: flex; gap: 2rem; justify-content: center; }
 .pwd-btn-item { width: 90px; padding: 0.6rem 0; }
 .forgot-link { font-size: 13px; color: #4a90e2; cursor: pointer; }
-:global(.dark) .forgot-link { color: #64b5f6; }
+:global(.dark) .forgot-link { color: #64b5f6; } /* 蓝色微调，可保留 global */
 .link-btn { background: none; border: none; color: #00b386; cursor: pointer; font-size: 14px; padding: 0; text-decoration: underline; }
 :global(.dark) .link-btn { color: #2dd4bf; }
 
