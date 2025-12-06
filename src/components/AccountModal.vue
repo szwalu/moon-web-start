@@ -174,7 +174,6 @@ function startEditSignature() {
 
 async function saveSignature() {
   const newSig = tempSignature.value.trim()
-  // 如果为空，不保存（或者你可以允许存空字符串，这里假设不为空）
   if (!newSig) {
     isEditingSignature.value = false
     return
@@ -198,7 +197,7 @@ async function saveSignature() {
   }
 }
 
-// --- 上传头像逻辑 ---
+// --- 上传头像逻辑 (包含修复后的删除逻辑) ---
 function triggerFileUpload() {
   fileInputRef.value?.click()
 }
@@ -216,57 +215,69 @@ async function handleFileChange(event: Event) {
 
   isUploadingAvatar.value = true
 
+  // 1. 锁定旧头像 URL
+  const oldAvatarUrl = props.user?.user_metadata?.avatar_url
+
   try {
-    // 1. 压缩图片
+    // 2. 压缩图片
     const compressedBlob = await compressImage(originalFile)
     const fileToUpload = new File([compressedBlob], 'avatar.jpg', { type: 'image/jpeg' })
 
-    // 🔥 核心改动：生成带时间戳的唯一文件名
-    // 例如: user_123/1715662322.jpg
     const timestamp = Date.now()
-    const fileExt = 'jpg'
-    const fileName = `${timestamp}.${fileExt}`
+    const fileName = `${timestamp}.jpg`
     const filePath = `${props.user!.id}/${fileName}`
 
-    // 2. 上传新图片
+    // 3. 上传新图片
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, fileToUpload, { contentType: 'image/jpeg' })
+      .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
 
     if (uploadError)
       throw uploadError
 
-    // 3. 获取新图片的 Public URL
+    // 4. 获取新图片 Public URL
     const { data: { publicUrl } } = supabase.storage
       .from('avatars')
       .getPublicUrl(filePath)
 
-    // 4. 记录旧头像 URL (为了稍后删除)
-    const oldAvatarUrl = props.user?.user_metadata?.avatar_url
+    // 为了确保前端立刻刷新，我们在URL后加个时间戳参数
+    // 注意：存入 Supabase 的 URL 最好是纯净的，但为了缓存刷新，带参数比较保险
+    // 如果 Supabase CDN 缓存很严重，这里带参数是必要的
+    const finalUrl = `${publicUrl}?t=${timestamp}`
 
-    // 5. 更新用户资料 (Supabase 会自动通知前端 user 变化)
+    // 5. 更新用户资料
     const { error: updateError } = await supabase.auth.updateUser({
-      data: { avatar_url: publicUrl },
+      data: { avatar_url: finalUrl },
     })
 
     if (updateError)
       throw updateError
 
-    // 6. 成功后，尝试清理旧头像文件 (清理垃圾，不阻塞主流程)
+    // 6. 尝试清理旧头像文件 (正则提取法)
     if (oldAvatarUrl) {
-      try {
-        // 提取旧文件路径。假设 URL 格式包含 /avatars/
-        const urlParts = oldAvatarUrl.split('/avatars/')
-        if (urlParts.length > 1) {
-          // 这里的 path 应该是 "userId/oldTimestamp.jpg"
-          const oldPath = urlParts[1]
-          // 只有当旧路径包含该用户ID时才删，避免误删
-          if (oldPath.includes(props.user!.id))
-            await supabase.storage.from('avatars').remove([oldPath])
+      // 检查是否是 Supabase 的图片，第三方图片（如Github头像）跳过
+      const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
+
+      if (isSupabase) {
+        try {
+          const userId = props.user!.id
+          // 正则含义：匹配 "userId/" 开头，直到遇到 "?" 或 "#" 或 结束
+          // 这样能精准提取出类似 "user_123/171566.jpg" 的路径
+          const regex = new RegExp(`${userId}\/[^?#]+`)
+          const match = oldAvatarUrl.match(regex)
+
+          if (match) {
+            let oldPath = match[0]
+            oldPath = decodeURIComponent(oldPath) // 解码
+
+            // 安全检查：路径必须包含用户ID
+            if (oldPath.includes(userId))
+              await supabase.storage.from('avatars').remove([oldPath])
+          }
         }
-      }
-      catch (e) {
-        console.warn('旧头像清理失败，但不影响使用', e)
+        catch (delErr) {
+          console.warn('旧头像清理失败，但不影响主流程', delErr)
+        }
       }
     }
 
@@ -286,7 +297,7 @@ async function handleFileChange(event: Event) {
   }
 }
 
-// 1. 提取公共的计算逻辑到一个函数中，避免代码重复
+// 1. 提取公共的计算逻辑到一个函数中
 function calculateDaysFromDate(dateStr: string) {
   const first = new Date(dateStr)
   firstNoteDateText.value = formatDateI18n(first)
@@ -316,18 +327,16 @@ function calculateDaysFromDate(dateStr: string) {
     journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
 }
 
-// 2. 修改后的获取逻辑：先查缓存，没有再查服务器
+// 2. 获取逻辑
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
 
-  // 定义缓存 Key，加上 user.id 确保多账号切换时数据不串
   const CACHE_KEY = `first_note_date_${props.user.id}`
   const cachedDate = localStorage.getItem(CACHE_KEY)
 
   // --- 策略 A: 命中缓存 ---
   if (cachedDate) {
-    // 直接用缓存的日期进行计算，零网络请求
     calculateDaysFromDate(cachedDate)
     return
   }
@@ -343,22 +352,19 @@ async function fetchFirstNoteAndStreak() {
       .single()
 
     if (data?.created_at) {
-      // 1. 存入缓存
       localStorage.setItem(CACHE_KEY, data.created_at)
-
-      // 2. 执行计算
       calculateDaysFromDate(data.created_at)
     }
     else {
-      // 没有任何笔记的情况
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
       journalingDays.value = 0
     }
   }
-  catch {
-    // ignore
+  catch (e) {
+    // 修复 ESLint error: Empty block statement
+    console.error('Fetch first note error:', e)
   }
 }
 
@@ -398,7 +404,8 @@ async function fetchStorageStats() {
     }
   }
   catch (e) {
-    // ignore
+    // 修复 ESLint error: Empty block statement
+    console.warn('Fetch storage stats error (optional):', e)
   }
 }
 
@@ -408,7 +415,6 @@ watch(() => props.show, (visible) => {
     if (!hasFetched.value) {
       fetchFirstNoteAndStreak()
       fetchNotesCount()
-      // [修改] 移除了 fetchTotalChars
       fetchStorageStats()
       hasFetched.value = true
     }
@@ -430,10 +436,12 @@ function openLogoutConfirm() {
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
-    localStorage.clear() // 简单粗暴清理，确保干净
+    localStorage.clear()
     window.location.assign('/auth')
   }
-  catch {
+  catch (e) {
+    // 虽然这里出错概率低，但也打印一下，避免 empty block
+    console.error('Sign out error:', e)
     window.location.assign('/auth')
   }
 }
@@ -497,7 +505,9 @@ function handleForgotOldPwd() {
         localStorage.clear()
         window.location.href = '/auth?mode=forgot'
       }
-      catch {
+      catch (e) {
+        // 避免 empty block
+        console.error(e)
         window.location.href = '/auth?mode=forgot'
       }
     },
