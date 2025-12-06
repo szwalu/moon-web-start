@@ -63,6 +63,8 @@ function computeSmartPlacementStrict(anchorEl: HTMLElement | null): SmartPlaceme
 }
 
 // === iOS 输入框 16px 修复（无需单独的全局样式文件）===
+// src/composables/useTagMenu.ts
+
 function ensureTagMenuInputFontFix() {
   if (typeof document === 'undefined')
     return
@@ -72,9 +74,31 @@ function ensureTagMenuInputFontFix() {
   const style = document.createElement('style')
   style.id = id
   style.textContent = `
-    /* 只影响本组件里的两个搜索框 */
-    .n-dropdown-menu .tag-search-row .n-input__input-el { font-size: 16px !important; }
-    .n-dialog .icon-picker-root .n-input__input-el      { font-size: 16px !important; }
+    /* 1. iOS 字体 16px 修复 */
+    .tag-search-row .n-input__input-el,
+    .icon-picker-root .n-input__input-el { 
+        font-size: 16px !important; 
+    }
+
+    /* 2. [终极修复] 强制 X 按钮靠右 */
+    
+    /* 确保 wrapper 填满整个灰色边框 */
+    .tag-search-row .n-input .n-input-wrapper {
+        width: 100% !important;
+        display: flex !important;
+    }
+
+    /* 核心修改：给后缀（X按钮）添加 margin-left: auto
+       这会无视中间文字的宽度，强制把自己推到最右边 */
+    .tag-search-row .n-input .n-input__suffix {
+        margin-left: auto !important;
+    }
+
+    /* 同时也保证中间的输入区域是自适应的 */
+    .tag-search-row .n-input .n-input__input {
+        flex: 1 1 auto !important;
+        width: auto !important;
+    }
   `
   document.head.appendChild(style)
 }

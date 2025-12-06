@@ -831,6 +831,25 @@ function buildLocalNote(content: string, weather?: string | null) {
   }
 }
 
+// === 新增工具函数：带延迟的自动重试 ===
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 1000,
+): Promise<T> {
+  try {
+    return await fn()
+  }
+  catch (error) {
+    if (retries <= 0)
+      throw error // 次数用尽，抛出最后一次的错误
+    // 等待一段时间（例如1秒）
+    await new Promise(resolve => setTimeout(resolve, delay))
+    // 递归重试，次数减1
+    return withRetry(fn, retries - 1, delay)
+  }
+}
+
 async function saveNote(
   contentToSave: string,
   noteIdToUpdate: string | null,
@@ -840,7 +859,6 @@ async function saveNote(
   if (!contentToSave.trim() || !user.value?.id) {
     if (!user.value?.id)
       messageHook.error(t('auth.session_expired'))
-
     return null
   }
   if (contentToSave.length > maxNoteLength) {
@@ -861,82 +879,27 @@ async function saveNote(
       notes.value[idx] = updated
     }
     else {
-    // 不在当前列表：兜底插入到最前，避免用户“看不见改动”
+      // 兜底插入
       notes.value.unshift({
         id: noteIdToUpdate,
         content: trimmed,
-        created_at: nowIso, // 没有原始数据时的兜底
+        created_at: nowIso,
         updated_at: nowIso,
         is_pinned: false,
         weather: null,
         user_id: user.value!.id,
       })
     }
+    // 排序
+    // ... 前面的代码 ...
+    notes.value.sort((a: any, b: any) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
 
-    // 与主页一致的排序：置顶优先、时间倒序
-    notes.value.sort(
-      (a: any, b: any) =>
-        (b.is_pinned - a.is_pinned)
-      || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-    )
-
-    // 2) 刷新本地缓存（localStorage）
+    // 2) 刷新缓存
     try {
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
     }
     catch {}
 
-    // 3) 写入 IndexedDB 快照（冷启动直接还原）
-    try {
-      await saveNotesSnapshot(notes.value)
-    }
-    catch (e) {
-      console.warn('[offline] snapshot failed (update)', e)
-    }
-
-    // 4) 入队 outbox 的 update 操作（最小补丁）
-    try {
-      await queuePendingUpdate(noteIdToUpdate, { content: trimmed, updated_at: nowIso, user_id: user.value!.id })
-    }
-    catch (e) {
-      console.warn('[offline] queuePendingUpdate failed', e)
-    }
-
-    // 5) 友好提示，并返回更新后的对象（供调用方使用）
-    messageHook.success(t('notes.offline_update_success'))
-    const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
-    // ✨✨✨ 新增：离线也要通知那年今日更新！ ✨✨✨
-    if (updatedObj)
-      notifyAnniversaryUpdate(updatedObj)
-
-    return updatedObj
-  }
-
-  // ====== A) 新建 且 当前离线：走本地落盘 + outbox 入队 ======
-  if (!noteIdToUpdate && !isOnline()) {
-    const localNote = buildLocalNote(contentToSave, weather)
-
-    // 1) UI 先显示出来（置顶优先、时间倒序）
-    notes.value = [localNote, ...notes.value].sort(
-      (a: any, b: any) =>
-        b.is_pinned - a.is_pinned
-        || new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )
-
-    // 2) 更新 localStorage 主页缓存与元数据
-    try {
-      totalNotes.value = (totalNotes.value || 0) + 1
-      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-      localStorage.setItem(
-        CACHE_KEYS.HOME_META,
-        JSON.stringify({ totalNotes: totalNotes.value }),
-      )
-    }
-    catch {
-      // 忽略本地存储异常
-    }
-
-    // 3) 写入 IndexedDB 快照（冷启动直接还原）
     try {
       await saveNotesSnapshot(notes.value)
     }
@@ -944,23 +907,53 @@ async function saveNote(
       console.warn('[offline] snapshot failed', e)
     }
 
-    // 4) 入队 outbox，等上线后 flushOutbox 推送到服务端
+    // 3) 入队 outbox
+    try {
+      await queuePendingUpdate(noteIdToUpdate, { content: trimmed, updated_at: nowIso, user_id: user.value!.id })
+    }
+    catch (e) {
+      console.warn('[offline] queuePendingUpdate failed', e)
+    }
+
+    messageHook.success(t('notes.offline_update_success'))
+    const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
+    if (updatedObj)
+      notifyAnniversaryUpdate(updatedObj)
+    return updatedObj
+  }
+
+  // ====== A) 新建 且 当前离线：本地落盘 + outbox 入队 ======
+  if (!noteIdToUpdate && !isOnline()) {
+    const localNote = buildLocalNote(contentToSave, weather)
+    notes.value = [localNote, ...notes.value].sort((a: any, b: any) => b.is_pinned - a.is_pinned || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    try {
+      totalNotes.value = (totalNotes.value || 0) + 1
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+    }
+    catch {}
+
+    try {
+      await saveNotesSnapshot(notes.value)
+    }
+    catch (e) {
+      console.warn('[offline] snapshot failed', e)
+    }
+
     try {
       await queuePendingNote(localNote)
     }
     catch (e) {
       console.warn('[offline] queuePendingNote failed', e)
     }
-    // ✨✨✨ 新增：离线也要通知那年今日添加！ ✨✨✨
-    notifyAnniversaryAdd(localNote)
-    // 5) 友好提示
-    messageHook.success(t('notes.offline_save_success'))
 
-    // 6) 返回这条本地记录（供调用方后续逻辑使用）
+    notifyAnniversaryAdd(localNote)
+    messageHook.success(t('notes.offline_save_success'))
     return localNote
   }
 
-  // ====== B) 其它情况：走你原有的在线保存逻辑 ======
+  // ====== B) 在线模式（带重试机制） ======
   const noteData = {
     content: contentToSave.trim(),
     updated_at: new Date().toISOString(),
@@ -970,63 +963,129 @@ async function saveNote(
   let savedNote: any
   try {
     if (noteIdToUpdate) {
-      // 在线更新
-      const { data: updatedData, error: updateError } = await supabase
-        .from('notes')
-        .update(noteData)
-        .eq('id', noteIdToUpdate)
-        .eq('user_id', user.value.id)
-        .select()
+      // --- 在线更新 ---
+      savedNote = await withRetry(async () => {
+        const { data: updatedData, error: updateError } = await supabase
+          .from('notes')
+          .update(noteData)
+          .eq('id', noteIdToUpdate)
+          .eq('user_id', user.value.id)
+          .select()
 
-      if (updateError || !updatedData?.length)
-        throw new Error(t('auth.update_failed'))
+        if (updateError)
+          throw new Error(updateError.message)
+        if (!updatedData?.length)
+          throw new Error('No data returned')
+        return updatedData[0]
+      }, 3, 1000)
 
-      savedNote = updatedData[0]
       updateNoteInList(savedNote)
-
       if (showMessage)
         messageHook.success(t('notes.update_success'))
     }
     else {
-      // 在线新建：与你原来一致（保留天气）
+      // --- 在线新建 ---
       const newId = uuidv4()
       const insertPayload: any = { ...noteData, id: newId, weather: weather ?? null }
 
-      const { data: insertedData, error: insertError } = await supabase
-        .from('notes')
-        .insert(insertPayload)
-        .select()
+      savedNote = await withRetry(async () => {
+        const { data: insertedData, error: insertError } = await supabase
+          .from('notes')
+          .insert(insertPayload)
+          .select()
 
-      if (insertError || !insertedData?.length)
-        throw new Error(t('auth.insert_failed_create_note'))
+        if (insertError)
+          throw new Error(insertError.message)
+        if (!insertedData?.length)
+          throw new Error(t('auth.insert_failed_create_note'))
+        return insertedData[0]
+      }, 3, 1000)
 
-      savedNote = insertedData[0]
       addNoteToList(savedNote)
-
       if (showMessage)
         messageHook.success(t('notes.auto_saved'))
     }
 
-    // 在线成功后，按你原有策略清理缓存/刷新标签
+    // 后续处理
     invalidateCachesOnDataChange(savedNote)
     await refreshTags()
-
-    // 同步快照（保证冷启动的一致）
     try {
       await saveNotesSnapshot(notes.value)
     }
-    catch {
-      // 忽略错误
-    }
+    catch {}
 
     return savedNote
   }
   catch (error: any) {
-    // 如果是“离线编辑”触发到这里，给个更明确的提示（可选）
-    if (!isOnline() && noteIdToUpdate) {
-      messageHook.error(t('notes.offline_edit_pending'))
-      return null
+    console.error('在线保存失败，尝试降级处理:', error)
+
+    // ====== C) 自动降级逻辑：重试失败后转入离线队列 ======
+
+    // 场景 1: 更新笔记失败 -> 降级为离线更新
+    if (noteIdToUpdate) {
+      try {
+        console.warn('更新失败，转入离线队列')
+        // 1. 本地更新 UI
+        const idx = notes.value.findIndex(n => n.id === noteIdToUpdate)
+        let updatedObj = null
+        const nowIso = new Date().toISOString()
+
+        if (idx >= 0) {
+          notes.value[idx] = { ...notes.value[idx], content: contentToSave.trim(), updated_at: nowIso }
+          updatedObj = notes.value[idx]
+        }
+
+        // 2. 刷新缓存
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+
+        // 3. 入队 Pending Update
+        await queuePendingUpdate(noteIdToUpdate, {
+          content: contentToSave.trim(),
+          updated_at: nowIso,
+          user_id: user.value.id,
+        })
+
+        // 4. 假装成功
+        messageHook.success(t('notes.network_unstable_saved_locally') || '网络不稳定，已暂存至本地')
+        if (updatedObj)
+          notifyAnniversaryUpdate(updatedObj)
+        return updatedObj
+      }
+      catch (offlineErr) {
+        console.error('离线更新降级也失败了:', offlineErr)
+      }
     }
+    // 场景 2: 新建笔记失败 -> 降级为离线新建
+    else {
+      try {
+        console.warn('新建失败，转入离线队列')
+        // 1. 生成本地对象
+        const localNote = buildLocalNote(contentToSave, weather)
+
+        // 2. 更新 UI
+        notes.value = [localNote, ...notes.value]
+
+        // 3. 入队 Pending Note
+        await queuePendingNote(localNote)
+
+        // 4. 刷新缓存
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+        if (totalNotes.value !== undefined) {
+          totalNotes.value += 1
+          localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+        }
+
+        // 5. 假装成功
+        notifyAnniversaryAdd(localNote)
+        messageHook.success(t('notes.network_unstable_saved_locally') || '网络不稳定，已暂存至本地')
+        return localNote
+      }
+      catch (offlineErr) {
+        console.error('离线新建降级也失败了:', offlineErr)
+      }
+    }
+
+    // 如果连降级都失败了，或者有其他未知错误，显示红框报错
     messageHook.error(`${t('notes.operation_error')}: ${error.message || '未知错误'}`)
     return null
   }

@@ -105,7 +105,9 @@ const userName = computed(() => {
     return meta.display_name
   return props.user?.email?.split('@')[0] || t('auth.default_nickname')
 })
-
+const userSignature = computed(() => {
+  return props.user?.user_metadata?.signature || t('auth.default_signature')
+})
 const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
 
 async function fetchStats() {
@@ -165,17 +167,24 @@ function handleItemClick(key: string) {
                   {{ userName.charAt(0).toUpperCase() }}
                 </div>
               </div>
-              <div class="user-name">{{ userName }}</div>
-              <div v-if="props.user?.email === 'vip'" class="user-badge">高级</div>
+
+              <div class="user-text-col">
+                <div class="user-name-line">
+                  <div class="user-name">{{ userName }}</div>
+                  <div v-if="props.user?.email === 'vip'" class="user-badge">高级</div>
+                </div>
+                <div class="user-signature">{{ userSignature }}</div>
+              </div>
             </div>
+
             <div class="stats-grid">
               <div class="stat-item">
                 <div class="stat-num">{{ totalNotes }}</div>
                 <div class="stat-label">{{ t('notes.notes_bj') || '笔记' }}</div>
               </div>
               <div class="stat-item">
-                <div class="stat-num">{{ totalChars }}</div>
-                <div class="stat-label">{{ t('notes.total_chars') || '字符' }}</div>
+                <div class="stat-num">{{ tagCount }}</div>
+                <div class="stat-label">{{ t('notes.search_filter_tag') || '标签' }}</div>
               </div>
               <div class="stat-item">
                 <div class="stat-num">{{ journalingDays }}</div>
@@ -300,6 +309,16 @@ function handleItemClick(key: string) {
 .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; }
 .user-name { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
 .user-badge { background: rgba(255,255,255,0.3); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+/* 4️⃣ [新增] 签名样式：小字号 */
+.user-signature {
+  font-size: 12px;
+  opacity: 0.85; /* 稍微透明一点 */
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px; /* 限制宽度 */
+}
 .stats-grid { display: flex; justify-content: space-between; }
 .stat-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
 .stat-num { font-size: 20px; font-weight: 700; margin-bottom: 4px; }

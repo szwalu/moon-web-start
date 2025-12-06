@@ -258,6 +258,11 @@ auth:
   relogin_required_content: 找回密码需要退出当前帐号，并跳转至登录页面的“忘记密码”入口。是否确认退出？
   confirm_logout: 确认退出
   redirecting: 正在跳转...
+
+  default_signature: 记录当下，点亮灵感
+  signature_label: 签名
+  input_signature: 输入个性签名...
+  signature_updated: 签名更新成功
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。
@@ -572,7 +577,7 @@ notes:
     streak_years_days: '{years} 年 {days} 天'
     streak_days_only: '{days} 天'
     go_to_site: 前往网址站
-    logout: 登出
+    logout: 退出登录
     logout_confirm:
       title: 确定要登出系统吗？
       content: 登出后需用密码重新登陆

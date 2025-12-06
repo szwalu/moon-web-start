@@ -259,6 +259,11 @@ auth:
   relogin_required_content: Resetting password requires logging out and redirecting to the "Forgot Password" page. Confirm?
   confirm_logout: Confirm Logout
   redirecting: Redirecting...
+
+  default_signature: 'Capture the moment, spark inspiration'
+  signature_label: Bio
+  input_signature: Enter your bio...
+  signature_updated: Bio updated successfully
   messages:
     check_email_for_verification: ✅ Registration successful! Please check your inbox (including spam) to verify your email.
     check_email_or_login: Email might be registered. Check your inbox to verify or try logging in.

@@ -259,6 +259,11 @@ auth:
   relogin_required_content: パスワード再設定にはログアウトが必要です。「パスワードを忘れた場合」ページへ移動しますか？
   confirm_logout: ログアウトして移動
   redirecting: 移動中...
+
+  default_signature: 今を記録し、ひらめきを灯す
+  signature_label: 自己紹介
+  input_signature: 自己紹介を入力...
+  signature_updated: 自己紹介を更新しました
   messages:
     check_email_for_verification: ✅ 登録成功！メールを確認して認証を完了してください。
     check_email_or_login: 登録済みメールの可能性があります。受信箱を確認するか、ログインしてください。
