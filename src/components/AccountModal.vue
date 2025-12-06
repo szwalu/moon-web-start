@@ -15,9 +15,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-// [修复] 时间戳变量，用于强制刷新头像
-const avatarTimestamp = ref(Date.now())
-
 const { t } = useI18n()
 const dialog = useDialog()
 const messageHook = useMessage()
@@ -177,6 +174,7 @@ function startEditSignature() {
 
 async function saveSignature() {
   const newSig = tempSignature.value.trim()
+  // 如果为空，不保存（或者你可以允许存空字符串，这里假设不为空）
   if (!newSig) {
     isEditingSignature.value = false
     return
@@ -211,7 +209,7 @@ async function handleFileChange(event: Event) {
     return
 
   const originalFile = input.files[0]
-  if (originalFile.size > 10 * 1024 * 1024) {
+  if (originalFile.size > 5 * 1024 * 1024) { // 5MB 限制
     messageHook.warning(t('auth.avatar_too_big'))
     return
   }
@@ -219,40 +217,60 @@ async function handleFileChange(event: Event) {
   isUploadingAvatar.value = true
 
   try {
+    // 1. 压缩图片
     const compressedBlob = await compressImage(originalFile)
     const fileToUpload = new File([compressedBlob], 'avatar.jpg', { type: 'image/jpeg' })
 
-    // [关键修改 1] 使用固定路径
-    const filePath = `${props.user!.id}/avatar.jpg`
+    // 🔥 核心改动：生成带时间戳的唯一文件名
+    // 例如: user_123/1715662322.jpg
+    const timestamp = Date.now()
+    const fileExt = 'jpg'
+    const fileName = `${timestamp}.${fileExt}`
+    const filePath = `${props.user!.id}/${fileName}`
 
-    // [关键修改 2] Upsert
+    // 2. 上传新图片
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, fileToUpload, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      })
+      .upload(filePath, fileToUpload, { contentType: 'image/jpeg' })
 
     if (uploadError)
       throw uploadError
 
-    // [关键修改 3] 获取公开链接
+    // 3. 获取新图片的 Public URL
     const { data: { publicUrl } } = supabase.storage
       .from('avatars')
       .getPublicUrl(filePath)
 
-    // [关键修改 4] 更新用户元数据
-    if (props.user?.user_metadata?.avatar_url !== publicUrl) {
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl },
-      })
-      if (updateError)
-        throw updateError
+    // 4. 记录旧头像 URL (为了稍后删除)
+    const oldAvatarUrl = props.user?.user_metadata?.avatar_url
+
+    // 5. 更新用户资料 (Supabase 会自动通知前端 user 变化)
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: { avatar_url: publicUrl },
+    })
+
+    if (updateError)
+      throw updateError
+
+    // 6. 成功后，尝试清理旧头像文件 (清理垃圾，不阻塞主流程)
+    if (oldAvatarUrl) {
+      try {
+        // 提取旧文件路径。假设 URL 格式包含 /avatars/
+        const urlParts = oldAvatarUrl.split('/avatars/')
+        if (urlParts.length > 1) {
+          // 这里的 path 应该是 "userId/oldTimestamp.jpg"
+          const oldPath = urlParts[1]
+          // 只有当旧路径包含该用户ID时才删，避免误删
+          if (oldPath.includes(props.user!.id))
+            await supabase.storage.from('avatars').remove([oldPath])
+        }
+      }
+      catch (e) {
+        console.warn('旧头像清理失败，但不影响使用', e)
+      }
     }
 
-    // [关键修改 5] 强制刷新 UI
-    avatarTimestamp.value = Date.now()
-
+    // 7. 刷新本地状态
     await authStore.refreshUser()
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
@@ -268,6 +286,7 @@ async function handleFileChange(event: Event) {
   }
 }
 
+// 1. 提取公共的计算逻辑到一个函数中，避免代码重复
 function calculateDaysFromDate(dateStr: string) {
   const first = new Date(dateStr)
   firstNoteDateText.value = formatDateI18n(first)
@@ -277,6 +296,8 @@ function calculateDaysFromDate(dateStr: string) {
   today.setHours(0, 0, 0, 0)
 
   let years = today.getFullYear() - first.getFullYear()
+
+  // 计算周年
   let anniversary = new Date(first)
   anniversary.setFullYear(first.getFullYear() + years)
 
@@ -290,22 +311,28 @@ function calculateDaysFromDate(dateStr: string) {
   journalingYears.value = Math.max(0, years)
   journalingRemainderDays.value = Math.max(0, remainDays)
 
+  // 如果不满一年，计算总天数
   if (journalingYears.value === 0)
     journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
 }
 
+// 2. 修改后的获取逻辑：先查缓存，没有再查服务器
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
 
+  // 定义缓存 Key，加上 user.id 确保多账号切换时数据不串
   const CACHE_KEY = `first_note_date_${props.user.id}`
   const cachedDate = localStorage.getItem(CACHE_KEY)
 
+  // --- 策略 A: 命中缓存 ---
   if (cachedDate) {
+    // 直接用缓存的日期进行计算，零网络请求
     calculateDaysFromDate(cachedDate)
     return
   }
 
+  // --- 策略 B: 无缓存，请求 Supabase ---
   try {
     const { data } = await supabase
       .from('notes')
@@ -316,10 +343,14 @@ async function fetchFirstNoteAndStreak() {
       .single()
 
     if (data?.created_at) {
+      // 1. 存入缓存
       localStorage.setItem(CACHE_KEY, data.created_at)
+
+      // 2. 执行计算
       calculateDaysFromDate(data.created_at)
     }
     else {
+      // 没有任何笔记的情况
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
@@ -377,6 +408,7 @@ watch(() => props.show, (visible) => {
     if (!hasFetched.value) {
       fetchFirstNoteAndStreak()
       fetchNotesCount()
+      // [修改] 移除了 fetchTotalChars
       fetchStorageStats()
       hasFetched.value = true
     }
@@ -398,7 +430,7 @@ function openLogoutConfirm() {
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
-    localStorage.clear()
+    localStorage.clear() // 简单粗暴清理，确保干净
     window.location.assign('/auth')
   }
   catch {
@@ -491,11 +523,10 @@ function handleForgotOldPwd() {
             <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange">
 
             <div class="avatar-wrapper" :class="{ 'is-loading': isUploadingAvatar }" @click="triggerFileUpload">
-              <img v-if="userAvatar && !avatarLoadError" :src="`${userAvatar}?t=${avatarTimestamp}`" class="profile-avatar" alt="Avatar" @error="onAvatarError">
+              <img v-if="userAvatar && !avatarLoadError" :src="userAvatar" class="profile-avatar" alt="Avatar" @error="onAvatarError">
               <div v-else class="profile-avatar placeholder">
                 {{ userName.charAt(0).toUpperCase() }}
               </div>
-
               <div v-if="isUploadingAvatar" class="avatar-overlay loading">
                 <span>...</span>
               </div>

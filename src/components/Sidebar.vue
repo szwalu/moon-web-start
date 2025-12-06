@@ -28,9 +28,6 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 const { t } = useI18n()
 
-// [新增] 用于强制刷新图片的本地时间戳
-const avatarTimestamp = ref(Date.now())
-
 function onAvatarClick() {
   handleItemClick('account')
 }
@@ -126,21 +123,8 @@ const userSignature = computed(() => {
   return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
 
-// [修改] 计算头像 URL 时加上时间戳参数
-const userAvatar = computed(() => {
-  const url = props.user?.user_metadata?.avatar_url
-  if (!url)
-    return null
-  return `${url}?t=${avatarTimestamp.value}`
-})
-
-// [新增] 监听 props.user 变化
-// 当 AccountModal 里调用 authStore.refreshUser() 后，
-// 父组件传给 Sidebar 的 props.user 引用会发生变化，触发此监听
-watch(() => props.user, () => {
-  // 更新时间戳，强制 <img> 重新请求最新图片
-  avatarTimestamp.value = Date.now()
-}, { deep: true })
+// [还原] 简单的头像获取，不加时间戳，防止闪烁
+const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
 
 // 纯计算函数，不涉及网络请求
 function calculateDays(dateStr: string) {
