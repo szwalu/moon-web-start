@@ -430,6 +430,31 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
+// ✨✨✨ 微型安全同步：只监听“最新一条笔记”的变化 ✨✨✨
+// 场景：手机新增笔记 -> 电脑端主列表自动更新 -> 这里检测到第一条变了 -> 刷新那年今日
+watch(() => notes.value[0], (newTopNode, oldTopNode) => {
+  // 1. 如果正在加载列表（翻页/刷新），绝对不处理，防止误判
+  if (isLoadingNotes.value)
+    return
+
+  // 2. 如果没有新笔记，或者只是因为列表清空了，不处理
+  if (!newTopNode)
+    return
+
+  // 3. 只有当 ID 变了（说明来了新笔记，而不是修改内容），才进行判断
+  if (newTopNode.id !== oldTopNode?.id) {
+    // 4. 只有当这条新笔记是“今天”写的，才刷新那年今日
+    // (往年的笔记出现在列表头部的概率极低，且不需要实时刷)
+    const noteDate = new Date(newTopNode.created_at).toDateString()
+    const todayDate = new Date().toDateString()
+
+    if (noteDate === todayDate) {
+      // 命中！有一条今天的热乎笔记来了，刷新 Banner
+      anniversaryBannerRef.value?.loadAnniversaryNotes(true)
+    }
+  }
+})
+
 onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
   ;(async () => {
