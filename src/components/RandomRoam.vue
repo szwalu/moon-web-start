@@ -560,10 +560,21 @@ function getCardStyle(index: number) {
 
 .card-stack {
   position: relative;
-  width: 100%;
+
+  /* 左边留 10px，右边留 20px 给堆叠效果 */
+  width: auto;
+  margin-left: 10px;
+  margin-right: 20px;
+
   max-width: 960px;
   height: 100%;
-  margin: 0 auto;
+
+  /* 桌面端恢复居中 */
+  @media (min-width: 768px) {
+    width: 100%;
+    margin: 0 auto;
+  }
+
   perspective: 1200px;
   transform-style: preserve-3d;
 }
