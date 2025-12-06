@@ -33,16 +33,15 @@ function onAvatarClick() {
 }
 
 // ===========================================================================
-// 🔥 递归渲染组件 (已修改：支持点击后自动关闭)
+// 🔥 递归渲染组件 (保持不变)
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
-  emits: ['itemClick'], // ✨ 1. 声明自定义事件
+  emits: ['itemClick'],
   setup(props, { emit }) {
     const resolve = (val: any) => (typeof val === 'function' ? val() : val)
 
     const renderNode = (item: any): any => {
-      // 1. Render 类型 (如搜索框、分割线、一级父标签等)
       if (item.type === 'render') {
         return h(
           'div',
@@ -50,10 +49,6 @@ const RecursiveMenu = defineComponent({
             key: item.key,
             class: 'render-node',
             onClick: () => {
-              // 🛡️ [安全防护]
-              // 只有当 key 不是 'tag-search' (搜索框)
-              // 且不是 'pinned-header' (那个"常用"的小标题，点它没反应更好) 时，
-              // 才触发关闭侧边栏。这样点击搜索框打字不会误关。
               if (item.key !== 'tag-search' && item.key !== 'pinned-header')
                 emit('itemClick')
             },
@@ -62,7 +57,6 @@ const RecursiveMenu = defineComponent({
         )
       }
 
-      // 2. Group 类型 (包含子级的分组)
       if (item.type === 'group') {
         const groupProps = item.props || {}
         return h('div', { key: item.key, class: 'group-node' }, [
@@ -70,13 +64,9 @@ const RecursiveMenu = defineComponent({
             'div',
             {
               class: 'group-label',
-              // ✨ [新增] 给分组标题添加点击事件，支持点击父标签关闭侧边栏
               onClick: (e: MouseEvent) => {
-                // 如果父标签本身有点击逻辑（很少见，但为了兼容），先执行
                 if (groupProps.onClick)
                   groupProps.onClick(e)
-
-                // 发送关闭信号
                 emit('itemClick')
               },
             },
@@ -86,19 +76,12 @@ const RecursiveMenu = defineComponent({
         ])
       }
 
-      // 3. 普通标签项 (✨ 拦截点击事件)
-      // 提取原始的 props
       const originalProps = item.props || {}
-
-      // 创建包装后的 props
       const wrappedProps = {
         ...originalProps,
         onClick: (e: MouseEvent) => {
-          // A. 先执行原有的筛选逻辑 (来自于 useTagMenu.ts)
           if (originalProps.onClick)
             originalProps.onClick(e)
-
-          // B. 发送信号通知父组件关闭侧边栏
           emit('itemClick')
         },
       }
@@ -108,7 +91,7 @@ const RecursiveMenu = defineComponent({
         {
           key: item.key,
           class: 'menu-node hover-effect',
-          ...wrappedProps, // ✨ 使用包装后的事件
+          ...wrappedProps,
         },
         [resolve(item.label)],
       )
@@ -285,20 +268,18 @@ function handleItemClick(key: string) {
 <style scoped>
 /* ===========================================================================
    🎨 主题变量定义
-   支持：默认浅色、系统深色模式、手动 .dark 类
    =========================================================================== */
 .sidebar-container {
   /* --- 默认浅色模式变量 --- */
-  --sb-bg: white;                 /* 背景色 */
-  --sb-text: #333;                /* 主文字颜色 */
-  --sb-text-sub: #999;            /* 次要/图标颜色 */
-  --sb-hover: rgba(0,0,0,0.03);   /* 悬停背景 */
-  --sb-submenu-bg: #fafafa;       /* 二级菜单背景 */
-  --sb-divider: #f0f0f0;          /* 分割线颜色 */
-  --sb-shadow: rgba(0,0,0,0.1);   /* 阴影颜色 */
+  --sb-bg: white;
+  --sb-text: #333;
+  --sb-text-sub: #999;
+  --sb-hover: rgba(0,0,0,0.03);
+  --sb-submenu-bg: #fafafa;
+  --sb-divider: #f0f0f0;
+  --sb-shadow: rgba(0,0,0,0.1);
 }
 
-/* 🌑 情况1：系统设置为深色模式 (自动跟随) */
 @media (prefers-color-scheme: dark) {
   .sidebar-container {
     --sb-bg: #1e1e1e;
@@ -311,7 +292,6 @@ function handleItemClick(key: string) {
   }
 }
 
-/* 🌑 情况2：全局手动开启了 .dark 类 (优先级更高) */
 :global(.dark) .sidebar-container {
   --sb-bg: #1e1e1e;
   --sb-text: #e0e0e0;
@@ -335,15 +315,16 @@ function handleItemClick(key: string) {
   overflow-y: auto;
   scrollbar-width: none;
 
-  /* 应用变量 */
   background: var(--sb-bg);
   color: var(--sb-text);
   box-shadow: 4px 0 15px var(--sb-shadow);
-  transition: background-color 0.3s, color 0.3s; /* 添加颜色过渡，切换更丝滑 */
+  transition: background-color 0.3s, color 0.3s;
+
+  /* 🔥 核心修改：设置侧边栏的基础字号为全局 UI 字号 */
+  font-size: var(--ui-font, 14px);
 }
 .sidebar-container::-webkit-scrollbar { display: none; }
 
-/* 头部卡片 (保持紫色渐变，深色模式下稍微降低亮度以免刺眼) */
 .sidebar-header-card {
   background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%);
   padding-top: calc(2rem + env(safe-area-inset-top));
@@ -370,14 +351,36 @@ function handleItemClick(key: string) {
 .avatar-circle { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.8); overflow: hidden; background: rgba(255,255,255,0.2); }
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; }
-.user-name { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
+
+/* 🔥 修改：用户名大小使用 calc 计算 */
+.user-name {
+  font-size: calc(var(--ui-font, 14px) * 1.4); /* 原 20px */
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
 .user-badge { background: rgba(255,255,255,0.3); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
-.user-signature { font-size: 12px; opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+
+/* 🔥 修改：签名文字大小 */
+.user-signature {
+  font-size: calc(var(--ui-font, 14px) * 0.85); /* 原 12px */
+  opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;
+}
 
 .stats-grid { display: flex; justify-content: space-between; }
 .stat-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
-.stat-num { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-.stat-label { font-size: 12px; opacity: 0.9; }
+
+/* 🔥 修改：统计数字大小 */
+.stat-num {
+  font-size: calc(var(--ui-font, 14px) * 1.4); /* 原 20px */
+  font-weight: 700; margin-bottom: 4px;
+}
+
+/* 🔥 修改：统计标签大小 */
+.stat-label {
+  font-size: calc(var(--ui-font, 14px) * 0.85); /* 原 12px */
+  opacity: 0.9;
+}
 
 /* 菜单列表区域 */
 .menu-list {
@@ -391,11 +394,13 @@ function handleItemClick(key: string) {
   padding: 6px 20px;
   cursor: pointer;
   transition: background 0.1s;
-  font-size: 15px; gap: 16px;
+
+  /* 🔥 修改：主菜单字号跟随系统设置 */
+  font-size: var(--ui-font, 15px);
+
+  gap: 16px;
   position: relative;
   min-height: 36px;
-
-  /* 应用变量 */
   color: var(--sb-text);
 }
 .menu-item:hover {
@@ -403,12 +408,6 @@ function handleItemClick(key: string) {
 }
 .menu-item.has-arrow { justify-content: space-between; }
 .item-left { display: flex; align-items: center; gap: 16px; }
-
-/* 图标颜色跟随 */
-.menu-item svg {
-   /* 如果你想让图标颜色比文字浅一点，可以使用 sub 变量，或者直接继承 text */
-   /* color: var(--sb-text-sub); */
-}
 
 .caret { transition: transform 0.2s; color: var(--sb-text-sub); }
 .caret.rotated { transform: rotate(90deg); }
@@ -421,7 +420,10 @@ function handleItemClick(key: string) {
 
 .menu-item.sub {
   padding-left: 56px;
-  font-size: 14px;
+
+  /* 🔥 修改：子菜单字号稍微小一点 */
+  font-size: calc(var(--ui-font, 14px) * 0.93); /* 原 14px */
+
   padding-top: 6px;
   padding-bottom: 6px;
 }
@@ -433,7 +435,13 @@ function handleItemClick(key: string) {
   margin: 8px 24px;
 }
 
-.menu-section-label { padding: 12px 24px 4px 24px; font-size: 12px; color: var(--sb-text-sub); font-weight: 500; }
+.menu-section-label {
+  padding: 12px 24px 4px 24px;
+  /* 🔥 修改 */
+  font-size: calc(var(--ui-font, 14px) * 0.85);
+  color: var(--sb-text-sub);
+  font-weight: 500;
+}
 
 .sidebar-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
@@ -462,7 +470,9 @@ function handleItemClick(key: string) {
 }
 :deep(.menu-node), :deep(.group-node) {
   position: relative;
-  color: var(--sb-text); /* 确保递归菜单文字颜色正确 */
+  color: var(--sb-text);
+  /* 🔥 新增：确保标签列表继承字号，或者明确设置 */
+  font-size: var(--ui-font, 14px);
 }
 :deep(.hover-effect) {
   cursor: pointer;
@@ -471,7 +481,7 @@ function handleItemClick(key: string) {
   align-items: center;
 }
 :deep(.hover-effect:hover) {
-  background-color: var(--sb-hover); /* 使用变量统一 Hover 效果 */
+  background-color: var(--sb-hover);
 }
 :deep(.group-label) {
   pointer-events: none;

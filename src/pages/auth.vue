@@ -1216,11 +1216,17 @@ function handleExportTrigger() {
 
 function onListScroll(top: number) {
   latestScrollTop.value = top
+  // 不管能不能隐藏，都强制设为 false（不折叠）
+  headerCollapsed.value = false
+
+  /* 注释掉原有的折叠判断逻辑
   if (!canHideTopChrome.value) {
     headerCollapsed.value = false
     return
   }
   headerCollapsed.value = top > 8
+  */
+
   showScrollTopButton.value = false
   clearTimeout(scrollTimer)
   scrollTimer = setTimeout(() => {
