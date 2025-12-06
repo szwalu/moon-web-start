@@ -15,6 +15,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
+// [修复] 时间戳变量，用于强制刷新头像
+const avatarTimestamp = ref(Date.now())
+
 const { t } = useI18n()
 const dialog = useDialog()
 const messageHook = useMessage()
@@ -73,7 +76,7 @@ const userName = computed(() => {
 
 // [新增] 签名计算属性 (默认文案)
 const userSignature = computed(() => {
-  return props.user?.user_metadata?.signature || t('auth.default_signature') // "记录当下，点亮灵感"
+  return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
 
 const canChangePassword = computed(() => {
@@ -174,7 +177,6 @@ function startEditSignature() {
 
 async function saveSignature() {
   const newSig = tempSignature.value.trim()
-  // 如果为空，不保存（或者你可以允许存空字符串，这里假设不为空）
   if (!newSig) {
     isEditingSignature.value = false
     return
@@ -207,41 +209,56 @@ async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files || input.files.length === 0)
     return
+
   const originalFile = input.files[0]
   if (originalFile.size > 10 * 1024 * 1024) {
     messageHook.warning(t('auth.avatar_too_big'))
     return
   }
+
   isUploadingAvatar.value = true
+
   try {
     const compressedBlob = await compressImage(originalFile)
     const fileToUpload = new File([compressedBlob], 'avatar.jpg', { type: 'image/jpeg' })
-    const fileName = `${props.user!.id}-${Date.now()}.jpg`
-    const filePath = `${fileName}`
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
+
+    // [关键修改 1] 使用固定路径
+    const filePath = `${props.user!.id}/avatar.jpg`
+
+    // [关键修改 2] Upsert
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, fileToUpload, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      })
+
     if (uploadError)
       throw uploadError
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
-    const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
-    if (updateError)
-      throw updateError
 
-    // 清理旧头像 (略，保持原有逻辑)
-    const oldAvatarUrl = props.user?.user_metadata?.avatar_url
-    if (oldAvatarUrl) {
-      try {
-        const urlParts = oldAvatarUrl.split('/avatars/')
-        if (urlParts.length > 1)
-          supabase.storage.from('avatars').remove([urlParts[1]])
-      }
-      catch {}
+    // [关键修改 3] 获取公开链接
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath)
+
+    // [关键修改 4] 更新用户元数据
+    if (props.user?.user_metadata?.avatar_url !== publicUrl) {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { avatar_url: publicUrl },
+      })
+      if (updateError)
+        throw updateError
     }
+
+    // [关键修改 5] 强制刷新 UI
+    avatarTimestamp.value = Date.now()
 
     await authStore.refreshUser()
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
   }
   catch (e: any) {
+    console.error(e)
     messageHook.error(t('auth.upload_failed'))
   }
   finally {
@@ -251,7 +268,6 @@ async function handleFileChange(event: Event) {
   }
 }
 
-// 1. 提取公共的计算逻辑到一个函数中，避免代码重复
 function calculateDaysFromDate(dateStr: string) {
   const first = new Date(dateStr)
   firstNoteDateText.value = formatDateI18n(first)
@@ -261,8 +277,6 @@ function calculateDaysFromDate(dateStr: string) {
   today.setHours(0, 0, 0, 0)
 
   let years = today.getFullYear() - first.getFullYear()
-
-  // 计算周年
   let anniversary = new Date(first)
   anniversary.setFullYear(first.getFullYear() + years)
 
@@ -276,31 +290,22 @@ function calculateDaysFromDate(dateStr: string) {
   journalingYears.value = Math.max(0, years)
   journalingRemainderDays.value = Math.max(0, remainDays)
 
-  // 如果不满一年，计算总天数
   if (journalingYears.value === 0)
     journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
 }
 
-// 2. 修改后的获取逻辑：先查缓存，没有再查服务器
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
 
-  // 定义缓存 Key，加上 user.id 确保多账号切换时数据不串
   const CACHE_KEY = `first_note_date_${props.user.id}`
   const cachedDate = localStorage.getItem(CACHE_KEY)
 
-  // --- 策略 A: 命中缓存 ---
   if (cachedDate) {
-    // 直接用缓存的日期进行计算，零网络请求
     calculateDaysFromDate(cachedDate)
-
-    // 可选：你可以在这里加一个静默的后台校验，如果你担心用户删除了第一篇笔记导致缓存失效
-    // 但通常对于这种“坚持记录”的功能，强一致性要求不高，不做后台校验也可以
     return
   }
 
-  // --- 策略 B: 无缓存，请求 Supabase ---
   try {
     const { data } = await supabase
       .from('notes')
@@ -311,14 +316,10 @@ async function fetchFirstNoteAndStreak() {
       .single()
 
     if (data?.created_at) {
-      // 1. 存入缓存
       localStorage.setItem(CACHE_KEY, data.created_at)
-
-      // 2. 执行计算
       calculateDaysFromDate(data.created_at)
     }
     else {
-      // 没有任何笔记的情况
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
@@ -376,7 +377,6 @@ watch(() => props.show, (visible) => {
     if (!hasFetched.value) {
       fetchFirstNoteAndStreak()
       fetchNotesCount()
-      // [修改] 移除了 fetchTotalChars
       fetchStorageStats()
       hasFetched.value = true
     }
@@ -398,7 +398,7 @@ function openLogoutConfirm() {
 async function doSignOut() {
   try {
     await supabase.auth.signOut()
-    localStorage.clear() // 简单粗暴清理，确保干净
+    localStorage.clear()
     window.location.assign('/auth')
   }
   catch {
@@ -478,8 +478,12 @@ function handleForgotOldPwd() {
     <div v-if="show" class="modal-overlay" @click.self="emit('close')">
       <div class="modal-content">
         <div class="modal-header">
-          <h2 class="modal-title">{{ t('notes.account.title') }}</h2>
-          <button class="close-button" @click="emit('close')">&times;</button>
+          <h2 class="modal-title">
+            {{ t('notes.account.title') }}
+          </h2>
+          <button class="close-button" @click="emit('close')">
+            &times;
+          </button>
         </div>
 
         <div class="modal-body">
@@ -487,9 +491,14 @@ function handleForgotOldPwd() {
             <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange">
 
             <div class="avatar-wrapper" :class="{ 'is-loading': isUploadingAvatar }" @click="triggerFileUpload">
-              <img v-if="userAvatar && !avatarLoadError" :src="userAvatar" class="profile-avatar" alt="Avatar" @error="onAvatarError">
-              <div v-else class="profile-avatar placeholder">{{ userName.charAt(0).toUpperCase() }}</div>
-              <div v-if="isUploadingAvatar" class="avatar-overlay loading"><span>...</span></div>
+              <img v-if="userAvatar && !avatarLoadError" :src="`${userAvatar}?t=${avatarTimestamp}`" class="profile-avatar" alt="Avatar" @error="onAvatarError">
+              <div v-else class="profile-avatar placeholder">
+                {{ userName.charAt(0).toUpperCase() }}
+              </div>
+
+              <div v-if="isUploadingAvatar" class="avatar-overlay loading">
+                <span>...</span>
+              </div>
               <div v-else class="avatar-edit-badge">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
               </div>
@@ -501,7 +510,9 @@ function handleForgotOldPwd() {
               </template>
               <template v-else>
                 <div class="name-display-wrapper" @click="startEditName">
-                  <div class="profile-name">{{ userName }}</div>
+                  <div class="profile-name">
+                    {{ userName }}
+                  </div>
                   <button class="edit-icon-btn">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                   </button>
@@ -517,7 +528,9 @@ function handleForgotOldPwd() {
 
           <div v-if="canChangePassword" class="info-item">
             <span class="info-label">{{ t('auth.password') }}</span>
-            <button class="link-btn" @click="openPwdModal">{{ t('auth.change') }}</button>
+            <button class="link-btn" @click="openPwdModal">
+              {{ t('auth.change') }}
+            </button>
           </div>
 
           <div class="info-item">
@@ -566,8 +579,12 @@ function handleForgotOldPwd() {
         </div>
 
         <div class="modal-footer">
-          <button class="btn-green" @click="emit('close')">{{ t('auth.return') }}</button>
-          <button class="btn-grey" @click="openLogoutConfirm">{{ t('notes.account.logout') }}</button>
+          <button class="btn-green" @click="emit('close')">
+            {{ t('auth.return') }}
+          </button>
+          <button class="btn-grey" @click="openLogoutConfirm">
+            {{ t('notes.account.logout') }}
+          </button>
         </div>
       </div>
     </div>
@@ -578,9 +595,13 @@ function handleForgotOldPwd() {
       <div class="modal-content pwd-content">
         <div class="pwd-header">
           <h3>{{ t('auth.change_password_title') }}</h3>
-          <button class="close-button" @click="closePwdModal">&times;</button>
+          <button class="close-button" @click="closePwdModal">
+            &times;
+          </button>
         </div>
-        <p class="pwd-tip">{{ t('auth.change_password_tip') }}</p>
+        <p class="pwd-tip">
+          {{ t('auth.change_password_tip') }}
+        </p>
         <div class="pwd-form">
           <input v-model="pwdForm.old" type="password" class="pwd-input" :placeholder="t('auth.old_password_placeholder')">
           <input v-model="pwdForm.new" type="password" class="pwd-input" :placeholder="t('auth.new_password_placeholder')">
@@ -589,8 +610,12 @@ function handleForgotOldPwd() {
         <div class="pwd-actions">
           <span class="forgot-link" @click="handleForgotOldPwd">{{ t('auth.forgot_old_password') }}</span>
           <div class="pwd-btns">
-            <button class="btn-grey pwd-btn-item" @click="closePwdModal">{{ t('auth.cancel') }}</button>
-            <button class="btn-green pwd-btn-item" :disabled="pwdLoading" @click="handleUpdatePassword">{{ pwdLoading ? t('auth.submitting') : t('auth.confirm') }}</button>
+            <button class="btn-grey pwd-btn-item" @click="closePwdModal">
+              {{ t('auth.cancel') }}
+            </button>
+            <button class="btn-green pwd-btn-item" :disabled="pwdLoading" @click="handleUpdatePassword">
+              {{ pwdLoading ? t('auth.submitting') : t('auth.confirm') }}
+            </button>
           </div>
         </div>
       </div>
