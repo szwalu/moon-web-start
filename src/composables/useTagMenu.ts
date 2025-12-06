@@ -1215,7 +1215,7 @@ export function useTagMenu(
                 onClickoutside: () => {
                   lastMoreClosedByOutside = true
                   closeMenu()
-                  setTimeout(() => { lastMoreClosedByOutside = false }, 0)
+                  setTimeout(() => { lastMoreClosedByOutside = false }, 200)
                 },
               }, {
                 default: () => h('button', {
@@ -1353,7 +1353,7 @@ export function useTagMenu(
                 onClickoutside: () => {
                   lastMoreClosedByOutside = true
                   closeMenu()
-                  setTimeout(() => { lastMoreClosedByOutside = false }, 0)
+                  setTimeout(() => { lastMoreClosedByOutside = false }, 200)
                 },
               }, {
                 default: () => h('button', {
