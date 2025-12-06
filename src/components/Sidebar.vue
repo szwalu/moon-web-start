@@ -28,6 +28,9 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 const { t } = useI18n()
 
+// [新增] 用于强制刷新图片的本地时间戳
+const avatarTimestamp = ref(Date.now())
+
 function onAvatarClick() {
   handleItemClick('account')
 }
@@ -118,10 +121,26 @@ const userName = computed(() => {
     return meta.display_name
   return props.user?.email?.split('@')[0] || t('auth.default_nickname')
 })
+
 const userSignature = computed(() => {
   return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
-const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
+
+// [修改] 计算头像 URL 时加上时间戳参数
+const userAvatar = computed(() => {
+  const url = props.user?.user_metadata?.avatar_url
+  if (!url)
+    return null
+  return `${url}?t=${avatarTimestamp.value}`
+})
+
+// [新增] 监听 props.user 变化
+// 当 AccountModal 里调用 authStore.refreshUser() 后，
+// 父组件传给 Sidebar 的 props.user 引用会发生变化，触发此监听
+watch(() => props.user, () => {
+  // 更新时间戳，强制 <img> 重新请求最新图片
+  avatarTimestamp.value = Date.now()
+}, { deep: true })
 
 // 纯计算函数，不涉及网络请求
 function calculateDays(dateStr: string) {
@@ -205,25 +224,43 @@ function handleItemClick(key: string) {
 
               <div class="user-text-col">
                 <div class="user-name-line">
-                  <div class="user-name">{{ userName }}</div>
-                  <div v-if="props.user?.email === 'vip'" class="user-badge">高级</div>
+                  <div class="user-name">
+                    {{ userName }}
+                  </div>
+                  <div v-if="props.user?.email === 'vip'" class="user-badge">
+                    高级
+                  </div>
                 </div>
-                <div class="user-signature">{{ userSignature }}</div>
+                <div class="user-signature">
+                  {{ userSignature }}
+                </div>
               </div>
             </div>
 
             <div class="stats-grid">
               <div class="stat-item">
-                <div class="stat-num">{{ totalNotes }}</div>
-                <div class="stat-label">{{ t('notes.notes_bj') || '笔记' }}</div>
+                <div class="stat-num">
+                  {{ totalNotes }}
+                </div>
+                <div class="stat-label">
+                  {{ t('notes.notes_bj') || '笔记' }}
+                </div>
               </div>
               <div class="stat-item">
-                <div class="stat-num">{{ tagCount }}</div>
-                <div class="stat-label">{{ t('notes.search_filter_tag') || '标签' }}</div>
+                <div class="stat-num">
+                  {{ tagCount }}
+                </div>
+                <div class="stat-label">
+                  {{ t('notes.search_filter_tag') || '标签' }}
+                </div>
               </div>
               <div class="stat-item">
-                <div class="stat-num">{{ journalingDays }}</div>
-                <div class="stat-label">{{ t('notes.days') || '天数' }}</div>
+                <div class="stat-num">
+                  {{ journalingDays }}
+                </div>
+                <div class="stat-label">
+                  {{ t('notes.days') || '天数' }}
+                </div>
               </div>
             </div>
           </div>
