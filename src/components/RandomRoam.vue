@@ -371,26 +371,49 @@ watch(
 )
 
 // ✅ 计算卡片样式
+// ✅ 计算卡片样式（优化版：更慢、更重、更优雅）
 function getCardStyle(index: number) {
+  // 1. 底部的卡片
   if (index > 0) {
     return {
       zIndex: visibleCards.value.length - index,
-      transform: `translate3d(0, ${index * 4}px, -${index * 20}px) scale(${1 - index * 0.04})`,
+      // 底部卡片跟随移动一点点，制造景深联动感
+      transform: `
+        translate3d(${deltaX.value * 0.05}px, ${index * 4}px, -${index * 20}px) 
+        scale(${1 - index * 0.04})
+      `,
       opacity: index > 3 ? 0 : 1,
+      // 底部卡片的动画也慢一点
+      transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease',
     }
   }
 
-  const rotateFactor = 0.15
+  // 2. 顶部的卡片（当前操作的这张）
+
+  // 旋转系数降低：0.15 -> 0.1，让纸张看起来“硬”一点，不会弯得太夸张
+  const rotateFactor = 0.1
   const rotateY = deltaX.value * rotateFactor
+
+  // 位移系数：乘以 0.75，增加“阻尼感”，感觉纸张有分量
+  const translateX = deltaX.value * 0.75
 
   return {
     zIndex: visibleCards.value.length,
     transform: `
-      translate3d(${deltaX.value}px, 0, 0) 
+      translate3d(${translateX}px, 0, 0) 
       rotateY(${rotateY}deg)
-      rotateZ(${deltaX.value * 0.02}deg)
+      rotateZ(${translateX * 0.03}deg)
     `,
+    // 动态轴心：左滑掀页脚，右滑平推
     transformOrigin: deltaX.value < 0 ? '0% 100%' : '0% 50%',
+
+    // ✋ 关键修改在这里：
+    // isDragging 为 true (手指按着) -> 'none' (无延迟，绝对跟手)
+    // isDragging 为 false (松手) -> '0.5s ...' (慢动作回弹/飞出，模拟空气阻力)
+    transition: isDragging.value
+      ? 'none'
+      : 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
+
     cursor: isDragging.value ? 'grabbing' : 'grab',
   }
 }
@@ -559,7 +582,7 @@ function getCardStyle(index: number) {
   display: flex;
   flex-direction: column;
 
-  transition: transform 0.1s linear, opacity 0.25s ease, box-shadow 0.25s ease;
+  transition: opacity 0.5s ease, box-shadow 0.5s ease;
   transform-origin: left center;
   backface-visibility: hidden;
   will-change: transform;
