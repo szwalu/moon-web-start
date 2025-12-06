@@ -105,10 +105,8 @@ const RecursiveMenu = defineComponent({
   },
 })
 
-// --- 统计数据逻辑 ---
-const totalChars = ref(0)
+// --- 统计数据逻辑 (只保留天数) ---
 const journalingDays = ref(0)
-const hasFetched = ref(false)
 
 const userName = computed(() => {
   const meta = props.user?.user_metadata
@@ -125,35 +123,57 @@ const userSignature = computed(() => {
 })
 const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
 
+// 纯计算函数，不涉及网络请求
+function calculateDays(dateStr: string) {
+  const first = new Date(dateStr)
+  const today = new Date()
+  const diffTime = Math.abs(today.getTime() - first.getTime())
+  journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+}
+
 async function fetchStats() {
   if (!props.user)
     return
-  try {
-    const { data } = await supabase.from('notes').select('content').eq('user_id', props.user.id)
-    totalChars.value = data?.reduce((sum, n) => sum + (n.content?.length || 0), 0) ?? 0
-  }
-  catch (e) { /* ignore */ }
 
-  try {
-    const { data } = await supabase.from('notes').select('created_at').eq('user_id', props.user.id).order('created_at', { ascending: true }).limit(1).single()
-    if (data?.created_at) {
-      const first = new Date(data.created_at)
-      const today = new Date()
-      const diffTime = Math.abs(today.getTime() - first.getTime())
-      journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  // 缓存 Key 绑定用户 ID，避免多用户切换数据错误
+  const STORAGE_KEY = `journal_start_date_${props.user.id}`
+
+  // 1. 先尝试从本地获取
+  const cachedDate = localStorage.getItem(STORAGE_KEY)
+
+  if (cachedDate) {
+    // ✅ 命中缓存，直接计算，不发请求
+    calculateDays(cachedDate)
+  }
+  else {
+    // ❌ 无缓存，请求服务器（仅请求一次）
+    try {
+      const { data } = await supabase
+        .from('notes')
+        .select('created_at')
+        .eq('user_id', props.user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
+
+      if (data?.created_at) {
+        // ✅ 拿到数据后写入缓存
+        localStorage.setItem(STORAGE_KEY, data.created_at)
+        calculateDays(data.created_at)
+      }
+      else {
+        journalingDays.value = 0
+      }
     }
-    else {
-      journalingDays.value = 0
+    catch (e) {
+      console.error('Fetch stats error:', e)
     }
   }
-  catch (e) { /* ignore */ }
 }
 
 watch(() => props.show, (val) => {
-  if (val && !hasFetched.value) {
+  if (val)
     fetchStats()
-    hasFetched.value = true
-  }
 })
 
 const settingsExpanded = ref(false)

@@ -2884,6 +2884,7 @@ function handleBeforeInput(e: InputEvent) {
 .dark .toolbar-sep { background-color: rgba(255,255,255,0.18); }
 
 /* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
+/* ======= 更小的样式弹层（紧贴 Aa 上方） ======= */
 .format-palette {
   position: absolute;
   z-index: 1100;
@@ -2892,7 +2893,12 @@ function handleBeforeInput(e: InputEvent) {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  padding: 2px 4px;          /* 缩小内边距 */
+  display: flex;
+  flex-direction: column;
+  /* 2. gap 控制上下两行的距离，你可以根据需要调整这个数值（例如 8px, 10px, 12px） */
+  gap: 10px;
+  /* 3. 稍微调整一下内边距，原来是 2px 4px，稍微加大一点会让整体更协调 */
+  padding: 6px 6px;
 }
 .dark .format-palette {
   background: #2c2c2e;

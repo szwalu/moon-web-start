@@ -251,10 +251,56 @@ async function handleFileChange(event: Event) {
   }
 }
 
+// 1. 提取公共的计算逻辑到一个函数中，避免代码重复
+function calculateDaysFromDate(dateStr: string) {
+  const first = new Date(dateStr)
+  firstNoteDateText.value = formatDateI18n(first)
+
+  const today = new Date()
+  first.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+
+  let years = today.getFullYear() - first.getFullYear()
+
+  // 计算周年
+  let anniversary = new Date(first)
+  anniversary.setFullYear(first.getFullYear() + years)
+
+  if (anniversary > today) {
+    years -= 1
+    anniversary = new Date(first)
+    anniversary.setFullYear(first.getFullYear() + years)
+  }
+
+  const remainDays = Math.floor((today.getTime() - anniversary.getTime()) / (1000 * 60 * 60 * 24))
+  journalingYears.value = Math.max(0, years)
+  journalingRemainderDays.value = Math.max(0, remainDays)
+
+  // 如果不满一年，计算总天数
+  if (journalingYears.value === 0)
+    journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
+}
+
+// 2. 修改后的获取逻辑：先查缓存，没有再查服务器
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
 
+  // 定义缓存 Key，加上 user.id 确保多账号切换时数据不串
+  const CACHE_KEY = `first_note_date_${props.user.id}`
+  const cachedDate = localStorage.getItem(CACHE_KEY)
+
+  // --- 策略 A: 命中缓存 ---
+  if (cachedDate) {
+    // 直接用缓存的日期进行计算，零网络请求
+    calculateDaysFromDate(cachedDate)
+
+    // 可选：你可以在这里加一个静默的后台校验，如果你担心用户删除了第一篇笔记导致缓存失效
+    // 但通常对于这种“坚持记录”的功能，强一致性要求不高，不做后台校验也可以
+    return
+  }
+
+  // --- 策略 B: 无缓存，请求 Supabase ---
   try {
     const { data } = await supabase
       .from('notes')
@@ -265,36 +311,14 @@ async function fetchFirstNoteAndStreak() {
       .single()
 
     if (data?.created_at) {
-      const first = new Date(data.created_at)
-      firstNoteDateText.value = formatDateI18n(first)
+      // 1. 存入缓存
+      localStorage.setItem(CACHE_KEY, data.created_at)
 
-      // [修复] 原来写在一行的三个语句，拆分：
-      const today = new Date()
-      first.setHours(0, 0, 0, 0)
-      today.setHours(0, 0, 0, 0)
-
-      let years = today.getFullYear() - first.getFullYear()
-
-      // [修复] 原来写在一行的两个语句，拆分：
-      let anniversary = new Date(first)
-      anniversary.setFullYear(first.getFullYear() + years)
-
-      if (anniversary > today) {
-        // [修复] if 内部原本写在一行的语句，拆分：
-        years -= 1
-        anniversary = new Date(first)
-        anniversary.setFullYear(first.getFullYear() + years)
-      }
-
-      const remainDays = Math.floor((today.getTime() - anniversary.getTime()) / (1000 * 60 * 60 * 24))
-      journalingYears.value = Math.max(0, years)
-      journalingRemainderDays.value = Math.max(0, remainDays)
-
-      if (journalingYears.value === 0)
-        journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      // 2. 执行计算
+      calculateDaysFromDate(data.created_at)
     }
     else {
-      // [修复] 原来写在一行的四个赋值，拆分：
+      // 没有任何笔记的情况
       firstNoteDateText.value = null
       journalingYears.value = 0
       journalingRemainderDays.value = 0
