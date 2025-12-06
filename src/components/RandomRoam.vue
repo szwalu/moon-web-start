@@ -7,6 +7,7 @@ import taskLists from 'markdown-it-task-lists'
 import ins from 'markdown-it-ins'
 import mark from 'markdown-it-mark'
 import linkAttrs from 'markdown-it-link-attributes'
+import { cityMap, weatherMap } from '@/utils/weatherMap'
 import { useSettingStore } from '@/stores/setting'
 
 interface Note {
@@ -31,10 +32,13 @@ const emit = defineEmits<{
 }>()
 
 const isDark = useDark()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
-
+// ✅ 2. 计算当前是否为中文环境
+const isZh = computed(() => {
+  return locale.value.toLowerCase().startsWith('zh')
+})
 // ========== Markdown 渲染（沿用 NoteItem 的配置） ==========
 const md = new MarkdownIt({
   html: false,
@@ -86,24 +90,60 @@ function renderMarkdown(content: string) {
 }
 
 // ===== 日期 + 天气展示 =====
-const WEEKDAY_MAP_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
+// 日期格式化 (使用 Intl API 自动适配语言)
 function formatDateWithWeekday(iso: string): string {
   if (!iso)
     return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime()))
     return ''
-  const y = d.getFullYear()
-  const m = d.getMonth() + 1
-  const day = d.getDate()
-  const w = WEEKDAY_MAP_ZH[d.getDay()] ?? ''
-  return `${y}年${m}月${day}日 ${w}`
+
+  return new Intl.DateTimeFormat(locale.value, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    weekday: 'short', // 自动显示 "周一" 或 "Mon"
+  }).format(d)
 }
 
 function getNoteWeather(note: Note | any): string {
-  const w = String(note?.weather ?? '').trim()
-  return w || ''
+  const raw = String(note?.weather ?? '').trim()
+  if (!raw)
+    return ''
+
+  // --- 情况 A: 它是天气代码 (数字) ---
+  const code = Number(raw)
+  // 判断是否为有效数字，且在 weatherMap 中存在
+  if (!Number.isNaN(code) && weatherMap[code]) {
+    const info = weatherMap[code]
+    if (isZh.value) {
+      // 中文模式：图标 + 中文描述 (e.g. "☀️ 晴朗")
+      return `${info.icon} ${info.text}`
+    }
+    else {
+      // 英文模式：你的 map 里没有英文文本，所以只显示图标，或者你可以扩展 map
+      // 这里暂时只返回图标，显得更简洁 (e.g. "☀️")
+      return info.icon
+    }
+  }
+
+  // --- 情况 B: 它是城市名 (字符串) ---
+  // 假设数据库存的是 key (如 'Beijing', 'Shanghai')
+  if (cityMap[raw]) {
+    if (isZh.value) {
+      // 中文模式：返回映射值 (e.g. "北京")
+      return cityMap[raw]
+    }
+    else {
+      // 英文模式：直接返回原 Key (e.g. "Beijing")
+      return raw
+    }
+  }
+
+  // --- 情况 C: 未知字符串 ---
+  // 既不是代码也不是已知城市，直接显示原样，或者尝试用 i18n 翻译
+  return isZh.value ? (t(raw) !== raw ? t(raw) : raw) : raw
 }
 
 // ========== 随机漫游核心逻辑 ==========
