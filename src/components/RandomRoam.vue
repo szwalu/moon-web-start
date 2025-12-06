@@ -561,19 +561,19 @@ function getCardStyle(index: number) {
 .card-stack {
   position: relative;
 
-  /* 左边留 10px，右边留 20px 给堆叠效果 */
-  width: auto;
-  margin-left: 10px;
-  margin-right: 20px;
+  /* 🔴 修改前: width: 100%; */
 
+  /* ✅ 修改后:
+     移动端给左右各留 4% 的空隙 (92%)
+     或者左右各留 12px (calc(100% - 24px))
+     这样右边的 -9px 堆叠效果就不会被切掉了
+  */
+  width: 92%;
   max-width: 960px;
   height: 100%;
 
-  /* 桌面端恢复居中 */
-  @media (min-width: 768px) {
-    width: 100%;
-    margin: 0 auto;
-  }
+  /* 居中显示 */
+  margin: 0 auto;
 
   perspective: 1200px;
   transform-style: preserve-3d;
