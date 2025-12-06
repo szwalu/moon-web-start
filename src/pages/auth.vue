@@ -636,41 +636,47 @@ function getNoteSignature(n: any) {
   return `${n.id}|${n.updated_at}|${n.is_pinned}|${n.is_favorited}|${n.content?.length}|${n.weather}`
 }
 
-// ✨✨✨ 修复版 Watcher：解决了“初始化风暴”和“筛选误删”问题
+// ✨✨✨ 最终修正版：既保留同步，又防止误删 ✨✨✨
 watch(notes, (newNotes) => {
-  // 1. 安全卫士：如果当前处于 搜索、标签筛选、那年今日、或年月跳转 视图中
-  // 此时 notes 列表不代表全量数据，缺少的笔记并不是被删除了，所以必须停止同步
+  // 1. 视图保护
   if (isShowingSearchResults.value || activeTagFilter.value || isAnniversaryViewActive.value || isMonthJumpView.value)
     return
+
+  // 2. ✨✨✨ 加载保护 (这是核心！) ✨✨✨
+  // 如果正在加载（isLoadingNotes 为 true），说明列表只是在翻页或重置
+  // 这时候笔记变少了是正常的，绝对不能当成“删除”处理！
+  if (isLoadingNotes.value) {
+    // 我们只更新指纹库，不发通知，静默处理
+    const currentIds = new Set(newNotes.map(n => n.id))
+    for (const id of noteSignatures.value.keys()) {
+      if (!currentIds.has(id))
+        noteSignatures.value.delete(id)
+    }
+
+    newNotes.forEach(n => noteSignatures.value.set(n.id, getNoteSignature(n)))
+    return // ✋ 直接结束，保护那年今日的数据
+  }
 
   const currentIds = new Set<string>()
   const isFirstRun = noteSignatures.value.size === 0 && newNotes.length > 0
 
-  // 2. 遍历新列表
+  // 3. 正常的新增/编辑检测
   for (const note of newNotes) {
     const id = note.id
     currentIds.add(id)
-
     const newSig = getNoteSignature(note)
 
-    // 如果不是第一次运行（初始化），才去对比差异
     if (!isFirstRun) {
       const oldSig = noteSignatures.value.get(id)
-      if (oldSig === undefined) {
-        // 新增
+      if (oldSig === undefined)
         notifyAnniversaryAdd(note)
-      }
-      else if (oldSig !== newSig) {
-        // 编辑
+      else if (oldSig !== newSig)
         notifyAnniversaryUpdate(note)
-      }
     }
-
-    // 无论是否初始化，都更新指纹，为下一次对比做准备
     noteSignatures.value.set(id, newSig)
   }
 
-  // 3. 检测删除 (仅在非初始化阶段执行)
+  // 4. 正常的删除检测
   if (!isFirstRun) {
     const idsToDelete: string[] = []
     for (const id of noteSignatures.value.keys()) {
