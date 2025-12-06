@@ -31,33 +31,52 @@ const { t } = useI18n()
 function onAvatarClick() {
   handleItemClick('account')
 }
+
 // ===========================================================================
-// 🔥 递归渲染组件
+// 🔥 递归渲染组件 (已修改：支持点击后自动关闭)
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
-  setup(props) {
+  emits: ['itemClick'], // ✨ 1. 声明自定义事件
+  setup(props, { emit }) {
     const resolve = (val: any) => (typeof val === 'function' ? val() : val)
 
     const renderNode = (item: any): any => {
-      // 1. Render 类型
+      // 1. Render 类型 (如搜索框、分割线等，不处理点击关闭)
       if (item.type === 'render')
         return h('div', { key: item.key, class: 'render-node' }, [resolve(item.render)])
 
-      // 2. Group 类型
+      // 2. Group 类型 (分组标题，不处理点击关闭)
       if (item.type === 'group') {
         return h('div', { key: item.key, class: 'group-node' }, [
           h('div', { class: 'group-label' }, [resolve(item.label)]),
           h('div', { class: 'group-children' }, item.children.map(renderNode)),
         ])
       }
-      // 3. 普通标签项
+
+      // 3. 普通标签项 (✨ 关键修改：拦截点击事件)
+      // 提取原始的 props
+      const originalProps = item.props || {}
+
+      // 创建包装后的 props
+      const wrappedProps = {
+        ...originalProps,
+        onClick: (e: MouseEvent) => {
+          // A. 先执行原有的筛选逻辑 (来自于 useTagMenu.ts)
+          if (originalProps.onClick)
+            originalProps.onClick(e)
+
+          // B. 发送信号通知父组件关闭侧边栏
+          emit('itemClick')
+        },
+      }
+
       return h(
         'div',
         {
           key: item.key,
           class: 'menu-node hover-effect',
-          ...item.props, // 绑定点击事件
+          ...wrappedProps, // ✨ 使用包装后的事件
         },
         [resolve(item.label)],
       )
@@ -207,7 +226,7 @@ function handleItemClick(key: string) {
 
             <div class="divider" />
             <div class="tag-menu-container">
-              <RecursiveMenu :items="tagMenuOptions" />
+              <RecursiveMenu :items="tagMenuOptions" @item-click="emit('close')" />
             </div>
 
             <div style="height: 60px;" />
