@@ -430,30 +430,38 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-// ✨✨✨ 微型安全同步：只监听“最新一条笔记”的变化 ✨✨✨
-// 场景：手机新增笔记 -> 电脑端主列表自动更新 -> 这里检测到第一条变了 -> 刷新那年今日
-watch(() => notes.value[0], (newTopNode, oldTopNode) => {
-  // 1. 如果正在加载列表（翻页/刷新），绝对不处理，防止误判
+// ✨✨✨ 终极稳健版同步：无视置顶，精准捕捉最新笔记 ✨✨✨
+// 场景：无论是否有置顶笔记，只要列表中出现了“今天”的新笔记，就刷新 Banner
+watch(notes, (newNotes) => {
+  // 1. 如果正在加载（翻页/重置），直接跳过
   if (isLoadingNotes.value)
     return
 
-  // 2. 如果没有新笔记，或者只是因为列表清空了，不处理
-  if (!newTopNode)
+  // 2. 空列表不处理
+  if (!newNotes || newNotes.length === 0)
     return
 
-  // 3. 只有当 ID 变了（说明来了新笔记，而不是修改内容），才进行判断
-  if (newTopNode.id !== oldTopNode?.id) {
-    // 4. 只有当这条新笔记是“今天”写的，才刷新那年今日
-    // (往年的笔记出现在列表头部的概率极低，且不需要实时刷)
-    const noteDate = new Date(newTopNode.created_at).toDateString()
-    const todayDate = new Date().toDateString()
+  // 3. 找出列表中“创建时间最晚”的那条笔记
+  // 注意：因为列表可能包含置顶笔记（created_at 很早），所以不能无脑取 [0]
+  // 我们只需要遍历前 5 条即可（新笔记肯定在最上面几条里），性能开销几乎为 0
+  let newestNote = newNotes[0]
+  const scanLimit = Math.min(newNotes.length, 5) // 只看前5条，足够了
 
-    if (noteDate === todayDate) {
-      // 命中！有一条今天的热乎笔记来了，刷新 Banner
-      anniversaryBannerRef.value?.loadAnniversaryNotes(true)
-    }
+  for (let i = 1; i < scanLimit; i++) {
+    if (new Date(newNotes[i].created_at) > new Date(newestNote.created_at))
+      newestNote = newNotes[i]
   }
-})
+
+  // 4. 只有当这条最新笔记是“今天”写的，才刷新那年今日
+  const noteDate = new Date(newestNote.created_at).toDateString()
+  const todayDate = new Date().toDateString()
+
+  if (noteDate === todayDate) {
+    // 为了防止重复刷新，可以加一个简单的判断：
+    // 如果 Banner 里已经有这条笔记了，就不刷了 (可选优化，不加也没事，loadAnniversaryNotes 有防抖)
+    anniversaryBannerRef.value?.loadAnniversaryNotes(true)
+  }
+}, { deep: false }) // deep: false 即可，因为新增笔记会改变数组长度/引用
 
 onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
