@@ -273,6 +273,9 @@ function addNote(newNote: any) {
     // 这样可以防止初始化期间的“新增通知”意外覆盖掉包含往年数据的完整缓存
     if (user.value && !isLoading.value)
       writeResults(user.value.id, todayYmd, anniversaryNotes.value)
+    // 如果当前正在看“那年今日”列表，必须告诉父组件数据变了，让列表也刷新
+    if (isAnniversaryViewActive.value)
+      emit('toggleView', anniversaryNotes.value)
   }
 }
 
