@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
@@ -49,6 +49,22 @@ const firstImageUrl = computed(() => {
   return null
 })
 
+const hasDraft = ref(false)
+
+function checkDraftStatus() {
+  if (!props.note?.id)
+    return
+  const key = `note_draft_${props.note.id}`
+  const raw = localStorage.getItem(key)
+  hasDraft.value = !!raw
+}
+function onDraftChanged(e: Event) {
+  const customEvent = e as CustomEvent
+  // 检查事件携带的 ID 是否是当前这个笔记的 ID，或者是通用的 key
+  const targetId = customEvent.detail
+  if (targetId === props.note.id || targetId === `note_draft_${props.note.id}`)
+    checkDraftStatus()
+}
 const { t } = useI18n()
 const isDark = useDark()
 const messageHook = useMessage()
@@ -287,13 +303,33 @@ onMounted(() => {
   }
   if (fullContentRef.value)
     observer.observe(fullContentRef.value)
+  checkDraftStatus()
+  checkDraftStatus()
+
+  // ✅ 2. 监听全局事件 (解决不刷新不显示的问题)
+  window.addEventListener('note-draft-changed', onDraftChanged)
 })
+
+onActivated(() => {
+  checkDraftStatus()
+})
+
+watch(() => props.note, () => {
+  checkDraftStatus()
+}, { deep: true })
 
 onUnmounted(() => {
   if (observer) {
     observer.disconnect()
     observer = null
   }
+  // ✅ 移除监听
+  window.removeEventListener('note-draft-changed', onDraftChanged)
+})
+
+// ✅ KeepAlive 激活时也检查
+onActivated(() => {
+  checkDraftStatus()
 })
 
 // ✅ 新增关键修复：监听 contentRef 的变化
@@ -770,27 +806,35 @@ function handleImageLoad() {
           <span v-if="note.is_pinned" class="pinned-indicator">
             {{ t('notes.pin') }}
           </span>
-
-          <!-- 日期（几日）加粗；时间/周几常规；天气同一行 -->
           <p class="note-date" v-html="formatDateWithWeekday(note.created_at)" />
           <span v-if="weatherDisplay" class="weather-inline">
             · {{ weatherDisplay }}
           </span>
         </div>
 
-        <NDropdown
-          trigger="click"
-          placement="bottom-end"
-          :options="getDropdownOptions(note)"
-          :style="{ minWidth: '220px' }"
-          :to="props.dropdownInPlace ? false : undefined"
-          :z-index="props.dropdownInPlace ? 6001 : undefined"
-          @select="handleDropdownSelect"
-        >
-          <div class="kebab-menu">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
-          </div>
-        </NDropdown>
+        <div class="note-meta-right">
+          <div
+            v-if="hasDraft"
+            class="draft-indicator"
+            title="存在未保存的草稿"
+          />
+
+          <NDropdown
+            trigger="click"
+            placement="bottom-end"
+            :options="getDropdownOptions(note)"
+            :style="{ minWidth: '220px' }"
+            :to="props.dropdownInPlace ? false : undefined"
+            :z-index="props.dropdownInPlace ? 6001 : undefined"
+            @select="handleDropdownSelect"
+          >
+            <div class="kebab-menu">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" />
+              </svg>
+            </div>
+          </NDropdown>
+        </div>
       </div>
 
       <div class="flex-1 min-w-0">
@@ -977,6 +1021,7 @@ function handleImageLoad() {
 
 <style scoped>
 .note-card {
+position: relative;
   border-radius: 0.5rem;
   background-color: #ffffff;
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
@@ -1605,5 +1650,42 @@ function handleImageLoad() {
 
 .dark .preview-extracted-img {
   border-color: rgba(255,255,255,0.1);
+}
+
+/* NoteItem.vue 的 <style scoped> 中 */
+
+/* ✅ 1. 右侧容器：Flex 布局，垂直居中 */
+.note-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 控制小黄点和菜单图标之间的间距 */
+}
+
+/* ✅ 2. 小黄点：去除 absolute，改为普通流式元素 */
+.draft-indicator {
+  /* 不要写 position: absolute / top / right */
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #f97316; /* 橘色 */
+
+  /* 防止小黄点被压缩变形 */
+  flex-shrink: 0;
+
+  /* 保持一点光晕效果 */
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.dark .draft-indicator {
+  box-shadow: 0 0 0 1px #374151;
+}
+
+/* 其他样式保持不变... */
+.note-card-top-bar {
+  display: flex;
+  justify-content: space-between; /* 左右两端对齐 */
+  align-items: center;
+  margin-bottom: 4px;
+  height: 24px;
 }
 </style>

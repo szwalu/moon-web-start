@@ -11,6 +11,7 @@ import { cityMap, weatherMap } from '@/utils/weatherMap'
 
 // ============== Props & Emits ==============
 const props = defineProps({
+  noteId: { type: String, default: '' },
   modelValue: { type: String, required: true },
   isEditing: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
@@ -39,7 +40,10 @@ const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
     return null
-  // 优先使用父组件传入的 draftKey；否则根据 isEditing 给一个稳定的默认值
+  if (props.noteId)
+    return `note_draft_${props.noteId}`
+
+  // 之前的逻辑作为后备（用于新建笔记或未传 ID 的情况）
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
@@ -466,11 +470,14 @@ function saveDraft() {
   if (!key)
     return
   try {
-    // 存 JSON，后续扩展更安全
     const payload = JSON.stringify({ content: contentModel.value || '' })
     localStorage.setItem(key, payload)
-    // 这样外部组件（如 NoteList）就可以通过这个 key 来判断草稿的新旧了
     localStorage.setItem(`${key}_ts`, String(Date.now()))
+
+    // ✅ 新增：发送自定义事件，通知 NoteItem 更新状态
+    // 如果有 noteId，就传 noteId，否则传 key 兜底
+    const targetId = props.noteId || key
+    window.dispatchEvent(new CustomEvent('note-draft-changed', { detail: targetId }))
   }
   catch (e) {
     console.warn('[NoteEditor] 保存草稿失败：', e)
@@ -484,6 +491,10 @@ function clearDraft() {
   try {
     localStorage.removeItem(key)
     localStorage.removeItem(`${key}_ts`)
+
+    // ✅ 新增：发送自定义事件，通知 NoteItem 移除小黄点
+    const targetId = props.noteId || key
+    window.dispatchEvent(new CustomEvent('note-draft-changed', { detail: targetId }))
   }
   catch {
     // noop
@@ -1311,32 +1322,26 @@ async function reverseGeocodeCityFromCoords(lat: number, lon: number): Promise<s
 
 // ========= 保存：不把天气写进正文；仅新建时生成一次，并作为第二参数传递 =========
 async function handleSave() {
-  // 1. 安全锁依然保留，防止重复提交
   if (props.isLoading || isSubmitting.value)
     return
-
-  // 2. 立即将状态设为“提交中”，禁用按钮
   isSubmitting.value = true
 
   const content = contentModel.value || ''
-  let weather: string | null = null // 默认天气为 null
+  let weather: string | null = null
 
-  // 3. 仅在创建新笔记时尝试获取天气
   if (!props.isEditing) {
     try {
-      // 尝试获取天气，如果成功，weather 会被赋值
       weather = await fetchWeatherLine()
     }
     catch (error) {
-      // 如果获取天气失败，只在控制台打印一个警告，然后继续执行。
-      // weather 的值将保持为 null，保存操作不会被中断。
       console.warn(t('notes.editor.save.weather_fetch_failed'), error)
     }
   }
 
-  // 4. 无论天气是否获取成功，都发射 save 事件
   emit('save', content, weather)
-  // ✅ 如果父组件愿意“点击保存就清草稿”，在 props.clearDraftOnSave = true 时清掉
+
+  // ✅ 保持这段逻辑：如果 props.clearDraftOnSave 为 true，这里会执行 clearDraft()
+  // 并在 clearDraft 内部触发事件，解决小黄点不消失的问题
   if (props.clearDraftOnSave)
     clearDraft()
 }

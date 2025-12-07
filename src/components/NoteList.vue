@@ -1010,10 +1010,9 @@ async function restoreScrollIfNeeded() {
         :placeholder="$t('notes.update_note')"
         :all-tags="allTags"
         enable-drafts
-        :draft-key="editTopDraftKey"
-        :clear-draft-on-save="false"
-        :original-content="editingNoteTop?.content || ''"
+        :note-id="editingNoteTop?.id" :draft-key="editTopDraftKey"
 
+        :clear-draft-on-save="true" :original-content="editingNoteTop?.content || ''"
         @save="saveEditTop"
         @cancel="cancelEditTop"
       />
