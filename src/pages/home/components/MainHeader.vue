@@ -22,7 +22,7 @@ const router = useRouter()
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
 const showBackTip = ref(false)
-const tipTimer: number | null = null
+let tipTimer: number | null = null
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
@@ -86,9 +86,11 @@ onMounted(async () => {
     logoPath.value = '/logo.jpg'
 })
 
+// ✅ 修改后的逻辑：只要是移动端就显示提示，不再依赖 from 参数
 onMounted(() => {
   if (isMobile.value) {
-    // 1. 清理 URL 参数逻辑保持不变
+    // 1. 如果 URL 里正好带有 from=notes，顺手把它清理掉（保持 URL 干净）
+    // 但这一步不再是显示提示的前提条件
     if (route.query.from === 'notes') {
       const { from: _from, ...restQuery } = route.query
       router.replace({
@@ -97,12 +99,17 @@ onMounted(() => {
       })
     }
 
-    // 2. 显示提示逻辑
+    // 2. 核心逻辑：直接判断次数并显示提示
     const countStr = localStorage.getItem('notes_to_main_tip_count')
     const currentCount = countStr ? Number(countStr) : 0
 
-    if (currentCount < 1000) {
+    // 只显示前 10000 次
+    if (currentCount < 10000) {
       showBackTip.value = true
+
+      tipTimer = window.setTimeout(() => {
+        showBackTip.value = false
+      }, 20000)
 
       localStorage.setItem('notes_to_main_tip_count', String(currentCount + 1))
     }
@@ -148,28 +155,20 @@ async function handleSettingsClick() {
       <RouterLink
         v-if="isMobile && !settingStore.isSideNavOpen"
         to="/auth"
-        class="relative flex items-center gap-x-3"
+        class="flex items-center gap-x-2"
       >
         <img
           :src="logoPath"
           alt="Logo"
           class="w-auto h-32"
         >
-
-        <div
+        <span
           v-if="showBackTip"
-          class="relative ml-3 animate-fade-in cursor-pointer border-[3px] border-[#FBBF24] rounded-2xl px-5 py-3 text-base font-bold text-[#FBBF24] shadow-sm bg-transparent"
-          style="z-index: 50;"
-          @click.prevent.stop="showBackTip = false"
+          class="flash-tip"
+          style="font-size: 12px; font-weight: 400; color: #dc2626; padding-left: 2px; line-height: 1;"
         >
-          <div
-            class="absolute top-1/2 border-y-[12px] border-r-[12px] border-y-transparent border-r-[#FBBF24] left-0 -translate-x-full -translate-y-1/2"
-          />
-
-          <span class="whitespace-nowrap leading-none">
-            {{ $t('notes.back_to_notes') }}
-          </span>
-        </div>
+          👈 {{ $t('notes.back_to_notes') }}
+        </span>
       </RouterLink>
     </div>
 
