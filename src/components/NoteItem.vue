@@ -813,10 +813,11 @@ function handleImageLoad() {
         </div>
 
         <div class="note-meta-right">
-          <div
+          <Edit3
             v-if="hasDraft"
-            class="draft-indicator"
-            title="存在未保存的草稿"
+            class="draft-status-icon"
+            :size="14"
+            stroke-width="2.5"
           />
 
           <NDropdown
@@ -1654,30 +1655,27 @@ position: relative;
 
 /* NoteItem.vue 的 <style scoped> 中 */
 
-/* ✅ 1. 右侧容器：Flex 布局，垂直居中 */
 .note-meta-right {
   display: flex;
   align-items: center;
-  gap: 8px; /* 控制小黄点和菜单图标之间的间距 */
+  gap: 6px; /* 图标和菜单之间的间距，稍微收紧一点 */
 }
 
-/* ✅ 2. 小黄点：去除 absolute，改为普通流式元素 */
-.draft-indicator {
-  /* 不要写 position: absolute / top / right */
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #f97316; /* 橘色 */
+/* ✅ 新增：草稿铅笔图标样式 */
+.draft-status-icon {
+  color: #f97316; /* 保持显眼的橘色，表示“进行中/未完成” */
 
-  /* 防止小黄点被压缩变形 */
-  flex-shrink: 0;
+  /* 关键：禁止鼠标交互，防止用户以为这是一个按钮去点击它 */
+  /* 用户应该点击卡片本身或者菜单里的编辑来继续编辑 */
+  pointer-events: none;
 
-  /* 保持一点光晕效果 */
-  box-shadow: 0 0 0 1px #fff;
+  /* 可选：加一点透明度，让它看起来像个水印状态，而不是操作按钮 */
+  opacity: 0.9;
 }
 
-.dark .draft-indicator {
-  box-shadow: 0 0 0 1px #374151;
+/* 深色模式适配 */
+.dark .draft-status-icon {
+  color: #fb923c; /* 深色模式下稍微亮一点的橘色 */
 }
 
 /* 其他样式保持不变... */
