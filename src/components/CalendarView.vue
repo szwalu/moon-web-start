@@ -183,8 +183,26 @@ async function handleDelete(noteId: string) {
   // =========== 👆 新增代码结束 👆 ===========
 }
 
-function handleDateUpdated() {
-  refreshData()
+// 修改：处理日期修改后的刷新逻辑
+async function handleDateUpdated() {
+  // 1. 强制清理当前日期的缓存（因为有一条笔记刚刚移走了，缓存已脏）
+  const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+  localStorage.removeItem(dayCacheKey)
+
+  // 2. 重新拉取当前显示的列表
+  // 这会让刚刚修改了日期的笔记立即从列表中消失
+  await fetchNotesForDate(selectedDate.value)
+
+  // 3. 重新拉取所有日期点（小蓝点）
+  // 因为笔记移动可能导致：
+  // A. 原日期没笔记了 -> 小蓝点消失（fetchNotesForDate 已涵盖此逻辑，但为了双保险）
+  // B. 新日期原本没笔记 -> 新增小蓝点（必须靠全量拉取才知道加在哪里）
+  try {
+    await fetchAllNoteDatesFull()
+  }
+  catch (e) {
+    console.error('刷新日期点失败', e)
+  }
 }
 function handleHeaderClick() {
   if (scrollBodyRef.value)
