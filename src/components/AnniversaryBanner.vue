@@ -130,12 +130,18 @@ async function loadAnniversaryNotes(forceRefresh = false) {
       if (isAnniversaryViewActive.value || (st && st.active))
         emit('toggleView', anniversaryNotes.value)
 
-      return // 命中缓存，直接结束，不发请求！
+      return // 命中缓存，直接结束
     }
   }
 
   // 2. 只有无缓存或强制刷新时，才发请求
-  isLoading.value = true
+  // ✨✨✨ 修复抖动核心：实现“静默刷新” ✨✨✨
+  // 如果当前已经有笔记在显示了 (anniversaryNotes.value.length > 0)，
+  // 我们就不把 isLoading 设为 true。
+  // 这样 v-if 就不会被触发，Banner 就不会消失再出现，而是直接平滑替换数据。
+  if (anniversaryNotes.value.length === 0)
+    isLoading.value = true
+
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     const { data: rows, error } = await supabase.rpc('get_anniversary_notes_for_date', {
@@ -150,6 +156,7 @@ async function loadAnniversaryNotes(forceRefresh = false) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
 
+    // 数据回来后瞬间替换，用户几乎无感，且不会引起布局跳动
     anniversaryNotes.value = sorted
     writeResults(uid, ymd, sorted)
     sweepOldResults(uid, ymd)
