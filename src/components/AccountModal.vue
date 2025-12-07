@@ -104,9 +104,10 @@ function compressImage(file: File): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        // 【关键改动1】：强制缩小到 120px。
-        // 120x120 的图片像素点极少，体积想大都难。
-        const maxSize = 120
+
+        // 【改动1】：尺寸提升到 240px。
+        // 配合 UI 中的 80px 显示大小，刚好满足 3倍屏(Retina) 的高清需求。
+        const maxSize = 240
         let width = img.width
         let height = img.height
 
@@ -128,20 +129,19 @@ function compressImage(file: File): Promise<Blob> {
         const ctx = canvas.getContext('2d')
 
         if (ctx) {
-          // 【关键改动2】：填充白色背景。
-          // 防止透明 PNG 转 JPEG 后背景变成黑色，影响美观。
+          // 保持白底，防止透明图变黑
           ctx.fillStyle = '#ffffff'
           ctx.fillRect(0, 0, width, height)
           ctx.drawImage(img, 0, 0, width, height)
         }
 
-        // 【关键改动3】：使用 JPEG, 质量 0.5
-        // 在 120px 的尺寸下，0.5 的质量肉眼看不出明显噪点，但体积会极小。
+        // 【改动2】：质量提升到 0.8
+        // 0.8 是画质和体积的最佳平衡点，头像会非常清晰。
         canvas.toBlob((blob) => {
           if (blob)
             resolve(blob)
           else reject(new Error('Canvas to Blob failed'))
-        }, 'image/jpeg', 0.5)
+        }, 'image/jpeg', 0.8)
       }
       img.onerror = err => reject(err)
     }
