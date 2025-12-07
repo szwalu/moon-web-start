@@ -183,44 +183,8 @@ async function handleDelete(noteId: string) {
   // =========== 👆 新增代码结束 👆 ===========
 }
 
-function applyNoteDateChange(oldDateKey: string, newDateKey: string, note: any) {
-  // --- 1. 从旧日期缓存移除 ---
-  const oldCacheKey = getCalendarDateCacheKey(dateFromKeyStr(oldDateKey))
-  const oldList = JSON.parse(localStorage.getItem(oldCacheKey) || '[]')
-  const updatedOldList = oldList.filter((n: any) => n.id !== note.id)
-
-  if (updatedOldList.length === 0)
-    localStorage.removeItem(oldCacheKey)
-  else
-    localStorage.setItem(oldCacheKey, JSON.stringify(updatedOldList))
-
-  // --- 2. 新日期缓存加入 ---
-  const newCacheKey = getCalendarDateCacheKey(dateFromKeyStr(newDateKey))
-  const newList = JSON.parse(localStorage.getItem(newCacheKey) || '[]')
-  newList.unshift({ ...note, created_at: `${newDateKey}T00:00:00` })
-  localStorage.setItem(newCacheKey, JSON.stringify(newList))
-
-  // --- 3. 小蓝点更新 ---
-  datesWithNotes.value.delete(oldDateKey)
-  datesWithNotes.value.add(newDateKey)
-
-  localStorage.setItem(
-    CACHE_KEYS.CALENDAR_ALL_DATES,
-    JSON.stringify([...datesWithNotes.value]),
-  )
-
-  // --- 4. 如果你正选中 newDateKey 也刷新一下 ---
-  if (selectedDate.value && dateKeyStr(selectedDate.value) === newDateKey)
-    selectedDateNotes.value = newList
-
-  // --- 5. 强制视图刷新（关键） ---
-  nextTick(() => {})
-}
-
-function handleDateUpdated(oldDateISO: string, newDateISO: string, note: any) {
-  const oldKey = toDateKeyStrFromISO(oldDateISO)
-  const newKey = toDateKeyStrFromISO(newDateISO)
-  applyNoteDateChange(oldKey, newKey, note)
+function handleDateUpdated() {
+  refreshData()
 }
 function handleHeaderClick() {
   if (scrollBodyRef.value)
