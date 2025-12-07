@@ -22,7 +22,7 @@ const router = useRouter()
 const isMobile = ref(false)
 const isMobileSafari = ref(false)
 const showBackTip = ref(false)
-let tipTimer: number | null = null
+// 移除了 tipTimer
 
 function updateIsMobile() {
   isMobile.value = window.innerWidth <= 768
@@ -39,11 +39,7 @@ function detectMobileSafari() {
 }
 
 /**
- * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”：
- * - PC：默认打开
- * - 其它移动端：默认关闭
- * - iOS Safari：强制关闭
- * 同时在首帧禁用过渡，mounted 后恢复。
+ * 在 setup 同步阶段就设置默认状态，避免 iOS Safari 首帧“先开再关”
  */
 if (typeof window !== 'undefined') {
   document.documentElement.setAttribute('data-booting', '1')
@@ -60,7 +56,7 @@ if (typeof window !== 'undefined') {
 onMounted(() => {
   window.addEventListener('resize', updateIsMobile, { passive: true })
 
-  // 恢复过渡：放到下一帧，确保首帧渲染完成
+  // 恢复过渡
   requestAnimationFrame(() => {
     document.documentElement.removeAttribute('data-booting')
   })
@@ -68,8 +64,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIsMobile)
-  if (tipTimer !== null)
-    clearTimeout(tipTimer)
+  // 移除了 clearTimeout
 })
 
 const user = ref<any>(null)
@@ -86,11 +81,10 @@ onMounted(async () => {
     logoPath.value = '/logo.jpg'
 })
 
-// ✅ 修改后的逻辑：只要是移动端就显示提示，不再依赖 from 参数
+// ✅ 修改后的逻辑：手动关闭，不自动消失
 onMounted(() => {
   if (isMobile.value) {
-    // 1. 如果 URL 里正好带有 from=notes，顺手把它清理掉（保持 URL 干净）
-    // 但这一步不再是显示提示的前提条件
+    // 1. 清理 URL 参数
     if (route.query.from === 'notes') {
       const { from: _from, ...restQuery } = route.query
       router.replace({
@@ -99,22 +93,22 @@ onMounted(() => {
       })
     }
 
-    // 2. 核心逻辑：直接判断次数并显示提示
+    // 2. 核心逻辑
     const countStr = localStorage.getItem('notes_to_main_tip_count')
     const currentCount = countStr ? Number(countStr) : 0
 
-    // 只显示前 10000 次
-    if (currentCount < 10000) {
+    // 只显示前 1000 次
+    if (currentCount < 1000) {
       showBackTip.value = true
-
-      tipTimer = window.setTimeout(() => {
-        showBackTip.value = false
-      }, 20000)
-
       localStorage.setItem('notes_to_main_tip_count', String(currentCount + 1))
     }
   }
 })
+
+// ✅ 新增：点击气泡关闭
+function closeTip() {
+  showBackTip.value = false
+}
 
 function getIconClass(routeName: string) {
   return {
@@ -152,23 +146,25 @@ async function handleSettingsClick() {
   >
     <div class="header-left flex items-center gap-x-4">
       <HamburgerButton class="text-gray-700 dark:text-gray-300" />
+
       <RouterLink
         v-if="isMobile && !settingStore.isSideNavOpen"
         to="/auth"
-        class="flex items-center gap-x-2"
+        class="relative flex items-center gap-x-2"
       >
         <img
           :src="logoPath"
           alt="Logo"
           class="w-auto h-32"
         >
-        <span
+
+        <div
           v-if="showBackTip"
-          class="flash-tip"
-          style="font-size: 12px; font-weight: 400; color: #dc2626; padding-left: 2px; line-height: 1;"
+          class="bubble-tip"
+          @click.prevent.stop="closeTip"
         >
-          👈 {{ $t('notes.back_to_notes') }}
-        </span>
+          {{ $t('notes.back_to_notes') }}
+        </div>
       </RouterLink>
     </div>
 
@@ -200,21 +196,47 @@ async function handleSettingsClick() {
 </template>
 
 <style scoped>
-/* 可选：如果你的侧栏/遮罩类名是 .SideNav / .SideNavOverlay，可以用下面这段消除首帧过渡 */
+/* 消除首帧过渡 */
 :global(html[data-booting] .SideNav),
 :global(html[data-booting] .SideNavOverlay) {
   transition: none !important;
 }
-.flash-tip {
-  animation: flashFade 1.2s ease-in-out infinite;
+
+/* ✅ 新增：黄色气泡样式 */
+.bubble-tip {
+  /* 定位：Logo 右侧垂直居中 */
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 14px; /* 气泡距离 Logo 的间距 */
+
+  /* 外观 */
+  background-color: #fdb927; /* 截图同款黄色 */
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 50;
+  line-height: 1.2;
 }
 
-@keyframes flashFade {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
+/* ✅ 新增：左侧小三角 */
+.bubble-tip::before {
+  content: '';
+  position: absolute;
+  left: -8px; /* 三角形突出的位置 */
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid #fdb927; /* 颜色必须与背景一致 */
 }
 </style>
