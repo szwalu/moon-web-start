@@ -430,29 +430,23 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-// ✨✨✨ 终极稳健版同步：智能穿透置顶，精准捕捉最新笔记 ✨✨✨
+// ✨✨✨ 环保高效版同步：本地直传，零网络请求 ✨✨✨
+// 场景：手机修改/新建笔记 -> 电脑收到数据 -> 直接喂给 Banner -> 界面瞬间更新
 watch(notes, (newNotes) => {
-  // 1. 加载中或空列表跳过
+  // 1. 基础拦截：加载中或空列表跳过
   if (isLoadingNotes.value || !newNotes || newNotes.length === 0)
     return
 
-  // 2. 智能寻找最新笔记
-  // 默认第一条是候选人
+  // 2. 智能扫描：找到“创建时间最晚”的那条笔记（无视置顶）
   let newestNote = newNotes[0]
+  const scanLimit = Math.min(newNotes.length, 5)
 
-  // 从第二条开始遍历
-  for (let i = 1; i < newNotes.length; i++) {
-    const current = newNotes[i]
+  for (let i = 1; i < scanLimit; i++) {
+    if (new Date(newNotes[i].created_at) > new Date(newestNote.created_at))
+      newestNote = newNotes[i]
 
-    // 如果发现了时间更晚的（通常是刚创建的未置顶笔记），更新候选人
-    if (new Date(current.created_at) > new Date(newestNote.created_at))
-      newestNote = current
-
-    // ✨ 核心优化：利用排序规则提前结束循环
-    // 列表排序规则是：先置顶，再按时间倒序。
-    // 这意味着：一旦我们遍历到了“未置顶”的笔记，它一定是“未置顶区域”里最新的。
-    // 再往后的未置顶笔记肯定更旧，所以没必要再看了，直接 break！
-    if (!current.is_pinned)
+    // 遇到未置顶的就停止，提升性能
+    if (!newestNote.is_pinned)
       break
   }
 
@@ -460,9 +454,18 @@ watch(notes, (newNotes) => {
   const noteDate = new Date(newestNote.created_at).toDateString()
   const todayDate = new Date().toDateString()
 
-  if (noteDate === todayDate) {
-    // 命中今天的新笔记，静默刷新 Banner
-    anniversaryBannerRef.value?.loadAnniversaryNotes(true)
+  // 4. 只有当这条笔记是“今天”的，才进行同步
+  if (noteDate === todayDate && anniversaryBannerRef.value) {
+    // ✨✨✨ 核心优化：不再调用 loadAnniversaryNotes(true) 去查库 ✨✨✨
+
+    // 策略 A：尝试“更新”
+    // 如果 Banner 里已经有这条笔记（比如你正在不断编辑），updateNote 会原地更新内容
+    anniversaryBannerRef.value.updateNote(newestNote)
+
+    // 策略 B：尝试“添加”
+    // 如果 Banner 里还没有这条笔记（比如刚新建），addNote 会把它加进去
+    // (注：addNote 内部有防重判断，如果已存在会直接忽略，所以这两个方法连着调用是绝对安全的)
+    anniversaryBannerRef.value.addNote(newestNote)
   }
 }, { deep: false })
 
