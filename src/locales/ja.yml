@@ -435,6 +435,7 @@ notes:
   days: 日数
   draft:
     title: ヒント
+    resume_tooltip: 未保存の下書きがあります。クリックして編集を再開
     restore_confirm: 以前の保存されていない下書きがあります。復元しますか？
     continue: 編集を続ける
     discard: 下書きを破棄

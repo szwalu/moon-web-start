@@ -434,6 +434,7 @@ notes:
   days: days
   draft:
     title: Hint
+    resume_tooltip: Unsaved draft found. Click to resume editing
     restore_confirm: You have an unsaved draft from before. Would you like to restore it?
     continue: Continue editing
     discard: Discard draft

@@ -813,12 +813,17 @@ function handleImageLoad() {
         </div>
 
         <div class="note-meta-right">
-          <Edit3
+          <div
             v-if="hasDraft"
-            class="draft-status-icon"
-            :size="14"
-            stroke-width="2.5"
-          />
+            class="draft-icon-wrapper"
+            :title="t('notes.draft.resume_tooltip')"
+            @click.stop="emit('edit', note)"
+          >
+            <Edit3
+              :size="14"
+              stroke-width="2.5"
+            />
+          </div>
 
           <NDropdown
             trigger="click"
@@ -1662,20 +1667,39 @@ position: relative;
 }
 
 /* ✅ 新增：草稿铅笔图标样式 */
-.draft-status-icon {
-  color: #f97316; /* 保持显眼的橘色，表示“进行中/未完成” */
 
-  /* 关键：禁止鼠标交互，防止用户以为这是一个按钮去点击它 */
-  /* 用户应该点击卡片本身或者菜单里的编辑来继续编辑 */
-  pointer-events: none;
+/* ✅ 新增：包裹层样式 */
+.draft-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-  /* 可选：加一点透明度，让它看起来像个水印状态，而不是操作按钮 */
+  /* 定义一个稍大的点击区域，比如 24x24，虽然图标只有15，但这样更容易点中 */
+  width: 24px;
+  height: 24px;
+
+  color: #f97316; /* 橘色 */
+  cursor: pointer; /* 手型鼠标 */
+  border-radius: 4px; /* 鼠标按下时有点背景反馈的话，圆角好看 */
+
+  /* 初始状态 */
   opacity: 0.9;
+  transition: all 0.2s ease;
+}
+
+/* 鼠标悬停在包裹层上时 */
+.draft-icon-wrapper:hover {
+  transform: scale(1.15); /* 微微放大 */
+  opacity: 1;
+  background-color: rgba(249, 115, 22, 0.1); /* 可选：加一点非常淡的橘色背景，强调“可点击” */
 }
 
 /* 深色模式适配 */
-.dark .draft-status-icon {
-  color: #fb923c; /* 深色模式下稍微亮一点的橘色 */
+.dark .draft-icon-wrapper {
+  color: #fb923c;
+}
+.dark .draft-icon-wrapper:hover {
+  background-color: rgba(251, 146, 60, 0.15);
 }
 
 /* 其他样式保持不变... */

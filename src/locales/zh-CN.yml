@@ -431,6 +431,7 @@ notes:
   days: 天
   draft:
     title: 提示
+    resume_tooltip: 存在未保存的草稿，点击继续编辑
     restore_confirm: 你有之前未保存草稿，是否恢复？
     continue: 继续编辑
     discard: 丢弃草稿
