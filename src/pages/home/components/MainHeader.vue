@@ -148,7 +148,7 @@ async function handleSettingsClick() {
       <RouterLink
         v-if="isMobile && !settingStore.isSideNavOpen"
         to="/auth"
-        class="relative flex items-center gap-x-2"
+        class="relative flex items-center gap-x-3"
       >
         <img
           :src="logoPath"
@@ -158,15 +158,15 @@ async function handleSettingsClick() {
 
         <div
           v-if="showBackTip"
-          class="relative ml-2 animate-fade-in cursor-pointer rounded-lg bg-[#dc2626] px-3 py-1.5 text-xs shadow-md text-white"
+          class="relative ml-3 animate-fade-in cursor-pointer border-[3px] border-[#FBBF24] rounded-2xl px-5 py-3 text-base font-bold text-[#FBBF24] shadow-sm bg-transparent"
           style="z-index: 50;"
           @click.prevent.stop="showBackTip = false"
         >
           <div
-            class="absolute top-1/2 border-y-[6px] border-r-[6px] border-y-transparent border-r-[#dc2626] left-0 -translate-x-full -translate-y-1/2"
+            class="absolute top-1/2 border-y-[12px] border-r-[12px] border-y-transparent border-r-[#FBBF24] left-0 -translate-x-full -translate-y-1/2"
           />
 
-          <span class="whitespace-nowrap font-medium">
+          <span class="whitespace-nowrap leading-none">
             {{ $t('notes.back_to_notes') }}
           </span>
         </div>
