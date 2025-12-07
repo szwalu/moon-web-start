@@ -184,34 +184,68 @@ async function handleDelete(noteId: string) {
 }
 
 // 修改：处理日期修改后的刷新逻辑
-// 注意：参数 updatedNote 是必须的，NoteItem 组件在 emit 时需要把更新后的对象传出来
+// 参数 updatedNote 是 NoteItem 修改成功后抛出的新对象（必须包含最新的 created_at）
 async function handleDateUpdated(updatedNote: any) {
-  // 1. 清除“当前视图”的缓存（例如：7日）
-  // 这样当前列表刷新后，移走的笔记才会消失
-  const currentDayCacheKey = getCalendarDateCacheKey(selectedDate.value)
-  localStorage.removeItem(currentDayCacheKey)
+  // =========================
+  // 1. 处理“当前日期”（比如6日，笔记移出的那天）
+  // =========================
+  const currentKey = dateKeyStr(selectedDate.value)
+  const currentCacheKey = getCalendarDateCacheKey(selectedDate.value)
 
-  // 2. 🌟 关键修复：清除“目标日期”的缓存（例如：6日）
-  // 如果不删这个，当你点去 6日 时，代码会读到旧的缓存，导致看不到刚移过去的笔记
+  // 强制清除当前视图缓存，确保移走的笔记消失
+  localStorage.removeItem(currentCacheKey)
+
+  // 立即重新拉取当前日期（6日）的列表，让界面马上更新
+  await fetchNotesForDate(selectedDate.value)
+
+  // =========================
+  // 2. 处理“目标日期”（比如7日，笔记移入的那天）
+  // =========================
+  let targetKey: string | null = null
+
   if (updatedNote && updatedNote.created_at) {
-    const targetDate = new Date(updatedNote.created_at)
-    const targetCacheKey = getCalendarDateCacheKey(targetDate)
-    // 只有当目标日期和当前日期不同的时候才删（虽然删两次也没坏处，但严谨一点）
-    if (targetCacheKey !== currentDayCacheKey)
+    // 关键点：使用与 fetchAllNoteDatesFull 相同的逻辑解析 Key，确保格式 100% 一致
+    targetKey = toDateKeyStrFromISO(updatedNote.created_at)
+
+    // 生成目标日期的缓存 Key 并清除
+    // 这样当你点击 7日 时，会强制从服务器拉取最新数据，而不会读旧缓存
+    const targetDateObj = new Date(updatedNote.created_at)
+    const targetCacheKey = getCalendarDateCacheKey(targetDateObj)
+
+    // 如果目标日期不是当前日期，才清理（避免重复删）
+    if (targetKey !== currentKey)
       localStorage.removeItem(targetCacheKey)
   }
 
-  // 3. 重新拉取当前显示的列表（此时 7日的列表会重新从服务器拿，笔记就消失了）
-  await fetchNotesForDate(selectedDate.value)
+  // =========================
+  // 3. 核心修复：手动更新小蓝点（乐观更新）
+  // 不要等待全量扫描（太慢了），直接手动修改 Set
+  // =========================
 
-  // 4. 全量重算小蓝点
-  // 这一步是为了让 7日的蓝点消失，同时让 6日的蓝点（如果之前没有）亮起来
-  try {
-    await fetchAllNoteDatesFull()
-  }
-  catch (e) {
-    console.error('刷新日期点失败', e)
-  }
+  // A. 修正当前日期（6日）的蓝点
+  // 重新拉取后，如果列表空了，就把点去掉；如果还有其他笔记，就留着
+  const currentHasNotes = selectedDateNotes.value.length > 0
+  if (currentHasNotes)
+    datesWithNotes.value.add(currentKey)
+  else
+    datesWithNotes.value.delete(currentKey)
+
+  // B. 修正目标日期（7日）的蓝点
+  // 既然我们把笔记移过去了，那天肯定有笔记，直接加上点！
+  if (targetKey)
+    datesWithNotes.value.add(targetKey)
+
+  // C. 触发 Vue 响应式更新（关键：必须赋新 Set）
+  datesWithNotes.value = new Set(datesWithNotes.value)
+
+  // D. 同步保存这份最新的蓝点数据到本地缓存
+  localStorage.setItem(
+    CACHE_KEYS.CALENDAR_ALL_DATES,
+    JSON.stringify(Array.from(datesWithNotes.value)),
+  )
+
+  // 4. (可选) 最后在后台默默做一次全量校验，兜底
+  fetchAllNoteDatesFull().catch(() => {})
 }
 
 function handleHeaderClick() {
@@ -909,7 +943,7 @@ async function saveNewNote(content: string, weather: string | null) {
               @pin="handlePin"
               @delete="handleDelete"
               @dblclick="handleEdit(note)"
-              @date-updated="handleDateUpdated"
+              @date-updated="(newNote) => handleDateUpdated(newNote)"
               @set-date="(note) => emit('setDate', note)"
             />
           </div>

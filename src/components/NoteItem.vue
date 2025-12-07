@@ -31,7 +31,6 @@ const emit = defineEmits([
   'copy',
   'pin',
   'delete',
-  'date-updated',
   'set-date',
   'taskToggle',
   'dateUpdated',
@@ -582,21 +581,28 @@ async function handleDateUpdate(newDate: Date) {
 
   try {
     const newTimestamp = newDate.toISOString()
-    const { error } = await supabase
+
+    // 1. 依然保留 .select().single() 以获取数据
+    const { data, error } = await supabase
       .from('notes')
       .update({ created_at: newTimestamp })
       .eq('id', props.note.id)
+      .select()
+      .single()
+
     if (error)
       throw error
 
     messageHook.success(t('notes.card.date_update_success'))
-    emit('dateUpdated')
+
+    // 2. ✅ 修改这里：将 'date-updated' 改为 'dateUpdated'
+    // Vue 3 会自动让父组件的 @date-updated 监听到这个事件
+    emit('dateUpdated', data)
   }
   catch (err: any) {
     messageHook.error(t('notes.card.date_update_failed', { reason: err.message }))
   }
 }
-
 // ===== 分享图片相关逻辑 =====
 async function handleShare() {
   if (!props.note)
