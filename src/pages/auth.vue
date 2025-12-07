@@ -430,38 +430,41 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-// ✨✨✨ 终极稳健版同步：无视置顶，精准捕捉最新笔记 ✨✨✨
-// 场景：无论是否有置顶笔记，只要列表中出现了“今天”的新笔记，就刷新 Banner
+// ✨✨✨ 终极稳健版同步：智能穿透置顶，精准捕捉最新笔记 ✨✨✨
 watch(notes, (newNotes) => {
-  // 1. 如果正在加载（翻页/重置），直接跳过
-  if (isLoadingNotes.value)
+  // 1. 加载中或空列表跳过
+  if (isLoadingNotes.value || !newNotes || newNotes.length === 0)
     return
 
-  // 2. 空列表不处理
-  if (!newNotes || newNotes.length === 0)
-    return
-
-  // 3. 找出列表中“创建时间最晚”的那条笔记
-  // 注意：因为列表可能包含置顶笔记（created_at 很早），所以不能无脑取 [0]
-  // 我们只需要遍历前 5 条即可（新笔记肯定在最上面几条里），性能开销几乎为 0
+  // 2. 智能寻找最新笔记
+  // 默认第一条是候选人
   let newestNote = newNotes[0]
-  const scanLimit = Math.min(newNotes.length, 5) // 只看前5条，足够了
 
-  for (let i = 1; i < scanLimit; i++) {
-    if (new Date(newNotes[i].created_at) > new Date(newestNote.created_at))
-      newestNote = newNotes[i]
+  // 从第二条开始遍历
+  for (let i = 1; i < newNotes.length; i++) {
+    const current = newNotes[i]
+
+    // 如果发现了时间更晚的（通常是刚创建的未置顶笔记），更新候选人
+    if (new Date(current.created_at) > new Date(newestNote.created_at))
+      newestNote = current
+
+    // ✨ 核心优化：利用排序规则提前结束循环
+    // 列表排序规则是：先置顶，再按时间倒序。
+    // 这意味着：一旦我们遍历到了“未置顶”的笔记，它一定是“未置顶区域”里最新的。
+    // 再往后的未置顶笔记肯定更旧，所以没必要再看了，直接 break！
+    if (!current.is_pinned)
+      break
   }
 
-  // 4. 只有当这条最新笔记是“今天”写的，才刷新那年今日
+  // 3. 判断是否是今天
   const noteDate = new Date(newestNote.created_at).toDateString()
   const todayDate = new Date().toDateString()
 
   if (noteDate === todayDate) {
-    // 为了防止重复刷新，可以加一个简单的判断：
-    // 如果 Banner 里已经有这条笔记了，就不刷了 (可选优化，不加也没事，loadAnniversaryNotes 有防抖)
+    // 命中今天的新笔记，静默刷新 Banner
     anniversaryBannerRef.value?.loadAnniversaryNotes(true)
   }
-}, { deep: false }) // deep: false 即可，因为新增笔记会改变数组长度/引用
+}, { deep: false })
 
 onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
