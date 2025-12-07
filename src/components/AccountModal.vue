@@ -104,9 +104,9 @@ function compressImage(file: File): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        // 【修改点 1】: 将 300 改为 150 或 200。
-        // 200px 足够清晰且体积很小；如果追求极致小（3KB左右），可改为 120。
-        const maxSize = 200
+        // 【关键改动1】：强制缩小到 120px。
+        // 120x120 的图片像素点极少，体积想大都难。
+        const maxSize = 120
         let width = img.width
         let height = img.height
 
@@ -122,18 +122,26 @@ function compressImage(file: File): Promise<Blob> {
             height = maxSize
           }
         }
+
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
 
-        // 【修改点 2 & 3】: 使用 'image/webp' 格式，质量设为 0.6
-        // WebP 格式在小图压缩上极具优势，0.6 的质量对于头像完全足够
+        if (ctx) {
+          // 【关键改动2】：填充白色背景。
+          // 防止透明 PNG 转 JPEG 后背景变成黑色，影响美观。
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, width, height)
+          ctx.drawImage(img, 0, 0, width, height)
+        }
+
+        // 【关键改动3】：使用 JPEG, 质量 0.5
+        // 在 120px 的尺寸下，0.5 的质量肉眼看不出明显噪点，但体积会极小。
         canvas.toBlob((blob) => {
           if (blob)
             resolve(blob)
           else reject(new Error('Canvas to Blob failed'))
-        }, 'image/webp', 0.6)
+        }, 'image/jpeg', 0.5)
       }
       img.onerror = err => reject(err)
     }
@@ -214,33 +222,30 @@ async function handleFileChange(event: Event) {
     return
 
   const originalFile = input.files[0]
-  if (originalFile.size > 5 * 1024 * 1024) { // 5MB 限制
+  if (originalFile.size > 5 * 1024 * 1024) {
     messageHook.warning(t('auth.avatar_too_big'))
     return
   }
 
   isUploadingAvatar.value = true
-
-  // 1. 锁定旧头像 URL (用于后续清理)
   const oldAvatarUrl = props.user?.user_metadata?.avatar_url
 
   try {
-    // 2. 压缩图片 (现在返回的是 WebP 格式的 Blob)
+    // 2. 压缩图片
     const compressedBlob = await compressImage(originalFile)
 
     const timestamp = Date.now()
-    // 【改动3】文件名后缀改为 .webp
-    const fileName = `${timestamp}.webp`
+    // 【关键改动4】：后缀改回 .jpg
+    const fileName = `${timestamp}.jpg`
     const filePath = `${props.user!.id}/${fileName}`
 
-    // 【改动4】创建 File 对象时指定 type 为 image/webp
-    const fileToUpload = new File([compressedBlob], fileName, { type: 'image/webp' })
+    // 【关键改动5】：类型改回 image/jpeg
+    const fileToUpload = new File([compressedBlob], fileName, { type: 'image/jpeg' })
 
     // 3. 上传新图片
-    // 【改动5】contentType 必须显式设为 image/webp，否则某些浏览器可能默认识别错误
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, fileToUpload, { contentType: 'image/webp', upsert: true })
+      .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
 
     if (uploadError)
       throw uploadError
@@ -250,7 +255,6 @@ async function handleFileChange(event: Event) {
       .from('avatars')
       .getPublicUrl(filePath)
 
-    // 添加时间戳防止 CDN 缓存旧图
     const finalUrl = `${publicUrl}?t=${timestamp}`
 
     // 5. 更新用户资料
@@ -261,35 +265,28 @@ async function handleFileChange(event: Event) {
     if (updateError)
       throw updateError
 
-    // 6. 尝试清理旧头像文件
+    // 6. 清理旧头像 (逻辑保持不变)
     if (oldAvatarUrl) {
-      // 检查是否是 Supabase 的图片
       const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
-
       if (isSupabase) {
         try {
           const userId = props.user!.id
-          // 正则提取：匹配 "user_id/xxx.ext" 这种路径
-          // 注意：旧图片可能是 jpg 或 png，这个正则都能匹配到
           const regex = new RegExp(`${userId}\/[^?#]+`)
           const match = oldAvatarUrl.match(regex)
-
           if (match) {
             let oldPath = match[0]
-            oldPath = decodeURIComponent(oldPath) // 解码
-
-            // 安全检查：路径必须包含用户ID，防止误删
+            oldPath = decodeURIComponent(oldPath)
             if (oldPath.includes(userId))
               await supabase.storage.from('avatars').remove([oldPath])
           }
         }
         catch (delErr) {
-          console.warn('旧头像清理失败，但不影响主流程', delErr)
+          console.warn('旧头像清理失败', delErr)
         }
       }
     }
 
-    // 7. 刷新本地状态
+    // 7. 刷新状态
     await authStore.refreshUser()
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
