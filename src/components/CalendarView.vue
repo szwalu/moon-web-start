@@ -183,8 +183,60 @@ async function handleDelete(noteId: string) {
   // =========== 👆 新增代码结束 👆 ===========
 }
 
-function handleDateUpdated() {
-  refreshData()
+// 替换原来的 handleDateUpdated
+async function handleNoteDateChanged(updatedNote: any) {
+  if (!updatedNote) {
+    // 如果没有返回对象，保底刷新一下
+    refreshData()
+    return
+  }
+
+  // 1. 获取“当前选中的日期”和“笔记变成的新日期”的 Key
+  const currentViewKey = dateKeyStr(selectedDate.value)
+  // 假设你的日期存储在 created_at，如果是自定义 date 字段请自行替换
+  const newNoteDateKey = toDateKeyStrFromISO(updatedNote.created_at)
+
+  // 2. 如果日期确实发生了变化（移出了当前视图）
+  if (currentViewKey !== newNoteDateKey) {
+    // --- A. 从当前显示的列表中移除该笔记 ---
+    selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== updatedNote.id)
+
+    // --- B. 同步更新当前日期的缓存 ---
+    const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+    if (selectedDateNotes.value.length > 0) {
+      localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
+    }
+    else {
+      // 如果移走后当前日期空了，清除缓存列表
+      localStorage.removeItem(dayCacheKey)
+
+      // --- C. 只有当列表空了，才移除当前日期的“小蓝点” ---
+      if (datesWithNotes.value.has(currentViewKey))
+        datesWithNotes.value.delete(currentViewKey)
+    }
+  }
+  else {
+    // 如果日期改完后还在当天（比如只改了具体时间），则在列表中更新它
+    selectedDateNotes.value = selectedDateNotes.value.map(n =>
+      n.id === updatedNote.id ? updatedNote : n,
+    )
+    // 更新缓存
+    const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+    localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
+  }
+
+  // 3. 无论移到哪里，都要确保“新日期”有小蓝点
+  if (!datesWithNotes.value.has(newNoteDateKey))
+    datesWithNotes.value.add(newNoteDateKey)
+
+  // 4. 强制触发小蓝点 Set 的响应式更新（Vue 无法检测 Set 内部变动，必须赋值新 Set）
+  datesWithNotes.value = new Set(datesWithNotes.value)
+
+  // 5. 将最新的蓝点集合写入全局缓存
+  localStorage.setItem(
+    CACHE_KEYS.CALENDAR_ALL_DATES,
+    JSON.stringify(Array.from(datesWithNotes.value)),
+  )
 }
 function handleHeaderClick() {
   if (scrollBodyRef.value)
@@ -881,7 +933,7 @@ async function saveNewNote(content: string, weather: string | null) {
               @pin="handlePin"
               @delete="handleDelete"
               @dblclick="handleEdit(note)"
-              @date-updated="handleDateUpdated"
+              @date-updated="(updatedNote) => handleNoteDateChanged(updatedNote)"
               @set-date="(note) => emit('setDate', note)"
             />
           </div>
