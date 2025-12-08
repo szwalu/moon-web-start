@@ -1023,7 +1023,6 @@ async function restoreScrollIfNeeded() {
       ref="scrollerRef"
       :items="mixedItems"
       :min-item-size="30"
-      :buffer="1200"
       class="scroller"
       key-field="vid"
     >
@@ -1111,7 +1110,7 @@ async function restoreScrollIfNeeded() {
 <style scoped>
 /* ... 样式部分保持不变 ... */
 .notes-list-wrapper { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; -webkit-overflow-scrolling: touch;}
+.scroller { height: 100%; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
 /* 背景 */
 .scroller { background-color: #e5e7eb; padding: 0.5rem; }
 .dark .scroller { background-color: #0d1117; }
