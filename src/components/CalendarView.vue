@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-
-// 修改：导入 nextTick
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -10,9 +8,9 @@ import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
-
-// ========== 轻量“日历内写笔记” ==========
 import NoteEditor from '@/components/NoteEditor.vue'
+
+import { queuePendingNote, queuePendingUpdate } from '@/utils/offline-db'
 
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated'])
 const allTags = ref<string[]>([])
@@ -30,16 +28,44 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
-const isWriting = ref(false) // 是否显示输入框
-const newNoteContent = ref('') // v-model
+const isWriting = ref(false)
+const newNoteContent = ref('')
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
 
-// --- 👇 新增：获取所有标签的函数 ---
+// --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
+async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
+  try {
+    if (action === 'INSERT') {
+      // 复用 offline-db 的新建入队逻辑
+      await queuePendingNote(note)
+    }
+    else if (action === 'UPDATE') {
+      // 复用 offline-db 的更新入队逻辑
+      // 提取需要更新的字段，避免传入无关的 UI 状态字段
+      const updatePayload = {
+        content: note.content,
+        updated_at: note.updated_at,
+        user_id: note.user_id,
+        weather: note.weather,
+        is_pinned: note.is_pinned || false,
+        is_favorited: note.is_favorited || false,
+      }
+      await queuePendingUpdate(note.id, updatePayload)
+    }
+
+    // eslint-disable-next-line no-console
+  }
+  catch (e) {
+    console.error('[Calendar] 写入离线队列失败:', e)
+  }
+}
+
 async function fetchTagData() {
   if (!user.value)
     return
   try {
-    // 1. 调用 get_unique_tags 获取所有不重复的标签列表
+    if (!navigator.onLine)
+      return // 离线不拉标签
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', {
       p_user_id: user.value.id,
     })
@@ -47,14 +73,12 @@ async function fetchTagData() {
       throw tagsError
     allTags.value = tagsData || []
 
-    // 2. 调用 get_tag_counts 获取每个标签的使用次数
     const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', {
       p_user_id: user.value.id,
     })
     if (countsError)
       throw countsError
 
-    // 3. 将返回的数组 [{tag: '#a', cnt: 5}, ...] 转换为 NoteEditor 需要的对象格式 {'#a': 5, ...}
     const countsObject = (countsData || []).reduce((acc, item) => {
       acc[item.tag] = item.cnt
       return acc
@@ -62,14 +86,14 @@ async function fetchTagData() {
     tagCounts.value = countsObject
   }
   catch (e) {
-    console.error('从数据库获取标签数据失败:', e)
+    console.warn('从数据库获取标签数据失败(可能是离线):', e)
   }
 }
-// --- 👆 新增函数结束 ---
 
-const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
-const editContent = ref('') // 编辑框 v-model
+const editingNote = ref<any | null>(null)
+const editContent = ref('')
 const isEditingExisting = computed(() => !!editingNote.value)
+const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
 
 const hideHeader = ref(false)
 
@@ -77,47 +101,36 @@ function onEditorFocus() {
   hideHeader.value = true
 }
 
-// 根容器 ref，限制只在日历弹层内部点击才触发
 const rootRef = ref<HTMLElement | null>(null)
 
 function onGlobalClickCapture(e: MouseEvent) {
-  // 仅在编辑/写作态下处理
   if (!(isWriting.value || isEditingExisting.value))
     return
-
   const target = e.target as HTMLElement | null
   if (!target)
     return
-
-  // 只处理发生在当前日历弹层内的点击
   const inThisOverlay = rootRef.value?.contains(target)
   if (!inThisOverlay)
     return
-
-  // 若点击发生在编辑器容器内，则忽略（不显现页眉）
   const inInlineEditor = target.closest('.inline-editor')
   if (inInlineEditor)
     return
-
-  // 其它位置（空白、列表、日历等）都显现页眉
   isWriting.value = false
   editingNote.value = null
   hideHeader.value = false
 }
 
 onMounted(() => {
-  document.addEventListener('click', onGlobalClickCapture, true) // capture 阶段
+  document.addEventListener('click', onGlobalClickCapture, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', onGlobalClickCapture, true)
 })
 
-/** 本地元信息键：最近一次同步时间戳 & 总数 */
 const CAL_LAST_SYNC_TS = 'calendar_last_sync_ts'
 const CAL_LAST_TOTAL = 'calendar_last_total'
 
-/** 把任意日期归一到“自然日”的 key（本地时区 YYYY-MM-DD） */
 function dateKeyStr(d: Date) {
   const y = d.getFullYear()
   const m = d.getMonth() + 1
@@ -127,17 +140,88 @@ function dateKeyStr(d: Date) {
   return `${y}-${mm}-${dd}`
 }
 function toDateKeyStrFromISO(iso: string) {
-  return dateKeyStr(new Date(iso)) // new Date(iso) -> 本地时间，再取本地年月日
+  return dateKeyStr(new Date(iso))
 }
 
-/** 从 YYYY-MM-DD 还原为日期对象（100%稳定、无时差） */
 function dateFromKeyStr(key: string) {
   const [y, m, d] = key.split('-').map(n => Number(n))
   return new Date(y, (m - 1), d)
 }
 
-/* ===================== 事件处理（逐行写法，避免 max-statements-per-line） ===================== */
-// 修改：将函数变为 async 并添加聚焦逻辑
+// -------------------------------------------------------------
+// 修改：Save Existing Note (支持离线)
+// -------------------------------------------------------------
+async function saveExistingNote(content: string) {
+  if (!user.value || !editingNote.value)
+    return
+  const id = editingNote.value.id
+  const trimmed = (content || '').trim()
+  if (!trimmed)
+    return
+
+  // 1. 准备新数据对象
+  const nowISO = new Date().toISOString()
+  const optimisticNote = {
+    ...editingNote.value,
+    content: trimmed,
+    updated_at: nowISO,
+    // 如果需要，可以加一个 dirty 标记
+    // _dirty: true
+  }
+
+  let finalNote = optimisticNote
+
+  try {
+    // 2. 尝试联网更新
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ content: trimmed, updated_at: nowISO })
+      .eq('id', id)
+      .eq('user_id', user.value.id)
+      .select('*')
+      .single()
+
+    if (error)
+      throw error
+    finalNote = data // 如果成功，使用服务器返回的确切数据
+  }
+  catch (e) {
+    // 3. ❌ 失败（离线）：存入本地队列
+    console.warn('联网保存失败，转入离线队列:', e)
+    await saveToOfflineQueue('UPDATE', optimisticNote)
+    // 继续往下走，就像成功了一样更新 UI
+  }
+
+  // 4. 更新本地列表
+  selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? finalNote : n))
+
+  // 5. 刷新当天缓存
+  localStorage.setItem(
+    getCalendarDateCacheKey(selectedDate.value),
+    JSON.stringify(selectedDateNotes.value),
+  )
+  emit('updated', finalNote)
+
+  // 6. 清除草稿并退出
+  const draftKey = editDraftKey.value
+  if (draftKey) {
+    try {
+      localStorage.removeItem(draftKey)
+    }
+    catch {}
+  }
+
+  editingNote.value = null
+  editContent.value = ''
+  hideHeader.value = false
+}
+
+function cancelEditExisting() {
+  editingNote.value = null
+  editContent.value = ''
+  hideHeader.value = false
+}
+
 async function handleEdit(note: any) {
   editingNote.value = note
   editContent.value = note?.content || ''
@@ -146,8 +230,6 @@ async function handleEdit(note: any) {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
-  // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   editNoteEditorRef.value?.focus()
 }
@@ -160,90 +242,49 @@ function handlePin(note: any) {
 
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
-
-  // 1) 从当前列表移除
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
-
-  // 2) 同步当天缓存
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
   else
     localStorage.removeItem(dayCacheKey)
-
-  // 3) 重新校准小蓝点
   refreshDotAfterDelete()
-
-  // =========== 👇 新增代码开始 👇 ===========
-  // 4) 关键修复：删除时，强制让本地“同步标记”失效。
-  // 这样当页面再次可见或刷新时，会检测到本地状态与服务器不一致（Dirty State），从而触发重新拉取。
   localStorage.removeItem(CAL_LAST_TOTAL)
   localStorage.removeItem(CAL_LAST_SYNC_TS)
-  // =========== 👆 新增代码结束 👆 ===========
 }
 
-// 修改：处理日期修改后的刷新逻辑
-// 参数 updatedNote 是 NoteItem 修改成功后抛出的新对象（必须包含最新的 created_at）
 async function handleDateUpdated(updatedNote: any) {
-  // =========================
-  // 1. 处理“当前日期”（比如6日，笔记移出的那天）
-  // =========================
   const currentKey = dateKeyStr(selectedDate.value)
   const currentCacheKey = getCalendarDateCacheKey(selectedDate.value)
 
-  // 强制清除当前视图缓存，确保移走的笔记消失
   localStorage.removeItem(currentCacheKey)
-
-  // 立即重新拉取当前日期（6日）的列表，让界面马上更新
+  // 如果离线，fetchNotesForDate 只能读缓存或者读不到，
+  // 这里暂时不处理“离线修改日期”的复杂情况（因为涉及到跨日期移动队列）
   await fetchNotesForDate(selectedDate.value)
 
-  // =========================
-  // 2. 处理“目标日期”（比如7日，笔记移入的那天）
-  // =========================
   let targetKey: string | null = null
-
   if (updatedNote && updatedNote.created_at) {
-    // 关键点：使用与 fetchAllNoteDatesFull 相同的逻辑解析 Key，确保格式 100% 一致
     targetKey = toDateKeyStrFromISO(updatedNote.created_at)
-
-    // 生成目标日期的缓存 Key 并清除
-    // 这样当你点击 7日 时，会强制从服务器拉取最新数据，而不会读旧缓存
     const targetDateObj = new Date(updatedNote.created_at)
     const targetCacheKey = getCalendarDateCacheKey(targetDateObj)
-
-    // 如果目标日期不是当前日期，才清理（避免重复删）
     if (targetKey !== currentKey)
       localStorage.removeItem(targetCacheKey)
   }
 
-  // =========================
-  // 3. 核心修复：手动更新小蓝点（乐观更新）
-  // 不要等待全量扫描（太慢了），直接手动修改 Set
-  // =========================
-
-  // A. 修正当前日期（6日）的蓝点
-  // 重新拉取后，如果列表空了，就把点去掉；如果还有其他笔记，就留着
   const currentHasNotes = selectedDateNotes.value.length > 0
   if (currentHasNotes)
     datesWithNotes.value.add(currentKey)
   else
     datesWithNotes.value.delete(currentKey)
 
-  // B. 修正目标日期（7日）的蓝点
-  // 既然我们把笔记移过去了，那天肯定有笔记，直接加上点！
   if (targetKey)
     datesWithNotes.value.add(targetKey)
 
-  // C. 触发 Vue 响应式更新（关键：必须赋新 Set）
   datesWithNotes.value = new Set(datesWithNotes.value)
-
-  // D. 同步保存这份最新的蓝点数据到本地缓存
   localStorage.setItem(
     CACHE_KEYS.CALENDAR_ALL_DATES,
     JSON.stringify(Array.from(datesWithNotes.value)),
   )
-
-  // 4. (可选) 最后在后台默默做一次全量校验，兜底
   fetchAllNoteDatesFull().catch(() => {})
 }
 
@@ -255,11 +296,8 @@ function toggleExpandInCalendar(noteId: string) {
   expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
 }
 
-/* ===================== 日历点（小圆点） ===================== */
 const attributes = computed(() => {
   const attrs: any[] = []
-
-  // ① 有笔记的日期（小蓝点）
   for (const key of datesWithNotes.value) {
     attrs.push({
       key: `note-${key}`,
@@ -267,46 +305,38 @@ const attributes = computed(() => {
       dates: dateFromKeyStr(key),
     })
   }
-
-  // ② 今天的蓝色圆框
   const today = new Date()
   attrs.push({
     key: 'today-highlight',
     dates: today,
     highlight: {
-      color: 'blue', // 蓝色
-      fillMode: 'outline', // 空心圆框
-      contentClass: 'today-outline', // 额外 class（可选）
+      color: 'blue',
+      fillMode: 'outline',
+      contentClass: 'today-outline',
     },
   })
-  // ③ 当前选中的日期（持久高亮）
   if (selectedDate.value) {
     attrs.push({
       key: 'selected-date',
       dates: selectedDate.value,
       highlight: {
-        color: 'blue', // 颜色，可以改成 'teal' 或其他你喜欢的颜色
-        fillMode: 'light', // 'light' = 浅色圆圈背景（推荐），'solid' = 实心深色，'outline' = 空心圈
+        color: 'blue',
+        fillMode: 'light',
       },
     })
   }
   return attrs
 })
 
-// 把「十一月 2025」转成「2025年11月」
 function formatCalendarHeaderTitle(rawTitle: string) {
   if (!rawTitle)
     return rawTitle
-
   const parts = rawTitle.split(' ')
   if (parts.length !== 2)
     return rawTitle
-
   const [monthText, yearText] = parts
   if (!/^\d{4}$/.test(yearText))
     return rawTitle
-
-  // 支持把“十一月 2025”解析出月份数字
   const zhMonthMap: Record<string, number> = {
     一月: 1,
     二月: 2,
@@ -319,90 +349,82 @@ function formatCalendarHeaderTitle(rawTitle: string) {
     九月: 9,
     十月: 10,
     十一月: 11,
-    十二月: 12,
+    十十二月: 12,
   }
-
   const monthNum = zhMonthMap[monthText]
   if (!monthNum)
     return rawTitle
-
   const yearNum = Number(yearText)
   const d = new Date(yearNum, monthNum - 1, 1)
   const lang = String(locale.value || '').toLowerCase()
-
-  // 中文：固定成“2025年11月”
   if (lang.startsWith('zh'))
     return `${yearText}年${monthNum}月`
-
-  // 非中文：用当前语言格式化（英文就是“November 2025”）
   try {
-    return new Intl.DateTimeFormat(
-      lang || undefined,
-      { year: 'numeric', month: 'long' },
-    ).format(d)
+    return new Intl.DateTimeFormat(lang || undefined, { year: 'numeric', month: 'long' }).format(d)
   }
   catch {
     return rawTitle
   }
 }
 
-/* ===================== 全量：获取所有有笔记的日期集合（分页） ===================== */
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
+  // 如果离线，直接用本地缓存作为兜底，不强制拉取
+  if (!navigator.onLine) {
+    loadAllDatesFromCache()
+    return
+  }
 
   const PAGE = 1000
   let from = 0
   let to = PAGE - 1
   const acc = new Set<string>()
 
-  while (true) {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('created_at') // 只取需要的列
-      .eq('user_id', user.value.id)
-      .order('created_at', { ascending: false })
-      .range(from, to) // ✅ 分页
+  try {
+    while (true) {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('created_at')
+        .eq('user_id', user.value.id)
+        .order('created_at', { ascending: false })
+        .range(from, to)
 
-    if (error)
-      throw error
+      if (error)
+        throw error
 
-    ;(data || []).forEach((n) => {
-      acc.add(toDateKeyStrFromISO(n.created_at))
-    })
+      ;(data || []).forEach((n) => {
+        acc.add(toDateKeyStrFromISO(n.created_at))
+      })
 
-    if (!data || data.length < PAGE)
-      break // 最后一页
-    from += PAGE
-    to += PAGE
+      if (!data || data.length < PAGE)
+        break
+      from += PAGE
+      to += PAGE
+    }
+    datesWithNotes.value = new Set(acc)
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(acc)))
   }
-
-  datesWithNotes.value = new Set(acc)
-  localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(acc)))
+  catch (e) {
+    console.warn('获取全量日期失败(可能离线):', e)
+  }
 }
 
-/* ===================== 从缓存恢复日期点 ===================== */
 function loadAllDatesFromCache(): boolean {
   const cached = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (!cached)
     return false
-
   try {
     const arr: string[] = JSON.parse(cached)
-
-    // 迁移：如果发现不是 YYYY-MM-DD，就尝试解析并转成 YYYY-MM-DD
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
-        return s // 已是新格式
-      const d = new Date(s) // 旧格式（toDateString）尽力解析
+        return s
+      const d = new Date(s)
       if (Number.isNaN(d.getTime()))
-        return s // 保底：解析失败就原样返回（很少见）
+        return s
       return dateKeyStr(d)
     })
-
     datesWithNotes.value = new Set(normalized)
-
-    // 把迁移后的写回去，统一成新格式
     localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(normalized))
     return true
   }
@@ -412,190 +434,109 @@ function loadAllDatesFromCache(): boolean {
   }
 }
 
-async function saveExistingNote(content: string /* , _weather: string | null */) {
-  if (!user.value || !editingNote.value)
-    return
-  const id = editingNote.value.id
-  const trimmed = (content || '').trim()
-  if (!trimmed)
-    return
-
-  try {
-    const nowISO = new Date().toISOString()
-    const { data, error } = await supabase
-      .from('notes')
-      .update({ content: trimmed, updated_at: nowISO })
-      .eq('id', id)
-      .eq('user_id', user.value.id)
-      .select('*')
-      .single()
-
-    if (error)
-      throw error
-
-    // 本地列表就地替换
-    selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? data : n))
-
-    // 刷新当天缓存
-    localStorage.setItem(
-      getCalendarDateCacheKey(selectedDate.value),
-      JSON.stringify(selectedDateNotes.value),
-    )
-    emit('updated', data)
-  }
-  catch (e) {
-    console.error('更新笔记失败：', e)
-    return // ❌ 更新失败：不清草稿，也不关闭编辑器
-  }
-
-  // ✅ 保存成功：清除这一条的“编辑草稿”
-  const draftKey = `note_draft_${id}`
-  if (draftKey) {
-    try {
-      localStorage.removeItem(draftKey)
-      localStorage.removeItem(`${draftKey}_ts`)
-      window.dispatchEvent(new CustomEvent('note-draft-changed', { detail: id }))
-    }
-    catch {
-      // 忽略本地错误
-    }
-  }
-
-  // ✅ 然后再退出编辑器
-  editingNote.value = null
-  editContent.value = ''
-  hideHeader.value = false
-}
-
-function cancelEditExisting() {
-  editingNote.value = null
-  editContent.value = ''
-  hideHeader.value = false
-}
-
-/* ===================== 获取某日笔记：优先读缓存，缺失再拉取 ===================== */
-// 用这个新函数完整替换掉旧的 fetchNotesForDate 函数
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
-
   selectedDate.value = date
   expandedNoteId.value = null
   const cacheKey = getCalendarDateCacheKey(date)
 
-  // --- 开始重写逻辑 ---
-
-  // 阶段一：获取当天的笔记，优先用缓存
   const cachedData = localStorage.getItem(cacheKey)
   if (cachedData) {
     try {
       selectedDateNotes.value = JSON.parse(cachedData)
     }
     catch {
-      localStorage.removeItem(cacheKey) // 清除无效缓存，以便后续从网络获取
+      localStorage.removeItem(cacheKey)
     }
   }
 
-  // 如果缓存不存在或无效，则从网络获取
+  // 修改：增加离线判断，如果离线且没缓存，也就没法fetch了
   if (!localStorage.getItem(cacheKey)) {
     isLoadingNotes.value = true
     try {
-      const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
-      const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+      if (!navigator.onLine) {
+        // 离线且无缓存，只能置空
+        selectedDateNotes.value = []
+      }
+      else {
+        const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+        const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', user.value.id)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-        .order('created_at', { ascending: false })
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .eq('user_id', user.value.id)
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', endDate.toISOString())
+          .order('created_at', { ascending: false })
 
-      if (error)
-        throw error
+        if (error)
+          throw error
 
-      selectedDateNotes.value = data || []
-      localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
+        selectedDateNotes.value = data || []
+        localStorage.setItem(cacheKey, JSON.stringify(selectedDateNotes.value))
+      }
     }
     catch (err) {
-      console.error(`获取 ${date.toLocaleDateString()} 的笔记失败:`, err)
-      selectedDateNotes.value = [] // 失败时确保列表为空
+      console.error(`获取笔记失败:`, err)
+      selectedDateNotes.value = []
     }
     finally {
       isLoadingNotes.value = false
     }
   }
 
-  // 阶段二：【核心修正】在笔记列表确定后，无论来源是哪，都强制校准小蓝点
   const key = dateKeyStr(date)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
 
-  // 如果笔记状态和蓝点状态不一致，则进行修正
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
-    else
-      datesWithNotes.value.delete(key)
-
-    // 触发响应式更新，并更新总缓存
+    else datesWithNotes.value.delete(key)
     datesWithNotes.value = new Set(datesWithNotes.value)
     localStorage.setItem(
       CACHE_KEYS.CALENDAR_ALL_DATES,
       JSON.stringify(Array.from(datesWithNotes.value)),
     )
   }
-  // --- 结束重写逻辑 ---
 }
 
-/** 在删除后重新校准当前日期的蓝点状态 */
 function refreshDotAfterDelete() {
   const key = dateKeyStr(selectedDate.value)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
-
   if (hasNotes && !hasDot)
     datesWithNotes.value.add(key)
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
-
-  // 替换新 Set 实例以触发响应式更新
   datesWithNotes.value = new Set(datesWithNotes.value)
-
-  // 同步写回缓存
   localStorage.setItem(
     CACHE_KEYS.CALENDAR_ALL_DATES,
     JSON.stringify(Array.from(datesWithNotes.value)),
   )
 }
-/* ===================== 轻量校验 & 增量刷新 ===================== */
-// 修改：引入更彻底的缓存清理逻辑
-// Calendar.vue 中的 checkAndRefreshIncremental
+
 async function checkAndRefreshIncremental() {
-  if (!user.value)
-    return
+  if (!user.value || !navigator.onLine)
+    return // 离线跳过增量检查
 
   const lastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0') || 0
   const lastTotal = Number(localStorage.getItem(CAL_LAST_TOTAL) || '0') || 0
 
-  // 1) 服务器总数
   let serverTotal = 0
   try {
     const { count, error } = await supabase
       .from('notes')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.value.id)
-
     if (error)
       throw error
     serverTotal = count || 0
   }
-  catch (e) {
-    console.warn('获取笔记总数失败，跳过增量校验。', e)
-    return
-  }
+  catch (e) { return }
 
-  // 2) 最新更新时间
   let serverMaxUpdatedAt = 0
   try {
     const { data, error } = await supabase
@@ -605,41 +546,25 @@ async function checkAndRefreshIncremental() {
       .order('updated_at', { ascending: false })
       .limit(1)
       .single()
-
     if (error && (error as any).code !== 'PGRST116')
       throw error
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
-  catch (e) {
-    console.warn('获取 max(updated_at) 失败，跳过增量校验。', e)
-    return
-  }
+  catch (e) { return }
 
-  // 3) 无变化
   if (serverTotal === lastTotal && serverMaxUpdatedAt <= lastSync)
     return
 
-  // 4) 总数变化（恢复、删除、外部添加）
-  // ✅ 优化逻辑：不再清空所有缓存，因为 Trash.vue 已经帮我们把“脏日期”的缓存删掉了。
-  // 我们只需要：
-  //    A. 重算所有日期集合（fetchAllNoteDatesFull），确保小蓝点正确（比如某天原本没笔记，恢复后有了）。
-  //    B. 强制刷新当前选中的这一天（refetchSelectedDateAndMarkSync），以防用户正好停留在恢复的那一天。
   if (serverTotal !== lastTotal) {
     try {
-      // 这里的开销比“清空所有缓存后重新拉取”要小得多，因为它只查日期字段
       await fetchAllNoteDatesFull()
     }
-    catch (e) {
-      console.error('全量重算日期集合失败：', e)
-    }
-
-    // 更新本地记录，并刷新当前视图
+    catch (e) {}
     await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
     return
   }
 
-  // 5) 仅新增/编辑：增量合并（保持原样，未变动）
   try {
     if (serverMaxUpdatedAt > lastSync) {
       const sinceISO = new Date(lastSync || 0).toISOString()
@@ -648,13 +573,11 @@ async function checkAndRefreshIncremental() {
         .select('id, created_at, updated_at')
         .eq('user_id', user.value.id)
         .gt('updated_at', sinceISO)
-
       if (error)
         throw error
 
       const affectedDateKeys = new Set<string>()
       let added = false
-
       for (const row of (data || [])) {
         const key = toDateKeyStrFromISO(row.created_at)
         affectedDateKeys.add(key)
@@ -663,48 +586,36 @@ async function checkAndRefreshIncremental() {
           added = true
         }
       }
-
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
-
       affectedDateKeys.forEach((keyStr) => {
         const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
-
       localStorage.setItem(
         CACHE_KEYS.CALENDAR_ALL_DATES,
         JSON.stringify(Array.from(datesWithNotes.value)),
       )
     }
   }
-  catch (e) {
-    console.error('增量刷新失败：', e)
-  }
-
+  catch (e) {}
   await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
 }
-// 把这个函数恢复成下面的样子
+
 async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpdatedAt: number) {
-  // 先强制失效“选中日期”的本地缓存，避免读到过期数据
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   localStorage.removeItem(dayCacheKey)
-
-  await fetchNotesForDate(selectedDate.value, true)
+  await fetchNotesForDate(selectedDate.value)
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
-/**
- * 当页面从后台切回前台时，主动触发一次增量刷新检查。
- * 这解决了在外部（如主页）删除了笔记后，回到日历视图数据不更新的问题。
- */
+
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible')
     checkAndRefreshIncremental()
 }
 
-/* ===================== 生命周期（先缓存再校验） ===================== */
 onMounted(async () => {
   fetchTagData()
   const hadCache = loadAllDatesFromCache()
@@ -712,102 +623,110 @@ onMounted(async () => {
     try {
       await fetchAllNoteDatesFull()
     }
-    catch {
-      // 忽略初始化失败
-    }
+    catch {}
   }
-
   await fetchNotesForDate(new Date())
   await checkAndRefreshIncremental()
-
-  // 在组件挂载时，添加可见性变化的事件监听器
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
-// 在组件卸载时，清理事件监听器，防止内存泄漏
-onUnmounted(() => {
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
-
-/* ===================== 暴露方法：供父组件在主页修改后主动刷新 ===================== */
 function refreshData() {
   checkAndRefreshIncremental()
 }
 defineExpose({ refreshData })
 
-// 打开输入框（并让列表滚回顶部）
-// 修改：将函数变为 async 并添加聚焦逻辑
 async function startWriting() {
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
-  // 新增：等待 DOM 更新后，聚焦编辑器
   await nextTick()
   newNoteEditorRef.value?.focus()
 }
 
-// ✅ 计算按钮文字（今日前→补写，今日/未来→写）
 const composeButtonText = computed(() => {
   const sel = selectedDate.value
   const now = new Date()
-
   const selDay = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate())
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-  // ✅ 使用当前语言自动本地化“月 日”
   const labelDate = new Intl.DateTimeFormat(
-    // locale.value 可能是 'en', 'zh-CN', 'ja', ...；为空时交给系统默认
     locale.value || undefined,
     { month: 'long', day: 'numeric' },
   ).format(sel)
-
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
   return t('notes.calendar.compose_write', { date: labelDate })
 })
 
-// 退出输入（不清草稿）
 function cancelWriting() {
   isWriting.value = false
   hideHeader.value = false
 }
 
-// 把“日历选中的自然日 + 当前时分秒”合成 created_at
 function buildCreatedAtForSelectedDay(): string {
-  const day = new Date(selectedDate.value) // 自然日
+  const day = new Date(selectedDate.value)
   const now = new Date()
   day.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
   return day.toISOString()
 }
 
+// -------------------------------------------------------------
+// 修改：Save New Note (支持离线)
+// -------------------------------------------------------------
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
 
   const createdISO = buildCreatedAtForSelectedDay()
-  const { data, error } = await supabase
-    .from('notes')
-    .insert({
-      user_id: user.value.id,
-      content: content.trim(),
-      created_at: createdISO,
-      updated_at: createdISO,
-      weather,
-    })
-    .select('*')
-    .single()
 
-  if (error) {
-    console.error('保存失败：', error)
-    return // ❌ 保存失败：不清草稿，退出函数
+  // 1. 本地生成 UUID（代替 Supabase 生成）
+  // crypto.randomUUID 现代浏览器都支持
+  const tempId = globalThis.crypto ? globalThis.crypto.randomUUID() : `local-${Date.now()}`
+
+  // 2. 构造“乐观”的笔记对象
+  const optimisticNote = {
+    id: tempId,
+    user_id: user.value.id,
+    content: content.trim(),
+    created_at: createdISO,
+    updated_at: createdISO,
+    weather,
+    // 标记它是本地生成的，有些业务可能需要区分
+    // _isLocal: true
   }
 
-  // 1) 立即插入到当天列表（置顶）
-  selectedDateNotes.value = [data, ...selectedDateNotes.value]
+  let finalNote = optimisticNote
 
-  // 2) 小蓝点：确保当天有点
+  try {
+    // 3. 尝试联网保存
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({
+        // 注意：如果你数据库 id 是 uuid 且没有默认值，这里手动生成也是完全合法的
+        id: tempId,
+        user_id: user.value.id,
+        content: content.trim(),
+        created_at: createdISO,
+        updated_at: createdISO,
+        weather,
+      })
+      .select('*')
+      .single()
+
+    if (error)
+      throw error
+    finalNote = data // 成功，用服务器返回的覆盖
+  }
+  catch (e) {
+    // 4. ❌ 失败（离线）：存入本地队列
+    console.warn('联网保存新建笔记失败，转入离线队列:', e)
+    await saveToOfflineQueue('INSERT', optimisticNote)
+  }
+
+  // 5. 更新本地状态 (这部分和原逻辑一样，只是用 optimisticNote)
+  selectedDateNotes.value = [finalNote, ...selectedDateNotes.value]
+
+  // 确保当天有点
   const key = dateKeyStr(selectedDate.value)
   if (!datesWithNotes.value.has(key)) {
     datesWithNotes.value.add(key)
@@ -818,25 +737,22 @@ async function saveNewNote(content: string, weather: string | null) {
     )
   }
 
-  // 3) 刷新当天缓存
   localStorage.setItem(
     getCalendarDateCacheKey(selectedDate.value),
     JSON.stringify(selectedDateNotes.value),
   )
-  emit('created', data)
 
-  // ✅ 4) 保存成功后，手动清除“新建草稿”
+  // 即使离线也 emit，让界面认为创建成功
+  emit('created', finalNote)
+
   const draftKey = writingKey.value
   if (draftKey) {
     try {
       localStorage.removeItem(draftKey)
     }
-    catch {
-      // 本地存储异常忽略即可
-    }
+    catch {}
   }
 
-  // 5) 关输入框 & 清空当前 v-model
   isWriting.value = false
   newNoteContent.value = ''
   hideHeader.value = false

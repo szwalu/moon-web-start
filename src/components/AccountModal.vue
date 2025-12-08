@@ -27,7 +27,7 @@ const journalingRemainderDays = ref(0)
 const firstNoteDateText = ref<string | null>(null)
 const hasFetched = ref(false)
 const totalCount = ref<number | null>(null)
-// [删除] totalChars 相关状态
+
 const storageUsedBytes = ref(0)
 const storageLimitBytes = ref(104857600)
 const showPwdModal = ref(false)
@@ -38,13 +38,16 @@ const pwdForm = reactive({ old: '', new: '', confirm: '' })
 const isEditingName = ref(false)
 const tempName = ref('')
 
-// [新增] 编辑状态 (签名)
+// 编辑状态 (签名)
 const isEditingSignature = ref(false)
 const tempSignature = ref('')
 
 const isUploadingAvatar = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const avatarLoadError = ref(false)
+
+// [新增] 用于控制头像显示的源，支持网络URL或本地Base64
+const currentAvatarSrc = ref<string | null>(null)
 
 // --- 计算属性 ---
 const storageUsedMB = computed(() => (storageUsedBytes.value / 1024 / 1024).toFixed(2))
@@ -56,6 +59,7 @@ const storagePercent = computed(() => {
   return Math.min(100, Math.max(0, pct))
 })
 
+// 原始的用户头像 URL (来自 Supabase)
 const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
 
 const userName = computed(() => {
@@ -71,7 +75,6 @@ const userName = computed(() => {
   return t('auth.default_nickname')
 })
 
-// [新增] 签名计算属性 (默认文案)
 const userSignature = computed(() => {
   return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
@@ -83,9 +86,34 @@ const canChangePassword = computed(() => {
   return props.user?.app_metadata?.provider === 'email'
 })
 
-function onAvatarError() {
-  avatarLoadError.value = true
-}
+// --- 监听器 ---
+
+// 1. 打开弹窗时获取数据
+watch(() => props.show, (visible) => {
+  if (visible) {
+    // 每次打开弹窗重置 error 状态
+    avatarLoadError.value = false
+    if (!hasFetched.value) {
+      fetchFirstNoteAndStreak()
+      fetchNotesCount()
+      fetchStorageStats()
+      hasFetched.value = true
+    }
+  }
+})
+
+// 2. 监听用户信息变化，同步头像 URL
+watch(() => userAvatar.value, (newUrl) => {
+  if (newUrl) {
+    currentAvatarSrc.value = newUrl
+    avatarLoadError.value = false
+  }
+  else {
+    currentAvatarSrc.value = null
+  }
+}, { immediate: true })
+
+// --- 工具函数 ---
 
 function formatDateI18n(d: Date) {
   return t('notes.account.date_format', {
@@ -95,6 +123,17 @@ function formatDateI18n(d: Date) {
   })
 }
 
+// Blob 转 Base64
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// 图片压缩 (240px, JPEG 0.8)
 function compressImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -104,10 +143,7 @@ function compressImage(file: File): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-
-        // 【改动1】：尺寸提升到 240px。
-        // 配合 UI 中的 80px 显示大小，刚好满足 3倍屏(Retina) 的高清需求。
-        const maxSize = 240
+        const maxSize = 240 // 3倍屏高清尺寸
         let width = img.width
         let height = img.height
 
@@ -123,25 +159,21 @@ function compressImage(file: File): Promise<Blob> {
             height = maxSize
           }
         }
-
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
 
         if (ctx) {
-          // 保持白底，防止透明图变黑
-          ctx.fillStyle = '#ffffff'
+          ctx.fillStyle = '#ffffff' // 白底
           ctx.fillRect(0, 0, width, height)
           ctx.drawImage(img, 0, 0, width, height)
         }
 
-        // 【改动2】：质量提升到 0.8
-        // 0.8 是画质和体积的最佳平衡点，头像会非常清晰。
         canvas.toBlob((blob) => {
           if (blob)
             resolve(blob)
           else reject(new Error('Canvas to Blob failed'))
-        }, 'image/jpeg', 0.8)
+        }, 'image/jpeg', 0.8) // 质量 0.8
       }
       img.onerror = err => reject(err)
     }
@@ -149,7 +181,125 @@ function compressImage(file: File): Promise<Blob> {
   })
 }
 
-// --- 修改昵称逻辑 ---
+// --- 核心逻辑 ---
+
+// [修改后的] 错误处理：离线回退逻辑
+function onAvatarError() {
+  const cacheKey = `avatar_cache_${props.user?.id}`
+  const cachedBase64 = localStorage.getItem(cacheKey)
+
+  // 只有当：1.本地有备份 2.当前显示的不是备份（防止死循环）
+  if (cachedBase64 && currentAvatarSrc.value !== cachedBase64) {
+    currentAvatarSrc.value = cachedBase64
+    // 这里不设置 true，因为我们用缓存救回来了
+  }
+  else {
+    // 彻底失败
+    avatarLoadError.value = true
+  }
+}
+
+// 上传头像逻辑
+function triggerFileUpload() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0)
+    return
+
+  const originalFile = input.files[0]
+  if (originalFile.size > 5 * 1024 * 1024) {
+    messageHook.warning(t('auth.avatar_too_big'))
+    return
+  }
+
+  isUploadingAvatar.value = true
+  const oldAvatarUrl = props.user?.user_metadata?.avatar_url
+
+  try {
+    // 1. 压缩
+    const compressedBlob = await compressImage(originalFile)
+
+    // 2. 存入 LocalStorage (离线缓存)
+    try {
+      const base64Data = await blobToBase64(compressedBlob)
+      const cacheKey = `avatar_cache_${props.user?.id}`
+      localStorage.setItem(cacheKey, base64Data)
+    }
+    catch (e) {
+      console.warn('LocalStorage save failed:', e)
+    }
+
+    const timestamp = Date.now()
+    const fileName = `${timestamp}.jpg`
+    const filePath = `${props.user!.id}/${fileName}`
+    const fileToUpload = new File([compressedBlob], fileName, { type: 'image/jpeg' })
+
+    // 3. 上传
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
+
+    if (uploadError)
+      throw uploadError
+
+    // 4. 获取 URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath)
+
+    const finalUrl = `${publicUrl}?t=${timestamp}`
+
+    // 5. 更新资料
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: { avatar_url: finalUrl },
+    })
+
+    if (updateError)
+      throw updateError
+
+    // 6. 清理旧图
+    if (oldAvatarUrl) {
+      const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
+      if (isSupabase) {
+        try {
+          const userId = props.user!.id
+          const regex = new RegExp(`${userId}\/[^?#]+`)
+          const match = oldAvatarUrl.match(regex)
+          if (match) {
+            let oldPath = match[0]
+            oldPath = decodeURIComponent(oldPath)
+            if (oldPath.includes(userId))
+              await supabase.storage.from('avatars').remove([oldPath])
+          }
+        }
+        catch (delErr) {
+          console.warn('旧头像清理失败', delErr)
+        }
+      }
+    }
+
+    await authStore.refreshUser()
+
+    // 立即更新显示，无需等待网络
+    currentAvatarSrc.value = finalUrl
+    avatarLoadError.value = false
+    messageHook.success(t('auth.profile_updated'))
+  }
+  catch (e: any) {
+    console.error(e)
+    messageHook.error(t('auth.upload_failed'))
+  }
+  finally {
+    isUploadingAvatar.value = false
+    if (fileInputRef.value)
+      fileInputRef.value.value = ''
+  }
+}
+
+// 修改昵称
 function startEditName() {
   tempName.value = userName.value
   isEditingName.value = true
@@ -180,7 +330,7 @@ async function saveName() {
   }
 }
 
-// --- [新增] 修改签名逻辑 ---
+// 修改签名
 function startEditSignature() {
   tempSignature.value = userSignature.value
   isEditingSignature.value = true
@@ -211,98 +361,7 @@ async function saveSignature() {
   }
 }
 
-// --- 上传头像逻辑 (包含修复后的删除逻辑) ---
-function triggerFileUpload() {
-  fileInputRef.value?.click()
-}
-
-async function handleFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (!input.files || input.files.length === 0)
-    return
-
-  const originalFile = input.files[0]
-  if (originalFile.size > 5 * 1024 * 1024) {
-    messageHook.warning(t('auth.avatar_too_big'))
-    return
-  }
-
-  isUploadingAvatar.value = true
-  const oldAvatarUrl = props.user?.user_metadata?.avatar_url
-
-  try {
-    // 2. 压缩图片
-    const compressedBlob = await compressImage(originalFile)
-
-    const timestamp = Date.now()
-    // 【关键改动4】：后缀改回 .jpg
-    const fileName = `${timestamp}.jpg`
-    const filePath = `${props.user!.id}/${fileName}`
-
-    // 【关键改动5】：类型改回 image/jpeg
-    const fileToUpload = new File([compressedBlob], fileName, { type: 'image/jpeg' })
-
-    // 3. 上传新图片
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
-
-    if (uploadError)
-      throw uploadError
-
-    // 4. 获取新图片 Public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(filePath)
-
-    const finalUrl = `${publicUrl}?t=${timestamp}`
-
-    // 5. 更新用户资料
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { avatar_url: finalUrl },
-    })
-
-    if (updateError)
-      throw updateError
-
-    // 6. 清理旧头像 (逻辑保持不变)
-    if (oldAvatarUrl) {
-      const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
-      if (isSupabase) {
-        try {
-          const userId = props.user!.id
-          const regex = new RegExp(`${userId}\/[^?#]+`)
-          const match = oldAvatarUrl.match(regex)
-          if (match) {
-            let oldPath = match[0]
-            oldPath = decodeURIComponent(oldPath)
-            if (oldPath.includes(userId))
-              await supabase.storage.from('avatars').remove([oldPath])
-          }
-        }
-        catch (delErr) {
-          console.warn('旧头像清理失败', delErr)
-        }
-      }
-    }
-
-    // 7. 刷新状态
-    await authStore.refreshUser()
-    avatarLoadError.value = false
-    messageHook.success(t('auth.profile_updated'))
-  }
-  catch (e: any) {
-    console.error(e)
-    messageHook.error(t('auth.upload_failed'))
-  }
-  finally {
-    isUploadingAvatar.value = false
-    if (fileInputRef.value)
-      fileInputRef.value.value = ''
-  }
-}
-
-// 1. 提取公共的计算逻辑到一个函数中
+// 日记统计逻辑
 function calculateDaysFromDate(dateStr: string) {
   const first = new Date(dateStr)
   firstNoteDateText.value = formatDateI18n(first)
@@ -312,8 +371,6 @@ function calculateDaysFromDate(dateStr: string) {
   today.setHours(0, 0, 0, 0)
 
   let years = today.getFullYear() - first.getFullYear()
-
-  // 计算周年
   let anniversary = new Date(first)
   anniversary.setFullYear(first.getFullYear() + years)
 
@@ -327,26 +384,21 @@ function calculateDaysFromDate(dateStr: string) {
   journalingYears.value = Math.max(0, years)
   journalingRemainderDays.value = Math.max(0, remainDays)
 
-  // 如果不满一年，计算总天数
   if (journalingYears.value === 0)
     journalingDays.value = Math.ceil(Math.abs(today.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1
 }
 
-// 2. 获取逻辑
 async function fetchFirstNoteAndStreak() {
   if (!props.user)
     return
-
   const CACHE_KEY = `first_note_date_${props.user.id}`
   const cachedDate = localStorage.getItem(CACHE_KEY)
 
-  // --- 策略 A: 命中缓存 ---
   if (cachedDate) {
     calculateDaysFromDate(cachedDate)
     return
   }
 
-  // --- 策略 B: 无缓存，请求 Supabase ---
   try {
     const { data } = await supabase
       .from('notes')
@@ -368,7 +420,6 @@ async function fetchFirstNoteAndStreak() {
     }
   }
   catch (e) {
-    // 修复 ESLint error: Empty block statement
     console.error('Fetch first note error:', e)
   }
 }
@@ -378,13 +429,11 @@ async function fetchNotesCount() {
     totalCount.value = 0
     return
   }
-
   try {
     const { count } = await supabase
       .from('notes')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', props.user.id)
-
     totalCount.value = typeof count === 'number' ? count : 0
   }
   catch (e) {
@@ -395,7 +444,6 @@ async function fetchNotesCount() {
 async function fetchStorageStats() {
   if (!props.user)
     return
-
   try {
     const { data } = await supabase
       .from('user_storage_stats')
@@ -409,22 +457,9 @@ async function fetchStorageStats() {
     }
   }
   catch (e) {
-    // 修复 ESLint error: Empty block statement
     console.warn('Fetch storage stats error (optional):', e)
   }
 }
-
-watch(() => props.show, (visible) => {
-  if (visible) {
-    avatarLoadError.value = false
-    if (!hasFetched.value) {
-      fetchFirstNoteAndStreak()
-      fetchNotesCount()
-      fetchStorageStats()
-      hasFetched.value = true
-    }
-  }
-})
 
 function openLogoutConfirm() {
   dialog.warning({
@@ -445,7 +480,6 @@ async function doSignOut() {
     window.location.assign('/auth')
   }
   catch (e) {
-    // 虽然这里出错概率低，但也打印一下，避免 empty block
     console.error('Sign out error:', e)
     window.location.assign('/auth')
   }
@@ -511,7 +545,6 @@ function handleForgotOldPwd() {
         window.location.href = '/auth?mode=forgot'
       }
       catch (e) {
-        // 避免 empty block
         console.error(e)
         window.location.href = '/auth?mode=forgot'
       }
@@ -538,7 +571,13 @@ function handleForgotOldPwd() {
             <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange">
 
             <div class="avatar-wrapper" :class="{ 'is-loading': isUploadingAvatar }" @click="triggerFileUpload">
-              <img v-if="userAvatar && !avatarLoadError" :src="userAvatar" class="profile-avatar" alt="Avatar" @error="onAvatarError">
+              <img
+                v-if="currentAvatarSrc && !avatarLoadError"
+                :src="currentAvatarSrc"
+                class="profile-avatar"
+                alt="Avatar"
+                @error="onAvatarError"
+              >
               <div v-else class="profile-avatar placeholder">
                 {{ userName.charAt(0).toUpperCase() }}
               </div>
