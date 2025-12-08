@@ -1044,6 +1044,8 @@ position: relative;
   align-items: center;
   margin-bottom: 4px;
   height: 24px;
+  /* ✅ 修改：禁止顶栏换行，确保左右结构稳固 */
+  flex-wrap: nowrap;
 }
 
 .note-date {
@@ -1053,6 +1055,9 @@ position: relative;
   margin: 0;
   padding: 0;
   text-align: left;
+  /* ✅ 修改：日期禁止换行，且禁止被压缩 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .dark .note-date {
   color: #f0f0f0;
@@ -1068,10 +1073,20 @@ position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* ✅ 修改：允许左侧区域占据剩余空间并收缩，防止挤压右侧 */
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px; /* 给右边留点安全距离 */
 }
 
 .weather-inline {
   margin-left: 2px;
+  /* ✅ 修改：天气部分超出显示省略号，且优先被压缩 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .pinned-indicator {
@@ -1328,9 +1343,9 @@ position: relative;
   display: block;
   max-width: 100%;
   height: auto;
-  object-fit: contain;   /* 防止拉伸 */
-  border-radius: 6px;    /* 可选：圆角 */
-  margin: 6px 0;         /* 可选：上下留白 */
+  object-fit: contain;    /* 防止拉伸 */
+  border-radius: 6px;     /* 可选：圆角 */
+  margin: 6px 0;          /* 可选：上下留白 */
 }
 
 /* （可选）在收起预览时限制一下超高图片的高度，避免占满卡片 */
@@ -1664,6 +1679,8 @@ position: relative;
   display: flex;
   align-items: center;
   gap: 6px; /* 图标和菜单之间的间距，稍微收紧一点 */
+  /* ✅ 修改：禁止右侧图标区收缩，必须完整显示 */
+  flex-shrink: 0;
 }
 
 /* ✅ 新增：草稿铅笔图标样式 */
@@ -1700,14 +1717,5 @@ position: relative;
 }
 .dark .draft-icon-wrapper:hover {
   background-color: rgba(251, 146, 60, 0.15);
-}
-
-/* 其他样式保持不变... */
-.note-card-top-bar {
-  display: flex;
-  justify-content: space-between; /* 左右两端对齐 */
-  align-items: center;
-  margin-bottom: 4px;
-  height: 24px;
 }
 </style>
