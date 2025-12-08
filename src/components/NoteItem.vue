@@ -240,9 +240,20 @@ function formatDateWithWeekday(dateStr: string) {
   return `<span class="date-day">${dayLabel}</span> ${tail}`
 }
 
+// ✅ 修改：天气显示逻辑 - 数据清洗版
+// 1. 去掉多余的别名（解决 "阿纳海姆;安纳海姆" 问题）
+// 2. 剩下的交给 CSS 去做省略号处理
 const weatherDisplay = computed(() => {
-  const w = String(props.note?.weather ?? '').trim()
-  return w || ''
+  let w = String(props.note?.weather ?? '').trim()
+  if (!w)
+    return ''
+
+  // 正则表达式：匹配分号(;) 全角分号(；) 逗号(,) 全角逗号(，)
+  // split 之后取数组的第 [0] 个，也就是第一个名字
+  // 比如 "阿纳海姆;安纳海姆" -> ["阿纳海姆", "安纳海姆"] -> 取 "阿纳海姆"
+  w = w.split(/[;；,，]/)[0].trim()
+
+  return w
 })
 
 function renderMarkdown(content: string) {
