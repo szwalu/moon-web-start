@@ -18,7 +18,10 @@ const props = defineProps({
   maxNoteLength: { type: Number, default: 5000 },
   searchQuery: { type: String, default: '' },
   bottomInset: { type: Number, default: 10 },
+  // 新增：控制是否显示“加载更新数据”的按钮
+  allowLoadNewer: { type: Boolean, default: false },
 })
+
 const emit = defineEmits([
   'loadMore',
   'updateNote',
@@ -32,8 +35,15 @@ const emit = defineEmits([
   'editingStateChange',
   'monthHeaderClick',
   'favoriteNote',
+  'loadNewer', // 新增
 ])
-const currentMinItemSize = ref(120)
+
+// ✅ 1. 初始为 0，保证首屏极快
+const currentBuffer = ref(0)
+
+// ✅ 2. 【修复错误3】将 isUserScrolling 移到最前面定义，解决 no-use-before-define
+const isUserScrolling = ref(false)
+
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -255,10 +265,13 @@ function scrollToMonth(year: number, month: number): boolean {
 
 // ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
 function tryRestorePwaScroll() {
+  // ✅ 【修复错误1】拆分单行 if 为多行
   if (!pendingPwaScrollId.value)
     return
+
   if (!scrollerRef.value)
     return
+
   if (mixedItems.value.length === 0)
     return
 
@@ -275,6 +288,7 @@ function tryRestorePwaScroll() {
     // 停止条件
     if (!pendingPwaScrollId.value)
       return
+
     if (performance.now() - startTime > DURATION) {
       pendingPwaScrollId.value = null
       localStorage.removeItem('pwa_return_note_id')
@@ -295,11 +309,13 @@ function tryRestorePwaScroll() {
 // ✅ 新增：统一处理 Resize 事件
 // 既负责更新收起按钮位置，又负责在 PWA 恢复期修正滚动位置
 function handleItemResize() {
-  // 1. 原有逻辑：更新收起按钮
+  // ✅ 【修复错误1 & 2】拆分单行 if；此时 isUserScrolling 已在上方定义
+  if (isUserScrolling.value)
+    return
+
   updateCollapsePos()
 
-  // 2. 新增逻辑：如果正在恢复滚动位置，且发生了高度变化（如长图加载）
-  // 立即触发一次对齐，不要等下一帧
+  // PWA 恢复逻辑保留
   if (pendingPwaScrollId.value && scrollerRef.value) {
     const targetId = pendingPwaScrollId.value
     const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
@@ -307,7 +323,6 @@ function handleItemResize() {
       scrollerRef.value.scrollToItem(index, { align: 'center' })
   }
 }
-
 const HEADER_HEIGHT = 26 // 与样式一致
 const headerEls = ref<Record<string, HTMLElement>>({})
 let headersIO: IntersectionObserver | null = null
@@ -482,7 +497,6 @@ function getTopVisibleMonthKey(rootEl: HTMLElement): string {
 }
 
 // ---- 滚动状态（快速滚动先隐藏按钮，停止后恢复） ----
-const isUserScrolling = ref(false)
 let scrollHideTimer: number | null = null
 
 let collapseRetryId: number | null = null
@@ -613,36 +627,25 @@ onMounted(() => {
       tryRestorePwaScroll()
     }
   }
-  catch (e) {
-    console.error(e)
-  }
-
+  catch (e) { console.error(e) }
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
-
   const root = scrollerRef.value?.$el as HTMLElement | undefined
   if (root) {
-    headersIO = new IntersectionObserver(
-      () => {
-        recomputeStickyState()
-      },
-      { root },
-    )
+    headersIO = new IntersectionObserver(() => {
+      recomputeStickyState()
+    }, { root })
   }
-
   // 🔁 冷启动“双 RAF”以确保虚拟列表完成首屏布局后再计算悬浮月份条
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       recomputeStickyState()
     })
   })
-
-  // ✅ 核心优化策略：先快后准
-  // 延迟 600ms 将最小高度设为 26（月份头高度）。
-  // 此时首屏已加载完毕，修改此参数不会造成卡顿，但能确保后续 iOS 向上滚动时的惯性计算准确且丝滑。
   setTimeout(() => {
-    currentMinItemSize.value = 26
-  }, 600)
+    currentMinItemSize.value = 50 // 设为一个折中的平均高度 (比如 50 或 60)
+    currentBuffer.value = 800 // 关键：给 iOS 跑道
+  }, 1000)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
@@ -1037,6 +1040,7 @@ async function restoreScrollIfNeeded() {
       ref="scrollerRef"
       :items="mixedItems"
       :min-item-size="currentMinItemSize"
+      :buffer="currentBuffer"
       class="scroller"
       key-field="vid"
     >
@@ -1141,7 +1145,13 @@ async function restoreScrollIfNeeded() {
 }
 .dark .note-content-wrapper:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15); }
 /* 间距与选择 */
-.note-item-container { padding-bottom: 1.5rem; }
+.note-item-container {
+  padding-bottom: 1.5rem;
+
+  /* ✅ 新增：强制开启 GPU 层，减少滚动时的重绘闪烁 */
+  transform: translateZ(0);
+  will-change: transform;
+}
 .note-item-container:last-child { padding-bottom: 0; }
 .note-selection-wrapper { display: flex; gap: 0.75rem; transition: background-color 0.2s; }
 .note-selection-wrapper.selection-mode {
