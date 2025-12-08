@@ -666,14 +666,15 @@ notes:
     trash: 'Open "Trash" in Menu'
     share: Share
 
-    s1_title: 1) Quick Start
-    s1_i1: 'Go directly to the homepage if logged in; otherwise, the login component is shown.'
+    # ✅ Modified: Title & Google Login & Location & Month Bar
+    s1_title: '1) Quick Start & Navigation'
+    s1_i1: Supports Email or Google login; please allow browser location access on first visit to record weather automatically.
     s1_i2_before: 'The ''+'' button on the bottom right is for '
     s1_i2_em: New Note
     s1_i2_after: ', appearing in the list after saving.'
     s1_i3_before: 'Sorted by ''Pin Priority + Created Date Desc''; Max size approx '
     s1_i3_after: ' words.'
-    s1_i4: 'Drafts in the input box are automatically saved locally and won''t be lost on refresh; they are cleared upon formal saving.'
+    s1_i4: Use the inverted triangle on the floating month bar to quickly jump to a specific date; input drafts are auto-saved locally.
 
     s2_title: 2) New / Edit / Tasks
     s2_i1_label: New
