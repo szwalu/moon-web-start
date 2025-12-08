@@ -70,7 +70,6 @@ async function fetchTagData() {
 const editingNote = ref<any | null>(null) // 当前正在编辑的已有笔记
 const editContent = ref('') // 编辑框 v-model
 const isEditingExisting = computed(() => !!editingNote.value)
-const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
 
 const hideHeader = ref(false)
 
@@ -450,10 +449,12 @@ async function saveExistingNote(content: string /* , _weather: string | null */)
   }
 
   // ✅ 保存成功：清除这一条的“编辑草稿”
-  const draftKey = editDraftKey.value
+  const draftKey = `note_draft_${id}`
   if (draftKey) {
     try {
       localStorage.removeItem(draftKey)
+      localStorage.removeItem(`${draftKey}_ts`)
+      window.dispatchEvent(new CustomEvent('note-draft-changed', { detail: id }))
     }
     catch {
       // 忽略本地错误
@@ -910,13 +911,13 @@ async function saveNewNote(content: string, weather: string | null) {
             ref="editNoteEditorRef"
             v-model="editContent"
             :is-editing="true"
-            :is-loading="false"
+            :note-id="editingNote.id" :is-loading="false"
             :max-note-length="20000"
             :placeholder="t('notes.calendar.placeholder_edit')"
             :all-tags="allTags"
             :tag-counts="tagCounts"
             :enable-drafts="true"
-            :draft-key="editDraftKey"
+
             :clear-draft-on-save="false"
             :enable-scroll-push="true"
             @save="saveExistingNote"
