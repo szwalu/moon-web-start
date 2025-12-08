@@ -43,7 +43,7 @@ const currentBuffer = ref(0)
 
 // ✅ 2. 【修复错误3】将 isUserScrolling 移到最前面定义，解决 no-use-before-define
 const isUserScrolling = ref(false)
-
+const currentMinItemSize = ref(120)
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
