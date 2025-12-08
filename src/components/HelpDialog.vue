@@ -1,4 +1,3 @@
-<!-- src/components/HelpDialog.vue -->
 <script setup lang="ts">
 import { NButton, NModal, NScrollbar } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -23,7 +22,6 @@ const { t } = useI18n()
       </header>
 
       <NScrollbar class="help-body" style="flex: 1 1 auto; min-height: 0; overflow: hidden;">
-        <!-- 1) 快速开始 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s1_title') }}</h3>
           <ul>
@@ -42,7 +40,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 2) 新建 / 编辑 / 勾选任务 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s2_title') }}</h3>
           <ul>
@@ -59,10 +56,14 @@ const { t } = useI18n()
               <code>- [x]</code>
               {{ t('notes.HelpDialog.s2_i3_after') }}
             </li>
+            <li>
+              {{ t('notes.HelpDialog.s2_i4_before') }}
+              <strong>{{ t('notes.HelpDialog.s2_i4_em') }}</strong>
+              {{ t('notes.HelpDialog.s2_i4_after') }}
+            </li>
           </ul>
         </section>
 
-        <!-- 3) 标签与筛选 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s3_title') }}</h3>
           <ul>
@@ -78,7 +79,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 4) 搜索 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s4_title') }}</h3>
           <ul>
@@ -94,7 +94,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 5) 那年今日 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s5_title') }}</h3>
           <ul>
@@ -104,7 +103,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 6) 选择模式（批量） -->
         <section>
           <h3>{{ t('notes.HelpDialog.s6_title') }}</h3>
           <ul>
@@ -119,7 +117,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 7) 置顶 / 复制 / 删除 / 设定日期 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s7_title') }}</h3>
           <ul>
@@ -132,7 +129,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 8) 日历视图 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s8_title') }}</h3>
           <ul>
@@ -141,24 +137,24 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 9) 导出 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s9_title') }}</h3>
           <ul>
-            <li><strong>{{ t('notes.HelpDialog.export_bulk') }}</strong>{{ t('notes.HelpDialog.s9_i2_tail') }}</li>
+            <li>{{ t('notes.HelpDialog.s9_i1_tail') }}</li>
+            <li>{{ t('notes.HelpDialog.s9_i2_tail') }}</li>
           </ul>
         </section>
 
-        <!-- 10) 登录与设置 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s10_title') }}</h3>
           <ul>
             <li>{{ t('notes.HelpDialog.s10_i1') }}</li>
             <li>{{ t('notes.HelpDialog.s10_i2') }}</li>
+            <li>{{ t('notes.HelpDialog.s10_i3') }}</li>
+            <li>{{ t('notes.HelpDialog.s10_i4') }}</li>
           </ul>
         </section>
 
-        <!-- 11) 离线与缓存 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s11_title') }}</h3>
           <ul>
@@ -168,7 +164,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 12) 回收站 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s12_title') }}</h3>
           <ul>
@@ -177,7 +172,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 13) 随机漫游 -->
         <section>
           <h3>{{ t('notes.HelpDialog.s13_title') }}</h3>
           <ul>
@@ -186,7 +180,6 @@ const { t } = useI18n()
           </ul>
         </section>
 
-        <!-- 常见问题 -->
         <section>
           <h3>{{ t('notes.HelpDialog.faq_title') }}</h3>
 
@@ -271,8 +264,8 @@ const { t } = useI18n()
 /* 关键：中间滚动区要能收缩，占满剩余空间 */
 .help-body {
   flex: 1 1 auto;
-  min-height: 0;        /* 允许收缩，否则不会出现滚动 */
-  overflow: hidden;     /* 滚动由 NScrollbar 接管 */
+  min-height: 0;         /* 允许收缩，否则不会出现滚动 */
+  overflow: hidden;      /* 滚动由 NScrollbar 接管 */
 }
 
 /* 调整正文左右留白（穿透到 NScrollbar 的内容层） */

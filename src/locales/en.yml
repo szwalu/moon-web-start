@@ -648,123 +648,129 @@ notes:
   ok: OK
 
   HelpDialog:
-    title: Cloud Notes · User Guide
-    aria_label: Help and Instructions
+    title: Nebula Notes · Guide
+    aria_label: Help and Usage Guide
     close: Close
     got_it: Got it
 
+    # Common terms
     pin: Pin
     copy: Copy
     delete: Delete
     set_date: Set Date
-    export_current: Export Current List
+    export_current: Export Current
     export_bulk: Bulk Export
-    offline_ready: Offline Available
-    cold_restore: Cold Start Restore
+    offline_ready: Offline Ready
+    cold_restore: Cold Restore
     silent_prefetch: Silent Prefetch
-    trash: 'Open ''Trash'' from the main menu'
-    share: share
+    trash: 'Open "Trash" in Menu'
+    share: Share
 
-    s1_title: 1 Quick Start
-    s1_i1: Logged-in users go directly to the homepage; unauthenticated users will see the login component.
-    s1_i2_before: The "+" button in the bottom right corner of the homepage is used for
-    s1_i2_em: creating a new note
-    s1_i2_after: ', which will appear in the list after saving.'
-    s1_i3_before: 'The list is sorted by ''Pinned first + Newest created''; each note can be up to about'
-    s1_i3_after: characters.
-    s1_i4: Drafts in the input box are automatically saved locally and won’t be lost on refresh; they are cleared once saved formally.
+    s1_title: 1) Quick Start
+    s1_i1: 'Go directly to the homepage if logged in; otherwise, the login component is shown.'
+    s1_i2_before: 'The ''+'' button on the bottom right is for '
+    s1_i2_em: New Note
+    s1_i2_after: ', appearing in the list after saving.'
+    s1_i3_before: 'Sorted by ''Pin Priority + Created Date Desc''; Max size approx '
+    s1_i3_after: ' words.'
+    s1_i4: 'Drafts in the input box are automatically saved locally and won''t be lost on refresh; they are cleared upon formal saving.'
 
-    s2_title: 2 Create / Edit / Check Tasks
-    s2_i1_label: Create
-    s2_i1_tail: ': Type and save. Works offline.'
+    s2_title: 2) New / Edit / Tasks
+    s2_i1_label: New
+    s2_i1_tail: ': Input -> Save. Supports offline saving.'
     s2_i2_label: Edit
-    s2_i2_tail: ': Open a note from the list or calendar, modify and save — the interface updates instantly. Works offline.'
-    s2_i3_before: Task checkboxes like
-    s2_i3_mid: and
-    s2_i3_after: can be clicked to toggle completion.
+    s2_i2_tail: ': Edit and save via List or Calendar; interface updates instantly. Supports offline editing.'
+    s2_i3_before: 'Task Check: Items like '
+    s2_i3_mid: ' and '
+    s2_i3_after: ' can be toggled by clicking.'
+    s2_i4_before: 'Resume Draft: If a note has an unsaved draft, an '
+    s2_i4_em: orange pencil
+    s2_i4_after: ' icon will appear on the card. Click it to restore the draft and continue editing.'
 
-    s3_title: 3 Tags and Filters
-    s3_i1_example: '#life/shopping'
+    s3_title: '3) Tags & Filters'
+    s3_i1_example: '#Life/Shopping'
     s3_i1_label: Insert Tag
-    s3_i1_before: ': Select from the menu; if the input is empty, it auto-fills with something like'
-    s3_i1_after: and focuses.
-    s3_i2: 'Filter Notes: Click a tag in the menu to filter; supports ''Untagged''.'
-    s3_i3: 'Select after filtering: You can use ''Select Notes'' to pick multiple notes.'
-    s3_i4: 'Clear Filter: Click ''×'' on the banner’s right.'
-    s3_i5: 'Tags support pinning, renaming, changing icons, and removal.'
+    s3_i1_before: ': Select from menu; if empty, auto-fills like '
+    s3_i1_after: ' and focuses.'
+    s3_i2: 'Filter: Click tags in the menu to filter; supports "Untagged" filter.'
+    s3_i3: 'Select Filtered: Use "Select Notes" in menu after filtering.'
+    s3_i4: 'Clear Filter: Click "×" on the banner right.'
+    s3_i5: 'Tags support pinning, renaming, icon changing, and removal.'
 
-    s4_title: 4 Search
-    s4_i1_before: Click the upper-right
-    s4_i1_after: 'icon to open the search bar, enter a keyword and press Enter.You can search for locations in the weather forecast.'
-    s4_i2: 'The banner shows ''Search Results'' and match count. You can select notes after searching.'
-    s4_i3: 'Clear search: click ''Cancel'' or clear the keyword.'
-    s4_i4: In Advanced Search, you can pick a date range, tag range, and other options.
-    s4_i5: In Quick Search, you can choose “With Images”, “With Audio”, “With Links”, and “Favorited”.
+    s4_title: 4) Search
+    s4_i1_before: 'Click '
+    s4_i1_after: ' top right to open search, type keywords, and hit Enter. Search includes weather locations.'
+    s4_i2: 'Banner shows results and count. Use "Select Notes" for batch operations on results.'
+    s4_i3: 'Clear Search: Click "Cancel" or clear keywords.'
+    s4_i4: 'Advanced search supports date ranges, tag scopes, and more conditions.'
+    s4_i5: 'Quick search supports filtering by "Has Image", "Has Audio", "Has Link", and "Favorited".'
 
-    s5_title: 5 This Day in History
-    s5_i1: 'Click the ''This Day in History'' banner to enter/exit the view, showing only notes from the same day in previous years.'
-    s5_i2: 'When you exit a note in this view, reopening it will remain in ''This Day in History''.'
-    s5_i3: 'The banner appears when not typing, searching, filtering, or selecting.'
+    s5_title: 5) On This Day
+    s5_i1: 'Click the "On This Day" banner to enter/exit the view, showing notes from the same day in history.'
+    s5_i2: 'If you exit a note while in this view, you remain in "On This Day" view upon return.'
+    s5_i3: 'Notes in the main interface sync with "On This Day" in real-time, and sync across devices.'
 
-    s6_title: 6 Selection Mode (Batch)
-    s6_i1: 'Choose ''Select Notes'' from the main menu; a batch toolbar will appear at the top.'
-    s6_i2_before: Supports batch
-    s6_i2_and: and
+    s6_title: 6) Select Mode (Bulk)
+    s6_i1: 'Choose "Select Notes" from the main menu; a batch operation bar appears at the top.'
+    s6_i2_before: 'Supports batch '
+    s6_i2_and: ' and '
     s6_i2_after: '; click ''Done'' to exit.'
 
-    s7_title: 7 Pin / Copy / Delete / Set Date / sharing / Favorited
-    s7_i1_tail: ': Toggle pinning in the list (works offline, syncs later).'
-    s7_i2_tail: ': Copy note content to clipboard.'
-    s7_i3_tail: ': Supports single or batch delete; tag/calendar/search caches will auto-refresh to stay consistent.'
-    s7_i4_tail: ': Modify the note’s creation date.'
-    s7_i5_tail: ': Generate an image of the current note and save it, or use system sharing to send it to other apps.'
-    s7_i6_tail: ': Save the note as a favorite. You can view it by clicking Favorited in Search.'
+    s7_title: 7) Pin / Copy / Delete / Set Date / Share / Favorite
+    s7_i1_tail: ': Toggle in list item actions (works offline, syncs later).'
+    s7_i2_tail: ': Copy content to clipboard.'
+    s7_i3_tail: ': Supports single and bulk; related tag/calendar/search caches invalidate automatically.'
+    s7_i4_tail: ': Modify the creation date of the note.'
+    s7_i5_tail: ': Generate an image of the current note or use system share to other apps.'
+    s7_i6_tail: ': Add note to favorites; browse by clicking "Favorited" in search.'
 
-    s8_title: 8 Calendar View
-    s8_i1: 'Click ''Calendar'' in the main menu to view, create, edit, copy, pin, or delete notes by date.'
-    s8_i2: You can write past or future notes in calendar view.
+    s8_title: 8) Calendar View
+    s8_i1: 'Click "Calendar" in main menu to view/create/edit/copy/pin/delete by date.'
+    s8_i2: Calendar supports retroactive entry or creating future notes.
 
-    s9_title: 9 Export
-    s9_i1_tail: ': When viewing search or tag results, click ''Export'' in the banner.'
-    s9_i2_tail: ': From ''Export All'' in the main menu, choose a date range and export as MD (max 1500 notes per batch).'
+    s9_title: 9) Export
+    s9_i1_tail: ' Main Menu -> "Settings" -> "Export Notes", select date range for MD format; max 1500 items per batch.'
+    s9_i2_tail: ' "Export Notes" supports exporting by tag.'
 
-    s10_title: 10 Login and Settings
-    s10_i1: 'Open ''Settings → My Account'' from the main menu to view account info and stats.'
-    s10_i2: 'You can adjust font preferences and export notes in ''Settings''.'
+    s10_title: '10) Account & Personalization'
+    s10_i1: 'Profile: Click avatar to upload a new image; click nickname or signature to edit directly.'
+    s10_i2: 'Statistics: View cloud storage usage, total notes, and streak stats.'
+    s10_i3: 'Security: Email users can change login password; securely sign out.'
+    s10_i4: 'Font Settings: Independently adjust "Content Font Size" (note body) and "System Font Size" (UI controls); enable "Follow" to automatically adapt system font size to content size.'
 
-    s11_title: 11 Offline and Cache
-    s11_i1_tail: ': Creating/editing/pinningfavorite/deleting works offline with immediate UI updates and local snapshots; syncs when back online.'
-    s11_i2_tail: ': If a local cache/snapshot exists, it will be restored first.'
-    s11_i3_tail: ': The homepage silently prefetches extra pages after load, once every 24 hours.'
+    s11_title: '11) Offline & Cache'
+    s11_i1_tail: ': New/Edit/Pin/Fav/Delete update UI and local snapshots instantly offline, syncing when online.'
+    s11_i2_tail: ': Local cache/snapshots take priority for recovery.'
+    s11_i3_tail: ': Homepage silently prefetches multiple pages into cache after first load; once every 24 hours.'
 
-    s12_title: 12 Trash
-    s12_i1_tail: . You can restore (instantly reinserts and sorts) or empty it (refreshes data and cache).
-    s12_i2: '''Trash'' keeps data for 30 days, after which it’s permanently deleted.'
+    s12_title: 12) Trash
+    s12_i1_tail: '. Restore (instantly re-sorted) or Empty (refreshes data & cache).'
+    s12_i2: '"Trash" data is kept for 30 days, then permanently deleted.'
 
-    s13_title: 13) Random Roam
-    s13_i1: 'Click "Random Roam" in the main menu to enter card view and browse notes randomly.'
-    s13_i2: 'On mobile, swipe left or right to switch notes; on desktop, click the left or right side of the card.'
+    s13_title: 13) Random Recall
+    s13_i1: 'Click "Random Recall" in the main menu to browse notes randomly in card view.'
+    s13_i2: Swipe left/right on mobile; click left/right areas on desktop to switch notes.
 
     faq_title: FAQ
-    faq_1_q: How do I access the notes?
-    faq_1_a1_prefix: Enter
-    faq_1_a1_suffix: in your browser and follow the registration steps.
-    faq_1_a2: 'On mobile, choose ''Add to Home Screen'' to use like a native app.'
-    faq_1_a3_prefix: 'Click Nebula Notes or the mobile Logo to enter; on the main screen, click the “'
-    faq_1_a3_suffix: ” button to the right of 🔍 to return to the directory.
+    faq_1_q: How to enter Notes?
+    faq_1_a1_prefix: 'Type in browser: '
+    faq_1_a1_suffix: ', register and login.'
+    faq_1_a2: 'Select "Add to Home Screen" in mobile browser to use like a native app.'
+    faq_1_a3_prefix: 'Click Nebula Notes or Logo in the portal; click '''
+    faq_1_a3_suffix: ''' right of 🔍 in main interface to return to portal.'
 
-    faq_2_q: Will edits/deletes be lost offline?
-    faq_2_a1: No. Offline actions are stored locally and auto-synced when online.
+    faq_2_q: Will offline edits/deletes be lost?
+    faq_2_a1: 'No, operations are written to local snapshots and sync queues, auto-submitting when online.'
 
-    faq_3_q: What if 1500-note export isn’t enough?
-    faq_3_a1: 'Export in multiple batches, e.g., monthly or quarterly.'
+    faq_3_q: 1500 export limit not enough?
+    faq_3_a1: 'Please export in batches by time range, e.g., by month/quarter.'
 
-    faq_4_q: Why are unsaved drafts still there after refresh?
-    faq_4_a1: The homepage input has local draft saving; it’s cleared after saving officially.
+    faq_4_q: Why is unsaved text still there after refresh?
+    faq_4_a1: Local drafts are enabled on the homepage input; drafts clear automatically after formal save.
 
-    faq_5_q: Is the app only in Chinese?
-    faq_5_a1: 'It supports Simplified Chinese, English, and Japanese. It follows your system language.'
-    faq_5_a2: 'To switch manually, go to ''Settings → Website Language'' on the main site.'
+    faq_5_q: Is Notes only in Chinese?
+    faq_5_a1: 'Notes supports Simplified Chinese, English, and Japanese. It follows system language automatically.'
+    faq_5_a2: 'To manually switch, go to "Settings" - "Language" in the portal.'
 
 dialog:
   delete_note_title: Delete Note
