@@ -1024,8 +1024,6 @@ async function restoreScrollIfNeeded() {
       :min-item-size="120"
       class="scroller"
       key-field="vid"
-      :buffer="200"
-      :prerender="10"
     >
       <template #before>
         <div :style="{ height: hasLeadingMonthHeader ? '0px' : `${HEADER_HEIGHT}px` }" />
