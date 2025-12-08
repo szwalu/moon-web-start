@@ -240,20 +240,18 @@ function formatDateWithWeekday(dateStr: string) {
   return `<span class="date-day">${dayLabel}</span> ${tail}`
 }
 
-// ✅ 修改：天气显示逻辑 - 数据清洗版
-// 1. 去掉多余的别名（解决 "阿纳海姆;安纳海姆" 问题）
-// 2. 剩下的交给 CSS 去做省略号处理
+// ✅ 修改：天气显示逻辑 - 精准清洗版
+// 只删除分号及其紧随的别名（例如 ";安纳海姆"），但保留空格后的气温和图标
 const weatherDisplay = computed(() => {
-  let w = String(props.note?.weather ?? '').trim()
+  const w = String(props.note?.weather ?? '').trim()
   if (!w)
     return ''
 
-  // 正则表达式：匹配分号(;) 全角分号(；) 逗号(,) 全角逗号(，)
-  // split 之后取数组的第 [0] 个，也就是第一个名字
-  // 比如 "阿纳海姆;安纳海姆" -> ["阿纳海姆", "安纳海姆"] -> 取 "阿纳海姆"
-  w = w.split(/[;；,，]/)[0].trim()
-
-  return w
+  // 正则解析：
+  // [;；]   -> 匹配英文或中文分号
+  // [^\s]* -> 匹配分号后面紧跟的“非空格”字符（即别名）
+  //            一旦遇到空格（通常是地名和气温之间的分隔符），匹配就会停止
+  return w.replace(/[;；][^\s]*/, '')
 })
 
 function renderMarkdown(content: string) {
