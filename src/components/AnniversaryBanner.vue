@@ -212,35 +212,50 @@ async function handleBannerClick() {
 const lastCheckDate = ref(todayStr())
 
 // ===== 改进后的零点自动刷新 =====
+// ⬇️⬇️⬇️ 请替换掉原有的 scheduleMidnightRefresh 函数 ⬇️⬇️⬇️
+
 function scheduleMidnightRefresh() {
+  // 清理旧定时器
   if (midnightTimer) {
     clearTimeout(midnightTimer)
     midnightTimer = null
   }
+
   const now = new Date()
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
   tomorrow.setHours(0, 0, 0, 0)
 
-  // ⭐️ 优化1：多加 2000 毫秒（2秒），防止 23:59:59.999 这种极限情况导致的日期计算错误
-  let msUntilMidnight = (tomorrow.getTime() - now.getTime()) + 5000
+  // 计算距离明天的毫秒数
+  const diff = tomorrow.getTime() - now.getTime()
 
-  // 异常保护：如果计算出的时间太短（负数）或太长（超过25小时），重置为1分钟后重试
-  if (msUntilMidnight <= 0 || msUntilMidnight > 25 * 60 * 60 * 1000)
-    msUntilMidnight = 60 * 1000
+  // 策略：
+  // 1. 如果距离零点超过 1 分钟：只设置一个定时器，睡到零点前 50 秒醒来。
+  //    (这样做是为了消除浏览器长时定时器的巨大误差，让我们在终点线前醒来重新校准)
+  if (diff > 60 * 1000) {
+    const wakeUpTime = diff - 50 * 1000 // 提前 50 秒醒来
+    midnightTimer = window.setTimeout(() => {
+      scheduleMidnightRefresh() // 醒来后，重新运行函数，此时会进入下面的 else 分支
+    }, wakeUpTime)
+  }
+  // 2. 如果距离零点小于 1 分钟（或者已经是零点）：开启“高频冲刺模式”
+  else {
+    // 每 1 秒检查一次日期是否变更
+    midnightTimer = window.setTimeout(async () => {
+      // 检查日期
+      const didRefresh = await checkAndRefresh()
 
-  midnightTimer = window.setTimeout(async () => {
-    if (!user.value) {
-      scheduleMidnightRefresh()
-      return
-    }
-
-    // 执行刷新
-    checkAndRefresh()
-
-    // 递归预约下一天
-    scheduleMidnightRefresh()
-  }, msUntilMidnight)
+      if (didRefresh) {
+        // 🎉 刷新成功！今天任务完成。
+        // 为了防止在 00:00:00 这一秒内重复触发，休息 2 秒后再进入下一轮长待机
+        setTimeout(scheduleMidnightRefresh, 2000)
+      }
+      else {
+        // 还没到时间，继续每秒检查
+        scheduleMidnightRefresh()
+      }
+    }, 1000)
+  }
 }
 
 // ⭐️ 提取公共检查逻辑：对比当前日期和记录的日期
