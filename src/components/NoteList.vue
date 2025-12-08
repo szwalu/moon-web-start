@@ -19,7 +19,6 @@ const props = defineProps({
   searchQuery: { type: String, default: '' },
   bottomInset: { type: Number, default: 10 },
 })
-
 const emit = defineEmits([
   'loadMore',
   'updateNote',
@@ -34,7 +33,7 @@ const emit = defineEmits([
   'monthHeaderClick',
   'favoriteNote',
 ])
-
+const currentMinItemSize = ref(120)
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -614,21 +613,36 @@ onMounted(() => {
       tryRestorePwaScroll()
     }
   }
-  catch (e) { console.error(e) }
+  catch (e) {
+    console.error(e)
+  }
+
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
+
   const root = scrollerRef.value?.$el as HTMLElement | undefined
   if (root) {
-    headersIO = new IntersectionObserver(() => {
-      recomputeStickyState()
-    }, { root })
+    headersIO = new IntersectionObserver(
+      () => {
+        recomputeStickyState()
+      },
+      { root },
+    )
   }
+
   // 🔁 冷启动“双 RAF”以确保虚拟列表完成首屏布局后再计算悬浮月份条
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       recomputeStickyState()
     })
   })
+
+  // ✅ 核心优化策略：先快后准
+  // 延迟 600ms 将最小高度设为 26（月份头高度）。
+  // 此时首屏已加载完毕，修改此参数不会造成卡顿，但能确保后续 iOS 向上滚动时的惯性计算准确且丝滑。
+  setTimeout(() => {
+    currentMinItemSize.value = 26
+  }, 600)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
@@ -1022,7 +1036,7 @@ async function restoreScrollIfNeeded() {
       v-show="!isEditingTop"
       ref="scrollerRef"
       :items="mixedItems"
-      :min-item-size="120"
+      :min-item-size="currentMinItemSize"
       class="scroller"
       key-field="vid"
     >
