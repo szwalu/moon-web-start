@@ -174,10 +174,25 @@ async function loadAnniversaryNotes(forceRefresh = false) {
   }
 }
 
-function handleBannerClick() {
-  if (anniversaryNotes.value.length === 0)
-    return
+async function handleBannerClick() {
   if (!user.value)
+    return
+
+  // 【双重保险核心】：每次点击前，先问一下“日期变了吗？”
+  // 如果这里检测到跨天，它内部会自动 await loadAnniversaryNotes，把数据刷成新的
+  const didRefresh = await checkAndRefresh()
+
+  // 如果刚才发生了跨天刷新 (didRefresh === true)
+  if (didRefresh) {
+    // 既然刷新了数据，我们直接确保视图是打开的，展示新数据给用户看
+    isAnniversaryViewActive.value = true
+    emit('toggleView', anniversaryNotes.value)
+    // 这里的逻辑结束，不再执行下面的 toggle，防止逻辑冲突
+    return
+  }
+
+  // --- 下面是原本的“展开/折叠”逻辑 (只有日期没变时才执行) ---
+  if (anniversaryNotes.value.length === 0)
     return
 
   const uid = user.value.id
@@ -193,6 +208,10 @@ function handleBannerClick() {
 }
 
 // ===== 零点自动刷新 =====
+// 新增一个 ref 记录上次检查的日期，用于比对
+const lastCheckDate = ref(todayStr())
+
+// ===== 改进后的零点自动刷新 =====
 function scheduleMidnightRefresh() {
   if (midnightTimer) {
     clearTimeout(midnightTimer)
@@ -202,7 +221,11 @@ function scheduleMidnightRefresh() {
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
   tomorrow.setHours(0, 0, 0, 0)
-  let msUntilMidnight = tomorrow.getTime() - now.getTime()
+
+  // ⭐️ 优化1：多加 2000 毫秒（2秒），防止 23:59:59.999 这种极限情况导致的日期计算错误
+  let msUntilMidnight = (tomorrow.getTime() - now.getTime()) + 5000
+
+  // 异常保护：如果计算出的时间太短（负数）或太长（超过25小时），重置为1分钟后重试
   if (msUntilMidnight <= 0 || msUntilMidnight > 25 * 60 * 60 * 1000)
     msUntilMidnight = 60 * 1000
 
@@ -211,16 +234,49 @@ function scheduleMidnightRefresh() {
       scheduleMidnightRefresh()
       return
     }
-    // 零点强制刷新
+
+    // 执行刷新
+    checkAndRefresh()
+
+    // 递归预约下一天
+    scheduleMidnightRefresh()
+  }, msUntilMidnight)
+}
+
+// ⭐️ 提取公共检查逻辑：对比当前日期和记录的日期
+// 增加返回值 Promise<boolean>
+async function checkAndRefresh(): Promise<boolean> {
+  const currentStr = todayStr()
+
+  // 核心判断：内存里的日期 (lastCheckDate) 和 现在的实时日期 (currentStr) 是否不一致
+  if (currentStr !== lastCheckDate.value) {
+    // 1. 更新内存标记
+    lastCheckDate.value = currentStr
+
+    // 2. 执行刷新（这是真正的跨天动作）
     await loadAnniversaryNotes(false)
+
+    // 3. 同步状态到 localStorage
     if (user.value) {
       writeState(user.value.id, {
         active: isAnniversaryViewActive.value,
-        forDate: todayStr(),
+        forDate: currentStr,
       })
     }
+    return true // 告诉调用者：我刷新了！
+  }
+
+  return false // 告诉调用者：日期没变，无事发生
+}
+
+// ⭐️ 优化2：处理页面唤醒/可见性变化
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // 每次回到页面，都检查一下日期是不是变了（应对休眠唤醒的情况）
+    checkAndRefresh()
+    // 可选：重新校准定时器（防止定时器在后台被冻结太久产生巨大漂移）
     scheduleMidnightRefresh()
-  }, msUntilMidnight)
+  }
 }
 
 // ===== 生命周期 =====
@@ -231,9 +287,10 @@ onMounted(async () => {
   const uid = user.value.id
   const st = readState(uid)
   const ymd = todayStr()
-  // const needRefresh = !st || st.forDate !== ymd
 
-  // 恢复之前的视图激活状态
+  // 初始化 lastCheckDate
+  lastCheckDate.value = ymd
+
   if (st?.active && st.forDate === ymd)
     isAnniversaryViewActive.value = true
 
@@ -243,6 +300,9 @@ onMounted(async () => {
     emit('toggleView', null)
 
   scheduleMidnightRefresh()
+
+  // 注册可见性监听
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
@@ -250,6 +310,8 @@ onUnmounted(() => {
     clearTimeout(midnightTimer)
     midnightTimer = null
   }
+  // 移除监听
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 // === 对外暴露的方法 ===
