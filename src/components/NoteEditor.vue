@@ -1016,11 +1016,9 @@ function scrollCaretIntoView() {
   if (!el)
     return
 
-  // 1. === 计算光标在全文中的 Y 坐标 (复用之前的镜像逻辑) ===
+  // 1. === 镜像计算光标位置 (代码不变) ===
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-
-  // 必须完整复制样式，保证镜像和真身一模一样
   mirror.style.cssText = `
     position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
     box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
@@ -1030,29 +1028,34 @@ function scrollCaretIntoView() {
     border-style:solid;
   `
   document.body.appendChild(mirror)
-
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  // 截取光标前的内容，处理换行符
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
-
-  // 算出光标底部的像素高度 (scrollHeight)
-  // 减去 paddingBottom 是为了拿到纯文本内容的高度，但直接用 scrollHeight 也行，看你喜好
   const caretY = mirror.scrollHeight
   document.body.removeChild(mirror)
 
-  // 2. === 核心：计算滚动位置 ===
+  // 2. === 🔥 修正后的滚动逻辑 ===
   const viewportHeight = el.clientHeight
+  // ❌ 删除下面这一行： const currentScrollTop = el.scrollTop
 
-  // 目标：让光标处于视口高度的 45% 处（稍微偏上一点点，符合阅读习惯）
-  // 必须配合 CSS 中的 padding-bottom: 45vh 才能生效，否则滚不下去
-  const targetScrollTop = caretY - (viewportHeight * 0.45)
+  // 阈值：如果光标在文档的前 150px (约前3-4行)，强制不滚动，保持顶部可见
+  if (caretY < 150) {
+    el.scrollTo({ top: 0, behavior: 'auto' })
+    return
+  }
 
-  // 3. === 执行滚动 ===
+  // 计算目标位置：试图将光标放在屏幕偏中间的位置 (45%高度处)
+  let targetScrollTop = caretY - (viewportHeight * 0.45)
+
+  // 只有当需要“向下”滚的时候才生效，避免把第一行强行拉到中间
+  if (targetScrollTop < 0)
+    targetScrollTop = 0
+
+  // 执行滚动
   el.scrollTo({
-    top: Math.max(0, targetScrollTop),
-    behavior: 'auto', // 建议用 auto，用 smooth 在打字时会感觉延迟/抖动
+    top: targetScrollTop,
+    behavior: 'auto',
   })
 }
 
@@ -2642,14 +2645,33 @@ function handleBeforeInput(e: InputEvent) {
 </template>
 
 <style scoped>
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* 🔥 关键：禁止页面整体滚动，只允许内部元素滚 */
+  position: fixed;  /* 🔥 双保险：防止 iOS 橡皮筋效果拉动整个页面 */
+  top: 0;
+  left: 0;
+}
 .note-editor-reborn {
   display: flex;
   flex-direction: column;
-  /* 不要用固定的 dvh，而是限制为父容器的 100% */
-  /* 如果你的 app 只有这一个弹窗，可以用 100dvh，但要配合上面的 meta 标签 */
-  height: 100%;
-  max-height: 85dvh; /* 只有在键盘未弹起时限制最大高度，避免太丑 */
-  overflow: hidden;
+  /* 用 fixed 定位铺满屏幕，避免被其他父元素影响 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100; /* 确保在最上层 */
+  background-color: #f9f9f9;
+
+  /* 这一行很重要：允许 Flex 缩小 */
+  height: 100dvh;
+  /* 如果有 interactive-widget，这个 100dvh 会自动变小，这就对了 */
+
+  overflow: hidden; /* 再次确保这里不滚 */
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2665,10 +2687,10 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-wrapper {
-  flex: 1;
+  flex: 1; /* 自动占据除工具栏外的所有空间 */
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* 限制溢出 */
+  min-height: 0; /*防止 Flex 子元素溢出 */
   position: relative;
 }
 .note-editor-reborn.android .editor-wrapper {
@@ -2676,17 +2698,16 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-textarea {
-  flex: 1;
-  height: 100%;
+  flex: 1;         /* 填满空间 */
   width: 100%;
-  max-height: none; /* 去掉限制 */
+  height: 100%;    /* 配合 flex */
   overflow-y: auto;
-  border: none;
   resize: none;
+  border: none;
 
-  /* 🔥 核心黑科技：底部增加 40vh 的空余空间 */
-  /* 这样即便光标在文档最后，用户也能把它滚到屏幕中间，而不是卡在底部 */
-  padding-bottom: 45vh;
+  /* 内边距：顶部正常，底部巨大 */
+  padding: 12px 16px 45vh 16px;
+  box-sizing: border-box;
 }
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
@@ -2754,9 +2775,12 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-footer {
-  flex-shrink: 0;
-  z-index: 10;
+  flex-shrink: 0; /* 不许被压缩 */
+  z-index: 20;
   background-color: #f9f9f9;
+  /* 加一个上边框让它更明显 */
+  border-top: 1px solid #e5e5e5;
+  padding-bottom: env(safe-area-inset-bottom); /* 适配 iPhone 底部黑条 */
 }
 
 /* ===== 录音条（固定在工具栏上方） ===== */
