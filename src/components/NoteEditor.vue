@@ -112,7 +112,9 @@ async function focusToEnd() {
   if (!el)
     return
 
-  el.focus()
+  // ✅ 核心修改：添加 { preventScroll: true }
+  // 这告诉浏览器：聚焦就好，不要自作主张滚动页面！
+  el.focus({ preventScroll: true })
 
   const len = el.value.length
   try {
@@ -127,10 +129,9 @@ async function focusToEnd() {
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
+    // recomputeBottomSafePadding() // 这个已经禁用了，删不删都行
   })
 }
-
 // ===== 简单自动草稿 =====
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
@@ -161,51 +162,46 @@ function updateMobileBarPosition() {
     return
   const vv = window.visualViewport
 
-  // 核心计算：可视区域的底边线 (Top坐标)
+  // 核心计算：可视区域的底边线
   const topPos = vv.offsetTop + vv.height
 
-  // 判断键盘是否弹起 (可视高度变小)
+  // 判断键盘是否弹起
   const isKeyboardOpen = vv.height < window.innerHeight - 100
 
-  // 🟢 状态 A：键盘弹起 (或者输入框聚焦且键盘打开)
   if (isKeyboardOpen && isInputFocused.value) {
+    // ✅ 新增：强力保险 —— 只要键盘弹起，就强制把页面按回顶部
+    // 防止浏览器因为输入框原本太高而把页面瞎推
+    window.scrollTo(0, 0)
+
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      top: `${topPos}px`, // 📌 钉在可视区域底线
-      transform: 'translateY(-100%)', // ⬆️ 自身上移 100%，刚好骑在键盘上
+      top: `${topPos}px`,
+      transform: 'translateY(-100%)',
       zIndex: '2000',
       width: '100%',
       paddingBottom: '0',
-      borderTop: '1px solid #e0e0e0',
-      transition: 'transform 0.1s linear', // 稍微加一点过渡优化跟手
     }
 
-    // 限制输入框高度，防止被键盘遮挡
-    // 减去：顶部导航(约50) + 工具条(约50) + 缓冲(10)
-    const safeHeight = Math.floor(vv.height - 110)
+    // 限制输入框高度
+    const safeHeight = Math.floor(vv.height - 106)
     textareaStyle.value = {
       maxHeight: `${safeHeight}px`,
       transition: 'none',
     }
   }
-  // ⚪️ 状态 B：键盘收起 (常驻底部)
   else {
+    // 键盘收起状态
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      bottom: '0', // 📌 贴在屏幕最底部
-      top: 'auto', // 清除 top
-      transform: 'none', // 清除位移
+      bottom: '0',
       zIndex: '2000',
-      paddingBottom: 'env(safe-area-inset-bottom)', // 适配 iPhone 底部黑条
+      paddingBottom: 'env(safe-area-inset-bottom)',
       transition: 'all 0.2s ease-out',
-      borderTop: '1px solid #e0e0e0',
     }
-
-    // 恢复输入框大高度
     textareaStyle.value = {
       maxHeight: '75dvh',
       transition: 'max-height 0.2s ease',
