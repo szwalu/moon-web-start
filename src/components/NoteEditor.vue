@@ -164,27 +164,31 @@ function updateMobileBarPosition() {
     return
   const vv = window.visualViewport
 
-  // 核心计算：可视区域的底边线 (Top坐标)
   const topPos = vv.offsetTop + vv.height
-
-  // 判断键盘是否弹起 (可视高度变小)
   const isKeyboardOpen = vv.height < window.innerHeight - 100
 
-  // 🟢 状态 A：键盘弹起
+  // 🟢 状态 A：键盘弹起 (或者输入框聚焦且键盘打开)
   if (isKeyboardOpen && isInputFocused.value) {
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      top: `${topPos}px`, // 📌 钉在可视区域底线
-      transform: 'translateY(-100%)', // ⬆️ 自身上移 100%
+      top: `${topPos}px`,
+      transform: 'translateY(-100%)',
       zIndex: '2000',
       width: '100%',
       paddingBottom: '0',
       borderTop: '1px solid #e0e0e0',
       transition: 'transform 0.1s linear',
     }
-    // ❌ 确保这里没有 textareaStyle.value = ...
+
+    // 🔥🔥🔥 核心修改：给输入框底部加巨量的 Padding 🔥🔥🔥
+    // 120px 足够容纳工具条(50px) + 一行文字(30px) + 安全余量
+    // 这样文字永远不可能到底，底会被 Padding 撑开
+    textareaStyle.value = {
+      paddingBottom: '120px',
+      transition: 'padding-bottom 0.2s ease',
+    }
   }
   // ⚪️ 状态 B：键盘收起
   else {
@@ -201,10 +205,11 @@ function updateMobileBarPosition() {
       borderTop: '1px solid #e0e0e0',
     }
 
-    // 恢复默认
+    // 恢复正常的 Padding (看你的 CSS，一般是 8px 或 16px)
+    // 这里设为空，让它走 CSS 里的默认值
     textareaStyle.value = {
-      maxHeight: '75dvh',
-      transition: 'max-height 0.2s ease',
+      paddingBottom: '',
+      transition: 'padding-bottom 0.2s ease',
     }
   }
 }
@@ -1093,121 +1098,81 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 1. 如果输入框没有聚焦（只是浏览），不需要激进的计算
+  // 1. 未聚焦时，给个基础安全区即可
   if (!isInputFocused.value) {
     if (isFreezingBottom.value)
       return
-    // 浏览模式下，简单给个底部安全区即可（防止内容贴底）
     emit('bottomSafeChange', 88)
     return
   }
 
-  // --- 🔥 聚焦模式下的核心逻辑 🔥 ---
-  // 这里不再依赖 getFooterHeight，而是直接定义“几何参数”
+  // --- 🔥 聚焦时的简化逻辑 🔥 ---
 
   const el = textarea.value
   if (!el)
     return
-
   const vv = window.visualViewport
+  // 修复 ESLint: 分行写
   if (!vv) {
-    // 异常兜底
     emit('bottomSafeChange', 0)
     return
   }
 
-  // 键盘高度检查（非 Android 下防止误判）
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (!isAndroid && keyboardHeight < 60) {
-    emit('bottomSafeChange', 0)
-    return
-  }
+  // 1. 计算光标底部在屏幕上的绝对位置 (px)
+  const rect = el.getBoundingClientRect()
 
-  // 1. 计算光标在视口中的绝对底部位置
+  // 获取光标相对输入框顶部的像素距离
+  const selectionEnd = el.selectionEnd || 0
+
+  // 创建镜像计算高度的逻辑
   const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  const caretYInContent = (() => {
-    // 创建镜像元素来精确计算光标像素位置
-    const mirror = document.createElement('div')
-    mirror.style.cssText
+  const mirror = document.createElement('div')
+  mirror.style.cssText
       = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
       + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
       + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
       + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
 
-  const rect = el.getBoundingClientRect()
+  // 模拟光标前的文本
+  mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
+  document.body.appendChild(mirror)
 
-  // 光标底边距离视口顶部的距离
-  // isAndroid * 1.25 是为了修正某些安卓机型光标高度计算偏小的问题
-  const caretBottomInViewport = (rect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight)
+  // 计算内容底边高度
+  const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
 
-  // 2. 定义底部的“硬性遮挡区”
-  // Toolbar 高度 ≈ 50px
-  // 我们希望光标至少露出来，所以再加一行高度 (lineHeight ≈ 24px)
-  // 再加一点 Gap (10px)
-  // 总计需要保留的空间 ≈ 85px
-  const TOOLBAR_HEIGHT = 54
-  const VISIBLE_BUFFER = lineHeight + 12
-  const SAFE_ZONE = TOOLBAR_HEIGHT + VISIBLE_BUFFER
+  // 修复 ESLint: 删除了 unused var 'lineHeight' 及其配套的 span 创建逻辑
+  document.body.removeChild(mirror)
 
-  // 3. 计算“由于被遮挡，页面需要向上推多少像素”
-  // 视口高度 (vv.height) - 安全区 (SAFE_ZONE) = 触发滚动的阈值线
-  // 如果光标位置 > 阈值线，说明被挡住了
-  const thresholdY = vv.height - SAFE_ZONE
+  // 光标在视口中的 Y 坐标 (VisualViewport 坐标系)
+  const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // rawNeed = 光标超出了多少像素
-  let need = Math.ceil(caretBottomInViewport - thresholdY)
+  // 2. 设定“红线”：屏幕底部往上 70px (工具条约 50px + 20px 余量)
+  const SAFETY_GAP = 70
+  const threshold = vv.height - SAFETY_GAP
 
-  // 4. 死区处理 (Deadzone)
-  // 为了防止手抖，我们设置一个门槛。
-  // 但是！之前的 bug 是因为死区把真正需要的距离吃掉了。
-  // 这里我们只在 need 非常小的时候才忽略。
-  const DEADZONE = 20 // 降低死区阈值，让微小的遮挡也能触发调整
+  // 3. 计算需要推多少
+  // 如果 caretYInVV > threshold，说明光标掉进红线区域了
+  const need = Math.ceil(caretYInVV - threshold)
 
-  if (need < DEADZONE)
-    need = 0
-
-  // 5. 稳定输出
-  // 如果变化幅度很小，保持上次的值，防止画面抖动
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 10)
-    need = _lastBottomNeed
-
-  _lastBottomNeed = need
-  emit('bottomSafeChange', need)
-
-  // 6. 执行滚动推页
+  // 4. 执行
   if (need > 0) {
-    if (!_hasPushedPage) {
-      // 这里的滚动是为了让光标立即出现在视野里
-      // 使用 behavior: 'auto' 瞬间完成，避免动画延迟导致的视觉误差
-      if (props.enableScrollPush)
-        window.scrollBy(0, need)
+    emit('bottomSafeChange', need) // 让父组件垫高页面
 
+    // 只有第一次被遮挡时才自动滚动，避免打字时画面乱跳
+    if (!_hasPushedPage && props.enableScrollPush) {
+      window.scrollBy({ top: need, behavior: 'auto' })
       _hasPushedPage = true
-      // 短时间内重新计算一次，确保位置准确
-      window.setTimeout(() => {
+
+      // 修复 ESLint: setTimeout 内容分行
+      setTimeout(() => {
         _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 100)
+      }, 200)
     }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
   }
   else {
-    _hasPushedPage = false
+    emit('bottomSafeChange', 0) // 不需要垫高
   }
 }
 
