@@ -68,6 +68,9 @@ const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || n
 const UA = navigator.userAgent.toLowerCase()
 const isIOS = /iphone|ipad|ipod/.test(UA)
 
+// iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
+const iosFirstInputLatch = ref(false)
+
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
@@ -132,6 +135,7 @@ async function focusToEnd() {
     // recomputeBottomSafePadding() // 这个已经禁用了，删不删都行
   })
 }
+
 // ===== 简单自动草稿 =====
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
@@ -1071,25 +1075,141 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
 }
 
 function getFooterHeight(): number {
-  if (isMobile) {
-    // 移动端工具条高度固定约 44px ~ 50px，直接返回固定值最稳
-    return 44
-  }
-  // 桌面端逻辑（如果还有桌面端底栏的话）
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 0
+  return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
-// 找到 recomputeBottomSafePadding 函数，替换为：
-
 function recomputeBottomSafePadding() {
-  // ✅ 彻底禁用：移动端现在靠“限制高度”来适配键盘
-  // 不再需要通过滚动页面来露出光标
-  emit('bottomSafeChange', 0)
+  if (!isMobile) {
+    emit('bottomSafeChange', 0)
+    return
+  }
+  if (isFreezingBottom.value)
+    return
+
+  const el = textarea.value
+  if (!el) {
+    emit('bottomSafeChange', 0)
+    return
+  }
+
+  const vv = window.visualViewport
+  if (!vv) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (!isAndroid && keyboardHeight < 60) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
+
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
+
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
+  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
+  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
+  const STICKY = 12 // 微抖动抑制阈值
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  // 抑制小幅抖动：与上次差异很小时保持不变
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
+  emit('bottomSafeChange', need)
+
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      _hasPushedPage = true
+      window.setTimeout(() => {
+        _hasPushedPage = false
+        recomputeBottomSafePadding()
+      }, 140)
+    }
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
+  }
+  else {
+    _hasPushedPage = false
+  }
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
@@ -2107,9 +2227,34 @@ function startFocusBoost() {
   }, 60)
 }
 
-function handleBeforeInput() {
-  // 彻底禁用页面预抬升，防止与新逻辑冲突
+function handleBeforeInput(e: InputEvent) {
+  if (!isMobile)
+    return
+  _hasPushedPage = false
 
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
+  const t = e.inputType || ''
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
+  if (!isRealTyping)
+    return
+
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
+  if (isIOS && !iosFirstInputLatch.value)
+    iosFirstInputLatch.value = true
+
+  // 预抬升：iPhone 保底 120，Android 保底 180
+  const base = getFooterHeight() + 24
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  emit('bottomSafeChange', prelift)
+
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+    recomputeBottomSafePadding()
+  })
 }
 </script>
 
