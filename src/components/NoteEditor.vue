@@ -129,7 +129,7 @@ async function focusToEnd() {
   catch {}
 
   requestAnimationFrame(() => {
-    scrollCaretIntoView()
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1008,57 +1008,6 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
-// ==========================================
-// 🔥 新增：强力光标居中滚动函数 (配合 Flex + Padding 方案)
-// ==========================================
-function scrollCaretIntoView() {
-  const el = textarea.value
-  if (!el)
-    return
-
-  // 1. === 镜像计算光标位置 (代码不变) ===
-  const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText = `
-    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
-    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
-    font:${style.font}; line-height:${style.lineHeight}; letter-spacing:${style.letterSpacing};
-    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
-    border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
-    border-style:solid;
-  `
-  document.body.appendChild(mirror)
-  const val = el.value
-  const selEnd = el.selectionEnd ?? val.length
-  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
-  mirror.textContent = before
-  const caretY = mirror.scrollHeight
-  document.body.removeChild(mirror)
-
-  // 2. === 🔥 修正后的滚动逻辑 ===
-  const viewportHeight = el.clientHeight
-  // ❌ 删除下面这一行： const currentScrollTop = el.scrollTop
-
-  // 阈值：如果光标在文档的前 150px (约前3-4行)，强制不滚动，保持顶部可见
-  if (caretY < 150) {
-    el.scrollTo({ top: 0, behavior: 'auto' })
-    return
-  }
-
-  // 计算目标位置：试图将光标放在屏幕偏中间的位置 (45%高度处)
-  let targetScrollTop = caretY - (viewportHeight * 0.45)
-
-  // 只有当需要“向下”滚的时候才生效，避免把第一行强行拉到中间
-  if (targetScrollTop < 0)
-    targetScrollTop = 0
-
-  // 执行滚动
-  el.scrollTo({
-    top: targetScrollTop,
-    behavior: 'auto',
-  })
-}
-
 function recomputeBottomSafePadding() {
   if (!isMobile) {
     emit('bottomSafeChange', 0)
@@ -1436,7 +1385,7 @@ function handleFocus() {
 
   // 立即一轮计算
   requestAnimationFrame(() => {
-    scrollCaretIntoView()
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
@@ -1444,7 +1393,6 @@ function handleFocus() {
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
-    scrollCaretIntoView()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
@@ -1485,7 +1433,7 @@ function handleClick() {
 
   captureCaret()
   requestAnimationFrame(() => {
-    scrollCaretIntoView()
+    ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 }
@@ -1636,7 +1584,7 @@ function handleInput(event: Event) {
 
   // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-  scrollCaretIntoView()
+  ensureCaretVisibleInTextarea()
 
   // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
@@ -2645,33 +2593,14 @@ function handleBeforeInput(e: InputEvent) {
 </template>
 
 <style scoped>
-html, body, #app {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden; /* 🔥 关键：禁止页面整体滚动，只允许内部元素滚 */
-  position: fixed;  /* 🔥 双保险：防止 iOS 橡皮筋效果拉动整个页面 */
-  top: 0;
-  left: 0;
-}
 .note-editor-reborn {
+  position: relative;
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  /* 用 fixed 定位铺满屏幕，避免被其他父元素影响 */
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 100; /* 确保在最上层 */
-  background-color: #f9f9f9;
-
-  /* 这一行很重要：允许 Flex 缩小 */
-  height: 100dvh;
-  /* 如果有 interactive-widget，这个 100dvh 会自动变小，这就对了 */
-
-  overflow: hidden; /* 再次确保这里不滚 */
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2687,28 +2616,31 @@ html, body, #app {
 }
 
 .editor-wrapper {
-  flex: 1; /* 自动占据除工具栏外的所有空间 */
-  display: flex;
-  flex-direction: column;
-  min-height: 0; /*防止 Flex 子元素溢出 */
   position: relative;
+  overflow-anchor: none;
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
 }
 
 .editor-textarea {
-  flex: 1;         /* 填满空间 */
   width: 100%;
-  height: 100%;    /* 配合 flex */
+  min-height: 360px;
+  max-height: 75dvh;
   overflow-y: auto;
-  resize: none;
+  padding: 12px 8px 8px 16px;
   border: none;
-
-  /* 内边距：顶部正常，底部巨大 */
-  padding: 12px 16px 45vh 16px;
+  background-color: transparent;
+  color: inherit;
+  line-height: 1.6;
+  resize: none;
+  outline: 0;
   box-sizing: border-box;
-}
+  font-family: inherit;
+  caret-color: currentColor;
+  scrollbar-gutter: stable both-edges;
+} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
+
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
@@ -2775,12 +2707,12 @@ html, body, #app {
 }
 
 .editor-footer {
-  flex-shrink: 0; /* 不许被压缩 */
-  z-index: 20;
-  background-color: #f9f9f9;
-  /* 加一个上边框让它更明显 */
-  border-top: 1px solid #e5e5e5;
-  padding-bottom: env(safe-area-inset-bottom); /* 适配 iPhone 底部黑条 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-top: none;
+  background-color: transparent;
 }
 
 /* ===== 录音条（固定在工具栏上方） ===== */
