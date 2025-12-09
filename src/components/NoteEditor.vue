@@ -1099,70 +1099,29 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
+  // 1. 非移动端，不需要计算垫片
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
   }
-  if (isFixedMode.value) {
+
+  // 🔥🔥 核心修复：一旦输入框聚焦（键盘弹起），直接禁用旧版的“顶起逻辑” 🔥🔥
+  // 新版本中，我们通过 updateMobileBarPosition 缩小了输入框高度，
+  // 所以这里必须返回 0，禁止页面被 padding 顶起。
+  if (isInputFocused.value) {
     emit('bottomSafeChange', 0)
+    _hasPushedPage = false
     return
   }
+
+  // --- 以下是原本的逻辑（仅在键盘收起/未聚焦时生效，用于处理底部固定栏遮挡） ---
+
   if (isFreezingBottom.value)
     return
 
-  const el = textarea.value
-  if (!el) {
-    emit('bottomSafeChange', 0)
-    return
-  }
-
-  const vv = window.visualViewport
-  if (!vv) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (!isAndroid && keyboardHeight < 60) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + 'border-style:solid;'
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
-
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
-
+  // 获取底部固定元素高度（兼容旧版 footer 和新版 bar）
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1174,61 +1133,16 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = 10
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
-  const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  // 只需要确保底部 padding 够垫起 footer 即可
+  const finalPadding = footerH + safeInset + 20 // 20px 额外余量
 
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
+  // 抑制小幅抖动
+  if (Math.abs(finalPadding - _lastBottomNeed) < 5)
+    return
 
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
-    need = 0
-
-  // 抑制小幅抖动：与上次差异很小时保持不变
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
-    need = _lastBottomNeed
-
-  _lastBottomNeed = need
-
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
-  emit('bottomSafeChange', need)
-
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
-    }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
-  }
-  else {
-    _hasPushedPage = false
-  }
+  _lastBottomNeed = finalPadding
+  emit('bottomSafeChange', finalPadding)
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
