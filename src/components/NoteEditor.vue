@@ -1082,46 +1082,44 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
 // 替换原有的 getFooterHeight 函数
 function getFooterHeight(): number {
   const root = rootRef.value
-  // 1. 尝试获取新版的浮动工具条
+  // 1. 优先获取新版的移动端工具条
   const mobileBar = root ? (root.querySelector('.mobile-keyboard-bar') as HTMLElement | null) : null
   if (mobileBar && mobileBar.offsetHeight > 0)
     return mobileBar.offsetHeight
 
-  // 2. 尝试获取旧版 footer (兼容)
+  // 2. 尝试获取旧版 footer
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   if (footerEl)
     return footerEl.offsetHeight
 
-  // 3. 彻底找不到时返回 0 (旧代码这里返回 88，导致了巨大的误差)
+  // 3. 🔥 重要修改：找不到时返回 0，而不是 88
   return 0
 }
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-  // 1. 非移动端，不需要计算垫片
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
   }
 
-  // 🔥🔥 核心修复：一旦输入框聚焦（键盘弹起），直接禁用旧版的“顶起逻辑” 🔥🔥
-  // 新版本中，我们通过 updateMobileBarPosition 缩小了输入框高度，
-  // 所以这里必须返回 0，禁止页面被 padding 顶起。
+  // 🔥 核心逻辑：聚焦时直接返回 0，不计算任何垫片
   if (isInputFocused.value) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // --- 以下是原本的逻辑（仅在键盘收起/未聚焦时生效，用于处理底部固定栏遮挡） ---
-
+  // --- 以下是未聚焦时的逻辑 ---
   if (isFreezingBottom.value)
     return
 
-  // 获取底部固定元素高度（兼容旧版 footer 和新版 bar）
+  // 既然不聚焦，就不需要复杂的计算逻辑，只需要保证底部不被遮挡即可
+  // 使用修正后的 getFooterHeight (现在返回 0 或真实高度)
   const footerH = getFooterHeight()
 
+  // 简单计算安全区
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1134,10 +1132,9 @@ function recomputeBottomSafePadding() {
     catch { return 0 }
   })()
 
-  // 只需要确保底部 padding 够垫起 footer 即可
-  const finalPadding = footerH + safeInset + 20 // 20px 额外余量
+  // 这里的 20 是为了视觉美观保留的一点底边距
+  const finalPadding = footerH + safeInset + 20
 
-  // 抑制小幅抖动
   if (Math.abs(finalPadding - _lastBottomNeed) < 5)
     return
 
@@ -1390,8 +1387,15 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
-  emit('bottomSafeChange', getFooterHeight())
+  // 🔥 核心修改：如果是移动端，聚焦时不要垫高页面！
+  // 因为 updateMobileBarPosition 会负责调整输入框高度。
+  if (isMobile) {
+    emit('bottomSafeChange', 0)
+  }
+  else {
+    // 桌面端保持原样
+    emit('bottomSafeChange', getFooterHeight())
+  }
 
   // 立即一轮计算
   requestAnimationFrame(() => {
@@ -1399,7 +1403,7 @@ function handleFocus() {
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // 覆盖 visualViewport 延迟
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
@@ -1410,7 +1414,6 @@ function handleFocus() {
     recomputeBottomSafePadding()
   }, t2)
 
-  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
