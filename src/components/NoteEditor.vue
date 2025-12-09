@@ -145,7 +145,7 @@ const pendingDraftText = ref('')
 // 🔥 新增：提示框模式 ('draft' | 'error') 和 错误信息
 const promptMode = ref<'draft' | 'error'>('draft')
 const promptErrorMsg = ref('')
-
+const mobileBarStyle = ref<Record<string, string>>({})
 // 🔥 新增：报错时的“好的”按钮点击事件
 function handleErrorConfirm() {
   showDraftPrompt.value = false // 关闭弹窗
@@ -153,6 +153,56 @@ function handleErrorConfirm() {
   nextTick(() => {
     focusToEnd()
   })
+}
+
+function handleVisualViewportResize() {
+  if (!window.visualViewport)
+    return
+
+  const vv = window.visualViewport
+  // 计算键盘+白色条占据的高度
+  // window.innerHeight 是整个屏幕高度（包含被键盘遮住的部分）
+  // vv.height 是当前能看见的网页高度
+  // vv.offsetTop 是页面被顶上去的距离
+
+  // 核心公式：底部被遮挡的高度 = 屏幕总高 - 可视高度 - 顶部偏移
+  // 注意：某些安卓浏览器行为不同，这里主要针对 iOS 优化
+  const offsetBottom = window.innerHeight - vv.height - vv.offsetTop
+
+  // 加上一点容错 buffer (比如 0 或 safe-area)
+  // 如果 offsetBottom > 0，说明键盘弹起了，我们需要把工具条“抬”起来
+  // 如果是 0，说明没键盘，贴底即可
+
+  // 这里做一个限制，避免计算误差导致的负数
+  const liftHeight = Math.max(0, offsetBottom)
+
+  if (liftHeight > 0) {
+    mobileBarStyle.value = {
+      position: 'fixed',
+      left: '0',
+      right: '0',
+      // 让它“骑”在键盘上方。注意：iOS 的 visualViewport 已经排除了那个白色条
+      // 所以我们只需要贴着 visualViewport 的底部即可
+      // 但因为 position: fixed 是相对于 LayoutViewport 的，所以需要用 bottom 抬升
+      bottom: `${liftHeight}px`,
+      transition: 'bottom 0.1s linear', // 加一点点过渡防抖
+      zIndex: '2000',
+      paddingBottom: '0', // 键盘出来时，不需要 safe-area padding
+    }
+  }
+  else {
+    // 键盘收起时，恢复默认贴底样式
+    mobileBarStyle.value = {
+      position: 'fixed',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      transition: 'bottom 0.2s ease-out',
+      zIndex: '2000',
+      // 这里的 padding-bottom 交给 CSS 处理，或者写死 env(safe-area-inset-bottom)
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }
+  }
 }
 
 // 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
@@ -2061,12 +2111,20 @@ function onGlobalKeydown(e: KeyboardEvent) {
     closeFormatPalette()
 }
 onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleVisualViewportResize)
+    window.visualViewport.addEventListener('scroll', handleVisualViewportResize)
+  }
   window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
   window.addEventListener('keydown', onGlobalKeydown)
   if (isAndroid && rootRef.value)
     rootRef.value.classList.add('android')
 })
 onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', handleVisualViewportResize)
+    window.visualViewport.removeEventListener('scroll', handleVisualViewportResize)
+  }
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
@@ -2335,7 +2393,7 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <div v-if="isMobile && isInputFocused" class="mobile-keyboard-bar">
+    <div v-if="isMobile && isInputFocused" class="mobile-keyboard-bar" :style="mobileBarStyle">
       <div class="mobile-bar-inner">
         <button
           type="button"
@@ -3153,16 +3211,13 @@ function handleBeforeInput(e: InputEvent) {
 
 /* ✅ 移动端键盘工具条样式 */
 .mobile-keyboard-bar {
-  position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
   z-index: 1000; /* 确保在最上层，但在弹窗之下 */
   background-color: #f9f9f9;
   border-top: 1px solid #e0e0e0;
   padding: 8px 12px;
   /* 关键：iOS 底部安全区适配，防止紧贴 Home 条 */
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
   box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
 }
 
