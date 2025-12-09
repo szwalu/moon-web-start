@@ -156,75 +156,76 @@ function handleErrorConfirm() {
   })
 }
 
-function handleVisualViewportResize() {
-  // 如果浏览器不支持此 API，直接返回
+// ✅ 1. 新增：控制工具条的循环监测
+let keyboardLoopRaf: number | null = null
+
+function updateMobileBarPosition() {
   if (!window.visualViewport)
     return
-
   const vv = window.visualViewport
-  const windowH = window.innerHeight
 
-  // 1. 计算被遮挡的高度（键盘 + iOS 输入法状态栏）
-  // windowH 是屏幕总高，vv.height 是当前能看见的区域高度，vv.offsetTop 是页面被顶上去的距离
-  const offsetBottom = windowH - vv.height - vv.offsetTop
+  // 核心计算：
+  // 工具条的 Top = 页面卷去的高度(offsetTop) + 可视窗口高度(height)
+  // 我们不需要减去工具条高度，因为我们将在 CSS 中使用 transform: translateY(-100%)
+  // 这样工具条就会刚好“坐”在可视区域的底线上
+  const topPos = vv.offsetTop + vv.height
 
-  // 避免计算误差出现负数
-  const keyboardHeight = Math.max(0, offsetBottom)
+  // 只有当键盘弹起（可视高度明显小于屏幕高度）时才应用
+  // iOS 上键盘弹起时 vv.height 通常小于 window.innerHeight * 0.8
+  const isKeyboardOpen = vv.height < window.innerHeight - 100 // 100是容错阈值
 
-  // 判断键盘是否弹起（这里给 10px 容错，因为有些 Android 浏览器即便没键盘 offsetBottom 也不完全是 0）
-  const isKeyboardOpen = keyboardHeight > 10
-
-  if (isKeyboardOpen) {
-    // ———— 🟢 键盘弹起状态 ————
-
-    // A. 工具条定位：
-    // 让工具条底部距离屏幕底部的距离 = 键盘高度
+  if (isKeyboardOpen && isInputFocused.value) {
     mobileBarStyle.value = {
-      position: 'fixed',
+      position: 'absolute', // 注意：iOS键盘弹起时，absolute 比 fixed 配合 top 更稳
       left: '0',
       right: '0',
-      bottom: `${keyboardHeight}px`, // 核心：被键盘顶起来
+      top: `${topPos}px`, // 📍 钉在可视区域底部
+      transform: 'translateY(-100%)', // 📍 自身向上偏移100%，刚好露出
       zIndex: '2000',
-      paddingBottom: '0', // 键盘弹起时不需要 safe-area
-      transition: 'bottom 0.1s linear', // 轻微过渡，跟随键盘动画
+      width: '100%',
+      paddingBottom: '0',
     }
 
-    // B. 输入框高度限制（解决你的新问题）：
-    // vv.height 是当前“剩余”的可视高度。
-    // 我们需要减去：顶部导航栏高度 + 底部工具条高度 + 上下间距
-    // 假设：顶部(约50px) + 工具条(约44px) + 间距(约26px) = 120px
-    // 你可以根据界面实际情况调整 120 这个数值
-    const safeHeight = Math.floor(vv.height - 120)
-
+    // 同时限制输入框高度（保持你之前的逻辑，稍微优化数值）
+    // 减去顶部导航(约50) + 工具条(约46) + 缓冲(10)
+    const safeHeight = Math.floor(vv.height - 106)
     textareaStyle.value = {
-      // 强行覆盖 CSS 里的 75dvh
       maxHeight: `${safeHeight}px`,
-      // 键盘交互时，禁止高度动画，防止布局抖动
       transition: 'none',
     }
   }
   else {
-    // ———— ⚪️ 键盘收起状态 ————
-
-    // A. 工具条归位：
+    // 键盘收起：恢复到底部固定
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      bottom: '0', // 贴底
+      bottom: '0',
       zIndex: '2000',
-      // 只有收起时才需要适配 iPhone 底部黑条
       paddingBottom: 'env(safe-area-inset-bottom)',
-      transition: 'bottom 0.2s ease-out',
+      transition: 'all 0.2s ease-out',
     }
-
-    // B. 输入框高度恢复：
-    // 恢复到你原本设计的大屏占比高度
     textareaStyle.value = {
-      maxHeight: '75dvh',
-      // 恢复平滑过渡
+      maxHeight: '40dvh', // 恢复你的默认高度
       transition: 'max-height 0.2s ease',
     }
+  }
+}
+
+// ✅ 2. 启动循环监听（解决输入换行时的抖动/推移问题）
+function startKeyboardLoop() {
+  stopKeyboardLoop()
+  const loop = () => {
+    updateMobileBarPosition()
+    keyboardLoopRaf = requestAnimationFrame(loop)
+  }
+  loop()
+}
+
+function stopKeyboardLoop() {
+  if (keyboardLoopRaf) {
+    cancelAnimationFrame(keyboardLoopRaf)
+    keyboardLoopRaf = null
   }
 }
 
@@ -1451,7 +1452,7 @@ function handleFocus() {
 
   emit('focus')
   captureCaret()
-
+  startKeyboardLoop()
   // 允许再次“轻推”
   _hasPushedPage = false
 
@@ -1483,6 +1484,11 @@ function onBlur() {
   isInputFocused.value = false
 
   emit('blur')
+  stopKeyboardLoop()
+  setTimeout(() => {
+    updateMobileBarPosition()
+  }, 100)
+
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
