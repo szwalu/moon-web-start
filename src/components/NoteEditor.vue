@@ -1110,19 +1110,13 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 1. 未聚焦时，给个基础安全区（防止底部内容贴底）
+  // 1. 未聚焦时，给个基础安全区
   if (!isInputFocused.value) {
     if (isFreezingBottom.value)
       return
     emit('bottomSafeChange', 88)
     return
   }
-
-  // --- 🔥 聚焦时的全新逻辑 🔥 ---
-
-  // 🔥 核心改变 1：聚焦时，永远不要改变底部的 Padding！
-  // 这样无论怎么操作，页面高度都是稳定的，绝对不会出现“弹老高”的问题。
-  emit('bottomSafeChange', 0)
 
   const el = textarea.value
   if (!el)
@@ -1131,11 +1125,10 @@ function recomputeBottomSafePadding() {
   if (!vv)
     return
 
-  // 2. 计算光标在屏幕上的位置
+  // 2. 计算光标在屏幕上的绝对位置
   const rect = el.getBoundingClientRect()
   const selectionEnd = el.selectionEnd || 0
 
-  // 镜像计算光标位置
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1146,34 +1139,53 @@ function recomputeBottomSafePadding() {
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
 
-  // 必须加上 \u200B 确保空行也有高度
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
-
-  // 这里要减去 paddingBottom，因为我们想知道的是文字底边位置，而不是 textarea 盒子的底边
-  // 此时 style.paddingBottom 应该是 '120px'
+  // 注意：我们要计算的是光标底边，textarea 的 padding-bottom 120px 已经由 updateMobileBarPosition 设置
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 光标在视口中的绝对 Y 坐标
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 3. 设定触发滚动的红线
-  // 工具条高度(~50) + 预留一行文字(~30) + 额外舒适区(~20) = ~100px
-  // 只要光标进入屏幕底部 100px 范围内，我们就认为它被挡住了
+  // 3. 设定红线：工具条(50) + 预留行(30) + 缓冲(20) = 100px
   const SAFETY_GAP = 100
   const threshold = vv.height - SAFETY_GAP
 
+  // 需要向下滚动的距离
   const need = Math.ceil(caretYInVV - threshold)
 
-  // 4. 只推页，不改 Padding
-  // 只有当需要向下更多空间时（need > 0），我们才滚动窗口
   if (need > 0) {
-    // 只有在开启了滚动推页且没有正在推页时才执行
-    if (props.enableScrollPush) {
-      // 使用 scrollBy 直接滚动窗口，而不是改变 DOM 大小
-      window.scrollBy({ top: need, behavior: 'auto' })
+    // 🔥🔥🔥 核心智能逻辑 🔥🔥🔥
+
+    // 获取当前页面还能向下滚多少 (文档总高 - 视口高 - 已滚动距离)
+    // document.documentElement.scrollHeight 在某些 mobile 浏览器可能不准，取 body 和 documentElement 的最大值
+    const docHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
+    const scrollTop = window.scrollY || document.documentElement.scrollTop
+    const winHeight = window.innerHeight
+
+    const maxScrollable = docHeight - winHeight - scrollTop
+
+    // 如果“需要的距离”大于“剩余可滚距离”，说明页面太短了（比如新建笔记）
+    // 这时我们需要加 padding 来撑长页面
+    if (need > maxScrollable) {
+      const missingSpace = need - maxScrollable
+      // 补足缺口，并多加一点点缓冲(50px)确保能滚得动
+      emit('bottomSafeChange', missingSpace + 50)
     }
+    else {
+      // 如果空间足够（旧笔记），千万不要加 padding，否则会“弹老高”
+      // 只有在之前加过 padding 的情况下才重置为 0，防止频繁抖动
+      // 这里直接给 0 是最安全的，因为我们依赖 scrollBy
+      emit('bottomSafeChange', 0)
+    }
+
+    // 执行滚动
+    if (props.enableScrollPush)
+      window.scrollBy({ top: need, behavior: 'auto' })
+  }
+  else {
+    // 不需要滚动时，归零
+    emit('bottomSafeChange', 0)
   }
 }
 
