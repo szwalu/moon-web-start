@@ -1745,7 +1745,7 @@ position: relative;
   padding: 0 10px !important;    /* 左右内边距 */
   display: flex !important;
   align-items: center !important;
-  font-size: 14px !important;    /*稍微改小一点字体让它看起来更精致 */
+  font-size: 14px !important;    /*稍微改小一点字体让它看起来精致 */
 }
 
 /* 2. 修正图标和文字的垂直对齐 */
