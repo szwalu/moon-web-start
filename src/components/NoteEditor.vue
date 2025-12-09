@@ -164,19 +164,18 @@ function updateMobileBarPosition() {
     return
   const vv = window.visualViewport
 
-  // 核心计算：
-  // 工具条的 Top = 页面卷去的高度(offsetTop) + 可视窗口高度(height)
-  // 我们不需要减去工具条高度，因为我们将在 CSS 中使用 transform: translateY(-100%)
-  // 这样工具条就会刚好“坐”在可视区域的底线上
+  // 核心计算：可视区域的底边线
   const topPos = vv.offsetTop + vv.height
 
   // 只有当键盘弹起（可视高度明显小于屏幕高度）时才应用
-  // iOS 上键盘弹起时 vv.height 通常小于 window.innerHeight * 0.8
-  const isKeyboardOpen = vv.height < window.innerHeight - 100 // 100是容错阈值
+  const isKeyboardOpen = vv.height < window.innerHeight - 100
 
   if (isKeyboardOpen && isInputFocused.value) {
     mobileBarStyle.value = {
-      position: 'absolute', // 注意：iOS键盘弹起时，absolute 比 fixed 配合 top 更稳
+      // 🔴 错误修正点 1：这里必须是 fixed，不能是 absolute
+      // absolute 会相对于父组件定位，导致位置偏下
+      position: 'fixed',
+
       left: '0',
       right: '0',
       top: `${topPos}px`, // 📍 钉在可视区域底部
@@ -186,8 +185,7 @@ function updateMobileBarPosition() {
       paddingBottom: '0',
     }
 
-    // 同时限制输入框高度（保持你之前的逻辑，稍微优化数值）
-    // 减去顶部导航(约50) + 工具条(约46) + 缓冲(10)
+    // 限制输入框高度
     const safeHeight = Math.floor(vv.height - 106)
     textareaStyle.value = {
       maxHeight: `${safeHeight}px`,
@@ -195,7 +193,7 @@ function updateMobileBarPosition() {
     }
   }
   else {
-    // 键盘收起：恢复到底部固定
+    // 键盘收起状态
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -206,7 +204,8 @@ function updateMobileBarPosition() {
       transition: 'all 0.2s ease-out',
     }
     textareaStyle.value = {
-      maxHeight: '40dvh', // 恢复你的默认高度
+      // 🔴 错误修正点 2：恢复为你想要的大高度，而不是 40dvh
+      maxHeight: '75dvh',
       transition: 'max-height 0.2s ease',
     }
   }
