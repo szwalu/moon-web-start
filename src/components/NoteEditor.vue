@@ -1093,34 +1093,42 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 聚焦时不再强制归零，而是正常计算
-  if (isFreezingBottom.value)
-    return
-
-  const el = textarea.value
-  if (!el) {
-    emit('bottomSafeChange', 0)
+  // 1. 如果输入框没有聚焦（只是浏览），不需要激进的计算
+  if (!isInputFocused.value) {
+    if (isFreezingBottom.value)
+      return
+    // 浏览模式下，简单给个底部安全区即可（防止内容贴底）
+    emit('bottomSafeChange', 88)
     return
   }
+
+  // --- 🔥 聚焦模式下的核心逻辑 🔥 ---
+  // 这里不再依赖 getFooterHeight，而是直接定义“几何参数”
+
+  const el = textarea.value
+  if (!el)
+    return
 
   const vv = window.visualViewport
   if (!vv) {
+    // 异常兜底
     emit('bottomSafeChange', 0)
-    _hasPushedPage = false
     return
   }
 
+  // 键盘高度检查（非 Android 下防止误判）
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
-    _hasPushedPage = false
     return
   }
 
+  // 1. 计算光标在视口中的绝对底部位置
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
   const caretYInContent = (() => {
+    // 创建镜像元素来精确计算光标像素位置
     const mirror = document.createElement('div')
     mirror.style.cssText
       = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
@@ -1139,84 +1147,61 @@ function recomputeBottomSafePadding() {
   })()
 
   const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
+
+  // 光标底边距离视口顶部的距离
+  // isAndroid * 1.25 是为了修正某些安卓机型光标高度计算偏小的问题
+  const caretBottomInViewport = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight)
 
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
+  // 2. 定义底部的“硬性遮挡区”
+  // Toolbar 高度 ≈ 50px
+  // 我们希望光标至少露出来，所以再加一行高度 (lineHeight ≈ 24px)
+  // 再加一点 Gap (10px)
+  // 总计需要保留的空间 ≈ 85px
+  const TOOLBAR_HEIGHT = 54
+  const VISIBLE_BUFFER = lineHeight + 12
+  const SAFE_ZONE = TOOLBAR_HEIGHT + VISIBLE_BUFFER
 
-  // 🔥 修改点 1：获取高度，且给一个 50px 的硬保底
-  // 如果 getFooterHeight() 返回 0（偶尔会发生），我们强制认为它至少有 50px（工具条的大致高度）
-  let footerH = getFooterHeight()
-  if (footerH < 10)
-    footerH = 50
+  // 3. 计算“由于被遮挡，页面需要向上推多少像素”
+  // 视口高度 (vv.height) - 安全区 (SAFE_ZONE) = 触发滚动的阈值线
+  // 如果光标位置 > 阈值线，说明被挡住了
+  const thresholdY = vv.height - SAFE_ZONE
 
-  // 🔥 修改点 2：EXTRA 暴力增加 80px
-  // 这里的逻辑是：(基础余量) + (工具条高度抵消) + (死区突破值)
-  // 加 80px 看起来很多，但会被后面的 DEADZONE 减去大部分，剩下的刚好够露出光标。
-  const EXTRA = (isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)) + 80
+  // rawNeed = 光标超出了多少像素
+  let need = Math.ceil(caretBottomInViewport - thresholdY)
 
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
+  // 4. 死区处理 (Deadzone)
+  // 为了防止手抖，我们设置一个门槛。
+  // 但是！之前的 bug 是因为死区把真正需要的距离吃掉了。
+  // 这里我们只在 need 非常小的时候才忽略。
+  const DEADZONE = 20 // 降低死区阈值，让微小的遮挡也能触发调整
 
-  const HEADROOM = isAndroid ? 60 : 70
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
-
-  const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  // 死区维持不变，防止抖动
-  const DEADZONE = isAndroid ? 72 : 46
-  const MIN_STEP = isAndroid ? 24 : 14
-  const STICKY = 12
-
-  // 这里会减去死区，所以前面的 EXTRA 必须够大
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
+  if (need < DEADZONE)
     need = 0
 
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+  // 5. 稳定输出
+  // 如果变化幅度很小，保持上次的值，防止画面抖动
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 10)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
-
   emit('bottomSafeChange', need)
 
+  // 6. 执行滚动推页
   if (need > 0) {
     if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta)
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta)
-      }
+      // 这里的滚动是为了让光标立即出现在视野里
+      // 使用 behavior: 'auto' 瞬间完成，避免动画延迟导致的视觉误差
+      if (props.enableScrollPush)
+        window.scrollBy(0, need)
+
       _hasPushedPage = true
+      // 短时间内重新计算一次，确保位置准确
       window.setTimeout(() => {
         _hasPushedPage = false
         recomputeBottomSafePadding()
-      }, 140)
+      }, 100)
     }
     if (isIOS && iosFirstInputLatch.value)
       iosFirstInputLatch.value = false
