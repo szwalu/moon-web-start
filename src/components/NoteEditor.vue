@@ -105,35 +105,35 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
-// —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
   const el = textarea.value
   if (!el)
     return
 
-  // 1. 聚焦，但禁止浏览器自动瞎滚动页面 (防止“抬太高”)
+  // 1. 聚焦 (防抖动)
   el.focus({ preventScroll: true })
 
-  // 2. 光标移到末尾
+  // 2. 移动光标
   const len = el.value.length
   try {
     el.setSelectionRange(len, len)
   }
   catch {}
 
-  // 3. 强制让输入框内部滚到底部 (防止“被遮挡”)
-  // 放在 nextTick 或 setTimeout 中确保高度调整完后执行
+  // ✅ 修改：延时增加到 300ms
+  // 等待 iOS 键盘完全弹起、视口高度调整完毕后，再由我们精准地把光标滚出来
   setTimeout(() => {
+    // 强制滚动到底部，配合上面加的 padding-bottom: 50px，
+    // 光标会停留在距离底部 50px 的舒适位置
     el.scrollTop = el.scrollHeight
-  }, 50)
+  }, 300)
 
   try {
     triggerResize?.()
   }
   catch {}
 
-  // ... (保留后面的 RAF 逻辑)
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
@@ -172,9 +172,6 @@ function updateMobileBarPosition() {
   const isKeyboardOpen = vv.height < window.innerHeight - 100
 
   if (isKeyboardOpen && isInputFocused.value) {
-    // ❌ 删除这一行： window.scrollTo(0, 0)
-    // 它导致了页面强制回顶，从而让你看不到底部的光标
-
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -185,20 +182,23 @@ function updateMobileBarPosition() {
       width: '100%',
       paddingBottom: '0',
       borderTop: '1px solid #e0e0e0',
-      transition: 'transform 0.1s linear', // 保持过渡优化
+      transition: 'transform 0.1s linear',
     }
 
-    // ✅ 修改：加大安全距离 (106 -> 120)
-    // 让输入框稍微矮一点，确保光标上方有足够空间，且不被工具条遮挡
-    const safeHeight = Math.floor(vv.height - 120)
+    // ✅ 修改 1：加大保留空间 (106 -> 130)
+    // 让输入框底部不要紧贴工具条，留出缝隙，防止视觉遮挡
+    const safeHeight = Math.floor(vv.height - 130)
 
     textareaStyle.value = {
       maxHeight: `${safeHeight}px`,
+      // ✅ 修改 2：键盘弹起时，给内部增加巨大的底部缓冲
+      // 这样光标永远处于“视线舒适区”，浏览器就不会自作聪明去推页面了
+      paddingBottom: '50px',
       transition: 'none',
     }
   }
   else {
-    // 键盘收起状态 (保持不变)
+    // 键盘收起
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -214,7 +214,9 @@ function updateMobileBarPosition() {
 
     textareaStyle.value = {
       maxHeight: '75dvh',
-      transition: 'max-height 0.2s ease',
+      // 键盘收起后恢复正常的 padding
+      paddingBottom: '12px',
+      transition: 'max-height 0.2s ease, padding-bottom 0.2s ease',
     }
   }
 }
