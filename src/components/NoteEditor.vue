@@ -33,7 +33,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
+const isInputFocused = ref(false)
 const { t } = useI18n()
 
 const dialog = useDialog()
@@ -1374,6 +1374,8 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  isInputFocused.value = true
+
   emit('focus')
   captureCaret()
 
@@ -1405,6 +1407,8 @@ function handleFocus() {
 }
 
 function onBlur() {
+  isInputFocused.value = false
+
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
@@ -2331,6 +2335,63 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <div v-if="isMobile && isInputFocused" class="mobile-keyboard-bar">
+      <div class="mobile-bar-inner">
+        <button
+          type="button"
+          class="toolbar-btn"
+          @pointerdown.prevent="openTagMenu"
+        >
+          #
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn"
+          @pointerdown.prevent="runToolbarAction(addBold)"
+        >
+          B
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn"
+          @pointerdown.prevent="runToolbarAction(addBulletList)"
+        >
+          <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="6" cy="7" r="2" fill="currentColor" />
+            <circle cx="6" cy="12" r="2" fill="currentColor" />
+            <circle cx="6" cy="17" r="2" fill="currentColor" />
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn"
+          @pointerdown.prevent="onPickImageSync"
+        >
+          <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+            <circle cx="9" cy="9" r="1.6" fill="currentColor" />
+            <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+
+        <button
+          ref="formatBtnRef"
+          type="button"
+          class="toolbar-btn toolbar-btn-aa"
+          @pointerdown.prevent="toggleFormatPalette"
+        >
+          ···
+        </button>
+      </div>
+    </div>
+
     <!-- 底部工具栏 + 字数 + 按钮 -->
     <div class="editor-footer">
       <div class="footer-left">
@@ -3086,5 +3147,43 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
+}
+
+/* ... 在 <style scoped> 末尾添加 ... */
+
+/* ✅ 移动端键盘工具条样式 */
+.mobile-keyboard-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000; /* 确保在最上层，但在弹窗之下 */
+  background-color: #f9f9f9;
+  border-top: 1px solid #e0e0e0;
+  padding: 8px 12px;
+  /* 关键：iOS 底部安全区适配，防止紧贴 Home 条 */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+}
+
+.mobile-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-around; /* 按钮均匀分布 */
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* 深色模式适配 */
+.dark .mobile-keyboard-bar {
+  background-color: #2c2c2e;
+  border-top-color: #48484a;
+}
+
+/* 稍微调大移动端工具条按钮的触控区域 */
+.mobile-keyboard-bar .toolbar-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
 }
 </style>
