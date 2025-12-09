@@ -1418,36 +1418,45 @@ function handleFocus() {
   emit('focus')
   captureCaret()
   startKeyboardLoop()
-  // 允许再次“轻推”
+
+  // 允许推页逻辑再次生效
   _hasPushedPage = false
 
-  // 🔥 核心修改：如果是移动端，聚焦时不要垫高页面！
-  // 因为 updateMobileBarPosition 会负责调整输入框高度。
+  // 1. 移动端聚焦时的特殊处理
   if (isMobile) {
+    // 聚焦瞬间，先告诉父组件归零（由 recompute 接管）
     emit('bottomSafeChange', 0)
+
+    // 🔥🔥 核心修复：延时强制重算 🔥🔥
+    // 刚聚焦时键盘正在弹起，可视区域(VisualViewport)高度在剧烈变化。
+    // 我们需要在键盘差不多弹完了 (300ms~600ms) 的时候，
+    // 强制触发一次 recomputeBottomSafePadding，把被挡住的光标“揪”出来。
+
+    // 第一枪：300ms (键盘动画中后期)
+    window.setTimeout(() => {
+      _hasPushedPage = false // 允许再次推页
+      ensureCaretVisibleInTextarea() // 确保 textarea 内部滚到了光标
+      recomputeBottomSafePadding() // 计算遮挡并推页
+    }, 300)
+
+    // 第二枪：600ms (键盘完全静止后，兜底)
+    window.setTimeout(() => {
+      _hasPushedPage = false // 再次允许，确保万无一失
+      recomputeBottomSafePadding()
+    }, 600)
   }
   else {
-    // 桌面端保持原样
+    // 桌面端保持原样：直接垫高 footer 高度
     emit('bottomSafeChange', getFooterHeight())
   }
 
-  // 立即一轮计算
+  // 立即执行一轮（处理无动画的场景）
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
-  // 覆盖 visualViewport 延迟
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, t2)
-
+  // 启动短时助推轮询（保留原有的高频检测）
   startFocusBoost()
 }
 
