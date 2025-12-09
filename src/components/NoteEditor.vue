@@ -1078,9 +1078,14 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
 }
 
 function getFooterHeight(): number {
+  if (isMobile) {
+    // 移动端工具条高度固定约 44px ~ 50px，直接返回固定值最稳
+    return 44
+  }
+  // 桌面端逻辑（如果还有桌面端底栏的话）
   const root = rootRef.value
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 88 // 兜底
+  return footerEl ? footerEl.offsetHeight : 0
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
@@ -1107,16 +1112,11 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (!isAndroid && keyboardHeight < 60) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
+  // 1. 获取行高
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
+  // 2. 计算光标在视口中的位置
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -1136,84 +1136,48 @@ function recomputeBottomSafePadding() {
   })()
 
   const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+  const caretBottomInViewport = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight
 
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
+  // 3. 定义安全阈值 (关键修改点)
+  const footerH = getFooterHeight() // 现在返回 44
 
-  const footerH = getFooterHeight()
+  // 🔥 改动：大幅减小冗余，只要留一点缝隙即可
+  const EXTRA = 8
+  const HEADROOM = 10
 
-  // ✅ 修改 1：大幅减小额外冗余，因为工具条现在不会乱跑了
-  const EXTRA = 10
-
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-
-  // ✅ 修改 2：减小头部预留，只要光标露出来一点点即可，不用推太高
-  const HEADROOM = 12
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+  const SAFE = footerH + EXTRA + HEADROOM // 约 44+8+10 = 62px
 
   const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
+  // 4. 计算需要滚动的距离
+  const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  let need = rawNeed - DEADZONE
+  // 抑制微小抖动
+  const MIN_STEP = 10
+  let need = rawNeed
   if (need < MIN_STEP)
     need = 0
 
-  // 抑制小幅抖动：与上次差异很小时保持不变
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 10)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
-
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  // 5. 执行滚动推移
   if (need > 0) {
     if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
+      // iOS: 滚动非常轻微，只推必要的距离
+      const delta = Math.min(need, 120)
+      if (delta > 0 && props.enableScrollPush)
+        window.scrollBy(0, delta)
+
       _hasPushedPage = true
+      // 稍微延时重置标志位
       window.setTimeout(() => {
         _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
+      }, 200)
     }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
   }
   else {
     _hasPushedPage = false
