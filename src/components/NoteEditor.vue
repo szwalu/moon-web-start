@@ -1146,7 +1146,10 @@ function recomputeBottomSafePadding() {
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+
+  // ✅ 修改 1：大幅减小额外冗余，因为工具条现在不会乱跑了
+  const EXTRA = 10
+
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1158,7 +1161,9 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 60 : 70
+
+  // ✅ 修改 2：减小头部预留，只要光标露出来一点点即可，不用推太高
+  const HEADROOM = 12
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
