@@ -2775,7 +2775,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 40dvh;
+  max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -3114,7 +3114,7 @@ function handleBeforeInput(e: InputEvent) {
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:40dvh;
+  max-height:75dvh;
 }
 
 /* tag 面板样式增强 */
