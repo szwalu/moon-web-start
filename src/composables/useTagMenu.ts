@@ -766,11 +766,12 @@ export function useTagMenu(
   function getRowMenuOptions(tag: string, closeMenu: () => void) {
     const pinned = isPinned(tag)
 
-    // 统一的菜单行样式：调大垂直 padding + 图标文字居中
+    // ✅ 修改 1：增强 makeRow，增加 customColor 参数
     function makeRow(
       action: 'pin' | 'rename' | 'change_icon' | 'remove',
       text: string,
       IconComp: any,
+      customColor?: string, // 👈 新增可选颜色参数
     ) {
       return {
         key: action,
@@ -781,21 +782,20 @@ export function useTagMenu(
             {
               style: [
                 'display:flex;',
-                'align-items:center;', // 垂直居中，图标和文字不会错位
-                'padding:4px 10px;', // 上下 4px，左右 10px → 间距在这里调
+                'align-items:center;',
+                'padding:4px 10px;',
                 'gap:8px;',
                 'cursor:pointer;',
+                // ✅ 如果传入了颜色（如红色），则应用它
+                customColor ? `color:${customColor};` : '',
               ].join(''),
               onClick: (e: MouseEvent) => {
                 e.stopPropagation()
-                // 手动触发原来的逻辑
                 handleRowMenuSelect(tag, action)
-                // 关闭当前菜单
                 closeMenu()
               },
             },
             [
-            // 左侧图标
               h(
                 'span',
                 {
@@ -805,10 +805,11 @@ export function useTagMenu(
                   h(IconComp, {
                     size: 16,
                     strokeWidth: 2,
+                    // 如果外层有颜色，图标自动继承；也可以强制指定
+                    // color: customColor
                   }),
                 ],
               ),
-              // 右侧文字
               h(
                 'span',
                 {
@@ -825,11 +826,19 @@ export function useTagMenu(
       ? (t('notes.unpin_favorites') || '取消置顶')
       : (t('notes.pin_favorites') || '设置常用')
 
+    // ✅ 修改 2：在数组中插入分割线
     return [
       makeRow('pin', pinLabel, pinned ? StarOff : Star),
+      { type: 'divider', key: 'd1' }, // 👈 分割线
+
       makeRow('rename', t('tags.rename_tag') || '重命名', Pencil),
+      { type: 'divider', key: 'd2' }, // 👈 分割线
+
       makeRow('change_icon', t('tags.change_icon') || '更改图标', Sparkles),
-      makeRow('remove', t('tags.remove_tag') || '移除', Trash2),
+      { type: 'divider', key: 'd3' }, // 👈 分割线
+
+      // 给移除按钮加上红色警示风格 '#d03050'
+      makeRow('remove', t('tags.remove_tag') || '移除', Trash2, '#d03050'),
     ]
   }
 

@@ -404,24 +404,28 @@ function getDropdownOptions(note: any) {
   })
 
   return [
-    // 编辑：铅笔 Type
+    // 1. 编辑
     {
       key: 'edit',
       label: makeDropdownItem(Edit3, t('notes.edit')),
     },
+    { type: 'divider', key: 'd1' },
 
-    // 分享：用 Download（盒子+箭头）
+    // 2. 分享
     {
       key: 'share',
       label: makeDropdownItem(Share, t('notes.share', '分享')),
     },
+    { type: 'divider', key: 'd2' },
 
+    // 3. 复制
     {
       key: 'copy',
       label: makeDropdownItem(Copy, t('notes.copy')),
     },
+    { type: 'divider', key: 'd3' },
 
-    // 置顶 / 取消置顶：Pin/PinOff
+    // 4. 置顶
     {
       key: 'pin',
       label: makeDropdownItem(
@@ -429,8 +433,9 @@ function getDropdownOptions(note: any) {
         note.is_pinned ? t('notes.unpin') : t('notes.pin'),
       ),
     },
+    { type: 'divider', key: 'd4' },
 
-    // 收藏 / 取消收藏：Heart / HeartOff
+    // 5. 收藏
     {
       key: 'favorite',
       label: makeDropdownItem(
@@ -439,25 +444,28 @@ function getDropdownOptions(note: any) {
           ? t('notes.unfavorite', '取消收藏')
           : t('notes.favorite', '收藏'),
         {
-          color: note.is_favorited ? '#ef4444' : undefined, // ❤️ 红色
+          color: note.is_favorited ? '#ef4444' : undefined,
         },
       ),
     },
+    { type: 'divider', key: 'd5' },
 
-    // 删除：Trash2
-    {
-      key: 'delete',
-      label: makeDropdownItem(Trash2, t('notes.delete')),
-    },
-
-    // 修改日期：Calendar
+    // 6. 修改日期
     {
       key: 'set_date',
       label: makeDropdownItem(Calendar, t('notes.card.set_date')),
     },
+    { type: 'divider', key: 'd6' },
 
-    { key: 'divider-1', type: 'divider' },
+    // 7. 删除
+    {
+      key: 'delete',
+      label: makeDropdownItem(Trash2, t('notes.delete'), { color: '#d03050' }),
+    },
 
+    { key: 'divider-info', type: 'divider' },
+
+    // 8. 信息块
     {
       key: 'info-block',
       type: 'render',
@@ -844,7 +852,7 @@ function handleImageLoad() {
             @select="handleDropdownSelect"
           >
             <div class="kebab-menu">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" />
               </svg>
             </div>
@@ -1115,8 +1123,8 @@ position: relative;
   cursor: pointer;
   padding: 2px;
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1726,5 +1734,37 @@ position: relative;
 }
 .dark .draft-icon-wrapper:hover {
   background-color: rgba(251, 146, 60, 0.15);
+}
+</style>
+
+<style>
+/* 1. 强制压缩每一行的高度 */
+.n-dropdown-menu .n-dropdown-option-body {
+  height: 35px !important;       /* 强制每行高度为 28px */
+  min-height: 35px !important;   /* 覆盖默认的最小高度 */
+  padding: 0 10px !important;    /* 左右内边距 */
+  display: flex !important;
+  align-items: center !important;
+  font-size: 14px !important;    /*稍微改小一点字体让它看起来更精致 */
+}
+
+/* 2. 修正图标和文字的垂直对齐 */
+.n-dropdown-menu .n-dropdown-option-body > div {
+  display: flex;
+  align-items: center;
+  height: 100%; /* 占满高度 */
+}
+
+/* 3. 极简分割线 */
+.n-dropdown-menu .n-dropdown-divider {
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 1px !important;
+  background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 4. 收紧整个菜单容器的上下留白 */
+.n-dropdown-menu {
+  padding: 4px 0 !important;
 }
 </style>
