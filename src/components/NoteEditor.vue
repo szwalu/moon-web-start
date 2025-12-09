@@ -68,9 +68,6 @@ const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || n
 const UA = navigator.userAgent.toLowerCase()
 const isIOS = /iphone|ipad|ipod/.test(UA)
 
-// iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
-const iosFirstInputLatch = ref(false)
-
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 const isFreezingBottom = ref(false)
@@ -1091,97 +1088,12 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
+// 找到 recomputeBottomSafePadding 函数，替换为：
+
 function recomputeBottomSafePadding() {
-  if (!isMobile) {
-    emit('bottomSafeChange', 0)
-    return
-  }
-  if (isFreezingBottom.value)
-    return
-
-  const el = textarea.value
-  if (!el) {
-    emit('bottomSafeChange', 0)
-    return
-  }
-
-  const vv = window.visualViewport
-  if (!vv) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  // 1. 获取行高
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  // 2. 计算光标在视口中的位置
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + 'border-style:solid;'
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  const rect = el.getBoundingClientRect()
-  const caretBottomInViewport = (rect.top - vv.offsetTop) + (caretYInContent - el.scrollTop) + lineHeight
-
-  // 3. 定义安全阈值 (关键修改点)
-  const footerH = getFooterHeight() // 现在返回 44
-
-  // 🔥 改动：大幅减小冗余，只要留一点缝隙即可
-  const EXTRA = 8
-  const HEADROOM = 10
-
-  const SAFE = footerH + EXTRA + HEADROOM // 约 44+8+10 = 62px
-
-  const threshold = vv.height - SAFE
-
-  // 4. 计算需要滚动的距离
-  const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  // 抑制微小抖动
-  const MIN_STEP = 10
-  let need = rawNeed
-  if (need < MIN_STEP)
-    need = 0
-
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 10)
-    need = _lastBottomNeed
-
-  _lastBottomNeed = need
-  emit('bottomSafeChange', need)
-
-  // 5. 执行滚动推移
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      // iOS: 滚动非常轻微，只推必要的距离
-      const delta = Math.min(need, 120)
-      if (delta > 0 && props.enableScrollPush)
-        window.scrollBy(0, delta)
-
-      _hasPushedPage = true
-      // 稍微延时重置标志位
-      window.setTimeout(() => {
-        _hasPushedPage = false
-      }, 200)
-    }
-  }
-  else {
-    _hasPushedPage = false
-  }
+  // ✅ 彻底禁用：移动端现在靠“限制高度”来适配键盘
+  // 不再需要通过滚动页面来露出光标
+  emit('bottomSafeChange', 0)
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
@@ -2199,34 +2111,9 @@ function startFocusBoost() {
   }, 60)
 }
 
-function handleBeforeInput(e: InputEvent) {
-  if (!isMobile)
-    return
-  _hasPushedPage = false
+function handleBeforeInput() {
+  // 彻底禁用页面预抬升，防止与新逻辑冲突
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
-  const t = e.inputType || ''
-  const isRealTyping
-    = t.startsWith('insert')
-    || t.startsWith('delete')
-    || t === 'historyUndo'
-    || t === 'historyRedo'
-  if (!isRealTyping)
-    return
-
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
-  if (isIOS && !iosFirstInputLatch.value)
-    iosFirstInputLatch.value = true
-
-  // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
-  emit('bottomSafeChange', prelift)
-
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  })
 }
 </script>
 
