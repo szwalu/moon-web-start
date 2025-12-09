@@ -1110,14 +1110,14 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 1. 未聚焦时，给个基础安全区
-  if (!isInputFocused.value) {
-    if (isFreezingBottom.value)
-      return
-    emit('bottomSafeChange', 88)
-    return
-  }
+  // 🔥 核心策略：永远不给页面加物理 Padding 🔥
+  // 因为 CSS 的 min-height: 60vh 已经保证了页面足够长，可以滚动。
+  // 所有的防遮挡都通过 scrollBy 来实现。
+  emit('bottomSafeChange', 0)
 
+  // 1. 基础检查
+  if (!isInputFocused.value)
+    return
   const el = textarea.value
   if (!el)
     return
@@ -1125,10 +1125,11 @@ function recomputeBottomSafePadding() {
   if (!vv)
     return
 
-  // 2. 计算光标在屏幕上的绝对位置
+  // 2. 计算光标在视口中的位置
   const rect = el.getBoundingClientRect()
   const selectionEnd = el.selectionEnd || 0
 
+  // 镜像模拟 (保持精准计算)
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1141,51 +1142,25 @@ function recomputeBottomSafePadding() {
 
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
-  // 注意：我们要计算的是光标底边，textarea 的 padding-bottom 120px 已经由 updateMobileBarPosition 设置
+  // 注意：这里减去的 paddingBottom 是 updateMobileBarPosition 设置的 120px
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  // 光标绝对 Y 坐标 (相对 VisualViewport 顶部)
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 3. 设定红线：工具条(50) + 预留行(30) + 缓冲(20) = 100px
+  // 3. 设定触发线
+  // 工具条(54) + 预留行(30) + 缓冲(16) = 100px
   const SAFETY_GAP = 100
   const threshold = vv.height - SAFETY_GAP
 
-  // 需要向下滚动的距离
+  // 4. 计算需要滚动的距离
   const need = Math.ceil(caretYInVV - threshold)
 
+  // 5. 执行滚动
   if (need > 0) {
-    // 🔥🔥🔥 核心智能逻辑 🔥🔥🔥
-
-    // 获取当前页面还能向下滚多少 (文档总高 - 视口高 - 已滚动距离)
-    // document.documentElement.scrollHeight 在某些 mobile 浏览器可能不准，取 body 和 documentElement 的最大值
-    const docHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
-    const scrollTop = window.scrollY || document.documentElement.scrollTop
-    const winHeight = window.innerHeight
-
-    const maxScrollable = docHeight - winHeight - scrollTop
-
-    // 如果“需要的距离”大于“剩余可滚距离”，说明页面太短了（比如新建笔记）
-    // 这时我们需要加 padding 来撑长页面
-    if (need > maxScrollable) {
-      const missingSpace = need - maxScrollable
-      // 补足缺口，并多加一点点缓冲(50px)确保能滚得动
-      emit('bottomSafeChange', missingSpace + 50)
-    }
-    else {
-      // 如果空间足够（旧笔记），千万不要加 padding，否则会“弹老高”
-      // 只有在之前加过 padding 的情况下才重置为 0，防止频繁抖动
-      // 这里直接给 0 是最安全的，因为我们依赖 scrollBy
-      emit('bottomSafeChange', 0)
-    }
-
-    // 执行滚动
     if (props.enableScrollPush)
       window.scrollBy({ top: need, behavior: 'auto' })
-  }
-  else {
-    // 不需要滚动时，归零
-    emit('bottomSafeChange', 0)
   }
 }
 
@@ -1431,45 +1406,33 @@ function handleFocus() {
   emit('focus')
   captureCaret()
   startKeyboardLoop()
-
-  // 允许推页逻辑再次生效
   _hasPushedPage = false
 
-  // 1. 移动端聚焦时的特殊处理
+  // 🔥 核心修改：移动端聚焦时，直接归零，不加任何垫高
   if (isMobile) {
-    // 聚焦瞬间，先告诉父组件归零（由 recompute 接管）
     emit('bottomSafeChange', 0)
 
-    // 🔥🔥 核心修复：延时强制重算 🔥🔥
-    // 刚聚焦时键盘正在弹起，可视区域(VisualViewport)高度在剧烈变化。
-    // 我们需要在键盘差不多弹完了 (300ms~600ms) 的时候，
-    // 强制触发一次 recomputeBottomSafePadding，把被挡住的光标“揪”出来。
-
-    // 第一枪：300ms (键盘动画中后期)
+    // 延时检测：等键盘弹起后，如果被挡住了，scrollBy 会自动推上去
+    // 因为 CSS min-height 够大，所以一定推得上去
     window.setTimeout(() => {
-      _hasPushedPage = false // 允许再次推页
-      ensureCaretVisibleInTextarea() // 确保 textarea 内部滚到了光标
-      recomputeBottomSafePadding() // 计算遮挡并推页
+      ensureCaretVisibleInTextarea()
+      recomputeBottomSafePadding()
     }, 300)
 
-    // 第二枪：600ms (键盘完全静止后，兜底)
     window.setTimeout(() => {
-      _hasPushedPage = false // 再次允许，确保万无一失
       recomputeBottomSafePadding()
     }, 600)
   }
   else {
-    // 桌面端保持原样：直接垫高 footer 高度
+    // 桌面端保持原样
     emit('bottomSafeChange', getFooterHeight())
   }
 
-  // 立即执行一轮（处理无动画的场景）
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
-  // 启动短时助推轮询（保留原有的高频检测）
   startFocusBoost()
 }
 
@@ -2547,7 +2510,7 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 360px;
+  min-height: 60vh;
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
