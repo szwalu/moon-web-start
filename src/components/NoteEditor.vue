@@ -2438,7 +2438,7 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <button type="button" class="toolbar-btn" @pointerdown.prevent="onPickImageSync">
+          <button type="button" class="toolbar-btn" @click="onPickImageSync">
             <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
               <circle cx="9" cy="9" r="1.6" fill="currentColor" />
