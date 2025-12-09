@@ -129,7 +129,7 @@ async function focusToEnd() {
   catch {}
 
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    scrollCaretIntoView()
     recomputeBottomSafePadding()
   })
 }
@@ -1008,6 +1008,54 @@ function getFooterHeight(): number {
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
+// ==========================================
+// 🔥 新增：强力光标居中滚动函数 (配合 Flex + Padding 方案)
+// ==========================================
+function scrollCaretIntoView() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 1. === 计算光标在全文中的 Y 坐标 (复用之前的镜像逻辑) ===
+  const style = getComputedStyle(el)
+  const mirror = document.createElement('div')
+
+  // 必须完整复制样式，保证镜像和真身一模一样
+  mirror.style.cssText = `
+    position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word;
+    box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px;
+    font:${style.font}; line-height:${style.lineHeight}; letter-spacing:${style.letterSpacing};
+    padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+    border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
+    border-style:solid;
+  `
+  document.body.appendChild(mirror)
+
+  const val = el.value
+  const selEnd = el.selectionEnd ?? val.length
+  // 截取光标前的内容，处理换行符
+  const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
+  mirror.textContent = before
+
+  // 算出光标底部的像素高度 (scrollHeight)
+  // 减去 paddingBottom 是为了拿到纯文本内容的高度，但直接用 scrollHeight 也行，看你喜好
+  const caretY = mirror.scrollHeight
+  document.body.removeChild(mirror)
+
+  // 2. === 核心：计算滚动位置 ===
+  const viewportHeight = el.clientHeight
+
+  // 目标：让光标处于视口高度的 45% 处（稍微偏上一点点，符合阅读习惯）
+  // 必须配合 CSS 中的 padding-bottom: 45vh 才能生效，否则滚不下去
+  const targetScrollTop = caretY - (viewportHeight * 0.45)
+
+  // 3. === 执行滚动 ===
+  el.scrollTo({
+    top: Math.max(0, targetScrollTop),
+    behavior: 'auto', // 建议用 auto，用 smooth 在打字时会感觉延迟/抖动
+  })
+}
+
 function recomputeBottomSafePadding() {
   if (!isMobile) {
     emit('bottomSafeChange', 0)
@@ -1385,7 +1433,7 @@ function handleFocus() {
 
   // 立即一轮计算
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    scrollCaretIntoView()
     recomputeBottomSafePadding()
   })
 
@@ -1393,6 +1441,7 @@ function handleFocus() {
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
     recomputeBottomSafePadding()
+    scrollCaretIntoView()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
@@ -1433,7 +1482,7 @@ function handleClick() {
 
   captureCaret()
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    scrollCaretIntoView()
     recomputeBottomSafePadding()
   })
 }
@@ -1584,7 +1633,7 @@ function handleInput(event: Event) {
 
   // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-  ensureCaretVisibleInTextarea()
+  scrollCaretIntoView()
 
   // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
@@ -2594,13 +2643,13 @@ function handleBeforeInput(e: InputEvent) {
 
 <style scoped>
 .note-editor-reborn {
-  position: relative;
-  background-color: #f9f9f9;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  /* 不要用固定的 dvh，而是限制为父容器的 100% */
+  /* 如果你的 app 只有这一个弹窗，可以用 100dvh，但要配合上面的 meta 标签 */
+  height: 100%;
+  max-height: 85dvh; /* 只有在键盘未弹起时限制最大高度，避免太丑 */
+  overflow: hidden;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2616,31 +2665,29 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 限制溢出 */
   position: relative;
-  overflow-anchor: none;
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
 }
 
 .editor-textarea {
+  flex: 1;
+  height: 100%;
   width: 100%;
-  min-height: 360px;
-  max-height: 75dvh;
+  max-height: none; /* 去掉限制 */
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
   border: none;
-  background-color: transparent;
-  color: inherit;
-  line-height: 1.6;
   resize: none;
-  outline: 0;
-  box-sizing: border-box;
-  font-family: inherit;
-  caret-color: currentColor;
-  scrollbar-gutter: stable both-edges;
-} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
 
+  /* 🔥 核心黑科技：底部增加 40vh 的空余空间 */
+  /* 这样即便光标在文档最后，用户也能把它滚到屏幕中间，而不是卡在底部 */
+  padding-bottom: 45vh;
+}
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
@@ -2707,12 +2754,9 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px;
-  border-top: none;
-  background-color: transparent;
+  flex-shrink: 0;
+  z-index: 10;
+  background-color: #f9f9f9;
 }
 
 /* ===== 录音条（固定在工具栏上方） ===== */
