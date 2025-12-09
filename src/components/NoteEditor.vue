@@ -155,7 +155,7 @@ function handleErrorConfirm() {
     focusToEnd()
   })
 }
-
+const isFixedMode = ref(false)
 // ✅ 1. 新增：控制工具条的循环监测
 let keyboardLoopRaf: number | null = null
 
@@ -172,6 +172,7 @@ function updateMobileBarPosition() {
 
   // 🟢 状态 A：键盘弹起 (或者输入框聚焦且键盘打开)
   if (isKeyboardOpen && isInputFocused.value) {
+    isFixedMode.value = true
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -195,6 +196,7 @@ function updateMobileBarPosition() {
   }
   // ⚪️ 状态 B：键盘收起 (常驻底部)
   else {
+    isFixedMode.value = false
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -1098,6 +1100,10 @@ let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
   if (!isMobile) {
+    emit('bottomSafeChange', 0)
+    return
+  }
+  if (isFixedMode.value) {
     emit('bottomSafeChange', 0)
     return
   }
