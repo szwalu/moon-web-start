@@ -1038,6 +1038,7 @@ function ensureCaretVisibleInTextarea() {
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
+  // 保持原有镜像逻辑...
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
@@ -1051,14 +1052,25 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
+  // 🔥🔥🔥 核心修复：定义内部可视底线 🔥🔥🔥
+  // el.clientHeight 包含了我们设置的 120px padding。
+  // 我们必须减去这 120px (再多减 20px 做缓冲)，强迫 textarea 内部发生滚动，
+  // 确保光标永远保持在 Padding 区域之上。
+  // 这里的 140 = 120(padding) + 20(buffer)
+  const effectiveClientHeight = el.clientHeight - (isMobile ? 140 : 0)
+
+  const viewBottom = el.scrollTop + effectiveClientHeight
+
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
+  if (caretDesiredBottom > viewBottom) {
+    // 滚到底部，让光标位于可视区下方边缘
+    el.scrollTop = caretDesiredBottom - effectiveClientHeight
+  }
+  else if (caretDesiredTop < viewTop) {
     el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1098,7 +1110,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 1. 未聚焦时，给个基础安全区即可
+  // 1. 未聚焦时，给个基础安全区
   if (!isInputFocused.value) {
     if (isFreezingBottom.value)
       return
@@ -1106,13 +1118,10 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // --- 🔥 聚焦时的简化逻辑 🔥 ---
-
   const el = textarea.value
   if (!el)
     return
   const vv = window.visualViewport
-  // 修复 ESLint: 分行写
   if (!vv) {
     emit('bottomSafeChange', 0)
     return
@@ -1120,11 +1129,9 @@ function recomputeBottomSafePadding() {
 
   // 1. 计算光标底部在屏幕上的绝对位置 (px)
   const rect = el.getBoundingClientRect()
-
-  // 获取光标相对输入框顶部的像素距离
   const selectionEnd = el.selectionEnd || 0
 
-  // 创建镜像计算高度的逻辑
+  // 镜像计算保持不变...
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1135,44 +1142,35 @@ function recomputeBottomSafePadding() {
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
 
-  // 模拟光标前的文本
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
-
-  // 计算内容底边高度
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-
-  // 修复 ESLint: 删除了 unused var 'lineHeight' 及其配套的 span 创建逻辑
   document.body.removeChild(mirror)
 
-  // 光标在视口中的 Y 坐标 (VisualViewport 坐标系)
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 2. 设定“红线”：屏幕底部往上 70px (工具条约 50px + 20px 余量)
-  const SAFETY_GAP = 70
+  // 🔥🔥🔥 核心修复：增加底部红线高度 🔥🔥🔥
+  // 之前的 70px 可能对于某些字体的下沉部分（如 g, j, y）或者工具条的阴影来说不够。
+  // 我们直接加到 96px (约等于工具条 + 2行文字高度)。
+  // 这会强迫页面推得更高一点，把那被遮住的 1/5 露出来，甚至多露一点留白。
+  const SAFETY_GAP = 96
   const threshold = vv.height - SAFETY_GAP
 
-  // 3. 计算需要推多少
-  // 如果 caretYInVV > threshold，说明光标掉进红线区域了
   const need = Math.ceil(caretYInVV - threshold)
 
-  // 4. 执行
   if (need > 0) {
-    emit('bottomSafeChange', need) // 让父组件垫高页面
+    emit('bottomSafeChange', need)
 
-    // 只有第一次被遮挡时才自动滚动，避免打字时画面乱跳
     if (!_hasPushedPage && props.enableScrollPush) {
       window.scrollBy({ top: need, behavior: 'auto' })
       _hasPushedPage = true
-
-      // 修复 ESLint: setTimeout 内容分行
       setTimeout(() => {
         _hasPushedPage = false
       }, 200)
     }
   }
   else {
-    emit('bottomSafeChange', 0) // 不需要垫高
+    emit('bottomSafeChange', 0)
   }
 }
 
