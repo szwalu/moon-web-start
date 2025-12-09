@@ -1077,25 +1077,20 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
+// 替换原有的 getFooterHeight 函数
 function getFooterHeight(): number {
   const root = rootRef.value
-
-  // ✅ 修正 1：优先查找新版的“移动端键盘工具条”
-  // 注意：这个类名必须和 template 里的 class="mobile-keyboard-bar" 对应
+  // 1. 尝试获取新版的浮动工具条
   const mobileBar = root ? (root.querySelector('.mobile-keyboard-bar') as HTMLElement | null) : null
-
-  // 如果新工具条存在且可见（offsetHeight > 0），直接用它的高度
   if (mobileBar && mobileBar.offsetHeight > 0)
     return mobileBar.offsetHeight
 
-  // ✅ 修正 2：如果找不到新工具条（比如没渲染），再找旧的 editor-footer（兼容性）
+  // 2. 尝试获取旧版 footer (兼容)
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   if (footerEl)
     return footerEl.offsetHeight
 
-  // ✅ 修正 3：兜底值改为 0
-  // 旧版本找不到元素时默认 88 是因为一定有 footer，但在新版本里，找不到可能意味着真的没有底部元素
-  // 改为 0 可以避免出现巨大的空白
+  // 3. 彻底找不到时返回 0 (旧代码这里返回 88，导致了巨大的误差)
   return 0
 }
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
@@ -1173,7 +1168,7 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 60 : 70
+  const HEADROOM = 10
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
