@@ -155,7 +155,7 @@ function handleErrorConfirm() {
     focusToEnd()
   })
 }
-const isFixedMode = ref(false)
+
 // ✅ 1. 新增：控制工具条的循环监测
 let keyboardLoopRaf: number | null = null
 
@@ -170,47 +170,38 @@ function updateMobileBarPosition() {
   // 判断键盘是否弹起 (可视高度变小)
   const isKeyboardOpen = vv.height < window.innerHeight - 100
 
-  // 🟢 状态 A：键盘弹起 (或者输入框聚焦且键盘打开)
+  // 🟢 状态 A：键盘弹起
   if (isKeyboardOpen && isInputFocused.value) {
-    isFixedMode.value = true
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
       top: `${topPos}px`, // 📌 钉在可视区域底线
-      transform: 'translateY(-100%)', // ⬆️ 自身上移 100%，刚好骑在键盘上
+      transform: 'translateY(-100%)', // ⬆️ 自身上移 100%
       zIndex: '2000',
       width: '100%',
       paddingBottom: '0',
       borderTop: '1px solid #e0e0e0',
-      transition: 'transform 0.1s linear', // 稍微加一点过渡优化跟手
+      transition: 'transform 0.1s linear',
     }
-
-    // 限制输入框高度，防止被键盘遮挡
-    // 减去：顶部导航(约50) + 工具条(约50) + 缓冲(10)
-    const safeHeight = Math.floor(vv.height - 110)
-    textareaStyle.value = {
-      maxHeight: `${safeHeight}px`,
-      transition: 'none',
-    }
+    // ❌ 确保这里没有 textareaStyle.value = ...
   }
-  // ⚪️ 状态 B：键盘收起 (常驻底部)
+  // ⚪️ 状态 B：键盘收起
   else {
-    isFixedMode.value = false
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      bottom: '0', // 📌 贴在屏幕最底部
-      top: 'auto', // 清除 top
-      transform: 'none', // 清除位移
+      bottom: '0',
+      top: 'auto',
+      transform: 'none',
       zIndex: '2000',
-      paddingBottom: 'env(safe-area-inset-bottom)', // 适配 iPhone 底部黑条
+      paddingBottom: 'env(safe-area-inset-bottom)',
       transition: 'all 0.2s ease-out',
       borderTop: '1px solid #e0e0e0',
     }
 
-    // 恢复输入框大高度
+    // 恢复默认
     textareaStyle.value = {
       maxHeight: '75dvh',
       transition: 'max-height 0.2s ease',
@@ -1079,20 +1070,18 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-// 替换原有的 getFooterHeight 函数
 function getFooterHeight(): number {
   const root = rootRef.value
-  // 1. 优先获取新版的移动端工具条
+  // 1. 优先找新版工具条
   const mobileBar = root ? (root.querySelector('.mobile-keyboard-bar') as HTMLElement | null) : null
   if (mobileBar && mobileBar.offsetHeight > 0)
     return mobileBar.offsetHeight
 
-  // 2. 尝试获取旧版 footer
+  // 2. 再找旧版 footer
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
   if (footerEl)
     return footerEl.offsetHeight
 
-  // 3. 🔥 重要修改：找不到时返回 0，而不是 88
   return 0
 }
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
@@ -1104,22 +1093,67 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 🔥 核心逻辑：聚焦时直接返回 0，不计算任何垫片
-  if (isInputFocused.value) {
+  // 🔥 注意：这里不再阻断 isInputFocused，我们要让它计算！
+
+  if (isFreezingBottom.value)
+    return
+
+  const el = textarea.value
+  if (!el) {
+    emit('bottomSafeChange', 0)
+    return
+  }
+
+  const vv = window.visualViewport
+  if (!vv) {
     emit('bottomSafeChange', 0)
     _hasPushedPage = false
     return
   }
 
-  // --- 以下是未聚焦时的逻辑 ---
-  if (isFreezingBottom.value)
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (!isAndroid && keyboardHeight < 60) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
     return
+  }
 
-  // 既然不聚焦，就不需要复杂的计算逻辑，只需要保证底部不被遮挡即可
-  // 使用修正后的 getFooterHeight (现在返回 0 或真实高度)
+  const style = getComputedStyle(el)
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  // ... 计算 caretYInContent (保持原样) ...
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
+
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15)
+
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
+
+  // ✅ 这里会调用上面修正后的 getFooterHeight()
   const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
 
-  // 简单计算安全区
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1132,14 +1166,59 @@ function recomputeBottomSafePadding() {
     catch { return 0 }
   })()
 
-  // 这里的 20 是为了视觉美观保留的一点底边距
-  const finalPadding = footerH + safeInset + 20
+  // 旧版本的 headroom 是 60/70，既然你说旧版本好用，那就保持这个大数值
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
-  if (Math.abs(finalPadding - _lastBottomNeed) < 5)
-    return
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  _lastBottomNeed = finalPadding
-  emit('bottomSafeChange', finalPadding)
+  const DEADZONE = isAndroid ? 72 : 46
+  const MIN_STEP = isAndroid ? 24 : 14
+  const STICKY = 12
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  emit('bottomSafeChange', need)
+
+  // ... 保持原本的 ScrollBy 逻辑 ...
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta)
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta)
+      }
+      _hasPushedPage = true
+      window.setTimeout(() => {
+        _hasPushedPage = false
+        recomputeBottomSafePadding()
+      }, 140)
+    }
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
+  }
+  else {
+    _hasPushedPage = false
+  }
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
