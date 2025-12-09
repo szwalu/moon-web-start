@@ -1110,7 +1110,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 1. 未聚焦时，给个基础安全区
+  // 1. 未聚焦时，给个基础安全区（防止底部内容贴底）
   if (!isInputFocused.value) {
     if (isFreezingBottom.value)
       return
@@ -1118,20 +1118,24 @@ function recomputeBottomSafePadding() {
     return
   }
 
+  // --- 🔥 聚焦时的全新逻辑 🔥 ---
+
+  // 🔥 核心改变 1：聚焦时，永远不要改变底部的 Padding！
+  // 这样无论怎么操作，页面高度都是稳定的，绝对不会出现“弹老高”的问题。
+  emit('bottomSafeChange', 0)
+
   const el = textarea.value
   if (!el)
     return
   const vv = window.visualViewport
-  if (!vv) {
-    emit('bottomSafeChange', 0)
+  if (!vv)
     return
-  }
 
-  // 1. 计算光标底部在屏幕上的绝对位置 (px)
+  // 2. 计算光标在屏幕上的位置
   const rect = el.getBoundingClientRect()
   const selectionEnd = el.selectionEnd || 0
 
-  // 镜像计算保持不变...
+  // 镜像计算光标位置
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1142,35 +1146,34 @@ function recomputeBottomSafePadding() {
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
 
+  // 必须加上 \u200B 确保空行也有高度
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
+
+  // 这里要减去 paddingBottom，因为我们想知道的是文字底边位置，而不是 textarea 盒子的底边
+  // 此时 style.paddingBottom 应该是 '120px'
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
+  // 光标在视口中的绝对 Y 坐标
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 🔥🔥🔥 核心修复：增加底部红线高度 🔥🔥🔥
-  // 之前的 70px 可能对于某些字体的下沉部分（如 g, j, y）或者工具条的阴影来说不够。
-  // 我们直接加到 96px (约等于工具条 + 2行文字高度)。
-  // 这会强迫页面推得更高一点，把那被遮住的 1/5 露出来，甚至多露一点留白。
-  const SAFETY_GAP = 96
+  // 3. 设定触发滚动的红线
+  // 工具条高度(~50) + 预留一行文字(~30) + 额外舒适区(~20) = ~100px
+  // 只要光标进入屏幕底部 100px 范围内，我们就认为它被挡住了
+  const SAFETY_GAP = 100
   const threshold = vv.height - SAFETY_GAP
 
   const need = Math.ceil(caretYInVV - threshold)
 
+  // 4. 只推页，不改 Padding
+  // 只有当需要向下更多空间时（need > 0），我们才滚动窗口
   if (need > 0) {
-    emit('bottomSafeChange', need)
-
-    if (!_hasPushedPage && props.enableScrollPush) {
+    // 只有在开启了滚动推页且没有正在推页时才执行
+    if (props.enableScrollPush) {
+      // 使用 scrollBy 直接滚动窗口，而不是改变 DOM 大小
       window.scrollBy({ top: need, behavior: 'auto' })
-      _hasPushedPage = true
-      setTimeout(() => {
-        _hasPushedPage = false
-      }, 200)
     }
-  }
-  else {
-    emit('bottomSafeChange', 0)
   }
 }
 
