@@ -1148,12 +1148,16 @@ function recomputeBottomSafePadding() {
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
-  const footerH = getFooterHeight()
+  // 🔥 修改点 1：获取高度，且给一个 50px 的硬保底
+  // 如果 getFooterHeight() 返回 0（偶尔会发生），我们强制认为它至少有 50px（工具条的大致高度）
+  let footerH = getFooterHeight()
+  if (footerH < 10)
+    footerH = 50
 
-  // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
-  // 原代码：const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
-  // 修改后：在原有基础上 + 36px (这刚好是一行多一点的高度，用于抵消悬浮工具条的遮挡)
-  const EXTRA = (isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)) + 36
+  // 🔥 修改点 2：EXTRA 暴力增加 80px
+  // 这里的逻辑是：(基础余量) + (工具条高度抵消) + (死区突破值)
+  // 加 80px 看起来很多，但会被后面的 DEADZONE 减去大部分，剩下的刚好够露出光标。
+  const EXTRA = (isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)) + 80
 
   const safeInset = (() => {
     try {
@@ -1175,11 +1179,12 @@ function recomputeBottomSafePadding() {
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // ... 后面的代码保持不变 ...
+  // 死区维持不变，防止抖动
   const DEADZONE = isAndroid ? 72 : 46
   const MIN_STEP = isAndroid ? 24 : 14
   const STICKY = 12
 
+  // 这里会减去死区，所以前面的 EXTRA 必须够大
   let need = rawNeed - DEADZONE
   if (need < MIN_STEP)
     need = 0
