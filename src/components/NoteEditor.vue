@@ -1079,10 +1079,25 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
 
 function getFooterHeight(): number {
   const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 88 // 兜底
-}
 
+  // ✅ 修正 1：优先查找新版的“移动端键盘工具条”
+  // 注意：这个类名必须和 template 里的 class="mobile-keyboard-bar" 对应
+  const mobileBar = root ? (root.querySelector('.mobile-keyboard-bar') as HTMLElement | null) : null
+
+  // 如果新工具条存在且可见（offsetHeight > 0），直接用它的高度
+  if (mobileBar && mobileBar.offsetHeight > 0)
+    return mobileBar.offsetHeight
+
+  // ✅ 修正 2：如果找不到新工具条（比如没渲染），再找旧的 editor-footer（兼容性）
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  if (footerEl)
+    return footerEl.offsetHeight
+
+  // ✅ 修正 3：兜底值改为 0
+  // 旧版本找不到元素时默认 88 是因为一定有 footer，但在新版本里，找不到可能意味着真的没有底部元素
+  // 改为 0 可以避免出现巨大的空白
+  return 0
+}
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
