@@ -146,6 +146,7 @@ const pendingDraftText = ref('')
 const promptMode = ref<'draft' | 'error'>('draft')
 const promptErrorMsg = ref('')
 const mobileBarStyle = ref<Record<string, string>>({})
+const textareaStyle = ref<Record<string, string>>({})
 // 🔥 新增：报错时的“好的”按钮点击事件
 function handleErrorConfirm() {
   showDraftPrompt.value = false // 关闭弹窗
@@ -156,51 +157,73 @@ function handleErrorConfirm() {
 }
 
 function handleVisualViewportResize() {
+  // 如果浏览器不支持此 API，直接返回
   if (!window.visualViewport)
     return
 
   const vv = window.visualViewport
-  // 计算键盘+白色条占据的高度
-  // window.innerHeight 是整个屏幕高度（包含被键盘遮住的部分）
-  // vv.height 是当前能看见的网页高度
-  // vv.offsetTop 是页面被顶上去的距离
+  const windowH = window.innerHeight
 
-  // 核心公式：底部被遮挡的高度 = 屏幕总高 - 可视高度 - 顶部偏移
-  // 注意：某些安卓浏览器行为不同，这里主要针对 iOS 优化
-  const offsetBottom = window.innerHeight - vv.height - vv.offsetTop
+  // 1. 计算被遮挡的高度（键盘 + iOS 输入法状态栏）
+  // windowH 是屏幕总高，vv.height 是当前能看见的区域高度，vv.offsetTop 是页面被顶上去的距离
+  const offsetBottom = windowH - vv.height - vv.offsetTop
 
-  // 加上一点容错 buffer (比如 0 或 safe-area)
-  // 如果 offsetBottom > 0，说明键盘弹起了，我们需要把工具条“抬”起来
-  // 如果是 0，说明没键盘，贴底即可
+  // 避免计算误差出现负数
+  const keyboardHeight = Math.max(0, offsetBottom)
 
-  // 这里做一个限制，避免计算误差导致的负数
-  const liftHeight = Math.max(0, offsetBottom)
+  // 判断键盘是否弹起（这里给 10px 容错，因为有些 Android 浏览器即便没键盘 offsetBottom 也不完全是 0）
+  const isKeyboardOpen = keyboardHeight > 10
 
-  if (liftHeight > 0) {
+  if (isKeyboardOpen) {
+    // ———— 🟢 键盘弹起状态 ————
+
+    // A. 工具条定位：
+    // 让工具条底部距离屏幕底部的距离 = 键盘高度
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      // 让它“骑”在键盘上方。注意：iOS 的 visualViewport 已经排除了那个白色条
-      // 所以我们只需要贴着 visualViewport 的底部即可
-      // 但因为 position: fixed 是相对于 LayoutViewport 的，所以需要用 bottom 抬升
-      bottom: `${liftHeight}px`,
-      transition: 'bottom 0.1s linear', // 加一点点过渡防抖
+      bottom: `${keyboardHeight}px`, // 核心：被键盘顶起来
       zIndex: '2000',
-      paddingBottom: '0', // 键盘出来时，不需要 safe-area padding
+      paddingBottom: '0', // 键盘弹起时不需要 safe-area
+      transition: 'bottom 0.1s linear', // 轻微过渡，跟随键盘动画
+    }
+
+    // B. 输入框高度限制（解决你的新问题）：
+    // vv.height 是当前“剩余”的可视高度。
+    // 我们需要减去：顶部导航栏高度 + 底部工具条高度 + 上下间距
+    // 假设：顶部(约50px) + 工具条(约44px) + 间距(约26px) = 120px
+    // 你可以根据界面实际情况调整 120 这个数值
+    const safeHeight = Math.floor(vv.height - 120)
+
+    textareaStyle.value = {
+      // 强行覆盖 CSS 里的 75dvh
+      maxHeight: `${safeHeight}px`,
+      // 键盘交互时，禁止高度动画，防止布局抖动
+      transition: 'none',
     }
   }
   else {
-    // 键盘收起时，恢复默认贴底样式
+    // ———— ⚪️ 键盘收起状态 ————
+
+    // A. 工具条归位：
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
-      bottom: '0',
-      transition: 'bottom 0.2s ease-out',
+      bottom: '0', // 贴底
       zIndex: '2000',
-      // 这里的 padding-bottom 交给 CSS 处理，或者写死 env(safe-area-inset-bottom)
+      // 只有收起时才需要适配 iPhone 底部黑条
       paddingBottom: 'env(safe-area-inset-bottom)',
+      transition: 'bottom 0.2s ease-out',
+    }
+
+    // B. 输入框高度恢复：
+    // 恢复到你原本设计的大屏占比高度
+    textareaStyle.value = {
+      maxHeight: '75dvh',
+      // 恢复平滑过渡
+      transition: 'max-height 0.2s ease',
     }
   }
 }
@@ -2292,6 +2315,7 @@ function handleBeforeInput(e: InputEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
+        :style="textareaStyle"
         autocomplete="off"
         autocorrect="on"
         autocapitalize="sentences"
