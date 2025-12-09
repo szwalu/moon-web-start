@@ -1093,8 +1093,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 🔥 注意：这里不再阻断 isInputFocused，我们要让它计算！
-
+  // 聚焦时不再强制归零，而是正常计算
   if (isFreezingBottom.value)
     return
 
@@ -1121,7 +1120,6 @@ function recomputeBottomSafePadding() {
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // ... 计算 caretYInContent (保持原样) ...
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -1150,9 +1148,12 @@ function recomputeBottomSafePadding() {
     ? (caretBottomInViewport + lineHeight * 2)
     : caretBottomInViewport
 
-  // ✅ 这里会调用上面修正后的 getFooterHeight()
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
+
+  // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
+  // 原代码：const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)
+  // 修改后：在原有基础上 + 36px (这刚好是一行多一点的高度，用于抵消悬浮工具条的遮挡)
+  const EXTRA = (isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)) + 36
 
   const safeInset = (() => {
     try {
@@ -1166,7 +1167,6 @@ function recomputeBottomSafePadding() {
     catch { return 0 }
   })()
 
-  // 旧版本的 headroom 是 60/70，既然你说旧版本好用，那就保持这个大数值
   const HEADROOM = isAndroid ? 60 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
@@ -1175,6 +1175,7 @@ function recomputeBottomSafePadding() {
     ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
     : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
+  // ... 后面的代码保持不变 ...
   const DEADZONE = isAndroid ? 72 : 46
   const MIN_STEP = isAndroid ? 24 : 14
   const STICKY = 12
@@ -1190,7 +1191,6 @@ function recomputeBottomSafePadding() {
 
   emit('bottomSafeChange', need)
 
-  // ... 保持原本的 ScrollBy 逻辑 ...
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
