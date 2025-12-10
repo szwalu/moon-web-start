@@ -1093,7 +1093,10 @@ function recomputeBottomSafePadding() {
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const baseExtra = isAndroid ? 28 : (iosFirstInputLatch.value ? 60 : 40)
+  const topOffsetCompensation = isIOS ? 24 : 0
+
+  const EXTRA = baseExtra + topOffsetCompensation
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -2661,6 +2664,7 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
+  padding-bottom: 50vh;
   border: none;
   background-color: transparent;
   color: inherit;
