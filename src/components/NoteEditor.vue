@@ -1020,7 +1020,7 @@ function ensureCaretVisibleInTextarea() {
 
   // 🛑 关键：输入法候选栏/状态栏缓冲区
   // 给 iOS 多留出 40px 的余量，防止光标贴着键盘上沿
-  const KEYBOARD_BUFFER = 40
+  const KEYBOARD_BUFFER = 72
 
   // 计算输入框在当前视口中“真正可见”的高度
   // 公式：可视视口高度 - 输入框顶部偏移 - 底部缓冲
@@ -2708,7 +2708,7 @@ function handleBeforeInput(e: InputEvent) {
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   padding-top: calc(12px + env(safe-area-inset-top));
-  padding-bottom: 30vh;
+  padding-bottom: 120px;
   border: none;
   background-color: transparent;
   color: inherit;
