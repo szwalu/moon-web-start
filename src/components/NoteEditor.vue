@@ -2635,7 +2635,7 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-top: calc(12px + env(safe-area-inset-top, 20px));
   border: none;
   background-color: transparent;
   color: inherit;
@@ -3120,5 +3120,24 @@ function handleBeforeInput(e: InputEvent) {
 /* 适配暗黑模式 (假设 dark 类加在 body 或 html 上) */
 .dark .global-notch-mask {
   background-color: #2c2c2e;
+}
+
+.debug-notch-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999; /* 确保层级最高 */
+
+  /* ✅ 关键策略：
+     优先用 env 计算。
+     如果 env 失效（比如 meta 没改对），强制给 40px 高度，保证你起码能看到它！
+  */
+  height: env(safe-area-inset-top, 40px);
+
+  /* 🔴 暂时用半透明红色，看到红条就说明成功了，之后再改回背景色 */
+  background-color: rgba(255, 0, 0, 0.5);
+
+  pointer-events: none;
 }
 </style>
