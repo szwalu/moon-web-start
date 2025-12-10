@@ -2697,8 +2697,12 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
 
-  /* ✅ 修改：Top 改回 0 或者很小的值 (因为父容器已经挤下来了) */
-  padding: 0 8px 8px 16px;
+  /* 1. 保持你原本舒适的小内边距（不要改大这里的 padding-top） */
+  padding: 12px 8px 8px 16px;
+
+  /* 2. ✅ 核心修复：添加 scroll-margin-top */
+  /* 这行代码告诉浏览器：“当你自动滚动聚焦输入框时，请在输入框头顶留出刘海的高度，不要顶满屏幕” */
+  scroll-margin-top: calc(12px + env(safe-area-inset-top));
 
   padding-bottom: 40vh;
   border: none;
