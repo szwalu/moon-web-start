@@ -2667,7 +2667,8 @@ function handleBeforeInput(e: InputEvent) {
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   padding-top: calc(10px + env(safe-area-inset-top));
-  scroll-padding-top: calc(env(safe-area-inset-top) + 20px);
+  scroll-padding-top: calc(10px + env(safe-area-inset-top));
+  scroll-margin-top: calc(10px + env(safe-area-inset-top));
   padding-bottom: 40vh;
   border: none;
   background-color: transparent;
@@ -2679,7 +2680,7 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
+}
 
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
