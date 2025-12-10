@@ -163,11 +163,10 @@ function updateMobileBarPosition() {
   if (!window.visualViewport)
     return
   const vv = window.visualViewport
-
   const topPos = vv.offsetTop + vv.height
   const isKeyboardOpen = vv.height < window.innerHeight - 100
 
-  // 🟢 状态 A：键盘弹起 (或者输入框聚焦且键盘打开)
+  // 🟢 状态 A：键盘弹起
   if (isKeyboardOpen && isInputFocused.value) {
     mobileBarStyle.value = {
       position: 'fixed',
@@ -182,11 +181,11 @@ function updateMobileBarPosition() {
       transition: 'transform 0.1s linear',
     }
 
-    // 🔥🔥🔥 核心修改：给输入框底部加巨量的 Padding 🔥🔥🔥
-    // 120px 足够容纳工具条(50px) + 一行文字(30px) + 安全余量
-    // 这样文字永远不可能到底，底会被 Padding 撑开
+    // 🔥🔥🔥 核心修改 2：给输入框内部加 50dvh (半屏) 的缓冲 🔥🔥🔥
+    // 配合上面的 CSS min-height，这确保了无论内容多短，
+    // 光标下面都有足够的空间被卷到上面去。
     textareaStyle.value = {
-      paddingBottom: '120px',
+      paddingBottom: '50dvh',
       transition: 'padding-bottom 0.2s ease',
     }
   }
@@ -205,8 +204,6 @@ function updateMobileBarPosition() {
       borderTop: '1px solid #e0e0e0',
     }
 
-    // 恢复正常的 Padding (看你的 CSS，一般是 8px 或 16px)
-    // 这里设为空，让它走 CSS 里的默认值
     textareaStyle.value = {
       paddingBottom: '',
       transition: 'padding-bottom 0.2s ease',
@@ -1110,14 +1107,21 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 🔥 核心策略：永远不给页面加物理 Padding 🔥
-  // 因为 CSS 的 min-height: 60vh 已经保证了页面足够长，可以滚动。
-  // 所有的防遮挡都通过 scrollBy 来实现。
+  // 1. 未聚焦时（查看模式），保留一点底部距离防止贴底
+  if (!isInputFocused.value) {
+    if (isFreezingBottom.value)
+      return
+    emit('bottomSafeChange', 88)
+    return
+  }
+
+  // --- 🔥 聚焦时的逻辑 🔥 ---
+
+  // 🔥🔥🔥 核心修改 3：聚焦时永远发 0！绝不改变页面高度！🔥🔥🔥
+  // 因为 CSS min-height: 100dvh 已经保证了页面可以滚动。
+  // 任何动态 Padding 都会导致页面高度不可控地增长（弹老高）。
   emit('bottomSafeChange', 0)
 
-  // 1. 基础检查
-  if (!isInputFocused.value)
-    return
   const el = textarea.value
   if (!el)
     return
@@ -1125,11 +1129,10 @@ function recomputeBottomSafePadding() {
   if (!vv)
     return
 
-  // 2. 计算光标在视口中的位置
+  // 2. 计算光标在屏幕上的绝对位置
   const rect = el.getBoundingClientRect()
   const selectionEnd = el.selectionEnd || 0
 
-  // 镜像模拟 (保持精准计算)
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1142,26 +1145,24 @@ function recomputeBottomSafePadding() {
 
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
-  // 注意：这里减去的 paddingBottom 是 updateMobileBarPosition 设置的 120px
+
+  // 减去我们刚才设置的 50dvh padding，算出纯文本底边
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 光标绝对 Y 坐标 (相对 VisualViewport 顶部)
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 3. 设定触发线
-  // 工具条(54) + 预留行(30) + 缓冲(16) = 100px
+  // 3. 设定红线：100px (工具条 + 一行字 + 缓冲)
   const SAFETY_GAP = 100
   const threshold = vv.height - SAFETY_GAP
 
   // 4. 计算需要滚动的距离
   const need = Math.ceil(caretYInVV - threshold)
 
-  // 5. 执行滚动
-  if (need > 0) {
-    if (props.enableScrollPush)
-      window.scrollBy({ top: need, behavior: 'auto' })
-  }
+  // 5. 只执行滚动
+  // 因为页面 min-height: 100dvh，这里一定能滚得动！
+  if (need > 0 && props.enableScrollPush)
+    window.scrollBy({ top: need, behavior: 'auto' })
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
@@ -2486,6 +2487,7 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  min-height: 100dvh;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
