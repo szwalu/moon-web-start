@@ -1,21 +1,62 @@
 <script setup>
 import { RouterView } from 'vue-router'
 
-// --- 1. 新增: 导入 NConfigProvider, darkTheme, useDark 和 computed ---
+// --- 1. 导入 NConfigProvider, darkTheme, useDark 和 computed ---
 import { NConfigProvider, NDialogProvider, NMessageProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useDark } from '@vueuse/core'
-import { computed } from 'vue'
+
+// ✅ 新增: 引入生命周期钩子
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useSupabaseTokenRefresh } from '@/composables/useSupabaseTokenRefresh'
 
 // 启动令牌刷新
 useSupabaseTokenRefresh()
 
-// --- 2. 新增: 添加暗黑模式逻辑 ---
-// useDark() 会自动检测并响应系统的暗黑模式切换
+// --- 2. 添加暗黑模式逻辑 ---
 const isDark = useDark()
-
-// 创建一个计算属性，当 isDark 为 true 时，应用 darkTheme，否则不应用任何特定主题（即为亮色模式）
 const theme = computed(() => (isDark.value ? darkTheme : null))
+
+// --- 3. ✅ 新增: PWA 键盘弹起高度适配逻辑 ---
+// 配合 index.html 的 fixed 锁定，解决 iOS 键盘遮挡光标问题
+function updateAppHeight() {
+  const app = document.getElementById('app')
+  if (!app)
+    return
+
+  // 获取当前视觉视口的高度（键盘弹起时，这个值会变小）
+  // 如果浏览器不支持 visualViewport，就降级使用 innerHeight
+  const height = window.visualViewport ? window.visualViewport.height : window.innerHeight
+
+  // 强制修改 #app 的高度，使其在键盘弹起时“变矮”，从而迫使内部滚动条生效
+  app.style.height = `${height}px`
+
+  // 防止 iOS 滚动偏移，强制重置
+  window.scrollTo(0, 0)
+}
+
+onMounted(() => {
+  // 监听可视视口变化（键盘弹起/收回）
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateAppHeight)
+    window.visualViewport.addEventListener('scroll', updateAppHeight)
+  }
+  else {
+    window.addEventListener('resize', updateAppHeight)
+  }
+
+  // 初始化执行一次
+  updateAppHeight()
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', updateAppHeight)
+    window.visualViewport.removeEventListener('scroll', updateAppHeight)
+  }
+  else {
+    window.removeEventListener('resize', updateAppHeight)
+  }
+})
 </script>
 
 <template>
@@ -65,19 +106,17 @@ html, body, #app { height: 100%; }
 :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
 
 .full-viewport {
-  /* 现代浏览器优先 */
-  height: 100lvh;
-  min-height: 100lvh;
+  /* ✅ 修改: 将高度改为 100%，跟随 JS 控制的 #app 高度变化 */
+  /* 原来的 100lvh 会强制撑满屏幕，导致容器变矮时内容被切断 */
+  height: 100%;
+  min-height: 100%;
+
   padding-bottom: var(--safe-bottom);
   box-sizing: border-box;
-}
-
-/* 旧 iOS / 老浏览器兜底 */
-@supports not (height: 100lvh) {
-  .full-viewport {
-    height: 100dvh;
-    min-height: -webkit-fill-available;
-  }
+  /* 确保内部滚动 */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 恢复首帧临时去动画，避免猛烈闪一下 */
