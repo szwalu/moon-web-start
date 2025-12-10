@@ -31,9 +31,8 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
+const realViewportHeight = ref(0)
 const { t } = useI18n()
 
 const dialog = useDialog()
@@ -1066,6 +1065,9 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
+  if (!window.visualViewport)
+    return
+  realViewportHeight.value = window.visualViewport.height
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
@@ -1428,6 +1430,10 @@ function onDocSelectionChange() {
 
 onMounted(() => {
   document.addEventListener('selectionchange', onDocSelectionChange)
+  if (window.visualViewport)
+    realViewportHeight.value = window.visualViewport.height
+  else
+    realViewportHeight.value = window.innerHeight
 })
 onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
@@ -2296,6 +2302,10 @@ function handleBeforeInput(e: InputEvent) {
         v-model="input"
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
+        :style="{
+          height: realViewportHeight ? `${realViewportHeight}px` : '100%',
+          marginTop: 'env(safe-area-inset-top)', /* 确保从遮罩下方开始 */
+        }"
         :placeholder="placeholder"
         autocomplete="off"
         autocorrect="on"
@@ -2692,12 +2702,13 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 360px;
-  max-height: 75dvh;
+/* ✅ 修改：去掉 min-height，让 JS 控制 height */
+  /* min-height: 360px;  <-- 删除或注释 */
+  /* max-height: 75dvh;  <-- 删除或注释 (这是之前的罪魁祸首之一) */
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-bottom: 120px;
+  padding-top: 12px;
+  padding-bottom: 150px;
   border: none;
   background-color: transparent;
   color: inherit;
