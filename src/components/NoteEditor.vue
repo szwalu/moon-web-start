@@ -31,8 +31,9 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
 })
+
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-const realViewportHeight = ref(0)
+
 const { t } = useI18n()
 
 const dialog = useDialog()
@@ -51,31 +52,6 @@ const pinnedTags = ref<string[]>([])
 function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
-
-const maskRef = ref<HTMLElement | null>(null)
-function updateMaskPosition() {
-  const mask = maskRef.value
-  if (!mask || !window.visualViewport)
-    return
-
-  // 核心黑科技：让遮罩层的 top 永远等于可视窗口的偏移量
-  // 这样无论页面怎么被推，遮罩层都会“瞬间移动”回屏幕最顶端
-  mask.style.transform = `translateY(${window.visualViewport.offsetTop}px)`
-}
-onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('scroll', updateMaskPosition)
-    window.visualViewport.addEventListener('resize', updateMaskPosition)
-  }
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('scroll', updateMaskPosition)
-    window.visualViewport.removeEventListener('resize', updateMaskPosition)
-  }
-})
-
 onMounted(() => {
   try {
     const raw = localStorage.getItem(PINNED_TAGS_KEY)
@@ -984,63 +960,31 @@ function ensureCaretVisibleInTextarea() {
   if (!el)
     return
 
-  // 1. 基础信息获取
   const style = getComputedStyle(el)
-
-  // 2. 镜像计算光标位置 (保持原样)
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
+
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
+
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // ==========================================================
-  // 🔥 核心调整区域
-  // ==========================================================
-
   const viewTop = el.scrollTop
-  const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight
-  const rect = el.getBoundingClientRect()
-  const offsetTop = rect.top
-
-  // ✅ 修改点：加大缓冲至 72px，解决“挡住一行”的问题
-  const KEYBOARD_BUFFER = 72
-
-  // 计算有效可视高度
-  let effectiveVisibleHeight = vvHeight - offsetTop - KEYBOARD_BUFFER
-  // 兜底：防止负数（虽然不太可能）
-  if (effectiveVisibleHeight < 100)
-    effectiveVisibleHeight = 100
-
-  // 限制最大可见高度不能超过元素本身
-  effectiveVisibleHeight = Math.min(effectiveVisibleHeight, el.clientHeight)
-
-  // 计算视图边界
-  const effectiveViewBottom = el.scrollTop + effectiveVisibleHeight
-
-  // 光标目标位置（包含半行缓冲）
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 0.5 // 这里稍微减小一点判定线，更灵敏
+  const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // ==========================================================
-  // 🔥 滚动执行
-  // ==========================================================
-
-  // 情况 A：底部被挡
-  if (caretDesiredBottom > effectiveViewBottom) {
-    // 滚到底部，并额外多给 10px 的呼吸空间
-    el.scrollTop = caretDesiredBottom - effectiveVisibleHeight + 10
-  }
-  // 情况 B：顶部被挡 (刘海区)
-  else if (caretDesiredTop < (viewTop + 20)) {
-    el.scrollTop = Math.max(caretDesiredTop - 20, 0)
-  }
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
+
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node
   while (el) {
@@ -1065,9 +1009,6 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-  if (!window.visualViewport)
-    return
-  realViewportHeight.value = window.visualViewport.height
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
@@ -1127,10 +1068,7 @@ function recomputeBottomSafePadding() {
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const baseExtra = isAndroid ? 28 : (iosFirstInputLatch.value ? 60 : 40)
-  const topOffsetCompensation = isIOS ? 24 : 0
-
-  const EXTRA = baseExtra + topOffsetCompensation
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1430,10 +1368,6 @@ function onDocSelectionChange() {
 
 onMounted(() => {
   document.addEventListener('selectionchange', onDocSelectionChange)
-  if (window.visualViewport)
-    realViewportHeight.value = window.visualViewport.height
-  else
-    realViewportHeight.value = window.innerHeight
 })
 onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
@@ -2237,13 +2171,6 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
-    <Teleport to="body">
-      <div
-        v-if="isEditing"
-        ref="maskRef"
-        class="final-notch-mask"
-      />
-    </Teleport>
     <input
       ref="imageInputRef"
       type="file"
@@ -2302,10 +2229,6 @@ function handleBeforeInput(e: InputEvent) {
         v-model="input"
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
-        :style="{
-          height: realViewportHeight ? `${realViewportHeight}px` : '100%',
-          marginTop: 'env(safe-area-inset-top)', /* 确保从遮罩下方开始 */
-        }"
         :placeholder="placeholder"
         autocomplete="off"
         autocorrect="on"
@@ -2702,13 +2625,10 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-/* ✅ 修改：去掉 min-height，让 JS 控制 height */
-  /* min-height: 360px;  <-- 删除或注释 */
-  /* max-height: 75dvh;  <-- 删除或注释 (这是之前的罪魁祸首之一) */
+  min-height: 360px;
+  max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-  padding-top: 12px;
-  padding-bottom: 150px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -3167,31 +3087,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-</style>
-
-<style>
-.final-notch-mask {
-  position: fixed; /* 依然使用 fixed */
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999;
-
-  /* 恢复为正常背景色（如白色或 #f9f9f9） */
-  background-color: #f9f9f9;
-
-  /* 使用 env 计算高度，兜底 20px */
-  height: env(safe-area-inset-top, 20px);
-
-  pointer-events: none;
-
-  /* 关键：开启 GPU 加速，保证 JS 更新位置时不闪烁 */
-  will-change: transform;
-}
-
-/* 深色模式适配 */
-.dark .final-notch-mask {
-  background-color: #2c2c2e;
 }
 </style>
