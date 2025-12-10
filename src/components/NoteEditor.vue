@@ -1093,7 +1093,14 @@ function recomputeBottomSafePadding() {
     : caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+
+  // ✅ 修改：获取顶部刘海高度（近似值）
+  // 如果是 iOS，我们默认认为有 47px~50px 的刘海遮罩占用
+  const topMaskHeight = isIOS ? 50 : 0
+
+  // ✅ 修改：将 topMaskHeight 加到 EXTRA 中
+  // 这样 JS 就会认为“底部需要更多空间”，从而把页面推得更高
+  const EXTRA = (isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32)) + topMaskHeight
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
