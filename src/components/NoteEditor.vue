@@ -1374,16 +1374,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  if (isIOS && !props.isEditing && contentModel.value.length < 10) {
-    const resetScroll = () => {
-      if (textarea.value)
-        textarea.value.scrollTop = 0
-    }
-    // 连按三次，防止 iOS 动画过程中又偷跑
-    resetScroll()
-    setTimeout(resetScroll, 50)
-    setTimeout(resetScroll, 200)
-  }
   emit('focus')
   captureCaret()
 
@@ -2634,18 +2624,11 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-textarea {
-width: 100%;
+  width: 100%;
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
-
-  /* ✅ 修改这里：基础 12px + 刘海高度 */
   padding: 12px 8px 8px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
-
-  /* ✅ 新增：虽然主要靠上面的 JS，但加个 scroll-padding 也是好习惯 */
-  scroll-padding-top: calc(12px + env(safe-area-inset-top));
-
   border: none;
   background-color: transparent;
   color: inherit;
