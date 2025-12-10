@@ -2650,6 +2650,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
+  padding-top: env(safe-area-inset-top);
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
@@ -2661,7 +2662,6 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-
   border: none;
   background-color: transparent;
   color: inherit;
