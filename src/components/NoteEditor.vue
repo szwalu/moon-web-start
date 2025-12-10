@@ -978,7 +978,6 @@ watch(() => props.isLoading, (newValue) => {
 })
 
 // ============== 滚动校准 ==============
-// 替换原有的 ensureCaretVisibleInTextarea 函数
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
@@ -986,69 +985,59 @@ function ensureCaretVisibleInTextarea() {
   if (!el)
     return
 
-  // 1. 获取输入框的样式信息
+  // 1. 基础信息获取
   const style = getComputedStyle(el)
 
-  // 2. 创建镜像元素计算光标像素位置 (这部分保持原样，为了精确获取光标 Y 坐标)
+  // 2. 镜像计算光标位置 (保持原样)
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
-
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
-
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  // 获取光标在内容中的绝对 Y 坐标
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
   // ==========================================================
-  // 🔥 核心修改开始：计算“真实”的可视区域
+  // 🔥 核心调整区域
   // ==========================================================
 
-  // 当前滚动位置
   const viewTop = el.scrollTop
-
-  // 获取当前可视视口的高度 (兼容性兜底)
   const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight
-
-  // 获取输入框距离视口顶部的距离 (通常就是刘海遮罩的高度，比如 50px)
   const rect = el.getBoundingClientRect()
   const offsetTop = rect.top
 
-  // 🛑 关键：输入法候选栏/状态栏缓冲区
-  // 给 iOS 多留出 40px 的余量，防止光标贴着键盘上沿
+  // ✅ 修改点：加大缓冲至 72px，解决“挡住一行”的问题
   const KEYBOARD_BUFFER = 72
 
-  // 计算输入框在当前视口中“真正可见”的高度
-  // 公式：可视视口高度 - 输入框顶部偏移 - 底部缓冲
+  // 计算有效可视高度
   let effectiveVisibleHeight = vvHeight - offsetTop - KEYBOARD_BUFFER
+  // 兜底：防止负数（虽然不太可能）
+  if (effectiveVisibleHeight < 100)
+    effectiveVisibleHeight = 100
 
-  // 兜底：可见高度不能超过元素本身的物理高度
+  // 限制最大可见高度不能超过元素本身
   effectiveVisibleHeight = Math.min(effectiveVisibleHeight, el.clientHeight)
 
-  // 计算“有效”的视图底部边界 (Scroll Coordinates)
+  // 计算视图边界
   const effectiveViewBottom = el.scrollTop + effectiveVisibleHeight
 
-  // 定义光标的目标位置 (上下各留半行缓冲)
+  // 光标目标位置（包含半行缓冲）
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 0.5 // 这里稍微减小一点判定线，更灵敏
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
   // ==========================================================
-  // 🔥 滚动判断逻辑
+  // 🔥 滚动执行
   // ==========================================================
 
-  // 情况 A：光标在底部被遮挡 (短笔记常见问题)
-  // 如果光标位置 > 当前可视底部，说明被键盘挡住了
+  // 情况 A：底部被挡
   if (caretDesiredBottom > effectiveViewBottom) {
-    // 强制向下滚，把光标露出来
-    // 目标：让光标刚好处于可视区域底部
-    el.scrollTop = caretDesiredBottom - effectiveVisibleHeight
+    // 滚到底部，并额外多给 10px 的呼吸空间
+    el.scrollTop = caretDesiredBottom - effectiveVisibleHeight + 10
   }
-  // 情况 B：光标在顶部被遮挡 (被刘海遮罩挡住)
-  // 这里的 20 是之前提到的顶部缓冲
+  // 情况 B：顶部被挡 (刘海区)
   else if (caretDesiredTop < (viewTop + 20)) {
     el.scrollTop = Math.max(caretDesiredTop - 20, 0)
   }
