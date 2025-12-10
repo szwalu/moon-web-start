@@ -2172,10 +2172,7 @@ function handleBeforeInput(e: InputEvent) {
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
     <Teleport to="body">
-      <div
-        v-if="isEditing"
-        class="global-notch-mask"
-      />
+      <div class="debug-notch-mask-force" />
     </Teleport>
     <input
       ref="imageInputRef"
@@ -3098,45 +3095,21 @@ function handleBeforeInput(e: InputEvent) {
 </style>
 
 <style>
-.global-notch-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999; /* ✅ 必须极高，盖过 Naive UI Dialog (通常是 2000-3000) */
+/* 暴力调试样式 */
+.debug-notch-mask-force {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
 
-  /* ✅ 关键：高度 = 刘海高度。
-     如果没有刘海 (PC/旧手机)，env通常为0。
-     为了测试效果，可以先加一个 min-height: 0px;
-     但在刘海屏上 env 会生效。
-  */
-  height: env(safe-area-inset-top);
+  /* 强制给 50px，不依赖 env，看能不能挡住 */
+  height: 50px !important;
 
-  /* ✅ 背景色：必须与你的编辑器背景一致，造成“隐形”效果 */
-  background-color: #f9f9f9;
-  pointer-events: none; /* 让点击穿透，不影响状态栏操作 */
-}
+  /* 鲜艳红色 */
+  background-color: red !important;
 
-/* 适配暗黑模式 (假设 dark 类加在 body 或 html 上) */
-.dark .global-notch-mask {
-  background-color: #2c2c2e;
-}
-
-.debug-notch-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999; /* 确保层级最高 */
-
-  /* ✅ 关键策略：
-     优先用 env 计算。
-     如果 env 失效（比如 meta 没改对），强制给 40px 高度，保证你起码能看到它！
-  */
-  height: env(safe-area-inset-top, 40px);
-
-  /* 🔴 暂时用半透明红色，看到红条就说明成功了，之后再改回背景色 */
-  background-color: rgba(255, 0, 0, 0.5);
+  /* 层级拉满，防止被 Naive UI 的 2000 层级盖住 */
+  z-index: 2147483647 !important;
 
   pointer-events: none;
 }
