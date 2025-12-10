@@ -46,36 +46,6 @@ const draftStorageKey = computed(() => {
   // 之前的逻辑作为后备（用于新建笔记或未传 ID 的情况）
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
-
-// 2. 定义遮罩的 ref
-const notchMaskRef = ref<HTMLElement | null>(null)
-
-// 3. 定义追踪函数
-function updateMaskPosition() {
-  const mask = notchMaskRef.value
-  if (!mask)
-    return
-
-  // 核心逻辑：
-  // 遮罩在文档中的 Top = 当前页面卷去的高度 (window.scrollY)
-  // 这样无论页面怎么滚，遮罩看起来都像是“钉”在屏幕顶部的
-  mask.style.transform = `translateY(${window.scrollY}px)`
-}
-
-onMounted(() => {
-  // 监听全局滚动，实时修正遮罩位置
-  window.addEventListener('scroll', updateMaskPosition, { passive: true })
-  // 监听 resize (键盘弹起/收回)
-  window.addEventListener('resize', updateMaskPosition)
-
-  // 初始修正
-  updateMaskPosition()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', updateMaskPosition)
-  window.removeEventListener('resize', updateMaskPosition)
-})
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -541,8 +511,6 @@ onMounted(() => {
   // (注意：如果是 props.isEditing 为 true 时的 focusToEnd 逻辑保持不变)
   if (props.isEditing)
     focusToEnd()
-  else if (isIOS)
-    window.scrollTo(0, 0)
 })
 
 // 内容变化：400ms 节流保存
@@ -1406,33 +1374,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-// ================= 🟢 新增开始：强制修正 iOS 新建笔记刘海遮挡 =================
-  // 仅在 iOS + 非编辑模式(新建) + 内容为空时触发
-  if (isIOS && !props.isEditing && (!contentModel.value || contentModel.value.length < 5)) {
-    // 使用多次修正，覆盖键盘弹起动画的不同阶段 (iOS 键盘动画约 300-400ms)
-    const fixScroll = () => {
-      // 1. 强制窗口滚回顶部（解决整个页面被顶上去）
-      window.scrollTo({ top: 0, behavior: 'auto' })
-
-      // 2. 强制输入框内部滚回顶部（解决文字被顶上去）
-      const el = textarea.value
-      if (el)
-        el.scrollTop = 0
-    }
-
-    // 立即执行一次
-    fixScroll()
-
-    // 100ms 后执行（动画开始）
-    setTimeout(fixScroll, 100)
-
-    // 300ms 后执行（动画中段）
-    setTimeout(fixScroll, 300)
-
-    // 500ms 后执行（动画结束兜底）
-    setTimeout(fixScroll, 500)
-  }
-  // ================= 🔴 新增结束 =================
   emit('focus')
   captureCaret()
 
@@ -2230,13 +2171,6 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
-    <Teleport to="body">
-      <div
-        v-if="isEditing"
-        ref="notchMaskRef"
-        class="tracking-notch-mask"
-      />
-    </Teleport>
     <input
       ref="imageInputRef"
       type="file"
@@ -2684,8 +2618,6 @@ function handleBeforeInput(e: InputEvent) {
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
-  box-sizing: border-box;
-  padding-top: calc(10px + env(safe-area-inset-top));
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
@@ -2716,18 +2648,11 @@ function handleBeforeInput(e: InputEvent) {
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 }
-
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
-    line-height: 2.0;
-    /* ✅ 修改：桌面端不需要刘海避让，给个舒适的 16px 即可 */
-    padding: 16px 24px;
-  }
-
-  /* 记得把父容器的 padding 在桌面端重置，否则会双重叠加 */
-  .editor-wrapper {
-    padding-top: 0;
+    line-height: 2.0; /* 桌面端行距 */
+    padding: 16px 24px; /* 桌面端内边距 */
   }
 }
 .editor-textarea.font-size-small { font-size: 14px; }
@@ -3169,29 +3094,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-</style>
-
-<style>
-.tracking-notch-mask {
-  /* ✅ 改为 absolute，让它相对于整个文档定位 */
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99999;
-
-  /* 高度 = 刘海高度 */
-  height: env(safe-area-inset-top);
-
-  /* 背景色：必须与你的编辑器背景一致 */
-  background-color: #f9f9f9;
-  /* 深色模式适配 */
-  /* background-color: #2c2c2e; */
-
-  pointer-events: none;
-
-  /* ✅ 关键：告诉浏览器这个元素会频繁移动，开启 GPU 加速，防止闪烁 */
-  will-change: transform;
 }
 </style>
