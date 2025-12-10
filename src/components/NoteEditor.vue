@@ -164,42 +164,38 @@ function updateMobileBarPosition() {
     return
   const vv = window.visualViewport
 
-  // 1. 计算视口底部坐标
+  // 1. 计算视口底线 (VisualViewport 坐标系)
   const topPos = vv.offsetTop + vv.height
 
-  // 2. 更稳健的键盘判断：
-  // 不用 -100 这种硬数值，改为比例判断（如果视口高度小于屏幕高度的 80%，肯定是有键盘）
-  // 或者只要是聚焦状态且视口变矮了，就认为是键盘弹起
-  const isKeyboardOpen = isInputFocused.value && (vv.height < window.innerHeight * 0.9)
-
-  if (isKeyboardOpen) {
+  // 🔥🔥🔥 核心修复 1：防掉落逻辑 🔥🔥🔥
+  // 只要输入框是聚焦状态，我们就死死钉在 VisualViewport 底部，不进行脆弱的高度计算。
+  // 这样无论地址栏怎么缩放，工具条都不会掉下去。
+  if (isInputFocused.value) {
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
       right: '0',
+      // 钉在可视窗口底边
       top: `${topPos}px`,
-      transform: 'translateY(-100%)', // 向上偏移自身高度
+      // 向上偏移 100%，刚好骑在底线上
+      transform: 'translateY(-100%)',
       zIndex: '2000',
       width: '100%',
       paddingBottom: '0',
       borderTop: '1px solid #e0e0e0',
-
-      // 🔥🔥🔥 核心修复 1：去掉 transition！🔥🔥🔥
-      // 必须是 none，否则滚动时工具条会“果冻般”抖动，追不上键盘
+      // 🔥 彻底禁止动画，防止打字时工具条抖动
       transition: 'none',
     }
 
-    // 🔥🔥🔥 核心修复 2：合理的固定 Padding 🔥🔥🔥
-    // 不要 50dvh 了，改为 120px。
-    // 120px = 工具条(50) + 预留行(30) + 缓冲(40)。
-    // 这保证了最后一行能滚上来，但底下不会空一大截。
+    // 🔥🔥🔥 核心修复 2：适度的 Padding 🔥🔥🔥
+    // 90px 足够让光标露出来，又不会离工具条太远。
     textareaStyle.value = {
-      paddingBottom: '120px',
-      transition: 'none', // 这里也不要动画，防止高度突变造成的闪烁
+      paddingBottom: '90px',
+      transition: 'none',
     }
   }
   else {
-    // 键盘收起状态
+    // 没聚焦时，恢复到底部
     mobileBarStyle.value = {
       position: 'fixed',
       left: '0',
@@ -209,12 +205,13 @@ function updateMobileBarPosition() {
       transform: 'none',
       zIndex: '2000',
       paddingBottom: 'env(safe-area-inset-bottom)',
-      transition: 'all 0.2s ease-out', // 收起时可以有动画
+      transition: 'all 0.2s ease-out',
       borderTop: '1px solid #e0e0e0',
     }
 
+    // 恢复默认 Padding
     textareaStyle.value = {
-      paddingBottom: '', // 恢复默认
+      paddingBottom: '',
       transition: 'padding-bottom 0.2s ease',
     }
   }
@@ -1111,13 +1108,13 @@ let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-  // 移动端专用逻辑
+  // 移动端专用
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
   }
 
-  // 1. 未聚焦时，给个基础安全区
+  // 1. 未聚焦，给个底垫防止贴底
   if (!isInputFocused.value) {
     if (isFreezingBottom.value)
       return
@@ -1125,7 +1122,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 🔥 聚焦时：绝不改变页面物理高度（防止弹跳）
+  // 🔥 聚焦时：绝不改变页面高度，防止乱弹
   emit('bottomSafeChange', 0)
 
   const el = textarea.value
@@ -1135,11 +1132,11 @@ function recomputeBottomSafePadding() {
   if (!vv)
     return
 
-  // 2. 计算光标位置
+  // 2. 简单粗暴的红线检查
   const rect = el.getBoundingClientRect()
-  const selectionEnd = el.selectionEnd || 0
 
-  // 镜像计算...
+  // 获取光标坐标
+  const selectionEnd = el.selectionEnd || 0
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
   mirror.style.cssText
@@ -1152,31 +1149,21 @@ function recomputeBottomSafePadding() {
 
   mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
   document.body.appendChild(mirror)
-
-  // 注意：这里减去的是 updateMobileBarPosition 设置的 120px
-  // 这样算出来的 caretTopInEl 是光标底边相对于 textarea 内容顶部的距离
+  // 减去90px padding，获取文字底边
   const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 3. 计算光标在 VisualViewport 中的 Y 坐标
   const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
 
-  // 4. 设定红线
-  // 工具条高度(约54) + 想要露出的文字高度(约30) + 舒适缓冲(10) = ~94px
-  // 只要光标进入屏幕底部 94px 区域，就认为被挡了
-  const SAFETY_GAP = 94
-  const threshold = vv.height - SAFETY_GAP
+  // 3. 设定红线：工具条(54) + 预留文字(24) = 78px
+  // 只要光标进入这个区域，就视为被挡
+  const threshold = vv.height - 78
 
-  // 5. 计算需要滚动的量
   const need = Math.ceil(caretYInVV - threshold)
 
-  // 6. 执行滚动
-  if (need > 0) {
-    if (props.enableScrollPush) {
-      // 直接滚动窗口，不加 padding
-      window.scrollBy({ top: need, behavior: 'auto' })
-    }
-  }
+  // 4. 只有在确实被挡住时才微调
+  if (need > 0 && props.enableScrollPush)
+    window.scrollBy({ top: need, behavior: 'auto' })
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
