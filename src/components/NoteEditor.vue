@@ -541,6 +541,8 @@ onMounted(() => {
   // (注意：如果是 props.isEditing 为 true 时的 focusToEnd 逻辑保持不变)
   if (props.isEditing)
     focusToEnd()
+  else if (isIOS)
+    window.scrollTo(0, 0)
 })
 
 // 内容变化：400ms 节流保存
@@ -1404,6 +1406,33 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+// ================= 🟢 新增开始：强制修正 iOS 新建笔记刘海遮挡 =================
+  // 仅在 iOS + 非编辑模式(新建) + 内容为空时触发
+  if (isIOS && !props.isEditing && (!contentModel.value || contentModel.value.length < 5)) {
+    // 使用多次修正，覆盖键盘弹起动画的不同阶段 (iOS 键盘动画约 300-400ms)
+    const fixScroll = () => {
+      // 1. 强制窗口滚回顶部（解决整个页面被顶上去）
+      window.scrollTo({ top: 0, behavior: 'auto' })
+
+      // 2. 强制输入框内部滚回顶部（解决文字被顶上去）
+      const el = textarea.value
+      if (el)
+        el.scrollTop = 0
+    }
+
+    // 立即执行一次
+    fixScroll()
+
+    // 100ms 后执行（动画开始）
+    setTimeout(fixScroll, 100)
+
+    // 300ms 后执行（动画中段）
+    setTimeout(fixScroll, 300)
+
+    // 500ms 后执行（动画结束兜底）
+    setTimeout(fixScroll, 500)
+  }
+  // ================= 🔴 新增结束 =================
   emit('focus')
   captureCaret()
 
