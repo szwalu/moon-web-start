@@ -2684,6 +2684,8 @@ function handleBeforeInput(e: InputEvent) {
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
+  box-sizing: border-box;
+  padding-top: calc(10px + env(safe-area-inset-top));
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
@@ -2694,10 +2696,10 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
-  padding-top: calc(10px + env(safe-area-inset-top));
-  scroll-padding-top: calc(10px + env(safe-area-inset-top));
-  scroll-margin-top: calc(10px + env(safe-area-inset-top));
+
+  /* ✅ 修改：Top 改回 0 或者很小的值 (因为父容器已经挤下来了) */
+  padding: 0 8px 8px 16px;
+
   padding-bottom: 40vh;
   border: none;
   background-color: transparent;
@@ -2714,8 +2716,14 @@ function handleBeforeInput(e: InputEvent) {
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
-    line-height: 2.0; /* 桌面端行距 */
-    padding: 16px 24px; /* 桌面端内边距 */
+    line-height: 2.0;
+    /* ✅ 修改：桌面端不需要刘海避让，给个舒适的 16px 即可 */
+    padding: 16px 24px;
+  }
+
+  /* 记得把父容器的 padding 在桌面端重置，否则会双重叠加 */
+  .editor-wrapper {
+    padding-top: 0;
   }
 }
 .editor-textarea.font-size-small { font-size: 14px; }
