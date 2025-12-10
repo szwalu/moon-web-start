@@ -134,7 +134,7 @@ navbar:
   auth: 登録 / ログイン
   logout: ログアウト
   account: マイアカウント
-  cloud_Notes: クラウドノート
+  cloud_Notes: 星雲ノート
 
 footer:
   disclaimer: 当サイトの内容はインターネット上の情報を元にしています。権利を侵害する内容がある場合はご連絡ください。
@@ -148,7 +148,7 @@ form:
   title: ご意見・ご提案
   breadcrumb: 申請とフィードバック
   tip: こんにちは。招待コードの申請、サイト収録、リンク申請、またはフィードバックは、以下よりご記入ください
-  tipauth: こんにちは、Nebula Notesへようこそ。ご意見やご感想がございましたら、下記のフォームにご記入の上、送信してください。よろしくお願いいたします。
+  tipauth: こんにちは、星雲ノートへようこそ。ご意見やご感想がございましたら、下記のフォームにご記入の上、送信してください。よろしくお願いいたします。
   selectLabel: 選択してください
   selectPlaceholder: タイプを選択
   options:
@@ -286,7 +286,7 @@ auth:
     change_password_failed: 変更失敗。もう一度お試しください
 
   activation:
-    title: 🎉 Moon Noteへようこそ
+    title: 🎉 星雲ノートへようこそ
     description: |
       Googleログインを確認しました。
       現在、招待制となっております。招待コードを入力して有効化してください。
@@ -332,7 +332,7 @@ index:
 app:
   name_short: クラウドノート
 notes:
-  notes: クラウドノート
+  notes: 星雲ノート
   notes_bj: メモ
   save_note: メモを保存
   more_notes: もっと見る

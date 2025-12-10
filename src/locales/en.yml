@@ -134,7 +134,7 @@ navbar:
   auth: Sign Up / Login
   logout: Logout
   account: My Account
-  cloud_Notes: Cloud Notes
+  cloud_Notes: Nebula Note
 
 footer:
   disclaimer: 'The content of this site comes from the Internet. If any content infringes rights, please contact us to remove it.'
@@ -329,9 +329,9 @@ index:
   weather_unknown_city: Unknown location
 
 app:
-  name_short: Cloud Notes
+  name_short: Nebula Note
 notes:
-  notes: Cloud Notes
+  notes: Nebula Note
   notes_bj: Notes
   save_note: Save Note
   more_notes: More Notes

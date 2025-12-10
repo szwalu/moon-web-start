@@ -48,7 +48,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: '我abc网址导航',
+        name: '星云笔记',
         short_name: '星云笔记',
         start_url: '/auth', // ← 改这里
         scope: '/',
