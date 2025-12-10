@@ -1374,6 +1374,16 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  if (isIOS && !props.isEditing && contentModel.value.length < 10) {
+    const resetScroll = () => {
+      if (textarea.value)
+        textarea.value.scrollTop = 0
+    }
+    // 连按三次，防止 iOS 动画过程中又偷跑
+    resetScroll()
+    setTimeout(resetScroll, 50)
+    setTimeout(resetScroll, 200)
+  }
   emit('focus')
   captureCaret()
 
@@ -2624,19 +2634,18 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-textarea {
-  width: 100%;
+width: 100%;
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
 
-  /* 1. 保持你原本舒适的小内边距（不要改大这里的 padding-top） */
+  /* ✅ 修改这里：基础 12px + 刘海高度 */
   padding: 12px 8px 8px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
 
-  /* 2. ✅ 核心修复：添加 scroll-margin-top */
-  /* 这行代码告诉浏览器：“当你自动滚动聚焦输入框时，请在输入框头顶留出刘海的高度，不要顶满屏幕” */
-  scroll-margin-top: calc(12px + env(safe-area-inset-top));
+  /* ✅ 新增：虽然主要靠上面的 JS，但加个 scroll-padding 也是好习惯 */
+  scroll-padding-top: calc(12px + env(safe-area-inset-top));
 
-  padding-bottom: 40vh;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -2647,7 +2656,8 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-}
+} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
+
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
