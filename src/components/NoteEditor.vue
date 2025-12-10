@@ -46,6 +46,32 @@ const draftStorageKey = computed(() => {
   // 之前的逻辑作为后备（用于新建笔记或未传 ID 的情况）
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
+
+const maskRef = ref<HTMLElement | null>(null)
+
+function updateMaskPosition() {
+  const mask = maskRef.value
+  if (!mask || !window.visualViewport)
+    return
+
+  // 核心黑科技：让遮罩层的 top 永远等于可视窗口的偏移量
+  // 这样无论页面怎么被推，遮罩层都会“瞬间移动”回屏幕最顶端
+  mask.style.transform = `translateY(${window.visualViewport.offsetTop}px)`
+}
+
+onMounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('scroll', updateMaskPosition)
+    window.visualViewport.addEventListener('resize', updateMaskPosition)
+  }
+})
+
+onUnmounted(() => {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('scroll', updateMaskPosition)
+    window.visualViewport.removeEventListener('resize', updateMaskPosition)
+  }
+})
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
 const pinnedTags = ref<string[]>([])
@@ -2171,6 +2197,13 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
+    <Teleport to="body">
+      <div
+        v-if="isEditing"
+        ref="maskRef"
+        class="final-notch-mask"
+      />
+    </Teleport>
     <input
       ref="imageInputRef"
       type="file"
@@ -3089,5 +3122,31 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
+}
+</style>
+
+<style>
+.final-notch-mask {
+  position: fixed; /* 依然使用 fixed */
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+
+  /* 恢复为正常背景色（如白色或 #f9f9f9） */
+  background-color: #f9f9f9;
+
+  /* 使用 env 计算高度，兜底 20px */
+  height: env(safe-area-inset-top, 20px);
+
+  pointer-events: none;
+
+  /* 关键：开启 GPU 加速，保证 JS 更新位置时不闪烁 */
+  will-change: transform;
+}
+
+/* 深色模式适配 */
+.dark .final-notch-mask {
+  background-color: #2c2c2e;
 }
 </style>
