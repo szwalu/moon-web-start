@@ -47,30 +47,34 @@ const draftStorageKey = computed(() => {
   return props.draftKey || (props.isEditing ? 'note_draft_edit' : 'note_draft_new')
 })
 
-const maskRef = ref<HTMLElement | null>(null)
+// 2. 定义遮罩的 ref
+const notchMaskRef = ref<HTMLElement | null>(null)
 
+// 3. 定义追踪函数
 function updateMaskPosition() {
-  const mask = maskRef.value
-  if (!mask || !window.visualViewport)
+  const mask = notchMaskRef.value
+  if (!mask)
     return
 
-  // 核心黑科技：让遮罩层的 top 永远等于可视窗口的偏移量
-  // 这样无论页面怎么被推，遮罩层都会“瞬间移动”回屏幕最顶端
-  mask.style.transform = `translateY(${window.visualViewport.offsetTop}px)`
+  // 核心逻辑：
+  // 遮罩在文档中的 Top = 当前页面卷去的高度 (window.scrollY)
+  // 这样无论页面怎么滚，遮罩看起来都像是“钉”在屏幕顶部的
+  mask.style.transform = `translateY(${window.scrollY}px)`
 }
 
 onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('scroll', updateMaskPosition)
-    window.visualViewport.addEventListener('resize', updateMaskPosition)
-  }
+  // 监听全局滚动，实时修正遮罩位置
+  window.addEventListener('scroll', updateMaskPosition, { passive: true })
+  // 监听 resize (键盘弹起/收回)
+  window.addEventListener('resize', updateMaskPosition)
+
+  // 初始修正
+  updateMaskPosition()
 })
 
 onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('scroll', updateMaskPosition)
-    window.visualViewport.removeEventListener('resize', updateMaskPosition)
-  }
+  window.removeEventListener('scroll', updateMaskPosition)
+  window.removeEventListener('resize', updateMaskPosition)
 })
 // —— 常用标签（与 useTagMenu 保持同一存储键）——
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
@@ -2200,8 +2204,8 @@ function handleBeforeInput(e: InputEvent) {
     <Teleport to="body">
       <div
         v-if="isEditing"
-        ref="maskRef"
-        class="final-notch-mask"
+        ref="notchMaskRef"
+        class="tracking-notch-mask"
       />
     </Teleport>
     <input
@@ -2662,8 +2666,8 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-  padding-top: 12px;
-  padding-bottom: 120px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: 40vh;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -3126,27 +3130,25 @@ function handleBeforeInput(e: InputEvent) {
 </style>
 
 <style>
-.final-notch-mask {
-  position: fixed; /* 依然使用 fixed */
+.tracking-notch-mask {
+  /* ✅ 改为 absolute，让它相对于整个文档定位 */
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 99999;
 
-  /* 恢复为正常背景色（如白色或 #f9f9f9） */
-  background-color: #f9f9f9;
+  /* 高度 = 刘海高度 */
+  height: env(safe-area-inset-top);
 
-  /* 使用 env 计算高度，兜底 20px */
-  height: env(safe-area-inset-top, 20px);
+  /* 背景色：必须与你的编辑器背景一致 */
+  background-color: #f9f9f9;
+  /* 深色模式适配 */
+  /* background-color: #2c2c2e; */
 
   pointer-events: none;
 
-  /* 关键：开启 GPU 加速，保证 JS 更新位置时不闪烁 */
+  /* ✅ 关键：告诉浏览器这个元素会频繁移动，开启 GPU 加速，防止闪烁 */
   will-change: transform;
-}
-
-/* 深色模式适配 */
-.dark .final-notch-mask {
-  background-color: #2c2c2e;
 }
 </style>
