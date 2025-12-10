@@ -2666,7 +2666,7 @@ function handleBeforeInput(e: InputEvent) {
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
-  padding-top: 20px;
+  padding-top: calc(10px + env(safe-area-inset-top));
   scroll-padding-top: calc(env(safe-area-inset-top) + 20px);
   padding-bottom: 40vh;
   border: none;
