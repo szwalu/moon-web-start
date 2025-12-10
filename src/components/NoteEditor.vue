@@ -977,12 +977,15 @@ function ensureCaretVisibleInTextarea() {
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const TOP_BUFFER = 20
 
-  if (caretDesiredBottom > viewBottom)
+  if (caretDesiredBottom > viewBottom) {
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  }
+  else if (caretDesiredTop < (viewTop + TOP_BUFFER)) {
+    // ✅ 这样光标在向上滚动时，会停在距离顶部 20px 的位置，而不是冲进刘海
+    el.scrollTop = Math.max(caretDesiredTop - TOP_BUFFER, 0)
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -2601,6 +2604,14 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  padding-top: env(safe-area-inset-top);
+  background-color: #f9f9f9; /* 确保背景色覆盖状态栏区域 */
+}
+
+/* 确保 textarea 不要自己再加这个 padding，防止重叠 */
+.editor-textarea {
+  /* 修改 padding 为固定值 */
+  padding: 12px 8px 8px 16px;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2628,10 +2639,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-right: 8px;
-  padding-bottom: 8px;
-  padding-left: 16px;
+  padding: 12px 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
