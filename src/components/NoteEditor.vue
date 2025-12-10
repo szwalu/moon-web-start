@@ -33,7 +33,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-const isInputFocused = ref(false)
+
 const { t } = useI18n()
 
 const dialog = useDialog()
@@ -145,8 +145,7 @@ const pendingDraftText = ref('')
 // 🔥 新增：提示框模式 ('draft' | 'error') 和 错误信息
 const promptMode = ref<'draft' | 'error'>('draft')
 const promptErrorMsg = ref('')
-const mobileBarStyle = ref<Record<string, string>>({})
-const textareaStyle = ref<Record<string, string>>({})
+
 // 🔥 新增：报错时的“好的”按钮点击事件
 function handleErrorConfirm() {
   showDraftPrompt.value = false // 关闭弹窗
@@ -154,84 +153,6 @@ function handleErrorConfirm() {
   nextTick(() => {
     focusToEnd()
   })
-}
-
-// ✅ 1. 新增：控制工具条的循环监测
-let keyboardLoopRaf: number | null = null
-
-function updateMobileBarPosition() {
-  if (!window.visualViewport)
-    return
-  const vv = window.visualViewport
-
-  // 1. 计算视口底线 (VisualViewport 坐标系)
-  const topPos = vv.offsetTop + vv.height
-
-  // 🔥🔥🔥 核心修复 1：防掉落逻辑 🔥🔥🔥
-  // 只要输入框是聚焦状态，我们就死死钉在 VisualViewport 底部，不进行脆弱的高度计算。
-  // 这样无论地址栏怎么缩放，工具条都不会掉下去。
-  if (isInputFocused.value) {
-    mobileBarStyle.value = {
-      position: 'fixed',
-      left: '0',
-      right: '0',
-      // 钉在可视窗口底边
-      top: `${topPos}px`,
-      // 向上偏移 100%，刚好骑在底线上
-      transform: 'translateY(-100%)',
-      zIndex: '2000',
-      width: '100%',
-      paddingBottom: '0',
-      borderTop: '1px solid #e0e0e0',
-      // 🔥 彻底禁止动画，防止打字时工具条抖动
-      transition: 'none',
-    }
-
-    // 🔥🔥🔥 核心修复 2：适度的 Padding 🔥🔥🔥
-    // 90px 足够让光标露出来，又不会离工具条太远。
-    textareaStyle.value = {
-      paddingBottom: '90px',
-      transition: 'none',
-    }
-  }
-  else {
-    // 没聚焦时，恢复到底部
-    mobileBarStyle.value = {
-      position: 'fixed',
-      left: '0',
-      right: '0',
-      bottom: '0',
-      top: 'auto',
-      transform: 'none',
-      zIndex: '2000',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      transition: 'all 0.2s ease-out',
-      borderTop: '1px solid #e0e0e0',
-    }
-
-    // 恢复默认 Padding
-    textareaStyle.value = {
-      paddingBottom: '',
-      transition: 'padding-bottom 0.2s ease',
-    }
-  }
-}
-
-// ✅ 2. 启动循环监听（解决输入换行时的抖动/推移问题）
-function startKeyboardLoop() {
-  stopKeyboardLoop()
-  const loop = () => {
-    updateMobileBarPosition()
-    keyboardLoopRaf = requestAnimationFrame(loop)
-  }
-  loop()
-}
-
-function stopKeyboardLoop() {
-  if (keyboardLoopRaf) {
-    cancelAnimationFrame(keyboardLoopRaf)
-    keyboardLoopRaf = null
-  }
 }
 
 // 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
@@ -1041,7 +962,6 @@ function ensureCaretVisibleInTextarea() {
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
-  // 保持原有镜像逻辑...
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
@@ -1055,25 +975,14 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-  // 🔥🔥🔥 核心修复：定义内部可视底线 🔥🔥🔥
-  // el.clientHeight 包含了我们设置的 120px padding。
-  // 我们必须减去这 120px (再多减 20px 做缓冲)，强迫 textarea 内部发生滚动，
-  // 确保光标永远保持在 Padding 区域之上。
-  // 这里的 140 = 120(padding) + 20(buffer)
-  const effectiveClientHeight = el.clientHeight - (isMobile ? 140 : 0)
-
-  const viewBottom = el.scrollTop + effectiveClientHeight
-
+  const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
-    // 滚到底部，让光标位于可视区下方边缘
-    el.scrollTop = caretDesiredBottom - effectiveClientHeight
-  }
-  else if (caretDesiredTop < viewTop) {
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
-  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1092,78 +1001,140 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
 
 function getFooterHeight(): number {
   const root = rootRef.value
-  // 1. 优先找新版工具条
-  const mobileBar = root ? (root.querySelector('.mobile-keyboard-bar') as HTMLElement | null) : null
-  if (mobileBar && mobileBar.offsetHeight > 0)
-    return mobileBar.offsetHeight
-
-  // 2. 再找旧版 footer
   const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  if (footerEl)
-    return footerEl.offsetHeight
-
-  return 0
+  return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
+
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
 function recomputeBottomSafePadding() {
-  // 移动端专用
   if (!isMobile) {
     emit('bottomSafeChange', 0)
     return
   }
+  if (isFreezingBottom.value)
+    return
 
-  // 1. 未聚焦，给个底垫防止贴底
-  if (!isInputFocused.value) {
-    if (isFreezingBottom.value)
-      return
-    emit('bottomSafeChange', 88)
+  const el = textarea.value
+  if (!el) {
+    emit('bottomSafeChange', 0)
     return
   }
 
-  // 🔥 聚焦时：绝不改变页面高度，防止乱弹
-  emit('bottomSafeChange', 0)
-
-  const el = textarea.value
-  if (!el)
-    return
   const vv = window.visualViewport
-  if (!vv)
+  if (!vv) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
     return
+  }
 
-  // 2. 简单粗暴的红线检查
-  const rect = el.getBoundingClientRect()
+  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
+  if (!isAndroid && keyboardHeight < 60) {
+    emit('bottomSafeChange', 0)
+    _hasPushedPage = false
+    return
+  }
 
-  // 获取光标坐标
-  const selectionEnd = el.selectionEnd || 0
   const style = getComputedStyle(el)
-  const mirror = document.createElement('div')
-  mirror.style.cssText
+  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+
+  const caretYInContent = (() => {
+    const mirror = document.createElement('div')
+    mirror.style.cssText
       = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
       + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
       + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
       + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
+    document.body.appendChild(mirror)
+    const val = el.value
+    const selEnd = el.selectionEnd ?? val.length
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+    const y = mirror.scrollHeight
+    document.body.removeChild(mirror)
+    return y
+  })()
 
-  mirror.textContent = el.value.substring(0, selectionEnd).replace(/\n$/, '\n\u200B')
-  document.body.appendChild(mirror)
-  // 减去90px padding，获取文字底边
-  const caretTopInEl = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
-  document.body.removeChild(mirror)
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
 
-  const caretYInVV = (rect.top + caretTopInEl) - vv.offsetTop
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
 
-  // 3. 设定红线：工具条(54) + 预留文字(24) = 78px
-  // 只要光标进入这个区域，就视为被挡
-  const threshold = vv.height - 78
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
-  const need = Math.ceil(caretYInVV - threshold)
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 4. 只有在确实被挡住时才微调
-  if (need > 0 && props.enableScrollPush)
-    window.scrollBy({ top: need, behavior: 'auto' })
+  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
+  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
+  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
+  const STICKY = 12 // 微抖动抑制阈值
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  // 抑制小幅抖动：与上次差异很小时保持不变
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+    need = _lastBottomNeed
+
+  _lastBottomNeed = need
+
+  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
+  emit('bottomSafeChange', need)
+
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  if (need > 0) {
+    if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      _hasPushedPage = true
+      window.setTimeout(() => {
+        _hasPushedPage = false
+        recomputeBottomSafePadding()
+      }, 140)
+    }
+    if (isIOS && iosFirstInputLatch.value)
+      iosFirstInputLatch.value = false
+  }
+  else {
+    _hasPushedPage = false
+  }
 }
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
@@ -1403,50 +1374,38 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  isInputFocused.value = true
-
   emit('focus')
   captureCaret()
-  startKeyboardLoop()
+
+  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 🔥 核心修改：移动端聚焦时，直接归零，不加任何垫高
-  if (isMobile) {
-    emit('bottomSafeChange', 0)
+  // 用真实 footer 高度“临时托起”，不等 vv
+  emit('bottomSafeChange', getFooterHeight())
 
-    // 延时检测：等键盘弹起后，如果被挡住了，scrollBy 会自动推上去
-    // 因为 CSS min-height 够大，所以一定推得上去
-    window.setTimeout(() => {
-      ensureCaretVisibleInTextarea()
-      recomputeBottomSafePadding()
-    }, 300)
-
-    window.setTimeout(() => {
-      recomputeBottomSafePadding()
-    }, 600)
-  }
-  else {
-    // 桌面端保持原样
-    emit('bottomSafeChange', getFooterHeight())
-  }
-
+  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
     recomputeBottomSafePadding()
   })
 
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  const t1 = isIOS ? 120 : 80
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, t1)
+
+  const t2 = isIOS ? 260 : 180
+  window.setTimeout(() => {
+    recomputeBottomSafePadding()
+  }, t2)
+
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
 function onBlur() {
-  isInputFocused.value = false
-
   emit('blur')
-  stopKeyboardLoop()
-  setTimeout(() => {
-    updateMobileBarPosition()
-  }, 100)
-
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
@@ -2098,20 +2057,12 @@ function onGlobalKeydown(e: KeyboardEvent) {
     closeFormatPalette()
 }
 onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleVisualViewportResize)
-    window.visualViewport.addEventListener('scroll', handleVisualViewportResize)
-  }
   window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
   window.addEventListener('keydown', onGlobalKeydown)
   if (isAndroid && rootRef.value)
     rootRef.value.classList.add('android')
 })
 onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', handleVisualViewportResize)
-    window.visualViewport.removeEventListener('scroll', handleVisualViewportResize)
-  }
   window.removeEventListener('pointerdown', onGlobalPointerDown as any, { capture: true } as any)
   window.removeEventListener('keydown', onGlobalKeydown)
   stopFocusBoost()
@@ -2218,8 +2169,7 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn"
-    :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
     <input
       ref="imageInputRef"
@@ -2228,13 +2178,13 @@ function handleBeforeInput(e: InputEvent) {
       style="display:none"
       @change="onImageChosen"
     >
-
     <div class="editor-wrapper">
       <div v-if="showDraftPrompt" class="draft-prompt-overlay" @click.stop>
         <div class="draft-prompt-card">
           <div class="draft-prompt-title">
             {{ promptMode === 'draft' ? t('notes.draft.title') : t('notes.upload.error_title') }}
           </div>
+
           <div
             class="draft-prompt-content"
             :style="promptMode === 'error' ? 'white-space: pre-wrap; text-align: center; line-height: 1.6;' : ''"
@@ -2246,31 +2196,40 @@ function handleBeforeInput(e: InputEvent) {
               {{ promptErrorMsg }}
             </template>
           </div>
+
           <div class="draft-prompt-actions">
             <template v-if="promptMode === 'draft'">
-              <button class="btn-secondary draft-btn" @click.prevent="handleDiscardDraft">
+              <button
+                class="btn-secondary draft-btn"
+                @click.prevent="handleDiscardDraft"
+              >
                 {{ t('notes.draft.discard') }}
               </button>
-              <button class="draft-btn btn-primary" @click.prevent="handleRecoverDraft">
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleRecoverDraft"
+              >
                 {{ t('notes.draft.continue') }}
               </button>
             </template>
+
             <template v-else>
-              <button class="draft-btn btn-primary" @click.prevent="handleErrorConfirm">
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleErrorConfirm"
+              >
                 {{ t('notes.ok') }}
               </button>
             </template>
           </div>
         </div>
       </div>
-
       <textarea
         ref="textarea"
         v-model="input"
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
-        :style="textareaStyle"
         autocomplete="off"
         autocorrect="on"
         autocapitalize="sentences"
@@ -2289,13 +2248,13 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
+
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
         @touchend.passive="onTextPointerUp"
         @touchcancel.passive="onTextPointerUp"
       />
-
       <div
         v-if="showTagSuggestions && tagSuggestions.length"
         class="tag-suggestions"
@@ -2314,6 +2273,7 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
+    <!-- 固定录音条：点击麦克风后出现在工具栏上方 -->
     <div v-if="showRecordBar" class="record-bar">
       <div class="record-status">
         <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
@@ -2331,9 +2291,15 @@ function handleBeforeInput(e: InputEvent) {
             {{ t('notes.editor.record.status_recording') }}
           </template>
         </span>
-        <span v-if="recordSeconds > 0 || isRecording" class="record-time">
+        <span
+          v-if="recordSeconds > 0 || isRecording"
+          class="record-time"
+        >
           {{ recordTimeText }}
-          <span v-if="recordRemainingText" class="record-remaining">
+          <span
+            v-if="recordRemainingText"
+            class="record-remaining"
+          >
             |{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}
           </span>
         </span>
@@ -2365,24 +2331,45 @@ function handleBeforeInput(e: InputEvent) {
       </div>
     </div>
 
-    <div
-      v-show="isMobile"
-      class="mobile-keyboard-bar"
-      :style="mobileBarStyle"
-      @touchmove.prevent
-    >
-      <div class="mobile-bar-inner">
-        <div class="mobile-left-tools">
-          <button type="button" class="toolbar-btn" @pointerdown.prevent="openTagMenu">
+    <!-- 底部工具栏 + 字数 + 按钮 -->
+    <div class="editor-footer">
+      <div class="footer-left">
+        <div class="editor-toolbar">
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.toolbar.add_tag')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="openTagMenu"
+          >
             #
           </button>
 
-          <button type="button" class="toolbar-btn" @pointerdown.prevent="runToolbarAction(addBold)">
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.format.bold')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addBold)"
+          >
             B
           </button>
 
-          <button type="button" class="toolbar-btn" @pointerdown.prevent="runToolbarAction(addBulletList)">
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.format.bullet_list')"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="runToolbarAction(addBulletList)"
+          >
+            <svg
+              class="icon-20"
+              viewBox="0 0 24 24" fill="none"
+              xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+            >
               <circle cx="6" cy="7" r="2" fill="currentColor" />
               <circle cx="6" cy="12" r="2" fill="currentColor" />
               <circle cx="6" cy="17" r="2" fill="currentColor" />
@@ -2392,38 +2379,70 @@ function handleBeforeInput(e: InputEvent) {
             </svg>
           </button>
 
-          <button type="button" class="toolbar-btn" @click="onPickImageSync">
-            <svg class="icon-20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+          <button
+            type="button"
+            class="toolbar-btn"
+            :title="t('notes.editor.image_dialog.title')"
+            @pointerdown="onPickImageSync"
+            @click="onPickImageSync"
+          >
+            <svg
+              class="icon-20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect
+                x="3" y="4" width="18" height="16" rx="2.5"
+                stroke="currentColor" stroke-width="1.6"
+              />
               <circle cx="9" cy="9" r="1.6" fill="currentColor" />
-              <path d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M13.5 13.5 18 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <path
+                d="M6 17l4.2-4.2a1.5 1.5 0 0 1 2.1 0L17 17"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
+              <path
+                d="M13.5 13.5 18 9"
+                stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"
+              />
             </svg>
           </button>
 
-          <button ref="formatBtnRef" type="button" class="toolbar-btn toolbar-btn-aa" @pointerdown.prevent="toggleFormatPalette">
+          <button
+            ref="formatBtnRef"
+            type="button"
+            class="toolbar-btn toolbar-btn-aa"
+            :title="t('notes.editor.toolbar.more_toolbar') || '更多工具'"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="toggleFormatPalette"
+          >
             ···
           </button>
+
+          <span class="toolbar-sep" aria-hidden="true" />
         </div>
 
-        <div class="mobile-right-actions">
-          <span class="char-counter mobile-char-count">
-            {{ charCount }}
-          </span>
+        <span class="char-counter">
+          {{ charCount }}
+        </span>
+      </div>
 
-          <button type="button" class="btn-secondary" @click="emit('cancel')">
-            {{ t('notes.editor.save.button_cancel') }}
-          </button>
-
-          <button
-            type="button"
-            class="btn-primary"
-            :disabled="isLoading || isSubmitting || !contentModel"
-            @click="handleSave"
-          >
-            {{ t('notes.editor.save.button_save') }}
-          </button>
-        </div>
+      <div class="actions">
+        <button type="button" class="btn-secondary" @click="emit('cancel')">
+          {{ t('notes.editor.save.button_cancel') }}
+        </button>
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="isLoading || isSubmitting || !contentModel"
+          @click="handleSave"
+        >
+          {{ t('notes.editor.save.button_save') }}
+        </button>
       </div>
     </div>
 
@@ -2435,42 +2454,136 @@ function handleBeforeInput(e: InputEvent) {
       @mousedown.prevent
     >
       <div class="format-row">
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.todo')" @click="handleFormat(addTodo)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><path d="M7 12l4 4 6-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.todo')"
+          @click="handleFormat(addTodo)"
+        >
+          <svg
+            class="icon-bleed" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+          >
+            <rect
+              x="3" y="3" width="18" height="18" rx="2.5"
+              stroke="currentColor" stroke-width="1.6"
+            />
+            <path
+              d="M7 12l4 4 6-8"
+              stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"
+            />
+          </svg>
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.format.ordered_list')" @click="handleFormat(addOrderedList)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none"><text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui">1</text><text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui">2</text><text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui">3</text><path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /><path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.ordered_list')"
+          @click="handleFormat(addOrderedList)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <text x="4.4" y="8" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">1</text>
+            <text x="4.0" y="13" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">2</text>
+            <text x="4.0" y="18" font-size="7" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">3</text>
+            <path d="M10 7h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M10 17h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.format.heading')" @click="handleFormat(addHeading)">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.heading')"
+          @click="handleFormat(addHeading)"
+        >
           H
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.format.underline')" @click="handleFormat(addUnderline)">
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.underline')"
+          @click="handleFormat(addUnderline)"
+        >
           U
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.format.highlight')" @click="handleFormat(addMarkHighlight)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" /><text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.highlight')"
+          @click="handleFormat(addMarkHighlight)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+            <text x="8" y="16" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">T</text>
+          </svg>
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.format.insert_table')" @click="handleFormat(addTable)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" /><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" /><line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" /><line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.format.insert_table')"
+          @click="handleFormat(addTable)"
+        >
+          <svg
+            class="icon-bleed"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6" />
+            <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="1.6" />
+            <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="1.6" />
+          </svg>
         </button>
       </div>
 
       <div class="format-row">
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.link')" @click="handleFormat(addLink)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.link') || '插入链接'"
+          @click="handleFormat(addLink)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.time')" @click="handleFormat(addCurrentTime)">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" /><path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.time') || '插入时间'"
+          @click="handleFormat(addCurrentTime)"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.6" />
+            <path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
 
-        <button type="button" class="format-btn" :title="t('notes.editor.toolbar.recording')" @click="handleFormat(() => toggleRecordBarVisible())">
-          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <button
+          type="button"
+          class="format-btn"
+          :title="t('notes.editor.toolbar.recording') || '录音'"
+          @click="handleFormat(() => toggleRecordBarVisible())"
+        >
+          <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M7 11a5 5 0 0 0 10 0M12 16v4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
       </div>
 
@@ -2488,7 +2601,6 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
-  min-height: 100dvh;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2513,7 +2625,7 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 60vh;
+  min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
@@ -2852,6 +2964,7 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
+/* 新增：编辑模式下，允许 textarea 无限增高 */
 .note-editor-reborn.editing-viewport .editor-textarea {
   max-height:75dvh;
 }
@@ -2974,83 +3087,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-
-/* ... 在 <style scoped> 末尾添加 ... */
-
-/* ✅ 移动端键盘工具条样式 */
-.mobile-keyboard-bar {
-  /* position, top, bottom 由 JS 接管，这里不需要写 */
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background-color: #f9f9f9;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
-}
-
-.mobile-bar-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between; /* 关键：左右撑开 */
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 8px 10px;
-}
-
-/* 左侧图标区 */
-.mobile-left-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-/* 右侧动作区 */
-.mobile-right-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-char-count {
-  margin-right: 4px;
-  font-size: 12px;
-  color: #999;
-}
-
-/* 深色模式适配 */
-.dark .mobile-keyboard-bar {
-  background-color: #2c2c2e;
-  border-top-color: #48484a;
-}
-
-/* 微调移动端按钮大小，方便点击 */
-.mobile-keyboard-bar .toolbar-btn {
-  width: 32px;
-  height: 32px;
-  font-size: 18px;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  color: #6b7280;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dark .mobile-keyboard-bar .toolbar-btn { color: #9ca3af; }
-
-/* 深色模式适配 */
-.dark .mobile-keyboard-bar {
-  background-color: #2c2c2e;
-  border-top-color: #48484a;
-}
-
-/* 稍微调大移动端工具条按钮的触控区域 */
-.mobile-keyboard-bar .toolbar-btn {
-  width: 36px;
-  height: 36px;
-  font-size: 20px;
 }
 </style>
