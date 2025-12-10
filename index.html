@@ -4,22 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" href="/logo.jpg" />
 
-    <!-- 视口与 iOS 全屏：只保留一套，避免重复 -->
     <meta
-  name="viewport"
-  content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
-/>
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <title>我abc网址导航：简洁高效的自定义网址导航站</title>
-<script src="/env.js"></script>
-    <!-- PWA 基础 -->
+    <script src="/env.js"></script>
+    
     <meta name="theme-color" content="#f9f9f9" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- 图标 -->
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180d.png" sizes="180x180" />
     <link rel="apple-touch-icon" href="/favicon.ico" />
     <link rel="icon" href="/favicon.ico" />
@@ -31,7 +29,21 @@
       content="一款简洁、干净、无广告的浏览器起始页。支持高度自定义布局、多款精美主题和强大的站内搜索功能，帮助您轻松管理常用网站，提升上网效率。"
     />
 
-    <!-- 首屏视口兜底：把可见高度写入 --vh，配合 CSS 使用 calc(var(--vh) * 100) -->
+    <style>
+      /* 关键：强制锁定 html/body/app，防止 iOS 键盘弹起时整体页面被大幅推走 */
+      html, body, #app {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* 禁止最外层产生滚动条 */
+        position: fixed;  /* 强力锁定，防止 iOS 回弹 */
+        top: 0;
+        left: 0;
+        overscroll-behavior: none; /* 禁用 iOS 橡皮筋回弹效果 */
+      }
+    </style>
+
     <script>
       (function setVH() {
         var h = (window.visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
