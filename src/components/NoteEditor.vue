@@ -977,15 +977,12 @@ function ensureCaretVisibleInTextarea() {
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const TOP_BUFFER = 20
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom) {
+  if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  }
-  else if (caretDesiredTop < (viewTop + TOP_BUFFER)) {
-    // ✅ 这样光标在向上滚动时，会停在距离顶部 20px 的位置，而不是冲进刘海
-    el.scrollTop = Math.max(caretDesiredTop - TOP_BUFFER, 0)
-  }
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -2174,6 +2171,7 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
+    <div class="notch-mask" />
     <input
       ref="imageInputRef"
       type="file"
@@ -2604,14 +2602,6 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
-  padding-top: env(safe-area-inset-top);
-  background-color: #f9f9f9; /* 确保背景色覆盖状态栏区域 */
-}
-
-/* 确保 textarea 不要自己再加这个 padding，防止重叠 */
-.editor-textarea {
-  /* 修改 padding 为固定值 */
-  padding: 12px 8px 8px 16px;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2634,12 +2624,30 @@ function handleBeforeInput(e: InputEvent) {
   overflow-anchor: auto;
 }
 
+/* ✅ 新增：刘海遮罩层样式 */
+.notch-mask {
+  position: fixed;   /* 关键：使用 fixed 定位，钉在屏幕视口顶部 */
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99;       /* 确保它盖在文字上面 */
+  height: env(safe-area-inset-top); /* 高度自动适应刘海/灵动岛 */
+  background-color: #f9f9f9;        /* 颜色必须与背景一致，实现“隐身”遮挡 */
+  pointer-events: none;             /* 让点击穿透（可选，防止误挡操作） */
+}
+
+/* 深色模式适配 */
+.dark .notch-mask {
+  background-color: #2c2c2e;
+}
+
 .editor-textarea {
   width: 100%;
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
   border: none;
   background-color: transparent;
   color: inherit;
