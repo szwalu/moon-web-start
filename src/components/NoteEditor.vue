@@ -2171,7 +2171,12 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
-    <div class="notch-mask" />
+    <Teleport to="body">
+      <div
+        v-if="isEditing"
+        class="global-notch-mask"
+      />
+    </Teleport>
     <input
       ref="imageInputRef"
       type="file"
@@ -2622,23 +2627,6 @@ function handleBeforeInput(e: InputEvent) {
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
-}
-
-/* ✅ 新增：刘海遮罩层样式 */
-.notch-mask {
-  position: fixed;   /* 关键：使用 fixed 定位，钉在屏幕视口顶部 */
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99;       /* 确保它盖在文字上面 */
-  height: env(safe-area-inset-top); /* 高度自动适应刘海/灵动岛 */
-  background-color: #f9f9f9;        /* 颜色必须与背景一致，实现“隐身”遮挡 */
-  pointer-events: none;             /* 让点击穿透（可选，防止误挡操作） */
-}
-
-/* 深色模式适配 */
-.dark .notch-mask {
-  background-color: #2c2c2e;
 }
 
 .editor-textarea {
@@ -3106,5 +3094,31 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
+}
+</style>
+
+<style>
+.global-notch-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999; /* ✅ 必须极高，盖过 Naive UI Dialog (通常是 2000-3000) */
+
+  /* ✅ 关键：高度 = 刘海高度。
+     如果没有刘海 (PC/旧手机)，env通常为0。
+     为了测试效果，可以先加一个 min-height: 0px;
+     但在刘海屏上 env 会生效。
+  */
+  height: env(safe-area-inset-top);
+
+  /* ✅ 背景色：必须与你的编辑器背景一致，造成“隐形”效果 */
+  background-color: #f9f9f9;
+  pointer-events: none; /* 让点击穿透，不影响状态栏操作 */
+}
+
+/* 适配暗黑模式 (假设 dark 类加在 body 或 html 上) */
+.dark .global-notch-mask {
+  background-color: #2c2c2e;
 }
 </style>
