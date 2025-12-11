@@ -1028,17 +1028,16 @@ defineExpose({ executeSearch })
 .search-input {
   flex: 1;
   width: 100%;
-  /* 高度增加至 44px */
   height: 44px;
-  /* ✅ 修改 1: 增大左边距，避开图标 */
-  padding: 0 2.5rem 0 3.6rem;
+
+  /* ✅ 修改：加大左边距到 3.6rem，彻底避开图标 */
+  padding: 0 2.5rem 0 6.0rem;
+
   font-size: 15px;
   border: 1px solid transparent;
-  /* 加大圆角 */
   border-radius: 12px;
   background-color: #fff;
   color: #111;
-  /* 增加阴影增加立体感 */
   box-shadow: 0 2px 5px rgba(0,0,0,0.03);
   transition: all 0.2s;
 }
@@ -1304,16 +1303,18 @@ defineExpose({ executeSearch })
 
 /* ✅ 修改 2: 确保日期分隔符样式正确 */
 .date-separator {
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: 4px;
-  padding-right: 4px;
-  align-self: center; /* 明确垂直居中 */
   font-size: 16px;
   color: #9ca3af;
+
+  /* ✅ 修改 1：清除所有多余 padding */
+  padding: 0 4px;
+
+  /* ✅ 修改 2：消除行高影响 */
   line-height: 1;
+
+  /* ✅ 修改 3：手动向上提 2px，抵消基线对齐带来的下沉 */
   position: relative;
-  top: -2px; /* 向上微调，抵消基线对齐 */
+  top: 11px;
 }
 
 .tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
