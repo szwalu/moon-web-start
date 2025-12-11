@@ -962,7 +962,7 @@ function handleImageLoad() {
         v-if="showDatePicker"
         :show="showDatePicker"
         :initial-date="new Date(note.created_at)"
-        :style="{ zIndex: dropdownInPlace ? 6000 : 100 }"
+        :style="{ zIndex: 6005 }"
         @close="showDatePicker = false"
         @confirm="handleDateUpdate"
       />
