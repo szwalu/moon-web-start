@@ -40,7 +40,7 @@ const headerAvatarSrc = ref<string | null>(null)
 // ✅ [新增] 2. 监听用户变化，优先读取 LocalStorage 缓存
 watch(() => user.value, (u) => {
   const remoteUrl = u?.user_metadata?.avatar_url
-  if (!u || !remoteUrl) {
+  if (!u || !remoteUrl || remoteUrl === 'null' || remoteUrl.trim() === '') {
     headerAvatarSrc.value = null
     return
   }
@@ -450,44 +450,40 @@ const showAnniversaryBanner = computed(() => {
   return true
 })
 
-// ✨✨✨ 环保高效版同步：本地直传，零网络请求 ✨✨✨
-// 场景：手机修改/新建笔记 -> 电脑收到数据 -> 直接喂给 Banner -> 界面瞬间更新
 watch(notes, (newNotes) => {
-  // 1. 基础拦截：加载中或空列表跳过
   if (isLoadingNotes.value || !newNotes || newNotes.length === 0)
     return
-
-  // 2. 智能扫描：找到“创建时间最晚”的那条笔记（无视置顶）
   let newestNote = newNotes[0]
   const scanLimit = Math.min(newNotes.length, 5)
 
   for (let i = 1; i < scanLimit; i++) {
     if (new Date(newNotes[i].created_at) > new Date(newestNote.created_at))
       newestNote = newNotes[i]
-
-    // 遇到未置顶的就停止，提升性能
     if (!newestNote.is_pinned)
       break
   }
 
-  // 3. 判断是否是今天
   const noteDate = new Date(newestNote.created_at).toDateString()
   const todayDate = new Date().toDateString()
-
-  // 4. 只有当这条笔记是“今天”的，才进行同步
   if (noteDate === todayDate && anniversaryBannerRef.value) {
-    // ✨✨✨ 核心优化：不再调用 loadAnniversaryNotes(true) 去查库 ✨✨✨
-
-    // 策略 A：尝试“更新”
-    // 如果 Banner 里已经有这条笔记（比如你正在不断编辑），updateNote 会原地更新内容
     anniversaryBannerRef.value.updateNote(newestNote)
-
-    // 策略 B：尝试“添加”
-    // 如果 Banner 里还没有这条笔记（比如刚新建），addNote 会把它加进去
-    // (注：addNote 内部有防重判断，如果已存在会直接忽略，所以这两个方法连着调用是绝对安全的)
     anniversaryBannerRef.value.addNote(newestNote)
   }
 }, { deep: false })
+
+// [修改] 监听初始化完成：确保用户已登录 + 无笔记 + 无筛选 时才弹出帮助
+watch(authResolved, (isReady) => {
+  if (
+    isReady
+    && user.value // ✅ 关键新增：必须已登录
+    && totalNotes.value === 0
+    && notes.value.length === 0
+  ) {
+    // 再次确认没有处于搜索、标签筛选或那年今日视图
+    if (!searchQuery.value && !activeTagFilter.value && !isAnniversaryViewActive.value)
+      showHelpDialog.value = true
+  }
+})
 
 onMounted(() => {
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
@@ -827,25 +823,6 @@ function buildLocalNote(content: string, weather?: string | null) {
   }
 }
 
-// === 新增工具函数：带延迟的自动重试 ===
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  delay = 1000,
-): Promise<T> {
-  try {
-    return await fn()
-  }
-  catch (error) {
-    if (retries <= 0)
-      throw error // 次数用尽，抛出最后一次的错误
-    // 等待一段时间（例如1秒）
-    await new Promise(resolve => setTimeout(resolve, delay))
-    // 递归重试，次数减1
-    return withRetry(fn, retries - 1, delay)
-  }
-}
-
 async function saveNote(
   contentToSave: string,
   noteIdToUpdate: string | null,
@@ -887,7 +864,6 @@ async function saveNote(
       })
     }
     // 排序
-    // ... 前面的代码 ...
     notes.value.sort((a: any, b: any) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
 
     // 2) 刷新缓存
@@ -949,7 +925,7 @@ async function saveNote(
     return localNote
   }
 
-  // ====== B) 在线模式（带重试机制） ======
+  // ====== B) 在线模式（已移除重试，改为单次尝试） ======
   const noteData = {
     content: contentToSave.trim(),
     updated_at: new Date().toISOString(),
@@ -959,43 +935,41 @@ async function saveNote(
   let savedNote: any
   try {
     if (noteIdToUpdate) {
-      // --- 在线更新 ---
-      savedNote = await withRetry(async () => {
-        const { data: updatedData, error: updateError } = await supabase
-          .from('notes')
-          .update(noteData)
-          .eq('id', noteIdToUpdate)
-          .eq('user_id', user.value.id)
-          .select()
+      // --- 在线更新 (移除 withRetry) ---
+      const { data: updatedData, error: updateError } = await supabase
+        .from('notes')
+        .update(noteData)
+        .eq('id', noteIdToUpdate)
+        .eq('user_id', user.value.id)
+        .select()
 
-        if (updateError)
-          throw new Error(updateError.message)
-        if (!updatedData?.length)
-          throw new Error('No data returned')
-        return updatedData[0]
-      }, 3, 1000)
+      if (updateError)
+        throw new Error(updateError.message)
+      if (!updatedData?.length)
+        throw new Error('No data returned')
+
+      savedNote = updatedData[0]
 
       updateNoteInList(savedNote)
       if (showMessage)
         messageHook.success(t('notes.update_success'))
     }
     else {
-      // --- 在线新建 ---
+      // --- 在线新建 (移除 withRetry) ---
       const newId = uuidv4()
       const insertPayload: any = { ...noteData, id: newId, weather: weather ?? null }
 
-      savedNote = await withRetry(async () => {
-        const { data: insertedData, error: insertError } = await supabase
-          .from('notes')
-          .insert(insertPayload)
-          .select()
+      const { data: insertedData, error: insertError } = await supabase
+        .from('notes')
+        .insert(insertPayload)
+        .select()
 
-        if (insertError)
-          throw new Error(insertError.message)
-        if (!insertedData?.length)
-          throw new Error(t('auth.insert_failed_create_note'))
-        return insertedData[0]
-      }, 3, 1000)
+      if (insertError)
+        throw new Error(insertError.message)
+      if (!insertedData?.length)
+        throw new Error(t('auth.insert_failed_create_note'))
+
+      savedNote = insertedData[0]
 
       addNoteToList(savedNote)
       if (showMessage)
@@ -1015,7 +989,7 @@ async function saveNote(
   catch (error: any) {
     console.error('在线保存失败，尝试降级处理:', error)
 
-    // ====== C) 自动降级逻辑：重试失败后转入离线队列 ======
+    // ====== C) 自动降级逻辑：失败立即转入离线队列 ======
 
     // 场景 1: 更新笔记失败 -> 降级为离线更新
     if (noteIdToUpdate) {
@@ -2912,6 +2886,7 @@ function onCalendarUpdated(updated: any) {
             :src="headerAvatarSrc"
             class="header-avatar"
             alt="User"
+            @error="headerAvatarSrc = null"
           >
           <img
             v-else

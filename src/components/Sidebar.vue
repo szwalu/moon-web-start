@@ -123,8 +123,40 @@ const userSignature = computed(() => {
   return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
 
-// [还原] 简单的头像获取，不加时间戳，防止闪烁
-const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
+// [修改] 将 userAvatar 改为 ref，支持缓存读取和错误回退
+const userAvatar = ref<string | null>(null)
+
+watch(() => props.user, (u) => {
+  const remoteUrl = u?.user_metadata?.avatar_url
+
+  // 1. 基础校验：如果是无效值，直接置空
+  if (!u || !remoteUrl || remoteUrl === 'null' || remoteUrl.trim() === '') {
+    userAvatar.value = null
+    return
+  }
+
+  // 2. 尝试读取本地缓存 (实现秒开)
+  const cacheKey = `avatar_cache_${u.id}`
+  const cachedBase64 = localStorage.getItem(cacheKey)
+
+  if (cachedBase64) {
+    // 命中缓存：立即显示
+    userAvatar.value = cachedBase64
+
+    // 后台静默检查更新
+    if (remoteUrl !== cachedBase64) {
+      const img = new Image()
+      img.src = remoteUrl
+      img.onload = () => {
+        userAvatar.value = remoteUrl
+      }
+    }
+  }
+  else {
+    // 无缓存：直接用网络图
+    userAvatar.value = remoteUrl
+  }
+}, { immediate: true })
 
 // 纯计算函数，不涉及网络请求
 function calculateDays(dateStr: string) {
@@ -200,7 +232,12 @@ function handleItemClick(key: string) {
           <div class="sidebar-header-card">
             <div class="user-info-row" @click="onAvatarClick">
               <div class="avatar-circle">
-                <img v-if="userAvatar" :src="userAvatar" alt="Avatar">
+                <img
+                  v-if="userAvatar"
+                  :src="userAvatar"
+                  alt="Avatar"
+                  @error="userAvatar = null"
+                >
                 <div v-else class="avatar-placeholder">
                   {{ userName.charAt(0).toUpperCase() }}
                 </div>
