@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -28,6 +28,21 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
+// --- ✅ 新增：控制日历展开/收起的状态 ---
+const isExpanded = ref(false) // 默认为 false (周视图/收起)
+
+// 2. 新增：定义日历组件的 ref
+const calendarRef = ref<any>(null)
+
+// 3. 新增：监听展开状态，收起时强制定位回选中日期
+watch(isExpanded, async (val) => {
+  if (!val) { // 当变为 false (收起) 时
+    await nextTick()
+    // 强制日历移动到当前选中的日期，从而显示正确的那一周
+    calendarRef.value?.move(selectedDate.value)
+  }
+})
+
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
@@ -36,12 +51,9 @@ const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.valu
 async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
   try {
     if (action === 'INSERT') {
-      // 复用 offline-db 的新建入队逻辑
       await queuePendingNote(note)
     }
     else if (action === 'UPDATE') {
-      // 复用 offline-db 的更新入队逻辑
-      // 提取需要更新的字段，避免传入无关的 UI 状态字段
       const updatePayload = {
         content: note.content,
         updated_at: note.updated_at,
@@ -52,8 +64,6 @@ async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
       }
       await queuePendingUpdate(note.id, updatePayload)
     }
-
-    // eslint-disable-next-line no-console
   }
   catch (e) {
     console.error('[Calendar] 写入离线队列失败:', e)
@@ -65,7 +75,7 @@ async function fetchTagData() {
     return
   try {
     if (!navigator.onLine)
-      return // 离线不拉标签
+      return
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', {
       p_user_id: user.value.id,
     })
@@ -159,20 +169,16 @@ async function saveExistingNote(content: string) {
   if (!trimmed)
     return
 
-  // 1. 准备新数据对象
   const nowISO = new Date().toISOString()
   const optimisticNote = {
     ...editingNote.value,
     content: trimmed,
     updated_at: nowISO,
-    // 如果需要，可以加一个 dirty 标记
-    // _dirty: true
   }
 
   let finalNote = optimisticNote
 
   try {
-    // 2. 尝试联网更新
     const { data, error } = await supabase
       .from('notes')
       .update({ content: trimmed, updated_at: nowISO })
@@ -183,26 +189,21 @@ async function saveExistingNote(content: string) {
 
     if (error)
       throw error
-    finalNote = data // 如果成功，使用服务器返回的确切数据
+    finalNote = data
   }
   catch (e) {
-    // 3. ❌ 失败（离线）：存入本地队列
     console.warn('联网保存失败，转入离线队列:', e)
     await saveToOfflineQueue('UPDATE', optimisticNote)
-    // 继续往下走，就像成功了一样更新 UI
   }
 
-  // 4. 更新本地列表
   selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? finalNote : n))
 
-  // 5. 刷新当天缓存
   localStorage.setItem(
     getCalendarDateCacheKey(selectedDate.value),
     JSON.stringify(selectedDateNotes.value),
   )
   emit('updated', finalNote)
 
-  // 6. 清除草稿并退出
   const draftKey = editDraftKey.value
   if (draftKey) {
     try {
@@ -258,8 +259,6 @@ async function handleDateUpdated(updatedNote: any) {
   const currentCacheKey = getCalendarDateCacheKey(selectedDate.value)
 
   localStorage.removeItem(currentCacheKey)
-  // 如果离线，fetchNotesForDate 只能读缓存或者读不到，
-  // 这里暂时不处理“离线修改日期”的复杂情况（因为涉及到跨日期移动队列）
   await fetchNotesForDate(selectedDate.value)
 
   let targetKey: string | null = null
@@ -331,46 +330,101 @@ const attributes = computed(() => {
 function formatCalendarHeaderTitle(rawTitle: string) {
   if (!rawTitle)
     return rawTitle
-  const parts = rawTitle.split(' ')
-  if (parts.length !== 2)
-    return rawTitle
-  const [monthText, yearText] = parts
-  if (!/^\d{4}$/.test(yearText))
-    return rawTitle
-  const zhMonthMap: Record<string, number> = {
-    一月: 1,
-    二月: 2,
-    三月: 3,
-    四月: 4,
-    五月: 5,
-    六月: 6,
-    七月: 7,
-    八月: 8,
-    九月: 9,
-    十月: 10,
-    十一月: 11,
-    十十二月: 12,
+
+  // 1. 定义中文映射 (兼容 v-calendar 可能输出的中文或英文)
+  const zhMonthMap: Record<string, string> = {
+    january: '1',
+    february: '2',
+    march: '3',
+    april: '4',
+    may: '5',
+    june: '6',
+    july: '7',
+    august: '8',
+    september: '9',
+    october: '10',
+    november: '11',
+    december: '12',
+    jan: '1',
+    feb: '2',
+    mar: '3',
+    apr: '4',
+    jun: '6',
+    jul: '7',
+    aug: '8',
+    sep: '9',
+    oct: '10',
+    nov: '11',
+    dec: '12',
+    一月: '1',
+    二月: '2',
+    三月: '3',
+    四月: '4',
+    五月: '5',
+    六月: '6',
+    七月: '7',
+    八月: '8',
+    九月: '9',
+    十月: '10',
+    十一月: '11',
+    十二月: '12',
+    // 容错：如果 v-calendar 已经输出了 "1月" 这种格式，我们去掉"月"字取数字，或者直接保留
   }
-  const monthNum = zhMonthMap[monthText]
-  if (!monthNum)
-    return rawTitle
-  const yearNum = Number(yearText)
-  const d = new Date(yearNum, monthNum - 1, 1)
-  const lang = String(locale.value || '').toLowerCase()
-  if (lang.startsWith('zh'))
-    return `${yearText}年${monthNum}月`
-  try {
-    return new Intl.DateTimeFormat(lang || undefined, { year: 'numeric', month: 'long' }).format(d)
+
+  // 辅助函数：尝试把 "December" 或 "12月" 统一转为 "12"
+  // 如果无法转换（比如已经是数字或无法识别），则保留原样但不带"月"
+  const normalizeMonth = (m: string) => {
+    const lower = m.trim().toLowerCase()
+    if (zhMonthMap[lower])
+      return zhMonthMap[lower]
+    // 尝试提取数字
+    const numMatch = lower.match(/^(\d{1,2})/)
+    if (numMatch)
+      return numMatch[1]
+    return m.trim()
   }
-  catch {
-    return rawTitle
+
+  // 辅助函数：格式化单个部分 "Month Year" -> "Year年Month月"
+  const formatPart = (m: string, y: string) => {
+    return `${y}年${normalizeMonth(m)}月`
   }
+
+  // 检测是否是中文环境
+  const isZh = String(locale.value || '').toLowerCase().startsWith('zh')
+  if (!isZh)
+    return rawTitle
+
+  // --- 情况 A: 跨年范围 (例如: "12月 2025 - 1月 2026" 或 "Dec 2025 - Jan 2026") ---
+  // 正则逻辑：(任意字符) (4位年份) (连接符) (任意字符) (4位年份)
+  const crossYearMatch = rawTitle.match(/^(.*?)\s+(\d{4})\s*[-–]\s*(.*?)\s+(\d{4})$/)
+  if (crossYearMatch) {
+    const [_, m1, y1, m2, y2] = crossYearMatch
+    // 修正：分别格式化两端
+    return `${formatPart(m1, y1)} - ${formatPart(m2, y2)}`
+  }
+
+  // --- 情况 B: 同年范围 (例如: "11月 - 12月 2025" 或 "Nov - Dec 2025") ---
+  // 正则逻辑：(任意字符) (连接符) (任意字符) (4位年份 结尾)
+  const rangeMatch = rawTitle.match(/^(.*?)\s*[-–]\s*(.*?)\s+(\d{4})$/)
+  if (rangeMatch) {
+    const [_, m1, m2, year] = rangeMatch
+    return `${year}年 ${normalizeMonth(m1)}月 - ${normalizeMonth(m2)}月`
+  }
+
+  // --- 情况 C: 单月 (例如: "12月 2025" 或 "December 2025") ---
+  const singleMatch = rawTitle.match(/^(.*?)\s+(\d{4})$/)
+  if (singleMatch) {
+    const [_, m, year] = singleMatch
+    return formatPart(m, year)
+  }
+
+  // 兜底
+  return rawTitle
 }
 
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
-  // 如果离线，直接用本地缓存作为兜底，不强制拉取
   if (!navigator.onLine) {
     loadAllDatesFromCache()
     return
@@ -451,12 +505,10 @@ async function fetchNotesForDate(date: Date) {
     }
   }
 
-  // 修改：增加离线判断，如果离线且没缓存，也就没法fetch了
   if (!localStorage.getItem(cacheKey)) {
     isLoadingNotes.value = true
     try {
       if (!navigator.onLine) {
-        // 离线且无缓存，只能置空
         selectedDateNotes.value = []
       }
       else {
@@ -520,7 +572,7 @@ function refreshDotAfterDelete() {
 
 async function checkAndRefreshIncremental() {
   if (!user.value || !navigator.onLine)
-    return // 离线跳过增量检查
+    return
 
   const lastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0') || 0
   const lastTotal = Number(localStorage.getItem(CAL_LAST_TOTAL) || '0') || 0
@@ -556,6 +608,7 @@ async function checkAndRefreshIncremental() {
   if (serverTotal === lastTotal && serverMaxUpdatedAt <= lastSync)
     return
 
+  // ❌ 之前这里你可能不小心写了两遍 if，导致括号不匹配
   if (serverTotal !== lastTotal) {
     try {
       await fetchAllNoteDatesFull()
@@ -620,6 +673,7 @@ onMounted(async () => {
   fetchTagData()
   const hadCache = loadAllDatesFromCache()
   if (!hadCache && user.value) {
+    // 👇 修改：展开成多行
     try {
       await fetchAllNoteDatesFull()
     }
@@ -670,20 +724,13 @@ function buildCreatedAtForSelectedDay(): string {
   return day.toISOString()
 }
 
-// -------------------------------------------------------------
-// 修改：Save New Note (支持离线)
-// -------------------------------------------------------------
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
 
   const createdISO = buildCreatedAtForSelectedDay()
-
-  // 1. 本地生成 UUID（代替 Supabase 生成）
-  // crypto.randomUUID 现代浏览器都支持
   const tempId = globalThis.crypto ? globalThis.crypto.randomUUID() : `local-${Date.now()}`
 
-  // 2. 构造“乐观”的笔记对象
   const optimisticNote = {
     id: tempId,
     user_id: user.value.id,
@@ -691,18 +738,14 @@ async function saveNewNote(content: string, weather: string | null) {
     created_at: createdISO,
     updated_at: createdISO,
     weather,
-    // 标记它是本地生成的，有些业务可能需要区分
-    // _isLocal: true
   }
 
   let finalNote = optimisticNote
 
   try {
-    // 3. 尝试联网保存
     const { data, error } = await supabase
       .from('notes')
       .insert({
-        // 注意：如果你数据库 id 是 uuid 且没有默认值，这里手动生成也是完全合法的
         id: tempId,
         user_id: user.value.id,
         content: content.trim(),
@@ -715,18 +758,15 @@ async function saveNewNote(content: string, weather: string | null) {
 
     if (error)
       throw error
-    finalNote = data // 成功，用服务器返回的覆盖
+    finalNote = data
   }
   catch (e) {
-    // 4. ❌ 失败（离线）：存入本地队列
     console.warn('联网保存新建笔记失败，转入离线队列:', e)
     await saveToOfflineQueue('INSERT', optimisticNote)
   }
 
-  // 5. 更新本地状态 (这部分和原逻辑一样，只是用 optimisticNote)
   selectedDateNotes.value = [finalNote, ...selectedDateNotes.value]
 
-  // 确保当天有点
   const key = dateKeyStr(selectedDate.value)
   if (!datesWithNotes.value.has(key)) {
     datesWithNotes.value.add(key)
@@ -742,11 +782,11 @@ async function saveNewNote(content: string, weather: string | null) {
     JSON.stringify(selectedDateNotes.value),
   )
 
-  // 即使离线也 emit，让界面认为创建成功
   emit('created', finalNote)
 
   const draftKey = writingKey.value
   if (draftKey) {
+    // 之前可能在这里少复制了大括号
     try {
       localStorage.removeItem(draftKey)
     }
@@ -766,28 +806,41 @@ async function saveNewNote(content: string, weather: string | null) {
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>
 
-    <!-- ✅ 新增：非滚动区域，包含「日历 + 写某天笔记按钮」 -->
     <div>
-      <!-- 日历：从 scrollBodyRef 里搬出来，结构和 v-show 完全不变 -->
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
         <Calendar
+          ref="calendarRef"
           is-expanded
+          :view="isExpanded ? 'monthly' : 'weekly'"
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
         >
-          <!-- 用自定义格式替换原来的 title -->
           <template #header-title="{ title }">
             <span class="calendar-nav-title">
               {{ formatCalendarHeaderTitle(title) }}
             </span>
           </template>
         </Calendar>
+
+        <div class="expand-arrow-bar" :class="{ 'is-collapsed': !isExpanded }" @click="isExpanded = !isExpanded">
+          <svg
+            class="arrow-icon"
+            :class="{ rotated: isExpanded }"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
       </div>
 
-      <!-- 写某天笔记按钮：也从 scrollBodyRef 里搬出来，样式 / 逻辑不变 -->
       <div class="notes-for-day-container">
-        <!-- 工具行：写笔记按钮 -->
         <div v-if="!isWriting && !isEditingExisting" class="compose-row">
           <button class="compose-btn" @click="startWriting">
             {{ composeButtonText }}
@@ -796,10 +849,8 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
     </div>
 
-    <!-- ✅ 只让下面这一块滚动（笔记输入 + 列表） -->
     <div ref="scrollBodyRef" class="calendar-body">
       <div class="notes-for-day-container">
-        <!-- 轻量输入框（显示时隐藏上面的日历） -->
         <div v-if="isWriting" class="inline-editor">
           <NoteEditor
             ref="newNoteEditorRef"
@@ -821,7 +872,6 @@ async function saveNewNote(content: string, weather: string | null) {
           />
         </div>
 
-        <!-- 编辑已有笔记（直接在日历内） -->
         <div v-if="isEditingExisting" class="inline-editor">
           <NoteEditor
             ref="editNoteEditorRef"
@@ -833,7 +883,6 @@ async function saveNewNote(content: string, weather: string | null) {
             :all-tags="allTags"
             :tag-counts="tagCounts"
             :enable-drafts="true"
-
             :clear-draft-on-save="false"
             :enable-scroll-push="true"
             @save="saveExistingNote"
@@ -886,9 +935,8 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   flex-direction: column;
   color: #333;
-   /* 关键：整体让出顶部/底部安全区 */
-   padding-top: var(--safe-top);
-   padding-bottom: var(--safe-bottom);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -898,7 +946,7 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
+  padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
@@ -928,7 +976,7 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   position: relative;
 }
 .calendar-container {
-  padding: 1rem;
+  padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
   border-bottom: 1px solid #e5e7eb;
 }
 .dark .calendar-container {
@@ -971,28 +1019,62 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   margin-bottom: 0;
 }
 
-/* 新建：NoteEditor 根节点没有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
   max-height: 56vh !important;
 }
 
-/* 编辑：NoteEditor 根节点带有 .editing-viewport */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   max-height: 75dvh !important;
 }
 
-/* 日历顶部“十一月 2025”文字 */
 .calendar-nav-title {
   font-weight: 600;
 }
-
-/* 暗色模式：强制文字为白色 */
 .dark .calendar-view .calendar-nav-title {
   color: #f9fafb;
+}
+
+/* ✅ 新增：底部展开箭头样式 */
+.expand-arrow-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 0 8px 0;
+
+  /* 默认（展开时）保持紧凑，维持你满意的间隙 */
+  margin-top: -30px;
+
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s, margin-top 0.2s ease; /* 顺便加个 margin 动画，切换时更丝滑 */
+  position: relative;
+  z-index: 10;
+}
+
+/* ✅ 新增：收起状态下，取消负边距（或者设为 -2px 微调） */
+.expand-arrow-bar.is-collapsed {
+  margin-top: 0px; /* 这里数值越大，离日期越远。建议 -2px 或 0 */
+}
+.expand-arrow-bar:hover {
+  opacity: 1;
+}
+.arrow-icon {
+  width: 20px;
+  height: 20px;
+  color: #888;
+  transition: transform 0.3s ease;
+}
+.dark .arrow-icon {
+  color: #bbb;
+}
+/* 展开时箭头旋转 180 度 */
+.arrow-icon.rotated {
+  transform: rotate(180deg);
 }
 </style>
 
 <style>
+/* ...原有全局样式保持不变... */
 .n-dialog__mask,
 .n-modal-mask {
   z-index: 6002 !important;
@@ -1009,16 +1091,12 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
 .n-dropdown {
   z-index: 6004 !important;
 }
-
-/* 覆盖 v-calendar 顶部年月标题的灰色/白色胶囊背景 */
 .calendar-view .vc-title,
 .calendar-view .vc-title-wrapper {
   background-color: transparent !important;
   box-shadow: none !important;
   border: none !important;
 }
-
-/* 写笔记按钮行 */
 .compose-row {
   margin: 0 0 12px 0;
 }
@@ -1032,44 +1110,28 @@ padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   cursor: pointer;
 }
 .compose-btn:hover { background: #009a74; }
-
-/* 输入框容器与间距 */
 .inline-editor {
   margin-bottom: 16px;
 }
-
-/* 关键：当 isWriting=true 时，把上面的日历收起（只隐藏，不卸载） */
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
 }
-
-/* 写在 <style>（不带 scoped 的那个）里面，放在最后就行 */
-
-/* 去掉所有导航标题的灰色背景（含年份弹层中间的年份按钮） */
 .vc-nav-title {
   background-color: transparent !important;
   box-shadow: none !important;
 }
-
-/* 年份选择弹层里的年份按钮再补一刀，防止被更具体的选择器盖回去 */
 .vc-nav-popover .vc-nav-title {
   background-color: transparent !important;
   box-shadow: none !important;
 }
-
-/* 暗色模式下让标题/年份保持白色 */
 .dark .vc-nav-title {
   color: #f9fafb !important;
 }
-
-/* 日历顶部标题（如：2025年11月 / November 2025）调大字号 */
 .calendar-nav-title {
   font-weight: 600;
-  font-size: 16px;     /* ← 原来约 16px，调大一些 */
-  line-height: 1.3;    /* 更加居中对齐 */
+  font-size: 16px;
+  line-height: 1.3;
 }
-
-/* 深色模式保持一致 */
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
