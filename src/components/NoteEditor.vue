@@ -2171,6 +2171,7 @@ function handleBeforeInput(e: InputEvent) {
     ref="rootRef"
     class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
   >
+    <div class="notch-spacer" @click="$refs.textarea?.focus()" />
     <input
       ref="imageInputRef"
       type="file"
@@ -2179,6 +2180,7 @@ function handleBeforeInput(e: InputEvent) {
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
+      <div class="notch-spacer" />
       <div v-if="showDraftPrompt" class="draft-prompt-overlay" @click.stop>
         <div class="draft-prompt-card">
           <div class="draft-prompt-title">
@@ -2618,7 +2620,20 @@ function handleBeforeInput(e: InputEvent) {
 .editor-wrapper {
   position: relative;
   overflow-anchor: none;
+  display: flex;
+  flex-direction: column;
 }
+
+.notch-spacer {
+  /* 高度 = 12px 间距 + 刘海高度 */
+  height: calc(12px + env(safe-area-inset-top));
+  width: 100%;
+  /* 禁止被压缩，确保护盾永远存在 */
+  flex-shrink: 0;
+  /* 既然是在 textarea 外面，点击它也应该聚焦到 textarea (可选优化) */
+  cursor: text;
+}
+
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
 }
@@ -2628,7 +2643,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 360px;
   max-height: 75dvh;
   overflow-y: auto;
-  padding: 12px 8px 8px 16px;
+  padding: 0 8px 8px 16px;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -2643,9 +2658,13 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
+  .notch-spacer {
+    /* 桌面端只留出普通的顶部间距即可 */
+    height: 16px;
+  }
   .editor-textarea {
-    line-height: 2.0; /* 桌面端行距 */
-    padding: 16px 24px; /* 桌面端内边距 */
+    line-height: 2.0;
+    padding: 0 24px 16px; /* 顶部依然是 0，靠 spacer 撑开 */
   }
 }
 .editor-textarea.font-size-small { font-size: 14px; }
