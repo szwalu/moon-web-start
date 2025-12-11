@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
+import 'vue-cropper/dist/index.css'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -12,8 +13,23 @@ const props = defineProps({
   totalNotes: { type: Number, default: 0 },
   user: { type: Object as () => User | null, required: true },
 })
-
 const emit = defineEmits(['close'])
+const VueCropper = defineAsyncComponent(() =>
+  import('vue-cropper').then(mod => mod.VueCropper),
+)
+// ---新增：裁剪相关状态---
+const showCropper = ref(false)
+const cropperRef = ref()
+const cropperOptions = reactive({
+  img: '',
+  autoCrop: true,
+  autoCropWidth: 200,
+  autoCropHeight: 200,
+  fixed: true, // 固定宽高比
+  fixedNumber: [1, 1], // 1:1 正方形
+  centerBox: true,
+  infoTrue: true,
+})
 
 const { t } = useI18n()
 const dialog = useDialog()
@@ -134,7 +150,8 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 // 图片压缩 (240px, JPEG 0.8)
-function compressImage(file: File): Promise<Blob> {
+// 修改入参类型为 Blob (这样 File 和 Blob 都能传)
+function compressImage(file: Blob): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.readAsDataURL(file)
@@ -143,7 +160,8 @@ function compressImage(file: File): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const maxSize = 240 // 3倍屏高清尺寸
+        // 关键点：这里是你原来的 240px 限制逻辑，保证了体积非常小
+        const maxSize = 240
         let width = img.width
         let height = img.height
 
@@ -164,7 +182,7 @@ function compressImage(file: File): Promise<Blob> {
         const ctx = canvas.getContext('2d')
 
         if (ctx) {
-          ctx.fillStyle = '#ffffff' // 白底
+          ctx.fillStyle = '#ffffff'
           ctx.fillRect(0, 0, width, height)
           ctx.drawImage(img, 0, 0, width, height)
         }
@@ -204,27 +222,79 @@ function triggerFileUpload() {
   fileInputRef.value?.click()
 }
 
+// 1. 修改：用户选图后，不直接上传，而是打开裁剪框
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files || input.files.length === 0)
     return
 
-  const originalFile = input.files[0]
-  if (originalFile.size > 5 * 1024 * 1024) {
+  const file = input.files[0]
+  if (file.size > 5 * 1024 * 1024) {
     messageHook.warning(t('auth.avatar_too_big'))
     return
   }
 
+  // 读取文件转 Base64 供裁剪器显示
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    cropperOptions.img = e.target?.result as string
+    showCropper.value = true // 打开裁剪弹窗
+  }
+  reader.readAsDataURL(file)
+
+  // 清空 input 允许重复选择同一文件
+  input.value = ''
+}
+
+// 2. 新增：确认裁剪并上传
+function onCropConfirm() {
+  if (!cropperRef.value)
+    return
+
+  cropperRef.value.getCropBlob(async (rawBlob: Blob) => {
+    try {
+      if (!rawBlob)
+        throw new Error('Crop failed')
+
+      // 1. 压缩 (恢复你的 20KB 逻辑)
+      const compressedBlob = await compressImage(rawBlob)
+
+      showCropper.value = false
+
+      // 2. 【新增】立即生成本地预览 URL (解决 PWA 显示延迟和闪烁问题)
+      // 这一步能确保用户绝对看不到问号，因为不需要经过网络
+      const localPreviewUrl = URL.createObjectURL(compressedBlob)
+      currentAvatarSrc.value = localPreviewUrl
+
+      // 3. 后台静默上传
+      await performUpload(compressedBlob)
+
+      // 注意：performUpload 里还会更新一次 currentAvatarSrc，
+      // 如果上传成功，它会变成远程 URL；如果失败，它至少还保留着这张本地预览图。
+    }
+    catch (e) {
+      console.error(e)
+      messageHook.error(t('auth.upload_failed'))
+    }
+  })
+}
+// 3. 重构：将原本的上传逻辑抽取出来，接收 Blob 参数
+// (注意：这里把原来的 handleFileChange 后半部分逻辑移过来了)
+async function performUpload(fileBlob: Blob) {
   isUploadingAvatar.value = true
   const oldAvatarUrl = props.user?.user_metadata?.avatar_url
 
   try {
-    // 1. 压缩
-    const compressedBlob = await compressImage(originalFile)
+    // 依然保留你的压缩逻辑（虽然裁剪已经是新图了，但压缩一下更保险）
+    // 注意：compressImage 原本接收 File，这里我们需要稍微适配一下，或者直接用 blob
+    // 为了复用你的 compressImage，我们需要把 blob 伪装成 File 或者修改 compressImage
+    // 简单做法：直接用 blobToBase64 存缓存，用 blob 上传，略过 compressImage (因为 vue-cropper 导出的通常已经比较小)
 
-    // 2. 存入 LocalStorage (离线缓存)
+    // --- 逻辑开始 ---
+
+    // 1. 存入 LocalStorage (离线缓存)
     try {
-      const base64Data = await blobToBase64(compressedBlob)
+      const base64Data = await blobToBase64(fileBlob)
       const cacheKey = `avatar_cache_${props.user?.id}`
       localStorage.setItem(cacheKey, base64Data)
     }
@@ -235,9 +305,10 @@ async function handleFileChange(event: Event) {
     const timestamp = Date.now()
     const fileName = `${timestamp}.jpg`
     const filePath = `${props.user!.id}/${fileName}`
-    const fileToUpload = new File([compressedBlob], fileName, { type: 'image/jpeg' })
+    // 将 blob 转为 File 对象以便上传 API 识别
+    const fileToUpload = new File([fileBlob], fileName, { type: 'image/jpeg' })
 
-    // 3. 上传
+    // 2. 上传
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
@@ -245,14 +316,14 @@ async function handleFileChange(event: Event) {
     if (uploadError)
       throw uploadError
 
-    // 4. 获取 URL
+    // 3. 获取 URL
     const { data: { publicUrl } } = supabase.storage
       .from('avatars')
       .getPublicUrl(filePath)
 
     const finalUrl = `${publicUrl}?t=${timestamp}`
 
-    // 5. 更新资料
+    // 4. 更新资料
     const { error: updateError } = await supabase.auth.updateUser({
       data: { avatar_url: finalUrl },
     })
@@ -260,8 +331,9 @@ async function handleFileChange(event: Event) {
     if (updateError)
       throw updateError
 
-    // 6. 清理旧图
+    // 5. 清理旧图 (保持原有逻辑)
     if (oldAvatarUrl) {
+      // ...原有清理逻辑保持不变...
       const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
       if (isSupabase) {
         try {
@@ -275,15 +347,13 @@ async function handleFileChange(event: Event) {
               await supabase.storage.from('avatars').remove([oldPath])
           }
         }
-        catch (delErr) {
-          console.warn('旧头像清理失败', delErr)
-        }
+        catch (delErr) { console.warn('旧头像清理失败', delErr) }
       }
     }
 
     await authStore.refreshUser()
 
-    // 立即更新显示，无需等待网络
+    // 立即更新显示
     currentAvatarSrc.value = finalUrl
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
@@ -294,8 +364,6 @@ async function handleFileChange(event: Event) {
   }
   finally {
     isUploadingAvatar.value = false
-    if (fileInputRef.value)
-      fileInputRef.value.value = ''
   }
 }
 
@@ -573,6 +641,7 @@ function handleForgotOldPwd() {
             <div class="avatar-wrapper" :class="{ 'is-loading': isUploadingAvatar }" @click="triggerFileUpload">
               <img
                 v-if="currentAvatarSrc && !avatarLoadError"
+                :key="currentAvatarSrc"
                 :src="currentAvatarSrc"
                 class="profile-avatar"
                 alt="Avatar"
@@ -702,6 +771,42 @@ function handleForgotOldPwd() {
               {{ pwdLoading ? t('auth.submitting') : t('auth.confirm') }}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
+  <Transition name="fade">
+    <div v-if="showCropper" class="modal-overlay cropper-overlay">
+      <div class="modal-content cropper-content">
+        <div class="modal-header">
+          <h3 class="modal-title">{{ t('auth.adjust_avatar') || '调整头像' }}</h3>
+          <button class="close-button" @click="showCropper = false">&times;</button>
+        </div>
+
+        <div class="cropper-container">
+          <VueCropper
+            ref="cropperRef"
+            :img="cropperOptions.img"
+            :output-size="1"
+            output-type="jpeg"
+            :info="true"
+            :can-scale="true"
+            :auto-crop="cropperOptions.autoCrop"
+            :auto-crop-width="cropperOptions.autoCropWidth"
+            :auto-crop-height="cropperOptions.autoCropHeight"
+            :fixed="cropperOptions.fixed"
+            :fixed-number="cropperOptions.fixedNumber"
+            :center-box="cropperOptions.centerBox"
+          />
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-grey" @click="showCropper = false">
+            {{ t('auth.cancel') }}
+          </button>
+          <button class="btn-green" @click="onCropConfirm">
+            {{ t('auth.confirm') }}
+          </button>
         </div>
       </div>
     </div>
@@ -1001,4 +1106,24 @@ function handleForgotOldPwd() {
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ...原有样式... */
+
+/* --- 新增裁剪框样式 --- */
+.cropper-overlay {
+  z-index: 9999 !important; /* 强制最高层级 */
+  background-color: rgba(0, 0, 0, 0.85); /* 背景深一点，更聚焦 */
+}
+.cropper-content {
+  width: 90%;
+  max-width: 500px; /* 稍微宽一点以便操作 */
+  height: auto;
+  display: flex;
+  flex-direction: column;
+}
+.cropper-container {
+  width: 100%;
+  height: 300px;
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAQMAAAAlPW0iAAAAA3NCSVQICAjb4U/gAAAABlBMVEXMzMz////TjRV2AAAACXBIWXMAAArrAAAK6wGCiw1aAAAAHHRFWHRTb2Z0d2FyZQBBZG9iZSBGaXJld29ya3MgQ1M26LyyjAAAABFJREFUCJlj+M/AgBVhF/0PAH6/D/HkDxOGAAAAAElFTkSuQmCC'); /*以此增加透明背景格子，看起来更专业*/
+}
 </style>
