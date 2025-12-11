@@ -1028,7 +1028,7 @@ defineExpose({ executeSearch })
 .search-input {
   flex: 1;
   width: 100%;
-  height: 44px;
+  height: 36px;
 
   /* ✅ 修改：加大左边距到 3.6rem，彻底避开图标 */
   padding: 0 2.5rem 0 6.0rem;
@@ -1118,7 +1118,7 @@ defineExpose({ executeSearch })
   justify-content: center;
   gap: 4px;
 
-  height: 36px;
+  height: 32px;
   padding: 0 4px;
   font-size: 13px;
   border-radius: 8px;
@@ -1161,7 +1161,7 @@ defineExpose({ executeSearch })
 .filter-chip {
   flex: 1;
   padding: 0 12px;
-  height: 36px;
+  height: 32px;
   font-size: 13px;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
@@ -1260,11 +1260,21 @@ defineExpose({ executeSearch })
   backdrop-filter: blur(2px);
 }
 .sheet-panel {
-  width: 100%; max-width: 640px; max-height: 80vh;
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
   background-color: #fff;
-  border-radius: 16px 16px 0 0;
+
+  /* ✅ 修改 1：四个角都设为圆角 (原来是 16px 16px 0 0) */
+  border-radius: 16px;
+
+  /* ✅ 修改 2：增加底部距离，把它“顶”上去 */
+  /* 这里的 12vh 表示距离屏幕底部 12% 的高度，你可以根据喜好改成 100px 或 15vh */
+  margin-bottom: 12vh;
+
   padding: 1.5rem;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
 }
 .dark .sheet-panel { background-color: #1f2933; }
@@ -1279,7 +1289,7 @@ defineExpose({ executeSearch })
 }
 .sheet-body { flex: 1; overflow-y: auto; padding-bottom: 1rem; }
 .sheet-confirm-btn {
-  width: 100%; padding: 12px; font-size: 16px; border-radius: 12px;
+  width: 100%; padding: 10px; font-size: 16px; border-radius: 12px;
   border: none; background-color: #6366f1; color: #fff; font-weight: 600;
   margin-top: auto; cursor: pointer;
 }
@@ -1288,7 +1298,7 @@ defineExpose({ executeSearch })
 /* 弹窗内部组件 */
 .seg-row { display: flex; gap: 8px; margin-bottom: 16px; }
 .seg-btn {
-  flex: 1; padding: 8px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb;
+  flex: 1; padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb;
   background: #f9fafb; color: #374151; cursor: pointer;
 }
 .seg-btn.active { background-color: #eff6ff; border-color: #6366f1; color: #6366f1; font-weight: 500; }
@@ -1305,20 +1315,19 @@ defineExpose({ executeSearch })
 .date-separator {
   font-size: 16px;
   color: #9ca3af;
-
-  /* ✅ 修改 1：清除所有多余 padding */
-  padding: 0 4px;
-
-  /* ✅ 修改 2：消除行高影响 */
+  padding: 0;
   line-height: 1;
 
-  /* ✅ 修改 3：手动向上提 2px，抵消基线对齐带来的下沉 */
+  /* ✅ 新增：给一个固定宽度，并让文字在里面居中 */
+  min-width: 24px;
+  text-align: center;
+
+  /* 保持你调试好的垂直下移参数 */
   position: relative;
   top: 11px;
 }
-
 .tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-.tag-mode-btn { padding: 10px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
+.tag-mode-btn { padding: 7px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
 .tag-mode-btn.active { border-color: #6366f1; background-color: #eff6ff; color: #6366f1; }
 .dark .tag-mode-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
 .dark .tag-mode-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
