@@ -3642,7 +3642,7 @@ function onCalendarUpdated(updated: any) {
 
   /* ✅ 新增：消除行高干扰，并微调视觉重心 */
   line-height: 1;
-  padding-bottom: 5px; /* 这一行是关键：因为 "+" 符号在很多字体里本身重心偏低，往上顶 2px 视觉上才是在圆心 */
+  padding-bottom: 3px; /* 这一行是关键：因为 "+" 符号在很多字体里本身重心偏低，往上顶 2px 视觉上才是在圆心 */
 
   cursor: pointer;
   background: #6366f1;
