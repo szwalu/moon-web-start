@@ -118,15 +118,44 @@ watch(() => props.show, (visible) => {
   }
 })
 
-// 2. 监听用户信息变化，同步头像 URL
+// 2. 监听用户信息变化，智能同步头像（缓存优先策略）
 watch(() => userAvatar.value, (newUrl) => {
-  if (newUrl) {
-    currentAvatarSrc.value = newUrl
-    avatarLoadError.value = false
+  // 如果没有 URL（未登录或无头像），清空
+  if (!newUrl) {
+    currentAvatarSrc.value = null
+    return
+  }
+
+  // A. 尝试获取本地缓存
+  const cacheKey = `avatar_cache_${props.user?.id}`
+  const cachedBase64 = localStorage.getItem(cacheKey)
+
+  if (cachedBase64) {
+    // ✅ 关键点：如果有缓存，先立即显示缓存（0等待，消除加载感）
+    currentAvatarSrc.value = cachedBase64
+
+    // B. 后台静默加载最新网络图片
+    // 创建一个隐形 Image 对象去预加载
+    const img = new Image()
+    img.src = newUrl
+
+    img.onload = () => {
+      // 网络图片加载成功后，无缝切换为网络 URL
+      // 这样能确保显示的是服务器上最新的（比如你在其他设备更改了头像）
+      // 且因为已经预加载进内存，这次切换是瞬间的，用户察觉不到闪烁
+      currentAvatarSrc.value = newUrl
+    }
+
+    // 如果网络加载失败（比如离线），img.onerror 会触发，
+    // 但因为我们已经显示了 cachedBase64，所以用户完全不受影响，依然能看到头像
   }
   else {
-    currentAvatarSrc.value = null
+    // C. 如果完全没缓存（第一次登录），只能直接用网络 URL
+    currentAvatarSrc.value = newUrl
   }
+
+  // 重置错误状态
+  avatarLoadError.value = false
 }, { immediate: true })
 
 // --- 工具函数 ---
