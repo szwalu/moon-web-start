@@ -3633,11 +3633,18 @@ function onCalendarUpdated(updated: any) {
   height: 48px;
   border-radius: 50%;
   border: none;
-  font-size: 30px;           /* 略大一点更协调 */
-  line-height: 48px;         /* 与高度一致确保垂直居中 */
-  text-align: center;        /* 水平居中 */
-  cursor: pointer;
+  font-size: 30px;
 
+  /* ✅ 新增：使用 Flexbox 实现完美绝对居中 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* ✅ 新增：消除行高干扰，并微调视觉重心 */
+  line-height: 1;
+  padding-bottom: 5px; /* 这一行是关键：因为 "+" 符号在很多字体里本身重心偏低，往上顶 2px 视觉上才是在圆心 */
+
+  cursor: pointer;
   background: #6366f1;
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
