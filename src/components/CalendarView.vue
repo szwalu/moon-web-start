@@ -291,8 +291,21 @@ function handleHeaderClick() {
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 }
-function toggleExpandInCalendar(noteId: string) {
-  expandedNoteId.value = expandedNoteId.value === noteId ? null : noteId
+
+async function toggleExpandInCalendar(noteId: string) {
+  const isCollapsing = expandedNoteId.value === noteId
+  expandedNoteId.value = isCollapsing ? null : noteId
+
+  // 如果是收起操作，手动修正滚动位置
+  if (isCollapsing) {
+    await nextTick()
+    const el = document.getElementById(`cal-note-${noteId}`)
+    if (el) {
+      // block: 'nearest' 会尽量微调滚动条让元素可见
+      // 如果想要更强烈的效果（比如回到顶部），可以用 block: 'center' 或 'start'
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }
 }
 
 const attributes = computed(() => {
@@ -897,7 +910,13 @@ async function saveNewNote(content: string, weather: string | null) {
         </div>
 
         <div v-else-if="selectedDateNotes.length > 0" class="notes-list">
-          <div v-for="note in selectedDateNotes" :key="note.id">
+          <div
+            v-for="note in selectedDateNotes"
+            :id="`cal-note-${note.id}`"
+            :key="note.id"
+            class="note-wrapper"
+            :class="{ 'collapsed-item-wrapper': expandedNoteId !== note.id }"
+          >
             <NoteItem
               :note="note"
               :is-expanded="expandedNoteId === note.id"
@@ -1012,9 +1031,33 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   flex-direction: column;
 }
+
 .notes-list > div {
   margin-bottom: 1.5rem;
+  scroll-margin-top: 160px;
+  transition: all 0.3s ease;
 }
+
+/* ✅ 1. 外层强制限高（解决空白问题的根本） */
+.collapsed-item-wrapper {
+  /* 限制整体高度，超出部分直接切掉 */
+  max-height: 220px;
+  overflow: hidden;
+
+  /* 加上渐变遮罩，让底部边缘柔和一点 */
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+/* ✅ 2. 内层关键修复：减少 Padding，把按钮“提”上来 */
+/* 只有在收起状态下，才去压缩 NoteItem 的内边距 */
+.collapsed-item-wrapper :deep(.note-card) {
+  /* 原来是 4rem (64px)，改小一点，让内容和按钮更紧凑 */
+  padding-top: 1.5rem !important;
+  padding-bottom: 3rem !important;
+  /* 这样按钮就不会被挤到 220px 以外了 */
+}
+
 .notes-list > div:last-child {
   margin-bottom: 0;
 }
