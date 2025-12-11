@@ -166,9 +166,14 @@ const searchModel = computed({
   },
 })
 
+// ✅ 修复：点击历史记录，直接回填搜索框并执行（恢复旧版逻辑）
 function applyHistorySearch(term: string) {
+  // 1. 将关键词回填到输入框显示
   searchModel.value = term
-  executeSearch()
+
+  // 2. ✅ 关键修改：直接把 term 传给 executeSearch
+  // 这样能避开 props 更新的微小延迟，确保立刻搜的是这个词
+  executeSearch(term)
 }
 
 // ====== 搜索逻辑 ======
@@ -198,7 +203,6 @@ function isAudioNote(note: any): boolean {
   const raw = getNoteRaw(note)
   let hit = 0
 
-  // ✅ 修改：去掉大括号，但保留换行
   if (raw.includes('note-audios/'))
     hit++
 
@@ -578,6 +582,7 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   else if (type === 'favorite')
     favoriteOnly.value = true
 
+  // ✅ 修复：如果搜索框空，回填文字（恢复旧版逻辑）
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
     if (moreHasImage.value)
@@ -598,6 +603,7 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
   executeSearch()
 }
 
+// ✅ 修复：日期筛选回填文字到搜索框
 function confirmDateFilter() {
   if (startDateStr.value || endDateStr.value)
     dateMode.value = 'custom'
@@ -622,6 +628,7 @@ function confirmDateFilter() {
   executeSearch()
 }
 
+// ✅ 修复：标签筛选回填文字到搜索框
 function confirmTagFilter() {
   if (tagMode.value !== 'include' && tagMode.value !== 'exclude')
     selectedTagForFilter.value = ''
@@ -644,6 +651,7 @@ function confirmTagFilter() {
   executeSearch()
 }
 
+// ✅ 修复：更多筛选回填文字到搜索框
 function confirmMoreFilter() {
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
@@ -1031,7 +1039,7 @@ defineExpose({ executeSearch })
   height: 36px;
 
   /* ✅ 修改：加大左边距到 3.6rem，彻底避开图标 */
-  padding: 0 2.5rem 0 6.0rem;
+  padding: 0 2.5rem 0 6.2rem;
 
   font-size: 15px;
   border: 1px solid transparent;
@@ -1061,15 +1069,29 @@ defineExpose({ executeSearch })
   right: 0.8rem;
   top: 50%;
   transform: translateY(-50%);
-  background: #e5e7eb;
+  background-color: #8b5cf6; /* 紫色背景 */
+  color: #ffffff;
   border: none;
-  color: #666;
   cursor: pointer;
-  padding: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border-radius: 50%;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: all 0.2s ease;
+  z-index: 10;
 }
-.dark .clear-search-button { background: #4b5563; color: #bbb; }
+.clear-search-button:hover {
+  background-color: #7c3aed;
+  transform: translateY(-50%) scale(1.1);
+}
+.dark .clear-search-button {
+  background-color: #a78bfa;
+  color: #1f2937;
+}
 
 /* 2. 控制行 (标题左，按钮右) */
 .controls-row {
@@ -1144,6 +1166,7 @@ defineExpose({ executeSearch })
 }
 .chip-icon {
   opacity: 0.7;
+  color: #6366f1;
 }
 
 /* 4. 高级筛选面板 */
@@ -1260,16 +1283,13 @@ defineExpose({ executeSearch })
   backdrop-filter: blur(2px);
 }
 .sheet-panel {
-  width: 100%;
-  max-width: 640px;
-  max-height: 80vh;
+  width: 100%; max-width: 640px; max-height: 80vh;
   background-color: #fff;
 
   /* ✅ 修改 1：四个角都设为圆角 (原来是 16px 16px 0 0) */
   border-radius: 16px;
 
   /* ✅ 修改 2：增加底部距离，把它“顶”上去 */
-  /* 这里的 12vh 表示距离屏幕底部 12% 的高度，你可以根据喜好改成 100px 或 15vh */
   margin-bottom: 12vh;
 
   padding: 1.5rem;
@@ -1303,19 +1323,23 @@ defineExpose({ executeSearch })
 }
 .seg-btn.active { background-color: #eff6ff; border-color: #6366f1; color: #6366f1; font-weight: 500; }
 .dark .seg-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
-.dark .seg-btn.active { background-color: #312e81; border-color: #818cf8; color: #818cf8; }
+.dark .seg-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
 
 .date-input-row { display: flex; align-items: center; gap: 12px; }
 .date-input-wrapper { flex: 1; }
 .date-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; display: block; }
-.date-input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+.date-input { width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
 .dark .date-input { background: #111827; border-color: #4b5563; color: #fff; }
 
 /* ✅ 修改 2: 确保日期分隔符样式正确 */
 .date-separator {
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  align-self: center; /* 明确垂直居中 */
   font-size: 16px;
   color: #9ca3af;
-  padding: 0;
   line-height: 1;
 
   /* ✅ 新增：给一个固定宽度，并让文字在里面居中 */
@@ -1327,12 +1351,12 @@ defineExpose({ executeSearch })
   top: 11px;
 }
 .tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-.tag-mode-btn { padding: 7px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
+.tag-mode-btn { padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
 .tag-mode-btn.active { border-color: #6366f1; background-color: #eff6ff; color: #6366f1; }
 .dark .tag-mode-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
 .dark .tag-mode-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
 
-.tag-select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; font-size: 14px; }
+.tag-select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; font-size: 14px; }
 .dark .tag-select { background: #111827; border-color: #4b5563; color: #fff; }
 
 .more-list { list-style: none; margin: 0; padding: 0; }
