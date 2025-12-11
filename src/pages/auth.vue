@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { House } from 'lucide-vue-next'
+import { House, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -1165,6 +1165,9 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 }
 
 function handleSearchCleared() {
+  // ✅ 新增：确保变量被清空（这样紫色叉号点击时也能生效）
+  searchQuery.value = ''
+
   hasSearchRun.value = false
   isShowingSearchResults.value = false
   if (!restoreHomepageFromCache()) {
@@ -2986,9 +2989,9 @@ function onCalendarUpdated(updated: any) {
             {{ t('notes.count_notes', { count: filteredNotesCount }) }}
           </span>
         </span>
-        <div class="banner-actions">
-          <button class="clear-filter-btn" @click="clearTagFilter">×</button>
-        </div>
+        <button class="close-results-btn" @click="clearTagFilter">
+          <X :size="18" :stroke-width="3" />
+        </button>
       </div>
 
       <div v-if="isShowingSearchResults && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
@@ -3004,6 +3007,10 @@ function onCalendarUpdated(updated: any) {
             {{ t('notes.count_notes', { count: notes.length }) }}
           </span>
         </span>
+
+        <button class="close-results-btn" @click="handleSearchCleared">
+          <X :size="18" :stroke-width="3" />
+        </button>
       </div>
 
       <!-- 主页输入框：选择模式时隐藏 -->
@@ -3433,20 +3440,6 @@ function onCalendarUpdated(updated: any) {
   }
 }
 
-.clear-filter-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-.clear-filter-btn:hover {
-  opacity: 1;
-}
-
 /* ++ 修改：让导出按钮样式能应用于所有横幅 */
 .active-filter-bar .export-results-btn {
   background: none;
@@ -3514,14 +3507,6 @@ function onCalendarUpdated(updated: any) {
 /* 新增：为暗黑模式下的数量文本适配颜色 */
 .dark .banner-text-count {
   color: #adb5bd;
-}
-
-.banner-actions {
-  /* 按钮区域：保持固定宽度，绝不收缩 */
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 .dark .active-filter-bar {
@@ -3694,6 +3679,41 @@ function onCalendarUpdated(updated: any) {
 
 .search-actions-wrapper :deep(.search-input-wrapper) {
   margin-right: 45px !important; /* 右侧留出 45px 空间 */
+}
+
+/* ✅ 新增：无背景、纯紫色的加粗叉号 */
+.close-results-btn {
+  /* 固定在右侧，防止被文字挤压 */
+  flex-shrink: 0;
+
+  /* 去除所有背景和边框，只留图标 */
+  background: transparent;
+  border: none;
+
+  /* 设置为你截图中的紫色 (品牌色) */
+  color: #6366f1;
+
+  /* 增加一点内边距方便点击，同时稍微拉开点左边距 */
+  padding: 4px;
+  margin-left: 8px;
+
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* 简单的透明度过渡效果 */
+  transition: opacity 0.2s;
+}
+
+.close-results-btn:hover {
+  /* 悬停时稍微变浅，而不是加背景 */
+  opacity: 0.7;
+}
+
+.dark .close-results-btn {
+  /* 深色模式下的紫色稍微亮一点 */
+  color: #818cf8;
 }
 </style>
 
