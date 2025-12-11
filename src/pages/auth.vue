@@ -3666,8 +3666,12 @@ function onCalendarUpdated(updated: any) {
 .cancel-search-btn {
   /* 绝对定位：固定在容器右上角 */
   position: absolute;
-  right: 0;
-  top: 9px; /* 根据 padding-top: 0.5rem (8px) + 微调，让文字居中 */
+  right: 4px;
+
+  /* ✅ 修改：垂直居中计算公式 */
+  /* 容器 padding-top (16px) + 输入框半高 (22px) = 38px */
+  top: 28px;
+  transform: translateY(-50%); /* 自身垂直居中 */
 
   /* 确保按钮在最上层，不被输入框遮挡 */
   z-index: 200;
@@ -3675,12 +3679,15 @@ function onCalendarUpdated(updated: any) {
   /* 样式 */
   background: none;
   border: none;
-  font-size: 15px; /* 字体稍微大一点点更易点 */
+  font-size: 15px;
   color: #666;
   cursor: pointer;
-  padding: 0 4px; /* 增加一点点击热区 */
+  padding: 0 4px;
+  /* 增加高度点击热区，确保容易点到 */
+  height: 44px;
+  display: flex;
+  align-items: center;
 }
-
 .dark .cancel-search-btn {
   color: #bbb;
 }

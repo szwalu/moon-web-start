@@ -680,7 +680,7 @@ notes:
     s2_i1_label: New
     s2_i1_tail: ': Input -> Save. Supports offline saving.'
     s2_i2_label: Edit
-    s2_i2_tail: ': Edit and save via List or Calendar; interface updates instantly. Supports offline editing.'
+    s2_i2_tail: ': Double-click a note in the list or calendar to edit it. The interface updates instantly after saving. Offline editing is supported.'
     s2_i3_before: 'Task Check: Items like '
     s2_i3_mid: ' and '
     s2_i3_after: ' can be toggled by clicking.'
