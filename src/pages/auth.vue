@@ -3670,7 +3670,7 @@ function onCalendarUpdated(updated: any) {
 
   /* ✅ 修改：垂直居中计算公式 */
   /* 容器 padding-top (16px) + 输入框半高 (22px) = 38px */
-  top: 28px;
+  top: 24px;
   transform: translateY(-50%); /* 自身垂直居中 */
 
   /* 确保按钮在最上层，不被输入框遮挡 */
