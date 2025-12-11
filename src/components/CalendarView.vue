@@ -920,7 +920,7 @@ async function saveNewNote(content: string, weather: string | null) {
             <NoteItem
               :note="note"
               :is-expanded="expandedNoteId === note.id"
-              :dropdown-in-place="true"
+              :dropdown-in-place="false"
               :show-internal-collapse-button="true"
               @toggle-expand="toggleExpandInCalendar"
               @edit="handleEdit"
