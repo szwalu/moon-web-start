@@ -196,7 +196,7 @@ auth:
   login: 登录
   register: 注册
   loading: 处理中...
-  logout: 登出系统
+  logout: 退出登录
   account_title: 我的帐户
   account_email_label: 帐户邮箱
   account_last_login_label: 上次登录
@@ -229,7 +229,7 @@ auth:
   return_home: 返回主页
   please_login: 登录后可实时保存数据！
   info_label: 便 笺
-  note_placeholder: 写点什么...
+  note_placeholder: 记录当下，点亮灵感...
   save: 保存
   insert_emoji: 插入 Emoji
   saved_message: 便笺已保存
@@ -332,7 +332,7 @@ notes:
   notes_bj: 笔记
   save_note: 保存
   more_notes: 更多笔记
-  content_placeholder: 写点什么...
+  content_placeholder: 记录当下，点亮灵感...
   add_success: 添加成功
   add_error: 添加失败
   update_success: 更新成功
@@ -535,7 +535,7 @@ notes:
     title: 日历
     compose_backfill: '＋补写 {date} 笔记'
     compose_write: '＋写 {date} 笔记'
-    placeholder_new: 在这里写点什么...
+    placeholder_new: 记录当下，点亮灵感...
     placeholder_edit: 编辑这条笔记...
     loading: 加载中...
     no_notes_for_day: 这一天没有笔记。
@@ -580,8 +580,8 @@ notes:
     go_to_site: 前往网址站
     logout: 退出登录
     logout_confirm:
-      title: 确定要登出系统吗？
-      content: 登出后需用密码重新登陆
+      title: 确定要退出登录吗？
+      content: 退出后需用密码重新登录
       positive: 确定
       negative: 取消
     errors:

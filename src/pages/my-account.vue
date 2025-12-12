@@ -2,24 +2,28 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
+
+import { useDialog } from 'naive-ui'
+
+// [新增] 引入 useDialog
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 
 // --- 初始化 & 状态定义 ---
 useDark()
 const { t } = useI18n()
+const dialog = useDialog() // [新增] 初始化 dialog
 const authStore = useAuthStore()
 
 const user = computed(() => authStore.user)
 const loading = ref(false)
 const lastBackupTime = ref('N/A')
-// 关键改动：sessionReady 控制页面可交互时机
 const sessionReady = ref(false)
 let authListener: any = null
 
 // --- 生命周期：预热 session + 监听变更 ---
 onMounted(async () => {
-  // [PATCH-1] 预热一次 session，避免仅依赖回调导致“未知态”
+  // [PATCH-1] 预热一次 session
   try {
     const { data, error } = await supabase.auth.getSession()
     if (!error) {
@@ -32,7 +36,7 @@ onMounted(async () => {
     // 忽略错误
   }
 
-  // [PATCH-2] 订阅会话变更，兜底同步 user，避免卡在未知分支
+  // [PATCH-2] 订阅会话变更
   const result = supabase.auth.onAuthStateChange((_event, session) => {
     authStore.user = session?.user ?? null
   })
@@ -67,15 +71,30 @@ const lastLoginTime = computed(() => {
 })
 
 // --- 方法 ---
-async function handleLogout() {
+
+// [修改] 原有的登出逻辑改名为 doSignOut，供确认框回调调用
+async function doSignOut() {
   loading.value = true
   try {
     await supabase.auth.signOut()
   }
   finally {
-    // 强制刷新到首页，避免留在当前组件
+    // 强制刷新到首页
     window.location.assign('/')
   }
+}
+
+// [新增] 打开确认框
+function openLogoutConfirm() {
+  dialog.warning({
+    title: t('notes.account.logout_confirm.title'),
+    content: t('notes.account.logout_confirm.content'),
+    negativeText: t('notes.account.logout_confirm.negative'),
+    positiveText: t('notes.account.logout_confirm.positive'),
+    async onPositiveClick() {
+      await doSignOut()
+    },
+  })
 }
 </script>
 
@@ -100,11 +119,16 @@ async function handleLogout() {
         </div>
 
         <div class="button-group">
-          <!-- [PATCH-3] 返回首页改为纯导航，避免依赖 JS 状态导致点击无效 -->
           <RouterLink to="/" class="btn-like" role="button" aria-label="Home">
             {{ t('auth.return_home') }}
           </RouterLink>
-          <button type="button" class="button--secondary" :disabled="loading" @click="handleLogout">
+
+          <button
+            type="button"
+            class="button--secondary"
+            :disabled="loading"
+            @click="openLogoutConfirm"
+          >
             {{ loading ? t('auth.loading') : t('auth.logout') }}
           </button>
         </div>
@@ -117,7 +141,7 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-/* 顶部安全区容器：避免内容顶进刘海区 */
+/* 顶部安全区容器 */
 .page-safearea {
   padding-top: calc(8px + constant(safe-area-inset-top));
   padding-top: calc(8px + env(safe-area-inset-top));
