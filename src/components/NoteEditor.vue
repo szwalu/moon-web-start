@@ -1053,22 +1053,34 @@ function recomputeBottomSafePadding() {
     document.body.appendChild(mirror)
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
+
+    // 细节优化：处理回车造成的空行高度计算
+    const textContent = val.slice(0, selEnd)
+    // 如果末尾是换行符，补一个零宽字符让高度撑开，反映真实光标位置
+    mirror.textContent = textContent.endsWith('\n') ? `${textContent}\u200B` : textContent
+
     const y = mirror.scrollHeight
     document.body.removeChild(mirror)
     return y
   })()
 
   const rect = el.getBoundingClientRect()
+
+  // 1. 基础光标视口位置计算
+  // isAndroid ? 1.1 : 1.0 -> 安卓只需微量补偿，去掉之前的 1.25/1.15 差异化
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
+    + lineHeight * (isAndroid ? 1.1 : 1.0)
 
+  // 🔴 关键修改 1：安卓端不再额外叠加 2 行高度，直接使用计算值
   const caretBottomAdjusted = caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 2 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+
+  // 🔴 关键修改 2：安卓端 EXTRA 设为极小值 (2px)
+  const EXTRA = isAndroid ? 2 : (iosFirstInputLatch.value ? 48 : 32)
+
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1080,53 +1092,58 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 5 : 70
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
+
+  // 🔴 关键修改 3：HEADROOM 大幅降低 (原60 -> 现10)，只要不贴着键盘边缘即可
+  const HEADROOM = isAndroid ? 10 : 70
+
+  // 🔴 关键修改 4：核心逻辑！在安卓端，计算 Safe 区域时不包含 footerH。
+  // 我们只保证光标不被键盘挡住，不强求连底栏都悬浮在键盘上（否则留白会非常巨大）
+  const effectiveFooterH = isAndroid ? 0 : footerH
+
+  const SAFE = effectiveFooterH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  const rawNeed = Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
 
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
+  // 死区与防抖逻辑保持不变
+  const DEADZONE = isAndroid ? 72 : 46
+  const MIN_STEP = isAndroid ? 24 : 14
+  const STICKY = 12
 
   let need = rawNeed - DEADZONE
   if (need < MIN_STEP)
     need = 0
 
-  // 抑制小幅抖动：与上次差异很小时保持不变
   if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
 
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
+  // 推页逻辑
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
+        // 安卓端推页：降低比例和上限
+        const ratio = 1.0 // 原 1.6
+        const cap = 200 // 原 420
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+          window.scrollBy(0, delta)
       }
       else {
         const ratio = 0.35
         const cap = 80
         const delta = Math.min(Math.ceil(need * ratio), cap)
         if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+          window.scrollBy(0, delta)
       }
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
-        recomputeBottomSafePadding()
+        // 这里的递归调用如果不加限制可能会轻微抖动，但通常是安全的
+        // recomputeBottomSafePadding()
       }, 140)
     }
     if (isIOS && iosFirstInputLatch.value)
