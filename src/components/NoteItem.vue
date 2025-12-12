@@ -388,13 +388,6 @@ function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string,
 
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-  const creationTime = new Date(note.created_at).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
   const updatedTime = new Date(note.updated_at).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -482,7 +475,6 @@ function getDropdownOptions(note: any) {
 
         return h('div', { style: { padding: '4px 12px', cursor: 'default' } }, [
           h('p', { style: pStyle }, t('notes.word_count', { count: charCount })),
-          h('p', { style: pStyle }, t('notes.created_at', { time: creationTime })),
           h('p', { style: pStyle }, t('notes.updated2_at', { time: updatedTime })),
         ])
       },

@@ -53,7 +53,7 @@ async function handleGoogleLogin() {
       provider: 'google',
       options: {
         // 登录成功后跳回当前页面的来源
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/auth`,
       },
     })
     if (error)
@@ -107,7 +107,7 @@ async function handleSubmitAuth() {
         throw error
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
-      await router.replace('/')
+      await router.replace('/auth')
     }
     else if (mode.value === 'register') {
       const { error } = await supabase.auth.signUp({

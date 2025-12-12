@@ -123,7 +123,8 @@ export function useAutoSave() {
           })
           lastSavedJson = restoredContentJson.value
 
-          $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
+          if (window.location.pathname === '/')
+            $message.success(t('autoSave.restored', { email: authStore.user?.email ?? '用户' }))
         }
       }
       else if (error && error.code !== 'PGRST116') {
