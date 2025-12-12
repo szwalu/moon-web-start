@@ -1031,7 +1031,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 键盘高度检测
+  // 键盘检测
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
@@ -1039,53 +1039,31 @@ function recomputeBottomSafePadding() {
     return
   }
 
+  // 获取行高
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-  const elRect = el.getBoundingClientRect()
 
-  // 1. 【核心修复】更精确的光标高度计算
+  // 1. 简化的光标视口位置估算
+  const rect = el.getBoundingClientRect()
+
+  // 算出光标在输入框内的相对 Y 坐标（像素级）
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
+    const width = rect.width // 确保宽度一致
 
-    // 🔴 修复点 A：使用 rect.width 而非 clientWidth
-    // clientWidth 不包含边框，如果 box-sizing 是 border-box 且有边框，会导致镜像比真身窄，文字提前换行。
-    const width = elRect.width
-
-    // 🔴 修复点 B：不要使用 font 简写，而是逐个复制属性！
-    // 安卓上 style.font 经常为空，导致镜像使用错误字体，计算出的高度会比真实高度大很多。
     mirror.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      box-sizing: border-box;
-      top: 0;
-      left: -9999px;
-      width: ${width}px;
-      padding-top: ${style.paddingTop};
-      padding-right: ${style.paddingRight};
-      padding-bottom: ${style.paddingBottom};
-      padding-left: ${style.paddingLeft};
-      border-top-width: ${style.borderTopWidth};
-      border-right-width: ${style.borderRightWidth};
-      border-bottom-width: ${style.borderBottomWidth};
-      border-left-width: ${style.borderLeftWidth};
+      position: absolute; visibility: hidden; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; box-sizing: border-box;
+      top: 0; left: -9999px; width: ${width}px;
+      padding: ${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
+      border-width: ${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
       border-style: solid;
-      font-family: ${style.fontFamily};
-      font-size: ${style.fontSize};
-      font-weight: ${style.fontWeight};
-      font-style: ${style.fontStyle};
-      letter-spacing: ${style.letterSpacing};
-      line-height: ${style.lineHeight};
-      text-transform: ${style.textTransform};
+      font-family: ${style.fontFamily}; font-size: ${style.fontSize}; font-weight: ${style.fontWeight}; letter-spacing: ${style.letterSpacing}; line-height: ${style.lineHeight};
     `
     document.body.appendChild(mirror)
 
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
     const textVal = val.slice(0, selEnd)
-    // 细节：处理末尾换行
     mirror.textContent = textVal.endsWith('\n') ? `${textVal}\u200B` : textVal
 
     const y = mirror.scrollHeight
@@ -1093,38 +1071,38 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
-  // 2. 计算光标在视口中的绝对底部位置
-  // 🔴 修复点 C：移除所有针对 Android 的额外行高倍率 (lineHeight * 1.25 之类)
-  // 只用几何真实位置，因为只要测量准了，就不需要额外倍率。
-  const caretBottomInViewport
-    = (elRect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + lineHeight
+  // 2. 计算光标在屏幕上的绝对底部位置
+  const caretBottomInViewport = rect.top + (caretYInContent - el.scrollTop) + lineHeight
 
-  // 3. 计算阈值（极简模式）
-  // 🔴 修复点 D：不再预留 Footer 高度，也不加 huge HEADROOM
-  // 只要光标离视口底部还有 12px 就认为安全
-  const SAFE_MARGIN = 12
-  const threshold = vv.height - SAFE_MARGIN
-
+  // 3. 计算“理论需要”的垫高值
+  const threshold = vv.height // 阈值就是视口底部
   const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 4. 防抖与应用
-  let need = rawNeed
-  // 忽略微小抖动
+  // 4. 【终极修复】强制限制最大值 (Clamping)
+  let need = 0
+  if (isAndroid) {
+    // 安卓逻辑：只要光标被遮挡 (rawNeed > 0)，就固定给一个舒适区，不要动态跟随太紧
+    need = rawNeed > 0 ? Math.min(rawNeed, 32) : 0
+  }
+  else {
+    // iOS 逻辑保持原样
+    need = rawNeed
+  }
+
+  // 5. 应用与防抖
   if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 5)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
   emit('bottomSafeChange', need)
 
-  // 5. 推页逻辑
+  // 6. 推页逻辑
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
-        // 安卓仅做微小推动
-        const delta = Math.min(need, 120)
-        if (delta > 5 && props.enableScrollPush)
+        // 安卓端只在必需时轻微滚动，且设了上限
+        const delta = Math.min(need, 32)
+        if (delta > 0 && props.enableScrollPush)
           window.scrollBy(0, delta)
       }
       else {
@@ -1133,6 +1111,8 @@ function recomputeBottomSafePadding() {
           window.scrollBy(0, delta)
       }
       _hasPushedPage = true
+
+      // ✅ 修复点：这里展开成了多行，解决了 ESLint 报错
       window.setTimeout(() => {
         _hasPushedPage = false
       }, 140)
@@ -2146,27 +2126,22 @@ function startFocusBoost() {
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
+
   _hasPushedPage = false
 
   const t = e.inputType || ''
-  const isRealTyping
-    = t.startsWith('insert')
-    || t.startsWith('delete')
-    || t === 'historyUndo'
-    || t === 'historyRedo'
+  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
+
   if (!isRealTyping)
     return
 
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 🔴 核心修改：安卓端直接 return！
-  // 之前这里写的是 prelift = 180，导致每次打字底部都被顶起很高。
-  // 把它删掉，让上面的 recomputeBottomSafePadding 全权负责高度。
+  // 🔴 核心逻辑：安卓端直接 return，不执行下面的 180px 垫高
   if (isAndroid)
     return
 
-  // iOS 逻辑保持不变
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, 120)
   emit('bottomSafeChange', prelift)
