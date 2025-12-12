@@ -378,8 +378,8 @@ button:hover:not([disabled]) { background-color: #4f46e5; }
   input, textarea, select { background: #2a2a2a; color: #eee; border: 1px solid #555; }
   .breadcrumb { background: #312e81; color: #e0e7ff; }
   .tip { color: #ccc; }
-  button { background-color: #009f77; }
-  button:hover:not([disabled]) { background-color: #00b386; }
+  button { background-color: #818cf8; }
+  button:hover:not([disabled]) { background-color: #6366f1; }
   .btn-back { background: #2a2a2a; color: #eee; border-color: #555; }
   .btn-back:hover { background: #333; }
 }
