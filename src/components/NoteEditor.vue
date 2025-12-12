@@ -1041,23 +1041,51 @@ function recomputeBottomSafePadding() {
 
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
+  const elRect = el.getBoundingClientRect()
 
-  // 1. 算出光标在文本内容里的精确 Y 坐标
+  // 1. 【核心修复】更精确的光标高度计算
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
-    mirror.style.cssText
-      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + 'border-style:solid;'
+
+    // 🔴 修复点 A：使用 rect.width 而非 clientWidth
+    // clientWidth 不包含边框，如果 box-sizing 是 border-box 且有边框，会导致镜像比真身窄，文字提前换行。
+    const width = elRect.width
+
+    // 🔴 修复点 B：不要使用 font 简写，而是逐个复制属性！
+    // 安卓上 style.font 经常为空，导致镜像使用错误字体，计算出的高度会比真实高度大很多。
+    mirror.style.cssText = `
+      position: absolute;
+      visibility: hidden;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      box-sizing: border-box;
+      top: 0;
+      left: -9999px;
+      width: ${width}px;
+      padding-top: ${style.paddingTop};
+      padding-right: ${style.paddingRight};
+      padding-bottom: ${style.paddingBottom};
+      padding-left: ${style.paddingLeft};
+      border-top-width: ${style.borderTopWidth};
+      border-right-width: ${style.borderRightWidth};
+      border-bottom-width: ${style.borderBottomWidth};
+      border-left-width: ${style.borderLeftWidth};
+      border-style: solid;
+      font-family: ${style.fontFamily};
+      font-size: ${style.fontSize};
+      font-weight: ${style.fontWeight};
+      font-style: ${style.fontStyle};
+      letter-spacing: ${style.letterSpacing};
+      line-height: ${style.lineHeight};
+      text-transform: ${style.textTransform};
+    `
     document.body.appendChild(mirror)
 
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
     const textVal = val.slice(0, selEnd)
-    // 细节：如果以换行符结尾，补一个零宽字符撑开高度
+    // 细节：处理末尾换行
     mirror.textContent = textVal.endsWith('\n') ? `${textVal}\u200B` : textVal
 
     const y = mirror.scrollHeight
@@ -1065,35 +1093,37 @@ function recomputeBottomSafePadding() {
     return y
   })()
 
-  // 2. 算出光标在当前可视屏幕上的绝对 Y 坐标
-  const rect = el.getBoundingClientRect()
+  // 2. 计算光标在视口中的绝对底部位置
+  // 🔴 修复点 C：移除所有针对 Android 的额外行高倍率 (lineHeight * 1.25 之类)
+  // 只用几何真实位置，因为只要测量准了，就不需要额外倍率。
   const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
+    = (elRect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
     + lineHeight
 
-  // 3. 计算阈值
+  // 3. 计算阈值（极简模式）
+  // 🔴 修复点 D：不再预留 Footer 高度，也不加 huge HEADROOM
+  // 只要光标离视口底部还有 12px 就认为安全
   const SAFE_MARGIN = 12
   const threshold = vv.height - SAFE_MARGIN
 
-  // 4. 算出需要垫高多少
   const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 5. 应用
+  // 4. 防抖与应用
   let need = rawNeed
-
-  // 简单防抖
+  // 忽略微小抖动
   if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 5)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
   emit('bottomSafeChange', need)
 
-  // 6. 推页逻辑
+  // 5. 推页逻辑
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
-        const delta = Math.min(need, 100)
+        // 安卓仅做微小推动
+        const delta = Math.min(need, 120)
         if (delta > 5 && props.enableScrollPush)
           window.scrollBy(0, delta)
       }
@@ -1103,8 +1133,6 @@ function recomputeBottomSafePadding() {
           window.scrollBy(0, delta)
       }
       _hasPushedPage = true
-
-      // ✅ 修复点：将原来的单行改成多行，解决 ESLint 报错
       window.setTimeout(() => {
         _hasPushedPage = false
       }, 140)
