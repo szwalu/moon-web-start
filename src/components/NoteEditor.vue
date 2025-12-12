@@ -2157,7 +2157,6 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
   const isRealTyping
     = t.startsWith('insert')
@@ -2167,14 +2166,24 @@ function handleBeforeInput(e: InputEvent) {
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
+  // ✅ 修改开始：
+  // 安卓端视口会自动变化，不需要 180px 这么夸张的预抬升。
+  // 我们只给 iOS 保留预抬升，安卓直接设为 0 或者仅给一个底栏高度即可。
+
+  if (isAndroid) {
+    // 安卓不做预先的巨额垫高，完全交给 recomputeBottomSafePadding 去计算精确值
+    // 这里什么都不做，或者仅 emit 0，避免闪烁
+    return
+  }
+
+  // iOS 保持原逻辑（稍微改小一点也无妨，原来的 120 也可以）
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  const prelift = Math.max(base, 120)
   emit('bottomSafeChange', prelift)
+  // ✅ 修改结束
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
