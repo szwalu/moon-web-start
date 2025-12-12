@@ -959,6 +959,8 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
+  if (Math.abs(el.scrollHeight - el.clientHeight) < 5)
+    return
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
@@ -1066,7 +1068,7 @@ function recomputeBottomSafePadding() {
   const caretBottomAdjusted = caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const EXTRA = isAndroid ? 12 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1078,7 +1080,7 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 60 : 70
+  const HEADROOM = isAndroid ? 15 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
