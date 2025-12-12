@@ -5,6 +5,7 @@ import { useDark } from '@vueuse/core'
 import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { House, X } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -16,9 +17,6 @@ import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
 
-// import { saveNotesSnapshot } from '@/utils/db'
-// 新增：离线数据库/队列
-// 把这行替换为包含 readNotesSnapshot
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
@@ -170,7 +168,7 @@ const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
-
+const router = useRouter()
 // === 新增辅助函数：不依赖组件实例，强制修正“那年今日”的本地缓存 ===
 function forceUpdateAnniversaryCache(idsToDelete: string[]) {
   if (!user.value || idsToDelete.length === 0)
@@ -2705,7 +2703,7 @@ function handleMainMenuSelect(key: string) {
     showHelpDialog.value = true
 
   else if (key === 'feedback')
-    window.location.href = '/apply?from=auth'
+    router.push('/apply?from=auth')
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
