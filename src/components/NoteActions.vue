@@ -744,7 +744,7 @@ function clearSearch() {
   emit('searchCleared')
 }
 
-defineExpose({ executeSearch })
+defineExpose({ executeSearch, clearSearch })
 </script>
 
 <template>
@@ -793,9 +793,10 @@ defineExpose({ executeSearch })
     </div>
 
     <div class="controls-row">
-      <div class="quick-search-title">
+      <div v-if="!showAdvancedFilters" class="quick-search-title">
         {{ t('notes.search_quick_title', '快捷搜索') }}
       </div>
+
       <button
         class="advanced-toggle-btn"
         @click="showAdvancedFilters = !showAdvancedFilters"
@@ -803,41 +804,6 @@ defineExpose({ executeSearch })
         <span>{{ t('notes.search_advanced', '高级搜索') }}</span>
         <ChevronUp v-if="showAdvancedFilters" :size="16" />
         <ChevronDown v-else :size="16" />
-      </button>
-    </div>
-
-    <div v-if="!searchModel" class="quick-search-grid">
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('link')"
-      >
-        <LinkIcon :size="15" class="chip-icon" />
-        <span>{{ t('notes.search_quick_has_link', '有链接') }}</span>
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('image')"
-      >
-        <ImageIcon :size="15" class="chip-icon" />
-        <span>{{ t('notes.search_quick_has_image', '有图片') }}</span>
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('audio')"
-      >
-        <Mic :size="15" class="chip-icon" />
-        <span>{{ t('notes.search_quick_has_audio', '有语音') }}</span>
-      </button>
-      <button
-        class="quick-chip"
-        type="button"
-        @click="handleQuickSearch('favorite')"
-      >
-        <Heart :size="15" class="chip-icon" />
-        <span>{{ t('notes.search_quick_favorited', '已收藏') }}</span>
       </button>
     </div>
 
@@ -854,6 +820,31 @@ defineExpose({ executeSearch })
         <span>{{ moreLabel }}</span>
         <ChevronDown :size="14" class="filter-caret" />
       </button>
+    </div>
+
+    <div v-if="!searchModel" class="quick-search-section">
+      <div v-if="showAdvancedFilters" class="quick-search-title moved-down">
+        {{ t('notes.search_quick_title', '快捷搜索') }}
+      </div>
+
+      <div class="quick-search-grid">
+        <button class="quick-chip" type="button" @click="handleQuickSearch('link')">
+          <LinkIcon :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_link', '有链接') }}</span>
+        </button>
+        <button class="quick-chip" type="button" @click="handleQuickSearch('image')">
+          <ImageIcon :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_image', '有图片') }}</span>
+        </button>
+        <button class="quick-chip" type="button" @click="handleQuickSearch('audio')">
+          <Mic :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_audio', '有语音') }}</span>
+        </button>
+        <button class="quick-chip" type="button" @click="handleQuickSearch('favorite')">
+          <Heart :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_favorited', '已收藏') }}</span>
+        </button>
+      </div>
     </div>
 
     <div v-if="!searchModel && recentSearches.length > 0" class="recent-search-section">
@@ -1096,22 +1087,36 @@ defineExpose({ executeSearch })
 /* 2. 控制行 (标题左，按钮右) */
 .controls-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  /* 关键：让左边的标题和右边的按钮分列两端 */
+  /* 如果标题隐藏了，按钮依然会因为 margin-left: auto 靠右 */
+  justify-content: space-between;
   margin-top: 4px;
   padding: 0 2px;
+  min-height: 24px; /* 防止标题消失时高度塌陷 */
 }
 .quick-search-title {
   font-size: 13px;
   font-weight: 500;
   color: #6b7280;
+  /* 默认情况（在第一行时）不需要下边距 */
+  margin: 0;
 }
 .dark .quick-search-title { color: #9ca3af; }
 
+.quick-search-title.moved-down {
+  margin-bottom: 8px;
+  margin-left: 4px;
+  margin-top: 4px; /* 与上面的筛选条拉开一点距离 */
+}
+
 .advanced-toggle-btn {
+  /* 关键：确保即使左边没有标题，它也永远贴在右边 */
+  margin-left: auto;
+
   background: transparent;
   border: none;
-  color: #6366f1; /* 使用主题色强调 */
+  color: #6366f1;
   font-size: 13px;
   font-weight: 500;
   display: flex;
@@ -1124,7 +1129,6 @@ defineExpose({ executeSearch })
 .advanced-toggle-btn:hover { background-color: rgba(99, 102, 241, 0.1); }
 .dark .advanced-toggle-btn { color: #818cf8; }
 .dark .advanced-toggle-btn:hover { background-color: rgba(129, 140, 248, 0.15); }
-
 /* 3. 快捷搜索按钮组 (网格布局) */
 .quick-search-grid {
   display: grid;
@@ -1174,7 +1178,14 @@ defineExpose({ executeSearch })
   display: flex;
   gap: 8px;
   margin-top: 8px;
+  margin-bottom: 8px; /* 增加底部间距 */
+  padding: 0 2px;
   animation: slideDown 0.2s ease-out;
+}
+
+.quick-search-section {
+  display: flex;
+  flex-direction: column;
 }
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-5px); }

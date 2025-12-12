@@ -2989,7 +2989,10 @@ function onCalendarUpdated(updated: any) {
             {{ t('notes.count_notes', { count: filteredNotesCount }) }}
           </span>
         </span>
-        <button class="close-results-btn" @click="clearTagFilter">
+        <button
+          class="close-results-btn"
+          @click="noteActionsRef ? noteActionsRef.clearSearch() : handleSearchCleared()"
+        >
           <X :size="18" :stroke-width="3" />
         </button>
       </div>
@@ -3008,7 +3011,7 @@ function onCalendarUpdated(updated: any) {
           </span>
         </span>
 
-        <button class="close-results-btn" @click="handleSearchCleared">
+        <button class="close-results-btn" @click="noteActionsRef ? noteActionsRef.clearSearch() : handleSearchCleared()">
           <X :size="18" :stroke-width="3" />
         </button>
       </div>
