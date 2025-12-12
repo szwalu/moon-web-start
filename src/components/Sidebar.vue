@@ -31,7 +31,7 @@ const emit = defineEmits(['close', 'menuClick'])
 
 // [修改 2] 异步引入 Feedback 组件
 // 注意：请根据你的实际文件路径调整，假设是在 views 或 components 下
-const Feedback = defineAsyncComponent(() => import('@/components/feedback.vue'))
+const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 
 const { t } = useI18n()
 
