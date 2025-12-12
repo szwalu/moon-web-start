@@ -1144,7 +1144,7 @@ async function saveNewNote(content: string, weather: string | null) {
   margin: 0 0 12px 0;
 }
 .compose-btn {
-  background: #00b386;
+  background: #6366f1;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -1152,7 +1152,7 @@ async function saveNewNote(content: string, weather: string | null) {
   font-size: 14px;
   cursor: pointer;
 }
-.compose-btn:hover { background: #009a74; }
+.compose-btn:hover { background: #4f46e5; }
 .inline-editor {
   margin-bottom: 16px;
 }
