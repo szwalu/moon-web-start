@@ -1031,6 +1031,7 @@ function recomputeBottomSafePadding() {
     return
   }
 
+  // 键盘高度检测
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
@@ -1041,6 +1042,7 @@ function recomputeBottomSafePadding() {
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
+  // 1. 算出光标在文本内容里的精确 Y 坐标
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
     mirror.style.cssText
@@ -1051,99 +1053,60 @@ function recomputeBottomSafePadding() {
       + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
       + 'border-style:solid;'
     document.body.appendChild(mirror)
+
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
-
-    // 细节优化：处理回车造成的空行高度计算
-    const textContent = val.slice(0, selEnd)
-    // 如果末尾是换行符，补一个零宽字符让高度撑开，反映真实光标位置
-    mirror.textContent = textContent.endsWith('\n') ? `${textContent}\u200B` : textContent
+    const textVal = val.slice(0, selEnd)
+    // 细节：如果以换行符结尾，补一个零宽字符撑开高度
+    mirror.textContent = textVal.endsWith('\n') ? `${textVal}\u200B` : textVal
 
     const y = mirror.scrollHeight
     document.body.removeChild(mirror)
     return y
   })()
 
+  // 2. 算出光标在当前可视屏幕上的绝对 Y 坐标
   const rect = el.getBoundingClientRect()
-
-  // 1. 基础光标视口位置计算
-  // isAndroid ? 1.1 : 1.0 -> 安卓只需微量补偿，去掉之前的 1.25/1.15 差异化
   const caretBottomInViewport
     = (rect.top - vv.offsetTop)
     + (caretYInContent - el.scrollTop)
-    + lineHeight * (isAndroid ? 1.1 : 1.0)
+    + lineHeight
 
-  // 🔴 关键修改 1：安卓端不再额外叠加 2 行高度，直接使用计算值
-  const caretBottomAdjusted = caretBottomInViewport
+  // 3. 计算阈值
+  const SAFE_MARGIN = 12
+  const threshold = vv.height - SAFE_MARGIN
 
-  const footerH = getFooterHeight()
+  // 4. 算出需要垫高多少
+  const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
 
-  // 🔴 关键修改 2：安卓端 EXTRA 设为极小值 (2px)
-  const EXTRA = isAndroid ? 2 : (iosFirstInputLatch.value ? 48 : 32)
+  // 5. 应用
+  let need = rawNeed
 
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-
-  // 🔴 关键修改 3：HEADROOM 大幅降低 (原60 -> 现10)，只要不贴着键盘边缘即可
-  const HEADROOM = isAndroid ? 10 : 70
-
-  // 🔴 关键修改 4：核心逻辑！在安卓端，计算 Safe 区域时不包含 footerH。
-  // 我们只保证光标不被键盘挡住，不强求连底栏都悬浮在键盘上（否则留白会非常巨大）
-  const effectiveFooterH = isAndroid ? 0 : footerH
-
-  const SAFE = effectiveFooterH + safeInset + EXTRA + HEADROOM
-
-  const threshold = vv.height - SAFE
-  const rawNeed = Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-
-  // 死区与防抖逻辑保持不变
-  const DEADZONE = isAndroid ? 72 : 46
-  const MIN_STEP = isAndroid ? 24 : 14
-  const STICKY = 12
-
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
-    need = 0
-
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
+  // 简单防抖
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 5)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
-
   emit('bottomSafeChange', need)
 
-  // 推页逻辑
+  // 6. 推页逻辑
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
-        // 安卓端推页：降低比例和上限
-        const ratio = 1.0 // 原 1.6
-        const cap = 200 // 原 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
+        const delta = Math.min(need, 100)
+        if (delta > 5 && props.enableScrollPush)
           window.scrollBy(0, delta)
       }
       else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
+        const delta = Math.min(Math.ceil(need * 0.35), 80)
         if (delta > 0 && props.enableScrollPush)
           window.scrollBy(0, delta)
       }
       _hasPushedPage = true
+
+      // ✅ 修复点：将原来的单行改成多行，解决 ESLint 报错
       window.setTimeout(() => {
         _hasPushedPage = false
-        // 这里的递归调用如果不加限制可能会轻微抖动，但通常是安全的
-        // recomputeBottomSafePadding()
       }, 140)
     }
     if (isIOS && iosFirstInputLatch.value)
@@ -2169,21 +2132,16 @@ function handleBeforeInput(e: InputEvent) {
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // ✅ 修改开始：
-  // 安卓端视口会自动变化，不需要 180px 这么夸张的预抬升。
-  // 我们只给 iOS 保留预抬升，安卓直接设为 0 或者仅给一个底栏高度即可。
-
-  if (isAndroid) {
-    // 安卓不做预先的巨额垫高，完全交给 recomputeBottomSafePadding 去计算精确值
-    // 这里什么都不做，或者仅 emit 0，避免闪烁
+  // 🔴 核心修改：安卓端直接 return！
+  // 之前这里写的是 prelift = 180，导致每次打字底部都被顶起很高。
+  // 把它删掉，让上面的 recomputeBottomSafePadding 全权负责高度。
+  if (isAndroid)
     return
-  }
 
-  // iOS 保持原逻辑（稍微改小一点也无妨，原来的 120 也可以）
+  // iOS 逻辑保持不变
   const base = getFooterHeight() + 24
   const prelift = Math.max(base, 120)
   emit('bottomSafeChange', prelift)
-  // ✅ 修改结束
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
