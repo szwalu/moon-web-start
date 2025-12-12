@@ -1068,7 +1068,7 @@ function recomputeBottomSafePadding() {
   const caretBottomAdjusted = caretBottomInViewport
 
   const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 12 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const EXTRA = isAndroid ? 2 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
   const safeInset = (() => {
     try {
       const div = document.createElement('div')
@@ -1080,7 +1080,7 @@ function recomputeBottomSafePadding() {
     }
     catch { return 0 }
   })()
-  const HEADROOM = isAndroid ? 15 : 70
+  const HEADROOM = isAndroid ? 5 : 70
   const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
   const threshold = vv.height - SAFE
