@@ -1093,10 +1093,10 @@ function handleForgotOldPwd() {
 
 .btn-green {
   display: inline-block; text-decoration: none; text-align: center; width: 100%;
-  background-color: #00b386; color: #fff; border-radius: 6px; padding: 0.8rem;
+  background-color: #6366f1; color: #fff; border-radius: 6px; padding: 0.8rem;
   font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 0.2s; border: none;
 }
-.btn-green:hover { background-color: #009a74; }
+.btn-green:hover { background-color: #4f46e5; }
 .btn-green:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-grey {
