@@ -5,7 +5,6 @@ import { useDark } from '@vueuse/core'
 import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
 import { House, X } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -168,7 +167,7 @@ const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
-const router = useRouter()
+
 // === 新增辅助函数：不依赖组件实例，强制修正“那年今日”的本地缓存 ===
 function forceUpdateAnniversaryCache(idsToDelete: string[]) {
   if (!user.value || idsToDelete.length === 0)
@@ -2701,9 +2700,6 @@ function handleMainMenuSelect(key: string) {
 
   else if (key === 'help')
     showHelpDialog.value = true
-
-  else if (key === 'feedback')
-    router.push('/apply?from=auth')
 }
 
 async function handleEditFromCalendar(noteToFind: any) {

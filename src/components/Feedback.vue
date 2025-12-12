@@ -4,19 +4,25 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../utils/supabaseClient'
 
+// [修改 1] 定义 Props 和 Emits，使其能被父组件控制
+const props = defineProps<{
+  modalMode?: boolean // 是否以弹窗/组件模式运行
+}>()
+
+const emit = defineEmits(['close'])
+
 const route = useRoute()
 const router = useRouter()
-const isFromAuth = computed(() => route.query.from === 'auth')
 
-// [修改 1] 初始化下拉菜单选中值：如果来自 register，默认选中 'applyinvitecode'
+// [修改 2] 兼容逻辑：如果是 modalMode，默认视为来自 auth
+const isFromAuth = computed(() => props.modalMode || route.query.from === 'auth')
+
+// 初始化下拉菜单：组件模式下默认空，路由模式下保持原逻辑
 const selectedType = ref(route.query.from === 'register' ? 'applyinvitecode' : '')
 
-// [修改 2] 返回链接逻辑更新
-// 如果来自 auth 页面，或者当前选择了“申请邀请码”，都返回 /auth；否则返回首页
 const backTarget = computed(() => {
   if (isFromAuth.value || selectedType.value === 'applyinvitecode')
     return '/auth'
-
   return '/'
 })
 
@@ -26,13 +32,11 @@ const successMessage = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
 
-// [修改 3] 计算邮箱是否必填
-// 逻辑：如果不是从Auth进入 且 选择了'applyinvitecode'，则必须填写邮箱
 const isEmailRequired = computed(() => {
   return !isFromAuth.value && selectedType.value === 'applyinvitecode'
 })
 
-// ===== 锁定 body 滚动，改用内部滚动容器（改善 iOS 键盘滚动行为） =====
+// ===== 锁定 body 滚动 =====
 const originalBodyOverflow = ref<string | null>(null)
 
 onMounted(() => {
@@ -45,6 +49,20 @@ onUnmounted(() => {
     document.body.style.overflow = originalBodyOverflow.value
 })
 
+// [修改 3] 返回逻辑：如果是组件模式，触发 close 事件；否则走路由
+function goBack() {
+  if (props.modalMode) {
+    emit('close')
+  }
+  else {
+    // 只有路由模式下才尝试 back 或 push
+    if (backTarget.value === '/' && window.history.state?.back)
+      router.back()
+    else
+      router.push(backTarget.value)
+  }
+}
+
 async function handleSubmit() {
   if (!form.value)
     return
@@ -55,8 +73,6 @@ async function handleSubmit() {
 
   try {
     const formData = new FormData(form.value)
-
-    // 从 /auth 来时强制视为 feedback，否则按下拉选择
     const type = isFromAuth.value
       ? 'feedback'
       : (formData.get('type') as string)
@@ -64,8 +80,6 @@ async function handleSubmit() {
     const message = formData.get('message') as string
     const email = (formData.get('email') as string)?.trim()
 
-    // 逻辑校验
-    // 如果前端 required 属性被绕过，这里做二次拦截
     if (isEmailRequired.value && !email)
       throw new Error('请填写联系邮箱')
 
@@ -88,12 +102,10 @@ async function handleSubmit() {
 
     successMessage.value = `✅ ${t('form.success')}`
     form.value.reset()
-    // 重置 selectedType
     selectedType.value = ''
 
     setTimeout(() => {
-      // 提交完成后：和返回按钮逻辑一致
-      router.push(backTarget.value)
+      goBack() // 复用 goBack 逻辑
     }, 2000)
   }
   catch (err) {
@@ -109,8 +121,8 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="page-safearea">
-    <div class="scroll-wrapper">
+  <div class="page-safearea" :class="{ 'is-modal': modalMode }" @click.self="modalMode ? goBack() : null">
+    <div class="scroll-wrapper" @click.self="modalMode ? goBack() : null">
       <div class="form-container">
         <div class="breadcrumb">
           {{ t(isFromAuth ? 'form.title' : 'form.breadcrumb') }}
@@ -153,9 +165,9 @@ async function handleSubmit() {
               {{ loading ? '提交中...' : t('form.submit') }}
             </button>
 
-            <RouterLink :to="backTarget" class="btn-back" role="button" aria-label="返回">
+            <button class="btn-back" type="button" @click="goBack">
               {{ t('auth.return') }}
-            </RouterLink>
+            </button>
           </div>
 
           <p v-if="successMessage" class="success-message">
@@ -171,22 +183,108 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
-/* 样式保持不变 */
-/* 顶部安全区容器：固定视口高度，内部滚动 */
+/* 保持原有样式，新增 .is-modal 样式 */
+
+/* ... 原有 .page-safearea 样式 ... */
 .page-safearea {
   height: 100vh;
   padding-top: calc(8px + constant(safe-area-inset-top));
   padding-top: calc(8px + env(safe-area-inset-top));
   box-sizing: border-box;
+  /* 确保有背景色 */
+  background: var(--app-bg, #fff);
 }
 
-/* 内部滚动容器：真正滚动的是它，而不是 body */
+/* [修改] 模态框模式下的关键样式：强制最高层级覆盖 */
+/* =========================================
+   [修改] 模态框模式专用样式：半透明悬浮效果
+   ========================================= */
+
+/* 1. 外层容器：变成全屏半透明遮罩 */
+.page-safearea.is-modal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  z-index: 5000 !important;
+
+  /* 关键：背景半透明黑色，实现“悬浮”感 */
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(2px); /* 可选：给背景加点毛玻璃 */
+
+  /* 布局：让内部的内容居中 */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* 2. 内部滚动容器：限制大小，防止撑满全屏 */
+.page-safearea.is-modal .scroll-wrapper {
+  width: 100%;
+  height: 100%;
+  /* 使用 Flex 让 form-container 居中 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 点击空白处如果需要关闭，需配合 JS，这里先单纯居中 */
+  pointer-events: none; /* 让点击穿透到 content */
+}
+
+/* 3. 表单卡片：变成真正的“弹窗卡片” */
+.page-safearea.is-modal .form-container {
+  pointer-events: auto; /* 恢复点击 */
+  width: 90% !important;
+  max-width: 600px !important;
+
+  /* 限制高度，内容过多时内部滚动 */
+  max-height: 85vh !important;
+  overflow-y: auto !important;
+
+  margin: 0 !important; /* 去掉原本的 margin */
+
+  /* 加上阴影，增强悬浮感 */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 16px !important;
+
+  /* 动画优化：如果想要进场动画，可以配合 Transition */
+}
+
+/* 4. 在弹窗模式下，调整一下顶部的返回按钮和标题样式 */
+.page-safearea.is-modal .breadcrumb {
+  margin-top: 0;
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .page-safearea.is-modal {
+    background-color: rgba(0, 0, 0, 0.7) !important;
+  }
+  .page-safearea.is-modal .form-container {
+    background: #1e1e1e;
+    border: 1px solid #333;
+  }
+}
+
+/* 移动端适配：手机上可能还是全屏体验比较好，或者留一点边距 */
+@media (max-width: 600px) {
+  .page-safearea.is-modal .form-container {
+    width: 94% !important;
+    max-height: 90vh !important;
+    padding: 1.5rem !important;
+  }
+}
+
+/* ... 以下保持原有样式不变 ... */
 .scroll-wrapper {
   height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-
 .form-container {
   max-width: 640px;
   margin: 2rem auto;
@@ -199,33 +297,28 @@ async function handleSubmit() {
   color: #333;
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
 }
-
+/* ... (省略其他未修改的样式) ... */
 .breadcrumb {
   text-align: center;
   font-weight: bold;
   font-size: 16px !important;
   margin-bottom: 1rem;
-  background: #fff7cc;
+  background: #eef2ff;
   padding: 0.5rem;
   border-radius: 8px;
 }
-
 .tip {
   margin-bottom: 2rem;
   color: #555;
   font-size: 14px !important;
 }
-
 label {
   display: block;
   margin-bottom: 1.2rem;
   font-size: 14px !important;
 }
-
-select,
-textarea,
-input {
-  font-size: 16px !important; /* iOS 防止放大 */
+select, textarea, input {
+  font-size: 16px !important;
   font-family: inherit;
   width: 100%;
   padding: 0.8rem;
@@ -233,27 +326,19 @@ input {
   border-radius: 6px;
   box-sizing: border-box;
 }
-
 textarea {
   min-height: 140px;
   resize: vertical;
 }
-
-.required {
-  color: red;
-  margin-right: 4px;
-}
-
-/* 按钮行：5:1 */
+.required { color: red; margin-right: 4px; }
 .button-row {
   display: grid;
   grid-template-columns: 5fr 1fr;
   gap: 0.75rem;
   margin-top: 1rem;
 }
-
 button {
-  background-color: #00b386;
+  background-color: #6366f1;
   border: none;
   color: white;
   border-radius: 6px;
@@ -262,17 +347,8 @@ button {
   padding: 0.8rem;
   font-size: 13px !important;
 }
-
-button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-button:hover:not([disabled]) {
-  background-color: #009f77;
-}
-
-/* 返回按钮视觉为次级 */
+button[disabled] { opacity: 0.6; cursor: not-allowed; }
+button:hover:not([disabled]) { background-color: #4f46e5; }
 .btn-back {
   display: inline-block;
   text-align: center;
@@ -284,88 +360,27 @@ button:hover:not([disabled]) {
   color: #333;
   border: 1px solid #ddd;
 }
-
-.btn-back:hover {
-  background: #e9e9e9;
-}
-
-.success-message,
-.error-message {
+.btn-back:hover { background: #e9e9e9; }
+.success-message, .error-message {
   margin-top: 1rem;
   font-weight: bold;
   text-align: center;
 }
-
-.success-message {
-  color: #008800;
-}
-
-.error-message {
-  color: red;
-}
-
+.success-message { color: #008800; }
+.error-message { color: red; }
 @media (max-width: 600px) {
-  .form-container {
-    padding: 1.25rem;
-    font-size: 15px !important;
-  }
-
-  .breadcrumb {
-    font-size: 18px !important;
-  }
-
-  select,
-  textarea,
-  input {
-    font-size: 16px !important; /* 保持 16，避免 iOS 再放大 */
-  }
-
-  button,
-  .btn-back {
-    font-size: 15px !important;
-  }
+  .form-container { padding: 1.25rem; font-size: 15px !important; }
+  .breadcrumb { font-size: 18px !important; }
+  select, textarea, input, button, .btn-back { font-size: 16px !important; }
 }
-
 @media (prefers-color-scheme: dark) {
-  .form-container {
-    background: #1e1e1e;
-    color: #eee;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
-  }
-
-  input,
-  textarea,
-  select {
-    background: #2a2a2a;
-    color: #eee;
-    border: 1px solid #555;
-  }
-
-  .breadcrumb {
-    background: #333;
-    color: #ffec99;
-  }
-
-  .tip {
-    color: #ccc;
-  }
-
-  button {
-    background-color: #009f77;
-  }
-
-  button:hover:not([disabled]) {
-    background-color: #00b386;
-  }
-
-  .btn-back {
-    background: #2a2a2a;
-    color: #eee;
-    border-color: #555;
-  }
-
-  .btn-back:hover {
-    background: #333;
-  }
+  .form-container { background: #1e1e1e; color: #eee; box-shadow: 0 0 8px rgba(255, 255, 255, 0.1); }
+  input, textarea, select { background: #2a2a2a; color: #eee; border: 1px solid #555; }
+  .breadcrumb { background: #312e81; color: #e0e7ff; }
+  .tip { color: #ccc; }
+  button { background-color: #009f77; }
+  button:hover:not([disabled]) { background-color: #00b386; }
+  .btn-back { background: #2a2a2a; color: #eee; border-color: #555; }
+  .btn-back:hover { background: #333; }
 }
 </style>

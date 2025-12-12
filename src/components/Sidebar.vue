@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, ref, watch } from 'vue'
+
+// [修改 1] 引入 defineAsyncComponent
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -26,7 +28,15 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'menuClick'])
+
+// [修改 2] 异步引入 Feedback 组件
+// 注意：请根据你的实际文件路径调整，假设是在 views 或 components 下
+const Feedback = defineAsyncComponent(() => import('@/components/feedback.vue'))
+
 const { t } = useI18n()
+
+// [修改 3] 控制反馈组件显示的内部状态
+const showFeedback = ref(false)
 
 function onAvatarClick() {
   handleItemClick('account')
@@ -105,7 +115,7 @@ const RecursiveMenu = defineComponent({
   },
 })
 
-// --- 统计数据逻辑 (只保留天数) ---
+// --- 统计数据逻辑 ---
 const journalingDays = ref(0)
 
 const userName = computed(() => {
@@ -123,27 +133,18 @@ const userSignature = computed(() => {
   return props.user?.user_metadata?.signature || t('auth.default_signature')
 })
 
-// [修改] 将 userAvatar 改为 ref，支持缓存读取和错误回退
 const userAvatar = ref<string | null>(null)
 
 watch(() => props.user, (u) => {
   const remoteUrl = u?.user_metadata?.avatar_url
-
-  // 1. 基础校验：如果是无效值，直接置空
   if (!u || !remoteUrl || remoteUrl === 'null' || remoteUrl.trim() === '') {
     userAvatar.value = null
     return
   }
-
-  // 2. 尝试读取本地缓存 (实现秒开)
   const cacheKey = `avatar_cache_${u.id}`
   const cachedBase64 = localStorage.getItem(cacheKey)
-
   if (cachedBase64) {
-    // 命中缓存：立即显示
     userAvatar.value = cachedBase64
-
-    // 后台静默检查更新
     if (remoteUrl !== cachedBase64) {
       const img = new Image()
       img.src = remoteUrl
@@ -153,12 +154,10 @@ watch(() => props.user, (u) => {
     }
   }
   else {
-    // 无缓存：直接用网络图
     userAvatar.value = remoteUrl
   }
 }, { immediate: true })
 
-// 纯计算函数，不涉及网络请求
 function calculateDays(dateStr: string) {
   const first = new Date(dateStr)
   const today = new Date()
@@ -169,19 +168,13 @@ function calculateDays(dateStr: string) {
 async function fetchStats() {
   if (!props.user)
     return
-
-  // 缓存 Key 绑定用户 ID，避免多用户切换数据错误
   const STORAGE_KEY = `journal_start_date_${props.user.id}`
-
-  // 1. 先尝试从本地获取
   const cachedDate = localStorage.getItem(STORAGE_KEY)
 
   if (cachedDate) {
-    // ✅ 命中缓存，直接计算，不发请求
     calculateDays(cachedDate)
   }
   else {
-    // ❌ 无缓存，请求服务器（仅请求一次）
     try {
       const { data } = await supabase
         .from('notes')
@@ -192,7 +185,6 @@ async function fetchStats() {
         .single()
 
       if (data?.created_at) {
-        // ✅ 拿到数据后写入缓存
         localStorage.setItem(STORAGE_KEY, data.created_at)
         calculateDays(data.created_at)
       }
@@ -218,6 +210,14 @@ function handleItemClick(key: string) {
     settingsExpanded.value = !settingsExpanded.value
     return
   }
+
+  // [修改 4] 拦截 'feedback' 事件，内部处理，不再向父组件 emit 菜单点击
+  if (key === 'feedback') {
+    showFeedback.value = true
+    emit('close') // 关闭侧边栏
+    return
+  }
+
   emit('menuClick', key)
   if (key !== 'settings-group')
     emit('close')
@@ -338,6 +338,14 @@ function handleItemClick(key: string) {
 
       <Transition name="fade">
         <div v-if="show" class="sidebar-overlay" @click="emit('close')" />
+      </Transition>
+
+      <Transition name="fade">
+        <Feedback
+          v-if="showFeedback"
+          :modal-mode="true"
+          @close="showFeedback = false"
+        />
       </Transition>
     </div>
   </Teleport>
