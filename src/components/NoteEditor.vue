@@ -1063,9 +1063,7 @@ function recomputeBottomSafePadding() {
     + (caretYInContent - el.scrollTop)
     + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
 
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
+  const caretBottomAdjusted = caretBottomInViewport
 
   const footerH = getFooterHeight()
   const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
