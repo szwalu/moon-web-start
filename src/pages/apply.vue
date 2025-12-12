@@ -45,6 +45,10 @@ onUnmounted(() => {
     document.body.style.overflow = originalBodyOverflow.value
 })
 
+function goBack() {
+  router.push(backTarget.value)
+}
+
 async function handleSubmit() {
   if (!form.value)
     return
@@ -153,9 +157,9 @@ async function handleSubmit() {
               {{ loading ? '提交中...' : t('form.submit') }}
             </button>
 
-            <RouterLink :to="backTarget" class="btn-back" role="button" aria-label="返回">
+            <button class="btn-back" type="button" @click="goBack">
               {{ t('auth.return') }}
-            </RouterLink>
+            </button>
           </div>
 
           <p v-if="successMessage" class="success-message">
