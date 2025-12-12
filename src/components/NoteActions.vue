@@ -1,35 +1,27 @@
 <script setup lang="ts">
 import { computed, defineExpose, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import {
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Mic,
+  Search,
+  X,
+} from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { getSearchCacheKey } from '@/utils/cacheKeys'
 
 // --- Props and Emits ---
 const props = defineProps({
-  modelValue: {
-    type: String,
-    required: true,
-  },
-  isExporting: {
-    type: Boolean,
-    default: false,
-  },
-  showExportButton: {
-    type: Boolean,
-    default: true,
-  },
-  allTags: {
-    type: Array as () => string[],
-    default: () => [],
-  },
-  searchQuery: {
-    type: String,
-    default: '',
-  },
-  user: {
-    type: Object as () => { id?: string },
-    required: true,
-  },
+  modelValue: { type: String, required: true },
+  isExporting: { type: Boolean, default: false },
+  showExportButton: { type: Boolean, default: true },
+  allTags: { type: Array as () => string[], default: () => [] },
+  searchQuery: { type: String, default: '' },
+  user: { type: Object as () => { id?: string }, required: true },
 })
 
 const emit = defineEmits([
@@ -49,7 +41,7 @@ const searchTagSuggestions = ref<string[]>([])
 const highlightedSearchIndex = ref(-1)
 
 // ====== 界面显示状态 ======
-const showAdvancedFilters = ref(false) // 控制“日期/标签/更多”栏的显示
+const showAdvancedFilters = ref(false)
 
 // ====== 筛选弹窗相关状态 ======
 const showDateModal = ref(false)
@@ -71,7 +63,7 @@ const moreHasLink = ref(false)
 const audioFilterEnabled = ref(false)
 const favoriteOnly = ref(false)
 
-// ====== 最近搜索历史 (LocalStorage) ======
+// ====== 最近搜索历史 ======
 const HISTORY_KEY = 'NOTES_SEARCH_HISTORY_V1'
 const recentSearches = ref<string[]>([])
 
@@ -87,7 +79,7 @@ function loadSearchHistory() {
       recentSearches.value = JSON.parse(raw)
   }
   catch (e) {
-    console.error('Failed to load search history', e)
+    console.error(e)
   }
 }
 
@@ -100,15 +92,11 @@ function addToHistory(term: string) {
   if (!cleanTerm)
     return
 
-  // 1. 如果已存在，先移除旧的
   const idx = recentSearches.value.indexOf(cleanTerm)
   if (idx > -1)
     recentSearches.value.splice(idx, 1)
 
-  // 2. 插入到头部
   recentSearches.value.unshift(cleanTerm)
-
-  // 3. 限制数量
   if (recentSearches.value.length > 10)
     recentSearches.value = recentSearches.value.slice(0, 10)
 
@@ -129,7 +117,6 @@ function clearAllHistory() {
 }
 
 // ====== 计算属性 ======
-
 const hasAnyFilter = computed(() => {
   const hasDate = dateMode.value !== 'all' || !!startDateStr.value || !!endDateStr.value
   const hasTag = tagMode.value !== 'all' || !!selectedTagForFilter.value
@@ -179,14 +166,17 @@ const searchModel = computed({
   },
 })
 
+// ✅ 修复：点击历史记录，直接回填搜索框并执行（恢复旧版逻辑）
 function applyHistorySearch(term: string) {
+  // 1. 将关键词回填到输入框显示
   searchModel.value = term
-  executeSearch()
+
+  // 2. ✅ 关键修改：直接把 term 传给 executeSearch
+  // 这样能避开 props 更新的微小延迟，确保立刻搜的是这个词
+  executeSearch(term)
 }
 
-// ====== 辅助函数 & 自动标签逻辑 ======
-
-// 【关键修改】让搜索匹配逻辑同时也检查 weather 字段
+// ====== 搜索逻辑 ======
 function getNoteRaw(note: any): string {
   if (!note)
     return ''
@@ -195,7 +185,6 @@ function getNoteRaw(note: any): string {
   if (typeof note.content === 'string')
     text += note.content
 
-  // ★ 这里追加了 weather，这样前端过滤时，搜地点也能命中
   if (typeof note.weather === 'string')
     text += ` ${note.weather}`
 
@@ -213,18 +202,21 @@ function getNoteRaw(note: any): string {
 function isAudioNote(note: any): boolean {
   const raw = getNoteRaw(note)
   let hit = 0
+
   if (raw.includes('note-audios/'))
     hit++
+
   if (raw.includes('.webm'))
     hit++
+
   if (raw.includes('录音'))
     hit++
+
   return hit >= 2
 }
 
 function noteHasImage(note: any): boolean {
-  const raw = getNoteRaw(note)
-  return raw.includes('note-images/')
+  return getNoteRaw(note).includes('note-images/')
 }
 
 function noteHasLink(note: any): boolean {
@@ -369,7 +361,6 @@ function applyAllFilters(list: any[], keyword: string) {
   return list
     .filter((note) => {
       const raw = getNoteRaw(note)
-      // 这个 matchKeyword 现在会检查 (content + weather)
       if (!matchKeyword(raw, keyword))
         return false
 
@@ -449,7 +440,6 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   const result: T[][] = []
   for (let i = 0; i < array.length; i += size)
     result.push(array.slice(i, i + size))
-
   return result
 }
 
@@ -499,21 +489,16 @@ async function executeSearch(termOverride?: string) {
   }
 
   try {
-    // 【关键修改】并行查询：一个查内容（RPC），一个查天气（ilike）
     const rpcPromise = supabase.rpc('search_notes_with_highlight', payload)
-
-    // 只有当输入了关键字时，才去查天气字段
     let weatherPromise = Promise.resolve({ data: [], error: null })
     if (queryBase) {
-      // 简单的 ilike 查询，不考虑日期标签过滤（反正后面 applyAllFilters 会过滤掉）
-      // 这样就能把“内容没提到地点，但天气里有地点”的笔记捞出来
       weatherPromise = supabase
         .from('notes')
         .select('*')
         .eq('user_id', props.user.id)
         .ilike('weather', `%${queryBase}%`)
         .order('created_at', { ascending: false })
-        .limit(50) as any // 限制数量防止数据过大
+        .limit(50) as any
     }
 
     const [rpcRes, weatherRes] = await Promise.all([rpcPromise, weatherPromise])
@@ -524,7 +509,6 @@ async function executeSearch(termOverride?: string) {
     const rpcData = Array.isArray(rpcRes.data) ? rpcRes.data : []
     const weatherData = Array.isArray(weatherRes.data) ? weatherRes.data : []
 
-    // 合并结果并去重（优先使用 RPC 的结果，因为可能包含高亮信息，虽然后面也会重置）
     const combinedMap = new Map()
     rpcData.forEach((item: any) => combinedMap.set(item.id, item))
     weatherData.forEach((item: any) => {
@@ -534,9 +518,7 @@ async function executeSearch(termOverride?: string) {
 
     let data = Array.from(combinedMap.values())
 
-    // 下面是原有的“状态补全”逻辑（批量查 favorite/pinned 等）
     const idsToCheck = data.map((n: any) => n.id)
-
     if (idsToCheck.length) {
       const BATCH_SIZE = 50
       const chunks = chunkArray(idsToCheck, BATCH_SIZE)
@@ -565,7 +547,6 @@ async function executeSearch(termOverride?: string) {
     }
 
     const list = Array.isArray(data) ? data : []
-    // 这里 applyAllFilters 会再次利用 updated getNoteRaw 验证一遍
     const finalData = applyAllFilters(list, queryBase)
 
     const cachePayload = { v: currentDbVersion, d: list }
@@ -591,13 +572,17 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
 
   if (type === 'image')
     moreHasImage.value = true
+
   else if (type === 'audio')
     audioFilterEnabled.value = true
+
   else if (type === 'link')
     moreHasLink.value = true
+
   else if (type === 'favorite')
     favoriteOnly.value = true
 
+  // ✅ 修复：如果搜索框空，回填文字（恢复旧版逻辑）
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
     if (moreHasImage.value)
@@ -615,13 +600,14 @@ function handleQuickSearch(type: 'image' | 'audio' | 'link' | 'favorite') {
     if (keywords.length)
       searchModel.value = keywords.join(' ')
   }
-
   executeSearch()
 }
 
+// ✅ 修复：日期筛选回填文字到搜索框
 function confirmDateFilter() {
   if (startDateStr.value || endDateStr.value)
     dateMode.value = 'custom'
+
   else if (dateMode.value === 'custom')
     dateMode.value = 'all'
 
@@ -642,6 +628,7 @@ function confirmDateFilter() {
   executeSearch()
 }
 
+// ✅ 修复：标签筛选回填文字到搜索框
 function confirmTagFilter() {
   if (tagMode.value !== 'include' && tagMode.value !== 'exclude')
     selectedTagForFilter.value = ''
@@ -664,6 +651,7 @@ function confirmTagFilter() {
   executeSearch()
 }
 
+// ✅ 修复：更多筛选回填文字到搜索框
 function confirmMoreFilter() {
   if (!searchModel.value.trim()) {
     const keywords: string[] = []
@@ -718,6 +706,7 @@ function selectSearchTag(tag: string) {
   const lastHashIndex = searchModel.value.lastIndexOf('#')
   if (lastHashIndex !== -1)
     searchModel.value = `${searchModel.value.substring(0, lastHashIndex) + tag} `
+
   else
     searchModel.value = `${tag} `
 
@@ -735,6 +724,7 @@ function moveSearchSelection(offset: number) {
 function handleEnterKey() {
   if (showSearchTagSuggestions.value && highlightedSearchIndex.value > -1)
     selectSearchTag(searchTagSuggestions.value[highlightedSearchIndex.value])
+
   else
     executeSearch()
 }
@@ -754,26 +744,14 @@ function clearSearch() {
   emit('searchCleared')
 }
 
-defineExpose({ executeSearch })
+defineExpose({ executeSearch, clearSearch })
 </script>
 
 <template>
   <div class="search-export-bar">
     <div class="search-input-wrapper">
       <div class="search-icon-wrapper">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18" height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
+        <Search class="icon-search" :size="18" />
       </div>
 
       <input
@@ -794,8 +772,9 @@ defineExpose({ executeSearch })
         class="clear-search-button"
         @click="clearSearch"
       >
-        ×
+        <X :size="16" />
       </button>
+
       <div
         v-if="showSearchTagSuggestions && searchTagSuggestions.length"
         class="tag-suggestions search-suggestions"
@@ -813,201 +792,206 @@ defineExpose({ executeSearch })
       </div>
     </div>
 
-    <div class="advanced-toggle-row">
+    <div class="controls-row">
+      <div v-if="!showAdvancedFilters" class="quick-search-title">
+        {{ t('notes.search_quick_title', '快捷搜索') }}
+      </div>
+
       <button
         class="advanced-toggle-btn"
         @click="showAdvancedFilters = !showAdvancedFilters"
       >
         <span>{{ t('notes.search_advanced', '高级搜索') }}</span>
-        <span class="toggle-icon">{{ showAdvancedFilters ? '▴' : '▾' }}</span>
+        <ChevronUp v-if="showAdvancedFilters" :size="16" />
+        <ChevronDown v-else :size="16" />
       </button>
     </div>
 
     <div v-show="showAdvancedFilters" class="filter-row">
-      <button
-        class="filter-chip"
-        type="button"
-        @click="showDateModal = true"
-      >
+      <button class="filter-chip" type="button" @click="showDateModal = true">
         <span>{{ dateLabel }}</span>
-        <span class="filter-caret">▾</span>
+        <ChevronDown :size="14" class="filter-caret" />
       </button>
-      <button
-        class="filter-chip"
-        type="button"
-        @click="showTagModal = true"
-      >
+      <button class="filter-chip" type="button" @click="showTagModal = true">
         <span>{{ tagLabel }}</span>
-        <span class="filter-caret">▾</span>
+        <ChevronDown :size="14" class="filter-caret" />
       </button>
-      <button
-        class="filter-chip"
-        type="button"
-        @click="showMoreModal = true"
-      >
+      <button class="filter-chip" type="button" @click="showMoreModal = true">
         <span>{{ moreLabel }}</span>
-        <span class="filter-caret">▾</span>
+        <ChevronDown :size="14" class="filter-caret" />
       </button>
     </div>
 
-    <div v-if="!searchModel">
-      <div class="quick-search-title">
+    <div v-if="!searchModel" class="quick-search-section">
+      <div v-if="showAdvancedFilters" class="quick-search-title moved-down">
         {{ t('notes.search_quick_title', '快捷搜索') }}
       </div>
 
-      <div class="quick-search-chips">
-        <button
-          class="quick-chip"
-          type="button"
-          @click="handleQuickSearch('image')"
-        >
-          {{ t('notes.search_quick_has_image', '有图片') }}
+      <div class="quick-search-grid">
+        <button class="quick-chip" type="button" @click="handleQuickSearch('link')">
+          <LinkIcon :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_link', '有链接') }}</span>
         </button>
-        <button
-          class="quick-chip"
-          type="button"
-          @click="handleQuickSearch('audio')"
-        >
-          {{ t('notes.search_quick_has_audio', '有语音') }}
+        <button class="quick-chip" type="button" @click="handleQuickSearch('image')">
+          <ImageIcon :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_image', '有图片') }}</span>
         </button>
-        <button
-          class="quick-chip"
-          type="button"
-          @click="handleQuickSearch('link')"
-        >
-          {{ t('notes.search_quick_has_link', '有链接') }}
+        <button class="quick-chip" type="button" @click="handleQuickSearch('audio')">
+          <Mic :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_audio', '有语音') }}</span>
         </button>
-        <button
-          class="quick-chip"
-          type="button"
-          @click="handleQuickSearch('favorite')"
-        >
-          {{ t('notes.search_quick_favorited', '已收藏') }}
+        <button class="quick-chip" type="button" @click="handleQuickSearch('favorite')">
+          <Heart :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_favorited', '已收藏') }}</span>
         </button>
       </div>
+    </div>
 
-      <div v-if="recentSearches.length > 0" class="recent-search-section">
-        <div class="section-header">
-          <span class="quick-search-title">{{ t('notes.search_history_title', '最近搜索') }}</span>
-          <button class="clear-history-btn" :title="t('common.clear', '清空')" @click="clearAllHistory">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14" height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="trash-icon"
-            >
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
+    <div v-if="!searchModel && recentSearches.length > 0" class="recent-search-section">
+      <div class="section-header">
+        <span class="quick-search-title">{{ t('notes.search_history_title', '最近搜索') }}</span>
+        <button class="clear-history-btn" :title="t('common.clear', '清空')" @click="clearAllHistory">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+      </div>
+      <div class="history-chips-container">
+        <div
+          v-for="item in recentSearches"
+          :key="item"
+          class="history-chip"
+          @click="applyHistorySearch(item)"
+        >
+          <span>{{ item }}</span>
+          <button class="history-delete-btn" @click.stop="removeHistoryItem(item)">
+            <X :size="14" />
           </button>
-        </div>
-        <div class="quick-search-chips">
-          <div
-            v-for="item in recentSearches"
-            :key="item"
-            class="history-chip"
-            @click="applyHistorySearch(item)"
-          >
-            <span>{{ item }}</span>
-            <button class="history-delete-btn" @click.stop="removeHistoryItem(item)">×</button>
-          </div>
         </div>
       </div>
     </div>
 
-    <div
-      v-if="showDateModal"
-      class="sheet-mask"
-      @click.self="showDateModal = false"
-    >
+    <div v-if="showDateModal" class="sheet-mask" @click.self="showDateModal = false">
       <div class="sheet-panel">
         <div class="sheet-header">
           <div class="sheet-title">
             {{ t('notes.search_date_title', '日期范围') }}
           </div>
-          <button class="sheet-close" type="button" @click="showDateModal = false">×</button>
+          <button class="sheet-close" type="button" @click="showDateModal = false">
+            <X :size="20" />
+          </button>
         </div>
         <div class="sheet-body">
           <div class="seg-row">
-            <button class="seg-btn" :class="{ active: dateMode === 'all' }" type="button" @click="dateMode = 'all'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_all', '不限时间') }}</button>
-            <button class="seg-btn" :class="{ active: dateMode === 'week' }" type="button" @click="dateMode = 'week'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_this_week', '本周') }}</button>
-            <button class="seg-btn" :class="{ active: dateMode === 'month' }" type="button" @click="dateMode = 'month'; startDateStr = ''; endDateStr = ''">{{ t('notes.search_date_this_month', '本月') }}</button>
+            <button class="seg-btn" :class="{ active: dateMode === 'all' }" type="button" @click="dateMode = 'all'; startDateStr = ''; endDateStr = ''">
+              {{ t('notes.search_date_all', '不限时间') }}
+            </button>
+            <button class="seg-btn" :class="{ active: dateMode === 'week' }" type="button" @click="dateMode = 'week'; startDateStr = ''; endDateStr = ''">
+              {{ t('notes.search_date_this_week', '本周') }}
+            </button>
+            <button class="seg-btn" :class="{ active: dateMode === 'month' }" type="button" @click="dateMode = 'month'; startDateStr = ''; endDateStr = ''">
+              {{ t('notes.search_date_this_month', '本月') }}
+            </button>
           </div>
           <div class="date-input-row">
             <div class="date-input-wrapper">
               <span class="date-label">{{ t('notes.search_date_start', '开始日期') }}</span>
               <input v-model="startDateStr" type="date" class="date-input">
             </div>
-            <div class="date-separator">—</div>
+            <div class="date-separator">
+              —
+            </div>
             <div class="date-input-wrapper">
               <span class="date-label">{{ t('notes.search_date_end', '结束日期') }}</span>
               <input v-model="endDateStr" type="date" class="date-input">
             </div>
           </div>
         </div>
-        <button class="sheet-confirm-btn" type="button" @click="confirmDateFilter">{{ t('common.confirm', '确定') }}</button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmDateFilter">
+          {{ t('common.confirm', '确定') }}
+        </button>
       </div>
     </div>
 
-    <div
-      v-if="showTagModal"
-      class="sheet-mask"
-      @click.self="showTagModal = false"
-    >
+    <div v-if="showTagModal" class="sheet-mask" @click.self="showTagModal = false">
       <div class="sheet-panel">
         <div class="sheet-header">
-          <div class="sheet-title">{{ t('notes.search_tag_title', '标签范围') }}</div>
-          <button class="sheet-close" type="button" @click="showTagModal = false">×</button>
+          <div class="sheet-title">
+            {{ t('notes.search_tag_title', '标签范围') }}
+          </div>
+          <button class="sheet-close" type="button" @click="showTagModal = false">
+            <X :size="20" />
+          </button>
         </div>
         <div class="sheet-body">
           <div class="tag-mode-grid">
-            <button class="tag-mode-btn" :class="{ active: tagMode === 'all' }" type="button" @click="tagMode = 'all'; selectedTagForFilter = ''">{{ t('notes.search_tag_all', '全部内容') }}</button>
-            <button class="tag-mode-btn" :class="{ active: tagMode === 'untagged' }" type="button" @click="tagMode = 'untagged'; selectedTagForFilter = ''">{{ t('notes.search_tag_untagged', '无标签') }}</button>
-            <button class="tag-mode-btn" :class="{ active: tagMode === 'include' }" type="button" @click="tagMode = 'include'">{{ t('notes.search_tag_include', '包含指定标签') }}</button>
-            <button class="tag-mode-btn" :class="{ active: tagMode === 'exclude' }" type="button" @click="tagMode = 'exclude'">{{ t('notes.search_tag_exclude', '排除指定标签') }}</button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'all' }" type="button" @click="tagMode = 'all'; selectedTagForFilter = ''">
+              {{ t('notes.search_tag_all', '全部内容') }}
+            </button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'untagged' }" type="button" @click="tagMode = 'untagged'; selectedTagForFilter = ''">
+              {{ t('notes.search_tag_untagged', '无标签') }}
+            </button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'include' }" type="button" @click="tagMode = 'include'">
+              {{ t('notes.search_tag_include', '包含指定标签') }}
+            </button>
+            <button class="tag-mode-btn" :class="{ active: tagMode === 'exclude' }" type="button" @click="tagMode = 'exclude'">
+              {{ t('notes.search_tag_exclude', '排除指定标签') }}
+            </button>
           </div>
           <div v-if="tagMode === 'include' || tagMode === 'exclude'" class="tag-select-row">
-            <div class="tag-select-label">{{ t('notes.search_tag_pick_label', '选择标签') }}</div>
+            <div class="tag-select-label">
+              {{ t('notes.search_tag_pick_label', '选择标签') }}
+            </div>
             <select v-model="selectedTagForFilter" class="tag-select">
-              <option value="">{{ t('notes.search_tag_pick_placeholder', '请选择标签') }}</option>
-              <option v-for="tag in props.allTags" :key="tag" :value="tag">{{ tag }}</option>
+              <option value="">
+                {{ t('notes.search_tag_pick_placeholder', '请选择标签') }}
+              </option>
+              <option v-for="tag in props.allTags" :key="tag" :value="tag">
+                {{ tag }}
+              </option>
             </select>
           </div>
         </div>
-        <button class="sheet-confirm-btn" type="button" @click="confirmTagFilter">{{ t('common.confirm', '确定') }}</button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmTagFilter">
+          {{ t('common.confirm', '确定') }}
+        </button>
       </div>
     </div>
 
-    <div
-      v-if="showMoreModal"
-      class="sheet-mask"
-      @click.self="showMoreModal = false"
-    >
+    <div v-if="showMoreModal" class="sheet-mask" @click.self="showMoreModal = false">
       <div class="sheet-panel">
         <div class="sheet-header">
-          <div class="sheet-title">{{ t('notes.search_more_title', '更多条件') }}</div>
-          <button class="sheet-close" type="button" @click="showMoreModal = false">×</button>
+          <div class="sheet-title">
+            {{ t('notes.search_more_title', '更多条件') }}
+          </div>
+          <button class="sheet-close" type="button" @click="showMoreModal = false">
+            <X :size="20" />
+          </button>
         </div>
         <div class="sheet-body">
           <ul class="more-list">
-            <li class="more-item" @click="moreHasImage = !moreHasImage">{{ t('notes.search_quick_has_image', '有图片') }}<span v-if="moreHasImage" class="check-icon">✓</span></li>
-            <li class="more-item" @click="moreHasLink = !moreHasLink">{{ t('notes.search_quick_has_link', '有链接') }}<span v-if="moreHasLink" class="check-icon">✓</span></li>
-            <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">{{ t('notes.search_quick_has_audio', '有语音') }}<span v-if="audioFilterEnabled" class="check-icon">✓</span></li>
+            <li class="more-item" @click="moreHasImage = !moreHasImage">
+              {{ t('notes.search_quick_has_image', '有图片') }}<span v-if="moreHasImage" class="check-icon">✓</span>
+            </li>
+            <li class="more-item" @click="moreHasLink = !moreHasLink">
+              {{ t('notes.search_quick_has_link', '有链接') }}<span v-if="moreHasLink" class="check-icon">✓</span>
+            </li>
+            <li class="more-item" @click="audioFilterEnabled = !audioFilterEnabled">
+              {{ t('notes.search_quick_has_audio', '有语音') }}<span v-if="audioFilterEnabled" class="check-icon">✓</span>
+            </li>
           </ul>
         </div>
-        <button class="sheet-confirm-btn" type="button" @click="confirmMoreFilter">{{ t('common.confirm', '确定') }}</button>
+        <button class="sheet-confirm-btn" type="button" @click="confirmMoreFilter">
+          {{ t('common.confirm', '确定') }}
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 保持原有基础样式 */
+/* 容器 */
 .search-export-bar {
   display: flex;
   flex-direction: column;
@@ -1021,375 +1005,376 @@ defineExpose({ executeSearch })
   padding-bottom: 0.5rem;
   margin-bottom: 0.5rem;
 }
+.dark .search-export-bar { background-color: #374151; }
 
-.dark .search-export-bar {
-  background-color: #374151;
-}
-
+/* 1. 搜索框行 */
 .search-input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
 }
-
-/* === 放大镜图标容器 === */
 .search-icon-wrapper {
   position: absolute;
-  left: 1rem; /* 稍微往右挪一点点，视觉更平衡 */
+  left: 1rem;
   top: 50%;
   transform: translateY(-50%);
   color: #9ca3af;
   pointer-events: none;
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
-
-.dark .search-icon-wrapper {
-  color: #6b7280;
-}
+.dark .search-icon-wrapper { color: #6b7280; }
 
 .search-input {
   flex: 1;
-  /* ★ 修改这里：左边距加大到 3.2rem，避开图标 */
-  padding: 1rem 2rem 1rem 6.2rem;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  width: 100%;
+  height: 36px;
+
+  /* ✅ 修改：加大左边距到 3.6rem，彻底避开图标 */
+  padding: 0 2.5rem 0 6.2rem;
+
+  font-size: 15px;
+  border: 1px solid transparent;
+  border-radius: 12px;
   background-color: #fff;
   color: #111;
-  min-width: 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+  transition: all 0.2s;
 }
-
-@media (max-width: 768px) {
-  .search-input {
-    font-size: 16px;
-  }
-}
-
 .dark .search-input {
   background-color: #2c2c2e;
-  border-color: #48484a;
-  color: #ffffff;
+  color: #fff;
+  box-shadow: none;
 }
-
 .search-input:focus {
+  background-color: #fff;
   border-color: #00b386;
+  box-shadow: 0 0 0 2px rgba(0,179,134,0.1);
   outline: none;
+}
+.dark .search-input:focus {
+  background-color: #2c2c2e;
 }
 
 .clear-search-button {
   position: absolute;
-  right: 0.5rem;
+  right: 0.8rem;
   top: 50%;
   transform: translateY(-50%);
-  background: transparent;
+  background-color: #8b5cf6; /* 紫色背景 */
+  color: #ffffff;
   border: none;
-  color: #999;
   cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
   padding: 0;
-  margin: 0;
-  width: 20px;
-  height: 20px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+.clear-search-button:hover {
+  background-color: #7c3aed;
+  transform: translateY(-50%) scale(1.1);
+}
+.dark .clear-search-button {
+  background-color: #a78bfa;
+  color: #1f2937;
 }
 
-/* === 高级搜索开关 === */
-.advanced-toggle-row {
+/* 2. 控制行 (标题左，按钮右) */
+.controls-row {
   display: flex;
-  justify-content: flex-start;
-  margin-top: -0.2rem;
-  margin-bottom: 0.2rem;
+  align-items: center;
+  /* 关键：让左边的标题和右边的按钮分列两端 */
+  /* 如果标题隐藏了，按钮依然会因为 margin-left: auto 靠右 */
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 0 2px;
+  min-height: 24px; /* 防止标题消失时高度塌陷 */
+}
+.quick-search-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  /* 默认情况（在第一行时）不需要下边距 */
+  margin: 0;
+}
+.dark .quick-search-title { color: #9ca3af; }
+
+.quick-search-title.moved-down {
+  margin-bottom: 8px;
+  margin-left: 4px;
+  margin-top: 4px; /* 与上面的筛选条拉开一点距离 */
 }
 
 .advanced-toggle-btn {
+  /* 关键：确保即使左边没有标题，它也永远贴在右边 */
+  margin-left: auto;
+
   background: transparent;
   border: none;
-  color: #6b7280;
+  color: #6366f1;
   font-size: 13px;
+  font-weight: 500;
   display: flex;
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.advanced-toggle-btn:hover { background-color: rgba(99, 102, 241, 0.1); }
+.dark .advanced-toggle-btn { color: #818cf8; }
+.dark .advanced-toggle-btn:hover { background-color: rgba(129, 140, 248, 0.15); }
+/* 3. 快捷搜索按钮组 (网格布局) */
+.quick-search-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 四等分 */
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.dark .advanced-toggle-btn { color: #9ca3af; }
-.advanced-toggle-btn:hover { color: #374151; }
-.dark .advanced-toggle-btn:hover { color: #d1d5db; }
-.toggle-icon { font-size: 10px; }
+.quick-chip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 
-/* === 下拉筛选行 === */
+  height: 32px;
+  padding: 0 4px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background-color: #fff;
+  color: #374151;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.dark .quick-chip {
+  background-color: #4b5563;
+  color: #e5e7eb;
+  box-shadow: none;
+}
+.quick-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.08);
+}
+.quick-chip:active {
+  transform: translateY(0);
+}
+.chip-icon {
+  opacity: 0.7;
+  color: #6366f1;
+}
+
+/* 4. 高级筛选面板 */
 .filter-row {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 0.2rem;
-  animation: fadeIn 0.2s ease-in-out;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 8px; /* 增加底部间距 */
+  padding: 0 2px;
+  animation: slideDown 0.2s ease-out;
 }
 
-@keyframes fadeIn {
+.quick-search-section {
+  display: flex;
+  flex-direction: column;
+}
+@keyframes slideDown {
   from { opacity: 0; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .filter-chip {
   flex: 1;
-  padding: 0.5rem 0.75rem;
-  font-size: 14px;
-  border-radius: 9999px;
-  border: none;
-  background-color: #ffffff;
-  color: #111827;
+  padding: 0 12px;
+  height: 32px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background-color: #fff;
+  color: #374151;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
-
 .dark .filter-chip {
-  background-color: #4b5563;
-  color: #f9fafb;
+  background-color: #2c2c2e;
+  border-color: #48484a;
+  color: #e5e7eb;
 }
-
 .filter-caret {
-  font-size: 10px;
-  margin-left: 0.25rem;
+  margin-left: 4px;
+  opacity: 0.5;
 }
 
-/* === 标题通用样式 === */
-.quick-search-title {
-  margin-top: 0.6rem;
-  margin-bottom: 0.1rem;
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.dark .quick-search-title {
-  color: #d1d5db;
-}
-
-/* === 快捷搜索 Chips === */
-.quick-search-chips {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 3.0rem;
-  row-gap: 0.6rem;
-  margin-top: 0.4rem;
-}
-
-.quick-chip {
-  padding: 0.5rem 1.0rem;
-  font-size: 13px;
-  border-radius: 9999px;
-  border: none;
-  background-color: #e5e7eb;
-  color: #111827;
-  cursor: pointer;
-}
-.quick-chip:hover { background-color: #d1d5db; }
-.dark .quick-chip { background-color: #4b5563; color: #e5e7eb; }
-.dark .quick-chip:hover { background-color: #6b7280; }
-
-/* === 最近搜索区域 === */
-.recent-search-section {
-  margin-top: 1rem;
-}
-
+/* 5. 搜索历史 */
+.recent-search-section { margin-top: 1.5rem; }
 .section-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.1rem;
+  gap: 8px;
+  margin-bottom: 8px;
 }
-
 .clear-history-btn {
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6b7280;
-}
-
-.clear-history-btn:hover {
-  color: #374151;
-}
-
-.dark .clear-history-btn {
+  padding: 4px;
   color: #9ca3af;
 }
-
-.dark .clear-history-btn:hover {
-  color: #d1d5db;
+.history-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-
-.trash-icon {
-  display: block;
-}
-
-/* History Chip */
 .history-chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.4rem 0.7rem 0.4rem 1.0rem;
-  gap: 0.5rem;
+  padding: 6px 10px 6px 12px;
   background-color: #e0e7ff;
-  border-radius: 9999px;
+  border-radius: 999px;
   font-size: 13px;
-  cursor: pointer;
   color: #3730a3;
+  cursor: pointer;
   max-width: 100%;
 }
-
-.dark .history-chip {
-  background-color: #312e81;
-  color: #e0e7ff;
-}
-
-.history-chip:hover {
-  filter: brightness(0.95);
-}
-
+.dark .history-chip { background-color: #312e81; color: #e0e7ff; }
 .history-delete-btn {
   background: transparent;
   border: none;
-  color: #6366f1;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-  width: 18px;
-  height: 18px;
+  color: inherit;
+  opacity: 0.6;
+  margin-left: 4px;
+  padding: 2px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
+  cursor: pointer;
 }
+.history-delete-btn:hover { opacity: 1; }
 
-.history-delete-btn:hover {
-  background-color: rgba(0,0,0,0.1);
-}
-
-.dark .history-delete-btn {
-  color: #818cf8;
-}
-
-.dark .history-delete-btn:hover {
-  background-color: rgba(255,255,255,0.2);
-}
-
-/* === 自动提示下拉 === */
+/* 搜索建议下拉 */
 .tag-suggestions {
   position: absolute;
+  top: 100%; left: 0; right: 0;
+  margin-top: 6px;
   background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 1000;
-  max-height: 200px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  z-index: 100;
+  max-height: 240px;
   overflow-y: auto;
-  min-width: 150px;
 }
 .dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
-.tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
-.tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; white-space: nowrap; }
-.tag-suggestions li:hover, .tag-suggestions li.highlighted { background-color: #f0f0f0; }
-.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted { background-color: #404040; }
-.search-suggestions { top: 100%; left: 0; right: 0; margin-top: 4px; }
+.tag-suggestions ul { list-style: none; margin: 0; padding: 4px; }
+.tag-suggestions li {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 4px;
+}
+.tag-suggestions li:hover, .tag-suggestions li.highlighted {
+  background-color: #f3f4f6;
+}
+.dark .tag-suggestions li:hover, .dark .tag-suggestions li.highlighted {
+  background-color: #3f3f46;
+}
 
-/* === 底部弹窗通用样式 === */
+/* 底部弹窗通用 */
 .sheet-mask {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0,0,0,0.3);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  z-index: 50;
+  position: fixed; inset: 0; background-color: rgba(0,0,0,0.4);
+  display: flex; align-items: flex-end; justify-content: center; z-index: 3000;
+  backdrop-filter: blur(2px);
 }
 .sheet-panel {
-  width: 100%;
-  max-width: 640px;
-  max-height: 80vh;
-  background-color: #ffffff;
-  border-radius: 16px 16px 0 0;
-  padding: 1.5rem 1.5rem 1.25rem;
-  margin-bottom: 4vh;
+  width: 100%; max-width: 640px; max-height: 80vh;
+  background-color: #fff;
+
+  /* ✅ 修改 1：四个角都设为圆角 (原来是 16px 16px 0 0) */
+  border-radius: 16px;
+
+  /* ✅ 修改 2：增加底部距离，把它“顶”上去 */
+  margin-bottom: 12vh;
+
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
 }
 .dark .sheet-panel { background-color: #1f2933; }
 .sheet-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  margin-bottom: 1.1rem;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; margin-bottom: 1.5rem;
 }
-.sheet-body { flex: 1; padding: 1rem 0 1.25rem; overflow-y: auto; }
 .sheet-title { font-size: 16px; font-weight: 600; }
 .sheet-close {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: #9ca3af; cursor: pointer; padding: 4px;
 }
+.sheet-body { flex: 1; overflow-y: auto; padding-bottom: 1rem; }
 .sheet-confirm-btn {
-  width: 100%;
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
-  padding: 0.8rem 1rem;
-  font-size: 16px;
-  border-radius: 9999px;
-  border: none;
-  background-color: #22c55e;
-  color: #ffffff;
-  font-weight: 600;
+  width: 100%; padding: 10px; font-size: 16px; border-radius: 12px;
+  border: none; background-color: #6366f1; color: #fff; font-weight: 600;
+  margin-top: auto; cursor: pointer;
 }
+.sheet-confirm-btn:hover { background-color: #4f46e5; }
 
-/* 弹窗内部样式 */
-.seg-row { display: flex; gap: 1rem; margin-bottom: 1.25rem; }
+/* 弹窗内部组件 */
+.seg-row { display: flex; gap: 8px; margin-bottom: 16px; }
 .seg-btn {
-  flex: 1; padding: 0.8rem 1rem; font-size: 15px; border-radius: 9999px; border: none; background-color: #e5e7eb; color: #111827;
+  flex: 1; padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #374151; cursor: pointer;
 }
-.seg-btn.active { background-color: #2563eb; color: #ffffff; }
-.dark .seg-btn { background-color: #4b5563; color: #e5e7eb; }
-.dark .seg-btn.active { background-color: #2563eb; color: #ffffff; }
+.seg-btn.active { background-color: #eff6ff; border-color: #6366f1; color: #6366f1; font-weight: 500; }
+.dark .seg-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
+.dark .seg-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
 
-.date-input-row { display: flex; align-items: center; gap: 1rem; margin-top: 0.75rem; }
-.date-input-wrapper { flex: 1; display: flex; flex-direction: column; }
-.date-label { font-size: 13px; margin-bottom: 0.4rem; color: #6b7280; }
-.dark .date-label { color: #9ca3af; }
-.date-input { padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid #d1d5db; font-size: 14px; }
-.dark .date-input { background-color: #111827; border-color: #4b5563; color: #e5e7eb; }
-.date-separator { font-size: 16px; padding-top: 1rem; }
+.date-input-row { display: flex; align-items: center; gap: 12px; }
+.date-input-wrapper { flex: 1; }
+.date-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; display: block; }
+.date-input { width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+.dark .date-input { background: #111827; border-color: #4b5563; color: #fff; }
 
-.tag-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
-.tag-mode-btn { padding: 0.7rem 0.9rem; font-size: 15px; border-radius: 12px; border: none; background-color: #e5e7eb; color: #111827; text-align: center; }
-.tag-mode-btn.active { background-color: #2563eb; color: #ffffff; }
-.dark .tag-mode-btn { background-color: #4b5563; color: #e5e7eb; }
-.dark .tag-mode-btn.active { background-color: #2563eb; color: #ffffff; }
+/* ✅ 修改 2: 确保日期分隔符样式正确 */
+.date-separator {
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  align-self: center; /* 明确垂直居中 */
+  font-size: 16px;
+  color: #9ca3af;
+  line-height: 1;
 
-.tag-select-row { margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
-.tag-select-label { font-size: 14px; color: #4b5563; }
-.dark .tag-select-label { color: #d1d5db; }
-.tag-select { width: 100%; padding: 0.7rem 0.9rem; font-size: 15px; border-radius: 8px; border: 1px solid #d1d5db; background-color: #fff; }
-.dark .tag-select { background-color: #111827; color: #f9fafb; border-color: #4b5563; }
+  /* ✅ 新增：给一个固定宽度，并让文字在里面居中 */
+  min-width: 24px;
+  text-align: center;
 
-.more-list { list-style: none; margin: 0; padding: 0.5rem 0; }
-.more-item { display: flex; align-items: center; gap: 0.75rem; padding: 1rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-size: 15px; }
-.more-item:last-child { border-bottom: none; }
-.dark .more-item { border-color: #4b5563; }
-.check-icon { color: #22c55e; font-weight: 700; width: 1.2rem; text-align: center; }
+  /* 保持你调试好的垂直下移参数 */
+  position: relative;
+  top: 11px;
+}
+.tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.tag-mode-btn { padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
+.tag-mode-btn.active { border-color: #6366f1; background-color: #eff6ff; color: #6366f1; }
+.dark .tag-mode-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
+.dark .tag-mode-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
+
+.tag-select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; font-size: 14px; }
+.dark .tag-select { background: #111827; border-color: #4b5563; color: #fff; }
+
+.more-list { list-style: none; margin: 0; padding: 0; }
+.more-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 4px; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 15px;
+}
+.dark .more-item { border-color: #374151; }
+.check-icon { color: #6366f1; font-weight: bold; }
 </style>
