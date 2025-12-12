@@ -2627,7 +2627,9 @@ function handleBeforeInput(e: InputEvent) {
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
 } /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
-
+.note-editor-reborn.android .editor-textarea {
+  max-height: 40dvh;
+}
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
