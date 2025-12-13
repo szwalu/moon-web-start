@@ -45,7 +45,17 @@ watch(isExpanded, async (val) => {
 
 const isWriting = ref(false)
 const newNoteContent = ref('')
-const writingKey = computed(() => `calendar_draft_${dateKeyStr(selectedDate.value)}`)
+const writingKey = computed(() => {
+  const currentKey = dateKeyStr(selectedDate.value)
+  const todayKey = dateKeyStr(new Date())
+
+  // 如果选中的是今天，使用与主页一致的默认 Key ('note_draft_new')
+  if (currentKey === todayKey)
+    return 'note_draft_new'
+
+  // 如果是其他日期，保持原逻辑，使用带日期的 Key
+  return `calendar_draft_${currentKey}`
+})
 
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
 async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
