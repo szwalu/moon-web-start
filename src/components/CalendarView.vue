@@ -48,15 +48,16 @@ const newNoteContent = ref('')
 // CalendarView.vue
 
 const writingKey = computed(() => {
+  // 1. 获取日历选中的日期字符串 (如 2025-12-13)
   const currentKeyStr = dateKeyStr(selectedDate.value)
+  // 2. 获取今天的日期字符串 (如 2025-12-13)
   const todayKeyStr = dateKeyStr(new Date())
 
-  // ✅ 核心修改：如果是今天，强制指向主页的草稿 Key
-  // 这就是“互通”的关键，两人读同一个 Key
+  // ✅ 核心修改：如果是今天，强制使用你查到的主页 Key
   if (currentKeyStr === todayKeyStr)
-    return 'note_draft_new'
+    return 'new_note_content_draft'
 
-  // 其他日期保持你的原逻辑不变
+  // 3. 如果是昨天或明天，保持原样 (calendar_draft_2025-xx-xx)
   return `calendar_draft_${currentKeyStr}`
 })
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
@@ -717,20 +718,20 @@ defineExpose({ refreshData })
 // CalendarView.vue
 
 async function startWriting() {
-  // 1. 先重置，防止有残留
+  // 1. 清空旧内容
   newNoteContent.value = ''
 
-  // ✅ 新增逻辑：手动预加载草稿
+  // 2. 手动预读取草稿
   try {
-    // 获取刚才定义的 Key (如果是今天，它就是 'note_draft_new')
+    // 获取上面的 key (如果是今天，就是 'new_note_content_draft')
     const targetKey = writingKey.value
 
-    // 直接去 LocalStorage 查，既然你说里面肯定有值，那这里就能取到
+    // 直接读 LocalStorage
     const raw = localStorage.getItem(targetKey)
 
     if (raw) {
       const parsed = JSON.parse(raw)
-      // 如果有内容，直接“塞”进编辑器变量里
+      // 如果有内容，直接填进编辑器
       if (parsed && typeof parsed.content === 'string')
         newNoteContent.value = parsed.content
     }
@@ -739,7 +740,7 @@ async function startWriting() {
     // 忽略错误
   }
 
-  // 2. 正常打开编辑器
+  // 3. 正常显示编辑器
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
@@ -748,6 +749,7 @@ async function startWriting() {
   await nextTick()
   newNoteEditorRef.value?.focus()
 }
+
 const composeButtonText = computed(() => {
   const sel = selectedDate.value
   const now = new Date()
