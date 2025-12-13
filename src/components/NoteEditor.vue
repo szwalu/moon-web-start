@@ -2318,9 +2318,6 @@ defineExpose({
   scrollbar-gutter: stable both-edges;
   overscroll-behavior-y: contain;
 }
-.note-editor-reborn.android .editor-textarea {
-  max-height: 50dvh;
-}
 
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
