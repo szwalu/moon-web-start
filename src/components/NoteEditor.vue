@@ -959,8 +959,6 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea.value
   if (!el)
     return
-  if (Math.abs(el.scrollHeight - el.clientHeight) < 5)
-    return
 
   const style = getComputedStyle(el)
   const mirror = document.createElement('div')
@@ -1031,7 +1029,6 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 键盘检测
   const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
   if (!isAndroid && keyboardHeight < 60) {
     emit('bottomSafeChange', 0)
@@ -1039,82 +1036,97 @@ function recomputeBottomSafePadding() {
     return
   }
 
-  // 获取行高
   const style = getComputedStyle(el)
   const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
 
-  // 1. 简化的光标视口位置估算
-  const rect = el.getBoundingClientRect()
-
-  // 算出光标在输入框内的相对 Y 坐标（像素级）
   const caretYInContent = (() => {
     const mirror = document.createElement('div')
-    const width = rect.width // 确保宽度一致
-
-    mirror.style.cssText = `
-      position: absolute; visibility: hidden; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; box-sizing: border-box;
-      top: 0; left: -9999px; width: ${width}px;
-      padding: ${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};
-      border-width: ${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};
-      border-style: solid;
-      font-family: ${style.fontFamily}; font-size: ${style.fontSize}; font-weight: ${style.fontWeight}; letter-spacing: ${style.letterSpacing}; line-height: ${style.lineHeight};
-    `
+    mirror.style.cssText
+      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
+      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
+      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
+      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
+      + 'border-style:solid;'
     document.body.appendChild(mirror)
-
     const val = el.value
     const selEnd = el.selectionEnd ?? val.length
-    const textVal = val.slice(0, selEnd)
-    mirror.textContent = textVal.endsWith('\n') ? `${textVal}\u200B` : textVal
-
+    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
     const y = mirror.scrollHeight
     document.body.removeChild(mirror)
     return y
   })()
 
-  // 2. 计算光标在屏幕上的绝对底部位置
-  const caretBottomInViewport = rect.top + (caretYInContent - el.scrollTop) + lineHeight
+  const rect = el.getBoundingClientRect()
+  const caretBottomInViewport
+    = (rect.top - vv.offsetTop)
+    + (caretYInContent - el.scrollTop)
+    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
 
-  // 3. 计算“理论需要”的垫高值
-  const threshold = vv.height // 阈值就是视口底部
-  const rawNeed = Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+  const caretBottomAdjusted = isAndroid
+    ? (caretBottomInViewport + lineHeight * 2)
+    : caretBottomInViewport
 
-  // 4. 【终极修复】强制限制最大值 (Clamping)
-  let need = 0
-  if (isAndroid) {
-    // 安卓逻辑：只要光标被遮挡 (rawNeed > 0)，就固定给一个舒适区，不要动态跟随太紧
-    need = rawNeed > 0 ? Math.min(rawNeed, 32) : 0
-  }
-  else {
-    // iOS 逻辑保持原样
-    need = rawNeed
-  }
+  const footerH = getFooterHeight()
+  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
+  const safeInset = (() => {
+    try {
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
+      document.body.appendChild(div)
+      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
+      document.body.removeChild(div)
+      return Number.isFinite(px) ? px : 0
+    }
+    catch { return 0 }
+  })()
+  const HEADROOM = isAndroid ? 60 : 70
+  const SAFE = footerH + safeInset + EXTRA + HEADROOM
 
-  // 5. 应用与防抖
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < 5)
+  const threshold = vv.height - SAFE
+  const rawNeed = isAndroid
+    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
+    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
+
+  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
+  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
+  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
+  const STICKY = 12 // 微抖动抑制阈值
+
+  let need = rawNeed - DEADZONE
+  if (need < MIN_STEP)
+    need = 0
+
+  // 抑制小幅抖动：与上次差异很小时保持不变
+  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
     need = _lastBottomNeed
 
   _lastBottomNeed = need
+
+  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
 
-  // 6. 推页逻辑
+  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
       if (isAndroid) {
-        // 安卓端只在必需时轻微滚动，且设了上限
-        const delta = Math.min(need, 32)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta)
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
       }
       else {
-        const delta = Math.min(Math.ceil(need * 0.35), 80)
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
         if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
       }
       _hasPushedPage = true
-
-      // ✅ 修复点：这里展开成了多行，解决了 ESLint 报错
       window.setTimeout(() => {
         _hasPushedPage = false
+        recomputeBottomSafePadding()
       }, 140)
     }
     if (isIOS && iosFirstInputLatch.value)
@@ -2126,24 +2138,25 @@ function startFocusBoost() {
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
-
   _hasPushedPage = false
 
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
-  const isRealTyping = t.startsWith('insert') || t.startsWith('delete') || t === 'historyUndo' || t === 'historyRedo'
-
+  const isRealTyping
+    = t.startsWith('insert')
+    || t.startsWith('delete')
+    || t === 'historyUndo'
+    || t === 'historyRedo'
   if (!isRealTyping)
     return
 
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 🔴 核心逻辑：安卓端直接 return，不执行下面的 180px 垫高
-  if (isAndroid)
-    return
-
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, 120)
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
@@ -2626,10 +2639,11 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
-} /* 👈 这里必须先加一个闭合大括号，结束上面的 .editor-textarea */
-.note-editor-reborn.android .editor-textarea {
-  max-height: 40dvh;
 }
+.note-editor-reborn.android .editor-textarea {
+  max-height: 45dvh;
+}
+
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
