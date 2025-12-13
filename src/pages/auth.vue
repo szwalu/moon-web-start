@@ -431,6 +431,10 @@ const showAnniversaryBanner = computed(() => {
   if (compactWhileTyping.value)
     return false
 
+  // ✅ 新增：如果正在编辑现有笔记，也隐藏
+  if (isTopEditing.value)
+    return false
+
   // 如果激活了标签筛选，则隐藏
   if (activeTagFilter.value)
     return false
@@ -2885,7 +2889,7 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
   >
     <template v-if="user || !authResolved">
-      <div v-show="!isEditorActive" class="page-header" @click="handleHeaderClick">
+      <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <img
             v-if="headerAvatarSrc"
@@ -2964,7 +2968,7 @@ function onCalendarUpdated(updated: any) {
       </Transition>
 
       <Transition name="slide-fade">
-        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive" class="search-bar-container">
+        <div v-if="showSearchBar" v-show="!isEditorActive && !isSelectionModeActive && !isTopEditing" class="search-bar-container">
           <NoteActions
             ref="noteActionsRef"
             v-model="searchQuery"
@@ -2983,7 +2987,7 @@ function onCalendarUpdated(updated: any) {
         </div>
       </Transition>
 
-      <div v-if="activeTagFilter && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar">
+      <div v-if="activeTagFilter && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive && !isTopEditing" class="active-filter-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             {{ t('notes.filtering_by_tag') }}：<strong>{{ activeTagFilter === UNTAGGED_SENTINEL ? ($t('tags.untagged') || '∅ 无标签') : activeTagFilter }}</strong>
@@ -3001,7 +3005,7 @@ function onCalendarUpdated(updated: any) {
         </button>
       </div>
 
-      <div v-if="isShowingSearchResults && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive" class="active-filter-bar search-results-bar">
+      <div v-if="isShowingSearchResults && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive && !isTopEditing" class="active-filter-bar search-results-bar">
         <span class="banner-info">
           <span class="banner-text-main">
             <i18n-t keypath="notes.search_results_for" tag="span">
