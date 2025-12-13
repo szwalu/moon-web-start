@@ -1194,7 +1194,46 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
+
+  // 1. 锁住背景
   isBodyLocked.value = true
+
+  // 2. 允许再次“轻推” (保留原逻辑)
+  _hasPushedPage = false
+
+  // 3. 用真实 footer 高度“临时托起” (保留原逻辑)
+  emit('bottomSafeChange', getFooterHeight())
+
+  // ✅ 核心修改：区分光标位置
+  const el = textarea.value
+  if (el) {
+    // 如果光标在最后（或者接近最后），直接暴力滚到底，露出底下大片留白
+    if (el.selectionStart >= el.value.length - 1) {
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+      })
+      // 加个延时保险，对抗键盘动画
+      setTimeout(() => {
+        if (textarea.value)
+          textarea.value.scrollTop = textarea.value.scrollHeight
+      }, 150)
+    }
+    else {
+      // 如果光标在中间，才执行精细计算
+      requestAnimationFrame(() => {
+        ensureCaretVisibleInTextarea()
+        // recomputeBottomSafePadding() // 这个函数如果你没删干净，这里可能还有调用
+      })
+    }
+  }
+
+  // ...原本的延时逻辑...
+  const t1 = 120 // isIOS ? 120 : 80 (既然去掉了 isIOS，直接写数字即可)
+  window.setTimeout(() => {
+    // recomputeBottomSafePadding()
+  }, t1)
+
+  // ...
 }
 
 function onBlur() {
