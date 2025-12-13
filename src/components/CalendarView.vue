@@ -48,18 +48,17 @@ const newNoteContent = ref('')
 // CalendarView.vue
 
 const writingKey = computed(() => {
-  // 1. 获取标准化日期字符串
   const currentKeyStr = dateKeyStr(selectedDate.value)
   const todayKeyStr = dateKeyStr(new Date())
 
-  // 2. 核心判断：如果是今天，直接使用主页的专用 Key
+  // ✅ 核心修改：如果是今天，强制指向主页的草稿 Key
+  // 这就是“互通”的关键，两人读同一个 Key
   if (currentKeyStr === todayKeyStr)
     return 'note_draft_new'
 
-  // 3. 如果是过去/未来，保持原逻辑（按日期隔离）
+  // 其他日期保持你的原逻辑不变
   return `calendar_draft_${currentKeyStr}`
 })
-
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
 async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
   try {
@@ -718,29 +717,29 @@ defineExpose({ refreshData })
 // CalendarView.vue
 
 async function startWriting() {
-  // 1. 先清空，防止残留
+  // 1. 先重置，防止有残留
   newNoteContent.value = ''
 
-  // 2.【关键步骤】手动去 LocalStorage 偷看一眼有没有草稿
-  // 这样能确保“所见即所得”，不需要等组件加载后再去恢复
+  // ✅ 新增逻辑：手动预加载草稿
   try {
-    const targetKey = writingKey.value // 获取上面定义的 Key (可能是 note_draft_new 或 calendar_draft_xxx)
+    // 获取刚才定义的 Key (如果是今天，它就是 'note_draft_new')
+    const targetKey = writingKey.value
+
+    // 直接去 LocalStorage 查，既然你说里面肯定有值，那这里就能取到
     const raw = localStorage.getItem(targetKey)
 
     if (raw) {
-      // NoteEditor 存的是 JSON 格式: {"content": "..."}
       const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.content === 'string') {
-        // 强行赋值！编辑器一打开，这里面就有字了
+      // 如果有内容，直接“塞”进编辑器变量里
+      if (parsed && typeof parsed.content === 'string')
         newNoteContent.value = parsed.content
-      }
     }
   }
   catch (e) {
-
+    // 忽略错误
   }
 
-  // 3. 正常的打开流程
+  // 2. 正常打开编辑器
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
@@ -749,7 +748,6 @@ async function startWriting() {
   await nextTick()
   newNoteEditorRef.value?.focus()
 }
-
 const composeButtonText = computed(() => {
   const sel = selectedDate.value
   const now = new Date()
