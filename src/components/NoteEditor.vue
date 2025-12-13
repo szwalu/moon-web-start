@@ -2305,7 +2305,7 @@ defineExpose({
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75dvh;
+  max-height: 50dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
