@@ -322,10 +322,44 @@ function notifyAnniversaryDelete(ids: string[]) {
     forceUpdateAnniversaryCache(ids)
 }
 
+const LOCAL_CONTENT_KEY = 'new_note_content_draft'
+const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
+const LOCAL_CONTENT_KEY_V2 = `${LOCAL_CONTENT_KEY}:editor-v2`
+
 function openComposer() {
+  // ✅ 1. 新增：每次打开输入框前，强制从 LocalStorage 读取最新草稿
+  // 这样就能读到刚才在日历组件里写的内容了
+  try {
+    const raw = localStorage.getItem(LOCAL_CONTENT_KEY) // 即 'new_note_content_draft'
+    if (raw) {
+      // 尝试解析 JSON（因为日历组件存的是 JSON 格式: {"content": "..."}）
+      try {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed.content === 'string') {
+          newNoteContent.value = parsed.content
+        }
+        else {
+          // 兼容旧数据的纯文本格式
+          newNoteContent.value = raw
+        }
+      }
+      catch {
+        // 解析失败说明是纯文本，直接赋值
+        newNoteContent.value = raw
+      }
+    }
+    else {
+      // 如果没有缓存，清空内容（防止残留上次的字）
+      newNoteContent.value = ''
+    }
+  }
+  catch (e) {
+    console.error('读取草稿失败', e)
+  }
+
+  // ✅ 2. 原有打开逻辑保持不变
   showComposer.value = true
   headerCollapsed.value = false
-  // 关键：像 CalendarView 一样，先隐藏头部再聚焦，避免首行被顶到页眉/安全区外
   isEditorActive.value = true
   compactWhileTyping.value = true
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
@@ -340,9 +374,6 @@ const calendarViewRef = ref(null)
 const activeTagFilter = ref<string | null>(null)
 const filteredNotesCount = ref(0)
 const isShowingSearchResults = ref(false) // ++ 新增：用于控制搜索结果横幅的显示
-const LOCAL_CONTENT_KEY = 'new_note_content_draft'
-const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
-const LOCAL_CONTENT_KEY_V2 = `${LOCAL_CONTENT_KEY}:editor-v2`
 const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
 const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
