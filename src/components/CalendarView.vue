@@ -862,12 +862,11 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
     </div>
 
-    <div
-      ref="scrollBodyRef"
-      class="calendar-body"
-      :class="{ 'has-editor-active': isWriting || isEditingExisting }"
-    >
-      <div class="notes-for-day-container">
+    <div ref="scrollBodyRef" class="calendar-body">
+      <div
+        class="notes-for-day-container"
+        :class="{ 'editor-active-padding': isWriting || isEditingExisting }"
+      >
         <div v-if="isWriting" class="inline-editor">
           <NoteEditor
             ref="newNoteEditorRef"
@@ -947,7 +946,6 @@ async function saveNewNote(content: string, weather: string | null) {
 </template>
 
 <style scoped>
-/* ...原有 CSS 保持不变... */
 .calendar-view {
   position: fixed;
   top: 0;
@@ -999,12 +997,6 @@ async function saveNewNote(content: string, weather: string | null) {
   overflow-y: auto;
   position: relative;
 }
-/* ✅ 核心修复：当处于编辑状态时，强制给底部增加大量 Padding */
-/* 这让 NoteEditor 请求 scrollIntoView 时，容器有足够的空间向上滚动，从而把编辑器推上去 */
-.calendar-body.has-editor-active .notes-for-day-container {
-  padding-bottom: 50vh !important; /* 预留半屏高度，确保键盘弹起时能滚得动 */
-}
-
 .calendar-container {
   padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
   border-bottom: 1px solid #e5e7eb;
@@ -1024,6 +1016,15 @@ async function saveNewNote(content: string, weather: string | null) {
 .notes-for-day-container {
   padding: 1rem 1.5rem;
 }
+
+/* ✅ 核心修复：当处于编辑状态时，给内容容器底部增加足够大的空间
+   这样当键盘弹起、NoteEditor 执行 scrollIntoView 时，浏览器
+   有足够的空间把输入框往上顶，而不会因为到底了而被挡住。
+*/
+.notes-for-day-container.editor-active-padding {
+  padding-bottom: 360px !important; /* 约等于键盘高度的缓冲 */
+}
+
 .selected-date-header {
   font-weight: 600;
   margin-bottom: 1rem;
@@ -1049,16 +1050,23 @@ async function saveNewNote(content: string, weather: string | null) {
   transition: all 0.3s ease;
 }
 
+/* 恢复了原始的 CSS 样式，去掉了之前可能导致样式变化的修改 */
 .collapsed-item-wrapper {
+  /* 限制整体高度，超出部分直接切掉 */
   max-height: 220px;
   overflow: hidden;
+
+  /* 加上渐变遮罩，让底部边缘柔和一点 */
   mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
+/* 只有在收起状态下，才去压缩 NoteItem 的内边距 */
 .collapsed-item-wrapper :deep(.note-card) {
+  /* 原来是 4rem (64px)，改小一点，让内容和按钮更紧凑 */
   padding-top: 1.5rem !important;
   padding-bottom: 3rem !important;
+  /* 这样按钮就不会被挤到 220px 以外了 */
 }
 
 .notes-list > div:last-child {
@@ -1072,21 +1080,26 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #f9fafb;
 }
 
+/* ✅ 新增：底部展开箭头样式 */
 .expand-arrow-bar {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 0 0 8px 0;
+
+  /* 默认（展开时）保持紧凑，维持你满意的间隙 */
   margin-top: -30px;
+
   cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.2s, margin-top 0.2s ease;
+  transition: opacity 0.2s, margin-top 0.2s ease; /* 顺便加个 margin 动画，切换时更丝滑 */
   position: relative;
   z-index: 10;
 }
 
+/* ✅ 新增：收起状态下，取消负边距（或者设为 -2px 微调） */
 .expand-arrow-bar.is-collapsed {
-  margin-top: 0px;
+  margin-top: 0px; /* 这里数值越大，离日期越远。建议 -2px 或 0 */
 }
 .expand-arrow-bar:hover {
   opacity: 1;
@@ -1100,6 +1113,7 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .arrow-icon {
   color: #bbb;
 }
+/* 展开时箭头旋转 180 度 */
 .arrow-icon.rotated {
   transform: rotate(180deg);
 }
