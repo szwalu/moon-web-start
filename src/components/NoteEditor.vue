@@ -133,7 +133,7 @@ function recomputeBottomSafePadding() {
 
   if (isMobile) {
     // 保持至少 50vh 的底部留白，让最后一行字能滚到屏幕中间
-    el.style.paddingBottom = '50vh'
+    el.style.paddingBottom = '5vh'
   }
   else {
     // 桌面端保持原有设计
