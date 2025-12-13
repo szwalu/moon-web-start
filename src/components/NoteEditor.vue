@@ -2626,7 +2626,7 @@ function handleBeforeInput(e: InputEvent) {
 .editor-textarea {
   width: 100%;
   min-height: 360px;
-  max-height: 75dvh;
+  max-height: 50dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -2641,7 +2641,7 @@ function handleBeforeInput(e: InputEvent) {
   scrollbar-gutter: stable both-edges;
 }
 .note-editor-reborn.android .editor-textarea {
-  max-height: 45dvh;
+  max-height: 50dvh;
 }
 
 /* 👇 然后在外面写针对大屏幕的规则 */
