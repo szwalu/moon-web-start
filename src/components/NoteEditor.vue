@@ -2302,8 +2302,7 @@ defineExpose({
 
 .editor-textarea {
   width: 100%;
-  min-height: 360px;
-  max-height: 50dvh;
+height: 50dvh;
   overflow-y: auto;
   padding: 12px 8px 8px 16px;
   border: none;
@@ -2322,6 +2321,9 @@ defineExpose({
 /* 👇 然后在外面写针对大屏幕的规则 */
 @media (min-width: 768px) {
   .editor-textarea {
+  height: auto;
+  min-height: 600px;
+    max-height: 90vh;
     line-height: 2.0; /* 桌面端行距 */
     padding: 16px 24px; /* 桌面端内边距 */
   }
