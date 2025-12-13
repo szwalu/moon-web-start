@@ -862,7 +862,11 @@ async function saveNewNote(content: string, weather: string | null) {
       </div>
     </div>
 
-    <div ref="scrollBodyRef" class="calendar-body">
+    <div
+      ref="scrollBodyRef"
+      class="calendar-body"
+      :class="{ 'has-editor-active': isWriting || isEditingExisting }"
+    >
       <div class="notes-for-day-container">
         <div v-if="isWriting" class="inline-editor">
           <NoteEditor
@@ -943,6 +947,7 @@ async function saveNewNote(content: string, weather: string | null) {
 </template>
 
 <style scoped>
+/* ...原有 CSS 保持不变... */
 .calendar-view {
   position: fixed;
   top: 0;
@@ -994,6 +999,12 @@ async function saveNewNote(content: string, weather: string | null) {
   overflow-y: auto;
   position: relative;
 }
+/* ✅ 核心修复：当处于编辑状态时，强制给底部增加大量 Padding */
+/* 这让 NoteEditor 请求 scrollIntoView 时，容器有足够的空间向上滚动，从而把编辑器推上去 */
+.calendar-body.has-editor-active .notes-for-day-container {
+  padding-bottom: 50vh !important; /* 预留半屏高度，确保键盘弹起时能滚得动 */
+}
+
 .calendar-container {
   padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
   border-bottom: 1px solid #e5e7eb;
@@ -1038,24 +1049,16 @@ async function saveNewNote(content: string, weather: string | null) {
   transition: all 0.3s ease;
 }
 
-/* ✅ 1. 外层强制限高（解决空白问题的根本） */
 .collapsed-item-wrapper {
-  /* 限制整体高度，超出部分直接切掉 */
   max-height: 220px;
   overflow: hidden;
-
-  /* 加上渐变遮罩，让底部边缘柔和一点 */
   mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
-/* ✅ 2. 内层关键修复：减少 Padding，把按钮“提”上来 */
-/* 只有在收起状态下，才去压缩 NoteItem 的内边距 */
 .collapsed-item-wrapper :deep(.note-card) {
-  /* 原来是 4rem (64px)，改小一点，让内容和按钮更紧凑 */
   padding-top: 1.5rem !important;
   padding-bottom: 3rem !important;
-  /* 这样按钮就不会被挤到 220px 以外了 */
 }
 
 .notes-list > div:last-child {
@@ -1069,26 +1072,21 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #f9fafb;
 }
 
-/* ✅ 新增：底部展开箭头样式 */
 .expand-arrow-bar {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 0 0 8px 0;
-
-  /* 默认（展开时）保持紧凑，维持你满意的间隙 */
   margin-top: -30px;
-
   cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.2s, margin-top 0.2s ease; /* 顺便加个 margin 动画，切换时更丝滑 */
+  transition: opacity 0.2s, margin-top 0.2s ease;
   position: relative;
   z-index: 10;
 }
 
-/* ✅ 新增：收起状态下，取消负边距（或者设为 -2px 微调） */
 .expand-arrow-bar.is-collapsed {
-  margin-top: 0px; /* 这里数值越大，离日期越远。建议 -2px 或 0 */
+  margin-top: 0px;
 }
 .expand-arrow-bar:hover {
   opacity: 1;
@@ -1102,73 +1100,7 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .arrow-icon {
   color: #bbb;
 }
-/* 展开时箭头旋转 180 度 */
 .arrow-icon.rotated {
   transform: rotate(180deg);
-}
-</style>
-
-<style>
-/* ...原有全局样式保持不变... */
-.n-dialog__mask,
-.n-modal-mask {
-  z-index: 6002 !important;
-}
-.n-dialog,
-.n-dialog__container,
-.n-modal,
-.n-modal-container {
-  z-index: 6003 !important;
-}
-.n-message-container,
-.n-notification-container,
-.n-popover,
-.n-dropdown {
-  z-index: 6004 !important;
-}
-.calendar-view .vc-title,
-.calendar-view .vc-title-wrapper {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-.compose-row {
-  margin: 0 0 12px 0;
-}
-.compose-btn {
-  background: #6366f1;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.compose-btn:hover { background: #4f46e5; }
-.inline-editor {
-  margin-bottom: 16px;
-}
-.calendar-container {
-  transition: height 0.2s ease, opacity 0.2s ease;
-}
-.vc-nav-title {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-.vc-nav-popover .vc-nav-title {
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-.dark .vc-nav-title {
-  color: #f9fafb !important;
-}
-.calendar-nav-title {
-  font-weight: 600;
-  font-size: 16px;
-  line-height: 1.3;
-}
-.dark .calendar-nav-title {
-  color: #f9fafb;
-  font-size: 16px;
 }
 </style>
