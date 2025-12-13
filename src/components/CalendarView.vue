@@ -45,22 +45,19 @@ watch(isExpanded, async (val) => {
 
 const isWriting = ref(false)
 const newNoteContent = ref('')
+// CalendarView.vue
+
 const writingKey = computed(() => {
-  const sel = selectedDate.value
-  const now = new Date()
+  // 1. 获取标准化日期字符串
+  const currentKeyStr = dateKeyStr(selectedDate.value)
+  const todayKeyStr = dateKeyStr(new Date())
 
-  // 1. 精确判断选中日期是否为“今天”（忽略时分秒差异）
-  const isToday
-    = sel.getFullYear() === now.getFullYear()
-    && sel.getMonth() === now.getMonth()
-    && sel.getDate() === now.getDate()
-
-  // 2. 如果是今天，强制使用 'note_draft_new'（这是主页新建笔记默认的 Key）
-  if (isToday)
+  // 2. 核心判断：如果是今天，直接使用主页的专用 Key
+  if (currentKeyStr === todayKeyStr)
     return 'note_draft_new'
 
-  // 3. 其他日期保持原样，使用日期隔离 Key
-  return `calendar_draft_${dateKeyStr(sel)}`
+  // 3. 如果是过去/未来，保持原逻辑（按日期隔离）
+  return `calendar_draft_${currentKeyStr}`
 })
 
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
@@ -718,11 +715,37 @@ function refreshData() {
 }
 defineExpose({ refreshData })
 
+// CalendarView.vue
+
 async function startWriting() {
+  // 1. 先清空，防止残留
+  newNoteContent.value = ''
+
+  // 2.【关键步骤】手动去 LocalStorage 偷看一眼有没有草稿
+  // 这样能确保“所见即所得”，不需要等组件加载后再去恢复
+  try {
+    const targetKey = writingKey.value // 获取上面定义的 Key (可能是 note_draft_new 或 calendar_draft_xxx)
+    const raw = localStorage.getItem(targetKey)
+
+    if (raw) {
+      // NoteEditor 存的是 JSON 格式: {"content": "..."}
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.content === 'string') {
+        // 强行赋值！编辑器一打开，这里面就有字了
+        newNoteContent.value = parsed.content
+      }
+    }
+  }
+  catch (e) {
+
+  }
+
+  // 3. 正常的打开流程
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+
   await nextTick()
   newNoteEditorRef.value?.focus()
 }

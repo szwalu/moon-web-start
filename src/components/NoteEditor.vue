@@ -543,7 +543,6 @@ onUnmounted(() => {
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
-    saveDraft()
   }
 })
 
