@@ -46,18 +46,21 @@ watch(isExpanded, async (val) => {
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => {
-  const currentKeyStr = dateKeyStr(selectedDate.value)
-  const todayKeyStr = dateKeyStr(new Date())
+  const sel = selectedDate.value
+  const now = new Date()
 
-  // ✅ 核心逻辑：
-  // 如果日历选中的是“今天”，强制使用与主页编辑器一致的 Key ('note_draft_new')
-  // 这样主页没写完的内容，点日历的今天写笔记时会自动出现。
-  if (currentKeyStr === todayKeyStr)
+  // 1. 精确判断选中日期是否为“今天”（忽略时分秒差异）
+  const isToday
+    = sel.getFullYear() === now.getFullYear()
+    && sel.getMonth() === now.getMonth()
+    && sel.getDate() === now.getDate()
+
+  // 2. 如果是今天，强制使用 'note_draft_new'（这是主页新建笔记默认的 Key）
+  if (isToday)
     return 'note_draft_new'
 
-  // ⏹ 原逻辑保留：
-  // 其他日期（昨天、明天等）继续使用“日期独有 Key”，互不干扰
-  return `calendar_draft_${currentKeyStr}`
+  // 3. 其他日期保持原样，使用日期隔离 Key
+  return `calendar_draft_${dateKeyStr(sel)}`
 })
 
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
