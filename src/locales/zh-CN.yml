@@ -429,6 +429,7 @@ notes:
   search_advanced: 高级搜索
   search_history_title: 最近搜索
   days: 天
+  network_unstable_saved_locally: 网络不稳定，已暂存至本地
   draft:
     title: 提示
     resume_tooltip: 存在未保存的草稿，点击继续编辑

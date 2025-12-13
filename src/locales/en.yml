@@ -432,6 +432,7 @@ notes:
   search_advanced: Advanced Search
   search_history_title: Recent Searches
   days: days
+  network_unstable_saved_locally: Network unstable. Saved locally.
   draft:
     title: Hint
     resume_tooltip: Unsaved draft found. Click to resume editing

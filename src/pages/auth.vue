@@ -324,7 +324,6 @@ function notifyAnniversaryDelete(ids: string[]) {
 
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
-const LOCAL_CONTENT_KEY_V2 = `${LOCAL_CONTENT_KEY}:editor-v2`
 
 function openComposer() {
   // ✅ 1. 新增：每次打开输入框前，强制从 LocalStorage 读取最新草稿
@@ -816,7 +815,7 @@ async function handleCreateNote(content: string, weather?: string | null) {
       // ✅ 老版草稿 key（字符串版）
       localStorage.removeItem(LOCAL_CONTENT_KEY)
       // ✅ 新版 NoteEditor 草稿 key（带 editor-v2 后缀）
-      localStorage.removeItem(LOCAL_CONTENT_KEY_V2)
+      localStorage.removeItem(`${LOCAL_CONTENT_KEY}:editor-v2`)
 
       newNoteContent.value = ''
       nextTick(() => {
@@ -3072,7 +3071,7 @@ function onCalendarUpdated(updated: any) {
           :all-tags="allTags"
           :tag-counts="tagCounts"
           enable-drafts
-          :draft-key="`${LOCAL_CONTENT_KEY}:editor-v2`"
+          :draft-key="LOCAL_CONTENT_KEY"
           :enable-scroll-push="true"
           @save="handleCreateNote"
           @focus="onEditorFocus"

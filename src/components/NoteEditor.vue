@@ -191,6 +191,8 @@ function handleDiscardDraft() {
 }
 
 // 4. 最后定义函数：checkAndPromptDraft (使用了变量)
+// NoteEditor.vue
+
 function checkAndPromptDraft() {
   if (!props.enableDrafts)
     return
@@ -210,8 +212,25 @@ function checkAndPromptDraft() {
     tVal = raw
   }
 
-  // 只有内容不一致时才显示覆盖层
+  // 只有内容不一致时才需要处理
   if (tVal && tVal !== props.modelValue) {
+    // ✅ 核心修改：如果是“新建笔记”（没有 noteId），直接静默覆盖，不弹窗
+    if (!props.noteId) {
+      emit('update:modelValue', tVal)
+      // 顺便触发一下高度调整，确保排版正确
+      nextTick(() => {
+        try {
+          triggerResize?.()
+        }
+        catch {
+          // ignore
+        }
+      })
+      return
+    }
+
+    // 🛑 如果是“编辑已有笔记”（有 noteId），仍然保留弹窗
+    // 因为已有笔记涉及版本冲突，弹窗更安全，防止覆盖了云端拉取的内容
     pendingDraftText.value = tVal
     promptMode.value = 'draft'
     showDraftPrompt.value = true
