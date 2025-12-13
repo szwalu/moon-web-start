@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useTextareaAutosize } from '@vueuse/core'
+import { useScrollLock, useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
@@ -35,6 +35,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'])
 
 const { t } = useI18n()
+// 传入 document.body，让它控制 body 的滚动
+const isBodyLocked = useScrollLock(typeof document !== 'undefined' ? document.body : null)
 
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
@@ -61,10 +63,6 @@ onMounted(() => {
     pinnedTags.value = []
   }
 })
-
-// 平台判定（尽量保守）
-const UA = navigator.userAgent.toLowerCase()
-const isIOS = /iphone|ipad|ipod/.test(UA)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // ============== Store ==============
@@ -905,6 +903,7 @@ function handleRecordPauseClick() {
 
 // 生命周期：卸载时一定要关掉麦克风
 onUnmounted(() => {
+  isBodyLocked.value = false
   cleanupMediaRecorder()
   stopRecordTimer(true)
 })
@@ -1183,33 +1182,12 @@ async function handleSave() {
 function handleFocus() {
   emit('focus')
   captureCaret()
-
-  // 允许再次“轻推”
-  _hasPushedPage = false
-
-  // 立即一轮计算
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
-  })
-
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-    recomputeBottomSafePadding()
-  }, t2)
-
-  // 启动短时“助推轮询”（iOS 尤其需要）
-  startFocusBoost()
+  isBodyLocked.value = true
 }
 
 function onBlur() {
   emit('blur')
+  isBodyLocked.value = false
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
@@ -2318,6 +2296,7 @@ defineExpose({
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable both-edges;
+  overscroll-behavior-y: contain;
 }
 .note-editor-reborn.android .editor-textarea {
   max-height: 50dvh;
