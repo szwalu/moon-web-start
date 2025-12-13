@@ -1385,11 +1385,16 @@ function handleInput(event: Event) {
 
   // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
+  // ✅ 核心修复：光标在末尾时，执行双重滚动
   if (el.selectionStart === el.value.length) {
+    // 1. 让输入框内部文字滚到底 (你之前的逻辑)
     el.scrollTop = el.scrollHeight
+
+    // 2. ✨ 新增：强制让输入框元素本身进入可视区域
+    // block: 'nearest' 会自动判断：如果底部被挡住了，就向上滚父容器，直到底部露出来
+    el.scrollIntoView({ block: 'nearest' })
   }
   else {
-    // 只有光标在中间修改时，才用计算逻辑
     ensureCaretVisibleInTextarea()
   }
 
