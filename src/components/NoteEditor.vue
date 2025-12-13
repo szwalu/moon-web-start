@@ -1385,7 +1385,13 @@ function handleInput(event: Event) {
 
   // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-  ensureCaretVisibleInTextarea()
+  if (el.selectionStart === el.value.length) {
+    el.scrollTop = el.scrollHeight
+  }
+  else {
+    // 只有光标在中间修改时，才用计算逻辑
+    ensureCaretVisibleInTextarea()
+  }
 
   // 标签联想的位置也要基于最新滚动
   computeAndShowTagSuggestions(el)
