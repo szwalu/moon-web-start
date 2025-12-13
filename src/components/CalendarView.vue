@@ -993,6 +993,7 @@ async function saveNewNote(content: string, weather: string | null) {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  scroll-padding-bottom: 20px;
 }
 .calendar-container {
   padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
@@ -1155,6 +1156,8 @@ async function saveNewNote(content: string, weather: string | null) {
 .compose-btn:hover { background: #4f46e5; }
 .inline-editor {
   margin-bottom: 16px;
+  /* 确保它是块级格式化上下文，有助于 scrollIntoView 定位 */
+  display: block;
 }
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
