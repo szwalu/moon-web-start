@@ -2323,8 +2323,8 @@ defineExpose({
 @media (min-width: 768px) {
   .editor-textarea {
   height: auto;
-  min-height: 600px;
-    max-height: 90vh;
+  min-height: 500px;
+    max-height: 60vh;
     line-height: 2.0; /* 桌面端行距 */
     padding: 16px 24px; /* 桌面端内边距 */
   }
