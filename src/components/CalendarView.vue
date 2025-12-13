@@ -863,10 +863,7 @@ async function saveNewNote(content: string, weather: string | null) {
     </div>
 
     <div ref="scrollBodyRef" class="calendar-body">
-      <div
-        class="notes-for-day-container"
-        :class="{ 'editor-active-padding': isWriting || isEditingExisting }"
-      >
+      <div class="notes-for-day-container">
         <div v-if="isWriting" class="inline-editor">
           <NoteEditor
             ref="newNoteEditorRef"
@@ -1016,15 +1013,6 @@ async function saveNewNote(content: string, weather: string | null) {
 .notes-for-day-container {
   padding: 1rem 1.5rem;
 }
-
-/* ✅ 核心修复：当处于编辑状态时，给内容容器底部增加足够大的空间
-   这样当键盘弹起、NoteEditor 执行 scrollIntoView 时，浏览器
-   有足够的空间把输入框往上顶，而不会因为到底了而被挡住。
-*/
-.notes-for-day-container.editor-active-padding {
-  padding-bottom: 360px !important; /* 约等于键盘高度的缓冲 */
-}
-
 .selected-date-header {
   font-weight: 600;
   margin-bottom: 1rem;
@@ -1050,7 +1038,7 @@ async function saveNewNote(content: string, weather: string | null) {
   transition: all 0.3s ease;
 }
 
-/* 恢复了原始的 CSS 样式，去掉了之前可能导致样式变化的修改 */
+/* ✅ 1. 外层强制限高（解决空白问题的根本） */
 .collapsed-item-wrapper {
   /* 限制整体高度，超出部分直接切掉 */
   max-height: 220px;
@@ -1061,6 +1049,7 @@ async function saveNewNote(content: string, weather: string | null) {
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
+/* ✅ 2. 内层关键修复：减少 Padding，把按钮“提”上来 */
 /* 只有在收起状态下，才去压缩 NoteItem 的内边距 */
 .collapsed-item-wrapper :deep(.note-card) {
   /* 原来是 4rem (64px)，改小一点，让内容和按钮更紧凑 */
@@ -1071,6 +1060,14 @@ async function saveNewNote(content: string, weather: string | null) {
 
 .notes-list > div:last-child {
   margin-bottom: 0;
+}
+
+:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
+  max-height: 56vh !important;
+}
+
+:deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
+  max-height: 75dvh !important;
 }
 
 .calendar-nav-title {
@@ -1116,5 +1113,70 @@ async function saveNewNote(content: string, weather: string | null) {
 /* 展开时箭头旋转 180 度 */
 .arrow-icon.rotated {
   transform: rotate(180deg);
+}
+</style>
+
+<style>
+/* ...原有全局样式保持不变... */
+.n-dialog__mask,
+.n-modal-mask {
+  z-index: 6002 !important;
+}
+.n-dialog,
+.n-dialog__container,
+.n-modal,
+.n-modal-container {
+  z-index: 6003 !important;
+}
+.n-message-container,
+.n-notification-container,
+.n-popover,
+.n-dropdown {
+  z-index: 6004 !important;
+}
+.calendar-view .vc-title,
+.calendar-view .vc-title-wrapper {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.compose-row {
+  margin: 0 0 12px 0;
+}
+.compose-btn {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.compose-btn:hover { background: #4f46e5; }
+.inline-editor {
+  margin-bottom: 16px;
+}
+.calendar-container {
+  transition: height 0.2s ease, opacity 0.2s ease;
+}
+.vc-nav-title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.vc-nav-popover .vc-nav-title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.dark .vc-nav-title {
+  color: #f9fafb !important;
+}
+.calendar-nav-title {
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.3;
+}
+.dark .calendar-nav-title {
+  color: #f9fafb;
+  font-size: 16px;
 }
 </style>
