@@ -1062,14 +1062,6 @@ async function saveNewNote(content: string, weather: string | null) {
   margin-bottom: 0;
 }
 
-:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  max-height: 56vh !important;
-}
-
-:deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  max-height: 75dvh !important;
-}
-
 .calendar-nav-title {
   font-weight: 600;
 }
