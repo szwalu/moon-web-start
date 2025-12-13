@@ -77,6 +77,8 @@ const contentModel = computed({
 })
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+// —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
+// —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
   const el = textarea.value
@@ -84,6 +86,7 @@ async function focusToEnd() {
     return
 
   el.focus()
+
   const len = el.value.length
   try {
     el.setSelectionRange(len, len)
@@ -95,21 +98,49 @@ async function focusToEnd() {
   }
   catch {}
 
+  // 🔴 删除旧的 requestAnimationFrame 代码...
+  // requestAnimationFrame(() => {
+  //   ensureCaretVisibleInTextarea()
+  // })
+
+  // ✅ 修改为：直接滚到最底部
+  // 这样不仅能露出最后一行，还能露出底部的 padding，视觉最舒适
   requestAnimationFrame(() => {
     el.scrollTop = el.scrollHeight
-    // ✅ 核心修复：如果是长文本，强制把底部滚入视野
-    el.scrollIntoView({ block: 'end', behavior: 'auto' })
   })
 
-  // 防抖动保险
+  // ✅ 加一道保险：防止键盘弹起动画导致的布局抖动
   setTimeout(() => {
-    if (el) {
+    if (el)
       el.scrollTop = el.scrollHeight
-      // 再次确认底部可见
-      el.scrollIntoView({ block: 'end', behavior: 'auto' })
-    }
   }, 100)
 }
+
+// ====== 补充缺失的变量定义 (防止报错) ======
+const isFreezingBottom = ref(false) // 这是一个缺失的 ref
+let _hasPushedPage = false // 这是一个缺失的变量
+let _lastBottomNeed = 0 // 这是一个缺失的变量
+
+// ====== 补充核心函数：动态调整底部 Padding ======
+function recomputeBottomSafePadding() {
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 核心逻辑：如果是移动端编辑状态，给底部加一个巨大的 padding (比如 50vh)
+  // 这样当 scrollTop = scrollHeight 时，文字会被推到屏幕中间，而不是被键盘挡住
+  const isMobile = window.innerWidth < 768
+
+  if (isMobile) {
+    // 保持至少 50vh 的底部留白，让最后一行字能滚到屏幕中间
+    el.style.paddingBottom = '50vh'
+  }
+  else {
+    // 桌面端保持原有设计
+    el.style.paddingBottom = '40px'
+  }
+}
+
 // ===== 简单自动草稿 =====
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
@@ -1191,14 +1222,17 @@ function handleFocus() {
   captureCaret()
   isBodyLocked.value = true
 
-  // ✅ 新增：等 300ms 键盘完全弹起后，如果光标在最后，强制滚到底部
-  // 原来的逻辑只是 scrollTop，对于长文本不够，必须 scrollIntoView
+  // ✅ 1. 立即计算一次 Padding，防止 Android 第一次输入时遮挡
+  recomputeBottomSafePadding()
+
+  // ✅ 2. 键盘弹起后的延时滚动
   setTimeout(() => {
     const el = textarea.value
-    if (el && el.selectionStart === el.value.length) {
+    if (el && el.selectionStart === el.value.length)
       el.scrollTop = el.scrollHeight
-      el.scrollIntoView({ block: 'end', behavior: 'smooth' })
-    }
+
+    // 再次计算，以防窗口尺寸变化
+    recomputeBottomSafePadding()
   }, 300)
 }
 
@@ -1380,14 +1414,16 @@ function handleInput(event: Event) {
   // 允许这一轮输入重新触发“轻推一次”
   _hasPushedPage = false
 
-  // 先让 textarea 内部把光标行滚到可见
+  // 先让 textarea 内部把光标行滚到可见（这一帧不等 vv）
   captureCaret()
-
-  // ✅ 核心修复：光标在末尾时，使用 block: 'end' 强制露底
+  // ✅ 核心修复：光标在末尾时，执行双重滚动
   if (el.selectionStart === el.value.length) {
+    // 1. 让输入框内部文字滚到底 (你之前的逻辑)
     el.scrollTop = el.scrollHeight
-    // 强制把元素底部对齐到可视区底部，解决输入框变高后光标被遮挡问题
-    el.scrollIntoView({ block: 'end', behavior: 'smooth' })
+
+    // 2. ✨ 新增：强制让输入框元素本身进入可视区域
+    // block: 'nearest' 会自动判断：如果底部被挡住了，就向上滚父容器，直到底部露出来
+    el.scrollIntoView({ block: 'nearest' })
   }
   else {
     ensureCaretVisibleInTextarea()
@@ -1409,7 +1445,7 @@ function handleInput(event: Event) {
     }, 280)
   })
 
-  // ✅ 恢复：Android 专用加一道兜底 (此处使用了 isAndroid，解决了 ESLint 报错)
+  // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
       recomputeBottomSafePadding()

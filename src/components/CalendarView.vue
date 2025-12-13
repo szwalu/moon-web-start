@@ -113,31 +113,6 @@ function onEditorFocus() {
 
 const rootRef = ref<HTMLElement | null>(null)
 
-// ============================================
-// ✅ 新增：键盘/视口高度自适应逻辑 (关键修复)
-// ============================================
-function handleVisualViewportResize() {
-  if (!rootRef.value || !window.visualViewport)
-    return
-
-  // 获取当前可视视口的高度
-  const vvHeight = window.visualViewport.height
-
-  // 强制设置日历容器的高度 = 可视视口高度
-  // 这样日历的底部就会刚好贴在键盘上方
-  rootRef.value.style.height = `${vvHeight}px`
-
-  // 触发一次滚动检查，确保光标可见
-  if (isWriting.value || isEditingExisting.value) {
-    nextTick(() => {
-      // 尝试找到当前焦点的 textarea 并滚动
-      const activeEl = document.activeElement as HTMLElement
-      if (activeEl && activeEl.tagName === 'TEXTAREA')
-        activeEl.scrollIntoView({ block: 'end', behavior: 'smooth' })
-    })
-  }
-}
-
 function onGlobalClickCapture(e: MouseEvent) {
   if (!(isWriting.value || isEditingExisting.value))
     return
@@ -719,23 +694,7 @@ onMounted(async () => {
   }
   await fetchNotesForDate(new Date())
   await checkAndRefreshIncremental()
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', handleVisualViewportResize)
-    window.visualViewport.addEventListener('scroll', handleVisualViewportResize)
-    // 初始化执行一次
-    handleVisualViewportResize()
-  }
   document.addEventListener('visibilitychange', handleVisibilityChange)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', onGlobalClickCapture, true) // 原有逻辑
-
-  // ✅ 移除视口监听
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', handleVisualViewportResize)
-    window.visualViewport.removeEventListener('scroll', handleVisualViewportResize)
-  }
 })
 
 function refreshData() {
@@ -990,7 +949,6 @@ async function saveNewNote(content: string, weather: string | null) {
   left: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
   background: white;
   z-index: 5000;
   display: flex;
@@ -1035,7 +993,6 @@ async function saveNewNote(content: string, weather: string | null) {
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  scroll-padding-bottom: 20px;
 }
 .calendar-container {
   padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
@@ -1198,8 +1155,6 @@ async function saveNewNote(content: string, weather: string | null) {
 .compose-btn:hover { background: #4f46e5; }
 .inline-editor {
   margin-bottom: 16px;
-  /* 确保它是块级格式化上下文，有助于 scrollIntoView 定位 */
-  display: block;
 }
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;
