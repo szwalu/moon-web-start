@@ -2646,7 +2646,7 @@ defineExpose({
 .dark .tag-suggestions li:hover { background-color: #404040; }
 
 .note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:50dvh;
+  max-height:75dvh;
 }
 
 /* tag 面板样式增强 */
