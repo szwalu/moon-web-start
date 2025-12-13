@@ -46,15 +46,18 @@ watch(isExpanded, async (val) => {
 const isWriting = ref(false)
 const newNoteContent = ref('')
 const writingKey = computed(() => {
-  const currentKey = dateKeyStr(selectedDate.value)
-  const todayKey = dateKeyStr(new Date())
+  const currentKeyStr = dateKeyStr(selectedDate.value)
+  const todayKeyStr = dateKeyStr(new Date())
 
-  // 如果选中的是今天，使用与主页一致的默认 Key ('note_draft_new')
-  if (currentKey === todayKey)
+  // ✅ 核心逻辑：
+  // 如果日历选中的是“今天”，强制使用与主页编辑器一致的 Key ('note_draft_new')
+  // 这样主页没写完的内容，点日历的今天写笔记时会自动出现。
+  if (currentKeyStr === todayKeyStr)
     return 'note_draft_new'
 
-  // 如果是其他日期，保持原逻辑，使用带日期的 Key
-  return `calendar_draft_${currentKey}`
+  // ⏹ 原逻辑保留：
+  // 其他日期（昨天、明天等）继续使用“日期独有 Key”，互不干扰
+  return `calendar_draft_${currentKeyStr}`
 })
 
 // --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
