@@ -109,73 +109,54 @@ const contentModel = computed({
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
-// 修改后的 focusToEnd 函数 (iOS 强化版)
 async function focusToEnd() {
   await nextTick()
   const el = textarea.value
   if (!el)
     return
 
-  // 1. 强制 autosize 重算高度，确保 textarea 已经撑开
-  try {
-    triggerResize?.()
-  }
-  catch {}
-
-  // 2. 聚焦并设置光标位置
+  // 1. 先聚焦
   el.focus()
+
+  // 2. 设定光标
   const len = el.value.length
   try {
     el.setSelectionRange(len, len)
   }
-  catch {}
+  catch {
+    // ignore
+  }
 
-  // 3. 封装一个强力滚动动作
-  const forceScrollToBottom = () => {
+  // 3. 暴力滚动函数
+  const hammerScroll = () => {
     if (!el)
       return
 
-    // A. 内部滚动：解决内容超过 75dvh (max-height) 的情况
-    // 直接拉到最底，不进行计算，这是最稳的
-    if (el.scrollHeight > el.clientHeight)
-      el.scrollTop = el.scrollHeight
-
-    // B. 视口滚动：解决 textarea 底部被遮在屏幕外的情况
-    // scrollIntoView 是原生 API，iOS Safari 对它的处理优于手动计算 scrollTop
-    // block: 'nearest' 会尽量把元素底边拉入视口，且不会导致顶部乱跳
-    try {
-      el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    }
-    catch {}
-
-    // C. 触发原本的安全区计算 (用于垫高底部 padding)
+    el.scrollTop = 9999999
     recomputeBottomSafePadding()
   }
 
-  // === 战术执行 ===
+  // 第 1 下
+  hammerScroll()
 
-  // 第 1 刀：立即执行 (处理简单情况)
-  forceScrollToBottom()
-
-  // 第 2 刀：延时 100ms (等待 DOM 渲染和 Autosize 插件生效)
-  window.setTimeout(() => {
-    forceScrollToBottom()
+  // 第 2 下：100ms
+  setTimeout(() => {
+    try {
+      triggerResize?.()
+    }
+    catch {
+      // ignore
+    }
+    hammerScroll()
   }, 100)
 
-  // 第 3 刀：延时 350ms (核心！专治 iOS)
-  // iOS 键盘弹起动画通常需要 300ms 左右。
-  // 必须在动画结束后，再次强制滚动，才能真正露出来。
-  window.setTimeout(() => {
-    forceScrollToBottom()
-    // 最后再用精准计算校准一次光标位置
-    ensureCaretVisibleInTextarea()
+  // 第 3 下：350ms (关键)
+  setTimeout(() => {
+    hammerScroll()
+    requestAnimationFrame(() => {
+      ensureCaretVisibleInTextarea()
+    })
   }, 350)
-
-  // 第 4 刀：延时 600ms (兜底)
-  // 防止老旧机型卡顿或 UI 响应慢
-  window.setTimeout(() => {
-    forceScrollToBottom()
-  }, 600)
 }
 
 // ===== 简单自动草稿 =====
@@ -202,19 +183,19 @@ function handleErrorConfirm() {
 // 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
 function handleRecoverDraft() {
   emit('update:modelValue', pendingDraftText.value)
-  showDraftPrompt.value = false // 关闭遮罩
+  showDraftPrompt.value = false
 
-  nextTick(() => {
+  // 延时等待弹窗关闭动画结束
+  setTimeout(() => {
     try {
       triggerResize?.()
     }
     catch {
-      // noop
+      // ignore
     }
-    focusToEnd() // 恢复数据后聚焦
-  })
+    focusToEnd()
+  }, 200)
 }
-
 // 3. 再定义函数：handleDiscardDraft
 function handleDiscardDraft() {
   clearDraft()
