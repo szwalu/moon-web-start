@@ -544,7 +544,6 @@ export function useTagMenu(
     ensureTagMenuInputFontFix()
 
     // 1. 总是先从本地加载非用户相关的缓存（图标和置顶的 key 是全局的）
-    // 即使后面在线逻辑覆盖，也能保证离线时有基础数据
     hydrateIconsFromLocal()
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
@@ -554,18 +553,24 @@ export function useTagMenu(
       pinnedTags.value = []
     }
 
-    // 2. 进行一次集中的会话获取，判断在线状态
-    const { data: sessionData } = await supabase.auth.getSession()
-    const user = sessionData?.session?.user
-    const uid = user?.id
+    /**
+     * 核心初始化函数：负责加载用户数据、同步云端配置、建立实时订阅
+     * 封装此处以便在 "首次检查" 和 "登录状态变更" 时复用
+     */
+    const initSessionData = async (user: any) => {
+      const uid = user.id
+      if (!uid)
+        return
 
-    if (user && uid) {
-    // [在线 或 Session 有效] 逻辑
+      // 防止重复初始化 (当 onAuthStateChange 和 getSession 同时触发时)
+      if (currentUserId.value === uid && tagCountsChannel)
+        return
+
       currentUserId.value = uid
-      localStorage.setItem(LAST_KNOWN_USER_ID_KEY, uid) // 保存当前成功的用户ID，供下次离线使用
+      localStorage.setItem(LAST_KNOWN_USER_ID_KEY, uid)
       hydrateExpanded(uid)
 
-      // 用服务器数据更新或合并本地数据
+      // --- 同步 Metadata (置顶 & 图标) ---
       const serverPinned = (user.user_metadata as any)?.pinned_tags
       if (Array.isArray(serverPinned)) {
         pinnedTags.value = serverPinned
@@ -578,14 +583,18 @@ export function useTagMenu(
         localStorage.setItem(TAG_ICON_MAP_KEY, JSON.stringify(tagIconMap.value))
       }
 
-      // 加载用户相关的标签列表缓存
+      // --- 加载用户相关的标签列表缓存 ---
       hydrateCountsFromLocal(uid)
 
-      // 尝试从服务器刷新（离线会自动失败并跳过）
+      // --- 尝试从服务器刷新 ---
       refreshTagCountsFromServer().catch(() => {})
       refreshUntaggedCountFromServer(true).catch(() => {})
 
-      // 设置实时数据订阅
+      // --- 设置实时数据订阅 ---
+      // 如果已存在旧订阅，先清理
+      if (tagCountsChannel)
+        await supabase.removeChannel(tagCountsChannel)
+
       tagCountsChannel = supabase
         .channel(`tag-counts-${uid}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` }, (payload: any) => {
@@ -614,8 +623,35 @@ export function useTagMenu(
         })
         .subscribe()
     }
+
+    // 2. 监听 Auth 状态变化 (解决首次登录跳转时数据不显示的问题)
+    // 这里的 subscription 应该在 onBeforeUnmount 中 unsubscribe，
+    // 但由于是在 onMounted 内部定义的，建议保持现状或在外部定义变量存储它。
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        // 登录成功、Token刷新 或 初始化发现 Session
+        await initSessionData(session.user)
+      }
+      else if (event === 'SIGNED_OUT') {
+        // 登出清理
+        currentUserId.value = null
+        allTags.value = []
+        tagCounts.value = {}
+        if (tagCountsChannel) {
+          supabase.removeChannel(tagCountsChannel)
+          tagCountsChannel = null
+        }
+      }
+    })
+
+    // 3. 立即检查一次当前 Session (作为双重保险，处理页面刷新场景)
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (sessionData?.session?.user) {
+      await initSessionData(sessionData.session.user)
+    }
     else {
-    // [离线 且 Session 无效] 逻辑
+      // [离线回退] 若无 Session，加载最后已知的用户缓存
+      // 只有在完全没有 Session 的情况下才走这里
       const lastUid = localStorage.getItem(LAST_KNOWN_USER_ID_KEY)
       if (lastUid) {
         currentUserId.value = lastUid
