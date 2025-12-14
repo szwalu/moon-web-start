@@ -43,6 +43,76 @@ watch(isExpanded, async (val) => {
   }
 })
 
+// --- ✅ 新增：本月统计数据状态 ---
+const monthlyStats = ref({
+  days: 0,
+  count: 0,
+  chars: 0,
+})
+
+// --- ✅ 新增：获取本月统计数据的函数 ---
+async function fetchMonthlyStats(date: Date) {
+  if (!user.value)
+    return
+
+  // 1. 计算当月的起止时间
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  // 月初：当月1号 00:00:00
+  const startDate = new Date(year, month, 1, 0, 0, 0, 0)
+  // 月末：下个月0号（即本月最后一天） 23:59:59
+  const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
+
+  try {
+    // 2. 如果离线，暂时不显示或显示为0（也可以改为从localStorage遍历，但性能消耗较大，这里优先联网）
+    if (!navigator.onLine) {
+      // 也可以选择保持上一次的数据，或者归零
+      return
+    }
+
+    // 3. 查询当月所有笔记的内容（为了计算字数）
+    const { data, error } = await supabase
+      .from('notes')
+      .select('content, created_at')
+      .eq('user_id', user.value.id)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString())
+
+    if (error)
+      throw error
+
+    // 4. 计算统计数据
+    const notes = data || []
+
+    // 计算天数：利用 Set 去重日期
+    const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
+    // 计算条数
+    const count = notes.length
+    // 计算字数：累加 content 长度
+    const chars = notes.reduce((sum, n) => sum + (n.content?.length || 0), 0)
+
+    monthlyStats.value = { days: uniqueDays, count, chars }
+  }
+  catch (e) {
+    console.warn('[Calendar] 获取月度统计失败:', e)
+  }
+}
+
+// ✅ 新增：监听日历翻页事件
+function onCalendarMove(pages: any[]) {
+  // pages 是 v-calendar 返回的当前视图数组，通常包含 month(1-12) 和 year
+  if (!pages || !pages.length)
+    return
+
+  const page = pages[0]
+  // page.month 是 1-based (1月是1)，但 Date() 构造函数月是 0-based (1月是0)
+  // 我们构造该月1号的日期对象
+  const viewDate = new Date(page.year, page.month - 1, 1)
+
+  // 获取该可视月份的统计数据
+  fetchMonthlyStats(viewDate)
+}
+
 const isWriting = ref(false)
 const newNoteContent = ref('')
 // CalendarView.vue
@@ -216,7 +286,7 @@ async function saveExistingNote(content: string) {
     JSON.stringify(selectedDateNotes.value),
   )
   emit('updated', finalNote)
-
+  fetchMonthlyStats(selectedDate.value)
   const draftKey = editDraftKey.value
   if (draftKey) {
     try {
@@ -263,6 +333,7 @@ async function handleDelete(noteId: string) {
   else
     localStorage.removeItem(dayCacheKey)
   refreshDotAfterDelete()
+  fetchMonthlyStats(selectedDate.value)
   localStorage.removeItem(CAL_LAST_TOTAL)
   localStorage.removeItem(CAL_LAST_SYNC_TS)
 }
@@ -518,6 +589,7 @@ async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
   selectedDate.value = date
+  fetchMonthlyStats(date)
   expandedNoteId.value = null
   const cacheKey = getCalendarDateCacheKey(date)
 
@@ -697,7 +769,6 @@ function handleVisibilityChange() {
 
 onMounted(async () => {
   fetchTagData()
-
   // 1. 并行启动：获取圆点（不阻塞）、获取今日笔记（阻塞）、获取笔记总数（用于骗过同步检查）
   const hadCache = loadAllDatesFromCache()
   if (!hadCache && user.value)
@@ -859,7 +930,7 @@ async function saveNewNote(content: string, weather: string | null) {
   )
 
   emit('created', finalNote)
-
+  fetchMonthlyStats(selectedDate.value)
   const draftKey = writingKey.value
   if (draftKey) {
     // 之前可能在这里少复制了大括号
@@ -891,6 +962,7 @@ async function saveNewNote(content: string, weather: string | null) {
           :attributes="attributes"
           :is-dark="isDark"
           @dayclick="day => fetchNotesForDate(day.date)"
+          @did-move="onCalendarMove"
         >
           <template #header-title="{ title }">
             <span class="calendar-nav-title">
@@ -921,6 +993,19 @@ async function saveNewNote(content: string, weather: string | null) {
           <button class="compose-btn" @click="startWriting">
             {{ composeButtonText }}
           </button>
+          <i18n-t keypath="notes.calendar.month_stats" tag="span" class="monthly-stats">
+            <template #days>
+              <span class="stat-num">{{ monthlyStats.days }}</span>
+            </template>
+
+            <template #count>
+              <span class="stat-num">{{ monthlyStats.count }}</span>
+            </template>
+
+            <template #chars>
+              <span class="stat-num">{{ monthlyStats.chars }}</span>
+            </template>
+          </i18n-t>
         </div>
       </div>
     </div>
@@ -1205,19 +1290,60 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 .compose-row {
   margin: 0 0 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center; /* 垂直居中，这样文字换行时按钮依然居中，或者改为 flex-end 底部对齐 */
 }
+.monthly-stats {
+  font-size: 12px;
+  color: #888;
+  font-weight: 500;
+
+  /* ✅ 修改点 1：允许换行 */
+  white-space: normal;
+  text-align: right; /* 多行时靠右对齐，视觉更整洁 */
+  line-height: 0.8;  /* 增加行高，换行后不拥挤 */
+  flex: 1;           /* 允许占据剩余空间，确保换行生效 */
+}
+
+/* 适配暗色模式下的文字基色 */
+.dark .monthly-stats {
+  color: #6b7280;
+}
+.stat-num {
+  /* 浅色模式下的淡紫色 (比如 Indigo/Violet 色系) */
+  color: #8b5cf6;
+  font-weight: 600; /* 数字加粗一点点，更清晰 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; /* 可选：用等宽字体显示数字更有质感 */
+
+}
+
+/* 暗色模式下的淡紫色（需要更亮一点才看得清） */
+.dark .stat-num {
+  color: #a78bfa;
+}
+
 .compose-btn {
   background: #6366f1;
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
+  border-radius: 6px; /* 圆角也可以稍微改小一点适配紧凑风格 */
+
+  /* ✅ 修改点 1：减小内边距 (原来是 8px 12px) */
+  padding: 6px 10px;
+
+  /* ✅ 修改点 2：稍微减小字号 (原来是 14px) */
+  font-size: 13px;
+
   cursor: pointer;
+
+  /* ✅ 修改点 3：防止按钮被压缩变形，确保文字完整显示 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.compose-btn:hover { background: #4f46e5; }
-.inline-editor {
-  margin-bottom: 16px;
+
+.compose-btn:hover {
+  background: #4f46e5;
 }
 .calendar-container {
   transition: height 0.2s ease, opacity 0.2s ease;

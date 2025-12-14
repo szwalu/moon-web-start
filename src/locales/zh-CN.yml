@@ -540,6 +540,7 @@ notes:
     placeholder_edit: 编辑这条笔记...
     loading: 加载中...
     no_notes_for_day: 这一天没有笔记。
+    month_stats: '本月记录 {days} 天 · {count} 条笔记 · {chars} 字'
 
   card:
     set_date: 设定日期

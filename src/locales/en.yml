@@ -544,6 +544,7 @@ notes:
     placeholder_edit: Edit this note...
     loading: Loading...
     no_notes_for_day: No notes for this day.
+    month_stats: 'This month: {days} days · {count} notes · {chars} chars'
 
   card:
     set_date: Set Date

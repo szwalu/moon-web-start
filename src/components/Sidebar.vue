@@ -460,6 +460,8 @@ function handleItemClick(key: string) {
 .stat-num {
   font-size: calc(var(--ui-font, 14px) * 1.4); /* 原 20px */
   font-weight: 700; margin-bottom: 4px;
+  color: #ffffff;
+  font-family: inherit;
 }
 
 /* 🔥 修改：统计标签大小 */
