@@ -1689,48 +1689,50 @@ function addNoteToList(newNote: any) {
   }
 }
 
+// auth.vue
+
 async function handlePinToggle(note: any) {
   if (!note || !user.value)
     return
 
   const newPinStatus = !note.is_pinned
 
-  // --- 离线分支：修正为正确的“本地更新”+“入队更新”逻辑 ---
+  // --- 离线分支 ---
   if (!isOnline()) {
     try {
       const noteId = note.id
       const updatedNote = { ...note, is_pinned: newPinStatus, updated_at: new Date().toISOString() }
 
-      // 1. 更新 UI 列表：找到笔记，更新状态，然后重新排序
+      // 1. 更新 UI 列表
       const index = notes.value.findIndex(n => n.id === noteId)
       if (index !== -1) {
         notes.value[index] = updatedNote
-        // 重新排序，让置顶的笔记立刻出现在最前面
         notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
       }
 
-      // 2. 刷新本地缓存 (localStorage) 和 IndexedDB 快照
+      // 2. 刷新本地缓存
       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
       await saveNotesSnapshot(notes.value)
 
-      // 3. 将“更新”操作加入离线队列，而不是“删除”
+      // ✅ [新增] 强制清理该笔记对应日期的日历缓存
+      // 这样下次打开日历时，会重新加载数据，从而正确显示置顶图标
+      invalidateCachesOnDataChange(updatedNote)
+
+      // 3. 入队
       await queuePendingUpdate(noteId, { is_pinned: newPinStatus, updated_at: updatedNote.updated_at, user_id: user.value.id })
 
-      // 4. 显示正确的成功提示
       messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
       return
     }
     catch (e: any) {
       console.warn('[offline] pin failed:', e)
-      // 显示通用的操作失败提示
       messageHook.error(`${t('notes.operation_error')}: ${e?.message || t('notes.try_again')}`)
       return
     }
   }
 
-  // --- 在线分支 (使用我们之前优化过的版本) ---
+  // --- 在线分支 ---
   try {
-    // 步骤 1: 异步将状态变更推送到服务器
     const { error } = await supabase
       .from('notes')
       .update({ is_pinned: newPinStatus })
@@ -1740,16 +1742,20 @@ async function handlePinToggle(note: any) {
     if (error)
       throw error
 
-    // 步骤 2: 服务器成功后，调用 updateNoteInList 处理前端UI和缓存
     const updatedNote = { ...note, is_pinned: newPinStatus }
+
+    // 1. 更新主页列表
     updateNoteInList(updatedNote)
+
+    // ✅ [新增] 强制清理日历缓存
+    invalidateCachesOnDataChange(updatedNote)
 
     messageHook.success(newPinStatus ? t('notes.pinned_success') : t('notes.unpinned_success'))
 
-    // 如果日历视图是打开的，则调用它的刷新方法
+    // ✅ [修改] 如果日历当前正开着，直接“注入”新状态，而不是 reload
     if (showCalendarView.value && calendarViewRef.value) {
-      // @ts-expect-error: 'refreshData' is exposed via defineExpose
-      (calendarViewRef.value as any).refreshData()
+      // @ts-expect-error: calendar method exposed via defineExpose
+      (calendarViewRef.value as any).commitUpdate?.(updatedNote)
     }
   }
   catch (err: any) {
@@ -1841,17 +1847,19 @@ async function handleFavoriteNote(note: any) {
 
     // ✅ 统一走 updateNoteInList
     updateNoteInList(updatedNote)
+    invalidateCachesOnDataChange(updatedNote)
 
-    // ✅ 关键：收藏状态变化也会影响“已收藏”搜索
+    // 2. 清理搜索缓存
     try {
       invalidateAllSearchCaches()
     }
-    catch (e) {
-      console.warn('invalidateAllSearchCaches failed', e)
-    }
+    catch (e) { /* ignore */ }
 
-    // 原代码在线模式这里没有提示，如果你想加上，可以解开下面这行：
-    // messageHook.success(newValue ? t('notes.favorite_success') : t('notes.unfavorite_success'))
+    // 3. 如果日历当前正开着，直接通知它热更新 (上一轮加的代码)
+    if (showCalendarView.value && calendarViewRef.value) {
+      // @ts-expect-error: calendar method exposed via defineExpose
+      (calendarViewRef.value as any).commitUpdate?.(updatedNote)
+    }
   }
   catch (err: any) {
     console.error(err)
@@ -2412,6 +2420,9 @@ async function triggerDeleteConfirmation(id: string) {
         if (!isOnline()) {
           await queuePendingDelete(id)
           await applyLocalDeletion([id])
+          if (showCalendarView.value && calendarViewRef.value) {
+            ;(calendarViewRef.value as any).commitDelete?.(id)
+          }
           messageHook.success(t('notes.delete_success'))
           return
         }
@@ -2451,8 +2462,8 @@ async function triggerDeleteConfirmation(id: string) {
           invalidateCachesOnDataChange(noteToDelete)
 
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error defineExpose 暴露的方法
-          ;(calendarViewRef.value as any).refreshData?.()
+          // @ts-expect-error: calendar method exposed via defineExpose
+          ;(calendarViewRef.value as any).commitDelete?.(id)
         }
       }
       catch (err: any) {
@@ -2653,7 +2664,7 @@ async function handleDeleteSelected() {
         idsToDelete.forEach((id) => {
           const noteToDelete = notes.value.find(n => n.id === id)
           if (noteToDelete) {
-            // @ts-expect-error 原函数签名未声明第二参，这里等同你的注释意图
+            // @ts-expect-error: calendar method exposed via defineExpose
             invalidateCachesOnDataChange(noteToDelete, true)
           }
         })
@@ -3143,6 +3154,7 @@ function onCalendarUpdated(updated: any) {
           @copy="handleCopy"
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"
+          @favorite="handleFavoriteNote"
         />
       </Transition>
       <Transition name="slide-up-fade">

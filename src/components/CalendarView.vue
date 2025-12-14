@@ -12,7 +12,7 @@ import NoteEditor from '@/components/NoteEditor.vue'
 
 import { queuePendingNote, queuePendingUpdate } from '@/utils/offline-db'
 
-const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated'])
+const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite'])
 const allTags = ref<string[]>([])
 const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
@@ -28,49 +28,42 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
-// --- ✅ 新增：控制日历展开/收起的状态 ---
-const isExpanded = ref(false) // 默认为 false (周视图/收起)
-
-// 2. 新增：定义日历组件的 ref
+// --- 控制日历展开/收起的状态 ---
+const isExpanded = ref(false)
 const calendarRef = ref<any>(null)
 
-// 3. 新增：监听展开状态，收起时强制定位回选中日期
 watch(isExpanded, async (val) => {
-  if (!val) { // 当变为 false (收起) 时
+  if (!val) {
     await nextTick()
-    // 强制日历移动到当前选中的日期，从而显示正确的那一周
     calendarRef.value?.move(selectedDate.value)
   }
 })
 
-// --- ✅ 新增：本月统计数据状态 ---
-const monthlyStats = ref({
-  days: 0,
-  count: 0,
-  chars: 0,
-})
+// ==========================================
+// ✅ 新增：月度统计逻辑 (含缓存与增量更新)
+// ==========================================
+const monthlyStats = ref({ days: 0, count: 0, chars: 0 })
+const lastStatsMonthKey = ref('')
 
-// --- ✅ 新增：获取本月统计数据的函数 ---
-async function fetchMonthlyStats(date: Date) {
+async function fetchMonthlyStats(date: Date, forceRefresh = false) {
   if (!user.value)
     return
 
-  // 1. 计算当月的起止时间
   const year = date.getFullYear()
   const month = date.getMonth()
-  // 月初：当月1号 00:00:00
+  const key = `${year}-${month}`
+
+  // 缓存判断：如果是同一个月且非强制刷新，直接跳过
+  if (!forceRefresh && key === lastStatsMonthKey.value)
+    return
+
   const startDate = new Date(year, month, 1, 0, 0, 0, 0)
-  // 月末：下个月0号（即本月最后一天） 23:59:59
   const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
 
   try {
-    // 2. 如果离线，暂时不显示或显示为0（也可以改为从localStorage遍历，但性能消耗较大，这里优先联网）
-    if (!navigator.onLine) {
-      // 也可以选择保持上一次的数据，或者归零
+    if (!navigator.onLine)
       return
-    }
 
-    // 3. 查询当月所有笔记的内容（为了计算字数）
     const { data, error } = await supabase
       .from('notes')
       .select('content, created_at')
@@ -81,56 +74,60 @@ async function fetchMonthlyStats(date: Date) {
     if (error)
       throw error
 
-    // 4. 计算统计数据
     const notes = data || []
-
-    // 计算天数：利用 Set 去重日期
     const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
-    // 计算条数
     const count = notes.length
-    // 计算字数：累加 content 长度
     const chars = notes.reduce((sum, n) => sum + (n.content?.length || 0), 0)
 
     monthlyStats.value = { days: uniqueDays, count, chars }
+    lastStatsMonthKey.value = key
   }
   catch (e) {
     console.warn('[Calendar] 获取月度统计失败:', e)
   }
 }
 
-// ✅ 新增：监听日历翻页事件
+// 本地增量更新 (避免增删改时重新拉取导致闪烁)
+// eslint-disable-next-line unused-imports/no-unused-vars
+function updateStatsLocally(deltaCount: number, deltaChars: number, dateStr: string, _isDeleteAction = false) {
+  monthlyStats.value.count += deltaCount
+  monthlyStats.value.chars += deltaChars
+
+  // 简单计算天数变化：直接根据现有圆点数据重新统计当月天数
+  const [y, m] = dateStr.split('-')
+  const prefix = `${y}-${m}`
+  let daysCount = 0
+  for (const dayKey of datesWithNotes.value) {
+    // ✅ 修复：换行但去掉花括号
+    if (dayKey.startsWith(prefix))
+      daysCount++
+  }
+  monthlyStats.value.days = daysCount
+}
+
 function onCalendarMove(pages: any[]) {
-  // pages 是 v-calendar 返回的当前视图数组，通常包含 month(1-12) 和 year
   if (!pages || !pages.length)
     return
 
   const page = pages[0]
-  // page.month 是 1-based (1月是1)，但 Date() 构造函数月是 0-based (1月是0)
-  // 我们构造该月1号的日期对象
   const viewDate = new Date(page.year, page.month - 1, 1)
-
-  // 获取该可视月份的统计数据
   fetchMonthlyStats(viewDate)
 }
 
+// ==========================================
+
 const isWriting = ref(false)
 const newNoteContent = ref('')
-// CalendarView.vue
 
 const writingKey = computed(() => {
-  // 1. 获取日历选中的日期字符串 (如 2025-12-13)
   const currentKeyStr = dateKeyStr(selectedDate.value)
-  // 2. 获取今天的日期字符串 (如 2025-12-13)
   const todayKeyStr = dateKeyStr(new Date())
-
-  // ✅ 核心修改：如果是今天，强制使用你查到的主页 Key
   if (currentKeyStr === todayKeyStr)
     return 'new_note_content_draft'
 
-  // 3. 如果是昨天或明天，保持原样 (calendar_draft_2025-xx-xx)
   return `calendar_draft_${currentKeyStr}`
 })
-// --- 👇 修改后的离线队列函数：复用主界面的同步机制 ---
+
 async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
   try {
     if (action === 'INSERT') {
@@ -156,14 +153,17 @@ async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
 async function fetchTagData() {
   if (!user.value)
     return
+
   try {
     if (!navigator.onLine)
       return
+
     const { data: tagsData, error: tagsError } = await supabase.rpc('get_unique_tags', {
       p_user_id: user.value.id,
     })
     if (tagsError)
       throw tagsError
+
     allTags.value = tagsData || []
 
     const { data: countsData, error: countsError } = await supabase.rpc('get_tag_counts', {
@@ -199,15 +199,19 @@ const rootRef = ref<HTMLElement | null>(null)
 function onGlobalClickCapture(e: MouseEvent) {
   if (!(isWriting.value || isEditingExisting.value))
     return
+
   const target = e.target as HTMLElement | null
   if (!target)
     return
+
   const inThisOverlay = rootRef.value?.contains(target)
   if (!inThisOverlay)
     return
+
   const inInlineEditor = target.closest('.inline-editor')
   if (inInlineEditor)
     return
+
   isWriting.value = false
   editingNote.value = null
   hideHeader.value = false
@@ -241,16 +245,19 @@ function dateFromKeyStr(key: string) {
   return new Date(y, (m - 1), d)
 }
 
-// -------------------------------------------------------------
-// 修改：Save Existing Note (支持离线)
-// -------------------------------------------------------------
 async function saveExistingNote(content: string) {
   if (!user.value || !editingNote.value)
     return
+
   const id = editingNote.value.id
   const trimmed = (content || '').trim()
   if (!trimmed)
     return
+
+  // 1. 计算字数差值 (用于增量更新)
+  const oldLen = editingNote.value?.content?.length || 0
+  const newLen = trimmed.length
+  const diff = newLen - oldLen
 
   const nowISO = new Date().toISOString()
   const optimisticNote = {
@@ -272,6 +279,7 @@ async function saveExistingNote(content: string) {
 
     if (error)
       throw error
+
     finalNote = data
   }
   catch (e) {
@@ -286,7 +294,10 @@ async function saveExistingNote(content: string) {
     JSON.stringify(selectedDateNotes.value),
   )
   emit('updated', finalNote)
-  fetchMonthlyStats(selectedDate.value)
+
+  // ✅ 2. 本地静默更新统计 (字数)
+  updateStatsLocally(0, diff, dateKeyStr(selectedDate.value), false)
+
   const draftKey = editDraftKey.value
   if (draftKey) {
     try {
@@ -314,6 +325,7 @@ async function handleEdit(note: any) {
   hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+
   await nextTick()
   editNoteEditorRef.value?.focus()
 }
@@ -323,19 +335,58 @@ function handleCopy(content: string) {
 function handlePin(note: any) {
   emit('pin', note)
 }
+function handleFavorite(note: any) {
+  emit('favorite', note)
+}
 
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
+}
+function commitDelete(noteId: string) {
+  // 1. 找到要删除的笔记以获取字数
+  const noteToDelete = selectedDateNotes.value.find(n => n.id === noteId)
+  if (!noteToDelete)
+    return // 如果已经没了，直接返回
+
+  const deletedLen = noteToDelete?.content?.length || 0
+
+  // 2. 从当前显示的列表中移除
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
+
+  // 3. 更新本地缓存
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
   else
     localStorage.removeItem(dayCacheKey)
+
+  // 4. 更新圆点状态
   refreshDotAfterDelete()
-  fetchMonthlyStats(selectedDate.value)
+
+  // 5. 更新顶部统计数据 (条数-1，字数-N)
+  updateStatsLocally(-1, -deletedLen, dateKeyStr(selectedDate.value), true)
+
+  // 6. 清除同步标记
   localStorage.removeItem(CAL_LAST_TOTAL)
   localStorage.removeItem(CAL_LAST_SYNC_TS)
+}
+
+function commitUpdate(updatedNote: any) {
+  // 1. 在当前显示的列表中查找该笔记
+  const index = selectedDateNotes.value.findIndex(n => n.id === updatedNote.id)
+
+  if (index !== -1) {
+    // 2. 替换为新数据 (使用 map 或直接赋值，Vue 3 都能响应)
+    // 这里我们把旧数据和新数据合并，确保 updatedNote 里的新状态覆盖旧的
+    selectedDateNotes.value[index] = { ...selectedDateNotes.value[index], ...updatedNote }
+
+    // 触发响应式更新（Vue 有时对深层修改需要重新赋值数组）
+    selectedDateNotes.value = [...selectedDateNotes.value]
+
+    // 3. 更新本地缓存，防止刷新页面后状态回退
+    const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
+    localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
+  }
 }
 
 async function handleDateUpdated(updatedNote: any) {
@@ -369,6 +420,9 @@ async function handleDateUpdated(updatedNote: any) {
     JSON.stringify(Array.from(datesWithNotes.value)),
   )
   fetchAllNoteDatesFull().catch(() => {})
+
+  // 日期变更涉及跨天，强制刷新一次统计
+  fetchMonthlyStats(selectedDate.value, true)
 }
 
 function handleHeaderClick() {
@@ -380,15 +434,11 @@ async function toggleExpandInCalendar(noteId: string) {
   const isCollapsing = expandedNoteId.value === noteId
   expandedNoteId.value = isCollapsing ? null : noteId
 
-  // 如果是收起操作，手动修正滚动位置
   if (isCollapsing) {
     await nextTick()
     const el = document.getElementById(`cal-note-${noteId}`)
-    if (el) {
-      // block: 'nearest' 会尽量微调滚动条让元素可见
-      // 如果想要更强烈的效果（比如回到顶部），可以用 block: 'center' 或 'start'
+    if (el)
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
   }
 }
 
@@ -428,7 +478,6 @@ function formatCalendarHeaderTitle(rawTitle: string) {
   if (!rawTitle)
     return rawTitle
 
-  // 1. 定义中文映射 (兼容 v-calendar 可能输出的中文或英文)
   const zhMonthMap: Record<string, string> = {
     january: '1',
     february: '2',
@@ -465,73 +514,55 @@ function formatCalendarHeaderTitle(rawTitle: string) {
     十月: '10',
     十一月: '11',
     十二月: '12',
-    // 容错：如果 v-calendar 已经输出了 "1月" 这种格式，我们去掉"月"字取数字，或者直接保留
   }
-
-  // 辅助函数：尝试把 "December" 或 "12月" 统一转为 "12"
-  // 如果无法转换（比如已经是数字或无法识别），则保留原样但不带"月"
   const normalizeMonth = (m: string) => {
     const lower = m.trim().toLowerCase()
     if (zhMonthMap[lower])
       return zhMonthMap[lower]
-    // 尝试提取数字
+
     const numMatch = lower.match(/^(\d{1,2})/)
     if (numMatch)
       return numMatch[1]
+
     return m.trim()
   }
-
-  // 辅助函数：格式化单个部分 "Month Year" -> "Year年Month月"
   const formatPart = (m: string, y: string) => {
     return `${y}年${normalizeMonth(m)}月`
   }
-
-  // 检测是否是中文环境
   const isZh = String(locale.value || '').toLowerCase().startsWith('zh')
   if (!isZh)
     return rawTitle
 
-  // --- 情况 A: 跨年范围 (例如: "12月 2025 - 1月 2026" 或 "Dec 2025 - Jan 2026") ---
-  // 正则逻辑：(任意字符) (4位年份) (连接符) (任意字符) (4位年份)
   const crossYearMatch = rawTitle.match(/^(.*?)\s+(\d{4})\s*[-–]\s*(.*?)\s+(\d{4})$/)
   if (crossYearMatch) {
     const [_, m1, y1, m2, y2] = crossYearMatch
-    // 修正：分别格式化两端
     return `${formatPart(m1, y1)} - ${formatPart(m2, y2)}`
   }
-
-  // --- 情况 B: 同年范围 (例如: "11月 - 12月 2025" 或 "Nov - Dec 2025") ---
-  // 正则逻辑：(任意字符) (连接符) (任意字符) (4位年份 结尾)
   const rangeMatch = rawTitle.match(/^(.*?)\s*[-–]\s*(.*?)\s+(\d{4})$/)
   if (rangeMatch) {
     const [_, m1, m2, year] = rangeMatch
     return `${year}年 ${normalizeMonth(m1)}月 - ${normalizeMonth(m2)}月`
   }
-
-  // --- 情况 C: 单月 (例如: "12月 2025" 或 "December 2025") ---
   const singleMatch = rawTitle.match(/^(.*?)\s+(\d{4})$/)
   if (singleMatch) {
     const [_, m, year] = singleMatch
     return formatPart(m, year)
   }
-
-  // 兜底
   return rawTitle
 }
 
 async function fetchAllNoteDatesFull() {
   if (!user.value)
     return
+
   if (!navigator.onLine) {
     loadAllDatesFromCache()
     return
   }
-
   const PAGE = 1000
   let from = 0
   let to = PAGE - 1
   const acc = new Set<string>()
-
   try {
     while (true) {
       const { data, error } = await supabase
@@ -540,16 +571,15 @@ async function fetchAllNoteDatesFull() {
         .eq('user_id', user.value.id)
         .order('created_at', { ascending: false })
         .range(from, to)
-
       if (error)
         throw error
 
       ;(data || []).forEach((n) => {
         acc.add(toDateKeyStrFromISO(n.created_at))
       })
-
       if (!data || data.length < PAGE)
         break
+
       from += PAGE
       to += PAGE
     }
@@ -565,14 +595,17 @@ function loadAllDatesFromCache(): boolean {
   const cached = localStorage.getItem(CACHE_KEYS.CALENDAR_ALL_DATES)
   if (!cached)
     return false
+
   try {
     const arr: string[] = JSON.parse(cached)
     const normalized = arr.map((s) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s))
         return s
+
       const d = new Date(s)
       if (Number.isNaN(d.getTime()))
         return s
+
       return dateKeyStr(d)
     })
     datesWithNotes.value = new Set(normalized)
@@ -588,11 +621,14 @@ function loadAllDatesFromCache(): boolean {
 async function fetchNotesForDate(date: Date) {
   if (!user.value)
     return
+
   selectedDate.value = date
+
+  // ✅ 切换日期时，获取当月统计 (带缓存)
   fetchMonthlyStats(date)
+
   expandedNoteId.value = null
   const cacheKey = getCalendarDateCacheKey(date)
-
   const cachedData = localStorage.getItem(cacheKey)
   if (cachedData) {
     try {
@@ -612,7 +648,6 @@ async function fetchNotesForDate(date: Date) {
       else {
         const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
         const endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
-
         const { data, error } = await supabase
           .from('notes')
           .select('*')
@@ -620,7 +655,6 @@ async function fetchNotesForDate(date: Date) {
           .gte('created_at', startDate.toISOString())
           .lte('created_at', endDate.toISOString())
           .order('created_at', { ascending: false })
-
         if (error)
           throw error
 
@@ -640,16 +674,14 @@ async function fetchNotesForDate(date: Date) {
   const key = dateKeyStr(date)
   const hasNotes = selectedDateNotes.value.length > 0
   const hasDot = datesWithNotes.value.has(key)
-
   if (hasNotes !== hasDot) {
     if (hasNotes)
       datesWithNotes.value.add(key)
-    else datesWithNotes.value.delete(key)
+    else
+      datesWithNotes.value.delete(key)
+
     datesWithNotes.value = new Set(datesWithNotes.value)
-    localStorage.setItem(
-      CACHE_KEYS.CALENDAR_ALL_DATES,
-      JSON.stringify(Array.from(datesWithNotes.value)),
-    )
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
 }
 
@@ -661,11 +693,9 @@ function refreshDotAfterDelete() {
     datesWithNotes.value.add(key)
   else if (!hasNotes && hasDot)
     datesWithNotes.value.delete(key)
+
   datesWithNotes.value = new Set(datesWithNotes.value)
-  localStorage.setItem(
-    CACHE_KEYS.CALENDAR_ALL_DATES,
-    JSON.stringify(Array.from(datesWithNotes.value)),
-  )
+  localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
 }
 
 async function checkAndRefreshIncremental() {
@@ -674,39 +704,34 @@ async function checkAndRefreshIncremental() {
 
   const lastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0') || 0
   const lastTotal = Number(localStorage.getItem(CAL_LAST_TOTAL) || '0') || 0
-
   let serverTotal = 0
   try {
-    const { count, error } = await supabase
-      .from('notes')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.value.id)
+    const { count, error } = await supabase.from('notes').select('id', { count: 'exact', head: true }).eq('user_id', user.value.id)
     if (error)
       throw error
+
     serverTotal = count || 0
   }
-  catch (e) { return }
+  catch (e) {
+    return
+  }
 
   let serverMaxUpdatedAt = 0
   try {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('updated_at')
-      .eq('user_id', user.value.id)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single()
+    const { data, error } = await supabase.from('notes').select('updated_at').eq('user_id', user.value.id).order('updated_at', { ascending: false }).limit(1).single()
     if (error && (error as any).code !== 'PGRST116')
       throw error
+
     if (data?.updated_at)
       serverMaxUpdatedAt = new Date(data.updated_at).getTime()
   }
-  catch (e) { return }
+  catch (e) {
+    return
+  }
 
   if (serverTotal === lastTotal && serverMaxUpdatedAt <= lastSync)
     return
 
-  // ❌ 之前这里你可能不小心写了两遍 if，导致括号不匹配
   if (serverTotal !== lastTotal) {
     try {
       await fetchAllNoteDatesFull()
@@ -715,15 +740,10 @@ async function checkAndRefreshIncremental() {
     await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
     return
   }
-
   try {
     if (serverMaxUpdatedAt > lastSync) {
       const sinceISO = new Date(lastSync || 0).toISOString()
-      const { data, error } = await supabase
-        .from('notes')
-        .select('id, created_at, updated_at')
-        .eq('user_id', user.value.id)
-        .gt('updated_at', sinceISO)
+      const { data, error } = await supabase.from('notes').select('id, created_at, updated_at').eq('user_id', user.value.id).gt('updated_at', sinceISO)
       if (error)
         throw error
 
@@ -739,15 +759,13 @@ async function checkAndRefreshIncremental() {
       }
       if (added)
         datesWithNotes.value = new Set(datesWithNotes.value)
+
       affectedDateKeys.forEach((keyStr) => {
         const partsDate = dateFromKeyStr(keyStr)
         const dayCacheKey = getCalendarDateCacheKey(partsDate)
         localStorage.removeItem(dayCacheKey)
       })
-      localStorage.setItem(
-        CACHE_KEYS.CALENDAR_ALL_DATES,
-        JSON.stringify(Array.from(datesWithNotes.value)),
-      )
+      localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
     }
   }
   catch (e) {}
@@ -769,73 +787,52 @@ function handleVisibilityChange() {
 
 onMounted(async () => {
   fetchTagData()
-  // 1. 并行启动：获取圆点（不阻塞）、获取今日笔记（阻塞）、获取笔记总数（用于骗过同步检查）
   const hadCache = loadAllDatesFromCache()
   if (!hadCache && user.value)
     fetchAllNoteDatesFull().catch(() => {})
 
-  // 发起获取笔记请求（为了尽快显示）
   const notesPromise = fetchNotesForDate(new Date())
-
-  // ✅ 新增：并行发起一个获取总数的请求（为了解决闪烁）
   const countPromise = user.value
     ? supabase.from('notes').select('id', { count: 'exact', head: true }).eq('user_id', user.value.id)
     : Promise.resolve({ count: 0, error: null })
-
-  // 2. 等待笔记加载完成并显示（用户此时看到了内容）
   await notesPromise
-
-  // ✅ 3. 关键修复：在运行 checkAndRefreshIncremental 之前，手动写入同步标记
-  // 这样后续的检查就会发现 (ServerTotal == LocalTotal)，从而跳过“删除缓存并重拉”的步骤
   try {
     const { count, error } = await countPromise
     if (!error && count !== null) {
       localStorage.setItem(CAL_LAST_TOTAL, String(count))
-      // 写入当前时间戳，防止因时间戳落后触发增量更新
       localStorage.setItem(CAL_LAST_SYNC_TS, String(Date.now()))
     }
   }
   catch (e) {
     console.warn('预写入同步标记失败', e)
   }
-
-  // 4. 最后再运行原本的增量检查（此时它会认为数据是最新的，静默结束，不会闪烁）
   await checkAndRefreshIncremental()
-
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 function refreshData() {
   checkAndRefreshIncremental()
 }
-defineExpose({ refreshData })
+
+defineExpose({
+  refreshData,
+  commitDelete,
+  commitUpdate,
+})
 
 // CalendarView.vue
-
 async function startWriting() {
-  // 1. 清空旧内容
   newNoteContent.value = ''
-
-  // 2. 手动预读取草稿
   try {
-    // 获取上面的 key (如果是今天，就是 'new_note_content_draft')
     const targetKey = writingKey.value
-
-    // 直接读 LocalStorage
     const raw = localStorage.getItem(targetKey)
-
     if (raw) {
       const parsed = JSON.parse(raw)
-      // 如果有内容，直接填进编辑器
       if (parsed && typeof parsed.content === 'string')
         newNoteContent.value = parsed.content
     }
   }
-  catch (e) {
-    // 忽略错误
-  }
-
-  // 3. 正常显示编辑器
+  catch (e) {}
   isWriting.value = true
   hideHeader.value = true
   if (scrollBodyRef.value)
@@ -856,6 +853,7 @@ const composeButtonText = computed(() => {
   ).format(sel)
   if (selDay < today)
     return t('notes.calendar.compose_backfill', { date: labelDate })
+
   return t('notes.calendar.compose_write', { date: labelDate })
 })
 
@@ -905,6 +903,7 @@ async function saveNewNote(content: string, weather: string | null) {
 
     if (error)
       throw error
+
     finalNote = data
   }
   catch (e) {
@@ -930,10 +929,12 @@ async function saveNewNote(content: string, weather: string | null) {
   )
 
   emit('created', finalNote)
-  fetchMonthlyStats(selectedDate.value)
+
+  // ✅ 2. 本地静默更新统计 (条数+1，字数+length)
+  updateStatsLocally(1, content.length, dateKeyStr(selectedDate.value), false)
+
   const draftKey = writingKey.value
   if (draftKey) {
-    // 之前可能在这里少复制了大括号
     try {
       localStorage.removeItem(draftKey)
     }
@@ -972,17 +973,7 @@ async function saveNewNote(content: string, weather: string | null) {
         </Calendar>
 
         <div class="expand-arrow-bar" :class="{ 'is-collapsed': !isExpanded }" @click="isExpanded = !isExpanded">
-          <svg
-            class="arrow-icon"
-            :class="{ rotated: isExpanded }"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
+          <svg class="arrow-icon" :class="{ rotated: isExpanded }" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>
@@ -993,15 +984,14 @@ async function saveNewNote(content: string, weather: string | null) {
           <button class="compose-btn" @click="startWriting">
             {{ composeButtonText }}
           </button>
+
           <i18n-t keypath="notes.calendar.month_stats" tag="span" class="monthly-stats">
             <template #days>
               <span class="stat-num">{{ monthlyStats.days }}</span>
             </template>
-
             <template #count>
               <span class="stat-num">{{ monthlyStats.count }}</span>
             </template>
-
             <template #chars>
               <span class="stat-num">{{ monthlyStats.chars }}</span>
             </template>
@@ -1024,8 +1014,8 @@ async function saveNewNote(content: string, weather: string | null) {
             :tag-counts="tagCounts"
             :enable-drafts="true"
             :draft-key="writingKey"
-            :clear-draft-on-save="false"
             :enable-scroll-push="true"
+            :clear-draft-on-save="true"
             @save="saveNewNote"
             @cancel="cancelWriting"
             @focus="onEditorFocus"
@@ -1044,7 +1034,7 @@ async function saveNewNote(content: string, weather: string | null) {
             :all-tags="allTags"
             :tag-counts="tagCounts"
             :enable-drafts="true"
-            :clear-draft-on-save="false"
+            :clear-draft-on-save="true"
             :enable-scroll-push="true"
             @save="saveExistingNote"
             @cancel="cancelEditExisting"
@@ -1075,6 +1065,7 @@ async function saveNewNote(content: string, weather: string | null) {
               @copy="handleCopy"
               @pin="handlePin"
               @delete="handleDelete"
+              @favorite="handleFavorite"
               @dblclick="handleEdit(note)"
               @date-updated="(newNote) => handleDateUpdated(newNote)"
               @set-date="(note) => emit('setDate', note)"
@@ -1143,7 +1134,7 @@ async function saveNewNote(content: string, weather: string | null) {
   position: relative;
 }
 .calendar-container {
-  padding: 1rem 1rem 0 1rem; /* 稍微减少底部 padding 留给箭头 */
+  padding: 1rem 1rem 0 1rem;
   border-bottom: 1px solid #e5e7eb;
 }
 .dark .calendar-container {
@@ -1160,10 +1151,6 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 .notes-for-day-container {
   padding: 1rem 1.5rem;
-}
-.selected-date-header {
-  font-weight: 600;
-  margin-bottom: 1rem;
 }
 .loading-text,
 .no-notes-text {
@@ -1186,24 +1173,16 @@ async function saveNewNote(content: string, weather: string | null) {
   transition: all 0.3s ease;
 }
 
-/* ✅ 1. 外层强制限高（解决空白问题的根本） */
 .collapsed-item-wrapper {
-  /* 限制整体高度，超出部分直接切掉 */
   max-height: 220px;
   overflow: hidden;
-
-  /* 加上渐变遮罩，让底部边缘柔和一点 */
   mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
-/* ✅ 2. 内层关键修复：减少 Padding，把按钮“提”上来 */
-/* 只有在收起状态下，才去压缩 NoteItem 的内边距 */
 .collapsed-item-wrapper :deep(.note-card) {
-  /* 原来是 4rem (64px)，改小一点，让内容和按钮更紧凑 */
   padding-top: 1.5rem !important;
   padding-bottom: 3rem !important;
-  /* 这样按钮就不会被挤到 220px 以外了 */
 }
 
 .notes-list > div:last-child {
@@ -1225,26 +1204,20 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #f9fafb;
 }
 
-/* ✅ 新增：底部展开箭头样式 */
 .expand-arrow-bar {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 0 0 8px 0;
-
-  /* 默认（展开时）保持紧凑，维持你满意的间隙 */
   margin-top: -30px;
-
   cursor: pointer;
   opacity: 0.6;
-  transition: opacity 0.2s, margin-top 0.2s ease; /* 顺便加个 margin 动画，切换时更丝滑 */
+  transition: opacity 0.2s, margin-top 0.2s ease;
   position: relative;
   z-index: 10;
 }
-
-/* ✅ 新增：收起状态下，取消负边距（或者设为 -2px 微调） */
 .expand-arrow-bar.is-collapsed {
-  margin-top: 0px; /* 这里数值越大，离日期越远。建议 -2px 或 0 */
+  margin-top: 0px;
 }
 .expand-arrow-bar:hover {
   opacity: 1;
@@ -1258,96 +1231,62 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .arrow-icon {
   color: #bbb;
 }
-/* 展开时箭头旋转 180 度 */
 .arrow-icon.rotated {
   transform: rotate(180deg);
 }
-</style>
 
-<style>
-/* ...原有全局样式保持不变... */
-.n-dialog__mask,
-.n-modal-mask {
-  z-index: 6002 !important;
-}
-.n-dialog,
-.n-dialog__container,
-.n-modal,
-.n-modal-container {
-  z-index: 6003 !important;
-}
-.n-message-container,
-.n-notification-container,
-.n-popover,
-.n-dropdown {
-  z-index: 6004 !important;
-}
-.calendar-view .vc-title,
-.calendar-view .vc-title-wrapper {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-}
+/* ✅ 按钮和统计行样式优化 */
 .compose-row {
   margin: 0 0 12px 0;
   display: flex;
   justify-content: space-between;
-  align-items: center; /* 垂直居中，这样文字换行时按钮依然居中，或者改为 flex-end 底部对齐 */
+  align-items: center;
+  gap: 10px;
 }
-.monthly-stats {
-  font-size: 12px;
-  color: #888;
-  font-weight: 500;
-
-  /* ✅ 修改点 1：允许换行 */
-  white-space: normal;
-  text-align: right; /* 多行时靠右对齐，视觉更整洁 */
-  line-height: 0.8;  /* 增加行高，换行后不拥挤 */
-  flex: 1;           /* 允许占据剩余空间，确保换行生效 */
-}
-
-/* 适配暗色模式下的文字基色 */
-.dark .monthly-stats {
-  color: #6b7280;
-}
-.stat-num {
-  /* 浅色模式下的淡紫色 (比如 Indigo/Violet 色系) */
-  color: #8b5cf6;
-  font-weight: 600; /* 数字加粗一点点，更清晰 */
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; /* 可选：用等宽字体显示数字更有质感 */
-
-}
-
-/* 暗色模式下的淡紫色（需要更亮一点才看得清） */
-.dark .stat-num {
-  color: #a78bfa;
-}
-
 .compose-btn {
   background: #6366f1;
   color: #fff;
   border: none;
-  border-radius: 6px; /* 圆角也可以稍微改小一点适配紧凑风格 */
-
-  /* ✅ 修改点 1：减小内边距 (原来是 8px 12px) */
+  border-radius: 6px;
+  /* 更紧凑的内边距 */
   padding: 6px 10px;
-
-  /* ✅ 修改点 2：稍微减小字号 (原来是 14px) */
+  /* 稍小的字体 */
   font-size: 13px;
-
   cursor: pointer;
-
-  /* ✅ 修改点 3：防止按钮被压缩变形，确保文字完整显示 */
   white-space: nowrap;
   flex-shrink: 0;
 }
+.compose-btn:hover { background: #4f46e5; }
+.inline-editor {
+  margin-bottom: 16px;
+}
 
-.compose-btn:hover {
-  background: #4f46e5;
+/* ✅ 统计文字样式 */
+.monthly-stats {
+  font-size: 12px;
+  color: #888;
+  font-weight: 500;
+  white-space: normal;
+  text-align: right;
+  line-height: 1.5;
+  flex: 1;
 }
-.calendar-container {
-  transition: height 0.2s ease, opacity 0.2s ease;
+.dark .monthly-stats {
+  color: #6b7280;
 }
+
+/* ✅ 紫色数字样式 */
+.stat-num {
+  color: #8b5cf6;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 0 2px;
+}
+.dark .stat-num {
+  color: #a78bfa;
+}
+
+/* 全局覆盖 */
 .vc-nav-title {
   background-color: transparent !important;
   box-shadow: none !important;
