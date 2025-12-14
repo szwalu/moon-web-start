@@ -697,16 +697,40 @@ function handleVisibilityChange() {
 
 onMounted(async () => {
   fetchTagData()
+
+  // 1. 并行启动：获取圆点（不阻塞）、获取今日笔记（阻塞）、获取笔记总数（用于骗过同步检查）
   const hadCache = loadAllDatesFromCache()
-  if (!hadCache && user.value) {
-    // 👇 修改：展开成多行
-    try {
-      await fetchAllNoteDatesFull()
+  if (!hadCache && user.value)
+    fetchAllNoteDatesFull().catch(() => {})
+
+  // 发起获取笔记请求（为了尽快显示）
+  const notesPromise = fetchNotesForDate(new Date())
+
+  // ✅ 新增：并行发起一个获取总数的请求（为了解决闪烁）
+  const countPromise = user.value
+    ? supabase.from('notes').select('id', { count: 'exact', head: true }).eq('user_id', user.value.id)
+    : Promise.resolve({ count: 0, error: null })
+
+  // 2. 等待笔记加载完成并显示（用户此时看到了内容）
+  await notesPromise
+
+  // ✅ 3. 关键修复：在运行 checkAndRefreshIncremental 之前，手动写入同步标记
+  // 这样后续的检查就会发现 (ServerTotal == LocalTotal)，从而跳过“删除缓存并重拉”的步骤
+  try {
+    const { count, error } = await countPromise
+    if (!error && count !== null) {
+      localStorage.setItem(CAL_LAST_TOTAL, String(count))
+      // 写入当前时间戳，防止因时间戳落后触发增量更新
+      localStorage.setItem(CAL_LAST_SYNC_TS, String(Date.now()))
     }
-    catch {}
   }
-  await fetchNotesForDate(new Date())
+  catch (e) {
+    console.warn('预写入同步标记失败', e)
+  }
+
+  // 4. 最后再运行原本的增量检查（此时它会认为数据是最新的，静默结束，不会闪烁）
   await checkAndRefreshIncremental()
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
