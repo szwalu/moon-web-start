@@ -115,10 +115,10 @@ async function focusToEnd() {
   if (!el)
     return
 
-  // 1. 先聚焦
+  // 1. 【关键】必须在第一时刻聚焦，保住键盘
   el.focus()
 
-  // 2. 设定光标
+  // 2. 设定光标到最后
   const len = el.value.length
   try {
     el.setSelectionRange(len, len)
@@ -127,32 +127,43 @@ async function focusToEnd() {
     // ignore
   }
 
-  // 3. 暴力滚动函数
-  const hammerScroll = () => {
+  // 3. 定义滚动逻辑：既滚内部，也滚外部
+  const doScroll = () => {
     if (!el)
       return
 
-    el.scrollTop = 9999999
-    recomputeBottomSafePadding()
-  }
+    // A. 暴力设置内部滚动条到最底（针对 max-height 场景）
+    el.scrollTop = el.scrollHeight + 9999
 
-  // 第 1 下
-  hammerScroll()
-
-  // 第 2 下：100ms
-  setTimeout(() => {
+    // B. 让整个元素进入视口（针对键盘遮挡）
+    // block: 'nearest' 在 iOS 上最温和，不会导致页面剧烈乱跳
     try {
-      triggerResize?.()
+      el.scrollIntoView({ block: 'nearest' })
     }
     catch {
       // ignore
     }
-    hammerScroll()
+
+    // C. 重新计算底部安全区垫片
+    recomputeBottomSafePadding()
+  }
+
+  // === 连环修正策略 ===
+
+  // 第一下：立刻执行（应对无需动画的场景）
+  doScroll()
+
+  // 第二下：100ms（等待 DOM 高度撑开）
+  // 此时 autosize 插件应该已经把 height 变大了
+  setTimeout(() => {
+    doScroll()
   }, 100)
 
-  // 第 3 下：350ms (关键)
+  // 第三下：350ms（等待 iOS 键盘完全弹起）
+  // 键盘弹起过程会压缩 visualViewport，动画结束后再滚一次最保险
   setTimeout(() => {
-    hammerScroll()
+    doScroll()
+    // 最后再做一次精细的光标对齐（之前的逻辑）
     requestAnimationFrame(() => {
       ensureCaretVisibleInTextarea()
     })
@@ -183,18 +194,19 @@ function handleErrorConfirm() {
 // 2. 再定义函数：handleRecoverDraft (使用了上面的变量)
 function handleRecoverDraft() {
   emit('update:modelValue', pendingDraftText.value)
-  showDraftPrompt.value = false
+  showDraftPrompt.value = false // 关闭遮罩
 
-  // 延时等待弹窗关闭动画结束
-  setTimeout(() => {
+  // 🔥 必须立刻执行，不能 setTimeout，否则 iOS 会收起键盘
+  nextTick(() => {
     try {
+      // 显式触发一次高度调整
       triggerResize?.()
     }
     catch {
       // ignore
     }
     focusToEnd()
-  }, 200)
+  })
 }
 // 3. 再定义函数：handleDiscardDraft
 function handleDiscardDraft() {
