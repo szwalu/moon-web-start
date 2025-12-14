@@ -690,15 +690,18 @@ notes:
     s2_i4_em: orange pencil
     s2_i4_after: ' icon will appear on the card. Click it to restore the draft and continue editing.'
 
-    s3_title: '3) Tags & Filters'
-    s3_i1_example: '#Life/Shopping'
-    s3_i1_label: Insert Tag
-    s3_i1_before: ': Select from menu; if empty, auto-fills like '
-    s3_i1_after: ' and focuses.'
-    s3_i2: 'Filter: Click tags in the menu to filter; supports "Untagged" filter.'
-    s3_i3: 'Select Filtered: Use "Select Notes" in menu after filtering.'
-    s3_i4: 'Clear Filter: Click "×" on the banner right.'
-    s3_i5: 'Tags support pinning, renaming, icon changing, and removal.'
+    s3_title: 3) Tags & Filtering
+    s3_i1_label: New Tag
+    s3_i1_1: ': Click or type #keyword + space to create or match an existing tag.'
+    s3_i1_2: Each note card can have multiple tags.
+    s3_i1_3: 'Use the format "#tag/subtag" to create folder-like hierarchies.'
+    s3_i2_label: Insert Tag
+    s3_i2_example: '#Life/Shopping'
+    s3_i2_before: ': Select a tag from the menu; if the input is empty, it will autofill like'
+    s3_i3: 'Filter Notes: Click a tag in the menu to filter; supports filtering for ''No Tag''.'
+    s3_i4: 'Select Filtered: After filtering, use ''Select Notes'' in the menu bar to select notes.'
+    s3_i5: 'Clear Filter: The ''×'' on the right side of the banner.'
+    s3_i6: Tags support pinning, renaming, changing icons, and removal.
 
     s4_title: 4) Search
     s4_i1_before: 'Click '

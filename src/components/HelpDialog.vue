@@ -67,15 +67,19 @@ const { t } = useI18n()
         <section>
           <h3>{{ t('notes.HelpDialog.s3_title') }}</h3>
           <ul>
+            <li><strong>{{ t('notes.HelpDialog.s3_i1_label') }}</strong>{{ t('notes.HelpDialog.s3_i1_1') }}</li>
+            <li>{{ t('notes.HelpDialog.s3_i1_2') }}</li>
+            <li>{{ t('notes.HelpDialog.s3_i1_3') }}</li>
+
             <li>
-              <strong>{{ t('notes.HelpDialog.s3_i1_label') }}</strong>{{ t('notes.HelpDialog.s3_i1_before') }}
-              <code>{{ t('notes.HelpDialog.s3_i1_example') }}</code>
-              {{ t('notes.HelpDialog.s3_i1_after') }}
+              <strong>{{ t('notes.HelpDialog.s3_i2_label') }}</strong>{{ t('notes.HelpDialog.s3_i2_before') }}
+              <code>{{ t('notes.HelpDialog.s3_i2_example') }}</code>
             </li>
-            <li>{{ t('notes.HelpDialog.s3_i2') }}</li>
+
             <li>{{ t('notes.HelpDialog.s3_i3') }}</li>
             <li>{{ t('notes.HelpDialog.s3_i4') }}</li>
             <li>{{ t('notes.HelpDialog.s3_i5') }}</li>
+            <li>{{ t('notes.HelpDialog.s3_i6') }}</li>
           </ul>
         </section>
 

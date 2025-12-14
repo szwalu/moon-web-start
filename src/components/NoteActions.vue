@@ -828,10 +828,6 @@ defineExpose({ executeSearch, clearSearch })
       </div>
 
       <div class="quick-search-grid">
-        <button class="quick-chip" type="button" @click="handleQuickSearch('link')">
-          <LinkIcon :size="15" class="chip-icon" />
-          <span>{{ t('notes.search_quick_has_link', '有链接') }}</span>
-        </button>
         <button class="quick-chip" type="button" @click="handleQuickSearch('image')">
           <ImageIcon :size="15" class="chip-icon" />
           <span>{{ t('notes.search_quick_has_image', '有图片') }}</span>
@@ -839,6 +835,10 @@ defineExpose({ executeSearch, clearSearch })
         <button class="quick-chip" type="button" @click="handleQuickSearch('audio')">
           <Mic :size="15" class="chip-icon" />
           <span>{{ t('notes.search_quick_has_audio', '有语音') }}</span>
+        </button>
+        <button class="quick-chip" type="button" @click="handleQuickSearch('link')">
+          <LinkIcon :size="15" class="chip-icon" />
+          <span>{{ t('notes.search_quick_has_link', '有链接') }}</span>
         </button>
         <button class="quick-chip" type="button" @click="handleQuickSearch('favorite')">
           <Heart :size="15" class="chip-icon" />
