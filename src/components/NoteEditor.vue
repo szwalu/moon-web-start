@@ -109,7 +109,7 @@ const contentModel = computed({
 
 const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
-// —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
+// 修改后的 focusToEnd 函数
 async function focusToEnd() {
   await nextTick()
   const el = textarea.value
@@ -125,25 +125,32 @@ async function focusToEnd() {
   catch {}
 
   try {
+    // 触发 autosize 重新计算高度
     triggerResize?.()
   }
   catch {}
 
-  // 🔴 删除旧的 requestAnimationFrame 代码...
-  // requestAnimationFrame(() => {
-  //   ensureCaretVisibleInTextarea()
-  // })
-
-  // ✅ 修改为：直接滚到最底部
-  // 这样不仅能露出最后一行，还能露出底部的 padding，视觉最舒适
-  requestAnimationFrame(() => {
-    el.scrollTop = el.scrollHeight
-  })
-
-  // ✅ 加一道保险：防止键盘弹起动画导致的布局抖动
-  setTimeout(() => {
+  // 定义一个滚动到底部的操作
+  const scrollBottom = () => {
     if (el)
       el.scrollTop = el.scrollHeight
+  }
+
+  // === 阶段 1: 立即尝试滚动 ===
+  scrollBottom()
+
+  // === 阶段 2: 下一帧滚动 (等待 CSS 高度应用) ===
+  requestAnimationFrame(() => {
+    scrollBottom() // 再次强制滚到底，覆盖 autosize 刚撑开的情况
+    ensureCaretVisibleInTextarea() // 进行精细化位置修正
+    recomputeBottomSafePadding()
+  })
+
+  // === 阶段 3: 延时兜底 (解决长文本渲染滞后或弹窗关闭动画干扰) ===
+  window.setTimeout(() => {
+    scrollBottom()
+    // 再次计算底部安全区，防止键盘弹出后被遮挡
+    recomputeBottomSafePadding()
   }, 100)
 }
 
