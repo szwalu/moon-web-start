@@ -1311,8 +1311,8 @@ async function saveNewNote(content: string, weather: string | null) {
 .stat-num {
   color: #8b5cf6;
   font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  margin: 0 2px;
+
+  margin: 0 -1px;
 }
 .dark .stat-num {
   color: #a78bfa;
