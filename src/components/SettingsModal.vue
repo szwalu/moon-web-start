@@ -30,22 +30,52 @@ function writeUiFollow(flag: boolean) {
 function ensureGlobalUiFontStyle(px: string) {
   const id = 'ui-font-global'
   let styleEl = document.getElementById(id) as HTMLStyleElement | null
+
   const css = `
 :root { --ui-font: ${px}; }
 
+/* ==============================================
+   1. 核心容器覆盖
+   ============================================== */
 .n-drawer,
 .n-dropdown,
+.n-dropdown-menu,
+.n-base-select-menu,
 .n-popover,
 .n-popconfirm,
 .n-modal,
 .n-message,
 .n-notification,
 .v-binder-follower {
+  /* 强制覆盖 Naive UI 组件内部读取的 CSS 变量 */
+  --n-font-size: var(--ui-font) !important;
   font-size: var(--ui-font) !important;
 }
 
+/* ==============================================
+   2. 针对 Dropdown 菜单项的强力修正 (解决你的问题)
+   ============================================== */
+/* 使用 "菜单容器 + 选项" 的组合选择器，提升优先级 */
+.n-dropdown-menu .n-dropdown-option-body,
+.n-dropdown-menu .n-dropdown-option-body__label,
+.n-dropdown-menu .n-dropdown-option-body__prefix,
+.n-dropdown-menu .n-dropdown-option-body__suffix,
+.n-dropdown-menu .n-dropdown-option-body .n-icon {
+  font-size: var(--ui-font) !important;
+}
+
+/* 确保图标大小也跟随变动 */
+.n-dropdown-menu .n-icon {
+  font-size: var(--ui-font) !important;
+}
+
+/* ==============================================
+   3. 通用继承 (处理自定义内容，如截图下半部分)
+   ============================================== */
 .n-drawer :where(*):not(svg):not(svg *),
 .n-dropdown :where(*):not(svg):not(svg *),
+.n-dropdown-menu :where(*):not(svg):not(svg *),
+.n-base-select-menu :where(*):not(svg):not(svg *),
 .n-popover :where(*):not(svg):not(svg *),
 .n-popconfirm :where(*):not(svg):not(svg *),
 .n-modal :where(*):not(svg):not(svg *),
@@ -55,8 +85,11 @@ function ensureGlobalUiFontStyle(px: string) {
   font-size: inherit !important;
 }
 
+/* ==============================================
+   4. 特殊层级修正 (嵌套菜单等)
+   ============================================== */
 .n-drawer .n-menu :where(*):not(svg):not(svg *),
-.n-dropdown .n-menu :where(*):not(svg):not(svg *),
+.n-dropdown-menu .n-menu :where(*):not(svg):not(svg *),
 .n-popover .n-menu :where(*):not(svg):not(svg *) {
   font-size: inherit !important;
 }
