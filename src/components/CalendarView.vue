@@ -998,9 +998,25 @@ async function saveNewNote(content: string, weather: string | null) {
           @did-move="onCalendarMove"
         >
           <template #header-title="{ title }">
-            <span class="calendar-nav-title">
-              {{ formatCalendarHeaderTitle(title) }}
-            </span>
+            <div class="calendar-nav-wrapper">
+              <span class="calendar-nav-title">
+                {{ formatCalendarHeaderTitle(title) }}
+              </span>
+              <svg
+                class="nav-caret"
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
           </template>
         </Calendar>
 
@@ -1236,6 +1252,37 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #f9fafb;
 }
 
+/* ✅ 新增：年份月份标题的容器，用于横向排列文字和图标 */
+.calendar-nav-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px; /* 图标和文字之间的间距 */
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+
+.calendar-nav-wrapper:hover {
+  opacity: 1;
+}
+
+/* ✅ 新增：倒三角图标样式 */
+.nav-caret {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6; /* 让图标稍微淡一点，不要喧宾夺主 */
+  margin-top: 2px; /* 视觉微调，让它看起来更居中 */
+}
+
+/* 黑暗模式适配 */
+.dark .nav-caret {
+  opacity: 0.5;
+}
+.dark .calendar-nav-wrapper:hover .nav-caret {
+  opacity: 0.8;
+}
+
 .expand-arrow-bar {
   display: flex;
   justify-content: center;
@@ -1338,5 +1385,34 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
+}
+</style>
+
+<style>
+/* 修复：强制移除日历头部“年份月份”和“左右箭头”的背景色及阴影 */
+.calendar-view .vc-title,
+.calendar-view .vc-title-wrapper,
+.calendar-view .vc-arrow {  /* ✅ 新增了这一行，指向左右箭头按钮 */
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* 保持原有层级逻辑（防止弹窗被遮挡） */
+.n-dialog__mask,
+.n-modal-mask {
+  z-index: 6002 !important;
+}
+.n-dialog,
+.n-dialog__container,
+.n-modal,
+.n-modal-container {
+  z-index: 6003 !important;
+}
+.n-message-container,
+.n-notification-container,
+.n-popover,
+.n-dropdown {
+  z-index: 6004 !important;
 }
 </style>
