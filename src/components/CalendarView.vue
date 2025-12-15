@@ -44,6 +44,7 @@ watch(isExpanded, async (val) => {
 // ==========================================
 const monthlyStats = ref({ days: 0, count: 0, chars: 0 })
 const lastStatsMonthKey = ref('')
+const CAL_STATS_CACHE_KEY = 'calendar_monthly_stats_cache'
 
 async function fetchMonthlyStats(date: Date, forceRefresh = false) {
   if (!user.value)
@@ -52,6 +53,23 @@ async function fetchMonthlyStats(date: Date, forceRefresh = false) {
   const year = date.getFullYear()
   const month = date.getMonth()
   const key = `${year}-${month}`
+
+  // 1. 尝试读取本地持久化缓存 (新增逻辑)
+  if (!forceRefresh && key !== lastStatsMonthKey.value) {
+    try {
+      const raw = localStorage.getItem(CAL_STATS_CACHE_KEY)
+      if (raw) {
+        const cached = JSON.parse(raw)
+        // 如果缓存的月份 key 和当前要查的 key 一致，直接使用缓存
+        if (cached.key === key && cached.uid === user.value.id) {
+          monthlyStats.value = cached.stats
+          lastStatsMonthKey.value = key
+          return
+        }
+      }
+    }
+    catch (e) {}
+  }
 
   // 缓存判断：如果是同一个月且非强制刷新，直接跳过
   if (!forceRefresh && key === lastStatsMonthKey.value)
@@ -81,6 +99,13 @@ async function fetchMonthlyStats(date: Date, forceRefresh = false) {
 
     monthlyStats.value = { days: uniqueDays, count, chars }
     lastStatsMonthKey.value = key
+
+    // ✅ 请求成功后，写入本地缓存
+    localStorage.setItem(CAL_STATS_CACHE_KEY, JSON.stringify({
+      key,
+      uid: user.value.id,
+      stats: monthlyStats.value,
+    }))
   }
   catch (e) {
     console.warn('[Calendar] 获取月度统计失败:', e)
@@ -98,11 +123,20 @@ function updateStatsLocally(deltaCount: number, deltaChars: number, dateStr: str
   const prefix = `${y}-${m}`
   let daysCount = 0
   for (const dayKey of datesWithNotes.value) {
-    // ✅ 修复：换行但去掉花括号
     if (dayKey.startsWith(prefix))
       daysCount++
   }
   monthlyStats.value.days = daysCount
+
+  // ✅ 实时更新缓存
+  const currentKey = `${Number(y)}-${Number(m) - 1}`
+  if (currentKey === lastStatsMonthKey.value && user.value) {
+    localStorage.setItem(CAL_STATS_CACHE_KEY, JSON.stringify({
+      key: currentKey,
+      uid: user.value.id,
+      stats: monthlyStats.value,
+    }))
+  }
 }
 
 function onCalendarMove(pages: any[]) {
@@ -113,8 +147,6 @@ function onCalendarMove(pages: any[]) {
   const viewDate = new Date(page.year, page.month - 1, 1)
   fetchMonthlyStats(viewDate)
 }
-
-// ==========================================
 
 const isWriting = ref(false)
 const newNoteContent = ref('')
