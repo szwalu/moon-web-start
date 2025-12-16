@@ -32,13 +32,41 @@ const stats = ref({
   words: 0,
 })
 
+const chartData = ref<{ label: string; value: number; percent: number }[]>([])
+
+// --- 新增：计算 Y 轴刻度 ---
+const yAxisTicks = computed(() => {
+  if (chartData.value.length === 0)
+    return []
+
+  // 找出当前数据的最大值
+  const maxVal = Math.max(...chartData.value.map(d => d.value))
+
+  // 如果全是0，默认刻度
+  if (maxVal === 0)
+    return ['100', '50', '0']
+
+  // 辅助函数：格式化数字 (1200 -> 1.2k)
+  const format = (n: number) => {
+    if (n >= 1000)
+      return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+    return String(Math.round(n))
+  }
+
+  // 返回 [顶部, 中间, 底部]
+  return [
+    format(maxVal),
+    format(maxVal / 2),
+    '0',
+  ]
+})
+
 const yearOptions = computed(() => {
   const start = 1980
   const end = 2080
   const years = []
   for (let y = end; y >= start; y--)
     years.push(y)
-
   return years
 })
 
@@ -129,15 +157,69 @@ async function fetchAllData(queryBuilder: any) {
 function getStorageKey(userId: string) {
   const y = currentDate.value.getFullYear()
   const m = currentDate.value.getMonth()
-
   let typeKey = ''
   if (activeTab.value === 'overview')
     typeKey = 'all'
   else if (activeTab.value === 'yearly')
     typeKey = `y_${y}`
   else typeKey = `m_${y}_${m}`
-
   return `stats_cache_${userId}_${typeKey}`
+}
+
+function processChartData(notes: any[], year: number, month: number) {
+  const dataMap = new Map<number, number>()
+  let maxVal = 0
+
+  if (activeTab.value === 'monthly') {
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    for (let i = 1; i <= daysInMonth; i++) dataMap.set(i, 0)
+
+    notes.forEach((n) => {
+      const d = new Date(n.created_at)
+      const day = d.getDate()
+      const words = n.content?.length || 0
+      dataMap.set(day, (dataMap.get(day) || 0) + words)
+    })
+
+    const result = []
+    for (let i = 1; i <= daysInMonth; i++) {
+      const val = dataMap.get(i) || 0
+      if (val > maxVal)
+        maxVal = val
+      result.push({
+        label: i % 5 === 0 || i === 1 ? String(i) : '',
+        value: val,
+        percent: 0,
+      })
+    }
+    return result.map(item => ({
+      ...item,
+      percent: maxVal > 0 ? (item.value / maxVal) * 100 : 0,
+    }))
+  }
+  else if (activeTab.value === 'yearly') {
+    for (let i = 0; i < 12; i++) dataMap.set(i, 0)
+
+    notes.forEach((n) => {
+      const d = new Date(n.created_at)
+      const m = d.getMonth()
+      const words = n.content?.length || 0
+      dataMap.set(m, (dataMap.get(m) || 0) + words)
+    })
+
+    const result = []
+    for (let i = 0; i < 12; i++) {
+      const val = dataMap.get(i) || 0
+      if (val > maxVal)
+        maxVal = val
+      result.push({ label: String(i + 1), value: val, percent: 0 })
+    }
+    return result.map(item => ({
+      ...item,
+      percent: maxVal > 0 ? (item.value / maxVal) * 100 : 0,
+    }))
+  }
+  return []
 }
 
 async function fetchStats() {
@@ -148,66 +230,70 @@ async function fetchStats() {
   const storageKey = getStorageKey(user.id)
 
   const cachedJson = localStorage.getItem(storageKey)
+  let hasCache = false
+
   if (cachedJson) {
     try {
-      stats.value = JSON.parse(cachedJson)
+      const cached = JSON.parse(cachedJson)
+      stats.value = { days: cached.days, notes: cached.notes, words: cached.words }
+
+      if (cached.chartData && Array.isArray(cached.chartData))
+        chartData.value = cached.chartData
+      else
+        chartData.value = []
+
+      hasCache = true
       isLoading.value = false
     }
     catch (e) {
-      isLoading.value = true
     }
   }
-  else {
+
+  if (!hasCache) {
     isLoading.value = true
     stats.value = { days: 0, notes: 0, words: 0 }
+    chartData.value = []
   }
 
   try {
-    let query = supabase
-      .from('notes')
-      .select('content, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-
+    let query = supabase.from('notes').select('content, created_at').eq('user_id', user.id).order('created_at', { ascending: false })
     const year = currentDate.value.getFullYear()
     const month = currentDate.value.getMonth()
 
     if (activeTab.value === 'monthly') {
       const startDate = new Date(year, month, 1, 0, 0, 0, 0)
       const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
-      query = query.gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
+      query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString())
     }
     else if (activeTab.value === 'yearly') {
       const startDate = new Date(year, 0, 1, 0, 0, 0, 0)
       const endDate = new Date(year, 12, 0, 23, 59, 59, 999)
-      query = query.gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
+      query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString())
     }
 
     const notes = await fetchAllData(query)
-
     const count = notes.length
     const chars = notes.reduce((sum, n) => sum + (n.content?.length || 0), 0)
     const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
 
-    const newData = { days: uniqueDays, notes: count, words: chars }
+    let newChartData: any[] = []
+    if (activeTab.value !== 'overview')
+      newChartData = processChartData(notes, year, month)
 
-    if (
-      newData.days !== stats.value.days
-      || newData.notes !== stats.value.notes
-      || newData.words !== stats.value.words
-    )
-      stats.value = newData
+    stats.value = { days: uniqueDays, notes: count, words: chars }
+    if (activeTab.value !== 'overview')
+      chartData.value = newChartData
 
-    localStorage.setItem(storageKey, JSON.stringify(newData))
+    const dataToCache = {
+      days: uniqueDays,
+      notes: count,
+      words: chars,
+      chartData: newChartData,
+    }
+    localStorage.setItem(storageKey, JSON.stringify(dataToCache))
   }
-  catch (e) {
-    console.error('Stats error:', e)
-  }
-  finally {
-    isLoading.value = false
-  }
+  catch (e) { console.error('Stats error:', e) }
+  finally { isLoading.value = false }
 }
 
 function handleTabClick(tab: string) {
@@ -257,7 +343,7 @@ watch(() => props.visible, (val) => {
       <div class="content-body">
         <div
           class="date-picker-wrapper"
-          :class="{ disabled: activeTab === 'overview' }"
+          :class="{ 'no-pointer': activeTab === 'overview' }"
         >
           <span class="date-text">{{ formattedDateText }}</span>
           <ChevronDown v-if="activeTab !== 'overview'" :size="18" class="date-arrow" />
@@ -268,7 +354,6 @@ watch(() => props.visible, (val) => {
             type="month"
             class="hidden-trigger-input"
           >
-
           <select
             v-if="activeTab === 'yearly'"
             v-model="yearPickerValue"
@@ -280,7 +365,7 @@ watch(() => props.visible, (val) => {
           </select>
         </div>
 
-        <div class="stats-card" :class="{ 'loading-state': isLoading }">
+        <div class="stats-card summary-card" :class="{ 'loading-state': isLoading }">
           <div class="stat-grid">
             <div class="stat-item">
               <span class="stat-num">{{ stats.days }}</span>
@@ -296,6 +381,48 @@ watch(() => props.visible, (val) => {
             </div>
           </div>
         </div>
+
+        <div
+          v-if="activeTab !== 'overview'"
+          class="stats-card chart-card"
+          :class="{ 'loading-state': isLoading }"
+        >
+          <div class="card-header-row">
+            <span class="card-title">{{ t('stats.words1') }}</span>
+          </div>
+
+          <div class="chart-content-wrapper">
+            <div v-if="chartData.length > 0" class="chart-layout">
+              <div class="chart-y-axis">
+                <span class="y-tick">{{ yAxisTicks[0] }}</span>
+                <span class="y-tick">{{ yAxisTicks[1] }}</span>
+                <span class="y-tick">{{ yAxisTicks[2] }}</span>
+              </div>
+              <div class="chart-bars-container">
+                <div class="grid-line line-top" />
+                <div class="grid-line line-mid" />
+                <div class="grid-line line-bottom" />
+                <div class="chart-bars">
+                  <div
+                    v-for="(bar, index) in chartData"
+                    :key="index"
+                    class="bar-wrapper"
+                    :title="`${bar.value} words`"
+                  >
+                    <div class="bar-fill" :style="{ height: `${bar.percent}%` }" />
+                    <span class="bar-label">{{ bar.label }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="chart-placeholder">
+              <span v-if="!isLoading" class="placeholder-text">
+                No Data
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -304,21 +431,21 @@ watch(() => props.visible, (val) => {
 <style scoped>
 /* ===========================================================================
    🎨 主题变量定义
-   策略：默认定义浅色变量，然后通过 @media 和 .dark 类覆盖
    =========================================================================== */
 .stats-overlay {
-  /* ☀️ 浅色模式默认值 */
   --st-bg: #f9f9f9;
   --st-text: #2c2c2c;
   --st-text-sub: #888;
   --st-card-bg: #ffffff;
   --st-divider: #f0f0f0;
-  --st-accent: #6366f1; /* 浅色模式下的紫色 */
+  --st-accent: #6366f1;
   --st-icon-hover: rgba(0,0,0,0.05);
   --st-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  --st-bar-bg: #e0e7ff;
+  --st-bar-fill: #818cf8;
+  --st-grid-line: #f0f0f0; /* 辅助线颜色 */
 }
 
-/* 🌙 1. 媒体查询适配（跟随系统） */
 @media (prefers-color-scheme: dark) {
   .stats-overlay {
     --st-bg: #1e1e1e;
@@ -326,13 +453,15 @@ watch(() => props.visible, (val) => {
     --st-text-sub: #a1a1aa;
     --st-card-bg: #2c2c2c;
     --st-divider: #444;
-    --st-accent: #818cf8; /* 深色模式下稍亮一点的紫色 */
+    --st-accent: #818cf8;
     --st-icon-hover: rgba(255,255,255,0.1);
     --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    --st-bar-bg: #3f3f46;
+    --st-bar-fill: #6366f1;
+    --st-grid-line: #3f3f46;
   }
 }
 
-/* 🌙 2. 类名适配（跟随开关，优先级更高） */
 :global(.dark) .stats-overlay {
   --st-bg: #1e1e1e;
   --st-text: #e0e0e0;
@@ -342,10 +471,13 @@ watch(() => props.visible, (val) => {
   --st-accent: #818cf8;
   --st-icon-hover: rgba(255,255,255,0.1);
   --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  --st-bar-bg: #3f3f46;
+  --st-bar-fill: #6366f1;
+  --st-grid-line: #3f3f46;
 }
 
 /* ===========================================================================
-   📐 布局与样式 (引用变量)
+   📐 布局与样式
    =========================================================================== */
 
 .stats-overlay {
@@ -359,19 +491,14 @@ watch(() => props.visible, (val) => {
 .stats-modal-content {
   width: 420px;
   max-width: 90vw;
-  height: auto;
-  max-height: 80vh;
-
-  /* 🔥 引用变量 */
+  height: 540px;
   background-color: var(--st-bg);
   color: var(--st-text);
   box-shadow: var(--st-shadow);
-
   border-radius: 20px;
   display: flex; flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  padding-bottom: 20px;
   transition: background-color 0.3s, color 0.3s;
 }
 
@@ -389,24 +516,16 @@ watch(() => props.visible, (val) => {
   cursor: pointer; transition: background-color 0.2s;
 }
 .icon-wrapper:hover { background-color: var(--st-icon-hover); }
-.icon-close {
-  color: var(--st-text-sub);
-  transition: color 0.2s;
-}
+.icon-close { color: var(--st-text-sub); transition: color 0.2s; }
 .icon-wrapper:hover .icon-close { color: var(--st-text); }
 
-/* Tabs */
 .nav-tabs { display: flex; gap: 24px; }
 .tab-item {
-  font-size: 15px;
-  color: var(--st-text-sub);
+  font-size: 15px; color: var(--st-text-sub);
   position: relative; padding-bottom: 8px;
   cursor: pointer; font-weight: 500; transition: color 0.2s;
 }
-.tab-item.active {
-  color: var(--st-accent);
-  font-weight: 600;
-}
+.tab-item.active { color: var(--st-accent); font-weight: 600; }
 .tab-indicator {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 16px; height: 2px;
@@ -417,48 +536,59 @@ watch(() => props.visible, (val) => {
 .content-body {
   padding: 20px 30px;
   display: flex; flex-direction: column;
-  position: relative;
+  flex: 1;
+  gap: 16px;
+  padding-bottom: 30px;
 }
 
 .date-picker-wrapper {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-bottom: 24px; margin-top: 10px;
-  align-self: flex-start;
-  cursor: pointer;
-  transition: opacity 0.2s;
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 8px; align-self: flex-start;
+  cursor: pointer; transition: opacity 0.2s; flex-shrink: 0;
 }
-.date-picker-wrapper.disabled { opacity: 0; pointer-events: none; }
-
+.date-picker-wrapper.no-pointer {
+  cursor: default;
+  /* 也可以稍微降低一点不透明度来表示不可点，但不用全消失 */
+  /* opacity: 1; */
+}
 .date-text {
-  font-size: 20px; font-weight: 600;
-  color: var(--st-text);
+  font-size: 20px; font-weight: 600; color: var(--st-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.date-arrow {
-  margin-top: 2px;
-  color: var(--st-text);
-  opacity: 0.8;
-}
-
+.date-arrow { margin-top: 2px; color: var(--st-text); opacity: 0.8; }
 .hidden-trigger-input {
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  opacity: 0;
-  z-index: 10;
-  cursor: pointer;
-  font-size: 20px;
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  opacity: 0; z-index: 10; cursor: pointer; font-size: 20px;
 }
 
-/* 数据卡片 */
+/* --- 📦 通用卡片样式 --- */
 .stats-card {
   background-color: var(--st-card-bg);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.03); /* 阴影也稍微弱一点 */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
   border-radius: 16px;
-  padding: 24px 0;
   transition: opacity 0.2s, background-color 0.3s;
 }
 .stats-card.loading-state { opacity: 0.6; }
+
+.summary-card {
+  padding: 24px 0;
+  flex-shrink: 0;
+}
+
+.chart-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  min-height: 150px;
+}
+
+.card-header-row {
+  display: flex; align-items: center; margin-bottom: 16px;
+}
+.card-title {
+  font-size: 16px; font-weight: 600; color: var(--st-text);
+}
 
 .stat-grid { display: flex; justify-content: space-around; align-items: center; }
 .stat-item {
@@ -467,18 +597,107 @@ watch(() => props.visible, (val) => {
 }
 .stat-item:not(:last-child)::after {
   content: ''; position: absolute; right: 0; top: 25%;
-  height: 50%; width: 1px;
-  background-color: var(--st-divider);
+  height: 50%; width: 1px; background-color: var(--st-divider);
 }
 .stat-num {
-  font-size: 22px; font-weight: 700;
-  color: var(--st-text);
+  font-size: 22px; font-weight: 700; color: var(--st-text);
   margin-bottom: 6px; font-family: ui-monospace, SFMono-Regular, monospace;
 }
-.stat-label {
-  font-size: 13px;
-  color: var(--st-text-sub);
+.stat-label { font-size: 13px; color: var(--st-text-sub); }
+
+/* --- 📊 Chart Layout (Flex Row) --- */
+.chart-content-wrapper { flex: 1; width: 100%; position: relative; }
+
+.chart-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  gap: 12px; /* Y轴和柱子之间的间距 */
+  padding-bottom: 10px; /* 留给X轴标签的空间 */
 }
+
+/* 左侧刻度 */
+.chart-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: right;
+  height: 100%;
+  padding-bottom: 2px; /* 对齐底部 */
+  min-width: 30px; /* 保证有宽度显示 12k */
+}
+.y-tick {
+  font-size: 11px;
+  color: var(--st-text-sub);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  line-height: 1;
+}
+
+/* 右侧柱状图容器 */
+.chart-bars-container {
+  flex: 1;
+  position: relative; /* 用于定位辅助线 */
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* 辅助虚线 */
+.grid-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  background-color: var(--st-grid-line);
+  z-index: 0;
+  pointer-events: none;
+}
+.line-top { top: 0; border-top: 1px dashed var(--st-grid-line); background: none; }
+.line-mid { top: 50%; border-top: 1px dashed var(--st-grid-line); background: none; }
+.line-bottom { bottom: 0; background-color: var(--st-grid-line); }
+
+.chart-bars {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2px;
+  z-index: 1; /* 在辅助线之上 */
+}
+
+.bar-wrapper {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  position: relative;
+}
+.bar-fill {
+  width: 60%;
+  min-width: 4px;
+  background-color: var(--st-bar-fill);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: height 0.4s cubic-bezier(0.17, 0.67, 0.83, 0.67);
+  opacity: 0.8;
+}
+.bar-wrapper:hover .bar-fill { opacity: 1; }
+.bar-label {
+  position: absolute;
+  bottom: -20px;
+  font-size: 10px;
+  color: var(--st-text-sub);
+  width: 20px;
+  text-align: center;
+}
+
+.chart-placeholder {
+  display: flex; justify-content: center; align-items: center;
+  height: 100%; width: 100%; opacity: 0.3;
+}
+.placeholder-text { font-size: 14px; color: var(--st-text-sub); font-weight: 500; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(20px) scale(0.98); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }

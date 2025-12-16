@@ -812,3 +812,7 @@ stats:
   days: 天
   notes: 笔记
   words: 字
+  words1: 字数
+  activity_trend: 趋势图
+  days_suffix: 日
+  month_suffix: 月
