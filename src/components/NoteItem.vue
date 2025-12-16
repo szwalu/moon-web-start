@@ -1767,4 +1767,12 @@ position: relative;
 .n-dropdown-menu {
   padding: 4px 0 !important;
 }
+
+.vc-title,
+.vc-title-wrapper,
+.vc-arrow {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
 </style>
