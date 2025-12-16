@@ -40,102 +40,107 @@ watch(isExpanded, async (val) => {
 })
 
 // ==========================================
-// ✅ 新增：月度统计逻辑 (含缓存与增量更新)
+// ✅ 重构：月度统计逻辑 (缓存优先 + 全量校准)
 // ==========================================
 const monthlyStats = ref({ days: 0, count: 0, chars: 0 })
-const lastStatsMonthKey = ref('')
-const CAL_STATS_CACHE_KEY = 'calendar_monthly_stats_cache'
 
-async function fetchMonthlyStats(date: Date, forceRefresh = false) {
+// 1. 通用分页拉取函数 (解决单次请求 1000 条限制)
+async function fetchAllData(queryBuilder: any) {
+  const PAGE_SIZE = 1000
+  let allData: any[] = []
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await queryBuilder
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    if (error)
+      throw error
+
+    if (data && data.length > 0) {
+      allData = allData.concat(data)
+      if (data.length < PAGE_SIZE)
+        hasMore = false
+      else page++
+    }
+    else {
+      hasMore = false
+    }
+  }
+  return allData
+}
+
+// 2. 获取统计缓存 Key
+function getStatsStorageKey(date: Date, userId: string) {
+  const y = date.getFullYear()
+  const m = date.getMonth() // 0-11
+  return `calendar_stats_${userId}_m_${y}_${m}`
+}
+
+// 3. 核心统计函数
+async function fetchMonthlyStats(date: Date) {
   if (!user.value)
     return
 
-  const year = date.getFullYear()
-  const month = date.getMonth()
-  const key = `${year}-${month}`
+  const storageKey = getStatsStorageKey(date, user.value.id)
 
-  // 1. 尝试读取本地持久化缓存 (新增逻辑)
-  if (!forceRefresh && key !== lastStatsMonthKey.value) {
+  // A. 优先读取缓存 (UI 立即响应)
+  const cachedJson = localStorage.getItem(storageKey)
+  if (cachedJson) {
     try {
-      const raw = localStorage.getItem(CAL_STATS_CACHE_KEY)
-      if (raw) {
-        const cached = JSON.parse(raw)
-        // 如果缓存的月份 key 和当前要查的 key 一致，直接使用缓存
-        if (cached.key === key && cached.uid === user.value.id) {
-          monthlyStats.value = cached.stats
-          lastStatsMonthKey.value = key
-          return
-        }
-      }
+      const cached = JSON.parse(cachedJson)
+      // 仅当内存中的数据为空或与缓存不同时才赋值，避免闪烁
+      // 这里简单处理：直接赋值让 UI 先显示缓存值
+      monthlyStats.value = cached
     }
     catch (e) {}
   }
+  else {
+    monthlyStats.value = { days: 0, count: 0, chars: 0 }
+  }
 
-  // 缓存判断：如果是同一个月且非强制刷新，直接跳过
-  if (!forceRefresh && key === lastStatsMonthKey.value)
+  // B. 联网静默更新 (Source of Truth)
+  if (!navigator.onLine)
     return
 
-  const startDate = new Date(year, month, 1, 0, 0, 0, 0)
-  const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
-
   try {
-    if (!navigator.onLine)
-      return
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const startDate = new Date(year, month, 1, 0, 0, 0, 0)
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
 
-    const { data, error } = await supabase
+    // 构建查询：只查 content 和 created_at
+    const query = supabase
       .from('notes')
       .select('content, created_at')
       .eq('user_id', user.value.id)
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString())
 
-    if (error)
-      throw error
+    // 使用分页拉取全量数据
+    const notes = await fetchAllData(query)
 
-    const notes = data || []
-    const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
+    // 重新计算统计
     const count = notes.length
     const chars = notes.reduce((sum, n) => sum + (n.content?.length || 0), 0)
+    const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
 
-    monthlyStats.value = { days: uniqueDays, count, chars }
-    lastStatsMonthKey.value = key
+    const newData = { days: uniqueDays, count, chars }
 
-    // ✅ 请求成功后，写入本地缓存
-    localStorage.setItem(CAL_STATS_CACHE_KEY, JSON.stringify({
-      key,
-      uid: user.value.id,
-      stats: monthlyStats.value,
-    }))
+    // C. 对比数据，有变化才更新 UI 和缓存
+    if (
+      newData.days !== monthlyStats.value.days
+      || newData.count !== monthlyStats.value.count
+      || newData.chars !== monthlyStats.value.chars
+    )
+      monthlyStats.value = newData
+
+    // 始终更新缓存，保持新鲜
+    localStorage.setItem(storageKey, JSON.stringify(newData))
   }
   catch (e) {
-    console.warn('[Calendar] 获取月度统计失败:', e)
-  }
-}
-
-// 本地增量更新 (避免增删改时重新拉取导致闪烁)
-// eslint-disable-next-line unused-imports/no-unused-vars
-function updateStatsLocally(deltaCount: number, deltaChars: number, dateStr: string, _isDeleteAction = false) {
-  monthlyStats.value.count += deltaCount
-  monthlyStats.value.chars += deltaChars
-
-  // 简单计算天数变化：直接根据现有圆点数据重新统计当月天数
-  const [y, m] = dateStr.split('-')
-  const prefix = `${y}-${m}`
-  let daysCount = 0
-  for (const dayKey of datesWithNotes.value) {
-    if (dayKey.startsWith(prefix))
-      daysCount++
-  }
-  monthlyStats.value.days = daysCount
-
-  // ✅ 实时更新缓存
-  const currentKey = `${Number(y)}-${Number(m) - 1}`
-  if (currentKey === lastStatsMonthKey.value && user.value) {
-    localStorage.setItem(CAL_STATS_CACHE_KEY, JSON.stringify({
-      key: currentKey,
-      uid: user.value.id,
-      stats: monthlyStats.value,
-    }))
+    console.warn('[Calendar] 统计更新失败:', e)
   }
 }
 
@@ -277,6 +282,7 @@ function dateFromKeyStr(key: string) {
   return new Date(y, (m - 1), d)
 }
 
+// ✅ 修改：保存后直接重新拉取统计，而非手动计算 diff
 async function saveExistingNote(content: string) {
   if (!user.value || !editingNote.value)
     return
@@ -285,11 +291,6 @@ async function saveExistingNote(content: string) {
   const trimmed = (content || '').trim()
   if (!trimmed)
     return
-
-  // 1. 计算字数差值 (用于增量更新)
-  const oldLen = editingNote.value?.content?.length || 0
-  const newLen = trimmed.length
-  const diff = newLen - oldLen
 
   const nowISO = new Date().toISOString()
   const optimisticNote = {
@@ -313,6 +314,14 @@ async function saveExistingNote(content: string) {
       throw error
 
     finalNote = data
+
+    // 手动更新本地同步时间戳，防止触发自动同步导致数据被覆盖
+    if (finalNote.updated_at) {
+      const noteTs = new Date(finalNote.updated_at).getTime()
+      const currentLastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0')
+      if (noteTs > currentLastSync)
+        localStorage.setItem(CAL_LAST_SYNC_TS, String(noteTs))
+    }
   }
   catch (e) {
     console.warn('联网保存失败，转入离线队列:', e)
@@ -327,8 +336,8 @@ async function saveExistingNote(content: string) {
   )
   emit('updated', finalNote)
 
-  // ✅ 2. 本地静默更新统计 (字数)
-  updateStatsLocally(0, diff, dateKeyStr(selectedDate.value), false)
+  // ✅ 核心修改：保存成功后，直接重新拉取月度统计，确保绝对准确
+  await fetchMonthlyStats(selectedDate.value)
 
   const draftKey = editDraftKey.value
   if (draftKey) {
@@ -374,31 +383,26 @@ function handleFavorite(note: any) {
 async function handleDelete(noteId: string) {
   emit('delete', noteId)
 }
-function commitDelete(noteId: string) {
-  // 1. 找到要删除的笔记以获取字数
-  const noteToDelete = selectedDateNotes.value.find(n => n.id === noteId)
-  if (!noteToDelete)
-    return // 如果已经没了，直接返回
 
-  const deletedLen = noteToDelete?.content?.length || 0
-
-  // 2. 从当前显示的列表中移除
+// ✅ 修改：删除后直接重新拉取统计
+async function commitDelete(noteId: string) {
+  // 1. 从当前显示的列表中移除
   selectedDateNotes.value = selectedDateNotes.value.filter(n => n.id !== noteId)
 
-  // 3. 更新本地缓存
+  // 2. 更新本地缓存
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   if (selectedDateNotes.value.length > 0)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
   else
     localStorage.removeItem(dayCacheKey)
 
-  // 4. 更新圆点状态
+  // 3. 更新圆点状态
   refreshDotAfterDelete()
 
-  // 5. 更新顶部统计数据 (条数-1，字数-N)
-  updateStatsLocally(-1, -deletedLen, dateKeyStr(selectedDate.value), true)
+  // 4. ✅ 核心修改：重新拉取月度统计 (自动计算条数减一、字符数减少)
+  await fetchMonthlyStats(selectedDate.value)
 
-  // 6. 清除同步标记
+  // 5. 清除同步标记
   localStorage.removeItem(CAL_LAST_TOTAL)
   localStorage.removeItem(CAL_LAST_SYNC_TS)
 }
@@ -408,14 +412,13 @@ function commitUpdate(updatedNote: any) {
   const index = selectedDateNotes.value.findIndex(n => n.id === updatedNote.id)
 
   if (index !== -1) {
-    // 2. 替换为新数据 (使用 map 或直接赋值，Vue 3 都能响应)
-    // 这里我们把旧数据和新数据合并，确保 updatedNote 里的新状态覆盖旧的
+    // 2. 替换为新数据
     selectedDateNotes.value[index] = { ...selectedDateNotes.value[index], ...updatedNote }
 
-    // 触发响应式更新（Vue 有时对深层修改需要重新赋值数组）
+    // 触发响应式更新
     selectedDateNotes.value = [...selectedDateNotes.value]
 
-    // 3. 更新本地缓存，防止刷新页面后状态回退
+    // 3. 更新本地缓存
     const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
     localStorage.setItem(dayCacheKey, JSON.stringify(selectedDateNotes.value))
   }
@@ -453,8 +456,8 @@ async function handleDateUpdated(updatedNote: any) {
   )
   fetchAllNoteDatesFull().catch(() => {})
 
-  // 日期变更涉及跨天，强制刷新一次统计
-  fetchMonthlyStats(selectedDate.value, true)
+  // ✅ 日期变更涉及跨天/跨月，强制刷新统计
+  fetchMonthlyStats(selectedDate.value)
 }
 
 function handleHeaderClick() {
@@ -804,10 +807,16 @@ async function checkAndRefreshIncremental() {
   await refetchSelectedDateAndMarkSync(serverTotal, serverMaxUpdatedAt)
 }
 
+// ✅ 修改：同步触发时，也调用新的统计刷新逻辑
 async function refetchSelectedDateAndMarkSync(serverTotal: number, serverMaxUpdatedAt: number) {
   const dayCacheKey = getCalendarDateCacheKey(selectedDate.value)
   localStorage.removeItem(dayCacheKey)
+
   await fetchNotesForDate(selectedDate.value)
+
+  // 强制刷新统计 (内部会自动去服务器拉最新数据)
+  await fetchMonthlyStats(selectedDate.value)
+
   localStorage.setItem(CAL_LAST_TOTAL, String(serverTotal))
   localStorage.setItem(CAL_LAST_SYNC_TS, String(serverMaxUpdatedAt || Date.now()))
 }
@@ -901,6 +910,7 @@ function buildCreatedAtForSelectedDay(): string {
   return day.toISOString()
 }
 
+// ✅ 修改：新建笔记保存后，重新拉取统计
 async function saveNewNote(content: string, weather: string | null) {
   if (!user.value || !content.trim())
     return
@@ -937,6 +947,12 @@ async function saveNewNote(content: string, weather: string | null) {
       throw error
 
     finalNote = data
+    if (finalNote.updated_at) {
+      const noteTs = new Date(finalNote.updated_at).getTime()
+      const currentLastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0')
+      if (noteTs > currentLastSync)
+        localStorage.setItem(CAL_LAST_SYNC_TS, String(noteTs))
+    }
   }
   catch (e) {
     console.warn('联网保存新建笔记失败，转入离线队列:', e)
@@ -962,8 +978,8 @@ async function saveNewNote(content: string, weather: string | null) {
 
   emit('created', finalNote)
 
-  // ✅ 2. 本地静默更新统计 (条数+1，字数+length)
-  updateStatsLocally(1, content.length, dateKeyStr(selectedDate.value), false)
+  // ✅ 核心修改：新建成功后，重新拉取月度统计
+  await fetchMonthlyStats(selectedDate.value)
 
   const draftKey = writingKey.value
   if (draftKey) {

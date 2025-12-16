@@ -17,6 +17,7 @@ import {
   Type,
   User as UserIcon,
 } from 'lucide-vue-next'
+import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
 const props = defineProps({
@@ -222,6 +223,19 @@ function handleItemClick(key: string) {
   if (key !== 'settings-group')
     emit('close')
 }
+
+// [新增 2] 控制统计详情页显示的开关
+const showStatsDetail = ref(false)
+
+// [新增 3] 整理传递给详情页的数据
+// Sidebar 中目前只有 totalNotes(日记), tagCount(标签), journalingDays(天)
+// 字数(words) 和 媒体(media) 目前 Sidebar 没数据，暂时给 0，或者你可以后续补充逻辑
+const statsData = computed(() => ({
+  days: journalingDays.value,
+  notes: props.totalNotes,
+  words: 0, // 暂时占位，如果你的 user store 里有这个数据，请替换这里
+  media: 0, // 暂时占位
+}))
 </script>
 
 <template>
@@ -258,7 +272,11 @@ function handleItemClick(key: string) {
               </div>
             </div>
 
-            <div class="stats-grid">
+            <div
+              class="stats-grid"
+              style="cursor: pointer;"
+              @click="showStatsDetail = true"
+            >
               <div class="stat-item">
                 <div class="stat-num">
                   {{ totalNotes }}
@@ -345,6 +363,14 @@ function handleItemClick(key: string) {
           v-if="showFeedback"
           :modal-mode="true"
           @close="showFeedback = false"
+        />
+      </Transition>
+
+      <Transition name="fade">
+        <StatsDetail
+          v-if="showStatsDetail"
+          :stats="statsData"
+          @close="showStatsDetail = false"
         />
       </Transition>
     </div>
@@ -453,7 +479,24 @@ function handleItemClick(key: string) {
   opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;
 }
 
-.stats-grid { display: flex; justify-content: space-between; }
+/* ... 原有的 CSS ... */
+
+.stats-grid {
+  display: flex;
+  justify-content: space-between;
+  /* [新增] 增加一点内边距和圆角，让点击反馈更好看 */
+  padding: 8px 0;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+/* [新增] 悬停高亮效果 */
+.stats-grid:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+}
+
+/* ... 原有的 CSS ... */
 .stat-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
 
 /* 🔥 修改：统计数字大小 */
