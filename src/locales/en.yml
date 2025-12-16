@@ -433,6 +433,13 @@ notes:
   search_history_title: Recent Searches
   days: days
   network_unstable_saved_locally: Network unstable. Saved locally.
+  batch_tag_title: Batch Add Tags
+  batch_tag_content: 'Adding tags to {count} selected note(s):'
+  tag_placeholder: Select or enter a tag
+  confirm_add: Add Tag
+  select_tag_first: Please select a tag first
+  batch_tag_success: 'Successfully added tags to {count} notes'
+  batch_tag_error: 'Operation partially failed: {msg}'
   draft:
     title: Hint
     resume_tooltip: Unsaved draft found. Click to resume editing

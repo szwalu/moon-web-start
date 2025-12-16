@@ -430,6 +430,13 @@ notes:
   search_history_title: 最近搜索
   days: 天
   network_unstable_saved_locally: 网络不稳定，已暂存至本地
+  batch_tag_title: 批量添加标签
+  batch_tag_content: '将为选中的 {count} 条笔记添加标签：'
+  tag_placeholder: 选择或输入标签
+  confirm_add: 确定添加
+  select_tag_first: 请先选择一个标签
+  batch_tag_success: '成功为 {count} 条笔记添加了标签'
+  batch_tag_error: '操作部分失败: {msg}'
   draft:
     title: 提示
     resume_tooltip: 存在未保存的草稿，点击继续编辑

@@ -434,6 +434,13 @@ notes:
   search_history_title: 最近の検索
   days: 日数
   network_unstable_saved_locally: ネットワークが不安定なため、ローカルに保存しました
+  batch_tag_title: タグを一括追加
+  batch_tag_content: '選択した {count} 件のメモにタグを追加します：'
+  tag_placeholder: タグを選択または入力
+  confirm_add: 追加する
+  select_tag_first: 先にタグを選択してください
+  batch_tag_success: '{count} 件のメモにタグを追加しました'
+  batch_tag_error: '操作が部分的に失敗しました: {msg}'
   draft:
     title: ヒント
     resume_tooltip: 未保存の下書きがあります。クリックして編集を再開

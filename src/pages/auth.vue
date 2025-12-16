@@ -2616,6 +2616,90 @@ async function handleCopySelected() {
   }
 }
 
+// 1. 触发弹窗：让用户选择标签
+function handleBatchTagTrigger() {
+  if (selectedNoteIds.value.length === 0)
+    return
+
+  const selectedTagToAdd = ref<string | null>(null)
+
+  // 构造下拉选项
+  const tagOptions = allTags.value.map(tag => ({
+    label: tag,
+    value: tag,
+  }))
+
+  dialog.info({
+    title: t('notes.batch_tag_title'), // 替换标题
+    content: () => h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+      // 替换带变量的内容
+      h('div', {}, t('notes.batch_tag_content', { count: selectedNoteIds.value.length })),
+      h(NSelect, {
+        filterable: true,
+        tag: true,
+        placeholder: t('notes.tag_placeholder'), // 替换占位符
+        options: tagOptions,
+        onUpdateValue: (v: string) => { selectedTagToAdd.value = v },
+      }),
+    ]),
+    positiveText: t('notes.confirm_add'), // 替换确定按钮
+    negativeText: t('notes.cancel'), // 替换取消按钮
+    onPositiveClick: async () => {
+      if (!selectedTagToAdd.value) {
+        messageHook.warning(t('notes.select_tag_first')) // 替换警告
+        return false
+      }
+      // 执行批量添加
+      await executeBatchAddTag(selectedTagToAdd.value)
+    },
+  })
+}
+
+// 2. 执行更新逻辑
+async function executeBatchAddTag(tagRaw: string) {
+  // 确保标签格式化 (比如加 #)
+  const tag = tagRaw.startsWith('#') ? tagRaw : `#${tagRaw}`
+  const cleanTag = tag.trim()
+
+  loading.value = true
+  try {
+    const ids = [...selectedNoteIds.value]
+    let successCount = 0
+
+    // 循环处理每一条选中的笔记
+    // 💡 为什么不用批量 update? 因为每条笔记原本的内容不一样，必须 append
+    for (const id of ids) {
+      const note = notes.value.find(n => n.id === id)
+      if (!note)
+        continue
+
+      // 检查是否已经有这个标签，避免重复 (简单检查)
+      if (note.content.includes(cleanTag))
+        continue
+
+      // 在末尾追加标签 (前面加空格)
+      const newContent = `${note.content} ${cleanTag}`
+
+      // 复用你已有的 saveNote 函数（它已经完美处理了 离线/在线/队列/缓存）
+      // 注意：这里不需要 showMessage，否则会弹几十次提示
+      await saveNote(newContent, id, { showMessage: false })
+      successCount++
+    }
+
+    messageHook.success(t('notes.batch_tag_success', { count: successCount }))
+
+    // 退出选择模式
+    isSelectionModeActive.value = false
+    selectedNoteIds.value = []
+  }
+  catch (e: any) {
+    messageHook.error(t('notes.batch_tag_error', { msg: e.message }))
+  }
+  finally {
+    loading.value = false
+  }
+}
+
 async function handleDeleteSelected() {
   if (selectedNoteIds.value.length === 0)
     return
@@ -2995,14 +3079,25 @@ function onCalendarUpdated(updated: any) {
               {{ $t('notes.copy') }}
             </button>
             <button
+              class="action-btn tag-btn"
+              :disabled="selectedNoteIds.length === 0"
+              @click="handleBatchTagTrigger"
+            >
+              {{ $t('notes.editor.toolbar.add_tag') || '添加标签' }}
+            </button>
+            <button
               class="action-btn delete-btn"
               :disabled="selectedNoteIds.length === 0"
               @click="handleDeleteSelected"
             >
               {{ $t('notes.delete') }}
             </button>
-            <button class="finish-btn" @click="finishSelectionMode">
-              {{ $t('notes.cancel') || '完成' }}
+            <button
+              class="close-results-btn selection-close-btn"
+              aria-label="退出选择模式"
+              @click="finishSelectionMode"
+            >
+              <X :size="18" :stroke-width="3" />
             </button>
           </div>
         </div>
@@ -3384,6 +3479,71 @@ function onCalendarUpdated(updated: any) {
   color: #c7d2fe;
 }
 
+/* 新增：标签按钮样式 */
+.selection-actions-banner .tag-btn {
+  border-color: #10b981; /* Emerald-500 */
+  color: #059669;        /* Emerald-600 */
+}
+
+.selection-actions-banner .tag-btn:hover {
+  background-color: #10b981;
+  color: #fff;
+}
+
+/* 深色模式 */
+.dark .selection-actions-banner .tag-btn {
+  border-color: #34d399;
+  color: #6ee7b7;
+}
+.dark .selection-actions-banner .tag-btn:hover {
+  background-color: #34d399;
+  color: #064e3b;
+}
+/* === 📱 移动端适配：压缩选择条幅空间 === */
+@media (max-width: 768px) {
+  .selection-actions-banner {
+    padding: 6px 8px; /* 减小外框内边距 */
+    gap: 4px;         /* 左右两栏靠得更近 */
+  }
+
+  /* 1. 左侧文字：只显示“已选X项”，隐藏“选择笔记”标题和分隔符 */
+  .selection-actions-banner .banner-left strong,
+  .selection-actions-banner .banner-left .sep {
+    display: none;
+  }
+
+  .selection-actions-banner .banner-left {
+    font-size: 12px;
+    white-space: nowrap; /* 防止文字换行 */
+    min-width: fit-content; /* 让左侧只占用必要的宽度 */
+  }
+
+  /* 2. 右侧按钮区域：压缩间距 */
+  .selection-actions-banner .banner-right {
+    gap: 6px; /* 按钮间距从 10px 缩小到 6px */
+    flex: 1;  /* 占据剩余空间 */
+    justify-content: flex-end; /* 靠右对齐 */
+
+    /* 防止极端小屏手机溢出，允许微量横向滚动（通常不需要） */
+    overflow-x: auto;
+    /* 隐藏滚动条 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .selection-actions-banner .banner-right::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 3. 按钮本体：极简模式 */
+  .selection-actions-banner .action-btn{
+  background: none;
+  border: 1px solid #6366f1;
+    padding: 4px 6px; /* 内边距左右缩小一半 (原12px -> 6px) */
+    font-size: 12px;  /* 字号缩小 */
+    border-radius: 4px; /* 圆角稍微改小一点 */
+  }
+}
+
 .selection-actions-banner .banner-left {
   display: flex;
   align-items: center;
@@ -3426,20 +3586,19 @@ function onCalendarUpdated(updated: any) {
 }
 
 /* hover 与搜索“导出”按钮一致 */
-.selection-actions-banner .action-btn:hover,
-.selection-actions-banner .finish-btn:hover {
+.selection-actions-banner .action-btn:hover{
   background-color: #4338ca;
   color: #fff;
 }
-
-.dark .selection-actions-banner .action-btn,
-.dark .selection-actions-banner .finish-btn {
+.selection-actions-banner .selection-close-btn {
+  margin-left: 0 !important;
+}
+.dark .selection-actions-banner .action-btn{
   border-color: #a5b4fc;
   color: #c7d2fe;
 }
 
-.dark .selection-actions-banner .action-btn:hover,
-.dark .selection-actions-banner .finish-btn:hover {
+.dark .selection-actions-banner .action-btn:hover{
   background-color: #a5b4fc;
   color: #312e81;
 }
