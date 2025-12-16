@@ -770,6 +770,15 @@ defineExpose({ executeSearch, clearSearch })
       >
 
       <button
+        v-if="searchModel"
+        class="clear-search-button"
+        title="清空"
+        @click="clearSearch"
+      >
+        <X :size="12" />
+      </button>
+
+      <button
         class="submit-search-button"
         title="搜索"
         @click="handleEnterKey"
@@ -780,18 +789,7 @@ defineExpose({ executeSearch, clearSearch })
       <div
         v-if="showSearchTagSuggestions && searchTagSuggestions.length"
         class="tag-suggestions search-suggestions"
-      >
-        <ul>
-          <li
-            v-for="(tag, index) in searchTagSuggestions"
-            :key="tag"
-            :class="{ highlighted: index === highlightedSearchIndex }"
-            @click="selectSearchTag(tag)"
-          >
-            {{ tag }}
-          </li>
-        </ul>
-      </div>
+      />
     </div>
 
     <div class="controls-row">
@@ -1026,11 +1024,13 @@ defineExpose({ executeSearch, clearSearch })
 }
 .dark .search-icon-wrapper { color: #6b7280; }
 
+/* 1. 输入框预留位置 */
 .search-input {
   flex: 1;
   width: 100%;
   height: 36px;
-  padding: 0 3rem 0 6.2rem;
+  /* 右边距 5.5rem 确保不挡住两个按钮 */
+  padding: 0 5.5rem 0 6.2rem;
   font-size: 15px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -1038,6 +1038,46 @@ defineExpose({ executeSearch, clearSearch })
   color: #111;
   box-shadow: 0 2px 5px rgba(0,0,0,0.03);
   transition: all 0.2s;
+}
+
+/* 2. 灰色小 X 按钮 - 基础样式 */
+.clear-search-button {
+  position: absolute;
+  /* 位于搜索按钮(28px + gap)的左边，大约 3rem 位置 */
+  right: 11rem;
+  top: 50%;
+  transform: translateY(-50%);
+
+  /* 灰色圆形背景 */
+  background-color: #e5e7eb;
+  color: #6b7280;
+
+  border: none;
+  cursor: pointer;
+  width: 20px;   /* 小尺寸 */
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 15; /* 确保层级比 input 高 */
+}
+
+/* 悬停效果 */
+.clear-search-button:hover {
+  background-color: #d1d5db;
+  color: #374151;
+}
+
+/* 深色模式适配 */
+.dark .clear-search-button {
+  background-color: #4b5563;
+  color: #d1d5db;
+}
+.dark .clear-search-button:hover {
+  background-color: #6b7280;
+  color: #fff;
 }
 .dark .search-input {
   background-color: #2c2c2e;
