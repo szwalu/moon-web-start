@@ -811,7 +811,12 @@ stats:
   # 英文日期习惯：Dec 2025 或 12/2025
   date_format_monthly: '{m}/{y}'
   date_format_yearly: '{y}'
-  year_suffix: ''
   days: Days
   notes: Note
   words: Words
+  words1: Words
+  activity_trend: Activity Trend
+  days_suffix: ''
+  month_suffix: ''
+  year_suffix: ''
+  overview_chart_hint: Charts are available in Monthly and Yearly views

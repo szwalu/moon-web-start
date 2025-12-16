@@ -816,3 +816,4 @@ stats:
   activity_trend: 趋势图
   days_suffix: 日
   month_suffix: 月
+  overview_chart_hint: 总览模式无图表提示

@@ -817,3 +817,8 @@ stats:
   days: 日
   notes: メモ
   words: 文字
+  words1: 文字数
+  activity_trend: アクティビティ推移
+  days_suffix: 日
+  month_suffix: 月
+  overview_chart_hint: グラフは月次および年次ビューでのみ表示されます
