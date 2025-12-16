@@ -815,5 +815,5 @@ stats:
   date_format_yearly: '{y}年'
   year_suffix: 年
   days: 日
-  notes: 日記
+  notes: メモ
   words: 文字

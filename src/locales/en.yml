@@ -813,5 +813,5 @@ stats:
   date_format_yearly: '{y}'
   year_suffix: ''
   days: Days
-  notes: Entries
+  notes: Note
   words: Words
