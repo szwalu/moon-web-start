@@ -2,6 +2,7 @@
 import { computed, defineExpose, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  ArrowRight,
   ChevronDown,
   ChevronUp,
   Heart,
@@ -767,12 +768,13 @@ defineExpose({ executeSearch, clearSearch })
         @keydown.enter.prevent="handleEnterKey"
         @keydown.esc="showSearchTagSuggestions.value = false"
       >
+
       <button
-        v-if="searchModel"
-        class="clear-search-button"
-        @click="clearSearch"
+        class="submit-search-button"
+        title="搜索"
+        @click="handleEnterKey"
       >
-        <X :size="16" />
+        <ArrowRight :size="18" />
       </button>
 
       <div
@@ -1028,10 +1030,7 @@ defineExpose({ executeSearch, clearSearch })
   flex: 1;
   width: 100%;
   height: 36px;
-
-  /* ✅ 修改：加大左边距到 3.6rem，彻底避开图标 */
-  padding: 0 2.5rem 0 6.2rem;
-
+  padding: 0 3rem 0 6.2rem;
   font-size: 15px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -1055,25 +1054,85 @@ defineExpose({ executeSearch, clearSearch })
   background-color: #2c2c2e;
 }
 
-.clear-search-button {
+/* 1. 修改输入框样式：加大右侧 padding 给两个按钮留位置 */
+.search-input {
+  flex: 1;
+  width: 100%;
+  height: 36px;
+  /* 左边距保持 6.2rem，右边距加大到 5.5rem (容纳 X 按钮和 搜索按钮) */
+  padding: 0 5.5rem 0 6.2rem;
+  font-size: 15px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background-color: #fff;
+  color: #111;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+  transition: all 0.2s;
+}
+
+/* 3. 新增：搜索确认按钮样式 (固定在最右侧) */
+.submit-search-button {
   position: absolute;
-  right: 0.8rem;
+  right: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
-  background-color: #8b5cf6; /* 紫色背景 */
+  background-color: #6366f1; /* 使用与高级搜索按钮一致的靛蓝色 */
   color: #ffffff;
   border: none;
   cursor: pointer;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 50%;
+  width: 28px; /* 比清除按钮稍大，方便点击 */
+  height: 28px;
+  border-radius: 8px; /* 圆角矩形，与整体风格统一 */
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 1px 2px rgba(0,0,0,0.15);
   transition: all 0.2s ease;
   z-index: 10;
+}
+
+.submit-search-button:hover {
+  background-color: #4f46e5;
+  transform: translateY(-50%) scale(1.05);
+}
+.submit-search-button:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.dark .submit-search-button {
+  background-color: #818cf8;
+  color: #1f2937;
+}
+.submit-search-button {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #6366f1; /* 使用与高级搜索按钮一致的靛蓝色 */
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  width: 28px; /* 比清除按钮稍大，方便点击 */
+  height: 28px;
+  border-radius: 8px; /* 圆角矩形，与整体风格统一 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+.submit-search-button:hover {
+  background-color: #4f46e5;
+  transform: translateY(-50%) scale(1.05);
+}
+.submit-search-button:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.dark .submit-search-button {
+  background-color: #818cf8;
+  color: #1f2937;
 }
 .clear-search-button:hover {
   background-color: #7c3aed;
