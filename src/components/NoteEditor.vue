@@ -33,7 +33,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-
+const cachedWeather = ref<string | null>(null)
+let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
 
 const dialog = useDialog()
@@ -522,14 +523,23 @@ function clearDraft() {
 
 // 初次挂载：尝试恢复
 onMounted(() => {
-  // 旧代码：loadDraft()
-
-  // ✅ 新代码：检查并询问
   checkAndPromptDraft()
 
-  // (注意：如果是 props.isEditing 为 true 时的 focusToEnd 逻辑保持不变)
-  if (props.isEditing)
+  if (props.isEditing) {
     focusToEnd()
+  }
+  else {
+    weatherPromise = fetchWeatherLine()
+
+    if (weatherPromise) {
+      weatherPromise.then((res) => {
+        cachedWeather.value = res
+      }).catch((e) => {
+        console.warn('[天气] 异步出错:', e)
+        cachedWeather.value = null
+      })
+    }
+  }
 })
 
 // 内容变化：400ms 节流保存
@@ -1176,13 +1186,31 @@ async function fetchWeatherLine(): Promise<string | null> {
   try {
     let loc: { city: string; lat: number; lon: number }
 
-    // ===== 1. 主动触发定位弹窗（仅第一次），成功则用 Geolocation =====
-    const browserLoc = await getBrowserLocationWithPromptOnce(10000)
+    // ===== 1. 主动触发定位 (GPS) =====
+    // 之前改过的 2500ms 超时，保证不卡顿
+    const browserLoc = await getBrowserLocationWithPromptOnce(2500)
 
     if (browserLoc) {
-      // 有精确坐标：基于坐标做反向地理编码拿城市名
+      // 🟢 情况 A：GPS 定位成功
+      // 1. 优先：尝试用 Nominatim 把坐标转成城市名 (最准确)
       let cityFromGeo = await reverseGeocodeCityFromCoords(browserLoc.lat, browserLoc.lon)
 
+      // 2. 补救：如果 Nominatim 挂了(503)或超时，才尝试用 IP API 查城市名
+      if (!cityFromGeo) {
+        try {
+          // 这里只查城市名，不查坐标（坐标还是用 GPS 的，准确）
+          const r = await fetch('https://ipapi.co/json/')
+          if (r.ok) {
+            const d = await r.json()
+            cityFromGeo = d.city
+          }
+        }
+        catch {
+          // IP 也查不到，忽略
+        }
+      }
+
+      // 3. 兜底：如果都失败，叫“当前位置”
       if (!cityFromGeo)
         cityFromGeo = '当前位置'
 
@@ -1193,14 +1221,13 @@ async function fetchWeatherLine(): Promise<string | null> {
       }
     }
     else {
-      // ===== 2. 用户拒绝 / 定位失败 / 超时：退回 IP 定位（行为跟原来一致） =====
+      // 🔴 情况 B：GPS 定位失败（用户拒绝或设备不支持）
+      // 退回纯 IP 定位（既查坐标，也查城市）
       try {
         const r = await fetch('https://ipapi.co/json/')
         if (!r.ok)
           throw new Error(String(r.status))
         const d = await r.json()
-        if (d?.error)
-          throw new Error(d?.reason || 'ipapi error')
         loc = { city: d.city, lat: d.latitude, lon: d.longitude }
       }
       catch {
@@ -1208,8 +1235,6 @@ async function fetchWeatherLine(): Promise<string | null> {
         if (!r2.ok)
           throw new Error(String(r2.status))
         const d2 = await r2.json()
-        if (d2?.status === 'fail')
-          throw new Error(d2?.message || 'ip-api error')
         loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
       }
     }
@@ -1217,9 +1242,10 @@ async function fetchWeatherLine(): Promise<string | null> {
     if (!loc?.lat || !loc?.lon)
       throw new Error('定位失败')
 
+    // 格式化城市名（映射中文等）
     const city = getMappedCityName(loc.city)
 
-    // ===== 3. 天气 =====
+    // ===== 3. 获取天气 =====
     const w = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weathercode&timezone=auto`,
     )
@@ -1232,7 +1258,6 @@ async function fetchWeatherLine(): Promise<string | null> {
     if (typeof tempC !== 'number')
       throw new Error('温度数据异常')
 
-    // 只保留：城市 温度°C 图标（无文字）
     return `${city} ${tempC}°C ${icon}`
   }
   catch {
@@ -1309,21 +1334,32 @@ async function getBrowserLocationWithPromptOnce(timeoutMs = 10000): Promise<{ la
   })
 }
 
+// ✅ 替换这个函数：增加了 AbortController 超时控制
 async function reverseGeocodeCityFromCoords(lat: number, lon: number): Promise<string | null> {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`
+
+    // 🔥 新增：定义一个 1500ms (1.5秒) 的超时控制器
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 1500)
+
     const r = await fetch(url, {
       headers: {
         Accept: 'application/json',
       },
+      signal: controller.signal, // 👈 绑定信号，超时会自动取消请求
     })
+
+    // 请求成功返回，清除定时器
+    clearTimeout(timeoutId)
+
     if (!r.ok)
       throw new Error(String(r.status))
 
     const data = await r.json()
     const addr = data?.address || {}
 
-    // 从细到粗兜底：城市 > 镇 > 村 > 郡县
+    // 从细到粗兜底
     const city
       = addr.city
       || addr.town
@@ -1334,7 +1370,9 @@ async function reverseGeocodeCityFromCoords(lat: number, lon: number): Promise<s
 
     return city
   }
-  catch {
+  catch (e) {
+    // 这里的 catch 会捕获 503 错误或超时错误，直接返回 null
+    // console.warn('获取城市失败或超时:', e)
     return null
   }
 }
@@ -1346,25 +1384,31 @@ async function handleSave() {
   isSubmitting.value = true
 
   const content = contentModel.value || ''
-  let weather: string | null = null
 
-  if (!props.isEditing) {
+  let finalWeather = cachedWeather.value
+
+  // 如果没有缓存，但有请求在跑，就尝试等待
+  if (!finalWeather && weatherPromise) {
     try {
-      weather = await fetchWeatherLine()
+      // ✅ 给 3500ms 足够覆盖修改后的定位超时(2500ms) + 网络请求时间
+      const TIMEOUT_MS = 4500
+      const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), TIMEOUT_MS))
+
+      const result = await Promise.race([weatherPromise, timeout])
+
+      if (result)
+        finalWeather = result
     }
-    catch (error) {
-      console.warn(t('notes.editor.save.weather_fetch_failed'), error)
+    catch {
+      // 忽略错误
     }
   }
 
-  emit('save', content, weather)
+  emit('save', content, finalWeather)
 
-  // ✅ 保持这段逻辑：如果 props.clearDraftOnSave 为 true，这里会执行 clearDraft()
-  // 并在 clearDraft 内部触发事件，解决小黄点不消失的问题
   if (props.clearDraftOnSave)
     clearDraft()
 }
-
 // ============== 基础事件 ==============
 let selectionIdleTimer: number | null = null
 
