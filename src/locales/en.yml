@@ -399,7 +399,7 @@ notes:
   delete_success_multiple: 'Deleted {count} notes, moved to Trash'
   delete_second_confirm_tip: 'You are about to permanently delete {count} notes.'
   delete_second_confirm_hint: This action cannot be undone. Please confirm again.
-  search_placeholder_enter: Press Enter to search...
+  search_placeholder_enter: search
   search_tags: Search Tags
   all_favorites: All tags
   favorites: Favorites tags
