@@ -804,3 +804,16 @@ tags:
   tip_icon_custom: 上の欄に絵文字や記号を貼り付けて検索することもできます
   no_icons_found: アイコンが見つかりません
   untagged: タグなし
+
+stats:
+  tabs:
+    monthly: 月間
+    yearly: 年間
+    overview: 全期間
+  all_time: 全期間
+  date_format_monthly: '{y}年 {m}月'
+  date_format_yearly: '{y}年'
+  year_suffix: 年
+  days: 日
+  notes: 日記
+  words: 文字

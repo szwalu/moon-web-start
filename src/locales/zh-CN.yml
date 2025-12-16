@@ -798,3 +798,17 @@ tags:
   tip_icon_custom: 也可以直接在上方粘贴表情或符号搜索
   no_icons_found: 图标没有找到
   untagged: 无标签
+
+stats:
+  tabs:
+    monthly: 月度
+    yearly: 年度
+    overview: 总览
+  all_time: 全部时间
+  # {y} 和 {m} 是变量占位符
+  date_format_monthly: '{y} 年 {m} 月'
+  date_format_yearly: '{y} 年'
+  year_suffix: 年
+  days: 天
+  notes: 日记
+  words: 字

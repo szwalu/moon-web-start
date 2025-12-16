@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronDown, X } from 'lucide-vue-next'
+
+import { useI18n } from 'vue-i18n'
+
+// [新增] 引入 i18n
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -11,14 +15,15 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 const authStore = useAuthStore()
+const { t } = useI18n() // [新增] 使用 i18n
 
 // --- 状态定义 ---
-const tabs = ['月度', '年度', '总览']
-const activeTab = ref('月度')
+// [修改] 将 Tab 改为英文 Key，方便逻辑判断和国际化映射
+const tabs = ['monthly', 'yearly', 'overview']
+const activeTab = ref('monthly')
 
 function getValidDate(val: any): Date {
   const d = new Date(val)
-  // [修复] 使用 Number.isNaN
   return Number.isNaN(d.getTime()) ? new Date() : d
 }
 
@@ -44,8 +49,6 @@ const yearOptions = computed(() => {
 // --- 计算属性 ---
 
 const formattedDateText = computed(() => {
-  // [修复] 移除副作用：不要在 computed 中修改 currentDate.value
-  // 如果日期无效，使用局部变量 fallback 到当前时间用于显示，但不改变状态
   let d = currentDate.value
   if (Number.isNaN(d.getTime()))
     d = new Date()
@@ -53,11 +56,13 @@ const formattedDateText = computed(() => {
   const y = d.getFullYear()
   const m = d.getMonth() + 1
 
-  if (activeTab.value === '月度')
-    return `${y} 年 ${m} 月`
-  if (activeTab.value === '年度')
-    return `${y} 年`
-  return '全部时间'
+  // [修改] 使用 i18n 进行日期格式化
+  if (activeTab.value === 'monthly')
+    return t('stats.date_format_monthly', { y, m })
+  if (activeTab.value === 'yearly')
+    return t('stats.date_format_yearly', { y })
+
+  return t('stats.all_time')
 })
 
 const monthPickerValue = computed({
@@ -131,9 +136,10 @@ function getStorageKey(userId: string) {
   const m = currentDate.value.getMonth()
 
   let typeKey = ''
-  if (activeTab.value === '总览')
+  // [修改] 对应新的英文 activeTab 值
+  if (activeTab.value === 'overview')
     typeKey = 'all'
-  else if (activeTab.value === '年度')
+  else if (activeTab.value === 'yearly')
     typeKey = `y_${y}`
   else typeKey = `m_${y}_${m}`
 
@@ -147,7 +153,6 @@ async function fetchStats() {
 
   const storageKey = getStorageKey(user.id)
 
-  // 读取缓存
   const cachedJson = localStorage.getItem(storageKey)
   if (cachedJson) {
     try {
@@ -163,7 +168,6 @@ async function fetchStats() {
     stats.value = { days: 0, notes: 0, words: 0 }
   }
 
-  // 静默更新
   try {
     let query = supabase
       .from('notes')
@@ -174,13 +178,14 @@ async function fetchStats() {
     const year = currentDate.value.getFullYear()
     const month = currentDate.value.getMonth()
 
-    if (activeTab.value === '月度') {
+    // [修改] 对应新的英文 activeTab 值
+    if (activeTab.value === 'monthly') {
       const startDate = new Date(year, month, 1, 0, 0, 0, 0)
       const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999)
       query = query.gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
     }
-    else if (activeTab.value === '年度') {
+    else if (activeTab.value === 'yearly') {
       const startDate = new Date(year, 0, 1, 0, 0, 0, 0)
       const endDate = new Date(year, 12, 0, 23, 59, 59, 999)
       query = query.gte('created_at', startDate.toISOString())
@@ -218,7 +223,6 @@ function handleTabClick(tab: string) {
 }
 
 onMounted(() => {
-  // [修复] 使用 Number.isNaN
   if (Number.isNaN(currentDate.value.getTime()))
     currentDate.value = new Date()
   fetchStats()
@@ -226,7 +230,6 @@ onMounted(() => {
 
 watch(() => props.visible, (val) => {
   if (val) {
-    // [修复] 使用 Number.isNaN
     if (Number.isNaN(currentDate.value.getTime()))
       currentDate.value = new Date()
     fetchStats()
@@ -247,7 +250,7 @@ watch(() => props.visible, (val) => {
             :class="{ active: activeTab === tab }"
             @click="handleTabClick(tab)"
           >
-            {{ tab }}
+            {{ t(`stats.tabs.${tab}`) }}
             <div v-if="activeTab === tab" class="tab-indicator" />
           </div>
         </div>
@@ -261,25 +264,25 @@ watch(() => props.visible, (val) => {
       <div class="content-body">
         <div
           class="date-picker-wrapper"
-          :class="{ disabled: activeTab === '总览' }"
+          :class="{ disabled: activeTab === 'overview' }"
         >
           <span class="date-text">{{ formattedDateText }}</span>
-          <ChevronDown v-if="activeTab !== '总览'" :size="18" class="date-arrow" />
+          <ChevronDown v-if="activeTab !== 'overview'" :size="18" class="date-arrow" />
 
           <input
-            v-if="activeTab === '月度'"
+            v-if="activeTab === 'monthly'"
             v-model="monthPickerValue"
             type="month"
             class="hidden-trigger-input"
           >
 
           <select
-            v-if="activeTab === '年度'"
+            v-if="activeTab === 'yearly'"
             v-model="yearPickerValue"
             class="hidden-trigger-input"
           >
             <option v-for="y in yearOptions" :key="y" :value="y">
-              {{ y }}年
+              {{ y }}{{ t('stats.year_suffix') }}
             </option>
           </select>
         </div>
@@ -288,15 +291,15 @@ watch(() => props.visible, (val) => {
           <div class="stat-grid">
             <div class="stat-item">
               <span class="stat-num">{{ stats.days }}</span>
-              <span class="stat-label">天</span>
+              <span class="stat-label">{{ t('stats.days') }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-num">{{ stats.notes }}</span>
-              <span class="stat-label">日记</span>
+              <span class="stat-label">{{ t('stats.notes') }}</span>
             </div>
             <div class="stat-item">
               <span class="stat-num">{{ stats.words }}</span>
-              <span class="stat-label">字</span>
+              <span class="stat-label">{{ t('stats.words') }}</span>
             </div>
           </div>
         </div>
@@ -319,7 +322,7 @@ watch(() => props.visible, (val) => {
 .stats-modal-content {
   width: 420px;
   max-width: 90vw;
-  height: auto; /* 自适应高度 */
+  height: auto;
   max-height: 80vh;
   background-color: #f9f9f9;
   border-radius: 20px;

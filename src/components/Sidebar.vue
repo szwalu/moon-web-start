@@ -116,7 +116,7 @@ const RecursiveMenu = defineComponent({
   },
 })
 
-// --- 统计数据逻辑 ---
+// // --- 统计数据逻辑 ---
 const journalingDays = ref(0)
 
 const userName = computed(() => {
@@ -149,6 +149,7 @@ watch(() => props.user, (u) => {
     if (remoteUrl !== cachedBase64) {
       const img = new Image()
       img.src = remoteUrl
+      // [修复] 将单行回调改为多行，符合 style/max-statements-per-line 规则
       img.onload = () => {
         userAvatar.value = remoteUrl
       }
@@ -159,43 +160,73 @@ watch(() => props.user, (u) => {
   }
 }, { immediate: true })
 
-function calculateDays(dateStr: string) {
-  const first = new Date(dateStr)
-  const today = new Date()
-  const diffTime = Math.abs(today.getTime() - first.getTime())
-  journalingDays.value = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+// [新增] 日期格式化辅助函数 (与 StatsDetail 保持一致)
+function toDateKeyStrFromISO(iso: string) {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}-${m < 10 ? `0${m}` : m}-${day < 10 ? `0${day}` : day}`
 }
 
+// [新增] 分页拉取所有日期的 created_at (不拉取 content，速度快)
+async function fetchAllDates(userId: string) {
+  const PAGE_SIZE = 1000
+  const allDates: string[] = []
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('created_at') // 只查时间，轻量级
+      .eq('user_id', userId)
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    if (error)
+      throw error
+
+    if (data && data.length > 0) {
+      // 收集日期
+      data.forEach((n: any) => allDates.push(n.created_at))
+
+      if (data.length < PAGE_SIZE)
+        hasMore = false
+      else page++
+    }
+    else {
+      hasMore = false
+    }
+  }
+  return allDates
+}
+
+// [修改] 统一为"实际打卡天数"统计
 async function fetchStats() {
   if (!props.user)
     return
-  const STORAGE_KEY = `journal_start_date_${props.user.id}`
-  const cachedDate = localStorage.getItem(STORAGE_KEY)
 
-  if (cachedDate) {
-    calculateDays(cachedDate)
+  // 1. 读取缓存，优先显示
+  const CACHE_KEY = `journal_days_count_${props.user.id}`
+  const cachedCount = localStorage.getItem(CACHE_KEY)
+
+  if (cachedCount)
+    journalingDays.value = Number(cachedCount)
+
+  // 2. 静默更新准确数据
+  try {
+    const dates = await fetchAllDates(props.user.id)
+
+    // Set 去重计算天数
+    const uniqueDays = new Set(dates.map(iso => toDateKeyStrFromISO(iso))).size
+
+    journalingDays.value = uniqueDays
+
+    // 更新缓存
+    localStorage.setItem(CACHE_KEY, String(uniqueDays))
   }
-  else {
-    try {
-      const { data } = await supabase
-        .from('notes')
-        .select('created_at')
-        .eq('user_id', props.user.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single()
-
-      if (data?.created_at) {
-        localStorage.setItem(STORAGE_KEY, data.created_at)
-        calculateDays(data.created_at)
-      }
-      else {
-        journalingDays.value = 0
-      }
-    }
-    catch (e) {
-      console.error('Fetch stats error:', e)
-    }
+  catch (e) {
+    console.error('Fetch sidebar stats error:', e)
   }
 }
 
@@ -212,10 +243,10 @@ function handleItemClick(key: string) {
     return
   }
 
-  // [修改 4] 拦截 'feedback' 事件，内部处理，不再向父组件 emit 菜单点击
+  // 拦截 'feedback' 事件
   if (key === 'feedback') {
     showFeedback.value = true
-    emit('close') // 关闭侧边栏
+    emit('close')
     return
   }
 
@@ -224,17 +255,15 @@ function handleItemClick(key: string) {
     emit('close')
 }
 
-// [新增 2] 控制统计详情页显示的开关
+// 控制统计详情页
 const showStatsDetail = ref(false)
 
-// [新增 3] 整理传递给详情页的数据
-// Sidebar 中目前只有 totalNotes(日记), tagCount(标签), journalingDays(天)
-// 字数(words) 和 媒体(media) 目前 Sidebar 没数据，暂时给 0，或者你可以后续补充逻辑
+// 传递数据
 const statsData = computed(() => ({
-  days: journalingDays.value,
+  days: journalingDays.value, // 现在这里也是去重后的天数了
   notes: props.totalNotes,
-  words: 0, // 暂时占位，如果你的 user store 里有这个数据，请替换这里
-  media: 0, // 暂时占位
+  words: 0,
+  media: 0,
 }))
 </script>
 

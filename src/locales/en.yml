@@ -801,3 +801,17 @@ tags:
   tip_icon_custom: You can also paste emoji or symbols above to search
   no_icons_found: No icons found
   untagged: Untagged
+
+stats:
+  tabs:
+    monthly: Monthly
+    yearly: Yearly
+    overview: Overview
+  all_time: All Time
+  # 英文日期习惯：Dec 2025 或 12/2025
+  date_format_monthly: '{m}/{y}'
+  date_format_yearly: '{y}'
+  year_suffix: ''
+  days: Days
+  notes: Entries
+  words: Words
