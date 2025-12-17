@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, defineComponent, h, ref, watch } from 'vue'
-
-// [修改 1] 引入 defineAsyncComponent
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -10,6 +8,7 @@ import {
   ChevronRight,
   Download,
   HelpCircle,
+  Key,
   MessageSquare,
   Settings,
   Shuffle,
@@ -21,22 +20,33 @@ import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
 const props = defineProps({
-  show: { type: Boolean, required: true },
-  user: { type: Object as () => User | null, required: true },
-  totalNotes: { type: Number, default: 0 },
-  tagCount: { type: Number, default: 0 },
-  tagMenuOptions: { type: Array as () => any[], default: () => [] },
+  show: {
+    type: Boolean,
+    required: true,
+  },
+  user: {
+    type: Object as () => User | null,
+    required: true,
+  },
+  totalNotes: {
+    type: Number,
+    default: 0,
+  },
+  tagCount: {
+    type: Number,
+    default: 0,
+  },
+  tagMenuOptions: {
+    type: Array as () => any[],
+    default: () => [],
+  },
 })
 
 const emit = defineEmits(['close', 'menuClick'])
 
-// [修改 2] 异步引入 Feedback 组件
-// 注意：请根据你的实际文件路径调整，假设是在 views 或 components 下
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 
 const { t } = useI18n()
-
-// [修改 3] 控制反馈组件显示的内部状态
 const showFeedback = ref(false)
 
 function onAvatarClick() {
@@ -44,7 +54,7 @@ function onAvatarClick() {
 }
 
 // ===========================================================================
-// 🔥 递归渲染组件 (保持不变)
+// 🔥 递归渲染组件 (修复了单行语句问题)
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
@@ -88,21 +98,17 @@ const RecursiveMenu = defineComponent({
       }
 
       const originalProps = item.props || {}
-      const wrappedProps = {
-        ...originalProps,
-        onClick: (e: MouseEvent) => {
-          if (originalProps.onClick)
-            originalProps.onClick(e)
-          emit('itemClick')
-        },
-      }
-
       return h(
         'div',
         {
           key: item.key,
           class: 'menu-node hover-effect',
-          ...wrappedProps,
+          ...originalProps,
+          onClick: (e: MouseEvent) => {
+            if (originalProps.onClick)
+              originalProps.onClick(e)
+            emit('itemClick')
+          },
         },
         [resolve(item.label)],
       )
@@ -149,7 +155,6 @@ watch(() => props.user, (u) => {
     if (remoteUrl !== cachedBase64) {
       const img = new Image()
       img.src = remoteUrl
-      // [修复] 将单行回调改为多行，符合 style/max-statements-per-line 规则
       img.onload = () => {
         userAvatar.value = remoteUrl
       }
@@ -160,7 +165,6 @@ watch(() => props.user, (u) => {
   }
 }, { immediate: true })
 
-// [新增] 日期格式化辅助函数 (与 StatsDetail 保持一致)
 function toDateKeyStrFromISO(iso: string) {
   const d = new Date(iso)
   const y = d.getFullYear()
@@ -169,7 +173,7 @@ function toDateKeyStrFromISO(iso: string) {
   return `${y}-${m < 10 ? `0${m}` : m}-${day < 10 ? `0${day}` : day}`
 }
 
-// [新增] 分页拉取所有日期的 created_at (不拉取 content，速度快)
+// [修复] 这里的 if/else 结构进行了拆分和去括号处理
 async function fetchAllDates(userId: string) {
   const PAGE_SIZE = 1000
   const allDates: string[] = []
@@ -179,7 +183,7 @@ async function fetchAllDates(userId: string) {
   while (hasMore) {
     const { data, error } = await supabase
       .from('notes')
-      .select('created_at') // 只查时间，轻量级
+      .select('created_at')
       .eq('user_id', userId)
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
@@ -187,12 +191,12 @@ async function fetchAllDates(userId: string) {
       throw error
 
     if (data && data.length > 0) {
-      // 收集日期
       data.forEach((n: any) => allDates.push(n.created_at))
 
       if (data.length < PAGE_SIZE)
         hasMore = false
-      else page++
+      else
+        page++
     }
     else {
       hasMore = false
@@ -201,28 +205,21 @@ async function fetchAllDates(userId: string) {
   return allDates
 }
 
-// [修改] 统一为"实际打卡天数"统计
 async function fetchStats() {
   if (!props.user)
     return
 
-  // 1. 读取缓存，优先显示
   const CACHE_KEY = `journal_days_count_${props.user.id}`
   const cachedCount = localStorage.getItem(CACHE_KEY)
 
   if (cachedCount)
     journalingDays.value = Number(cachedCount)
 
-  // 2. 静默更新准确数据
   try {
     const dates = await fetchAllDates(props.user.id)
-
-    // Set 去重计算天数
     const uniqueDays = new Set(dates.map(iso => toDateKeyStrFromISO(iso))).size
 
     journalingDays.value = uniqueDays
-
-    // 更新缓存
     localStorage.setItem(CACHE_KEY, String(uniqueDays))
   }
   catch (e) {
@@ -243,7 +240,6 @@ function handleItemClick(key: string) {
     return
   }
 
-  // 拦截 'feedback' 事件
   if (key === 'feedback') {
     showFeedback.value = true
     emit('close')
@@ -255,12 +251,10 @@ function handleItemClick(key: string) {
     emit('close')
 }
 
-// 控制统计详情页
 const showStatsDetail = ref(false)
 
-// 传递数据
 const statsData = computed(() => ({
-  days: journalingDays.value, // 现在这里也是去重后的天数了
+  days: journalingDays.value,
   notes: props.totalNotes,
   words: 0,
   media: 0,
@@ -358,6 +352,12 @@ const statsData = computed(() => ({
               <div class="menu-item sub" @click="handleItemClick('account')">
                 <UserIcon :size="18" /><span>{{ t('auth.account_title') }}</span>
               </div>
+
+              <div class="menu-item sub" @click="handleItemClick('activation')">
+                <Key :size="18" />
+                <span>{{ t('auth.activation_menu') || '输入邀请码' }}</span>
+              </div>
+
               <div class="menu-item sub" @click="handleItemClick('help')">
                 <HelpCircle :size="18" /><span>{{ t('notes.help_title') || '使用帮助' }}</span>
               </div>

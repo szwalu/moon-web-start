@@ -259,7 +259,7 @@ auth:
   relogin_required_content: Resetting password requires logging out and redirecting to the "Forgot Password" page. Confirm?
   confirm_logout: Confirm Logout
   redirecting: Redirecting...
-
+  activation_menu: Enter invitation code
   default_signature: 'Capture the moment, spark inspiration'
   signature_label: Bio
   input_signature: Enter your bio...
@@ -287,8 +287,8 @@ auth:
   activation:
     title: 🎉 Welcome to Moon Note
     description: |
-      Google login detected.
-      This site is currently invite-only. Please enter an invite code to activate.
+      Notes are invite-only.
+      Enter an invite code within 7 days to activate.
     verifying: Verifying...
     activate_button: Activate Account
     apply_link: No invite code? Apply here
@@ -440,6 +440,8 @@ notes:
   select_tag_first: Please select a tag first
   batch_tag_success: 'Successfully added tags to {count} notes'
   batch_tag_error: 'Operation partially failed: {msg}'
+  activation_success_title: Notes Activated!
+  activation_success_desc: You have full access permissions. Enjoy recording!
   draft:
     title: Hint
     resume_tooltip: Unsaved draft found. Click to resume editing

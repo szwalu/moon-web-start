@@ -26,10 +26,46 @@ import ActivationModal from '@/components/ActivationModal.vue'
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false) // [新增] 控制侧边栏显示
 const authStore = useAuthStore()
-const showHelpDialog = ref(false)
-// [新增 2] 激活弹窗状态与检查逻辑
 const showActivation = ref(false)
+const canDismissActivation = ref(false)
+
 const user = computed(() => authStore.user)
+const showHelpDialog = ref(false)
+const isUserActivated = ref(false)
+watch(user, async (currentUser) => {
+  if (currentUser) {
+    const registeredAt = new Date(currentUser.created_at)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    const TRIAL_DAYS = 7 // 7天使用期
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('is_active')
+      .eq('id', currentUser.id)
+      .single()
+
+    // ✅ [新增] 记录激活状态
+    isUserActivated.value = (data && data.is_active === true)
+
+    // 原有弹窗拦截逻辑 (保持不变)
+    if (error || !data || data.is_active !== true) {
+      if (diffDays <= TRIAL_DAYS) {
+        canDismissActivation.value = true
+      }
+      else {
+        canDismissActivation.value = false
+        showActivation.value = true
+      }
+    }
+  }
+}, { immediate: true })
+function onActivationSuccess() {
+  showActivation.value = false
+  // 激活成功后，刷新页面以确保所有数据流重新初始化
+  window.location.reload()
+}
 
 // ✅ [新增] 1. 定义头像源变量
 const headerAvatarSrc = ref<string | null>(null)
@@ -65,12 +101,6 @@ watch(() => user.value, (u) => {
     headerAvatarSrc.value = remoteUrl
   }
 }, { immediate: true })
-
-function onActivationSuccess() {
-  showActivation.value = false
-  // 激活成功后，刷新页面以确保所有数据流（如那年今日、标签等）重新初始化
-  window.location.reload()
-}
 
 const { manualSync: _manualSync } = useOfflineSync()
 
@@ -2806,29 +2836,38 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   // 处理来自 Sidebar 的点击事件
-  if (key === 'calendar')
+  if (key === 'calendar') {
     showCalendarView.value = true
-
-  else if (key === 'toggleSelection')
+  }
+  else if (key === 'toggleSelection') {
     toggleSelectionMode()
-
-  else if (key === 'settings')
+  }
+  else if (key === 'settings') {
     showSettingsModal.value = true
-
-  else if (key === 'export')
+  }
+  else if (key === 'export') {
     handleBatchExport()
-
-  else if (key === 'account')
+  }
+  else if (key === 'account') {
     showAccountModal.value = true
-
-  else if (key === 'randomRoam')
+  }
+  else if (key === 'randomRoam') {
     showRandomRoam.value = true
-
-  else if (key === 'trash')
+  }
+  else if (key === 'trash') {
     showTrashModal.value = true
-
-  else if (key === 'help')
+  }
+  else if (key === 'help') {
     showHelpDialog.value = true
+  }
+  else if (key === 'activation') {
+    canDismissActivation.value = true
+    showActivation.value = true
+  }
+  // 如果你还有 feedback 逻辑，也记得加括号
+  else if (key === 'feedback') {
+    window.location.href = '/apply?from=auth'
+  }
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
@@ -3303,6 +3342,8 @@ function onCalendarUpdated(updated: any) {
 
       <ActivationModal
         :show="showActivation"
+        :allow-close="canDismissActivation"
+        :activated="isUserActivated" @close="showActivation = false"
         @success="onActivationSuccess"
       />
     </template>

@@ -2,13 +2,21 @@
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+
+import { CheckCircle2 } from 'lucide-vue-next'
+
+// ✅ [新增] 引入打钩图标
 import { supabase } from '@/utils/supabaseClient'
 
-defineProps({
+const props = defineProps({
   show: { type: Boolean, required: true },
+  allowClose: { type: Boolean, default: false },
+  // ✅ [新增] 接收激活状态
+  activated: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['success'])
+const emit = defineEmits(['success', 'close'])
+
 const inviteCode = ref('')
 const loading = ref(false)
 const messageHook = useMessage()
@@ -44,35 +52,54 @@ async function handleActivate() {
   }
 }
 
-async function handleLogout() {
-  await supabase.auth.signOut()
-  window.location.href = '/auth'
+async function handleSecondaryAction() {
+  if (props.allowClose) {
+    emit('close')
+  }
+  else {
+    await supabase.auth.signOut()
+    window.location.href = '/auth'
+  }
 }
 </script>
 
 <template>
   <div v-if="show" class="activation-overlay">
     <div class="activation-box">
-      <h2>{{ t('auth.activation.title') }}</h2>
-
-      <p class="desc">{{ t('auth.activation.description') }}</p>
-
-      <input
-        v-model="inviteCode"
-        type="text"
-        :placeholder="t('auth.invite_code_placeholder')"
-        class="code-input"
-      >
-
-      <div class="actions">
-        <button class="btn-activate" :disabled="loading" @click="handleActivate">
-          {{ loading ? t('auth.activation.verifying') : t('auth.activation.activate_button') }}
+      <div v-if="activated" class="activated-content">
+        <CheckCircle2 :size="64" class="success-icon" />
+        <h2>{{ t('notes.activation_success_title') }}</h2>
+        <p class="desc">{{ t('notes.activation_success_desc') }}</p>
+        <button class="btn-activate" @click="$emit('close')">
+          {{ t('common.close') }}
         </button>
+      </div>
 
-        <div style="margin-top: 1rem;">
-          <a class="link-btn" href="/apply?from=register" target="_blank">{{ t('auth.activation.apply_link') }}</a>
-          <span class="divider">|</span>
-          <a class="link-btn" @click="handleLogout">{{ t('auth.logout') }}</a>
+      <div v-else>
+        <h2>{{ t('auth.activation.title') }}</h2>
+
+        <p class="desc">{{ t('auth.activation.description') }}</p>
+
+        <input
+          v-model="inviteCode"
+          type="text"
+          :placeholder="t('auth.invite_code_placeholder')"
+          class="code-input"
+        >
+
+        <div class="actions">
+          <button class="btn-activate" :disabled="loading" @click="handleActivate">
+            {{ loading ? t('auth.activation.verifying') : t('auth.activation.activate_button') }}
+          </button>
+
+          <div style="margin-top: 1rem;">
+            <a class="link-btn" href="/apply?from=register" target="_blank">{{ t('auth.activation.apply_link') }}</a>
+            <span class="divider">|</span>
+
+            <a class="link-btn" @click="handleSecondaryAction">
+              {{ allowClose ? (t('auth.return') || '暂不激活') : t('auth.logout') }}
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -85,17 +112,16 @@ async function handleLogout() {
    =========================================================================== */
 .activation-overlay {
   /* --- ☀️ 默认浅色 --- */
-  --act-bg: white;               /* 卡片背景 */
-  --act-title: #00b386;          /* 标题颜色 (保持品牌色) */
-  --act-desc: #666666;           /* 描述文字 */
-
-  --act-input-bg: #ffffff;       /* 输入框背景 */
-  --act-input-border: #eeeeee;   /* 输入框边框 */
-  --act-input-text: #333333;     /* 输入框文字 */
-
-  --act-divider: #dddddd;        /* 分割线 */
-  --act-link: #888888;           /* 链接默认颜色 */
-  --act-link-hover: #00b386;     /* 链接悬停颜色 */
+  --act-bg: white;
+  --act-title: #00b386;
+  --act-desc: #666666;
+  --act-input-bg: #ffffff;
+  --act-input-border: #eeeeee;
+  --act-input-text: #333333;
+  --act-divider: #dddddd;
+  --act-link: #888888;
+  --act-link-hover: #00b386;
+  --act-success: #00b386; /* 成功图标颜色 */
 }
 
 /* 🌑 系统深色模式 */
@@ -103,11 +129,9 @@ async function handleLogout() {
   .activation-overlay {
     --act-bg: #1e1e1e;
     --act-desc: #aaaaaa;
-
     --act-input-bg: #2a2a2a;
     --act-input-border: #444444;
     --act-input-text: #ffffff;
-
     --act-divider: #444444;
     --act-link: #aaaaaa;
   }
@@ -130,7 +154,7 @@ async function handleLogout() {
 .activation-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.85); /* 遮罩层保持深色半透明即可，无需变色 */
+  background: rgba(0,0,0,0.85);
   z-index: 9999;
   display: flex;
   justify-content: center;
@@ -145,8 +169,6 @@ async function handleLogout() {
   max-width: 400px;
   text-align: center;
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-
-  /* 应用变量 */
   background: var(--act-bg);
   transition: background-color 0.3s;
 }
@@ -160,9 +182,21 @@ h2 {
   margin-bottom: 2rem;
   line-height: 1.6;
   white-space: pre-line;
-
-  /* 应用变量 */
   color: var(--act-desc);
+}
+
+/* 已激活状态的样式 */
+.activated-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.success-icon {
+  color: var(--act-success);
+  margin-bottom: 0.5rem;
 }
 
 .code-input {
@@ -174,8 +208,6 @@ h2 {
   outline: none;
   text-align: center;
   box-sizing: border-box;
-
-  /* 应用变量 */
   background: var(--act-input-bg);
   border: 2px solid var(--act-input-border);
   color: var(--act-input-text);
@@ -201,8 +233,6 @@ h2 {
   font-size: 13px;
   cursor: pointer;
   text-decoration: none;
-
-  /* 应用变量 */
   color: var(--act-link);
 }
 .link-btn:hover {
@@ -210,7 +240,6 @@ h2 {
   color: var(--act-link-hover);
 }
 
-/* 分割线样式 */
 .divider {
   margin: 0 8px;
   color: var(--act-divider);

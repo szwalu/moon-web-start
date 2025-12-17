@@ -259,7 +259,7 @@ auth:
   relogin_required_content: パスワード再設定にはログアウトが必要です。「パスワードを忘れた場合」ページへ移動しますか？
   confirm_logout: ログアウトして移動
   redirecting: 移動中...
-
+  activation_menu: 招待コード入力
   default_signature: 今を記録し、ひらめきを灯す
   signature_label: 自己紹介
   input_signature: 自己紹介を入力...
@@ -288,8 +288,8 @@ auth:
   activation:
     title: 🎉 星雲ノートへようこそ
     description: |
-      Googleログインを確認しました。
-      現在、招待制となっております。招待コードを入力して有効化してください。
+      ノートは招待制です。
+      7日以内に招待コードを入力して有効化してください。
     verifying: 検証中...
     activate_button: アカウント有効化
     apply_link: 招待コードがない方はこちら
@@ -441,6 +441,8 @@ notes:
   select_tag_first: 先にタグを選択してください
   batch_tag_success: '{count} 件のメモにタグを追加しました'
   batch_tag_error: '操作が部分的に失敗しました: {msg}'
+  activation_success_title: ノートが有効化されました！
+  activation_success_desc: すべての機能をご利用いただけます。思いのままに記録しましょう。
   draft:
     title: ヒント
     resume_tooltip: 未保存の下書きがあります。クリックして編集を再開

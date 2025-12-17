@@ -29,7 +29,7 @@ if (route.query.mode === 'forgot')
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
-const inviteCode = ref('')
+const inviteCode = ref('') // 变量保留，但不再使用
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
@@ -82,19 +82,7 @@ async function handleSubmitAuth() {
       message.value = t('auth.messages.passwords_do_not_match')
       return
     }
-
-    // 预检查代码逻辑
-    const { data, error } = await supabase
-      .from('invite_codes')
-      .select('code')
-      .eq('code', inviteCode.value)
-      .eq('is_used', false)
-      .single()
-
-    if (error || !data) {
-      message.value = t('auth.messages.invalid_invite_code')
-      return
-    }
+    // [修改] 已移除邀请码校验逻辑，允许直接注册
   }
 
   loading.value = true
@@ -110,14 +98,10 @@ async function handleSubmitAuth() {
       await router.replace('/auth')
     }
     else if (mode.value === 'register') {
+      // [修改] 注册时不再传递 invite_code
       const { error } = await supabase.auth.signUp({
         email: email.value,
         password: password.value,
-        options: {
-          data: {
-            invite_code: inviteCode.value,
-          },
-        },
       })
 
       if (error)
@@ -167,20 +151,6 @@ async function handleSubmitAuth() {
         >
       </label>
 
-      <label v-if="mode === 'register'">
-        {{ $t('auth.invite_code') }}
-        <span style="font-size: 13px; font-weight: normal; margin-left: 8px;">
-          <a
-            href="/apply?from=register"
-            target="_blank"
-            style="color: #00b386; text-decoration: underline; cursor: pointer;"
-          >
-            {{ $t('auth.Log_in_again_link') }}
-          </a>
-          {{ $t('form.options.applyinvitecode') }}
-        </span>
-        <input v-model="inviteCode" type="text" :placeholder="$t('auth.invite_code_placeholder')" required>
-      </label>
       <template v-if="mode === 'forgotPassword' && resetEmailSent">
         <button type="button" @click="setMode('login')">
           {{ $t('auth.return') }}
