@@ -101,6 +101,12 @@ settings:
   common:
     show: 表示
     hide: 非表示
+  default_city: 既定の都市
+  city_desc: 設定後、新規ノートはこの位置の天気を直接取得します。
+  city_placeholder: '都市を検索 (例: Tokyo)'
+  city_empty: 都市名を入力してください...
+  city_locked: ✅ 設定済み。次回のメモから有効です。
+  city_unlocked: 🌍 未設定：GPS/IP 自動測位を使用します。
 
 messages:
   tip: ヒント

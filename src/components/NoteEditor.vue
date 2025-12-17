@@ -1186,58 +1186,70 @@ async function fetchWeatherLine(): Promise<string | null> {
   try {
     let loc: { city: string; lat: number; lon: number }
 
-    // ===== 1. 主动触发定位 (GPS) =====
-    // 之前改过的 2500ms 超时，保证不卡顿
-    const browserLoc = await getBrowserLocationWithPromptOnce(2500)
-
-    if (browserLoc) {
-      // 🟢 情况 A：GPS 定位成功
-      // 1. 优先：尝试用 Nominatim 把坐标转成城市名 (最准确)
-      let cityFromGeo = await reverseGeocodeCityFromCoords(browserLoc.lat, browserLoc.lon)
-
-      // 2. 补救：如果 Nominatim 挂了(503)或超时，才尝试用 IP API 查城市名
-      if (!cityFromGeo) {
-        try {
-          // 这里只查城市名，不查坐标（坐标还是用 GPS 的，准确）
-          const r = await fetch('https://ipapi.co/json/')
-          if (r.ok) {
-            const d = await r.json()
-            cityFromGeo = d.city
-          }
-        }
-        catch {
-          // IP 也查不到，忽略
-        }
-      }
-
-      // 3. 兜底：如果都失败，叫“当前位置”
-      if (!cityFromGeo)
-        cityFromGeo = '当前位置'
-
-      loc = {
-        city: cityFromGeo,
-        lat: browserLoc.lat,
-        lon: browserLoc.lon,
-      }
+    // 🔥 1. 新增：优先检查 Store 里有没有手动设置的城市
+    if (settingsStore.manualLocation) {
+      const m = settingsStore.manualLocation
+      // 如果有，直接使用，不需要 await，也就没有延迟
+      loc = { city: m.name, lat: m.lat, lon: m.lon }
     }
     else {
-      // 🔴 情况 B：GPS 定位失败（用户拒绝或设备不支持）
-      // 退回纯 IP 定位（既查坐标，也查城市）
-      try {
-        const r = await fetch('https://ipapi.co/json/')
-        if (!r.ok)
-          throw new Error(String(r.status))
-        const d = await r.json()
-        loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+      // 🔥 2. 原有逻辑：如果没有手动设置，才走自动定位流程 (放入 else 块)
+
+      // ===== 1. 主动触发定位 (GPS) =====
+      // 之前改过的 2500ms 超时，保证不卡顿
+      const browserLoc = await getBrowserLocationWithPromptOnce(2500)
+
+      if (browserLoc) {
+        // 🟢 情况 A：GPS 定位成功
+        // 1. 优先：尝试用 Nominatim 把坐标转成城市名 (最准确)
+        let cityFromGeo = await reverseGeocodeCityFromCoords(browserLoc.lat, browserLoc.lon)
+
+        // 2. 补救：如果 Nominatim 挂了(503)或超时，才尝试用 IP API 查城市名
+        if (!cityFromGeo) {
+          try {
+            // 这里只查城市名，不查坐标（坐标还是用 GPS 的，准确）
+            const r = await fetch('https://ipapi.co/json/')
+            if (r.ok) {
+              const d = await r.json()
+              cityFromGeo = d.city
+            }
+          }
+          catch {
+            // IP 也查不到，忽略
+          }
+        }
+
+        // 3. 兜底：如果都失败，叫“当前位置”
+        if (!cityFromGeo)
+          cityFromGeo = '当前位置'
+
+        loc = {
+          city: cityFromGeo,
+          lat: browserLoc.lat,
+          lon: browserLoc.lon,
+        }
       }
-      catch {
-        const r2 = await fetch('https://ip-api.com/json/')
-        if (!r2.ok)
-          throw new Error(String(r2.status))
-        const d2 = await r2.json()
-        loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+      else {
+        // 🔴 情况 B：GPS 定位失败（用户拒绝或设备不支持）
+        // 退回纯 IP 定位（既查坐标，也查城市）
+        try {
+          const r = await fetch('https://ipapi.co/json/')
+          if (!r.ok)
+            throw new Error(String(r.status))
+          const d = await r.json()
+          loc = { city: d.city, lat: d.latitude, lon: d.longitude }
+        }
+        catch {
+          const r2 = await fetch('https://ip-api.com/json/')
+          if (!r2.ok)
+            throw new Error(String(r2.status))
+          const d2 = await r2.json()
+          loc = { city: d2.city || d2.regionName, lat: d2.lat, lon: d2.lon }
+        }
       }
     }
+
+    // --- 下面是公共逻辑（无论是手动的还是自动的，都在这里查天气） ---
 
     if (!loc?.lat || !loc?.lon)
       throw new Error('定位失败')
@@ -2166,55 +2178,6 @@ function _savePrefix(urlText: string) {
   }
 }
 
-// ==========================================
-// 🔥【临时测试功能】点击按钮检测地图服务器状态
-// ==========================================
-async function debugTestMapServer() {
-  const url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=33.87&lon=-117.92&zoom=10&addressdetails=1'
-  const start = performance.now()
-
-  // 先弹个窗提示正在测
-  const d = dialog.create({
-    title: '正在连接地图服务器...',
-    content: '请稍候，正在向 Nominatim 发起请求...',
-    closable: false,
-    loading: true,
-  })
-
-  try {
-    const res = await fetch(url)
-    const cost = Math.round(performance.now() - start)
-
-    d.destroy() // 关闭加载弹窗
-
-    if (res.ok) {
-      const data = await res.json()
-      const city = data.address?.city || data.address?.town || '未知'
-
-      dialog.success({
-        title: '✅ 服务器已恢复！',
-        content: `状态码: ${res.status}\n耗时: ${cost}ms\n测试返回: ${city} (Fullerton附近)\n\n结论：现在保存笔记应该能显示城市名了。`,
-        positiveText: '太棒了',
-      })
-    }
-    else {
-      dialog.error({
-        title: '❌ 服务器仍异常',
-        content: `状态码: ${res.status} (${res.statusText})\n耗时: ${cost}ms\n\n结论：服务器还是 503 或繁忙，目前只能用 IP 兜底。`,
-        positiveText: '知道了',
-      })
-    }
-  }
-  catch (e: any) {
-    d.destroy()
-    dialog.error({
-      title: '❌ 网络连接失败',
-      content: `无法连接到 OpenStreetMap。\n错误原因: ${e.message}`,
-      positiveText: '确定',
-    })
-  }
-}
-
 defineExpose({
   reset: triggerResize,
   focus: () => { focusToEnd() },
@@ -2447,14 +2410,6 @@ function handleBeforeInput(e: InputEvent) {
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
-          <button
-            type="button"
-            class="toolbar-btn"
-            style="color: #d03050; width: auto; padding: 0 8px; font-size: 12px;"
-            @click="debugTestMapServer"
-          >
-            测试地图
-          </button>
           <button
             type="button"
             class="toolbar-btn"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -9,13 +9,19 @@ import {
   Download,
   HelpCircle,
   Key,
+  MapPin,
   MessageSquare,
   Settings,
   Shuffle,
   Trash2,
   Type,
-  User as UserIcon,
+  User as UserIcon, // ✅ 1. 引入图标
 } from 'lucide-vue-next'
+
+// ✅ 2. 引入 Naive UI 组件和 Store
+import { NButton, NCard, NModal, NSelect, NSpace, NText } from 'naive-ui'
+import { useSettingStore } from '@/stores/setting'
+
 import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -45,12 +51,70 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
-
+const settingStore = useSettingStore() // ✅ 初始化 Store
 const { t } = useI18n()
 const showFeedback = ref(false)
 
 function onAvatarClick() {
   handleItemClick('account')
+}
+
+// ===========================================================================
+// 🔥 城市设置相关逻辑 (新增)
+// ===========================================================================
+const showCityModal = ref(false)
+const cityOptions = ref<{ label: string; value: string; lat: number; lon: number }[]>([])
+const loadingCity = ref(false)
+const selectedCityKey = ref<string | null>(null)
+
+// 打开弹窗时，初始化回显数据
+function openCityModal() {
+  // 从 Store 获取当前设置
+  const current = settingStore.manualLocation
+  selectedCityKey.value = current ? JSON.stringify(current) : null
+  showCityModal.value = true
+}
+
+// 搜索城市 (Open-Meteo)
+async function handleSearchCity(query: string) {
+  if (!query)
+    return
+  loadingCity.value = true
+  try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=zh&format=json`
+    const res = await fetch(url)
+    const data = await res.json()
+
+    if (data.results) {
+      cityOptions.value = data.results.map((item: any) => {
+        const label = `${item.name} ${item.admin1 ? `(${item.admin1})` : ''}`
+        const valueObj = { name: item.name, lat: item.latitude, lon: item.longitude }
+        return {
+          label,
+          value: JSON.stringify(valueObj),
+          ...valueObj,
+        }
+      })
+    }
+  }
+  catch (e) {
+    console.warn('搜索失败', e)
+  }
+  finally {
+    loadingCity.value = false
+  }
+}
+
+// 更新城市设置
+function handleUpdateCity(val: string | null) {
+  selectedCityKey.value = val
+  if (!val) {
+    settingStore.setManualLocation(null)
+  }
+  else {
+    const loc = JSON.parse(val)
+    settingStore.setManualLocation(loc)
+  }
 }
 
 // ===========================================================================
@@ -240,6 +304,14 @@ function handleItemClick(key: string) {
     return
   }
 
+  // ✅ 新增：处理默认城市点击
+  if (key === 'defaultCity') {
+    openCityModal()
+    // 注意：这里不调用 emit('close')，保持侧边栏打开，或者看你喜好
+    // 如果想选完城市关侧边栏，可以在 handleUpdateCity 里关，或者在这里关
+    return
+  }
+
   if (key === 'feedback') {
     showFeedback.value = true
     emit('close')
@@ -259,6 +331,11 @@ const statsData = computed(() => ({
   words: 0,
   media: 0,
 }))
+
+onMounted(() => {
+  // 确保 Store 初始化
+  settingStore.loadManualLocation?.()
+})
 </script>
 
 <template>
@@ -353,6 +430,11 @@ const statsData = computed(() => ({
                 <UserIcon :size="18" /><span>{{ t('auth.account_title') }}</span>
               </div>
 
+              <div class="menu-item sub" @click="handleItemClick('defaultCity')">
+                <MapPin :size="18" />
+                <span>{{ t('settings.default_city') || '默认城市' }}</span>
+              </div>
+
               <div class="menu-item sub" @click="handleItemClick('activation')">
                 <Key :size="18" />
                 <span>{{ t('auth.activation_menu') || '输入邀请码' }}</span>
@@ -402,6 +484,55 @@ const statsData = computed(() => ({
           @close="showStatsDetail = false"
         />
       </Transition>
+
+      <NModal v-model:show="showCityModal">
+        <NCard
+          style="width: 90%; max-width: 400px;"
+          :title="t('settings.default_city')"
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+          closable
+          @close="showCityModal = false"
+        >
+          <NSpace vertical>
+            <NText depth="3" style="font-size: 13px;">
+              {{ t('settings.city_desc') }}
+            </NText>
+
+            <NSelect
+              v-model:value="selectedCityKey"
+              filterable
+              remote
+              clearable
+              :placeholder="t('settings.city_placeholder')"
+              :options="cityOptions"
+              :loading="loadingCity"
+              @search="handleSearchCity"
+              @update:value="handleUpdateCity"
+            >
+              <template #empty>
+                {{ t('settings.city_empty') }}
+              </template>
+            </NSelect>
+
+            <div style="font-size: 12px; color: #666;">
+              {{ selectedCityKey ? t('settings.city_locked') : t('settings.city_unlocked') }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+              <NButton
+                type="primary"
+                color="#6366f1"
+                @click="showCityModal = false"
+              >
+                {{ t('button.confirm') || 'OK' }}
+              </NButton>
+            </div>
+          </NSpace>
+        </NCard>
+      </NModal>
     </div>
   </Teleport>
 </template>

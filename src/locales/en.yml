@@ -101,6 +101,12 @@ settings:
   common:
     show: Show
     hide: Hide
+  default_city: Default City
+  city_desc: Set a default city and get weather instantly for new notes.
+  city_placeholder: Search city (e.g. New York)
+  city_empty: Please enter a city name...
+  city_locked: ✅ Locked. Will apply to next new note.
+  city_unlocked: '🌍 Not set: Using GPS/IP auto-location.'
 
 messages:
   tip: Tip

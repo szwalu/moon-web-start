@@ -113,15 +113,17 @@ async function handleSecondaryAction() {
 .activation-overlay {
   /* --- ☀️ 默认浅色 --- */
   --act-bg: white;
-  --act-title: #00b386;
+  --act-title: #6366f1;          /* 🟣 改为紫色 (Indigo-500) */
   --act-desc: #666666;
   --act-input-bg: #ffffff;
   --act-input-border: #eeeeee;
   --act-input-text: #333333;
   --act-divider: #dddddd;
   --act-link: #888888;
-  --act-link-hover: #00b386;
-  --act-success: #00b386; /* 成功图标颜色 */
+  --act-link-hover: #6366f1;     /* 🟣 链接悬停也改为紫色 */
+  --act-success: #6366f1;        /* 🟣 成功图标改为紫色 */
+  --act-btn-bg: #6366f1;         /* 🟣 按钮背景改为紫色 */
+  --act-btn-text: white;
 }
 
 /* 🌑 系统深色模式 */
@@ -134,6 +136,11 @@ async function handleSecondaryAction() {
     --act-input-text: #ffffff;
     --act-divider: #444444;
     --act-link: #aaaaaa;
+    --act-title: #818cf8;        /* 🟣 深色模式下的亮紫色 (Indigo-400) */
+    --act-link-hover: #818cf8;
+    --act-success: #818cf8;
+    --act-btn-bg: #818cf8;
+    --act-btn-text: #1e1e1e;     /* 深色模式按钮文字用深色 */
   }
 }
 
@@ -146,6 +153,11 @@ async function handleSecondaryAction() {
   --act-input-text: #ffffff;
   --act-divider: #444444;
   --act-link: #aaaaaa;
+  --act-title: #818cf8;
+  --act-link-hover: #818cf8;
+  --act-success: #818cf8;
+  --act-btn-bg: #818cf8;
+  --act-btn-text: #1e1e1e;
 }
 
 /* ===========================================================================
@@ -175,7 +187,7 @@ async function handleSecondaryAction() {
 
 h2 {
   margin-bottom: 1rem;
-  color: var(--act-title);
+  color: var(--act-title); /* 应用紫色变量 */
 }
 
 .desc {
@@ -195,7 +207,7 @@ h2 {
 }
 
 .success-icon {
-  color: var(--act-success);
+  color: var(--act-success); /* 应用紫色变量 */
   margin-bottom: 0.5rem;
 }
 
@@ -213,21 +225,28 @@ h2 {
   color: var(--act-input-text);
 }
 .code-input:focus {
-  border-color: #00b386;
+  border-color: var(--act-title); /* 聚焦边框也用紫色 */
 }
 
 .btn-activate {
   width: 100%;
   padding: 1rem;
-  background: #00b386;
-  color: white;
+  background: var(--act-btn-bg); /* 应用紫色变量 */
+  color: var(--act-btn-text);
   border: none;
   border-radius: 8px;
   font-size: 16px;
   cursor: pointer;
   font-weight: bold;
+  transition: opacity 0.2s;
 }
-.btn-activate:disabled { opacity: 0.7; }
+.btn-activate:hover {
+  opacity: 0.9;
+}
+.btn-activate:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 
 .link-btn {
   font-size: 13px;

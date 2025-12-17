@@ -2864,7 +2864,9 @@ function handleMainMenuSelect(key: string) {
     canDismissActivation.value = true
     showActivation.value = true
   }
-  // 如果你还有 feedback 逻辑，也记得加括号
+  else if (key === 'defaultCity') {
+    showCitySelectionDialog.value = true
+  }
   else if (key === 'feedback') {
     window.location.href = '/apply?from=auth'
   }

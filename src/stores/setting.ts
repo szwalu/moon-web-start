@@ -1,17 +1,26 @@
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, toRaw, watch } from 'vue'
+
+// ✅ 修改：补上了 toRaw
 import { defineStore } from 'pinia'
 import { useRoute } from 'vue-router'
 import * as settingData from '@/utils/settings'
 import type { Settings } from '@/types'
 import { deepClone } from '@/utils'
 
+// 定义位置数据的接口
+export interface UserLocation {
+  name: string
+  lat: number
+  lon: number
+}
+
 export type SettingKey = keyof Settings
 
 // =================================================================
-// ===== 新增区域 START =====
+// ===== 新增区域 1：类型定义 =====
 // =================================================================
 
-// 1. 为笔记的字号定义一个清晰的类型，方便在整个项目中使用
+// 1. 为笔记的字号定义一个清晰的类型
 export type NoteFontSize = 'small' | 'medium' | 'large' | 'extra-large'
 
 // =================================================================
@@ -27,7 +36,7 @@ const defaultSetting: Settings = Object.fromEntries(
   Object.keys(settingData).map(key => [key, settingData[key as SettingKey].defaultKey]),
 ) as Settings
 
-// 将这个辅助函数放在 defineStore 外部或 defineStore 内部的最开始
+// 辅助函数
 function checkIsMobileDevice(): boolean {
   return typeof navigator !== 'undefined' && /Mobi|Android|iPhone/i.test(navigator.userAgent)
 }
@@ -36,10 +45,9 @@ export const useSettingStore = defineStore('setting', () => {
   const route = useRoute()
   const isSetting = ref(false)
 
-  // --- 👇 将 isSideNavOpen 和 isMobile 的定义移到这里，确保在 restoreSettings 之前 👇 ---
+  // --- isSideNavOpen 和 isMobile 定义 ---
   const isMobile = checkIsMobileDevice()
-  const isSideNavOpen = ref(!isMobile) // PC端(!isMobile)默认打开(true)，移动端(isMobile)默认关闭(false)
-  // --- 👆 上移结束 👆 ---
+  const isSideNavOpen = ref(!isMobile)
 
   watch(route, () => {
     if (route.name === 'setting')
@@ -57,6 +65,7 @@ export const useSettingStore = defineStore('setting', () => {
       settings = Object.assign(_defaultSetting, settingCache)
     else
       settings = _defaultSetting
+
     // 排除非法值
     Object.keys(settings).forEach((key) => {
       if (!defaultSetting[key as SettingKey])
@@ -68,28 +77,41 @@ export const useSettingStore = defineStore('setting', () => {
   })())
 
   watch(settings, () => {
+    // ✅ 这里用到了 toRaw，所以在顶部必须 import { toRaw } from 'vue'
     localStorage.setItem('settings', JSON.stringify(toRaw(settings)))
   }, { deep: true })
 
   // =================================================================
-  // ===== 新增区域 START =====
+  // ===== 新增区域 2：笔记字号逻辑 =====
   // =================================================================
 
-  // 2. 添加独立的 ref 来管理笔记字号状态
-  // 从 localStorage 读取已保存的字号，如果没有则默认为 'medium'
   const savedFontSize = localStorage.getItem('note_font_size') as NoteFontSize | null
   const noteFontSize = ref<NoteFontSize>(savedFontSize || 'medium')
 
-  // 3. 添加 watch 来监听字号变化，并将其持久化到 localStorage
-  // 这确保了用户的偏好在刷新页面后依然保留
   watch(noteFontSize, (newSize) => {
     localStorage.setItem('note_font_size', newSize)
   })
 
-  // 4. 提供一个 action (函数) 来修改字号
   function setNoteFontSize(newSize: NoteFontSize) {
     if (['small', 'medium', 'large', 'extra-large'].includes(newSize))
       noteFontSize.value = newSize
+  }
+
+  // =================================================================
+  // ===== 新增区域 3：手动城市定位逻辑 (🔥 本次新增) =====
+  // =================================================================
+
+  // 1. 定义状态：优先从 localStorage 读取手动保存的城市
+  const savedLocStr = localStorage.getItem('manual_location_v1')
+  const manualLocation = ref<UserLocation | null>(savedLocStr ? JSON.parse(savedLocStr) : null)
+
+  // 2. 定义 Action：设置或清除手动城市
+  function setManualLocation(loc: UserLocation | null) {
+    manualLocation.value = loc
+    if (loc)
+      localStorage.setItem('manual_location_v1', JSON.stringify(loc))
+    else
+      localStorage.removeItem('manual_location_v1')
   }
 
   // =================================================================
@@ -97,18 +119,16 @@ export const useSettingStore = defineStore('setting', () => {
   // =================================================================
 
   function getSettingItem(key: keyof typeof settingData) {
-  // 关键：在这里加上安全检查！
     const settingGroup = settingData[key]
     if (!settingGroup) {
       console.warn(`[setting] getSettingItem: 尝试获取一个未在 settings.ts 中定义的设置项 '${key}'`)
-      return undefined // 安全地返回 undefined
+      return undefined
     }
     return settingGroup.children.find(item => item.key === settings[key])
   }
 
   function getSettingValue(key: keyof typeof settingData) {
     const item = getSettingItem(key)
-    // 如果 item 不存在，返回 null 或其他默认值，而不是尝试访问 .value
     return item ? item.value : null
   }
 
@@ -116,14 +136,16 @@ export const useSettingStore = defineStore('setting', () => {
     Object.assign(settings, newSettings)
   }
 
-  // restoreSettings 函数现在可以安全地访问 isSideNavOpen 和 isMobile
+  // 重置设置
   function restoreSettings() {
     Object.assign(settings, defaultSetting)
-    isSideNavOpen.value = !isMobile // 使用已定义的 isMobile
-    // --- 👇 修改区域 👇 ---
-    // 5. 在重置所有设置时，也将笔记字号恢复为默认值 'medium'
+    isSideNavOpen.value = !isMobile
+
+    // 恢复字号
     noteFontSize.value = 'medium'
-    // --- 👆 修改结束 👆 ---
+
+    // ✅ 恢复定位：重置为自动定位 (即清除手动设置)
+    setManualLocation(null)
   }
 
   // ----------------- 拖拽 -----------------
@@ -140,7 +162,6 @@ export const useSettingStore = defineStore('setting', () => {
     siteContainerKey.value++
   }
 
-  // toggleSideNav 函数也移到 isSideNavOpen 定义之后
   function toggleSideNav() {
     isSideNavOpen.value = !isSideNavOpen.value
   }
@@ -159,14 +180,12 @@ export const useSettingStore = defineStore('setting', () => {
     isSideNavOpen,
     toggleSideNav,
 
-    // =================================================================
-    // ===== 新增区域 START =====
-    // =================================================================
-    // 6. 将新的状态和方法暴露出去，以便其他组件可以使用
+    // 字号相关
     noteFontSize,
     setNoteFontSize,
-    // =================================================================
-    // ===== 新增区域 END =====
-    // =================================================================
+
+    // ✅ 手动定位相关 (暴露给组件使用)
+    manualLocation,
+    setManualLocation,
   }
 })
