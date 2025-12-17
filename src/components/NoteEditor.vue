@@ -1197,7 +1197,7 @@ async function fetchWeatherLine(): Promise<string | null> {
 
       // ===== 1. 主动触发定位 (GPS) =====
       // 之前改过的 2500ms 超时，保证不卡顿
-      const browserLoc = await getBrowserLocationWithPromptOnce(2500)
+      const browserLoc = await getBrowserLocationWithPromptOnce(3000)
 
       if (browserLoc) {
         // 🟢 情况 A：GPS 定位成功
