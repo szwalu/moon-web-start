@@ -71,7 +71,25 @@ const selectedCityKey = ref<string | null>(null)
 function openCityModal() {
   // 从 Store 获取当前设置
   const current = settingStore.manualLocation
-  selectedCityKey.value = current ? JSON.stringify(current) : null
+
+  if (current) {
+    const valStr = JSON.stringify(current)
+    selectedCityKey.value = valStr
+
+    // ✅ 修复核心：手动构造一个选项塞给 cityOptions
+    // 这样 n-select 就能查到 value 对应的 label (城市名) 并显示出来，而不是显示 JSON 字符串
+    cityOptions.value = [{
+      label: current.name, // 显示的名字（如：富勒顿）
+      value: valStr, // 对应的值（JSON 字符串）
+      lat: current.lat,
+      lon: current.lon,
+    }]
+  }
+  else {
+    selectedCityKey.value = null
+    cityOptions.value = []
+  }
+
   showCityModal.value = true
 }
 
