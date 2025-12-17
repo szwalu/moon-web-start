@@ -2166,6 +2166,55 @@ function _savePrefix(urlText: string) {
   }
 }
 
+// ==========================================
+// 🔥【临时测试功能】点击按钮检测地图服务器状态
+// ==========================================
+async function debugTestMapServer() {
+  const url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=33.87&lon=-117.92&zoom=10&addressdetails=1'
+  const start = performance.now()
+
+  // 先弹个窗提示正在测
+  const d = dialog.create({
+    title: '正在连接地图服务器...',
+    content: '请稍候，正在向 Nominatim 发起请求...',
+    closable: false,
+    loading: true,
+  })
+
+  try {
+    const res = await fetch(url)
+    const cost = Math.round(performance.now() - start)
+
+    d.destroy() // 关闭加载弹窗
+
+    if (res.ok) {
+      const data = await res.json()
+      const city = data.address?.city || data.address?.town || '未知'
+
+      dialog.success({
+        title: '✅ 服务器已恢复！',
+        content: `状态码: ${res.status}\n耗时: ${cost}ms\n测试返回: ${city} (Fullerton附近)\n\n结论：现在保存笔记应该能显示城市名了。`,
+        positiveText: '太棒了',
+      })
+    }
+    else {
+      dialog.error({
+        title: '❌ 服务器仍异常',
+        content: `状态码: ${res.status} (${res.statusText})\n耗时: ${cost}ms\n\n结论：服务器还是 503 或繁忙，目前只能用 IP 兜底。`,
+        positiveText: '知道了',
+      })
+    }
+  }
+  catch (e: any) {
+    d.destroy()
+    dialog.error({
+      title: '❌ 网络连接失败',
+      content: `无法连接到 OpenStreetMap。\n错误原因: ${e.message}`,
+      positiveText: '确定',
+    })
+  }
+}
+
 defineExpose({
   reset: triggerResize,
   focus: () => { focusToEnd() },
@@ -2398,6 +2447,14 @@ function handleBeforeInput(e: InputEvent) {
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
+          <button
+            type="button"
+            class="toolbar-btn"
+            style="color: #d03050; width: auto; padding: 0 8px; font-size: 12px;"
+            @click="debugTestMapServer"
+          >
+            测试地图
+          </button>
           <button
             type="button"
             class="toolbar-btn"
