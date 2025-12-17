@@ -7,6 +7,9 @@ import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import 'vue-cropper/dist/index.css'
 
+// ✅ [新增] 1. 引入激活弹窗组件
+import ActivationModal from '@/components/ActivationModal.vue'
+
 const props = defineProps({
   show: { type: Boolean, required: true },
   email: { type: String, default: '' },
@@ -17,6 +20,11 @@ const emit = defineEmits(['close'])
 const VueCropper = defineAsyncComponent(() =>
   import('vue-cropper').then(mod => mod.VueCropper),
 )
+
+// ✅ [新增] 2. 定义控制弹窗显示的变量
+const showInternalActivation = ref(false)
+const isUserActivated = ref(false) // 存储用户是否已激活的状态
+
 // ---新增：裁剪相关状态---
 const showCropper = ref(false)
 const cropperRef = ref()
@@ -25,8 +33,8 @@ const cropperOptions = reactive({
   autoCrop: true,
   autoCropWidth: 200,
   autoCropHeight: 200,
-  fixed: true, // 固定宽高比
-  fixedNumber: [1, 1], // 1:1 正方形
+  fixed: true,
+  fixedNumber: [1, 1],
   centerBox: true,
   infoTrue: true,
 })
@@ -62,7 +70,6 @@ const isUploadingAvatar = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const avatarLoadError = ref(false)
 
-// [新增] 用于控制头像显示的源，支持网络URL或本地Base64
 const currentAvatarSrc = ref<string | null>(null)
 
 // --- 计算属性 ---
@@ -75,7 +82,6 @@ const storagePercent = computed(() => {
   return Math.min(100, Math.max(0, pct))
 })
 
-// 原始的用户头像 URL (来自 Supabase)
 const userAvatar = computed(() => props.user?.user_metadata?.avatar_url || null)
 
 const userName = computed(() => {
@@ -105,9 +111,8 @@ const canChangePassword = computed(() => {
 // --- 监听器 ---
 
 // 1. 打开弹窗时获取数据
-watch(() => props.show, (visible) => {
+watch(() => props.show, async (visible) => {
   if (visible) {
-    // 每次打开弹窗重置 error 状态
     avatarLoadError.value = false
     if (!hasFetched.value) {
       fetchFirstNoteAndStreak()
@@ -115,46 +120,51 @@ watch(() => props.show, (visible) => {
       fetchStorageStats()
       hasFetched.value = true
     }
+    // ✅ [新增] 打开时检查激活状态
+    await checkActivationStatus()
   }
 })
 
+// ✅ [新增] 检查激活状态
+async function checkActivationStatus() {
+  if (!props.user)
+    return
+  const { data } = await supabase
+    .from('users')
+    .select('is_active')
+    .eq('id', props.user.id)
+    .single()
+
+  // 更新状态
+  isUserActivated.value = (data && data.is_active === true)
+}
+
+// ✅ [新增] 激活成功后的回调
+function onInternalActivationSuccess() {
+  showInternalActivation.value = false
+  isUserActivated.value = true // 更新界面显示为“已激活”
+}
+
 // 2. 监听用户信息变化，智能同步头像（缓存优先策略）
 watch(() => userAvatar.value, (newUrl) => {
-  // 如果没有 URL（未登录或无头像），清空
   if (!newUrl) {
     currentAvatarSrc.value = null
     return
   }
-
-  // A. 尝试获取本地缓存
   const cacheKey = `avatar_cache_${props.user?.id}`
   const cachedBase64 = localStorage.getItem(cacheKey)
 
   if (cachedBase64) {
-    // ✅ 关键点：如果有缓存，先立即显示缓存（0等待，消除加载感）
     currentAvatarSrc.value = cachedBase64
-
-    // B. 后台静默加载最新网络图片
-    // 创建一个隐形 Image 对象去预加载
     const img = new Image()
     img.src = newUrl
-
     img.onload = () => {
-      // 网络图片加载成功后，无缝切换为网络 URL
-      // 这样能确保显示的是服务器上最新的（比如你在其他设备更改了头像）
-      // 且因为已经预加载进内存，这次切换是瞬间的，用户察觉不到闪烁
       currentAvatarSrc.value = newUrl
     }
-
-    // 如果网络加载失败（比如离线），img.onerror 会触发，
-    // 但因为我们已经显示了 cachedBase64，所以用户完全不受影响，依然能看到头像
   }
   else {
-    // C. 如果完全没缓存（第一次登录），只能直接用网络 URL
     currentAvatarSrc.value = newUrl
   }
-
-  // 重置错误状态
   avatarLoadError.value = false
 }, { immediate: true })
 
@@ -168,7 +178,6 @@ function formatDateI18n(d: Date) {
   })
 }
 
-// Blob 转 Base64
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -178,8 +187,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-// 图片压缩 (240px, JPEG 0.8)
-// 修改入参类型为 Blob (这样 File 和 Blob 都能传)
 function compressImage(file: Blob): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -189,7 +196,6 @@ function compressImage(file: Blob): Promise<Blob> {
       img.src = e.target?.result as string
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        // 关键点：这里是你原来的 240px 限制逻辑，保证了体积非常小
         const maxSize = 240
         let width = img.width
         let height = img.height
@@ -220,7 +226,7 @@ function compressImage(file: Blob): Promise<Blob> {
           if (blob)
             resolve(blob)
           else reject(new Error('Canvas to Blob failed'))
-        }, 'image/jpeg', 0.8) // 质量 0.8
+        }, 'image/jpeg', 0.8)
       }
       img.onerror = err => reject(err)
     }
@@ -230,28 +236,20 @@ function compressImage(file: Blob): Promise<Blob> {
 
 // --- 核心逻辑 ---
 
-// [修改后的] 错误处理：离线回退逻辑
 function onAvatarError() {
   const cacheKey = `avatar_cache_${props.user?.id}`
   const cachedBase64 = localStorage.getItem(cacheKey)
-
-  // 只有当：1.本地有备份 2.当前显示的不是备份（防止死循环）
-  if (cachedBase64 && currentAvatarSrc.value !== cachedBase64) {
+  if (cachedBase64 && currentAvatarSrc.value !== cachedBase64)
     currentAvatarSrc.value = cachedBase64
-    // 这里不设置 true，因为我们用缓存救回来了
-  }
-  else {
-    // 彻底失败
+
+  else
     avatarLoadError.value = true
-  }
 }
 
-// 上传头像逻辑
 function triggerFileUpload() {
   fileInputRef.value?.click()
 }
 
-// 1. 修改：用户选图后，不直接上传，而是打开裁剪框
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files || input.files.length === 0)
@@ -263,19 +261,15 @@ async function handleFileChange(event: Event) {
     return
   }
 
-  // 读取文件转 Base64 供裁剪器显示
   const reader = new FileReader()
   reader.onload = (e) => {
     cropperOptions.img = e.target?.result as string
-    showCropper.value = true // 打开裁剪弹窗
+    showCropper.value = true
   }
   reader.readAsDataURL(file)
-
-  // 清空 input 允许重复选择同一文件
   input.value = ''
 }
 
-// 2. 新增：确认裁剪并上传
 function onCropConfirm() {
   if (!cropperRef.value)
     return
@@ -285,21 +279,11 @@ function onCropConfirm() {
       if (!rawBlob)
         throw new Error('Crop failed')
 
-      // 1. 压缩 (恢复你的 20KB 逻辑)
       const compressedBlob = await compressImage(rawBlob)
-
       showCropper.value = false
-
-      // 2. 【新增】立即生成本地预览 URL (解决 PWA 显示延迟和闪烁问题)
-      // 这一步能确保用户绝对看不到问号，因为不需要经过网络
       const localPreviewUrl = URL.createObjectURL(compressedBlob)
       currentAvatarSrc.value = localPreviewUrl
-
-      // 3. 后台静默上传
       await performUpload(compressedBlob)
-
-      // 注意：performUpload 里还会更新一次 currentAvatarSrc，
-      // 如果上传成功，它会变成远程 URL；如果失败，它至少还保留着这张本地预览图。
     }
     catch (e) {
       console.error(e)
@@ -307,21 +291,12 @@ function onCropConfirm() {
     }
   })
 }
-// 3. 重构：将原本的上传逻辑抽取出来，接收 Blob 参数
-// (注意：这里把原来的 handleFileChange 后半部分逻辑移过来了)
+
 async function performUpload(fileBlob: Blob) {
   isUploadingAvatar.value = true
   const oldAvatarUrl = props.user?.user_metadata?.avatar_url
 
   try {
-    // 依然保留你的压缩逻辑（虽然裁剪已经是新图了，但压缩一下更保险）
-    // 注意：compressImage 原本接收 File，这里我们需要稍微适配一下，或者直接用 blob
-    // 为了复用你的 compressImage，我们需要把 blob 伪装成 File 或者修改 compressImage
-    // 简单做法：直接用 blobToBase64 存缓存，用 blob 上传，略过 compressImage (因为 vue-cropper 导出的通常已经比较小)
-
-    // --- 逻辑开始 ---
-
-    // 1. 存入 LocalStorage (离线缓存)
     try {
       const base64Data = await blobToBase64(fileBlob)
       const cacheKey = `avatar_cache_${props.user?.id}`
@@ -334,10 +309,8 @@ async function performUpload(fileBlob: Blob) {
     const timestamp = Date.now()
     const fileName = `${timestamp}.jpg`
     const filePath = `${props.user!.id}/${fileName}`
-    // 将 blob 转为 File 对象以便上传 API 识别
     const fileToUpload = new File([fileBlob], fileName, { type: 'image/jpeg' })
 
-    // 2. 上传
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(filePath, fileToUpload, { contentType: 'image/jpeg', upsert: true })
@@ -345,14 +318,12 @@ async function performUpload(fileBlob: Blob) {
     if (uploadError)
       throw uploadError
 
-    // 3. 获取 URL
     const { data: { publicUrl } } = supabase.storage
       .from('avatars')
       .getPublicUrl(filePath)
 
     const finalUrl = `${publicUrl}?t=${timestamp}`
 
-    // 4. 更新资料
     const { error: updateError } = await supabase.auth.updateUser({
       data: { avatar_url: finalUrl },
     })
@@ -360,9 +331,7 @@ async function performUpload(fileBlob: Blob) {
     if (updateError)
       throw updateError
 
-    // 5. 清理旧图 (保持原有逻辑)
     if (oldAvatarUrl) {
-      // ...原有清理逻辑保持不变...
       const isSupabase = oldAvatarUrl.includes('supabase.co') || oldAvatarUrl.includes('/storage/v1/object')
       if (isSupabase) {
         try {
@@ -381,8 +350,6 @@ async function performUpload(fileBlob: Blob) {
     }
 
     await authStore.refreshUser()
-
-    // 立即更新显示
     currentAvatarSrc.value = finalUrl
     avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
@@ -396,7 +363,6 @@ async function performUpload(fileBlob: Blob) {
   }
 }
 
-// 修改昵称
 function startEditName() {
   tempName.value = userName.value
   isEditingName.value = true
@@ -427,7 +393,6 @@ async function saveName() {
   }
 }
 
-// 修改签名
 function startEditSignature() {
   tempSignature.value = userSignature.value
   isEditingSignature.value = true
@@ -458,7 +423,6 @@ async function saveSignature() {
   }
 }
 
-// 日记统计逻辑
 function calculateDaysFromDate(dateStr: string) {
   const first = new Date(dateStr)
   firstNoteDateText.value = formatDateI18n(first)
@@ -718,7 +682,6 @@ function handleForgotOldPwd() {
 
           <div class="info-item">
             <span class="info-label">{{ t('auth.signature_label') }}</span>
-
             <div class="signature-display-wrapper">
               <template v-if="isEditingSignature">
                 <input v-model="tempSignature" class="signature-input" autofocus :placeholder="t('auth.input_signature')" @blur="saveSignature" @keyup.enter="saveSignature">
@@ -732,6 +695,22 @@ function handleForgotOldPwd() {
                 </div>
               </template>
             </div>
+          </div>
+
+          <div class="info-item">
+            <span class="info-label">{{ t('auth.invite_code') || '激活码' }}</span>
+
+            <span v-if="isUserActivated" class="info-value-success">
+              {{ t('auth.activated') || '已激活' }}
+            </span>
+
+            <button
+              v-else
+              class="link-btn"
+              @click="showInternalActivation = true"
+            >
+              {{ t('auth.input') || '输入' }}
+            </button>
           </div>
 
           <div class="info-item">
@@ -817,7 +796,7 @@ function handleForgotOldPwd() {
             ref="cropperRef"
             :img="cropperOptions.img"
             :output-size="1"
-            output-type="jpeg"
+            :output-type="jpeg"
             :info="true"
             :can-scale="true"
             :auto-crop="cropperOptions.autoCrop"
@@ -840,6 +819,16 @@ function handleForgotOldPwd() {
       </div>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <ActivationModal
+      :show="showInternalActivation"
+      :allow-close="true"
+      :activated="isUserActivated"
+      @close="showInternalActivation = false"
+      @success="onInternalActivationSuccess"
+    />
+  </Teleport>
 </template>
 
 <style scoped>
@@ -849,25 +838,25 @@ function handleForgotOldPwd() {
    =========================================================================== */
 .modal-overlay {
   /* --- ☀️ 默认浅色模式变量 --- */
-  --ac-bg: #ffffff;                 /* 弹窗背景 */
-  --ac-text: #333333;               /* 主文字 */
-  --ac-text-sub: #666666;           /* 次要文字/标签 */
-  --ac-border: #eeeeee;             /* 分割线/边框 */
+  --ac-bg: #ffffff;
+  --ac-text: #333333;
+  --ac-text-sub: #666666;
+  --ac-border: #eeeeee;
 
-  --ac-block-bg: #f0f0f0;           /* 信息块背景 (右侧数值背景) */
-  --ac-block-text: #111111;         /* 信息块文字 */
+  --ac-block-bg: #f0f0f0;
+  --ac-block-text: #111111;
 
-  --ac-hover: #f5f5f5;              /* 列表/按钮悬停 */
+  --ac-hover: #f5f5f5;
 
-  --ac-input-bg: #ffffff;           /* 输入框背景 */
-  --ac-input-border: #dddddd;       /* 输入框边框 */
+  --ac-input-bg: #ffffff;
+  --ac-input-border: #dddddd;
 
-  --ac-btn-grey-bg: #f0f0f0;        /* 灰色按钮背景 */
-  --ac-btn-grey-text: #333333;      /* 灰色按钮文字 */
-  --ac-btn-grey-border: #cccccc;    /* 灰色按钮边框 */
+  --ac-btn-grey-bg: #f0f0f0;
+  --ac-btn-grey-text: #333333;
+  --ac-btn-grey-border: #cccccc;
 
-  --ac-avatar-border: #ffffff;      /* 头像白边 */
-  --ac-icon-color: #bbbbbb;         /* 图标默认颜色 */
+  --ac-avatar-border: #ffffff;
+  --ac-icon-color: #bbbbbb;
 }
 
 /* 🌑 情况1：系统设置为深色模式 */
@@ -1072,6 +1061,13 @@ function handleForgotOldPwd() {
   /* 应用变量 */
   background-color: var(--ac-block-bg);
   color: var(--ac-block-text);
+}
+
+/* ✅ [新增] 激活状态样式 */
+.info-value-success {
+  font-weight: 600;
+  font-size: 14px;
+  color: #00b386;
 }
 
 .storage-section {

@@ -244,6 +244,8 @@ auth:
   session_restore_error: Cannot restore session, please login again.
   session_refresh_error: Session refresh failed, please login again.
   invite_code: Invite Code
+  input: input
+  activated: activated
   invite_code_placeholder: Enter invite code
   password_placeholder: Enter password
   login_password_placeholder: Enter password
@@ -446,8 +448,6 @@ notes:
   select_tag_first: Please select a tag first
   batch_tag_success: 'Successfully added tags to {count} notes'
   batch_tag_error: 'Operation partially failed: {msg}'
-  activation_success_title: Notes Activated!
-  activation_success_desc: You have full access permissions. Enjoy recording!
   draft:
     title: Hint
     resume_tooltip: Unsaved draft found. Click to resume editing

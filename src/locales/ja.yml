@@ -243,6 +243,8 @@ auth:
   session_restore_error: セッションを復元できません。再ログインしてください。
   session_refresh_error: セッション更新に失敗しました。再ログインしてください。
   invite_code: 招待コード
+  input: 入力
+  activated: 有効化
   invite_code_placeholder: 招待コードを入力
   password_placeholder: パスワードを入力
   login_password_placeholder: パスワードを入力
@@ -447,8 +449,6 @@ notes:
   select_tag_first: 先にタグを選択してください
   batch_tag_success: '{count} 件のメモにタグを追加しました'
   batch_tag_error: '操作が部分的に失敗しました: {msg}'
-  activation_success_title: ノートが有効化されました！
-  activation_success_desc: すべての機能をご利用いただけます。思いのままに記録しましょう。
   draft:
     title: ヒント
     resume_tooltip: 未保存の下書きがあります。クリックして編集を再開

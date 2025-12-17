@@ -8,17 +8,16 @@ import {
   ChevronRight,
   Download,
   HelpCircle,
-  Key,
   MapPin,
   MessageSquare,
   Settings,
   Shuffle,
   Trash2,
   Type,
-  User as UserIcon, // ✅ 1. 引入图标
+  User as UserIcon,
+  // Key, // 🔥 [删除] 移除 Key 图标
 } from 'lucide-vue-next'
 
-// ✅ 2. 引入 Naive UI 组件和 Store
 import { NButton, NCard, NModal, NSelect, NSpace, NText } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
@@ -51,7 +50,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
-const settingStore = useSettingStore() // ✅ 初始化 Store
+const settingStore = useSettingStore()
 const { t } = useI18n()
 const showFeedback = ref(false)
 
@@ -60,27 +59,22 @@ function onAvatarClick() {
 }
 
 // ===========================================================================
-// 🔥 城市设置相关逻辑 (新增)
+// 🔥 城市设置相关逻辑
 // ===========================================================================
 const showCityModal = ref(false)
 const cityOptions = ref<{ label: string; value: string; lat: number; lon: number }[]>([])
 const loadingCity = ref(false)
 const selectedCityKey = ref<string | null>(null)
 
-// 打开弹窗时，初始化回显数据
 function openCityModal() {
-  // 从 Store 获取当前设置
   const current = settingStore.manualLocation
 
   if (current) {
     const valStr = JSON.stringify(current)
     selectedCityKey.value = valStr
-
-    // ✅ 修复核心：手动构造一个选项塞给 cityOptions
-    // 这样 n-select 就能查到 value 对应的 label (城市名) 并显示出来，而不是显示 JSON 字符串
     cityOptions.value = [{
-      label: current.name, // 显示的名字（如：富勒顿）
-      value: valStr, // 对应的值（JSON 字符串）
+      label: current.name,
+      value: valStr,
       lat: current.lat,
       lon: current.lon,
     }]
@@ -93,7 +87,6 @@ function openCityModal() {
   showCityModal.value = true
 }
 
-// 搜索城市 (Open-Meteo)
 async function handleSearchCity(query: string) {
   if (!query)
     return
@@ -123,7 +116,6 @@ async function handleSearchCity(query: string) {
   }
 }
 
-// 更新城市设置
 function handleUpdateCity(val: string | null) {
   selectedCityKey.value = val
   if (!val) {
@@ -136,7 +128,7 @@ function handleUpdateCity(val: string | null) {
 }
 
 // ===========================================================================
-// 🔥 递归渲染组件 (修复了单行语句问题)
+// 🔥 递归渲染组件
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
@@ -255,7 +247,6 @@ function toDateKeyStrFromISO(iso: string) {
   return `${y}-${m < 10 ? `0${m}` : m}-${day < 10 ? `0${day}` : day}`
 }
 
-// [修复] 这里的 if/else 结构进行了拆分和去括号处理
 async function fetchAllDates(userId: string) {
   const PAGE_SIZE = 1000
   const allDates: string[] = []
@@ -322,11 +313,8 @@ function handleItemClick(key: string) {
     return
   }
 
-  // ✅ 新增：处理默认城市点击
   if (key === 'defaultCity') {
     openCityModal()
-    // 注意：这里不调用 emit('close')，保持侧边栏打开，或者看你喜好
-    // 如果想选完城市关侧边栏，可以在 handleUpdateCity 里关，或者在这里关
     return
   }
 
@@ -351,7 +339,6 @@ const statsData = computed(() => ({
 }))
 
 onMounted(() => {
-  // 确保 Store 初始化
   settingStore.loadManualLocation?.()
 })
 </script>
@@ -451,11 +438,6 @@ onMounted(() => {
               <div class="menu-item sub" @click="handleItemClick('defaultCity')">
                 <MapPin :size="18" />
                 <span>{{ t('settings.default_city') || '默认城市' }}</span>
-              </div>
-
-              <div class="menu-item sub" @click="handleItemClick('activation')">
-                <Key :size="18" />
-                <span>{{ t('auth.activation_menu') || '输入邀请码' }}</span>
               </div>
 
               <div class="menu-item sub" @click="handleItemClick('help')">
