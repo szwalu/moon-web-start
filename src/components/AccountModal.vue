@@ -109,7 +109,7 @@ const canChangePassword = computed(() => {
 })
 
 // --- 监听器 ---
-
+const daysRemaining = ref(7)
 // 1. 打开弹窗时获取数据
 watch(() => props.show, async (visible) => {
   if (visible) {
@@ -122,6 +122,13 @@ watch(() => props.show, async (visible) => {
     }
     // ✅ [新增] 打开时检查激活状态
     await checkActivationStatus()
+    if (props.user) {
+      const registeredAt = new Date(props.user.created_at)
+      const now = new Date()
+      const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) // 记得和 Auth.vue 保持一致
+      daysRemaining.value = Math.max(0, 7 - diffDays)
+    }
   }
 })
 
@@ -825,7 +832,7 @@ function handleForgotOldPwd() {
       :show="showInternalActivation"
       :allow-close="true"
       :activated="isUserActivated"
-      @close="showInternalActivation = false"
+      :days-remaining="daysRemaining" @close="showInternalActivation = false"
       @success="onInternalActivationSuccess"
     />
   </Teleport>

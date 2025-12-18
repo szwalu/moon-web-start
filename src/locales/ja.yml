@@ -297,7 +297,7 @@ auth:
     title: 🎉 星雲ノートへようこそ
     description: |
       ノートは招待制です。
-      7日以内に招待コードを入力して有効化してください。
+      {days}日以内に招待コードを入力して有効化してください。
     verifying: 検証中...
     activate_button: アカウント有効化
     apply_link: 招待コードがない方はこちら

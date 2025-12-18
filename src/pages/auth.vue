@@ -32,14 +32,15 @@ const canDismissActivation = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
 const isUserActivated = ref(false)
+const daysRemaining = ref(7)
 watch(user, async (currentUser) => {
   if (currentUser) {
     const registeredAt = new Date(currentUser.created_at)
     const now = new Date()
     const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    const TRIAL_DAYS = 7 // 7天使用期
-
+    const TRIAL_DAYS = 7
+    daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
     const { data, error } = await supabase
       .from('users')
       .select('is_active')
@@ -3345,7 +3346,8 @@ function onCalendarUpdated(updated: any) {
       <ActivationModal
         :show="showActivation"
         :allow-close="canDismissActivation"
-        :activated="isUserActivated" @close="showActivation = false"
+        :activated="isUserActivated"
+        :days-remaining="daysRemaining" @close="showActivation = false"
         @success="onActivationSuccess"
       />
     </template>

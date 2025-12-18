@@ -295,7 +295,7 @@ auth:
     title: 🎉 欢迎使用星云笔记
     description: |
       笔记目前采用邀请制，请在
-      7天内输入邀请码完成激活。
+      {days}天内输入邀请码完成激活。
     verifying: 验证中...
     activate_button: 激活账号
     apply_link: 没有邀请码？点击申请

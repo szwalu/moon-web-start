@@ -2,17 +2,16 @@
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-
 import { CheckCircle2 } from 'lucide-vue-next'
-
-// ✅ [新增] 引入打钩图标
 import { supabase } from '@/utils/supabaseClient'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
   allowClose: { type: Boolean, default: false },
-  // ✅ [新增] 接收激活状态
+  // 接收激活状态
   activated: { type: Boolean, default: false },
+  // ✅ [新增] 接收剩余天数，默认为 7
+  daysRemaining: { type: Number, default: 7 },
 })
 
 const emit = defineEmits(['success', 'close'])
@@ -78,7 +77,15 @@ async function handleSecondaryAction() {
       <div v-else>
         <h2>{{ t('auth.activation.title') }}</h2>
 
-        <p class="desc">{{ t('auth.activation.description') }}</p>
+        <i18n-t
+          keypath="auth.activation.description"
+          tag="p"
+          class="desc"
+        >
+          <template #days>
+            <span class="highlight-days">{{ daysRemaining }}</span>
+          </template>
+        </i18n-t>
 
         <input
           v-model="inviteCode"
@@ -195,6 +202,14 @@ h2 {
   line-height: 1.6;
   white-space: pre-line;
   color: var(--act-desc);
+}
+
+/* ✅ [新增] 倒计时数字高亮样式 */
+.highlight-days {
+  color: var(--act-title);
+  font-weight: bold;
+  font-size: 1.2em; /* 稍微大一点 */
+  margin: 0 4px;
 }
 
 /* 已激活状态的样式 */

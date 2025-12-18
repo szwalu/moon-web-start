@@ -296,7 +296,7 @@ auth:
     title: 🎉 Welcome to Moon Note
     description: |
       Notes are invite-only.
-      Enter an invite code within 7 days to activate.
+      Enter an invite code within {days} days to activate.
     verifying: Verifying...
     activate_button: Activate Account
     apply_link: No invite code? Apply here
