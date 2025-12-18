@@ -278,7 +278,7 @@ auth:
     email_not_confirmed: ❌ 请先确认您的邮箱。
     operation_failed: ❌ 操作失败。
     passwords_do_not_match: ❌ 两次输入的密码不一致！
-    reset_success: 重置密码邮件已发送，请前往邮箱查收。
+    reset_success: 重置密码邮件已发送，请检查您的收件箱（包括垃圾邮件）。
     reset_failed: 发送失败
     enter_email: 请输入您的帐号
     enter_registered_email: 请输入您的注册邮箱：
@@ -290,6 +290,11 @@ auth:
     old_password_wrong: 旧密码错误，请检查
     change_password_success: 密码修改成功，即将跳转登录...
     change_password_failed: 修改失败，请重试
+  errors:
+    invalid_login_credentials: 账号或密码错误
+    password_too_short: 密码长度不能少于 6 位
+    user_exists: 该邮箱已被注册，请直接登录
+    default: 登录失败，请稍后重试
 
   activation:
     title: 🎉 欢迎使用星云笔记
@@ -301,6 +306,9 @@ auth:
     apply_link: 没有邀请码？点击申请
     success_message: 激活成功！欢迎使用
     verify_failed: 验证失败
+    errors:
+      invite_code_invalid_or_used: 邀请码无效或已被使用
+      default: 验证失败，请稍后重试
 
   default_nickname: 用户
   profile_updated: 资料更新成功

@@ -286,12 +286,15 @@ auth:
     reset_success_redirect: ✅ パスワード再設定成功！ログイン画面へ移動します...
     no_backup_yet: バックアップなし
     invalid_invite_code: 無効な招待コード
-    # --- 追加メッセージ ---
     fill_all_fields: すべてのパスワード欄を入力してください
     password_too_short: 新パスワードは6文字以上必要です
     old_password_wrong: 旧パスワードが間違っています
     change_password_success: パスワード変更成功。ログイン画面へ移動します...
     change_password_failed: 変更失敗。もう一度お試しください
+  errors:
+    invalid_login_credentials: アカウントまたはパスワードが正しくありません。
+    password_too_short: パスワードは 6 文字以上である必要があります。
+    default: ログインに失敗しました。しばらくしてから再試行してください。
 
   activation:
     title: 🎉 星雲ノートへようこそ
@@ -303,6 +306,9 @@ auth:
     apply_link: 招待コードがない方はこちら
     success_message: 有効化に成功しました！ようこそ。
     verify_failed: 検証に失敗しました
+    errors:
+      invite_code_invalid_or_used: 招待コードが無効、または既に使用されています。
+      default: 認証に失敗しました。しばらくしてから再試行してください。
 
   default_nickname: ユーザー
   profile_updated: プロフィールを更新しました

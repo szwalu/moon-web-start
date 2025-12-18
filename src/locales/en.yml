@@ -291,6 +291,10 @@ auth:
     old_password_wrong: Old password incorrect
     change_password_success: Password changed successfully. Redirecting to login...
     change_password_failed: Change failed, please try again
+  errors:
+    invalid_login_credentials: Incorrect username or password.
+    password_too_short: Password should be at least 6 characters.
+    default: Login failed. Please try again later.
 
   activation:
     title: 🎉 Welcome to Moon Note
@@ -302,6 +306,9 @@ auth:
     apply_link: No invite code? Apply here
     success_message: Activation successful! Welcome.
     verify_failed: Verification failed
+    errors:
+      invite_code_invalid_or_used: The invite code is invalid or already used.
+      default: Verification failed. Please try again later.
 
   default_nickname: User
   profile_updated: Profile updated successfully

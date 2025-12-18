@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-
-// 引入 onMounted (可选，但在 setup 中直接执行也可以)
 import { useRoute, useRouter } from 'vue-router'
-
-// [修改 1] 引入 useRoute
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
@@ -13,7 +9,7 @@ import { useAutoSave } from '@/composables/useAutoSave'
 
 // --- 初始化 & 状态 ---
 const router = useRouter()
-const route = useRoute() // [修改 2] 获取当前路由对象
+const route = useRoute() // [新增] 获取当前路由对象
 const { t } = useI18n()
 const messageHook = useMessage()
 const authStore = useAuthStore()
@@ -22,14 +18,14 @@ const { autoLoadData } = useAutoSave()
 // 默认是 login
 const mode = ref<'login' | 'register' | 'forgotPassword'>('login')
 
-// [修改 3] 检测 URL 参数，如果是 ?mode=forgot，则自动切换到忘记密码模式
+// [新增] 检测 URL 参数，如果是 ?mode=forgot，则自动切换到忘记密码模式
 if (route.query.mode === 'forgot')
   mode.value = 'forgotPassword'
 
 const email = ref('')
 const password = ref('')
 const passwordConfirm = ref('')
-const inviteCode = ref('') // 变量保留，但不再使用
+// const inviteCode = ref('') // [已废弃] 注册阶段不再需要邀请码
 const message = ref('')
 const loading = ref(false)
 const resetEmailSent = ref(false)
@@ -42,17 +38,14 @@ const pageTitle = computed(() => {
   return t('auth.forgot_password')
 })
 
-// ... 现有的 import ...
-// 如果想要 Google 图标，可能需要引入一个 SVG 或者图片，这里暂时用文字或简单的 CSS 模拟
-
-// 在 setup 中增加这个函数
+// [新增] Google OAuth 登录处理函数
 async function handleGoogleLogin() {
   loading.value = true
   try {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // 登录成功后跳回当前页面的来源
+        // 登录成功后跳回当前页面的来源，通常是 /auth 或首页
         redirectTo: `${window.location.origin}/auth`,
       },
     })
@@ -72,17 +65,23 @@ function setMode(newMode: 'login' | 'register' | 'forgotPassword') {
   message.value = ''
   password.value = ''
   passwordConfirm.value = ''
-  inviteCode.value = ''
+  // inviteCode.value = ''
   resetEmailSent.value = false
 }
 
 async function handleSubmitAuth() {
+  // 1. 前端预检查 (可选，但推荐)：
+  // 其实最好在发送请求前就拦截，既快又省流量
+  if ((mode.value === 'register' || mode.value === 'login') && password.value.length < 6) {
+    message.value = t('auth.errors.password_too_short')
+    return
+  }
+
   if (mode.value === 'register') {
     if (password.value !== passwordConfirm.value) {
       message.value = t('auth.messages.passwords_do_not_match')
       return
     }
-    // [修改] 已移除邀请码校验逻辑，允许直接注册
   }
 
   loading.value = true
@@ -90,34 +89,57 @@ async function handleSubmitAuth() {
 
   try {
     if (mode.value === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.value, password: password.value })
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value,
+      })
       if (error)
-        throw error
+        throw error // 抛出错误进入 catch 处理
+
       await authStore.refreshUser()
       await autoLoadData({ $message: messageHook, t })
       await router.replace('/auth')
     }
     else if (mode.value === 'register') {
-      // [修改] 注册时不再传递 invite_code
       const { error } = await supabase.auth.signUp({
         email: email.value,
         password: password.value,
       })
-
       if (error)
-        throw error
+        throw error // 抛出错误进入 catch 处理
+
       message.value = t('auth.messages.check_email_for_verification')
     }
     else {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.value, { redirectTo: `${window.location.origin}/update-password` })
+      const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
+        redirectTo: `${window.location.origin}/update-password`,
+      })
       if (error)
         throw error
+
       message.value = t('auth.messages.reset_success')
       resetEmailSent.value = true
     }
   }
   catch (err: any) {
-    message.value = err.message || t('auth.messages.reset_failed')
+    // ✅ [核心修改] 集中处理 Supabase 系统错误映射
+    const sysMsg = err.message
+
+    if (sysMsg === 'Invalid login credentials') {
+      message.value = t('auth.errors.invalid_login_credentials')
+    }
+    else if (sysMsg === 'Password should be at least 6 characters') {
+      message.value = t('auth.errors.password_too_short')
+    }
+    else if (sysMsg === 'User already registered') {
+      // 如果你以后遇到“用户已注册”，也可以加在这里
+      message.value = t('auth.errors.user_exists')
+      message.value = `${t('auth.errors.default')} (${sysMsg})`
+    }
+    else {
+      // 兜底显示
+      message.value = sysMsg || t('auth.messages.reset_failed')
+    }
   }
   finally {
     loading.value = false
@@ -131,7 +153,13 @@ async function handleSubmitAuth() {
     <form class="auth-form" @submit.prevent="handleSubmitAuth">
       <label>
         {{ mode === 'forgotPassword' ? $t('auth.messages.enter_email') : $t('auth.email') }}
-        <input v-model="email" type="email" :placeholder="mode === 'forgotPassword' ? $t('auth.messages.enter_registered_email') : $t('auth.email_placeholder')" :disabled="mode === 'forgotPassword' && resetEmailSent" required>
+        <input
+          v-model="email"
+          type="email"
+          :placeholder="mode === 'forgotPassword' ? $t('auth.messages.enter_registered_email') : $t('auth.email_placeholder')"
+          :disabled="mode === 'forgotPassword' && resetEmailSent"
+          required
+        >
       </label>
       <label v-if="mode !== 'forgotPassword'">
         {{ $t('auth.password') }}
@@ -156,6 +184,7 @@ async function handleSubmitAuth() {
           {{ $t('auth.return') }}
         </button>
       </template>
+
       <template v-else>
         <button type="submit" :disabled="loading">
           <span v-if="loading">{{ $t('auth.loading') }}</span>
@@ -164,11 +193,10 @@ async function handleSubmitAuth() {
           <span v-else>{{ t('auth.confirm') }}</span>
         </button>
       </template>
-      <p v-if="message" class="message">{{ message }}</p>
 
-      <template v-else>
-        <button type="submit" :disabled="loading" />
-      </template>
+      <p v-if="message" class="message">
+        {{ message }}
+      </p>
 
       <div v-if="mode === 'login' || mode === 'register'" style="margin-top: 1.5rem;">
         <div class="divider">
@@ -189,7 +217,6 @@ async function handleSubmitAuth() {
           Sign in with Google
         </button>
       </div>
-      <p v-if="message" class="message">{{ message }}</p>
 
       <div v-if="mode === 'login'" class="toggle-row">
         <div class="toggle-left">
@@ -209,7 +236,7 @@ async function handleSubmitAuth() {
 </template>
 
 <style scoped>
-/* 样式保持不变 */
+/* 样式保持完全一致 */
 h1 {
   text-align: center;
   margin-bottom: 2rem;
@@ -283,7 +310,7 @@ button:disabled {
   margin-top: 1rem;
   text-align: center;
   font-weight: bold;
-  color: red; /* Make error messages stand out */
+  color: red;
 }
 
 .toggle {
@@ -330,8 +357,6 @@ button:disabled {
   color: #2dd4bf;
 }
 
-/* ... 现有样式 ... */
-
 .divider {
   display: flex;
   align-items: center;
@@ -357,6 +382,7 @@ button:disabled {
   border-bottom-color: #444;
 }
 
+/* Google Button Styles */
 .google-btn {
   background-color: white;
   color: #333;
@@ -365,7 +391,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s;
-  margin-top: 0; /* 覆盖原来的 margin-top */
+  margin-top: 0;
 }
 .google-btn:hover {
   background-color: #f8f8f8;

@@ -39,12 +39,42 @@ async function handleActivate() {
       emit('success')
     }
     else {
-      throw new Error(data?.message || t('auth.activation.verify_failed'))
+      // ✅ [核心修改] 国际化处理逻辑
+      // 1. 获取后端返回的错误码 (例如: 'invite_code_invalid_or_used')
+      const errorCode = data?.message
+
+      // 2. 尝试去语言包里找对应的翻译
+      //    假设语言包路径是 auth.activation.errors.xxx
+      //    如果不存这个翻译，就显示默认错误
+      const i18nKey = `auth.activation.errors.${errorCode}`
+
+      // 3. 使用 te() (translate exists) 检查该 key 是否存在，不存在则用默认
+      //    (Vue I18n 的 te 函数需要从 useI18n 解构出来，或者直接尝试翻译)
+      //    更简单的写法是直接利用 t 的 fallback：
+
+      let errorMsg = ''
+
+      // 这是一个简单的容错处理：
+      // 如果 errorCode 是空的，或者包含空格（说明可能是旧的中文），就直接显示
+      if (!errorCode || errorCode.includes(' ')) {
+        errorMsg = errorCode || t('auth.activation.errors.default')
+      }
+      else {
+        // 尝试翻译
+        errorMsg = t(i18nKey)
+
+        // 如果翻译出来还是 key 本身（说明没找到翻译），就显示默认文案
+        if (errorMsg === i18nKey)
+          errorMsg = t('auth.activation.errors.default')
+      }
+
+      throw new Error(errorMsg)
     }
   }
   catch (e: any) {
     console.error(e)
-    messageHook.error(e.message || t('auth.activation.verify_failed'))
+    // 这里直接显示上面处理好的 errorMsg
+    messageHook.error(e.message)
   }
   finally {
     loading.value = false
