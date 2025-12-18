@@ -280,3 +280,9 @@ h2 {
   transition: color 0.3s;
 }
 </style>
+
+<style>
+.n-message-container {
+  z-index: 20000 !important; /* 必须比 ActivationModal 的 9999 大 */
+}
+</style>
