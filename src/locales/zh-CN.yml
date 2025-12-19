@@ -271,6 +271,24 @@ auth:
   signature_label: 签名
   input_signature: 输入个性签名...
   signature_updated: 签名更新成功
+
+  delete_account:
+    delete: 注销
+    title: 删除账户
+    warning_1: 此操作无法撤销。
+    warning_2: 此操作将永久删除你的整个帐户和所有相关数据。
+    instruction_pwd: 请输入你的注册账号和密码进行确认。
+    instruction_oauth: 请输入你的注册邮箱账号进行确认。
+    placeholder_account: 账号
+    placeholder_password: 密码
+    confirm_btn: 永久删除
+    deleting: 删除中...
+    msg_enter_account: 请输入账号
+    msg_enter_password: 请输入密码
+    msg_account_mismatch: 输入的账号与当前登录账号不一致
+    msg_auth_failed: 密码错误或账号验证失败
+    msg_success: 账户已永久删除
+    msg_failed: 删除失败，请重试
   messages:
     check_email_for_verification: ✅ 注册成功！请检查您的收件箱（包括垃圾邮件）来验证您的邮箱。
     check_email_or_login: 该邮箱可能已注册。请检查您的收件箱（包括垃圾邮件）以完成验证，或直接尝试登录。

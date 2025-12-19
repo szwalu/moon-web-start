@@ -272,6 +272,24 @@ auth:
   signature_label: 自己紹介
   input_signature: 自己紹介を入力...
   signature_updated: 自己紹介を更新しました
+
+  delete_account:
+    delete: 退会
+    title: アカウント削除
+    warning_1: この操作は取り消せません。
+    warning_2: アカウントとすべての関連データが完全に削除されます。
+    instruction_pwd: 確認のため、登録アカウント（メール）とパスワードを入力してください。
+    instruction_oauth: 確認のため、登録アカウント（メール）を入力してください。
+    placeholder_account: アカウント
+    placeholder_password: パスワード
+    confirm_btn: 完全に削除
+    deleting: 削除中...
+    msg_enter_account: アカウントを入力してください
+    msg_enter_password: パスワードを入力してください
+    msg_account_mismatch: 入力されたアカウントが現在のアカウントと一致しません
+    msg_auth_failed: パスワードが間違っているか、認証に失敗しました
+    msg_success: アカウントを永久に削除しました
+    msg_failed: 削除に失敗しました。もう一度お試しください
   messages:
     check_email_for_verification: ✅ 登録成功！メールを確認して認証を完了してください。
     check_email_or_login: 登録済みメールの可能性があります。受信箱を確認するか、ログインしてください。

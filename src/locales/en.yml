@@ -272,6 +272,24 @@ auth:
   signature_label: Bio
   input_signature: Enter your bio...
   signature_updated: Bio updated successfully
+
+  delete_account:
+    delete: Delete
+    title: Delete Account
+    warning_1: This action cannot be undone.
+    warning_2: This will permanently delete your entire account and all associated data.
+    instruction_pwd: Please enter your registered email and password to confirm.
+    instruction_oauth: Please enter your registered email to confirm.
+    placeholder_account: Email Account
+    placeholder_password: Password
+    confirm_btn: Permanently Delete
+    deleting: Deleting...
+    msg_enter_account: Please enter your email account.
+    msg_enter_password: Please enter your password.
+    msg_account_mismatch: The entered account does not match the current login.
+    msg_auth_failed: Password incorrect or verification failed.
+    msg_success: Account permanently deleted.
+    msg_failed: Deletion failed, please try again.
   messages:
     check_email_for_verification: ✅ Registration successful! Please check your inbox (including spam) to verify your email.
     check_email_or_login: Email might be registered. Check your inbox to verify or try logging in.

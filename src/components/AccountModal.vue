@@ -10,6 +10,9 @@ import 'vue-cropper/dist/index.css'
 // ✅ [新增] 1. 引入激活弹窗组件
 import ActivationModal from '@/components/ActivationModal.vue'
 
+// ✅ [新增] 2. 引入删除账户弹窗组件
+import DeleteAccountModal from '@/components/DeleteAccountModal.vue'
+
 const props = defineProps({
   show: { type: Boolean, required: true },
   email: { type: String, default: '' },
@@ -21,9 +24,10 @@ const VueCropper = defineAsyncComponent(() =>
   import('vue-cropper').then(mod => mod.VueCropper),
 )
 
-// ✅ [新增] 2. 定义控制弹窗显示的变量
+// ✅ 定义控制弹窗显示的变量
 const showInternalActivation = ref(false)
-const isUserActivated = ref(false) // 存储用户是否已激活的状态
+const showDeleteAccount = ref(false) // [新增] 控制删除弹窗
+const isUserActivated = ref(false)
 
 // ---新增：裁剪相关状态---
 const showCropper = ref(false)
@@ -120,19 +124,17 @@ watch(() => props.show, async (visible) => {
       fetchStorageStats()
       hasFetched.value = true
     }
-    // ✅ [新增] 打开时检查激活状态
     await checkActivationStatus()
     if (props.user) {
       const registeredAt = new Date(props.user.created_at)
       const now = new Date()
       const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) // 记得和 Auth.vue 保持一致
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       daysRemaining.value = Math.max(0, 7 - diffDays)
     }
   }
 })
 
-// ✅ [新增] 检查激活状态
 async function checkActivationStatus() {
   if (!props.user)
     return
@@ -142,17 +144,15 @@ async function checkActivationStatus() {
     .eq('id', props.user.id)
     .single()
 
-  // 更新状态
   isUserActivated.value = (data && data.is_active === true)
 }
 
-// ✅ [新增] 激活成功后的回调
 function onInternalActivationSuccess() {
   showInternalActivation.value = false
-  isUserActivated.value = true // 更新界面显示为“已激活”
+  isUserActivated.value = true
 }
 
-// 2. 监听用户信息变化，智能同步头像（缓存优先策略）
+// 2. 监听用户信息变化
 watch(() => userAvatar.value, (newUrl) => {
   if (!newUrl) {
     currentAvatarSrc.value = null
@@ -677,7 +677,12 @@ function handleForgotOldPwd() {
 
           <div class="info-item">
             <span class="info-label">{{ t('notes.account.email_label') }}</span>
-            <span class="info-value">{{ email }}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="info-value">{{ email }}</span>
+              <span class="delete-link" @click="showDeleteAccount = true">
+                {{ t('auth.delete_account.delete') }}
+              </span>
+            </div>
           </div>
 
           <div v-if="canChangePassword" class="info-item">
@@ -835,10 +840,18 @@ function handleForgotOldPwd() {
       :days-remaining="daysRemaining" @close="showInternalActivation = false"
       @success="onInternalActivationSuccess"
     />
+
+    <DeleteAccountModal
+      :show="showDeleteAccount"
+      :user="user"
+      @close="showDeleteAccount = false"
+    />
   </Teleport>
 </template>
 
 <style scoped>
+/* ...原有样式保持不变，只添加一个新样式... */
+
 /* ===========================================================================
    🎨 账户组件主题变量定义
    支持：默认浅色、系统深色模式、手动 .dark 类
@@ -1075,6 +1088,35 @@ function handleForgotOldPwd() {
   font-weight: 600;
   font-size: 14px;
   color: #00b386;
+}
+
+/* ✅ [新增] "输入" 按钮样式 (模拟链接) */
+.input-action {
+  font-weight: 500;
+  font-size: 14px;
+  color: #00b386;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.input-action:hover {
+  opacity: 0.8;
+}
+:global(.dark) .input-action {
+  color: #2dd4bf;
+}
+
+/* ✅ [新增] 注销链接样式 */
+.delete-link {
+  font-size: 10px;
+  color: #999;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.delete-link:hover {
+  color: #f56c6c; /* 悬停变红 */
+  text-decoration: underline;
 }
 
 .storage-section {
