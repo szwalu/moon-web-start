@@ -2251,7 +2251,9 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :style="{ paddingBottom: `${bottomSafePadding}px` }"
+    class="note-editor-reborn"
+    :class="{ 'editing-viewport': isEditing }"
+    :style="{ paddingBottom: `${bottomSafePadding}px` }"
   >
     <input
       ref="imageInputRef"
@@ -2684,7 +2686,7 @@ function handleBeforeInput(e: InputEvent) {
 
   /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
   /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
-  height: 55vh;
+  height: 65vh;
   max-height: 100dvh;
 
   overflow: hidden;
@@ -2833,8 +2835,8 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
-  padding-bottom: calc(60px + constant(safe-area-inset-bottom));
-  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  padding-bottom: calc(24px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 
   background-color: #fff;
   border-top: 1px solid #eee;
