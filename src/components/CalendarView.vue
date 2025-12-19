@@ -1279,15 +1279,15 @@ async function saveNewNote(content: string, weather: string | null) {
 /* [新建笔记] 状态：默认高度 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
   /* 👇 把这里的 240px 改成 360px 或更大 */
-  height: 360px !important;
-  min-height: 360px !important;
+  height: 460px !important;
+  min-height: 460px !important;
   max-height: none !important;
 }
 
 /* [编辑旧笔记] 状态：编辑时的高度 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   /* 👇 把这里的 50vh (屏幕一半) 改成 65vh (屏幕的 65%) */
-  height: 65vh !important;
+  height: 75vh !important;
   min-height: 400px !important;
   max-height: 80vh !important;
 }
