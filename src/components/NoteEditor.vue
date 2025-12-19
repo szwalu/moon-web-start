@@ -2827,7 +2827,7 @@ function handleBeforeInput(e: InputEvent) {
   justify-content: space-between;
 
   /* 原来可能写的 8px 太少了，改成 20px 或更多 */
-  padding: 8px 12px;
+  padding: 2px 3px;
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
