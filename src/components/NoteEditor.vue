@@ -2816,19 +2816,22 @@ function handleBeforeInput(e: InputEvent) {
   align-items: center;
   justify-content: space-between;
 
-  /* 🔥 修改 1：增加底部安全区 padding */
-  padding: 8px 12px; /* 顶部和左右的 padding */
-  padding-bottom: calc(8px + constant(safe-area-inset-bottom)); /* 兼容旧版 iOS */
-  padding-bottom: calc(8px + env(safe-area-inset-bottom)); /* 核心：键盘收起时，自动垫高避开黑条 */
+  /* 原来可能写的 8px 太少了，改成 20px 或更多 */
+  padding: 8px 12px;
 
-  background-color: #fff; /* 🔥 修改 2：确保有背景色，防止透明看不清 */
+  /* 🔥 核心修改：加大基础间距 */
+  /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
+  padding-bottom: calc(24px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+
+  background-color: #fff;
   border-top: 1px solid #eee;
-
-  /* 🔥 修改 3：确保它在最上层 */
   z-index: 100;
-  flex-shrink: 0; /* 防止被挤压 */
-}
+  flex-shrink: 0;
 
+  /* 确保内边距不会撑大整体高度导致溢出 */
+  box-sizing: border-box;
+}
 /* 深色模式适配 */
 .dark .editor-footer {
   background-color: #1e1e1e;
