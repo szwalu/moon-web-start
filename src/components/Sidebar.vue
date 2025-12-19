@@ -70,82 +70,108 @@ const selectedCityKey = ref<string | null>(null)
 async function autoSuggestCurrentCity() {
   loadingCity.value = true
 
+  let cityName = ''
+  let lat = 0
+  let lon = 0
+
+  // ---------------------------------------------------------
+  // 阶段 1: 尝试 GPS 硬件定位
+  // ---------------------------------------------------------
   try {
-    // 2. 尝试获取浏览器坐标 (针对 Android 优化：10秒超时 + 低精度)
     const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
       // eslint-disable-next-line prefer-promise-reject-errors
       if (!navigator.geolocation)
         return reject('No Geo')
 
+      // Android 优化: 5秒超时
       // eslint-disable-next-line prefer-promise-reject-errors
-      const id = setTimeout(() => reject('Geo Timeout'), 10000)
+      const id = setTimeout(() => reject('Geo Timeout'), 5000)
 
       navigator.geolocation.getCurrentPosition(
         (p) => {
+          // ✅ 修复：拆成多行
           clearTimeout(id)
           resolve(p)
         },
         (e) => {
+          // ✅ 修复：拆成多行
           clearTimeout(id)
           reject(e)
         },
-        // enableHighAccuracy: false 能显著提高 Android 成功率，timeout 设为 10秒
-        { maximumAge: 60000, timeout: 10000, enableHighAccuracy: false },
+        { maximumAge: 60000, timeout: 5000, enableHighAccuracy: false },
       )
     })
 
-    const { latitude, longitude } = pos.coords
+    // GPS 成功拿到坐标
+    lat = pos.coords.latitude
+    lon = pos.coords.longitude
 
-    // 3. 拿到坐标，去问 Nominatim
+    // 拿着坐标去问 Nominatim
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 1500)
-
-    let cityName = ''
+    const timeoutId = setTimeout(() => controller.abort(), 2000) // 2秒请求超时
 
     try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`
       const res = await fetch(url, { signal: controller.signal })
       clearTimeout(timeoutId)
-
       if (res.ok) {
         const data = await res.json()
         cityName = data.address?.city || data.address?.town || data.address?.village || data.address?.county || ''
       }
     }
     catch {
-      // Nominatim 失败，尝试 IP
-      try {
-        const ipRes = await fetch('https://ipapi.co/json/')
-        if (ipRes.ok) {
-          const ipData = await ipRes.json()
-          cityName = ipData.city || ''
-        }
-      }
-      catch {
-        // ignore
-      }
-    }
-
-    if (cityName) {
-      const valObj = { name: cityName, lat: latitude, lon: longitude }
-      const valStr = JSON.stringify(valObj)
-
-      cityOptions.value = [{
-        label: `📍 ${cityName} (自动检测)`,
-        value: valStr,
-        lat: latitude,
-        lon: longitude,
-      }]
-      selectedCityKey.value = valStr
-      handleUpdateCity(valStr)
+      // Nominatim 挂了，但我们有坐标，先留空
     }
   }
   catch {
-    // 失败保持静默
+    // ⚠️ GPS 彻底失败 (Android HTTP环境大概率走这里)
   }
-  finally {
-    loadingCity.value = false
+
+  // ---------------------------------------------------------
+  // 阶段 2: 如果 GPS 没拿到城市名，强制使用 IP 定位兜底
+  // ---------------------------------------------------------
+  if (!cityName) {
+    try {
+      // 使用 ipapi.co
+      const ipRes = await fetch('https://ipapi.co/json/')
+      if (ipRes.ok) {
+        const ipData = await ipRes.json()
+        cityName = ipData.city || ''
+        // 如果之前 GPS 失败导致经纬度是 0，顺便补上
+        if (!lat || !lon) {
+          lat = ipData.latitude || 0
+          lon = ipData.longitude || 0
+        }
+      }
+    }
+    catch {
+      // IP 也失败
+    }
   }
+
+  // ---------------------------------------------------------
+  // 阶段 3: 填入结果
+  // ---------------------------------------------------------
+  if (cityName && lat && lon) {
+    const valObj = { name: cityName, lat, lon }
+    const valStr = JSON.stringify(valObj)
+
+    // 标记来源
+    const labelTag = (lat === 0) ? 'IP' : '自动'
+
+    cityOptions.value = [{
+      label: `📍 ${cityName} (${labelTag})`,
+      value: valStr,
+      lat,
+      lon,
+    }]
+    selectedCityKey.value = valStr
+
+    // 自动保存
+    handleUpdateCity(valStr)
+  }
+
+  loadingCity.value = false
 }
 
 // 打开弹窗
