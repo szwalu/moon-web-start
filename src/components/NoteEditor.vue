@@ -2686,7 +2686,7 @@ function handleBeforeInput(e: InputEvent) {
 
   /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
   /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
-  height: 65vh;
+  height: 75vh;
   max-height: 100dvh;
 
   overflow: hidden;
@@ -2696,11 +2696,7 @@ function handleBeforeInput(e: InputEvent) {
   /* 加上这个过渡，切换高度时顺滑一点 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
-/* ✅ 新增：如果是“编辑模式”(isEditing=true)，则保持全屏体验 */
-/* 这样编辑旧笔记时，依然可以利用整个屏幕空间 */
-.note-editor-reborn.editing-viewport {
-  height: 100dvh;
-}
+
 .note-editor-reborn:focus-within {
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
@@ -2835,8 +2831,8 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
-  padding-bottom: calc(24px + constant(safe-area-inset-bottom));
-  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  padding-bottom: calc(10px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 
   background-color: #fff;
   border-top: 1px solid #eee;
