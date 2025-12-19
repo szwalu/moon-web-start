@@ -1276,20 +1276,21 @@ async function saveNewNote(content: string, weather: string | null) {
 
 /* 3. 🔥 核心修复：给输入框强制指定高度 */
 
-/* [新建笔记] 状态：给一个舒适的固定高度 (例如 240px) */
+/* [新建笔记] 状态：默认高度 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  height: 240px !important;       /* 强制高度 */
-  min-height: 240px !important;   /* 防止塌陷 */
-  max-height: none !important;    /* 允许内容无限长(内部滚动) */
+  /* 👇 把这里的 240px 改成 360px 或更大 */
+  height: 360px !important;
+  min-height: 360px !important;
+  max-height: none !important;
 }
 
-/* [编辑旧笔记] 状态：给更高的视口，方便查看上下文 */
+/* [编辑旧笔记] 状态：编辑时的高度 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  height: 50vh !important;        /* 占据屏幕一半高度 */
-  min-height: 300px !important;   /* 至少 300px */
-  max-height: 60vh !important;    /* 限制最大高度 */
+  /* 👇 把这里的 50vh (屏幕一半) 改成 65vh (屏幕的 65%) */
+  height: 65vh !important;
+  min-height: 400px !important;
+  max-height: 80vh !important;
 }
-
 .calendar-nav-title {
   font-weight: 600;
 }
