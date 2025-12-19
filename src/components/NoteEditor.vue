@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+
 import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
@@ -112,6 +113,8 @@ const input = computed({
   get: () => props.modelValue,
   set: val => emit('update:modelValue', val),
 })
+
+// 定义一个空的 triggerResize 防止报错（因为你 expose 出去了）
 function triggerResize() { /* 不需要 resize 了，因为是 CSS 控制高度 */ }
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
@@ -1142,6 +1145,20 @@ function recomputeBottomSafePadding() {
   // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
+      if (isAndroid) {
+        const ratio = 1.6
+        const cap = 420
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
+      else {
+        const ratio = 0.35
+        const cap = 80
+        const delta = Math.min(Math.ceil(need * ratio), cap)
+        if (delta > 0 && props.enableScrollPush)
+          window.scrollBy(0, delta) // ✅ 仅在开启时推页
+      }
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
@@ -1475,7 +1492,7 @@ function onBlur() {
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
-  window.scrollTo(0, 0)
+
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -2080,21 +2097,6 @@ function onWindowScrollOrResize() {
   if (showFormatPalette.value)
     placeFormatPalette()
 }
-
-// 新增：专门处理 VisualViewport Resize 的函数
-// 用来在键盘收起时，强制把 window 滚动条归位
-function handleVisualViewportResize() {
-  // 1. 执行原有的底部安全区计算
-  recomputeBottomSafePadding()
-
-  // 2. 核心修复：检测键盘是否收起
-  // 如果可视视口高度大于屏幕高度的 85%，说明键盘很可能收起了
-  const vv = window.visualViewport
-  if (vv && vv.height > window.innerHeight * 0.85)
-    window.scrollTo(0, 0)
-}
-
-// 监听 Window 滚动/尺寸 (保持不变，用于浮动工具栏跟随)
 onMounted(() => {
   window.addEventListener('scroll', onWindowScrollOrResize, true)
   window.addEventListener('resize', onWindowScrollOrResize)
@@ -2104,20 +2106,17 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
-// 监听 VisualViewport (修改后)
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    // 🔴 修改：这里绑定新的 handleVisualViewportResize，而不是直接绑定 recomputeBottomSafePadding
-    vv.addEventListener('resize', handleVisualViewportResize)
+    vv.addEventListener('resize', recomputeBottomSafePadding)
     vv.addEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    // 🔴 修改：卸载时也要对应卸载新的函数
-    vv.removeEventListener('resize', handleVisualViewportResize)
+    vv.removeEventListener('resize', recomputeBottomSafePadding)
     vv.removeEventListener('scroll', recomputeBottomSafePadding)
   }
 })
@@ -2676,23 +2675,17 @@ function handleBeforeInput(e: InputEvent) {
 </template>
 
 <style scoped>
-:global(html), :global(body) {
-  height: 100%;
-  width: 100%;
-  overflow: hidden; /* 🔥 关键：禁止 body 滚动，只让 editor-wrapper 滚动 */
-  position: fixed; /* 某些极端机型可能需要这个来彻底锁死 */
-}
 .note-editor-reborn {
   position: relative;
   background-color: #f9f9f9;
-  border: 1px solid #e0e0e0;
-  border-radius: 0; /* 建议：全屏模式下去掉圆角 */
 
-  /* 🔥 核心修改：Flex 纵向布局 + 全屏高度 */
+  /* 🔥 修改 4：强制使用动态视口高度，并禁止溢出 */
+  height: 100dvh;      /* 核心：占满当前可见高度 */
+  max-height: 100dvh;  /* 双重保险 */
+  overflow: hidden;    /* 核心：禁止外层滚动，只允许内部 textarea 滚动 */
+
   display: flex;
   flex-direction: column;
-  height: 100dvh; /* 关键：占满动态视口高度 */
-  box-sizing: border-box;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2708,12 +2701,10 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 .editor-wrapper {
-  position: relative;
-  /* 🔥 核心修改：弹性伸缩 */
   flex: 1;
-  display: flex; /* 让内部的 textarea 也能撑开 */
+  display: flex;
   flex-direction: column;
-  min-height: 0; /* 防止 flex 子元素溢出无法滚动 */
+  min-height: 0; /* Flex 布局防溢出经典补丁 */
   overflow: hidden;
 }
 .note-editor-reborn.android .editor-wrapper {
@@ -2744,6 +2735,9 @@ function handleBeforeInput(e: InputEvent) {
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable;
+  height: 100%;
+  overflow-y: auto; /* 让文字在内部滚动 */
+  padding-bottom: 40px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
@@ -2821,11 +2815,25 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 6px;
-  border-top: none;
-  background-color: transparent;
+
+  /* 🔥 修改 1：增加底部安全区 padding */
+  padding: 8px 12px; /* 顶部和左右的 padding */
+  padding-bottom: calc(8px + constant(safe-area-inset-bottom)); /* 兼容旧版 iOS */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom)); /* 核心：键盘收起时，自动垫高避开黑条 */
+
+  background-color: #fff; /* 🔥 修改 2：确保有背景色，防止透明看不清 */
+  border-top: 1px solid #eee;
+
+  /* 🔥 修改 3：确保它在最上层 */
+  z-index: 100;
+  flex-shrink: 0; /* 防止被挤压 */
 }
 
+/* 深色模式适配 */
+.dark .editor-footer {
+  background-color: #1e1e1e;
+  border-top-color: #333;
+}
 /* ===== 录音条（固定在工具栏上方） ===== */
 .record-bar {
   display: flex;
