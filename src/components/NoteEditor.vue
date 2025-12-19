@@ -2679,13 +2679,25 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 🔥 修改 4：强制使用动态视口高度，并禁止溢出 */
-  height: 100dvh;      /* 核心：占满当前可见高度 */
-  max-height: 100dvh;  /* 双重保险 */
-  overflow: hidden;    /* 核心：禁止外层滚动，只允许内部 textarea 滚动 */
+  /* 🔴 修改这里：新建笔记时，不再强制 100dvh */
+  /* height: 100dvh;  <-- 删除或注释掉这一行 */
 
+  /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
+  /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
+  height: 55vh;
+  max-height: 100dvh;
+
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+
+  /* 加上这个过渡，切换高度时顺滑一点 */
+  transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+/* ✅ 新增：如果是“编辑模式”(isEditing=true)，则保持全屏体验 */
+/* 这样编辑旧笔记时，依然可以利用整个屏幕空间 */
+.note-editor-reborn.editing-viewport {
+  height: 100dvh;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
