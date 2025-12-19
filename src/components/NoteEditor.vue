@@ -2737,7 +2737,7 @@ function handleBeforeInput(e: InputEvent) {
   scrollbar-gutter: stable;
   height: 100%;
   overflow-y: auto; /* 让文字在内部滚动 */
-  padding-bottom: 40px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
+  padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
