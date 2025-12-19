@@ -66,10 +66,105 @@ const cityOptions = ref<{ label: string; value: string; lat: number; lon: number
 const loadingCity = ref(false)
 const selectedCityKey = ref<string | null>(null)
 
+// 辅助函数：获取当前位置并填入搜索框
+// 辅助函数：获取当前位置并填入搜索框
+async function autoSuggestCurrentCity() {
+  // 1. 先把 loading 转起来
+  loadingCity.value = true
+
+  try {
+    // 2. 尝试获取浏览器坐标 (简单封装，3秒超时)
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      // eslint-disable-next-line prefer-promise-reject-errors
+      if (!navigator.geolocation)
+        return reject('No Geo')
+
+      // eslint-disable-next-line prefer-promise-reject-errors
+      const id = setTimeout(() => reject('Geo Timeout'), 3000)
+
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          // ✅ 修复：拆成两行
+          clearTimeout(id)
+          resolve(p)
+        },
+        (e) => {
+          // ✅ 修复：拆成两行
+          clearTimeout(id)
+          reject(e)
+        },
+        { maximumAge: 60000, timeout: 3000 },
+      )
+    })
+
+    const { latitude, longitude } = pos.coords
+
+    // 3. 拿到坐标，去问 Nominatim 这是哪里 (1.5秒超时)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 1500)
+
+    let cityName = ''
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+      const res = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeoutId)
+
+      if (res.ok) {
+        const data = await res.json()
+        // 优先取城市，没有取镇/村
+        cityName = data.address?.city || data.address?.town || data.address?.village || data.address?.county || ''
+      }
+    }
+    catch {
+      // Nominatim 超时或报错，尝试 IP 兜底
+      try {
+        const ipRes = await fetch('https://ipapi.co/json/')
+        if (ipRes.ok) {
+          const ipData = await ipRes.json()
+          cityName = ipData.city || ''
+        }
+      }
+      catch {
+        // IP 也失败
+      }
+    }
+
+    // 4. 如果找到了城市名，构造选项填进去
+    if (cityName) {
+      const valObj = { name: cityName, lat: latitude, lon: longitude }
+      const valStr = JSON.stringify(valObj)
+
+      // 构造临时选项
+      cityOptions.value = [{
+        label: `📍 ${cityName} (自动检测)`,
+        value: valStr,
+        lat: latitude,
+        lon: longitude,
+      }]
+
+      // 选中它
+      selectedCityKey.value = valStr
+
+      // 🔥 保存进 Store
+      handleUpdateCity(valStr)
+    }
+  }
+  catch {
+    // ✅ 修复：删除了 console.log
+    // 定位失败或超时，保持空白，不做任何操作
+  }
+  finally {
+    loadingCity.value = false
+  }
+}
+
+// 打开弹窗
 function openCityModal() {
   const current = settingStore.manualLocation
 
   if (current) {
+    // 🟢 情况 A：用户以前设置过 -> 执行“回显”逻辑
     const valStr = JSON.stringify(current)
     selectedCityKey.value = valStr
     cityOptions.value = [{
@@ -80,8 +175,12 @@ function openCityModal() {
     }]
   }
   else {
+    // ⚪ 情况 B：用户没设置过 -> 保持空白，但尝试自动填充
     selectedCityKey.value = null
     cityOptions.value = []
+
+    // 🔥 触发自动检测 (不会阻塞弹窗打开)
+    autoSuggestCurrentCity()
   }
 
   showCityModal.value = true

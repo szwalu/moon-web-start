@@ -294,6 +294,7 @@ auth:
   errors:
     invalid_login_credentials: Incorrect username or password.
     password_too_short: Password should be at least 6 characters.
+    user_exists: User already registered, please login.
     default: Login failed. Please try again later.
 
   activation:
