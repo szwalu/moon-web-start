@@ -1253,12 +1253,39 @@ async function saveNewNote(content: string, weather: string | null) {
   margin-bottom: 0;
 }
 
-:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  max-height: 56vh !important;
+/* =========================================================
+   修复内嵌编辑器的巨大空白问题
+   ========================================================= */
+
+/* 1. 强制重置 NoteEditor 容器高度 */
+/* 之前它是 100dvh，这里改成 auto，让它由内容决定，或者给个固定高度 */
+:deep(.inline-editor .note-editor-reborn) {
+  height: auto !important;
+  min-height: 0 !important;
+  border-radius: 8px;      /* 恢复圆角，看起来像个卡片 */
+  overflow: hidden;        /* 保持圆角 */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1); /* 加点阴影区分 */
 }
 
+/* 2. 针对“新建笔记”状态 (非编辑态) */
+/* 给输入框一个合理的固定高度 (比如 200px~260px)，既能写字又不会有巨大空白 */
+:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
+  height: 240px !important;  /* ✅ 改这里：调小这个数值来减小空白 */
+  max-height: none !important;
+  min-height: 120px !important;
+}
+
+/* 3. 针对“编辑旧笔记”状态 */
+/* 编辑时通常内容较多，可以稍微高一点，但不要占满全屏 75dvh 那么夸张 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  max-height: 75dvh !important;
+  height: 45vh !important;   /* ✅ 改这里：编辑时的高度 */
+  max-height: 60vh !important;
+}
+
+/* 4. 隐藏内嵌编辑器的底部安全区垫片 */
+/* 因为日历本身已经有了 padding-bottom，内嵌编辑器不需要再次叠加 padding */
+:deep(.inline-editor .editor-footer) {
+  padding-bottom: 8px !important; /* 恢复成普通间距 */
 }
 
 .calendar-nav-title {
