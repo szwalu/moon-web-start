@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useTextareaAutosize } from '@vueuse/core'
 import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingStore } from '@/stores/setting'
@@ -108,7 +107,12 @@ const contentModel = computed({
   },
 })
 
-const { textarea, input, triggerResize } = useTextareaAutosize({ input: contentModel })
+const textarea = ref<HTMLTextAreaElement | null>(null)
+const input = computed({
+  get: () => props.modelValue,
+  set: val => emit('update:modelValue', val),
+})
+function triggerResize() { /* 不需要 resize 了，因为是 CSS 控制高度 */ }
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
   await nextTick()
@@ -2244,7 +2248,7 @@ function handleBeforeInput(e: InputEvent) {
 <template>
   <div
     ref="rootRef"
-    class="note-editor-reborn" :class="[isEditing ? 'editing-viewport' : '']"
+    class="note-editor-reborn" :style="{ paddingBottom: `${bottomSafePadding}px` }"
   >
     <input
       ref="imageInputRef"
@@ -2672,10 +2676,13 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
   border: 1px solid #e0e0e0;
-  border-radius: 12px;
+  border-radius: 0; /* 建议：全屏模式下去掉圆角 */
+
+  /* 🔥 核心修改：Flex 纵向布局 + 全屏高度 */
   display: flex;
   flex-direction: column;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  height: 100dvh; /* 关键：占满动态视口高度 */
+  box-sizing: border-box;
 }
 .note-editor-reborn:focus-within {
   border-color: #00b386;
@@ -2692,7 +2699,12 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-wrapper {
   position: relative;
-  overflow-anchor: none;
+  /* 🔥 核心修改：弹性伸缩 */
+  flex: 1;
+  display: flex; /* 让内部的 textarea 也能撑开 */
+  flex-direction: column;
+  min-height: 0; /* 防止 flex 子元素溢出无法滚动 */
+  overflow: hidden;
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
@@ -2700,23 +2712,34 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  min-height: 360px;
-  max-height: 75dvh;
-  overflow-y: auto;
-  padding: 12px 8px 8px 16px;
+  /* 🔥 核心修改：高度 100%，不再由内容决定高度 */
+  height: 100%;
+  flex: 1;
+  padding: 12px 16px; /* 调整内边距 */
+
   border: none;
   background-color: transparent;
   color: inherit;
   line-height: 1.6;
+
+  /* 🔥 核心修改：禁止调整大小，开启内部滚动 */
   resize: none;
-  outline: 0;
+  overflow-y: auto;
+
+  /* 🔴 删除 min-height 和 max-height */
+  /* min-height: 360px; */
+  /* max-height: 75dvh; */
+
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
+
+/* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
 .note-editor-reborn.android .editor-textarea {
-  max-height: 50dvh;
+  /* max-height: 50dvh;  <-- 删除这行 */
+  height: 100%;
 }
 
 /* 👇 然后在外面写针对大屏幕的规则 */
