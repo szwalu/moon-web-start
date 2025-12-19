@@ -1142,20 +1142,6 @@ function recomputeBottomSafePadding() {
   // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
       _hasPushedPage = true
       window.setTimeout(() => {
         _hasPushedPage = false
@@ -1489,7 +1475,7 @@ function onBlur() {
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
-
+  window.scrollTo(0, 0)
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -2094,6 +2080,21 @@ function onWindowScrollOrResize() {
   if (showFormatPalette.value)
     placeFormatPalette()
 }
+
+// 新增：专门处理 VisualViewport Resize 的函数
+// 用来在键盘收起时，强制把 window 滚动条归位
+function handleVisualViewportResize() {
+  // 1. 执行原有的底部安全区计算
+  recomputeBottomSafePadding()
+
+  // 2. 核心修复：检测键盘是否收起
+  // 如果可视视口高度大于屏幕高度的 85%，说明键盘很可能收起了
+  const vv = window.visualViewport
+  if (vv && vv.height > window.innerHeight * 0.85)
+    window.scrollTo(0, 0)
+}
+
+// 监听 Window 滚动/尺寸 (保持不变，用于浮动工具栏跟随)
 onMounted(() => {
   window.addEventListener('scroll', onWindowScrollOrResize, true)
   window.addEventListener('resize', onWindowScrollOrResize)
@@ -2103,17 +2104,20 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
+// 监听 VisualViewport (修改后)
 onMounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.addEventListener('resize', recomputeBottomSafePadding)
+    // 🔴 修改：这里绑定新的 handleVisualViewportResize，而不是直接绑定 recomputeBottomSafePadding
+    vv.addEventListener('resize', handleVisualViewportResize)
     vv.addEventListener('scroll', recomputeBottomSafePadding)
   }
 })
 onUnmounted(() => {
   const vv = window.visualViewport
   if (vv) {
-    vv.removeEventListener('resize', recomputeBottomSafePadding)
+    // 🔴 修改：卸载时也要对应卸载新的函数
+    vv.removeEventListener('resize', handleVisualViewportResize)
     vv.removeEventListener('scroll', recomputeBottomSafePadding)
   }
 })
@@ -2672,6 +2676,12 @@ function handleBeforeInput(e: InputEvent) {
 </template>
 
 <style scoped>
+:global(html), :global(body) {
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* 🔥 关键：禁止 body 滚动，只让 editor-wrapper 滚动 */
+  position: fixed; /* 某些极端机型可能需要这个来彻底锁死 */
+}
 .note-editor-reborn {
   position: relative;
   background-color: #f9f9f9;
