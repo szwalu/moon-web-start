@@ -228,7 +228,7 @@ const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editing
 const hideHeader = ref(false)
 
 function onEditorFocus() {
-  hideHeader.value = true
+  hideHeader.value = false
 }
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -363,7 +363,7 @@ async function handleEdit(note: any) {
   editContent.value = note?.content || ''
   isWriting.value = false
   expandedNoteId.value = null
-  hideHeader.value = true
+  hideHeader.value = false
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
@@ -875,7 +875,7 @@ async function startWriting() {
   }
   catch (e) {}
   isWriting.value = true
-  hideHeader.value = true
+  hideHeader.value = false
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
