@@ -1278,10 +1278,9 @@ async function saveNewNote(content: string, weather: string | null) {
 
 /* [新建笔记] 状态 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  /* ❌ 删除 height: auto !important; 以免覆盖 JS 的自动高度 */
 
   /* ✅ 设定一个舒适的初始高度 (例如 150px 或 200px) */
-  min-height: 200px !important;
+  min-height: 56vh !important;
 
   /* ✅ 设定最大高度为视口的一半左右，防止键盘弹起时顶到刘海 */
   max-height: 56vh !important;
@@ -1291,7 +1290,7 @@ async function saveNewNote(content: string, weather: string | null) {
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
   /* ❌ 删除 height 属性 */
 
-  min-height: 200px !important;
+  min-height: 56vh !important;
   max-height: 75dvh !important;
 }
 
