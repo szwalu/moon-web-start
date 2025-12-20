@@ -1152,19 +1152,36 @@ async function saveNewNote(content: string, weather: string | null) {
   left: 0;
   width: 100%;
   height: 100%;
-  background: white;
+  background: white; /* 确保背景不透明 */
   z-index: 5000;
   display: flex;
   flex-direction: column;
   color: #333;
 
-  /* 🔥 修改这里：兼容 JS 变量和 CSS 原生变量 */
-  padding-top: max(var(--safe-top), env(safe-area-inset-top));
-  padding-bottom: max(var(--safe-bottom), env(safe-area-inset-bottom));
+  /* 确保 padding 始终存在 */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .dark .calendar-view {
   background: #1e1e1e;
   color: #f0f0f0;
+}
+/* 🔥 这是一个强制挡板：无论 Header 是否隐藏，都用一个白色块盖住刘海区 */
+.calendar-view::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top); /* 高度等于刘海高度 */
+  background-color: white; /* 与主题色一致 */
+  z-index: 6000; /* 必须比内容高 */
+  pointer-events: none; /* 不阻挡点击 */
+}
+
+/* 深色模式适配 */
+.dark .calendar-view::after {
+  background-color: #1e1e1e;
 }
 .calendar-header {
   display: flex;
@@ -1442,6 +1459,10 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
+}
+
+.inline-editor {
+  scroll-margin-top: calc(env(safe-area-inset-top) + 20px);
 }
 </style>
 
