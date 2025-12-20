@@ -1530,8 +1530,6 @@ function openYearMonthPicker() {
 function handleDateOrContentUpdate(payload: any) {
   if (payload && payload.id)
     updateNoteInList(payload)
-
-  fetchNotes(true)
 }
 
 async function fetchNotesByMonth(year: number, month: number) {
