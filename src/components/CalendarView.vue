@@ -1157,8 +1157,10 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   flex-direction: column;
   color: #333;
-  padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
+
+  /* 🔥 修改这里：兼容 JS 变量和 CSS 原生变量 */
+  padding-top: max(var(--safe-top), env(safe-area-inset-top));
+  padding-bottom: max(var(--safe-bottom), env(safe-area-inset-bottom));
 }
 .dark .calendar-view {
   background: #1e1e1e;
@@ -1168,16 +1170,21 @@ async function saveNewNote(content: string, weather: string | null) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
+  /* 增加一点顶部 padding，视觉上更舒适 */
+  padding: 12px 1.5rem 12px 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
+
+  /* 🔥 关键：必须有背景色，否则文字滚上去会透出来 */
+  background-color: #fff;
+
   position: sticky;
-  top: var(--safe-top);
-  z-index: 1;
+  top: 0; /* sticky 相对的是父容器，设为 0 即可 */
+  z-index: 10; /* 提高层级 */
 }
 .dark .calendar-header {
-  border-bottom-color: #374151;
+  background-color: #1e1e1e; /* 深色模式背景 */
 }
 .calendar-header h2 {
   font-size: 18px;
@@ -1196,6 +1203,10 @@ async function saveNewNote(content: string, weather: string | null) {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+
+  /* 🔥 核心代码：告诉浏览器，自动滚动聚焦时，顶部保留 60px 的缓冲距离 */
+  /* 这样原生键盘弹出时，第一行字就不会贴到刘海，而是停在 Header 下方 */
+  scroll-padding-top: 60px;
 }
 .calendar-container {
   padding: 1rem 1rem 0 1rem;
