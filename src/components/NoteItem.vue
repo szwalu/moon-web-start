@@ -3,7 +3,7 @@ import { computed, h, nextTick, onActivated, onMounted, onUnmounted, ref, watch 
 import { useI18n } from 'vue-i18n'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
-import { NDropdown, useMessage } from 'naive-ui'
+import { NButton, NCard, NDropdown, NInput, NModal, useMessage } from 'naive-ui'
 import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
@@ -25,6 +25,7 @@ const props = defineProps({
   showInternalCollapseButton: { type: Boolean, default: false },
 })
 
+// ✅ 1. 先定义 emit (通常放在 props 后面)
 const emit = defineEmits([
   'edit',
   'toggleExpand',
@@ -37,15 +38,79 @@ const emit = defineEmits([
   'favorite',
 ])
 
-// ✅ 新增：提取笔记内容中的第一张图片 URL
+// ✅ 2. 紧接着定义 Hooks (t, messageHook 等)，必须在函数之前！
+const { t } = useI18n()
+const messageHook = useMessage()
+const isDark = useDark()
+
+// 3. 定义状态
+const showCommentModal = ref(false)
+const commentText = ref('')
+const isSubmittingComment = ref(false)
+
+// 打开评论弹窗的辅助函数
+function openCommentModal() {
+  commentText.value = ''
+  showCommentModal.value = true
+}
+
+// 4. 最后定义使用这些 Hook 的函数
+async function handleAppendComment() {
+  if (!commentText.value.trim())
+    return
+
+  isSubmittingComment.value = true
+  try {
+    const now = new Date()
+    const timeString = now.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    // 使用 t() 获取国际化文本
+    const headerText = t('notes.comment.header')
+    const commentBlock = `> 💬 ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
+
+    const separator = '\n\n---\n\n'
+    const newContent = (props.note.content || '') + separator + commentBlock
+
+    const { data, error } = await supabase
+      .from('notes')
+      .update({
+        content: newContent,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', props.note.id)
+      .select()
+      .single()
+
+    if (error)
+      throw error
+
+    // 使用 messageHook 和 t()
+    messageHook.success(t('notes.comment.success'))
+    showCommentModal.value = false
+    commentText.value = ''
+    emit('dateUpdated', data)
+  }
+  catch (err: any) {
+    messageHook.error(t('notes.comment.fail', { reason: err.message }))
+  }
+  finally {
+    isSubmittingComment.value = false
+  }
+}
+
+// 提取笔记内容中的第一张图片 URL
 const firstImageUrl = computed(() => {
   const c = String(props.note?.content || '')
-
-  // 只匹配 Markdown 图片: ![任意alt](https://开头的url)
+  // 只匹配 Markdown 图片
   const mdMatch = /!\[[^\]]*]\((https?:\/\/[^)]+)\)/.exec(c)
   if (mdMatch && mdMatch[1])
     return mdMatch[1].trim()
-
   return null
 })
 
@@ -60,14 +125,10 @@ function checkDraftStatus() {
 }
 function onDraftChanged(e: Event) {
   const customEvent = e as CustomEvent
-  // 检查事件携带的 ID 是否是当前这个笔记的 ID，或者是通用的 key
   const targetId = customEvent.detail
   if (targetId === props.note.id || targetId === `note_draft_${props.note.id}`)
     checkDraftStatus()
 }
-const { t } = useI18n()
-const isDark = useDark()
-const messageHook = useMessage()
 
 const showDatePicker = ref(false)
 const noteOverflowStatus = ref(false)
@@ -89,8 +150,7 @@ const md = new MarkdownIt({
     },
   })
 
-// 给所有 Markdown 图片添加 lazy/async 属性（优化加载）
-// 右键/长按可直接保存：用 <a download> 包一层（如果本来不在链接中）
+// 图片渲染规则
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
@@ -101,25 +161,18 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const src = tokens[idx].attrGet('src') || ''
   const alt = tokens[idx].content || ''
 
-  // 若图片已在 Markdown 链接里（如 [![...](src)](link) ），避免嵌套 <a>
   const prev = tokens[idx - 1]?.type
   const next = tokens[idx + 1]?.type
   const alreadyLinked = prev === 'link_open' && next === 'link_close'
   if (alreadyLinked)
     return imgHtml
 
-  // 用 <a download> 包裹，这样左键会触发下载；右键依然有“另存为”
   return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
 }
 
-// ... 上面是 md.renderer.rules.image 的代码 ...
-
-// ✅ 新增：音频文件渲染规则
-// 如果链接是以 mp3, wav, m4a, ogg, aac 结尾，渲染为 <audio> 播放器
-// 1. 定义音频扩展名检测
+// 音频渲染规则
 const isAudio = (url: string) => /\.(mp3|wav|m4a|ogg|aac|flac|webm)(\?|$)/i.test(url)
 
-// 2. 备份原有的 link 渲染规则 (为了兼容 linkAttrs 插件和其他普通链接)
 const defaultLinkOpen = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
   return self.renderToken(tokens, idx, options)
 }
@@ -127,78 +180,50 @@ const defaultLinkClose = md.renderer.rules.link_close || function (tokens, idx, 
   return self.renderToken(tokens, idx, options)
 }
 
-// 3. 拦截 link_open (链接开始标签)
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const href = tokens[idx].attrGet('href') || ''
-
   if (isAudio(href)) {
-    // 标记当前处于音频链接中，传给 link_close 使用
     env.inAudioLink = true
-
-    // 渲染 <audio> 标签
-    // preload="metadata": 预加载元数据(时长等)，但不下载整个文件，节省流量
-    // controls: 显示播放/暂停/进度条
-    // onclick: 阻止冒泡，防止点击播放器时触发展开/收起笔记
     return `<audio controls src="${href}" preload="metadata" onclick="event.stopPropagation()" style="display: block; width: 100%; max-width: 240px; height: 32px; margin: 6px auto; border-radius: 9999px; outline: none;"></audio><span style="display:none">`
   }
-
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
-// 4. 拦截 link_close (链接结束标签)
 md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
   if (env.inAudioLink) {
     env.inAudioLink = false
-    // 闭合 audio 标签
-    // 注意：我们在 open 里加了一个 <span style="display:none"> 把原本的链接文字(文件名)藏起来
-    // 这样界面上就只剩下一个纯净的播放器
     return '</span>'
   }
-
   return defaultLinkClose(tokens, idx, options, env, self)
 }
 
 const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
-// ===== 平台判断：决定分享弹窗按钮布局 =====
 const isIOS = typeof navigator !== 'undefined'
   && typeof window !== 'undefined'
   && (
     /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
-    // iPadOS 13+ 有时把自己伪装成 Mac，这里用触摸点数辅助判断
     || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
   )
 
-/**
- * 非 iOS：三个按钮「保存」「分享」「关闭」
- * iOS：两个按钮「保存/分享」「关闭」
- */
 const showSeparateSaveShareButtons = !isIOS
 
-// ===== 分享图片相关 =====
-const showShareCard = ref(false) // 是否渲染“离屏分享卡片”
-const shareImageUrl = ref<string | null>(null) // 生成的分享图片 dataURL
-const sharePreviewVisible = ref(false) // 是否显示分享预览弹层
-const shareGenerating = ref(false) // 是否正在生成中
-const shareCardRef = ref<HTMLElement | null>(null) // 离屏分享卡片DOM 引用
+const showShareCard = ref(false)
+const shareImageUrl = ref<string | null>(null)
+const sharePreviewVisible = ref(false)
+const shareGenerating = ref(false)
+const shareCardRef = ref<HTMLElement | null>(null)
 const shareCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 function formatShareDate(dateStr: string) {
   const d = new Date(dateStr)
-
   const year = d.getFullYear()
   const month = d.getMonth() + 1
   const day = d.getDate()
-
-  // 星期还是交给现有 weekday_0~6
   const weekday = t(`notes.card.weekday_${d.getDay()}`)
-
-  // 与正文日期一致：用 day_suffix 拼 “日” / "" 等
   const daySuffix = t('notes.card.day_suffix')
   const dayLabel = `${day}${daySuffix || ''}`
-
-  // 用新的 i18n 文本控制整体格式
   return t('notes.share_date_full', {
     year,
     month,
@@ -226,38 +251,28 @@ function attachImgLoadListener(root: Element | null) {
   })
 }
 
-// ✅ 仅“几日”加粗，其余（时间/周几）常规
 function formatDateWithWeekday(dateStr: string) {
   const d = new Date(dateStr)
   const day = d.getDate()
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   const weekday = t(`notes.card.weekday_${d.getDay()}`)
-  const daySuffix = t('notes.card.day_suffix') // 例如：中文/日文是“日”，英文为空
+  const daySuffix = t('notes.card.day_suffix')
   const dayLabel = `${day}${daySuffix || ''}`
-  // 翻译里不含 HTML，只做文本格式；HTML 在这里拼
   const tail = t('notes.card.date_format_no_day', { weekday, hh, mm })
   return `<span class="date-day">${dayLabel}</span> ${tail}`
 }
 
-// ✅ 修改：天气显示逻辑 - 精准清洗版
-// 只删除分号及其紧随的别名（例如 ";安纳海姆"），但保留空格后的气温和图标
 const weatherDisplay = computed(() => {
   const w = String(props.note?.weather ?? '').trim()
   if (!w)
     return ''
-
-  // 正则解析：
-  // [;；]   -> 匹配英文或中文分号
-  // [^\s]* -> 匹配分号后面紧跟的“非空格”字符（即别名）
-  //            一旦遇到空格（通常是地名和气温之间的分隔符），匹配就会停止
   return w.replace(/[;；][^\s]*/, '')
 })
 
 function renderMarkdown(content: string) {
   if (!content)
     return ''
-
   let html = md.render(content)
   html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
   const query = props.searchQuery.trim()
@@ -272,16 +287,12 @@ function renderMarkdown(content: string) {
 function checkIfNoteOverflows() {
   const preview = contentRef.value as HTMLElement | null
   const full = fullContentRef.value as HTMLElement | null
-
   if (!preview || !full) {
     noteOverflowStatus.value = false
     return
   }
-
   const clampHeight = preview.clientHeight
   const fullHeight = full.scrollHeight
-
-  // 给一点容差，避免像素取整导致“刚好等于”时误判
   const diff = fullHeight - clampHeight
   noteOverflowStatus.value = diff > 1
 }
@@ -290,7 +301,6 @@ function scheduleOverflowCheck() {
   nextTick(() => {
     requestAnimationFrame(() => {
       checkIfNoteOverflows()
-      // 预览 + 隐藏完整内容都挂一次图片监听
       attachImgLoadListener(contentRef.value)
       attachImgLoadListener(fullContentRef.value)
     })
@@ -300,12 +310,9 @@ function scheduleOverflowCheck() {
 let observer: ResizeObserver | null = null
 
 onMounted(() => {
-  // 1. 仅创建 Observer 实例，不在这里直接 observe
   observer = new ResizeObserver(() => {
     checkIfNoteOverflows()
   })
-
-  // 2. 初始检查（以防组件加载时就是收起状态）
   if (contentRef.value) {
     observer.observe(contentRef.value)
     scheduleOverflowCheck()
@@ -313,9 +320,6 @@ onMounted(() => {
   if (fullContentRef.value)
     observer.observe(fullContentRef.value)
   checkDraftStatus()
-  checkDraftStatus()
-
-  // ✅ 2. 监听全局事件 (解决不刷新不显示的问题)
   window.addEventListener('note-draft-changed', onDraftChanged)
 })
 
@@ -332,37 +336,25 @@ onUnmounted(() => {
     observer.disconnect()
     observer = null
   }
-  // ✅ 移除监听
   window.removeEventListener('note-draft-changed', onDraftChanged)
 })
 
-// ✅ KeepAlive 激活时也检查
-onActivated(() => {
-  checkDraftStatus()
-})
-
-// ✅ 新增关键修复：监听 contentRef 的变化
-// 当 v-if / v-else 切换导致 DOM 重建时，必须重新挂载 observer
 watch(contentRef, (el) => {
   if (el && observer) {
     observer.observe(el)
-    // 元素重新出现时，立即测一次高度，把“展开”按钮显示出来
     scheduleOverflowCheck()
   }
 })
 
-// 同理监听 fullContentRef
 watch(fullContentRef, (el) => {
   if (el && observer)
     observer.observe(el)
 })
 
-// 当笔记内容变化时，重新检查
 watch(() => props.note.content, () => {
   scheduleOverflowCheck()
 })
 
-// 展开 → 收起 时重新测一次
 watch(() => props.isExpanded, (val) => {
   if (!val)
     scheduleOverflowCheck()
@@ -404,28 +396,21 @@ function getDropdownOptions(note: any) {
   })
 
   return [
-    // 1. 编辑
     {
       key: 'edit',
       label: makeDropdownItem(Edit3, t('notes.edit')),
     },
     { type: 'divider', key: 'd1' },
-
-    // 2. 分享
     {
       key: 'share',
       label: makeDropdownItem(Share, t('notes.share', '分享')),
     },
     { type: 'divider', key: 'd2' },
-
-    // 3. 复制
     {
       key: 'copy',
       label: makeDropdownItem(Copy, t('notes.copy')),
     },
     { type: 'divider', key: 'd3' },
-
-    // 4. 置顶
     {
       key: 'pin',
       label: makeDropdownItem(
@@ -434,8 +419,6 @@ function getDropdownOptions(note: any) {
       ),
     },
     { type: 'divider', key: 'd4' },
-
-    // 5. 收藏
     {
       key: 'favorite',
       label: makeDropdownItem(
@@ -449,23 +432,16 @@ function getDropdownOptions(note: any) {
       ),
     },
     { type: 'divider', key: 'd5' },
-
-    // 6. 修改日期
     {
       key: 'set_date',
       label: makeDropdownItem(Calendar, t('notes.card.set_date')),
     },
     { type: 'divider', key: 'd6' },
-
-    // 7. 删除
     {
       key: 'delete',
       label: makeDropdownItem(Trash2, t('notes.delete'), { color: '#d03050' }),
     },
-
     { key: 'divider-info', type: 'divider' },
-
-    // 8. 信息块
     {
       key: 'info-block',
       type: 'render',
@@ -497,7 +473,6 @@ function handleDropdownSelect(key: string) {
       break
     }
     case 'share': {
-      // ✅ 新增：处理分享
       handleShare()
       break
     }
@@ -526,36 +501,23 @@ function handleDropdownSelect(key: string) {
     }
   }
 }
+
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-
-  // ✅ 1. 新增：优先处理链接点击
-  // 如果用户点击的是链接 (a 标签)，先保存 ID，然后放行让它跳转
   const link = target.closest('a')
   if (link) {
-    // 关键：保存当前笔记 ID，以便 PWA 返回时 NotesList 能读到并滚回这里
     localStorage.setItem('pwa_return_note_id', props.note.id)
-
-    // 确保 target="_blank"，这有助于 iOS PWA 弹出二级浏览器而不是刷新页面
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
-
-    // 直接返回，不阻止冒泡，允许浏览器执行默认的跳转行为
     return
   }
 
-  // ✅ 2. 原有的待办事项 (Checkbox) 逻辑
   const listItem = target.closest('li.task-list-item')
-
-  // 如果点击的不是一个待办事项行，则直接返回
   if (!listItem)
     return
 
-  // 判断点击的是否为复选框本身
   const isCheckboxClick = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox'
-
   if (isCheckboxClick) {
-    // 如果是复选框，执行我们的打钩逻辑
     event.stopPropagation()
     const noteCard = event.currentTarget as HTMLElement
     const allListItems = Array.from(noteCard.querySelectorAll('li.task-list-item'))
@@ -564,66 +526,42 @@ function handleNoteContentClick(event: MouseEvent) {
       emit('taskToggle', { noteId: props.note.id, itemIndex })
   }
   else {
-    // 如果点击的是其他地方（如文字），则阻止 <label> 标签的默认行为
-    // 防止误触 Checkbox
     event.preventDefault()
   }
 }
 
-// ===== 分享卡片专用：删除 Supabase 图片，避免留下大空白 =====
-// ✅ 新逻辑：将图片转为 Base64，而不是删除
-// 这样 html2canvas 就能截取到图片了，不会出现跨域空白
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
-
-  // 创建一个 Promise 数组，并发处理所有图片
   const promises = imgs.map(async (img) => {
     const src = img.getAttribute('src')
     if (!src)
       return
-
-    // 1. 如果已经是 base64 (data:image...)，不用处理
     if (src.startsWith('data:'))
       return
 
     try {
-      // ✅ 修改开始：添加时间戳，强制不读缓存
-      // 判断 src 原本有没有参数，决定是用 ? 还是 &
       const suffix = src.includes('?') ? '&' : '?'
       const fetchUrl = `${src}${suffix}t=${new Date().getTime()}`
-
-      // 使用新的 fetchUrl 请求
       const response = await fetch(fetchUrl, {
-        mode: 'cors', // 关键
+        mode: 'cors',
         cache: 'no-cache',
       })
       if (!response.ok)
         throw new Error('Network response was not ok')
-
       const blob = await response.blob()
-
-      // 3. 转成 Base64
       const base64Url = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onloadend = () => resolve(reader.result as string)
         reader.onerror = reject
         reader.readAsDataURL(blob)
       })
-
-      // 4. 替换 DOM 里的 src，这样 html2canvas 截图时就是本地数据了
       img.src = base64Url
-
-      // 显式设置 crossOrigin 为 null，防止 html2canvas 二次检查跨域
       img.removeAttribute('crossorigin')
     }
     catch (err) {
       console.warn('图片转 Base64 失败，可能是跨域限制或链接失效:', src, err)
-      // 如果转换失败，为了美观，可以选择保留原图试试，或者移除
-      // img.remove() //如果不想要破图，可以取消注释这行
     }
   })
-
-  // 等待所有图片都转换完成
   await Promise.all(promises)
 }
 
@@ -631,11 +569,8 @@ async function handleDateUpdate(newDate: Date) {
   showDatePicker.value = false
   if (!props.note || !props.note.id)
     return
-
   try {
     const newTimestamp = newDate.toISOString()
-
-    // 1. 依然保留 .select().single() 以获取数据
     const { data, error } = await supabase
       .from('notes')
       .update({ created_at: newTimestamp })
@@ -645,53 +580,35 @@ async function handleDateUpdate(newDate: Date) {
 
     if (error)
       throw error
-
     messageHook.success(t('notes.card.date_update_success'))
-
-    // 2. ✅ 修改这里：将 'date-updated' 改为 'dateUpdated'
-    // Vue 3 会自动让父组件的 @date-updated 监听到这个事件
     emit('dateUpdated', data)
   }
   catch (err: any) {
     messageHook.error(t('notes.card.date_update_failed', { reason: err.message }))
   }
 }
-// ===== 分享图片相关逻辑 =====
+
 async function handleShare() {
   if (!props.note)
     return
-
   try {
     shareGenerating.value = true
     showShareCard.value = true
-
     await nextTick()
-    // 等待 DOM 挂载
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
-
-    // ✅ 第一步：先进行图片转 Base64 (这一步会 await 直到所有图片下载并转换完毕)
     await convertSupabaseImagesToDataURL(el as HTMLElement)
-
-    // ✅ 第二步：稍微多等一下，确保 Base64 图片在 DOM 中渲染出来了
-    // 有时候转换完 src 变了，但浏览器绘制还需要一帧
     await new Promise(resolve => setTimeout(resolve, 100))
-
     const scale = Math.min(window.devicePixelRatio || 1, 2)
-
-    // ✅ 第三步：截图
-    // useCORS: true 依然保留，作为双重保险
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale,
       useCORS: true,
-      allowTaint: true, // 允许一定的“污染”，因为我们已经转 Base64 了
-      logging: false, // 关闭调试日志，看着清爽点
+      allowTaint: true,
+      logging: false,
     })
-
     shareCanvasRef.value = canvas
     shareImageUrl.value = canvas.toDataURL('image/jpeg', 0.8)
     sharePreviewVisible.value = true
@@ -709,25 +626,17 @@ async function handleShare() {
 async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
-
   const appName = t('notes.notes', '云笔记')
-
-  // ✅ 新增：根据笔记创建时间生成文件名
-  // 格式示例：云笔记_2025-11-22_1430.jpg
   const d = new Date(props.note.created_at)
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  const hour = String(d.getHours()).padStart(2, '0') // 时
-  const minute = String(d.getMinutes()).padStart(2, '0') // 分
-
-  // 组合文件名：日期 + 时间 (HHmm)
-  // 加上时间是为了区分当天的多篇笔记，避免文件名重复
+  const hour = String(d.getHours()).padStart(2, '0')
+  const minute = String(d.getMinutes()).padStart(2, '0')
   const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
-
   const link = document.createElement('a')
   link.href = shareImageUrl.value
-  link.download = fileName // ✅ 使用新文件名
+  link.download = fileName
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -736,30 +645,21 @@ async function downloadShareImage() {
 async function systemShareImage() {
   if (!shareImageUrl.value)
     return
-
   const navAny = navigator as any
-
   if (!navAny.share) {
     messageHook.warning(t('notes.share_not_supported', '当前浏览器不支持系统分享，请先保存图片再手动分享'))
     return
   }
-
   try {
     const appName = t('notes.notes', '云笔记')
-
-    // ✅ 同样的逻辑生成文件名
     const d = new Date(props.note.created_at)
     const year = d.getFullYear()
     const month = String(d.getMonth() + 1).padStart(2, '0')
     const day = String(d.getDate()).padStart(2, '0')
     const hour = String(d.getHours()).padStart(2, '0')
     const minute = String(d.getMinutes()).padStart(2, '0')
-
-    // 格式：云笔记_2025-11-22_1430.jpg
     const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
-
     let blob: Blob
-
     if (shareCanvasRef.value) {
       blob = await new Promise<Blob>((resolve, reject) => {
         shareCanvasRef.value!.toBlob(
@@ -777,21 +677,16 @@ async function systemShareImage() {
       const response = await fetch(shareImageUrl.value)
       blob = await response.blob()
     }
-
-    // ✅ 在这里使用 fileName
     const file = new File([blob], fileName, { type: 'image/jpeg' })
     const files = [file]
-
     const shareData: any = {
       title: t('notes.share_title', '分享笔记'),
       text: '',
     }
-
     if (!navAny.canShare || navAny.canShare({ files }))
       shareData.files = files
     else
       shareData.text = props.note?.content?.slice(0, 100) || ''
-
     await navAny.share(shareData)
   }
   catch (err) {
@@ -800,13 +695,7 @@ async function systemShareImage() {
 }
 
 function handleImageLoad() {
-  // 1. 图片加载会导致卡片高度变化，重新检查一下溢出状态（虽然图片在文字下方，不太影响文字溢出，但这是一个好习惯）
   checkIfNoteOverflows()
-
-  // 2. 这里的关键是：当这个函数执行时，DOM 高度已经因图片加载而改变了。
-  // 由于 DynamicScrollerItem 内部有 ResizeObserver 监听整个 NoteItem 的根节点，
-  // 所以只要 DOM 变了，虚拟列表就会自动收到通知。
-  // 因此，这里的 @load 主要是为了确保“时序”上的兜底，保证图片出来的那一帧，状态是同步的。
 }
 </script>
 
@@ -836,10 +725,7 @@ function handleImageLoad() {
             :title="t('notes.draft.resume_tooltip')"
             @click.stop="emit('edit', note)"
           >
-            <Edit3
-              :size="14"
-              stroke-width="2.5"
-            />
+            <Edit3 :size="14" stroke-width="2.5" />
           </div>
 
           <NDropdown
@@ -867,6 +753,13 @@ function handleImageLoad() {
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
+
+          <div class="comment-trigger-bar" @click.stop="openCommentModal">
+            <div class="comment-trigger-input">
+              {{ $t('notes.comment.trigger') }}
+            </div>
+          </div>
+
           <div
             v-if="showInternalCollapseButton"
             class="toggle-button-row"
@@ -920,7 +813,6 @@ function handleImageLoad() {
       </div>
     </div>
 
-    <!-- ===== 离屏分享卡片（供 html2canvas 截图用） ===== -->
     <div
       v-if="showShareCard"
       ref="shareCardRef"
@@ -968,7 +860,6 @@ function handleImageLoad() {
       />
     </Teleport>
 
-    <!-- ===== 分享预览弹层 ===== -->
     <Teleport to="body">
       <div
         v-if="sharePreviewVisible"
@@ -993,7 +884,6 @@ function handleImageLoad() {
           </div>
 
           <div class="share-modal-actions">
-            <!-- 桌面 / 安卓：三个按钮「保存」「分享」「关闭」 -->
             <template v-if="showSeparateSaveShareButtons">
               <button
                 type="button"
@@ -1018,7 +908,6 @@ function handleImageLoad() {
               </button>
             </template>
 
-            <!-- iOS：两个按钮「保存/分享」（走系统分享） + 「关闭」 -->
             <template v-else>
               <button
                 type="button"
@@ -1039,12 +928,45 @@ function handleImageLoad() {
         </div>
       </div>
     </Teleport>
+
+    <NModal v-model:show="showCommentModal">
+      <NCard
+        style="width: 90vw; max-width: 500px;"
+        :title="$t('notes.comment.title')"
+        :bordered="false"
+        size="small"
+        role="dialog"
+        aria-modal="true"
+      >
+        <NInput
+          v-model:value="commentText"
+          type="textarea"
+          :placeholder="$t('notes.comment.placeholder')"
+          :autosize="{ minRows: 3, maxRows: 6 }"
+          autofocus
+        />
+        <template #footer>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <NButton size="small" @click="showCommentModal = false">{{ $t('notes.comment.cancel') }}</NButton>
+            <NButton
+              type="primary"
+              size="small"
+              :loading="isSubmittingComment"
+              :disabled="!commentText.trim()"
+              @click="handleAppendComment"
+            >
+              {{ $t('notes.comment.submit') }}
+            </NButton>
+          </div>
+        </template>
+      </NCard>
+    </NModal>
   </div>
 </template>
 
 <style scoped>
 .note-card {
-position: relative;
+  position: relative;
   border-radius: 0.5rem;
   background-color: #ffffff;
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
@@ -1734,6 +1656,72 @@ position: relative;
 }
 .dark .draft-icon-wrapper:hover {
   background-color: rgba(251, 146, 60, 0.15);
+}
+
+/* ✅ 新增：分割线样式 */
+.note-content :deep(hr) {
+  margin: 0.5em 0;
+  border: none;
+  border-top: 1px dashed #d1d5db; /* 虚线分割，比实线更柔和 */
+}
+.dark .note-content :deep(hr) {
+  border-top-color: #4b5563;
+}
+
+/* ✅ 新增：引用块样式（用于评论） */
+/* Markdown 的 > 内容会被渲染为 blockquote */
+.note-content :deep(blockquote) {
+  font-size: 0.85em;      /* 字体缩小 */
+  color: #666;            /* 颜色变淡 */
+  background-color: #f9fafb; /*以此区分正文，可选 */
+  border-left: 3px solid #e5e7eb; /* 左侧竖线 */
+  margin: 0.5em 0;
+  padding: 0.5em 1em;
+  border-radius: 0 4px 4px 0;
+}
+
+.dark .note-content :deep(blockquote) {
+  color: #9ca3af;
+  background-color: rgba(255,255,255,0.03);
+  border-left-color: #4b5563;
+}
+
+/* 确保引用里的段落没有过大的间距 */
+.note-content :deep(blockquote p) {
+  margin-top: 0.1em !important;
+  margin-bottom: 0.1em !important;
+  line-height: 1.5; /* 行高也可以稍微改小一点 */
+}
+
+/* ✅ 底部评论触发按钮样式 */
+.comment-trigger-bar {
+  /* ✅ 修改：减少 margin-top */
+  margin-top: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.comment-trigger-input {
+  background-color: #f3f4f6; /* 浅灰背景 */
+  color: #9ca3af; /* 占位符文字颜色 */
+  /* ✅ 修改：减少 padding 高度 */
+  padding: 4px 12px;
+  border-radius: 9999px; /* 全圆角 */
+  font-size: 13px;
+  transition: background-color 0.2s;
+}
+
+.comment-trigger-bar:hover .comment-trigger-input {
+  background-color: #e5e7eb; /* 悬停稍微变深 */
+}
+
+.dark .comment-trigger-input {
+  background-color: #374151; /* 深色模式背景 */
+  color: #9ca3af;
+}
+
+.dark .comment-trigger-bar:hover .comment-trigger-input {
+  background-color: #4b5563;
 }
 </style>
 

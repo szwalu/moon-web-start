@@ -473,6 +473,16 @@ notes:
   select_tag_first: 先にタグを選択してください
   batch_tag_success: '{count} 件のメモにタグを追加しました'
   batch_tag_error: '操作が部分的に失敗しました: {msg}'
+
+  comment:
+    trigger: コメントする
+    title: コメントを追加
+    placeholder: 考えを書き留める...
+    submit: 追加
+    cancel: キャンセル
+    success: コメントを追加しました
+    fail: 'コメントの追加に失敗しました: {reason}'
+    header: コメント
   draft:
     title: ヒント
     resume_tooltip: 未保存の下書きがあります。クリックして編集を再開
