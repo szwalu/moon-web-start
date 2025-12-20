@@ -1254,10 +1254,10 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 
 /* =========================================================
-   修复内嵌编辑器高度过小的问题
+   修复内嵌编辑器高度过小的问题 (修正版)
    ========================================================= */
 
-/* 1. 外层容器：保持新版本的圆角和边框样式，但让高度自适应 */
+/* 1. 外层容器：自适应高度 */
 :deep(.inline-editor .note-editor-reborn) {
   height: auto !important;
   min-height: 0 !important;
@@ -1269,31 +1269,32 @@ async function saveNewNote(content: string, weather: string | null) {
   border-color: #374151;
 }
 
-/* 2. 隐藏内嵌编辑器的底部安全区垫片 (日历自己有 padding) */
+/* 2. 隐藏底部垫片 */
 :deep(.inline-editor .editor-footer) {
   padding-bottom: 8px !important;
 }
 
-/* 3. 🔥 核心修复：参考旧版本逻辑，使用 max-height 而非固定 height */
+/* 3. 🔥 核心修复：移除 height 属性，让 JS 能够控制高度增长 */
 
-/* [新建笔记] 状态：
-   旧版本使用 max-height: 56vh。
-   这样键盘弹出时，如果空间不足，编辑器不会强制撑开导致顶到刘海区。
-*/
+/* [新建笔记] 状态 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  height: auto !important;      /* 允许高度随内容自动收缩 */
-  min-height: 120px !important; /* 给一个基础高度，避免太小 */
-  max-height: 56vh !important;  /* ✅ 关键：限制最大高度为视口的 56% */
+  /* ❌ 删除 height: auto !important; 以免覆盖 JS 的自动高度 */
+
+  /* ✅ 设定一个舒适的初始高度 (例如 150px 或 200px) */
+  min-height: 200px !important;
+
+  /* ✅ 设定最大高度为视口的一半左右，防止键盘弹起时顶到刘海 */
+  max-height: 56vh !important;
 }
 
-/* [编辑旧笔记] 状态：
-   旧版本使用 max-height: 75dvh。
-*/
+/* [编辑旧笔记] 状态 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  height: auto !important;
+  /* ❌ 删除 height 属性 */
+
   min-height: 200px !important;
-  max-height: 75dvh !important; /* ✅ 关键：使用 dynamic viewport height */
+  max-height: 75dvh !important;
 }
+
 .calendar-nav-title {
   font-weight: 600;
 }
