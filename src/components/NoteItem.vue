@@ -81,7 +81,6 @@ async function handleAppendComment() {
       .from('notes')
       .update({
         content: newContent,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', props.note.id)
       .select()
