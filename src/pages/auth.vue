@@ -1527,6 +1527,13 @@ function openYearMonthPicker() {
   })
 }
 
+function handleDateOrContentUpdate(payload: any) {
+  if (payload && payload.id)
+    updateNoteInList(payload)
+
+  fetchNotes(true)
+}
+
 async function fetchNotesByMonth(year: number, month: number) {
   const from = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`
   const toMonth = month === 12 ? 1 : month + 1
@@ -3218,7 +3225,7 @@ function onCalendarUpdated(updated: any) {
           @copy-note="handleCopy"
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
-          @date-updated="() => fetchNotes(true)"
+          @date-updated="handleDateOrContentUpdate"
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
           @favorite-note="handleFavoriteNote"

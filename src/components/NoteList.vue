@@ -1076,7 +1076,7 @@ async function restoreScrollIfNeeded() {
                 @favorite="(note) => emit('favoriteNote', note)"
                 @delete="(id) => emit('deleteNote', id)"
                 @task-toggle="(payload) => emit('taskToggle', payload)"
-                @date-updated="() => emit('dateUpdated')"
+                @date-updated="(payload) => emit('dateUpdated', payload)"
               />
             </div>
           </div>

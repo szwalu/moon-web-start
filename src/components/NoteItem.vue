@@ -54,10 +54,20 @@ function openCommentModal() {
   showCommentModal.value = true
 }
 
-// 4. 最后定义使用这些 Hook 的函数
+// NoteItem.vue
+
 async function handleAppendComment() {
   if (!commentText.value.trim())
     return
+
+  // 1. 先把 ID 和旧内容存下来（防抖动/防丢失）
+  const noteId = props.note.id
+  const oldContent = props.note.content || ''
+
+  if (!noteId) {
+    messageHook.error(t('notes.operation_error') || '无法获取笔记ID')
+    return
+  }
 
   isSubmittingComment.value = true
   try {
@@ -70,39 +80,53 @@ async function handleAppendComment() {
       minute: '2-digit',
     })
 
-    // 使用 t() 获取国际化文本
     const headerText = t('notes.comment.header')
     const commentBlock = `> 💬 ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
-
     const separator = '\n\n---\n\n'
-    const newContent = (props.note.content || '') + separator + commentBlock
+    const newContent = oldContent + separator + commentBlock
 
+    // 2. 数据库更新
     const { data, error } = await supabase
       .from('notes')
       .update({
         content: newContent,
+        // 不更新 updated_at
       })
-      .eq('id', props.note.id)
+      .eq('id', noteId)
       .select()
       .single()
 
     if (error)
       throw error
 
-    // 使用 messageHook 和 t()
     messageHook.success(t('notes.comment.success'))
     showCommentModal.value = false
     commentText.value = ''
-    emit('dateUpdated', data)
+
+    // ✅✅✅ 核心修复：构造必胜数据包 (Payload) ✅✅✅
+    // 即使 data 为空 (Supabase 偶尔不返数据)，我们也手动拼装一个完整的对象
+    // 关键：必须包含 id，否则父组件 updateNoteInList 会报错
+    const payload = {
+      ...props.note, // 继承原属性 (is_pinned, weather 等)
+      ...(data || {}), // 如果 Supabase 返回了新数据，覆盖之
+      id: noteId, // 🔥 强制写入 ID (父组件靠这个更新)
+      content: newContent, // 🔥 强制写入新内容 (界面靠这个刷新)
+    }
+
+    // 3. 发射事件
+    // 只要这里发出的 payload 有 id，父组件的 updateNoteInList 就绝对不会报错
+    // 并且会顺带触发 notifyAnniversaryUpdate，实现那年今日的实时刷新
+    emit('dateUpdated', payload)
   }
   catch (err: any) {
-    messageHook.error(t('notes.comment.fail', { reason: err.message }))
+    console.error(err)
+    const reason = err?.message || 'Unknown Error'
+    messageHook.error(t('notes.comment.fail', { reason }))
   }
   finally {
     isSubmittingComment.value = false
   }
 }
-
 // 提取笔记内容中的第一张图片 URL
 const firstImageUrl = computed(() => {
   const c = String(props.note?.content || '')
@@ -807,6 +831,16 @@ function handleImageLoad() {
             <button class="toggle-button">
               {{ $t('notes.expand') }}
             </button>
+          </div>
+
+          <div
+            v-else
+            class="comment-trigger-bar"
+            @click.stop="openCommentModal"
+          >
+            <div class="comment-trigger-input">
+              {{ $t('notes.comment.trigger') }}
+            </div>
           </div>
         </div>
       </div>
