@@ -781,7 +781,7 @@ notes:
 
     s10_title: '10) Account & Personalization'
     s10_i1: 'Profile: Click avatar to upload a new image; click nickname or signature to edit directly.'
-    s10_i2: 'Statistics: View cloud storage usage, total notes, and streak stats.'
+    s10_i2: 'Statistics: View cloud storage usage, total notes, and streak stats.Click the note count below the sidebar avatar to view statistics.'
     s10_i3: 'Security: Email users can change login password; securely sign out.'
     s10_i4: 'Font Settings: Independently adjust "Content Font Size" (note body) and "System Font Size" (UI controls); enable "Follow" to automatically adapt system font size to content size.'
     s10_i5: 'default_city: Set a default city and get weather instantly for new notes;Not set: Using GPS/IP auto-location.'

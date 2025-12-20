@@ -573,8 +573,6 @@ onMounted(() => {
             <div class="tag-menu-container">
               <RecursiveMenu :items="tagMenuOptions" @item-click="emit('close')" />
             </div>
-
-            <div style="height: 60px;" />
           </div>
         </div>
       </Transition>
@@ -789,7 +787,7 @@ onMounted(() => {
 
 /* 菜单列表区域 */
 .menu-list {
-  padding: 10px 0 0 0 !important;
+  padding: 10px 0 10px 0 !important;
   flex: 1;
 }
 
