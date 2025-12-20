@@ -1253,14 +1253,47 @@ async function saveNewNote(content: string, weather: string | null) {
   margin-bottom: 0;
 }
 
+/* =========================================================
+   修复内嵌编辑器高度过小的问题
+   ========================================================= */
+
+/* 1. 外层容器：保持新版本的圆角和边框样式，但让高度自适应 */
+:deep(.inline-editor .note-editor-reborn) {
+  height: auto !important;
+  min-height: 0 !important;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+.dark :deep(.inline-editor .note-editor-reborn) {
+  border-color: #374151;
+}
+
+/* 2. 隐藏内嵌编辑器的底部安全区垫片 (日历自己有 padding) */
+:deep(.inline-editor .editor-footer) {
+  padding-bottom: 8px !important;
+}
+
+/* 3. 🔥 核心修复：参考旧版本逻辑，使用 max-height 而非固定 height */
+
+/* [新建笔记] 状态：
+   旧版本使用 max-height: 56vh。
+   这样键盘弹出时，如果空间不足，编辑器不会强制撑开导致顶到刘海区。
+*/
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  max-height: 35vh !important;
+  height: auto !important;      /* 允许高度随内容自动收缩 */
+  min-height: 120px !important; /* 给一个基础高度，避免太小 */
+  max-height: 56vh !important;  /* ✅ 关键：限制最大高度为视口的 56% */
 }
 
+/* [编辑旧笔记] 状态：
+   旧版本使用 max-height: 75dvh。
+*/
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  max-height: 75dvh !important;
+  height: auto !important;
+  min-height: 200px !important;
+  max-height: 75dvh !important; /* ✅ 关键：使用 dynamic viewport height */
 }
-
 .calendar-nav-title {
   font-weight: 600;
 }
