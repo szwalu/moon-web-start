@@ -1066,7 +1066,12 @@ async function saveNewNote(content: string, weather: string | null) {
 
     <div ref="scrollBodyRef" class="calendar-body">
       <div class="notes-for-day-container">
-        <div v-if="isWriting" class="inline-editor">
+        <div
+          v-if="isWriting"
+          class="writing-backdrop"
+          @click="cancelWriting"
+        />
+        <div v-if="isWriting" class="inline-editor writing-mode">
           <NoteEditor
             ref="newNoteEditorRef"
             v-model="newNoteContent"
@@ -1253,14 +1258,44 @@ async function saveNewNote(content: string, weather: string | null) {
   margin-bottom: 0;
 }
 
+/* =========================================================
+   修复内嵌编辑器高度过小的问题
+   ========================================================= */
+
+/* 1. 外层容器：由内容决定高度，不再全屏 */
+:deep(.inline-editor .note-editor-reborn) {
+  height: auto !important;
+  min-height: 0 !important;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+.dark :deep(.inline-editor .note-editor-reborn) {
+  border-color: #374151;
+}
+
+/* 2. 隐藏内嵌编辑器的底部安全区垫片 (日历自己有 padding) */
+:deep(.inline-editor .editor-footer) {
+  padding-bottom: 8px !important;
+}
+
+/* 3. 🔥 核心修复：给输入框强制指定高度 */
+
+/* [新建笔记] 状态：默认高度 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  max-height: 56vh !important;
+  /* 👇 把这里的 240px 改成 360px 或更大 */
+  height: 460px !important;
+  min-height: 460px !important;
+  max-height: none !important;
 }
 
+/* [编辑旧笔记] 状态：编辑时的高度 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  max-height: 75dvh !important;
+  /* 👇 把这里的 50vh (屏幕一半) 改成 65vh (屏幕的 65%) */
+  height: 75vh !important;
+  min-height: 400px !important;
+  max-height: 80vh !important;
 }
-
 .calendar-nav-title {
   font-weight: 600;
 }
@@ -1401,6 +1436,52 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
+}
+
+/* 🔥 核心方案：完全脱离文档流，模拟主界面的布局 */
+.inline-editor.writing-mode {
+  position: fixed;        /* 1. 固定定位：不随页面滚动 */
+  top: 15vh;              /* 2. 物理下沉：距离屏幕顶部 15%，留出巨大的刘海缓冲 */
+  left: 12px;             /* 3. 左右留白，做成卡片悬浮感 */
+  right: 12px;
+  z-index: 2000;          /* 4. 确保层级高于日历内容 */
+
+  /* 重置之前的 padding 设置 */
+  padding-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* 配合固定定位，强制覆盖内部 NoteEditor 的样式 */
+:deep(.inline-editor.writing-mode .note-editor-reborn) {
+  /* 恢复合适的高度 (55vh)，确保键盘弹起时底部工具栏可见 */
+  height: 55vh !important;
+
+  /* 清除组件自带的 margin (因为外层已经定义了 top: 15vh) */
+  margin-top: 0 !important;
+
+  /* 加个阴影，让它看起来像浮在日历上面 */
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  border-radius: 12px;
+}
+
+/* 深色模式适配阴影 */
+.dark :deep(.inline-editor.writing-mode .note-editor-reborn) {
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+
+.writing-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2); /* 轻微变暗 */
+  z-index: 1999; /* 比编辑器低 1 */
+  backdrop-filter: blur(2px); /* 可选：加一点高斯模糊更高级 */
+}
+
+.dark .writing-backdrop {
+  background: rgba(0, 0, 0, 0.5);
 }
 </style>
 
