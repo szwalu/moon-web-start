@@ -1254,11 +1254,11 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  max-height: 46vh !important;
+  max-height: 35vh !important;
 }
 
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  max-height: 56dvh !important;
+  max-height: 75dvh !important;
 }
 
 .calendar-nav-title {
