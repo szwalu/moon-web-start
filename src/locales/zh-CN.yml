@@ -433,7 +433,7 @@ notes:
   search_placeholder_enter: 搜索(可搜索天气中地点)
   search_tags: 搜索标签
   favorites: 常用标签
-  all_favorites: '#全部标签'
+  all_favorites: 🏷️全部标签
   unpin_favorites: 取消常用
   pin_favorites: 设为常用
   max_length_exceeded: '字数已超过上限（最多 {max} 字）'

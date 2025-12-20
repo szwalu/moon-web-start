@@ -1175,11 +1175,28 @@ export function useTagMenu(
 
     const body = treeChildren.length > 0 ? treeChildren : letterGroups
 
+    // 在 useTagMenu.ts 中找到 separatorOption 定义处
     const separatorOption = (pinnedGroup.length > 0 && body.length > 0)
       ? [{
           key: 'separator',
           type: 'render' as const,
-          render: () => h('div', { style: `padding-left: ${FINAL_LEFT_PADDING}px; color: #888; font-weight: bold; font-size: 12px; padding-top: 4px; padding-bottom: 4px; user-select: none;` }, t('notes.all_favorites')),
+          render: () => h('div', {
+            style: `
+          margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px; 
+          padding-left: 12px; 
+          color: #888; 
+          font-weight: bold; 
+          font-size: 12px; 
+          padding-top: 4px; 
+          padding-bottom: 4px; 
+          user-select: none;
+          cursor: default; /* 👈 1. 鼠标放上去不显示手指手势 */
+        `,
+            // 👇 2. 核心修改：阻止点击事件冒泡，防止菜单关闭
+            onClick: (e: MouseEvent) => {
+              e.stopPropagation()
+            },
+          }, t('notes.all_favorites')), // 这里应该是 '全部标签' 或对应的翻译 key
         }]
       : []
 

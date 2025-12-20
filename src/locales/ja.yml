@@ -434,7 +434,7 @@ notes:
   delete_second_confirm_hint: この操作は元に戻せません。もう一度確認してください。
   search_placeholder_enter: 検索
   search_tags: タグを検索
-  all_favorites: すべてのタグ
+  all_favorites: 🏷️すべてのタグ
   favorites: 一般的なタグ
   unpin_favorites: お気に入りを解除
   pin_favorites: お気に入りに設定
