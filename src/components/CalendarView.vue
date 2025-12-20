@@ -1254,10 +1254,10 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 
 /* =========================================================
-   修复内嵌编辑器高度过小的问题 (修正版)
+   修复内嵌编辑器高度过小的问题 (最终版)
    ========================================================= */
 
-/* 1. 外层容器：自适应高度 */
+/* 1. 外层容器：保持样式 */
 :deep(.inline-editor .note-editor-reborn) {
   height: auto !important;
   min-height: 0 !important;
@@ -1274,24 +1274,15 @@ async function saveNewNote(content: string, weather: string | null) {
   padding-bottom: 8px !important;
 }
 
-/* 3. 🔥 核心修复：移除 height 属性，让 JS 能够控制高度增长 */
+/* 3. 🔥 核心修复：新建和编辑统一使用大高度 */
+:deep(.inline-editor .note-editor-reborn .editor-textarea) {
+  height: auto !important;       /* 允许高度随内容稍微变化（如果有JS生效的话） */
 
-/* [新建笔记] 状态 */
-:deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-
-  /* ✅ 设定一个舒适的初始高度 (例如 150px 或 200px) */
+  /* ✅ 按照你的思路：起步就是屏幕高度的 56%，既够大又不会被键盘顶飞 */
   min-height: 56vh !important;
 
-  /* ✅ 设定最大高度为视口的一半左右，防止键盘弹起时顶到刘海 */
-  max-height: 56vh !important;
-}
-
-/* [编辑旧笔记] 状态 */
-:deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  /* ❌ 删除 height 属性 */
-
-  min-height: 56vh !important;
-  max-height: 75dvh !important;
+  /* 🔒 加一个最大高度保险，防止内容写了几千字后把头部标题栏顶出屏幕 */
+  max-height: 80vh !important;
 }
 
 .calendar-nav-title {
