@@ -22,7 +22,7 @@ import { useOfflineSync } from '@/composables/useSync'
 
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
-
+import AvatarImage from '@/components/AvatarImage.vue'
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false) // [新增] 控制侧边栏显示
 const authStore = useAuthStore()
@@ -67,41 +67,6 @@ function onActivationSuccess() {
   // 激活成功后，刷新页面以确保所有数据流重新初始化
   window.location.reload()
 }
-
-// ✅ [新增] 1. 定义头像源变量
-const headerAvatarSrc = ref<string | null>(null)
-
-// ✅ [新增] 2. 监听用户变化，优先读取 LocalStorage 缓存
-watch(() => user.value, (u) => {
-  const remoteUrl = u?.user_metadata?.avatar_url
-  if (!u || !remoteUrl || remoteUrl === 'null' || remoteUrl.trim() === '') {
-    headerAvatarSrc.value = null
-    return
-  }
-
-  // 尝试读取你在 AccountModal 里存好的缓存 key
-  const cacheKey = `avatar_cache_${u.id}`
-  const cachedBase64 = localStorage.getItem(cacheKey)
-
-  if (cachedBase64) {
-    // 命中缓存：立即显示，实现 0ms 秒开
-    headerAvatarSrc.value = cachedBase64
-
-    // (可选) 后台静默检查更新：如果网络图变了，等加载完再悄悄换掉
-    if (remoteUrl !== cachedBase64) {
-      const img = new Image()
-      img.src = remoteUrl
-      img.onload = () => {
-        // 👇 展开为多行以避免 lint 报错
-        headerAvatarSrc.value = remoteUrl
-      }
-    }
-  }
-  else {
-    // 无缓存（新设备登录）：只能显示网络图
-    headerAvatarSrc.value = remoteUrl
-  }
-}, { immediate: true })
 
 const { manualSync: _manualSync } = useOfflineSync()
 
@@ -3058,13 +3023,14 @@ function onCalendarUpdated(updated: any) {
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
-          <img
-            v-if="headerAvatarSrc"
-            :src="headerAvatarSrc"
+          <AvatarImage
+            v-if="user?.user_metadata?.avatar_url"
+            :user-id="user.id"
+            :src="user.user_metadata.avatar_url"
             class="header-avatar"
             alt="User"
-            @error="headerAvatarSrc = null"
-          >
+          />
+
           <img
             v-else
             src="/icons/pwa-192.png"
@@ -3072,7 +3038,6 @@ function onCalendarUpdated(updated: any) {
             alt="Menu"
           >
         </div>
-
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button

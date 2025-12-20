@@ -6,6 +6,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import 'vue-cropper/dist/index.css'
+import AvatarImage from '@/components/AvatarImage.vue'
 
 // ✅ [新增] 1. 引入激活弹窗组件
 import ActivationModal from '@/components/ActivationModal.vue'
@@ -28,6 +29,7 @@ const VueCropper = defineAsyncComponent(() =>
 const showInternalActivation = ref(false)
 const showDeleteAccount = ref(false) // [新增] 控制删除弹窗
 const isUserActivated = ref(false)
+const previewAvatar = ref<string | null>(null)
 
 // ---新增：裁剪相关状态---
 const showCropper = ref(false)
@@ -72,9 +74,6 @@ const tempSignature = ref('')
 
 const isUploadingAvatar = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const avatarLoadError = ref(false)
-
-const currentAvatarSrc = ref<string | null>(null)
 
 // --- 计算属性 ---
 const storageUsedMB = computed(() => (storageUsedBytes.value / 1024 / 1024).toFixed(2))
@@ -117,7 +116,6 @@ const daysRemaining = ref(7)
 // 1. 打开弹窗时获取数据
 watch(() => props.show, async (visible) => {
   if (visible) {
-    avatarLoadError.value = false
     if (!hasFetched.value) {
       fetchFirstNoteAndStreak()
       fetchNotesCount()
@@ -151,29 +149,6 @@ function onInternalActivationSuccess() {
   showInternalActivation.value = false
   isUserActivated.value = true
 }
-
-// 2. 监听用户信息变化
-watch(() => userAvatar.value, (newUrl) => {
-  if (!newUrl) {
-    currentAvatarSrc.value = null
-    return
-  }
-  const cacheKey = `avatar_cache_${props.user?.id}`
-  const cachedBase64 = localStorage.getItem(cacheKey)
-
-  if (cachedBase64) {
-    currentAvatarSrc.value = cachedBase64
-    const img = new Image()
-    img.src = newUrl
-    img.onload = () => {
-      currentAvatarSrc.value = newUrl
-    }
-  }
-  else {
-    currentAvatarSrc.value = newUrl
-  }
-  avatarLoadError.value = false
-}, { immediate: true })
 
 // --- 工具函数 ---
 
@@ -243,16 +218,6 @@ function compressImage(file: Blob): Promise<Blob> {
 
 // --- 核心逻辑 ---
 
-function onAvatarError() {
-  const cacheKey = `avatar_cache_${props.user?.id}`
-  const cachedBase64 = localStorage.getItem(cacheKey)
-  if (cachedBase64 && currentAvatarSrc.value !== cachedBase64)
-    currentAvatarSrc.value = cachedBase64
-
-  else
-    avatarLoadError.value = true
-}
-
 function triggerFileUpload() {
   fileInputRef.value?.click()
 }
@@ -288,8 +253,10 @@ function onCropConfirm() {
 
       const compressedBlob = await compressImage(rawBlob)
       showCropper.value = false
-      const localPreviewUrl = URL.createObjectURL(compressedBlob)
-      currentAvatarSrc.value = localPreviewUrl
+
+      // ✅ 修改点：使用 previewAvatar 显示本地预览
+      previewAvatar.value = URL.createObjectURL(compressedBlob)
+
       await performUpload(compressedBlob)
     }
     catch (e) {
@@ -357,8 +324,6 @@ async function performUpload(fileBlob: Blob) {
     }
 
     await authStore.refreshUser()
-    currentAvatarSrc.value = finalUrl
-    avatarLoadError.value = false
     messageHook.success(t('auth.profile_updated'))
   }
   catch (e: any) {
@@ -639,17 +604,18 @@ function handleForgotOldPwd() {
             <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange">
 
             <div class="avatar-wrapper" :class="{ 'is-loading': isUploadingAvatar }" @click="triggerFileUpload">
-              <img
-                v-if="currentAvatarSrc && !avatarLoadError"
-                :key="currentAvatarSrc"
-                :src="currentAvatarSrc"
+              <AvatarImage
+                v-if="previewAvatar || userAvatar"
+                :user-id="user?.id || 'unknown'"
+                :src="previewAvatar || userAvatar"
                 class="profile-avatar"
                 alt="Avatar"
-                @error="onAvatarError"
-              >
+              />
+
               <div v-else class="profile-avatar placeholder">
                 {{ userName.charAt(0).toUpperCase() }}
               </div>
+
               <div v-if="isUploadingAvatar" class="avatar-overlay loading">
                 <span>...</span>
               </div>
