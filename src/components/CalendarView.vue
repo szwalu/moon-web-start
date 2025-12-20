@@ -228,7 +228,7 @@ const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editing
 const hideHeader = ref(false)
 
 function onEditorFocus() {
-  hideHeader.value = false
+  hideHeader.value = true
 }
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -251,7 +251,7 @@ function onGlobalClickCapture(e: MouseEvent) {
 
   isWriting.value = false
   editingNote.value = null
-  hideHeader.value = false
+  hideHeader.value = true
 }
 
 onMounted(() => {
@@ -349,13 +349,13 @@ async function saveExistingNote(content: string) {
 
   editingNote.value = null
   editContent.value = ''
-  hideHeader.value = false
+  hideHeader.value = true
 }
 
 function cancelEditExisting() {
   editingNote.value = null
   editContent.value = ''
-  hideHeader.value = false
+  hideHeader.value = true
 }
 
 async function handleEdit(note: any) {
@@ -363,7 +363,7 @@ async function handleEdit(note: any) {
   editContent.value = note?.content || ''
   isWriting.value = false
   expandedNoteId.value = null
-  hideHeader.value = false
+  hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
@@ -875,7 +875,7 @@ async function startWriting() {
   }
   catch (e) {}
   isWriting.value = true
-  hideHeader.value = false
+  hideHeader.value = true
   if (scrollBodyRef.value)
     scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
 
@@ -900,7 +900,7 @@ const composeButtonText = computed(() => {
 
 function cancelWriting() {
   isWriting.value = false
-  hideHeader.value = false
+  hideHeader.value = true
 }
 
 function buildCreatedAtForSelectedDay(): string {
@@ -991,7 +991,7 @@ async function saveNewNote(content: string, weather: string | null) {
 
   isWriting.value = false
   newNoteContent.value = ''
-  hideHeader.value = false
+  hideHeader.value = true
 }
 </script>
 
@@ -1220,10 +1220,7 @@ async function saveNewNote(content: string, weather: string | null) {
   min-height: 0;
   overflow-y: auto;
   position: relative;
-
-  /* 🔥 核心代码：告诉浏览器，自动滚动聚焦时，顶部保留 60px 的缓冲距离 */
-  /* 这样原生键盘弹出时，第一行字就不会贴到刘海，而是停在 Header 下方 */
-  scroll-padding-top: 60px;
+  scroll-padding-top: 80px; /* 告诉浏览器滚动的“止盈点”在哪里 */
 }
 .calendar-container {
   padding: 1rem 1rem 0 1rem;
@@ -1310,6 +1307,7 @@ async function saveNewNote(content: string, weather: string | null) {
   height: 460px !important;
   min-height: 460px !important;
   max-height: none !important;
+  margin-top: 60px !important;
 }
 
 /* [编辑旧笔记] 状态：编辑时的高度 */
