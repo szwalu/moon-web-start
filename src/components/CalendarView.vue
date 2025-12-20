@@ -251,7 +251,7 @@ function onGlobalClickCapture(e: MouseEvent) {
 
   isWriting.value = false
   editingNote.value = null
-  hideHeader.value = true
+  hideHeader.value = false
 }
 
 onMounted(() => {
@@ -349,13 +349,13 @@ async function saveExistingNote(content: string) {
 
   editingNote.value = null
   editContent.value = ''
-  hideHeader.value = true
+  hideHeader.value = false
 }
 
 function cancelEditExisting() {
   editingNote.value = null
   editContent.value = ''
-  hideHeader.value = true
+  hideHeader.value = false
 }
 
 async function handleEdit(note: any) {
@@ -900,7 +900,7 @@ const composeButtonText = computed(() => {
 
 function cancelWriting() {
   isWriting.value = false
-  hideHeader.value = true
+  hideHeader.value = false
 }
 
 function buildCreatedAtForSelectedDay(): string {
@@ -991,7 +991,7 @@ async function saveNewNote(content: string, weather: string | null) {
 
   isWriting.value = false
   newNoteContent.value = ''
-  hideHeader.value = true
+  hideHeader.value = false
 }
 </script>
 
@@ -1152,56 +1152,32 @@ async function saveNewNote(content: string, weather: string | null) {
   left: 0;
   width: 100%;
   height: 100%;
-  background: white; /* 确保背景不透明 */
+  background: white;
   z-index: 5000;
   display: flex;
   flex-direction: column;
   color: #333;
-
-  /* 确保 padding 始终存在 */
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view {
   background: #1e1e1e;
   color: #f0f0f0;
 }
-/* 🔥 这是一个强制挡板：无论 Header 是否隐藏，都用一个白色块盖住刘海区 */
-.calendar-view::after {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: env(safe-area-inset-top); /* 高度等于刘海高度 */
-  background-color: white; /* 与主题色一致 */
-  z-index: 6000; /* 必须比内容高 */
-  pointer-events: none; /* 不阻挡点击 */
-}
-
-/* 深色模式适配 */
-.dark .calendar-view::after {
-  background-color: #1e1e1e;
-}
 .calendar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  /* 增加一点顶部 padding，视觉上更舒适 */
-  padding: 12px 1.5rem 12px 1.5rem;
+  padding: calc(0.5rem + 0px) 1.5rem 0.75rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
   cursor: pointer;
-
-  /* 🔥 关键：必须有背景色，否则文字滚上去会透出来 */
-  background-color: #fff;
-
   position: sticky;
-  top: 0; /* sticky 相对的是父容器，设为 0 即可 */
-  z-index: 10; /* 提高层级 */
+  top: var(--safe-top);
+  z-index: 1;
 }
 .dark .calendar-header {
-  background-color: #1e1e1e; /* 深色模式背景 */
+  border-bottom-color: #374151;
 }
 .calendar-header h2 {
   font-size: 18px;
@@ -1220,7 +1196,6 @@ async function saveNewNote(content: string, weather: string | null) {
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  scroll-padding-top: 80px; /* 告诉浏览器滚动的“止盈点”在哪里 */
 }
 .calendar-container {
   padding: 1rem 1rem 0 1rem;
@@ -1278,45 +1253,14 @@ async function saveNewNote(content: string, weather: string | null) {
   margin-bottom: 0;
 }
 
-/* =========================================================
-   修复内嵌编辑器高度过小的问题
-   ========================================================= */
-
-/* 1. 外层容器：由内容决定高度，不再全屏 */
-:deep(.inline-editor .note-editor-reborn) {
-  height: auto !important;
-  min-height: 0 !important;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-}
-.dark :deep(.inline-editor .note-editor-reborn) {
-  border-color: #374151;
-}
-
-/* 2. 隐藏内嵌编辑器的底部安全区垫片 (日历自己有 padding) */
-:deep(.inline-editor .editor-footer) {
-  padding-bottom: 8px !important;
-}
-
-/* 3. 🔥 核心修复：给输入框强制指定高度 */
-
-/* [新建笔记] 状态：默认高度 */
 :deep(.inline-editor .note-editor-reborn:not(.editing-viewport) .editor-textarea) {
-  /* 👇 把这里的 240px 改成 360px 或更大 */
-  height: 460px !important;
-  min-height: 460px !important;
-  max-height: none !important;
-  margin-top: 60px !important;
+  max-height: 56vh !important;
 }
 
-/* [编辑旧笔记] 状态：编辑时的高度 */
 :deep(.inline-editor .note-editor-reborn.editing-viewport .editor-textarea) {
-  /* 👇 把这里的 50vh (屏幕一半) 改成 65vh (屏幕的 65%) */
-  height: 75vh !important;
-  min-height: 400px !important;
-  max-height: 80vh !important;
+  max-height: 75dvh !important;
 }
+
 .calendar-nav-title {
   font-weight: 600;
 }
@@ -1457,10 +1401,6 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
-}
-
-.inline-editor {
-  scroll-margin-top: calc(env(safe-area-inset-top) + 20px);
 }
 </style>
 
