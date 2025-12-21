@@ -1131,7 +1131,10 @@ async function saveNewNote(content: string, weather: string | null) {
               @delete="handleDelete"
               @favorite="handleFavorite"
               @dblclick="handleEdit(note)"
-              @date-updated="(newNote) => handleDateUpdated(newNote)"
+              @date-updated="(newNote) => {
+                handleDateUpdated(newNote)
+                emit('updated', newNote)
+              }"
               @set-date="(note) => emit('setDate', note)"
             />
           </div>

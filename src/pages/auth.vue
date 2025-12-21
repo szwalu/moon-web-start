@@ -1528,8 +1528,13 @@ function openYearMonthPicker() {
 }
 
 function handleDateOrContentUpdate(payload: any) {
-  if (payload && payload.id)
+  if (payload && payload.id) {
     updateNoteInList(payload)
+
+    // ✅ [修复] 强制清理该笔记相关的所有缓存（标签、日历、搜索等）
+    // 这样当你随后点击标签筛选时，系统会发现缓存已被清除，从而重新拉取包含最新评论的数据
+    invalidateCachesOnDataChange(payload)
+  }
 }
 
 async function fetchNotesByMonth(year: number, month: number) {
@@ -1869,35 +1874,58 @@ async function handleFavoriteNote(note: any) {
 }
 
 function updateNoteInList(updatedNote: any) {
-  // 步骤 1: 无论如何，都先更新当前视图中的笔记，确保UI立即响应
+  // 1. 【原样】更新当前视图中的笔记 UI
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
-    // 对当前视图（可能是筛选后的）进行排序
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
   }
-  // —— 保证当前标签筛选的缓存不会陈旧 —— //
+
+  // 2. 【修改这里】处理标签筛选的缓存同步
+  // 原逻辑是直接 removeItem 删除，导致数据丢失或需要重新加载
+  // 现改为：读取 -> 修改 -> 写回，确保评论被保存
   if (activeTagFilter.value) {
     try {
       const key = getTagCacheKey(activeTagFilter.value)
-      localStorage.removeItem(key)
+      const cachedRaw = localStorage.getItem(key)
+      if (cachedRaw) {
+        const cachedData = JSON.parse(cachedRaw)
+
+        // 兼容处理：你的标签缓存结构是 { notes: [...], currentPage: ... }
+        // 所以我们只操作 cachedData.notes
+        const list = Array.isArray(cachedData) ? cachedData : (cachedData.notes || [])
+
+        const targetIdx = list.findIndex((n: any) => n.id === updatedNote.id)
+        if (targetIdx !== -1) {
+          // 找到了！把带评论的新笔记塞进去
+          list[targetIdx] = { ...updatedNote }
+
+          // 如果是对象结构，要把 notes 放回去
+          if (!Array.isArray(cachedData)) {
+            cachedData.notes = list
+            localStorage.setItem(key, JSON.stringify(cachedData))
+          }
+          else {
+            localStorage.setItem(key, JSON.stringify(list))
+          }
+        }
+      }
     }
-    catch { /* ignore */ }
+    catch (e) {
+      // 出错也不影响主流程，仅控制台警告
+      console.warn('标签缓存同步微调失败', e)
+    }
   }
 
-  // 步骤 2: 智能地更新 LocalStorage 中的主缓存
+  // 3. 【原样】智能地更新 LocalStorage 中的主缓存 (这部分你原来的代码写得很好，不动它)
   if (activeTagFilter.value || isShowingSearchResults.value) {
-    // 如果当前在筛选或搜索视图中，则执行安全的“读取-修改-写回”操作
     try {
       const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
       if (homeCacheRaw) {
         const homeCache = JSON.parse(homeCacheRaw)
         const masterIndex = homeCache.findIndex((n: any) => n.id === updatedNote.id)
-
-        // 在主缓存中找到了这条笔记
         if (masterIndex !== -1) {
           homeCache[masterIndex] = { ...updatedNote }
-          // 将更新后的完整主缓存写回 LocalStorage
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(homeCache))
         }
       }
@@ -1907,10 +1935,33 @@ function updateNoteInList(updatedNote: any) {
     }
   }
   else {
-    // 如果当前就在主列表视图，直接保存即可，这是最安全且高效的
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
+
+  // 4. 【原样】日历 UI 实时同步
+  if (showCalendarView.value && calendarViewRef.value)
+    (calendarViewRef.value as any).commitUpdate?.(updatedNote)
+
+  // 5. 【原样】那年今日更新
   notifyAnniversaryUpdate(updatedNote)
+
+  // 6. 【原样】(保持你刚刚修复的) 强制同步日历缓存文件
+  if (updatedNote.created_at) {
+    try {
+      const dateObj = new Date(updatedNote.created_at)
+      const calCacheKey = getCalendarDateCacheKey(dateObj)
+      const raw = localStorage.getItem(calCacheKey)
+      if (raw) {
+        const dayNotes = JSON.parse(raw)
+        const idx = dayNotes.findIndex((n: any) => n.id === updatedNote.id)
+        if (idx !== -1) {
+          dayNotes[idx] = { ...dayNotes[idx], ...updatedNote }
+          localStorage.setItem(calCacheKey, JSON.stringify(dayNotes))
+        }
+      }
+    }
+    catch (e) {}
+  }
 }
 
 // 重写：支持 reset / silent，并使用 created_at 游标向过去翻页
@@ -3256,7 +3307,10 @@ function onCalendarUpdated(updated: any) {
           v-if="showCalendarView" ref="calendarViewRef"
           @close="showCalendarView = false"
           @created="onCalendarCreated"
-          @updated="onCalendarUpdated"
+          @updated="(payload) => {
+            onCalendarUpdated(payload)
+            handleDateOrContentUpdate(payload)
+          }"
           @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
           @pin="handlePinToggle"
