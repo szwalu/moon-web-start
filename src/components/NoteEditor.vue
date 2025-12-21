@@ -1427,6 +1427,11 @@ async function handleSave() {
 
   if (props.clearDraftOnSave)
     clearDraft()
+
+  setTimeout(() => {
+    if (isSubmitting.value)
+      isSubmitting.value = false
+  }, 1000)
 }
 // ============== 基础事件 ==============
 let selectionIdleTimer: number | null = null
