@@ -985,7 +985,7 @@ function handleImageLoad() {
 
     <NModal v-model:show="showCommentModal">
       <NCard
-        style="width: 90vw; max-width: 500px; transform: translateY(-8vh);"
+        style="width: 90vw; max-width: 500px; transform: translateY(-15vh);"
         :title="$t('notes.comment.title')"
         :bordered="false"
         size="small"
