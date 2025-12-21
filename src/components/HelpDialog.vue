@@ -130,6 +130,7 @@ const { t } = useI18n()
             <li><strong>{{ t('notes.HelpDialog.set_date') }}</strong>{{ t('notes.HelpDialog.s7_i4_tail') }}</li>
             <li><strong>{{ t('notes.HelpDialog.share') }}</strong>{{ t('notes.HelpDialog.s7_i5_tail') }}</li>
             <li><strong>{{ t('notes.favorite') }}</strong>{{ t('notes.HelpDialog.s7_i6_tail') }}</li>
+            <li>{{ t('notes.HelpDialog.s7_i7_tail') }}</li>
           </ul>
         </section>
 
