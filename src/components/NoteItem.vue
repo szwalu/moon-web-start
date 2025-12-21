@@ -310,6 +310,9 @@ function renderMarkdown(content: string) {
 function checkIfNoteOverflows() {
   const preview = contentRef.value as HTMLElement | null
   const full = fullContentRef.value as HTMLElement | null
+  if (!preview || !preview.offsetParent)
+    return
+
   if (!preview || !full) {
     noteOverflowStatus.value = false
     return

@@ -1001,7 +1001,7 @@ async function restoreScrollIfNeeded() {
     <div v-show="isEditingTop" class="inline-editor" style="margin: 8px 8px 12px 8px;">
       <NoteEditor
         ref="editTopEditorRef"
-        :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}:${editingNoteTop?.updated_at}`"
+        :key="`top-editor:${editingNoteTop?.id ?? 'none'}:${editSessionKey}`"
         v-model="editTopContent"
         :is-editing="true"
         :is-loading="false"
