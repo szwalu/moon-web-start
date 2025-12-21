@@ -914,7 +914,7 @@ function updateCollapsePos() {
 
   let topPx = visibleBottom - btnH
   // 你的微调：往上再提一点
-  topPx -= 40
+  topPx -= 50
   if (topPx < visibleTop)
     topPx = visibleTop
 
