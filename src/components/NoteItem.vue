@@ -76,10 +76,10 @@ function openCommentModal() {
 // NoteItem.vue
 
 async function handleAppendComment() {
+  // 1. 基础校验
   if (!commentText.value.trim())
     return
 
-  // 1. 先把 ID 和旧内容存下来（防抖动/防丢失）
   const noteId = props.note.id
   const oldContent = props.note.content || ''
 
@@ -88,22 +88,35 @@ async function handleAppendComment() {
     return
   }
 
+  // 🟢 修正点 1：必须先定义时间、分割线和评论块，才能计算总字数
+  const now = new Date()
+  const timeString = now.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  const headerText = t('notes.comment.header')
+  // 构造评论块
+  const commentBlock = `> 💬 ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
+  const separator = '\n\n---\n\n'
+
+  // 🟢 修正点 2：现在可以安全地计算新内容了
+  const newContent = oldContent + separator + commentBlock
+
+  // 🟢 修正点 3：在提交前检查总字数
+  const MAX_LENGTH = 20000
+  if (newContent.length > MAX_LENGTH) {
+    messageHook.error(t('notes.max_length_exceeded', { max: MAX_LENGTH }) || `字数超出限制（最多 ${MAX_LENGTH} 字）`)
+    // 注意：这里还没开始 submit，所以不需要重置 isSubmittingComment
+    return
+  }
+
+  // === 开始提交 ===
   isSubmittingComment.value = true
   try {
-    const now = new Date()
-    const timeString = now.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
-    const headerText = t('notes.comment.header')
-    const commentBlock = `> 💬 ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
-    const separator = '\n\n---\n\n'
-    const newContent = oldContent + separator + commentBlock
-
     // 2. 数据库更新
     const { data, error } = await supabase
       .from('notes')
@@ -122,19 +135,15 @@ async function handleAppendComment() {
     showCommentModal.value = false
     commentText.value = ''
 
-    // ✅✅✅ 核心修复：构造必胜数据包 (Payload) ✅✅✅
-    // 即使 data 为空 (Supabase 偶尔不返数据)，我们也手动拼装一个完整的对象
-    // 关键：必须包含 id，否则父组件 updateNoteInList 会报错
+    // ✅✅✅ 核心逻辑：构造必胜数据包 (Payload)
     const payload = {
-      ...props.note, // 继承原属性 (is_pinned, weather 等)
+      ...props.note, // 继承原属性
       ...(data || {}), // 如果 Supabase 返回了新数据，覆盖之
-      id: noteId, // 🔥 强制写入 ID (父组件靠这个更新)
-      content: newContent, // 🔥 强制写入新内容 (界面靠这个刷新)
+      id: noteId, // 🔥 强制写入 ID
+      content: newContent, // 🔥 强制写入新内容
     }
 
     // 3. 发射事件
-    // 只要这里发出的 payload 有 id，父组件的 updateNoteInList 就绝对不会报错
-    // 并且会顺带触发 notifyAnniversaryUpdate，实现那年今日的实时刷新
     emit('dateUpdated', payload)
   }
   catch (err: any) {
