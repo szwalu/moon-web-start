@@ -473,14 +473,14 @@ notes:
   batch_tag_error: '操作部分失败: {msg}'
 
   comment:
-    trigger: 写评论
-    title: 追加评论
+    trigger: 写批注
+    title: 追加批注
     placeholder: 写下你的想法...
     submit: 追加
     cancel: 取消
-    success: 评论已追加
-    fail: '追加评论失败: {reason}'
-    header: 评论 # 用于生成的 Markdown 文本中： > 💬 评论 2025...
+    success: 批注已追加
+    fail: '追加批注失败: {reason}'
+    header: 批注 # 用于生成的 Markdown 文本中： > 💬 批注 2025...
   draft:
     title: 提示
     resume_tooltip: 存在未保存的草稿，点击继续编辑
