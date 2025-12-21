@@ -42,11 +42,32 @@ const emit = defineEmits([
 const { t } = useI18n()
 const messageHook = useMessage()
 const isDark = useDark()
+const settingsStore = useSettingStore()
 
 // 3. 定义状态
 const showCommentModal = ref(false)
 const commentText = ref('')
 const isSubmittingComment = ref(false)
+
+// 1. 定义字号映射对象 (与你 CSS 里的定义保持一致)
+const fontSizeMap: Record<string, string> = {
+  'small': '14px',
+  'medium': '17px',
+  'large': '20px',
+  'extra-large': '22px',
+}
+
+// 2. 创建计算属性，获取当前应显示的字号
+const commentInputStyle = computed(() => {
+  const sizeKey = settingsStore.noteFontSize || 'medium'
+  const px = fontSizeMap[sizeKey] || '17px'
+
+  return {
+    'fontSize': px,
+    // 同时覆盖 Naive UI 的内部变量，确保光标和行高计算正确
+    '--n-font-size': px,
+  }
+})
 
 // 打开评论弹窗的辅助函数
 function openCommentModal() {
@@ -220,7 +241,6 @@ md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
   return defaultLinkClose(tokens, idx, options, env, self)
 }
 
-const settingsStore = useSettingStore()
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize}`)
 
 const isIOS = typeof navigator !== 'undefined'
@@ -980,6 +1000,7 @@ function handleImageLoad() {
           :placeholder="$t('notes.comment.placeholder')"
           :autosize="{ minRows: 3, maxRows: 6 }"
           autofocus
+          :style="commentInputStyle"
         />
         <template #footer>
           <div style="display: flex; justify-content: flex-end; gap: 8px;">
