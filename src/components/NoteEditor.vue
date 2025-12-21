@@ -619,7 +619,6 @@ const isSubmitting = ref(false)
 const suppressNextBlur = ref(false)
 let blurTimeoutId: number | null = null
 const showTagSuggestions = ref(false)
-const bottomSafePadding = ref(0)
 const tagSuggestions = ref<string[]>([])
 const suggestionsStyle = ref({ top: '0px', left: '0px' })
 
@@ -1142,7 +1141,7 @@ function recomputeBottomSafePadding() {
 
   // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
   emit('bottomSafeChange', need)
-  bottomSafePadding.value = need
+
   // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
   if (need > 0) {
     if (!_hasPushedPage) {
@@ -1428,11 +1427,6 @@ async function handleSave() {
 
   if (props.clearDraftOnSave)
     clearDraft()
-
-  setTimeout(() => {
-    if (isSubmitting.value)
-      isSubmitting.value = false
-  }, 1000)
 }
 // ============== 基础事件 ==============
 let selectionIdleTimer: number | null = null
