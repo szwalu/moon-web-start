@@ -61,11 +61,9 @@ const fontSizeMap: Record<string, string> = {
 const commentInputStyle = computed(() => {
   const sizeKey = settingsStore.noteFontSize || 'medium'
   const px = fontSizeMap[sizeKey] || '17px'
-
   return {
-    'fontSize': px,
-    // 同时覆盖 Naive UI 的内部变量，确保光标和行高计算正确
-    '--n-font-size': px,
+    // 定义一个自定义变量，专门传给 CSS 用
+    '--comment-fs': px,
   }
 })
 
@@ -995,7 +993,7 @@ function handleImageLoad() {
         aria-modal="true"
       >
         <NInput
-          v-model:value="commentText"
+          v-model:value="commentText" class="comment-textarea"
           type="textarea"
           :placeholder="$t('notes.comment.placeholder')"
           :autosize="{ minRows: 3, maxRows: 6 }"
@@ -1779,6 +1777,19 @@ function handleImageLoad() {
 
 .dark .comment-trigger-bar:hover .comment-trigger-input {
   background-color: #4b5563;
+}
+
+/* 🟢 新增：强力覆盖评论框字号 */
+:deep(.comment-textarea .n-input__textarea-el) {
+  /* 使用我们刚才定义的 CSS 变量，并加 !important 覆盖全局 UI 设置 */
+  font-size: var(--comment-fs) !important;
+  /* 可选：行高也配合调整一下，读起来更舒服 */
+  line-height: 1.6 !important;
+}
+
+/* 可选：如果你希望占位符文字也跟着变大，加这一段 */
+:deep(.comment-textarea .n-input__textarea-el::placeholder) {
+   font-size: var(--comment-fs) !important;
 }
 </style>
 
