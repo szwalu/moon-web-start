@@ -107,6 +107,10 @@ settings:
   city_empty: 都市名を入力してください...
   city_locked: ✅ 設定済み。次回のメモから有効です。
   city_unlocked: 🌍 未設定：GPS/IP 自動測位を使用します。
+  daily_reminder: 毎日のリマインダー
+  notification_enabled: 毎日のリマインダーを有効にしました
+  notification_cancel: リマインダーを無効にしました
+  notification_permission_denied: 有効にできません：ブラウザの通知権限を確認してください
 
 messages:
   tip: ヒント

@@ -99,7 +99,10 @@ async function handleNotificationToggle(value: boolean) {
     }
     else {
       notificationEnabled.value = false
-      message.warning('无法开启：请检查浏览器通知权限')
+      message.warning(
+        t('settings.notification_permission_denied')
+  || '无法开启：请检查浏览器通知权限',
+      )
     }
   }
   else {
@@ -112,7 +115,7 @@ async function handleNotificationToggle(value: boolean) {
         .eq('id', props.user.id)
     }
     notificationEnabled.value = false
-    message.success('提醒已关闭')
+    message.success(t('settings.notification_enabled') || '提醒已关闭')
   }
 
   notificationLoading.value = false

@@ -107,6 +107,10 @@ settings:
   city_empty: Please enter a city name...
   city_locked: ✅ Locked. Will apply to next new note.
   city_unlocked: '🌍 Not set: Using GPS/IP auto-location.'
+  daily_reminder: Daily Reminder
+  notification_enabled: Daily reminder enabled
+  notification_cancel: Reminder disabled
+  notification_permission_denied: Unable to enable!please check browser notification permissions
 
 messages:
   tip: Tip

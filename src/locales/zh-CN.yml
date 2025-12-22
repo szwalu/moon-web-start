@@ -109,6 +109,8 @@ settings:
   city_unlocked: 🌍 未设置：将使用 GPS/IP 自动定位。
   daily_reminder: 每日提醒
   notification_enabled: 每日提醒已开启
+  notification_cancel: 提醒已关闭
+  notification_permission_denied: 无法开启：请检查浏览器通知权限
 
 messages:
   tip: 提示
