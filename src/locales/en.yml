@@ -784,7 +784,7 @@ notes:
     s7_i4_tail: ': Modify the creation date of the note.'
     s7_i5_tail: ': Generate an image of the current note or use system share to other apps.'
     s7_i6_tail: ': Add note to favorites; browse by clicking "Favorited" in search.'
-    s7_i7_tail: ' Click "📝 Annotate" at the bottom to add thoughts or follow-ups without changing the original content.'
+    s7_i7_tail: ' Click "📝" at the bottom to add thoughts or follow-ups without changing the original content.'
 
     s8_title: 8) Calendar View
     s8_i1: 'Click "Calendar" in main menu to view/create/edit/copy/pin/delete by date.'
