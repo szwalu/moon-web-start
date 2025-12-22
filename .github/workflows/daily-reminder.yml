@@ -3,7 +3,7 @@ name: Daily Journal Reminder
 on:
   schedule:
     # 每天 UTC 05:25 = 加州时间 21:25
-    - cron: '0 6 * * *'
+    - cron: '12 14 * * *'
   # 允许手动触发
   workflow_dispatch:
 
