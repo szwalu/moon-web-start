@@ -134,36 +134,6 @@ async function checkNotificationStatus() {
     notificationEnabled.value = true
 }
 
-// 🔥 [新增] 测试发送通知 (仅测试浏览器弹窗权限)
-function testSendNotification() {
-  if (!('Notification' in window)) {
-    message.error('当前浏览器不支持通知功能')
-    return
-  }
-
-  if (Notification.permission === 'granted') {
-    // 发送一条本地测试通知
-    const notification = new Notification('🔔 测试提醒成功', {
-      body: '如果你能看到这条消息，说明每日提醒功能配置正常！',
-      icon: '/favicon.ico', // 尝试使用你的网站图标
-      tag: 'test-notification',
-    })
-
-    notification.onclick = () => {
-      window.focus()
-      notification.close()
-    }
-
-    message.success('测试通知已发送，请查看系统弹窗')
-  }
-  else if (Notification.permission === 'denied') {
-    message.error('通知权限被拒绝，请在浏览器设置中开启')
-  }
-  else {
-    message.warning('请先开启每日提醒开关')
-  }
-}
-
 // ===========================================================================
 // 🔥 城市设置相关逻辑
 // ===========================================================================
@@ -671,17 +641,6 @@ onMounted(() => {
                     @update:value="handleNotificationToggle"
                   />
                 </div>
-              </div>
-
-              <div v-if="notificationEnabled" class="menu-item sub" style="padding-top: 0; padding-bottom: 12px; justify-content: flex-end; cursor: default;" @click.stop>
-                <NButton
-                  size="tiny"
-                  secondary
-                  type="primary"
-                  @click="testSendNotification"
-                >
-                  立即发送测试通知
-                </NButton>
               </div>
 
               <div class="menu-item sub" @click="handleItemClick('defaultCity')">
