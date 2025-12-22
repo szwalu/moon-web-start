@@ -480,14 +480,14 @@ notes:
   batch_tag_error: 'Operation partially failed: {msg}'
 
   comment:
-    trigger: Add Annotation
-    title: Add Annotation
-    placeholder: Write down your thoughts...
+    trigger: 📝 Record thoughts or add follow-up
+    title: Add thoughts or follow-up
+    placeholder: Write your thoughts...
     submit: Add
     cancel: Cancel
-    success: Annotation added
-    fail: 'Failed to add Annotation: {reason}'
-    header: Annotation
+    success: Added
+    fail: 'Add failed: {reason}'
+    header: 📝
   draft:
     title: Hint
     resume_tooltip: Unsaved draft found. Click to resume editing

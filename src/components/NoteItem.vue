@@ -100,7 +100,7 @@ async function handleAppendComment() {
 
   const headerText = t('notes.comment.header')
   // 构造评论块
-  const commentBlock = `> 📝 ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
+  const commentBlock = `> ${headerText} ${timeString}\n> ${commentText.value.replace(/\n/g, '\n> ')}`
   const separator = '\n\n---\n\n'
 
   // 🟢 修正点 2：现在可以安全地计算新内容了
