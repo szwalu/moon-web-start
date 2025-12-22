@@ -107,6 +107,8 @@ settings:
   city_empty: 请输入城市名...
   city_locked: ✅ 已锁定，下次新建笔记生效。
   city_unlocked: 🌍 未设置：将使用 GPS/IP 自动定位。
+  daily_reminder: 每日提醒
+  notification_enabled: 每日提醒已开启
 
 messages:
   tip: 提示

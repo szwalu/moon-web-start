@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, wat
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
+  Bell,
   Calendar,
   CheckSquare,
   ChevronRight,
@@ -14,15 +15,19 @@ import {
   Shuffle,
   Trash2,
   Type,
-  User as UserIcon,
+  User as UserIcon, // 🔥 [新增] 引入 Bell 图标
   // Key, // 🔥 [删除] 移除 Key 图标
 } from 'lucide-vue-next'
 
-import { NButton, NCard, NModal, NSelect, NSpace, NText } from 'naive-ui'
+// 🔥 [修改] 引入 NSwitch 和 useMessage
+import { NButton, NCard, NModal, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
 import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
+
+// 🔥 [新增] 引入 Firebase 工具
+import { requestFcmToken } from '@/utils/firebase'
 
 const props = defineProps({
   show: {
@@ -52,10 +57,111 @@ const emit = defineEmits(['close', 'menuClick'])
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 const settingStore = useSettingStore()
 const { t } = useI18n()
+const message = useMessage() // 🔥 [新增] 初始化消息提示
 const showFeedback = ref(false)
 
 function onAvatarClick() {
   handleItemClick('account')
+}
+
+// ===========================================================================
+// 🔥 [新增] 通知提醒逻辑
+// ===========================================================================
+const notificationEnabled = ref(false)
+const notificationLoading = ref(false)
+
+// 切换开关时的逻辑
+async function handleNotificationToggle(value: boolean) {
+  notificationLoading.value = true
+
+  if (value) {
+    // 🟢 开启逻辑
+    const token = await requestFcmToken()
+
+    if (token) {
+      if (props.user) {
+        // 🔥 【修改点】这里把 'profiles' 改为 'users'
+        const { error } = await supabase
+          .from('users')
+          .update({ fcm_token: token })
+          .eq('id', props.user.id)
+
+        if (!error) {
+          notificationEnabled.value = true
+          message.success(t('settings.notification_enabled') || '每日提醒已开启')
+        }
+        else {
+          console.error('保存 Token 失败:', error)
+          message.error('开启失败，请稍后重试')
+          notificationEnabled.value = false
+        }
+      }
+    }
+    else {
+      notificationEnabled.value = false
+      message.warning('无法开启：请检查浏览器通知权限')
+    }
+  }
+  else {
+    // 🔴 关闭逻辑
+    if (props.user) {
+      // 🔥 【修改点】这里把 'profiles' 改为 'users'
+      await supabase
+        .from('users')
+        .update({ fcm_token: null })
+        .eq('id', props.user.id)
+    }
+    notificationEnabled.value = false
+    message.success('提醒已关闭')
+  }
+
+  notificationLoading.value = false
+}
+
+// 检查当前状态 (回显)
+async function checkNotificationStatus() {
+  if (!props.user)
+    return
+
+  // 🔥 【修改点】这里把 'profiles' 改为 'users'
+  const { data } = await supabase
+    .from('users')
+    .select('fcm_token')
+    .eq('id', props.user.id)
+    .single()
+
+  if (data?.fcm_token)
+    notificationEnabled.value = true
+}
+
+// 🔥 [新增] 测试发送通知 (仅测试浏览器弹窗权限)
+function testSendNotification() {
+  if (!('Notification' in window)) {
+    message.error('当前浏览器不支持通知功能')
+    return
+  }
+
+  if (Notification.permission === 'granted') {
+    // 发送一条本地测试通知
+    const notification = new Notification('🔔 测试提醒成功', {
+      body: '如果你能看到这条消息，说明每日提醒功能配置正常！',
+      icon: '/favicon.ico', // 尝试使用你的网站图标
+      tag: 'test-notification',
+    })
+
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
+    }
+
+    message.success('测试通知已发送，请查看系统弹窗')
+  }
+  else if (Notification.permission === 'denied') {
+    message.error('通知权限被拒绝，请在浏览器设置中开启')
+  }
+  else {
+    message.warning('请先开启每日提醒开关')
+  }
 }
 
 // ===========================================================================
@@ -214,9 +320,10 @@ async function handleSearchCity(query: string) {
       cityOptions.value = data.results.map((item: any) => {
         const label = `${item.name} ${item.admin1 ? `(${item.admin1})` : ''}`
         const valueObj = { name: item.name, lat: item.latitude, lon: item.longitude }
+        const valueObjStr = JSON.stringify(valueObj)
         return {
           label,
-          value: JSON.stringify(valueObj),
+          value: valueObjStr,
           ...valueObj,
         }
       })
@@ -454,6 +561,8 @@ const statsData = computed(() => ({
 
 onMounted(() => {
   settingStore.loadManualLocation?.()
+  // 🔥 [新增] 组件加载时检查通知开启状态
+  checkNotificationStatus()
 })
 </script>
 
@@ -547,6 +656,32 @@ onMounted(() => {
               </div>
               <div class="menu-item sub" @click="handleItemClick('account')">
                 <UserIcon :size="18" /><span>{{ t('auth.account_title') }}</span>
+              </div>
+
+              <div class="menu-item sub" style="justify-content: space-between; cursor: default;" @click.stop>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                  <Bell :size="18" />
+                  <span>{{ t('settings.daily_reminder') || '每日提醒' }}</span>
+                </div>
+                <div style="margin-right: -4px;" @click.stop>
+                  <NSwitch
+                    v-model:value="notificationEnabled"
+                    :loading="notificationLoading"
+                    size="small"
+                    @update:value="handleNotificationToggle"
+                  />
+                </div>
+              </div>
+
+              <div v-if="notificationEnabled" class="menu-item sub" style="padding-top: 0; padding-bottom: 12px; justify-content: flex-end; cursor: default;" @click.stop>
+                <NButton
+                  size="tiny"
+                  secondary
+                  type="primary"
+                  @click="testSendNotification"
+                >
+                  立即发送测试通知
+                </NButton>
               </div>
 
               <div class="menu-item sub" @click="handleItemClick('defaultCity')">
