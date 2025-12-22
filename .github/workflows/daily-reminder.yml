@@ -2,10 +2,9 @@ name: Daily Journal Reminder
 
 on:
   schedule:
-    # GitHub 使用 UTC 时间。北京时间 9:00 = UTC 1:00
-    # 格式: '分 时 日 月 周'
+    # 北京时间 9:00 = UTC 1:00
     - cron: '0 1 * * *'
-  # 允许你在 GitHub 网页上手动点击按钮触发测试
+  # 允许手动触发
   workflow_dispatch:
 
 jobs:
@@ -18,12 +17,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20' # 🔥 升级到 20 以消除警告
 
+      # 注意：这里会生成 pnpm-lock.yaml，避免安装冲突
       - name: Install dependencies
-        run: npm install firebase-admin @supabase/supabase-js
+        run: npm install -g pnpm && pnpm add firebase-admin @supabase/supabase-js
 
       - name: Run Reminder Script
+        # 👇👇👇 核心修改：这几行 env 必须存在，且缩进正确 👇👇👇
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
