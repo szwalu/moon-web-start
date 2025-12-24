@@ -2,21 +2,13 @@
 const { createClient } = require('@supabase/supabase-js')
 const admin = require('firebase-admin')
 
-// 🔍【新增】调试代码：看看环境变量到底传进来了没有？
-console.log('--- 调试信息开始 ---')
-console.log('SUPABASE_URL 类型:', typeof process.env.SUPABASE_URL)
-console.log('SUPABASE_URL 长度:', process.env.SUPABASE_URL ? process.env.SUPABASE_URL.length : 0)
-console.log('SUPABASE_URL 内容预览:', process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.substring(0, 5)}...` : '空值')
-console.log('--- 调试信息结束 ---')
-
 // 1. 初始化 Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY, // 注意：这里要用 Service Key (服务端专用)，不能用 Anon Key
+  process.env.SUPABASE_SERVICE_KEY,
 )
 
-// 2. 初始化 Firebase Admin (你需要下载一个服务账号 json 文件)
-// 在 Firebase 控制台 -> 项目设置 -> 服务账号 -> 生成新的私钥
+// 2. 初始化 Firebase Admin
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
 
 admin.initializeApp({
@@ -24,9 +16,39 @@ admin.initializeApp({
 })
 
 async function sendDailyReminders() {
-  console.log('开始执行每日提醒任务...')
+  console.log('--- 开始执行定时提醒任务 ---')
 
-  // 3. 从数据库找出所有开启了提醒 (有 token) 的用户
+  // ==========================================
+  // 🔥 核心修改：根据当前时间决定文案
+  // ==========================================
+  const now = new Date()
+  const currentUtcHour = now.getUTCHours() // 获取当前的 UTC 小时 (0-23)
+
+  console.log(`当前 UTC 小时: ${currentUtcHour}`)
+
+  let notifTitle = ''
+  let notifBody = ''
+
+  // 判断逻辑：
+  // 上午 10:12 PST 运行 -> UTC 是 18:12 -> 小时数是 18 (或者前后有延迟，定为 17-19)
+  // 晚上 20:12 PST 运行 -> UTC 是 04:12 -> 小时数是 4  (或者前后有延迟，定为 3-5)
+
+  if (currentUtcHour >= 16 && currentUtcHour <= 20) {
+    // ☀️ 第一波：上午 10:12 的提醒 (使用你原来的文案)
+    console.log('判定为：上午提醒')
+    notifTitle = '📝 每日笔记时间到'
+    notifBody = '即使只有一句话，也要记录下今天的闪光点。\nEven one sentence is enough to capture today’s highlight.'
+  }
+  else {
+    // 🌙 第二波：晚上 20:12 的提醒 (使用新设计的文案)
+    console.log('判定为：晚上提醒')
+    notifTitle = '📝 每日回顾时间到'
+    notifBody = '哪怕过得很平凡，也值得回顾下今天的点滴。\nEven an ordinary day is worth looking back on.'
+  }
+
+  // ==========================================
+  // 3. 获取用户并去重 (防止一人收到两条)
+  // ==========================================
   const { data: users, error } = await supabase
     .from('users')
     .select('fcm_token')
@@ -37,29 +59,33 @@ async function sendDailyReminders() {
     return
   }
 
-  console.log(`找到 ${users.length} 个用户需要发送提醒`)
+  // 使用 Set 进行去重，防止同一个 Token 出现多次
+  const uniqueTokens = [...new Set(users.map(u => u.fcm_token))]
+  console.log(`数据库记录: ${users.length} 条，去重后需发送: ${uniqueTokens.length} 台设备`)
 
-  // 4. 循环发送
-  for (const user of users) {
-    if (!user.fcm_token)
-      continue
+  if (uniqueTokens.length === 0) {
+    console.log('没有用户订阅，任务结束。')
+    return
+  }
 
-    const message = {
-      notification: {
-        title: '📝 每日笔记时间到 / Time for your daily note',
-        body: '即使只有一句话，也要记录下今天的闪光点。\nEven one sentence is enough to capture today’s highlight.',
-      },
-      token: user.fcm_token,
-    }
+  // ==========================================
+  // 4. 批量发送 (更高效的写法)
+  // ==========================================
+  const message = {
+    notification: {
+      title: notifTitle,
+      body: notifBody,
+    },
+    tokens: uniqueTokens, // ⚠️ 注意：这里用 tokens (复数) 配合 sendEachForMulticast
+  }
 
-    try {
-      await admin.messaging().send(message)
-      console.log('发送成功:', `${user.fcm_token.slice(0, 10)}...`)
-    }
-    catch (e) {
-      console.error('发送失败 (可能 token 过期):', e.message)
-      // 可选：如果 token 失效，可以在这里从数据库删除它
-    }
+  try {
+    const response = await admin.messaging().sendEachForMulticast(message)
+    console.log(`✅ 发送成功: ${response.successCount} 条`)
+    console.log(`❌ 发送失败: ${response.failureCount} 条`)
+  }
+  catch (e) {
+    console.error('发送过程中出错:', e)
   }
 }
 
