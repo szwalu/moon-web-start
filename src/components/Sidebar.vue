@@ -123,22 +123,6 @@ async function handleNotificationToggle(value: boolean) {
   notificationLoading.value = false
 }
 
-// 检查当前状态 (回显)
-async function checkNotificationStatus() {
-  if (!props.user)
-    return
-
-  // 🔥 【修改点】这里把 'profiles' 改为 'users'
-  const { data } = await supabase
-    .from('users')
-    .select('fcm_token')
-    .eq('id', props.user.id)
-    .single()
-
-  if (data?.fcm_token)
-    notificationEnabled.value = true
-}
-
 // ===========================================================================
 // 🔥 城市设置相关逻辑
 // ===========================================================================
@@ -395,6 +379,31 @@ const RecursiveMenu = defineComponent({
 // // --- 统计数据逻辑 ---
 const journalingDays = ref(0)
 
+// 🔥 [新增] 用于显示的笔记数量（带缓存逻辑）
+const displayTotalNotes = ref(props.totalNotes)
+
+// 监听 user 和 totalNotes 的变化，更新缓存和显示
+watch(
+  () => [props.totalNotes, props.user?.id],
+  ([newCount, userId]) => {
+    // 1. 如果父组件传来了有效的数字 (>0)，直接使用并更新缓存
+    if (typeof newCount === 'number' && newCount > 0) {
+      displayTotalNotes.value = newCount
+      if (userId)
+        localStorage.setItem(`total_notes_cache_${userId}`, String(newCount))
+    }
+    // 2. 如果父组件传来的是 0 (可能是加载中)，尝试读取缓存兜底
+    else if (newCount === 0 && userId) {
+      const cached = localStorage.getItem(`total_notes_cache_${userId}`)
+      if (cached)
+        displayTotalNotes.value = Number(cached)
+      else
+        displayTotalNotes.value = 0
+    }
+  },
+  { immediate: true }, // 立即执行一次
+)
+
 const userName = computed(() => {
   const meta = props.user?.user_metadata
   if (meta?.full_name)
@@ -536,8 +545,6 @@ const statsData = computed(() => ({
 
 onMounted(() => {
   settingStore.loadManualLocation?.()
-  // 🔥 [新增] 组件加载时检查通知开启状态
-  checkNotificationStatus()
 })
 </script>
 
@@ -582,7 +589,7 @@ onMounted(() => {
             >
               <div class="stat-item">
                 <div class="stat-num">
-                  {{ totalNotes }}
+                  {{ displayTotalNotes }}
                 </div>
                 <div class="stat-label">
                   {{ t('notes.notes_bj') || '笔记' }}
