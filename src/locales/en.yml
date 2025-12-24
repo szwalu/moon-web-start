@@ -800,6 +800,7 @@ notes:
     s10_i3: 'Security: Email users can change login password; securely sign out.'
     s10_i4: 'Font Settings: Independently adjust "Content Font Size" (note body) and "System Font Size" (UI controls); enable "Follow" to automatically adapt system font size to content size.'
     s10_i5: 'default_city: Set a default city and get weather instantly for new notes;Not set: Using GPS/IP auto-location.'
+    s10_i6: 'Daily reminder: When enabled, the system will send a notification at a fixed time each day to remind you to write or review notes. Please ensure browser notification permissions are granted.'
 
     s11_title: '11) Offline & Cache'
     s11_i1_tail: ': New/Edit/Pin/Fav/Delete update UI and local snapshots instantly offline, syncing when online.'
