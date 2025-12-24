@@ -67,7 +67,7 @@ function onAvatarClick() {
 // ===========================================================================
 // 🔥 [新增] 通知提醒逻辑
 // ===========================================================================
-const notificationEnabled = ref(false)
+const notificationEnabled = ref(localStorage.getItem('isDailyReminderOn') === 'true')
 const notificationLoading = ref(false)
 
 // 切换开关时的逻辑
@@ -88,6 +88,7 @@ async function handleNotificationToggle(value: boolean) {
 
         if (!error) {
           notificationEnabled.value = true
+          localStorage.setItem('isDailyReminderOn', 'true')
           message.success(t('settings.notification_enabled') || '每日提醒已开启')
         }
         else {
@@ -115,7 +116,8 @@ async function handleNotificationToggle(value: boolean) {
         .eq('id', props.user.id)
     }
     notificationEnabled.value = false
-    message.success(t('settings.notification_enabled') || '提醒已关闭')
+    localStorage.setItem('isDailyReminderOn', 'false')
+    message.success(t('settings.notification_cancel') || '提醒已关闭')
   }
 
   notificationLoading.value = false
