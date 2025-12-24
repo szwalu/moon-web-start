@@ -802,7 +802,7 @@ export function useTagMenu(
   function getRowMenuOptions(tag: string, closeMenu: () => void) {
     const pinned = isPinned(tag)
 
-    // ✅ 修改 1：增强 makeRow，增加 customColor 参数
+    // ✅ 修改后的 makeRow：文字在左，图标在右，保留原色
     function makeRow(
       action: 'pin' | 'rename' | 'change_icon' | 'remove',
       text: string,
@@ -819,10 +819,12 @@ export function useTagMenu(
               style: [
                 'display:flex;',
                 'align-items:center;',
+                'justify-content:space-between;', // ✅ 核心修改：两端对齐
+                'width: 100%;', // ✅ 核心修改：撑满容器宽度
                 'padding:4px 10px;',
                 'gap:8px;',
                 'cursor:pointer;',
-                // ✅ 如果传入了颜色（如红色），则应用它
+                // ✅ 如果传入了颜色（如删除的红色），则应用它，不传则继承默认
                 customColor ? `color:${customColor};` : '',
               ].join(''),
               onClick: (e: MouseEvent) => {
@@ -832,6 +834,16 @@ export function useTagMenu(
               },
             },
             [
+              // 1. 文字放前面
+              h(
+                'span',
+                {
+                  style: 'font-size:13px;',
+                },
+                text,
+              ),
+
+              // 2. 图标放后面
               h(
                 'span',
                 {
@@ -841,17 +853,9 @@ export function useTagMenu(
                   h(IconComp, {
                     size: 16,
                     strokeWidth: 2,
-                    // 如果外层有颜色，图标自动继承；也可以强制指定
-                    // color: customColor
+                    // ✅ 这里不写 color，它会自动继承外层的 customColor 或默认色
                   }),
                 ],
-              ),
-              h(
-                'span',
-                {
-                  style: 'font-size:13px;',
-                },
-                text,
               ),
             ],
           ),

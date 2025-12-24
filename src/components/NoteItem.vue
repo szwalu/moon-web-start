@@ -421,12 +421,17 @@ function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string,
         style: {
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          justifyContent: 'space-between', // ✅ 核心修改：两端对齐
+          width: '100%', // ✅ 核心修改：撑满容器宽度
+          flex: '1', // ✅ 确保占满 flex 父容器
         },
       },
       [
-        h(iconComp, { size: 16, style: iconStyle }),
+        // 1. 把文字放在第一个位置
         h('span', null, text),
+
+        // 2. 把图标放在第二个位置 (iOS 风格通常图标稍大一点，这里微调为 18，你也可以保持 16)
+        h(iconComp, { size: 18, style: { ...iconStyle } }),
       ],
     )
 }

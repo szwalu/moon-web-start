@@ -3,12 +3,11 @@ const { createClient } = require('@supabase/supabase-js')
 const admin = require('firebase-admin')
 
 // 🔍【新增】调试代码：看看环境变量到底传进来了没有？
-console.log('--- 调试信息开始 ---');
-console.log('SUPABASE_URL 类型:', typeof process.env.SUPABASE_URL);
-console.log('SUPABASE_URL 长度:', process.env.SUPABASE_URL ? process.env.SUPABASE_URL.length : 0);
-console.log('SUPABASE_URL 内容预览:', process.env.SUPABASE_URL ? process.env.SUPABASE_URL.substring(0, 5) + '...' : '空值');
-console.log('--- 调试信息结束 ---');
-
+console.log('--- 调试信息开始 ---')
+console.log('SUPABASE_URL 类型:', typeof process.env.SUPABASE_URL)
+console.log('SUPABASE_URL 长度:', process.env.SUPABASE_URL ? process.env.SUPABASE_URL.length : 0)
+console.log('SUPABASE_URL 内容预览:', process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.substring(0, 5)}...` : '空值')
+console.log('--- 调试信息结束 ---')
 
 // 1. 初始化 Supabase
 const supabase = createClient(
@@ -47,7 +46,7 @@ async function sendDailyReminders() {
 
     const message = {
       notification: {
-        title: '📝 每日回顾时间到',
+        title: '📝 每日笔记时间到',
         body: '即使只有一句话，也要记录下今天的闪光点。',
       },
       token: user.fcm_token,
