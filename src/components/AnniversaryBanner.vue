@@ -464,6 +464,8 @@ defineExpose({
   align-items: center;
   font-size: 14px;
   font-weight: 600;
+  position: relative; /* ✨ 新增这一行 */
+  justify-content: center; /* ✨ 新增这一行 */
 }
 
 .banner-text {
@@ -472,7 +474,7 @@ defineExpose({
 }
 
 .banner-view-btn {
-  margin-left: 8px;
+  /* margin-left: 8px; 这个可以去掉或保留，不影响了 */
   padding: 2px 10px;
   border-radius: 999px;
   border: none;
@@ -481,6 +483,9 @@ defineExpose({
   cursor: pointer;
   background-color: rgba(79, 70, 229, 0.12);
   color: #4338ca;
+
+  position: absolute; /* ✨ 新增这一行 */
+  right: 0;           /* ✨ 新增这一行 */
 }
 
 .banner-view-btn:active {
