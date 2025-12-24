@@ -46,8 +46,8 @@ async function sendDailyReminders() {
 
     const message = {
       notification: {
-        title: '📝 每日笔记时间到',
-        body: '即使只有一句话，也要记录下今天的闪光点。',
+        title: '📝 每日笔记时间到 / Time for your daily note',
+        body: '即使只有一句话，也要记录下今天的闪光点。\nEven one sentence is enough to capture today’s highlight.',
       },
       token: user.fcm_token,
     }
