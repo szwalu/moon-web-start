@@ -22,7 +22,7 @@ import { useOfflineSync } from '@/composables/useSync'
 
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
-
+import AvatarImage from '@/components/AvatarImage.vue'
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false) // [新增] 控制侧边栏显示
 const authStore = useAuthStore()
@@ -32,14 +32,15 @@ const canDismissActivation = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
 const isUserActivated = ref(false)
+const daysRemaining = ref(7)
 watch(user, async (currentUser) => {
   if (currentUser) {
     const registeredAt = new Date(currentUser.created_at)
     const now = new Date()
     const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    const TRIAL_DAYS = 7 // 7天使用期
-
+    const TRIAL_DAYS = 7
+    daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
     const { data, error } = await supabase
       .from('users')
       .select('is_active')
@@ -66,41 +67,6 @@ function onActivationSuccess() {
   // 激活成功后，刷新页面以确保所有数据流重新初始化
   window.location.reload()
 }
-
-// ✅ [新增] 1. 定义头像源变量
-const headerAvatarSrc = ref<string | null>(null)
-
-// ✅ [新增] 2. 监听用户变化，优先读取 LocalStorage 缓存
-watch(() => user.value, (u) => {
-  const remoteUrl = u?.user_metadata?.avatar_url
-  if (!u || !remoteUrl || remoteUrl === 'null' || remoteUrl.trim() === '') {
-    headerAvatarSrc.value = null
-    return
-  }
-
-  // 尝试读取你在 AccountModal 里存好的缓存 key
-  const cacheKey = `avatar_cache_${u.id}`
-  const cachedBase64 = localStorage.getItem(cacheKey)
-
-  if (cachedBase64) {
-    // 命中缓存：立即显示，实现 0ms 秒开
-    headerAvatarSrc.value = cachedBase64
-
-    // (可选) 后台静默检查更新：如果网络图变了，等加载完再悄悄换掉
-    if (remoteUrl !== cachedBase64) {
-      const img = new Image()
-      img.src = remoteUrl
-      img.onload = () => {
-        // 👇 展开为多行以避免 lint 报错
-        headerAvatarSrc.value = remoteUrl
-      }
-    }
-  }
-  else {
-    // 无缓存（新设备登录）：只能显示网络图
-    headerAvatarSrc.value = remoteUrl
-  }
-}, { immediate: true })
 
 const { manualSync: _manualSync } = useOfflineSync()
 
@@ -1561,6 +1527,16 @@ function openYearMonthPicker() {
   })
 }
 
+function handleDateOrContentUpdate(payload: any) {
+  if (payload && payload.id) {
+    updateNoteInList(payload)
+
+    // ✅ [修复] 强制清理该笔记相关的所有缓存（标签、日历、搜索等）
+    // 这样当你随后点击标签筛选时，系统会发现缓存已被清除，从而重新拉取包含最新评论的数据
+    invalidateCachesOnDataChange(payload)
+  }
+}
+
 async function fetchNotesByMonth(year: number, month: number) {
   const from = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`
   const toMonth = month === 12 ? 1 : month + 1
@@ -1898,35 +1874,58 @@ async function handleFavoriteNote(note: any) {
 }
 
 function updateNoteInList(updatedNote: any) {
-  // 步骤 1: 无论如何，都先更新当前视图中的笔记，确保UI立即响应
+  // 1. 【原样】更新当前视图中的笔记 UI
   const index = notes.value.findIndex(n => n.id === updatedNote.id)
   if (index !== -1) {
     notes.value[index] = { ...updatedNote }
-    // 对当前视图（可能是筛选后的）进行排序
     notes.value.sort((a, b) => (b.is_pinned - a.is_pinned) || (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
   }
-  // —— 保证当前标签筛选的缓存不会陈旧 —— //
+
+  // 2. 【修改这里】处理标签筛选的缓存同步
+  // 原逻辑是直接 removeItem 删除，导致数据丢失或需要重新加载
+  // 现改为：读取 -> 修改 -> 写回，确保评论被保存
   if (activeTagFilter.value) {
     try {
       const key = getTagCacheKey(activeTagFilter.value)
-      localStorage.removeItem(key)
+      const cachedRaw = localStorage.getItem(key)
+      if (cachedRaw) {
+        const cachedData = JSON.parse(cachedRaw)
+
+        // 兼容处理：你的标签缓存结构是 { notes: [...], currentPage: ... }
+        // 所以我们只操作 cachedData.notes
+        const list = Array.isArray(cachedData) ? cachedData : (cachedData.notes || [])
+
+        const targetIdx = list.findIndex((n: any) => n.id === updatedNote.id)
+        if (targetIdx !== -1) {
+          // 找到了！把带评论的新笔记塞进去
+          list[targetIdx] = { ...updatedNote }
+
+          // 如果是对象结构，要把 notes 放回去
+          if (!Array.isArray(cachedData)) {
+            cachedData.notes = list
+            localStorage.setItem(key, JSON.stringify(cachedData))
+          }
+          else {
+            localStorage.setItem(key, JSON.stringify(list))
+          }
+        }
+      }
     }
-    catch { /* ignore */ }
+    catch (e) {
+      // 出错也不影响主流程，仅控制台警告
+      console.warn('标签缓存同步微调失败', e)
+    }
   }
 
-  // 步骤 2: 智能地更新 LocalStorage 中的主缓存
+  // 3. 【原样】智能地更新 LocalStorage 中的主缓存 (这部分你原来的代码写得很好，不动它)
   if (activeTagFilter.value || isShowingSearchResults.value) {
-    // 如果当前在筛选或搜索视图中，则执行安全的“读取-修改-写回”操作
     try {
       const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
       if (homeCacheRaw) {
         const homeCache = JSON.parse(homeCacheRaw)
         const masterIndex = homeCache.findIndex((n: any) => n.id === updatedNote.id)
-
-        // 在主缓存中找到了这条笔记
         if (masterIndex !== -1) {
           homeCache[masterIndex] = { ...updatedNote }
-          // 将更新后的完整主缓存写回 LocalStorage
           localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(homeCache))
         }
       }
@@ -1936,10 +1935,33 @@ function updateNoteInList(updatedNote: any) {
     }
   }
   else {
-    // 如果当前就在主列表视图，直接保存即可，这是最安全且高效的
     localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
   }
+
+  // 4. 【原样】日历 UI 实时同步
+  if (showCalendarView.value && calendarViewRef.value)
+    (calendarViewRef.value as any).commitUpdate?.(updatedNote)
+
+  // 5. 【原样】那年今日更新
   notifyAnniversaryUpdate(updatedNote)
+
+  // 6. 【原样】(保持你刚刚修复的) 强制同步日历缓存文件
+  if (updatedNote.created_at) {
+    try {
+      const dateObj = new Date(updatedNote.created_at)
+      const calCacheKey = getCalendarDateCacheKey(dateObj)
+      const raw = localStorage.getItem(calCacheKey)
+      if (raw) {
+        const dayNotes = JSON.parse(raw)
+        const idx = dayNotes.findIndex((n: any) => n.id === updatedNote.id)
+        if (idx !== -1) {
+          dayNotes[idx] = { ...dayNotes[idx], ...updatedNote }
+          localStorage.setItem(calCacheKey, JSON.stringify(dayNotes))
+        }
+      }
+    }
+    catch (e) {}
+  }
 }
 
 // 重写：支持 reset / silent，并使用 created_at 游标向过去翻页
@@ -3057,13 +3079,14 @@ function onCalendarUpdated(updated: any) {
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
-          <img
-            v-if="headerAvatarSrc"
-            :src="headerAvatarSrc"
+          <AvatarImage
+            v-if="user?.user_metadata?.avatar_url"
+            :user-id="user.id"
+            :src="user.user_metadata.avatar_url"
             class="header-avatar"
             alt="User"
-            @error="headerAvatarSrc = null"
-          >
+          />
+
           <img
             v-else
             src="/icons/pwa-192.png"
@@ -3071,7 +3094,6 @@ function onCalendarUpdated(updated: any) {
             alt="Menu"
           >
         </div>
-
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button
@@ -3252,7 +3274,7 @@ function onCalendarUpdated(updated: any) {
           @copy-note="handleCopy"
           @task-toggle="handleNoteContentClick"
           @toggle-select="handleToggleSelect"
-          @date-updated="() => fetchNotes(true)"
+          @date-updated="handleDateOrContentUpdate"
           @scrolled="onListScroll"
           @editing-state-change="isTopEditing = $event"
           @favorite-note="handleFavoriteNote"
@@ -3285,7 +3307,10 @@ function onCalendarUpdated(updated: any) {
           v-if="showCalendarView" ref="calendarViewRef"
           @close="showCalendarView = false"
           @created="onCalendarCreated"
-          @updated="onCalendarUpdated"
+          @updated="(payload) => {
+            onCalendarUpdated(payload)
+            handleDateOrContentUpdate(payload)
+          }"
           @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
           @pin="handlePinToggle"
@@ -3345,7 +3370,8 @@ function onCalendarUpdated(updated: any) {
       <ActivationModal
         :show="showActivation"
         :allow-close="canDismissActivation"
-        :activated="isUserActivated" @close="showActivation = false"
+        :activated="isUserActivated"
+        :days-remaining="daysRemaining" @close="showActivation = false"
         @success="onActivationSuccess"
       />
     </template>
