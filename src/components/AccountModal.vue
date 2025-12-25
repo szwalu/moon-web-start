@@ -123,28 +123,12 @@ watch(() => props.show, async (visible) => {
       hasFetched.value = true
     }
     await checkActivationStatus()
-    if (props.user && props.user.created_at) {
-      // 1. 确保解析为标准时间戳 (getTime会处理时区)
-      const registeredAt = new Date(props.user.created_at).getTime()
-
-      // 2. 获取当前浏览器时间
-      const now = Date.now()
-
-      // 3. 计算绝对的过期时间点 (注册时间 + 7天)
-      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000
-      const expireTime = registeredAt + sevenDaysInMs
-
-      // 4. 计算剩余毫秒数
-      const remainingMs = expireTime - now
-
-      // 5. 核心判断：只要剩余时间 <= 0，立刻判死刑（0天）
-      if (remainingMs <= 0) {
-        daysRemaining.value = 0
-      }
-      else {
-        // 6. 只要还有时间，向上取整 (例如剩0.1天也算1天，给用户紧迫感)
-        daysRemaining.value = Math.ceil(remainingMs / (24 * 60 * 60 * 1000))
-      }
+    if (props.user) {
+      const registeredAt = new Date(props.user.created_at)
+      const now = new Date()
+      const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      daysRemaining.value = Math.max(0, 7 - diffDays)
     }
   }
 })
