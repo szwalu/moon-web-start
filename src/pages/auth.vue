@@ -3427,6 +3427,7 @@ function onCalendarUpdated(updated: any) {
   background: white;
   height: 44px;
   padding-top: 0.75rem;
+  transform: translateZ(0);
 }
 .dark .page-header {
   background: #1e1e1e;
@@ -3506,6 +3507,8 @@ function onCalendarUpdated(updated: any) {
   align-items: center;
   padding: 4px;
   cursor: pointer;
+  position: relative;
+  z-index: 10;
 }
 
 .header-avatar {
