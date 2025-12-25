@@ -44,6 +44,24 @@ const themeChildren: SettingItemChildren<Theme> = [
       searchBtnC: '#bc6c25',
     },
   },
+
+  // --- 修改：紫霭 (VioletMist) - 使用统一的 #6366f1 ---
+  {
+    name: () => t('settings.theme.violetMist'),
+    key: 'VioletMist',
+    value: {
+      primaryC: '#6366f1', // 核心主色 (对应组件中的 --act-title / --act-btn-bg)
+      primaryLightC: '#818cf8', // 亮色 (对应组件深色模式下的颜色)
+      primaryDarkC: '#4338ca', // 暗色 (加深一级，用于边框或深色文字)
+      siteHoverC: '#6366f122', // 悬停背景 (主色透明度)
+      settingBorderC: '#4338caaa', // 边框颜色
+      bgC: '#6366f1', // 设置项圆圈背景
+      mainBgC: '#f3f4f6', // 全局背景
+      searchBtnC: '#6366f1', // 搜索按钮
+    },
+  },
+  // --------------------------------------------------
+
   {
     name: () => t('settings.theme.moonWhite'),
     key: 'MoonWhite',
