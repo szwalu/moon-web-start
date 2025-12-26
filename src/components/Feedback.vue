@@ -7,10 +7,10 @@ import { supabase } from '../utils/supabaseClient'
 // [修改 1] 定义 Props 和 Emits，使其能被父组件控制
 const props = defineProps<{
   modalMode?: boolean // 是否以弹窗/组件模式运行
+  themeColor?: string
 }>()
-
 const emit = defineEmits(['close'])
-
+const currentThemeColor = computed(() => props.themeColor || '#6366f1')
 const route = useRoute()
 const router = useRouter()
 
@@ -121,7 +121,17 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="page-safearea" :class="{ 'is-modal': modalMode }" @click.self="modalMode ? goBack() : null">
+  <div
+    class="page-safearea"
+    :class="{ 'is-modal': modalMode }"
+    :style="{
+      '--theme-color': currentThemeColor,
+      '--theme-hover': `color-mix(in srgb, ${currentThemeColor}, black 10%)`,
+      '--theme-light': `color-mix(in srgb, ${currentThemeColor}, white 90%)`,
+      '--theme-title-bg': `color-mix(in srgb, ${currentThemeColor}, white 85%)`, // 标题栏淡色背景
+    }"
+    @click.self="modalMode ? goBack() : null"
+  >
     <div class="scroll-wrapper" @click.self="modalMode ? goBack() : null">
       <div class="form-container">
         <div class="breadcrumb">
@@ -303,7 +313,8 @@ async function handleSubmit() {
   font-weight: bold;
   font-size: 16px !important;
   margin-bottom: 1rem;
-  background: #eef2ff;
+  background: var(--theme-title-bg);
+  color: var(--theme-color);
   padding: 0.5rem;
   border-radius: 8px;
 }
@@ -338,7 +349,7 @@ textarea {
   margin-top: 1rem;
 }
 button {
-  background-color: #6366f1;
+  background-color: var(--theme-color);
   border: none;
   color: white;
   border-radius: 6px;
@@ -348,7 +359,7 @@ button {
   font-size: 13px !important;
 }
 button[disabled] { opacity: 0.6; cursor: not-allowed; }
-button:hover:not([disabled]) { background-color: #4f46e5; }
+button:hover:not([disabled]) { background-color: var(--theme-hover); }
 .btn-back {
   display: inline-block;
   text-align: center;
@@ -376,10 +387,10 @@ button:hover:not([disabled]) { background-color: #4f46e5; }
 @media (prefers-color-scheme: dark) {
   .form-container { background: #1e1e1e; color: #eee; box-shadow: 0 0 8px rgba(255, 255, 255, 0.1); }
   input, textarea, select { background: #2a2a2a; color: #eee; border: 1px solid #555; }
-  .breadcrumb { background: #312e81; color: #e0e7ff; }
+  .breadcrumb { background: color-mix(in srgb, var(--theme-color), black 60%); color: color-mix(in srgb, var(--theme-color), white 80%); }
   .tip { color: #ccc; }
-  button { background-color: #818cf8; }
-  button:hover:not([disabled]) { background-color: #6366f1; }
+  button { background-color: var(--theme-color); }
+  button:hover:not([disabled]) { background-color: color-mix(in srgb, var(--theme-color), white 20%); }
   .btn-back { background: #2a2a2a; color: #eee; border-color: #555; }
   .btn-back:hover { background: #333; }
 }

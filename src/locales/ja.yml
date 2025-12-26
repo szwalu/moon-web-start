@@ -34,6 +34,7 @@ button:
 
 settings:
   title: 設定
+  theme_title: テーマ設定
   font_title: フォントサイズ設定
   font_size_label: フォントサイズ
   font_size_small: 小

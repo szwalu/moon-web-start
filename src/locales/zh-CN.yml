@@ -35,6 +35,7 @@ button:
 settings:
   title: 设置
   font_title: 字号设置
+  theme_title: 主题设置
   font_size_label: 字号大小
   font_size_small: 小
   font_size_medium: 中

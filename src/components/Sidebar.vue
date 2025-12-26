@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, watch } from 'vue'
+/* eslint-disable style/max-statements-per-line, curly */
+import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -11,24 +12,27 @@ import {
   HelpCircle,
   MapPin,
   MessageSquare,
+  Palette,
   Settings,
   Shuffle,
   Trash2,
   Type,
-  User as UserIcon, // 🔥 [新增] 引入 Bell 图标
-  // Key, // 🔥 [删除] 移除 Key 图标
+  User as UserIcon,
 } from 'lucide-vue-next'
 
-// 🔥 [修改] 引入 NSwitch 和 useMessage
 import { NButton, NCard, NModal, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
+
+// 引入 SiteStore 获取书签数据用于上传
+import { useSiteStore } from '@/stores/site'
 
 import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
-// 🔥 [新增] 引入 Firebase 工具
 import { requestFcmToken } from '@/utils/firebase'
 import * as S from '@/utils/settings'
+import { toggleTheme } from '@/composables/theme'
+import { getText } from '@/utils'
 
 const props = defineProps({
   show: {
@@ -57,24 +61,18 @@ const emit = defineEmits(['close', 'menuClick'])
 
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 const settingStore = useSettingStore()
+const siteStore = useSiteStore()
 const { t } = useI18n()
-const message = useMessage() // 🔥 [新增] 初始化消息提示
+const message = useMessage()
 const showFeedback = ref(false)
 
 const headerStyle = computed(() => {
-  // 1. 获取当前设置的主题 Key (如 'Iris', 'EarlySpring', 'MoonWhite')
   const currentKey = settingStore.settings.theme
-
-  // 2. 在配置中找到对应的主题对象
   const themeItem = S.theme.children.find(item => item.key === currentKey)
-
-  // 3. 获取颜色值 (如果找不到则兜底)
   const colors = themeItem?.value || { primaryC: '#6366f1', primaryLightC: '#818cf8' }
-
-  // 4. 返回 CSS 变量样式
   return {
-    '--header-bg-start': colors.primaryC, // 渐变开始色 (主色)
-    '--header-bg-end': colors.primaryLightC, // 渐变结束色 (亮色)
+    '--header-bg-start': colors.primaryC,
+    '--header-bg-end': colors.primaryLightC,
   }
 })
 
@@ -83,22 +81,99 @@ function onAvatarClick() {
 }
 
 // ===========================================================================
-// 🔥 [新增] 通知提醒逻辑
+// 🔥 主题设置逻辑 (包含本地持久化 + 服务器同步)
+// ===========================================================================
+const showThemeModal = ref(false)
+
+const themeOptions = computed(() => {
+  return S.theme.children.map(item => ({
+    label: getText(item.name),
+    value: item.key,
+    color: item.value?.bgC || '#ddd',
+  }))
+})
+
+function renderThemeLabel(option: { label: string; value: string; color: string }) {
+  return h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } }, [
+    h('div', {
+      style: {
+        width: '14px',
+        height: '14px',
+        borderRadius: '50%',
+        backgroundColor: option.color,
+        border: '1px solid rgba(0,0,0,0.1)',
+      },
+    }),
+    h('span', option.label),
+  ])
+}
+
+async function handleThemeChange(val: string) {
+  // 1. 获取纯净数据副本
+  const currentSettingsRaw = toRaw(settingStore.settings)
+
+  // 2. 构造最新设置对象
+  const nextSettings = JSON.parse(JSON.stringify(currentSettingsRaw))
+  nextSettings.theme = val
+
+  // 3. 更新 Pinia Store
+  settingStore.setSettings(nextSettings)
+
+  // 4. 应用样式
+  toggleTheme(val)
+
+  // 5. 本地持久化 (LocalStorage settings & cache)
+  localStorage.setItem('settings', JSON.stringify(nextSettings))
+  try {
+    const cacheRaw = localStorage.getItem('cache')
+    if (cacheRaw) {
+      const cacheData = JSON.parse(cacheRaw)
+      cacheData.settings = { ...(cacheData.settings || {}), ...nextSettings }
+      localStorage.setItem('cache', JSON.stringify(cacheData))
+    }
+  }
+  catch (e) {}
+
+  // 6. 同步到服务器 (Supabase)
+  if (props.user) {
+    try {
+      const contentToSave = {
+        data: siteStore.customData, // 带上书签数据
+        settings: nextSettings, // 带上最新设置
+      }
+
+      const { error } = await supabase.from('profiles').upsert({
+        id: props.user.id,
+        content: JSON.stringify(contentToSave),
+        updated_at: new Date().toISOString(),
+      })
+
+      if (error)
+        console.error('Theme sync failed:', error)
+    }
+    catch (e) {
+      console.error('Error saving theme:', e)
+    }
+  }
+}
+
+function openThemeModal() {
+  showThemeModal.value = true
+}
+
+// ===========================================================================
+// 🔥 通知提醒逻辑
 // ===========================================================================
 const notificationEnabled = ref(localStorage.getItem('isDailyReminderOn') === 'true')
 const notificationLoading = ref(false)
 
-// 切换开关时的逻辑
 async function handleNotificationToggle(value: boolean) {
   notificationLoading.value = true
 
   if (value) {
-    // 🟢 开启逻辑
     const token = await requestFcmToken()
-
     if (token) {
       if (props.user) {
-        // 🔥 【修改点】这里把 'profiles' 改为 'users'
         const { error } = await supabase
           .from('users')
           .update({ fcm_token: token })
@@ -119,15 +194,12 @@ async function handleNotificationToggle(value: boolean) {
     else {
       notificationEnabled.value = false
       message.warning(
-        t('settings.notification_permission_denied')
-  || '无法开启：请检查浏览器通知权限',
+        t('settings.notification_permission_denied') || '无法开启：请检查浏览器通知权限',
       )
     }
   }
   else {
-    // 🔴 关闭逻辑
     if (props.user) {
-      // 🔥 【修改点】这里把 'profiles' 改为 'users'
       await supabase
         .from('users')
         .update({ fcm_token: null })
@@ -149,50 +221,36 @@ const cityOptions = ref<{ label: string; value: string; lat: number; lon: number
 const loadingCity = ref(false)
 const selectedCityKey = ref<string | null>(null)
 
-// 辅助函数：获取当前位置并填入搜索框
 async function autoSuggestCurrentCity() {
   loadingCity.value = true
-
   let cityName = ''
   let lat = 0
   let lon = 0
-
-  // ---------------------------------------------------------
-  // 阶段 1: 尝试 GPS 硬件定位
-  // ---------------------------------------------------------
   try {
     const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
       // eslint-disable-next-line prefer-promise-reject-errors
-      if (!navigator.geolocation)
-        return reject('No Geo')
-
-      // Android 优化: 5秒超时
-      // eslint-disable-next-line prefer-promise-reject-errors
+      if (!navigator.geolocation) {
+        reject('No Geo')
+        return
+      }
       const id = setTimeout(() => reject('Geo Timeout'), 5000)
 
       navigator.geolocation.getCurrentPosition(
         (p) => {
-          // ✅ 修复：拆成多行
           clearTimeout(id)
           resolve(p)
         },
         (e) => {
-          // ✅ 修复：拆成多行
           clearTimeout(id)
           reject(e)
         },
         { maximumAge: 60000, timeout: 5000, enableHighAccuracy: false },
       )
     })
-
-    // GPS 成功拿到坐标
     lat = pos.coords.latitude
     lon = pos.coords.longitude
-
-    // 拿着坐标去问 Nominatim
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000) // 2秒请求超时
-
+    const timeoutId = setTimeout(() => controller.abort(), 2000)
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`
       const res = await fetch(url, { signal: controller.signal })
@@ -202,46 +260,29 @@ async function autoSuggestCurrentCity() {
         cityName = data.address?.city || data.address?.town || data.address?.village || data.address?.county || ''
       }
     }
-    catch {
-      // Nominatim 挂了，但我们有坐标，先留空
-    }
+    catch {}
   }
-  catch {
-    // ⚠️ GPS 彻底失败 (Android HTTP环境大概率走这里)
-  }
+  catch {}
 
-  // ---------------------------------------------------------
-  // 阶段 2: 如果 GPS 没拿到城市名，强制使用 IP 定位兜底
-  // ---------------------------------------------------------
   if (!cityName) {
     try {
-      // 使用 ipapi.co
       const ipRes = await fetch('https://ipapi.co/json/')
       if (ipRes.ok) {
         const ipData = await ipRes.json()
         cityName = ipData.city || ''
-        // 如果之前 GPS 失败导致经纬度是 0，顺便补上
         if (!lat || !lon) {
           lat = ipData.latitude || 0
           lon = ipData.longitude || 0
         }
       }
     }
-    catch {
-      // IP 也失败
-    }
+    catch {}
   }
 
-  // ---------------------------------------------------------
-  // 阶段 3: 填入结果
-  // ---------------------------------------------------------
   if (cityName && lat && lon) {
     const valObj = { name: cityName, lat, lon }
     const valStr = JSON.stringify(valObj)
-
-    // 标记来源
     const labelTag = (lat === 0) ? 'IP' : '自动'
-
     cityOptions.value = [{
       label: `📍 ${cityName} (${labelTag})`,
       value: valStr,
@@ -249,20 +290,14 @@ async function autoSuggestCurrentCity() {
       lon,
     }]
     selectedCityKey.value = valStr
-
-    // 自动保存
     handleUpdateCity(valStr)
   }
-
   loadingCity.value = false
 }
 
-// 打开弹窗
 function openCityModal() {
   const current = settingStore.manualLocation
-
   if (current) {
-    // 🟢 情况 A：用户以前设置过 -> 执行“回显”逻辑
     const valStr = JSON.stringify(current)
     selectedCityKey.value = valStr
     cityOptions.value = [{
@@ -273,14 +308,10 @@ function openCityModal() {
     }]
   }
   else {
-    // ⚪ 情况 B：用户没设置过 -> 保持空白，但尝试自动填充
     selectedCityKey.value = null
     cityOptions.value = []
-
-    // 🔥 触发自动检测 (不会阻塞弹窗打开)
     autoSuggestCurrentCity()
   }
-
   showCityModal.value = true
 }
 
@@ -292,17 +323,12 @@ async function handleSearchCity(query: string) {
     const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=zh&format=json`
     const res = await fetch(url)
     const data = await res.json()
-
     if (data.results) {
       cityOptions.value = data.results.map((item: any) => {
         const label = `${item.name} ${item.admin1 ? `(${item.admin1})` : ''}`
         const valueObj = { name: item.name, lat: item.latitude, lon: item.longitude }
         const valueObjStr = JSON.stringify(valueObj)
-        return {
-          label,
-          value: valueObjStr,
-          ...valueObj,
-        }
+        return { label, value: valueObjStr, ...valueObj }
       })
     }
   }
@@ -326,7 +352,7 @@ function handleUpdateCity(val: string | null) {
 }
 
 // ===========================================================================
-// 🔥 递归渲染组件
+// 🔥 递归渲染组件 (严格修复多语句问题)
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
@@ -336,54 +362,42 @@ const RecursiveMenu = defineComponent({
 
     const renderNode = (item: any): any => {
       if (item.type === 'render') {
-        return h(
-          'div',
-          {
-            key: item.key,
-            class: 'render-node',
-            onClick: () => {
-              if (item.key !== 'tag-search' && item.key !== 'pinned-header')
-                emit('itemClick')
-            },
+        return h('div', {
+          key: item.key,
+          class: 'render-node',
+          onClick: () => {
+            if (item.key !== 'tag-search' && item.key !== 'pinned-header')
+              emit('itemClick')
           },
-          [resolve(item.render)],
-        )
+        }, [resolve(item.render)])
       }
 
       if (item.type === 'group') {
         const groupProps = item.props || {}
         return h('div', { key: item.key, class: 'group-node' }, [
-          h(
-            'div',
-            {
-              class: 'group-label',
-              onClick: (e: MouseEvent) => {
-                if (groupProps.onClick)
-                  groupProps.onClick(e)
-                emit('itemClick')
-              },
+          h('div', {
+            class: 'group-label',
+            onClick: (e: MouseEvent) => {
+              if (groupProps.onClick)
+                groupProps.onClick(e)
+              emit('itemClick')
             },
-            [resolve(item.label)],
-          ),
+          }, [resolve(item.label)]),
           h('div', { class: 'group-children' }, item.children.map(renderNode)),
         ])
       }
 
       const originalProps = item.props || {}
-      return h(
-        'div',
-        {
-          key: item.key,
-          class: 'menu-node hover-effect',
-          ...originalProps,
-          onClick: (e: MouseEvent) => {
-            if (originalProps.onClick)
-              originalProps.onClick(e)
-            emit('itemClick')
-          },
+      return h('div', {
+        key: item.key,
+        class: 'menu-node hover-effect',
+        ...originalProps,
+        onClick: (e: MouseEvent) => {
+          if (originalProps.onClick)
+            originalProps.onClick(e)
+          emit('itemClick')
         },
-        [resolve(item.label)],
-      )
+      }, [resolve(item.label)])
     }
 
     return () => {
@@ -396,31 +410,22 @@ const RecursiveMenu = defineComponent({
 
 // // --- 统计数据逻辑 ---
 const journalingDays = ref(0)
-
-// 🔥 [新增] 用于显示的笔记数量（带缓存逻辑）
 const displayTotalNotes = ref(props.totalNotes)
 
-// 监听 user 和 totalNotes 的变化，更新缓存和显示
-watch(
-  () => [props.totalNotes, props.user?.id],
-  ([newCount, userId]) => {
-    // 1. 如果父组件传来了有效的数字 (>0)，直接使用并更新缓存
-    if (typeof newCount === 'number' && newCount > 0) {
-      displayTotalNotes.value = newCount
-      if (userId)
-        localStorage.setItem(`total_notes_cache_${userId}`, String(newCount))
-    }
-    // 2. 如果父组件传来的是 0 (可能是加载中)，尝试读取缓存兜底
-    else if (newCount === 0 && userId) {
-      const cached = localStorage.getItem(`total_notes_cache_${userId}`)
-      if (cached)
-        displayTotalNotes.value = Number(cached)
-      else
-        displayTotalNotes.value = 0
-    }
-  },
-  { immediate: true }, // 立即执行一次
-)
+watch(() => [props.totalNotes, props.user?.id], ([newCount, userId]) => {
+  if (typeof newCount === 'number' && newCount > 0) {
+    displayTotalNotes.value = newCount
+    if (userId)
+      localStorage.setItem(`total_notes_cache_${userId}`, String(newCount))
+  }
+  else if (newCount === 0 && userId) {
+    const cached = localStorage.getItem(`total_notes_cache_${userId}`)
+    if (cached)
+      displayTotalNotes.value = Number(cached)
+    else
+      displayTotalNotes.value = 0
+  }
+}, { immediate: true })
 
 const userName = computed(() => {
   const meta = props.user?.user_metadata
@@ -452,14 +457,10 @@ watch(() => props.user, (u) => {
     if (remoteUrl !== cachedBase64) {
       const img = new Image()
       img.src = remoteUrl
-      img.onload = () => {
-        userAvatar.value = remoteUrl
-      }
+      img.onload = () => { userAvatar.value = remoteUrl }
     }
   }
-  else {
-    userAvatar.value = remoteUrl
-  }
+  else { userAvatar.value = remoteUrl }
 }, { immediate: true })
 
 function toDateKeyStrFromISO(iso: string) {
@@ -475,7 +476,6 @@ async function fetchAllDates(userId: string) {
   const allDates: string[] = []
   let page = 0
   let hasMore = true
-
   while (hasMore) {
     const { data, error } = await supabase
       .from('notes')
@@ -487,7 +487,9 @@ async function fetchAllDates(userId: string) {
       throw error
 
     if (data && data.length > 0) {
-      data.forEach((n: any) => allDates.push(n.created_at))
+      data.forEach((n: any) => {
+        allDates.push(n.created_at)
+      })
 
       if (data.length < PAGE_SIZE)
         hasMore = false
@@ -514,7 +516,6 @@ async function fetchStats() {
   try {
     const dates = await fetchAllDates(props.user.id)
     const uniqueDays = new Set(dates.map(iso => toDateKeyStrFromISO(iso))).size
-
     journalingDays.value = uniqueDays
     localStorage.setItem(CACHE_KEY, String(uniqueDays))
   }
@@ -535,19 +536,21 @@ function handleItemClick(key: string) {
     settingsExpanded.value = !settingsExpanded.value
     return
   }
-
   if (key === 'defaultCity') {
     openCityModal()
     return
   }
-
+  if (key === 'themeSetting') {
+    openThemeModal()
+    return
+  }
   if (key === 'feedback') {
     showFeedback.value = true
     emit('close')
     return
   }
-
   emit('menuClick', key)
+
   if (key !== 'settings-group')
     emit('close')
 }
@@ -651,6 +654,11 @@ onMounted(() => {
               <div class="menu-item sub" @click="handleItemClick('settings')">
                 <Type :size="18" /><span>{{ t('settings.font_title') }}</span>
               </div>
+
+              <div class="menu-item sub" @click="handleItemClick('themeSetting')">
+                <Palette :size="18" /><span>{{ t('settings.theme_title') || '主题设置' }}</span>
+              </div>
+
               <div class="menu-item sub" @click="handleItemClick('export')">
                 <Download :size="18" /><span>{{ t('notes.export_all') }}</span>
               </div>
@@ -677,26 +685,31 @@ onMounted(() => {
                 <MapPin :size="18" />
                 <span>{{ t('settings.default_city') || '默认城市' }}</span>
               </div>
-
-              <div class="menu-item sub" @click="handleItemClick('help')">
-                <HelpCircle :size="18" /><span>{{ t('notes.help_title') || '使用帮助' }}</span>
-              </div>
-              <div class="menu-item sub" @click="handleItemClick('feedback')">
-                <MessageSquare :size="18" /><span>{{ t('notes.feedback_title') || '反馈建议' }}</span>
-              </div>
             </div>
 
             <div class="menu-item" @click="handleItemClick('randomRoam')">
               <Shuffle :size="20" /><span>{{ t('notes.random_roam.title') || '随机漫游' }}</span>
-            </div>
-            <div class="menu-item" @click="handleItemClick('trash')">
-              <Trash2 :size="20" /><span>{{ t('auth.trash') }}</span>
             </div>
 
             <div class="divider" />
             <div class="tag-menu-container">
               <RecursiveMenu :items="tagMenuOptions" @item-click="emit('close')" />
             </div>
+
+            <div class="divider" style="margin-top: 10px;" />
+
+            <div class="menu-item" @click="handleItemClick('help')">
+              <HelpCircle :size="20" /><span>{{ t('notes.help_title') || '使用帮助' }}</span>
+            </div>
+            <div class="menu-item" @click="handleItemClick('feedback')">
+              <MessageSquare :size="20" /><span>{{ t('notes.feedback_title') || '反馈建议' }}</span>
+            </div>
+
+            <div class="menu-item" @click="handleItemClick('trash')">
+              <Trash2 :size="20" /><span>{{ t('auth.trash') }}</span>
+            </div>
+
+            <div style="height: 40px;" />
           </div>
         </div>
       </Transition>
@@ -709,6 +722,7 @@ onMounted(() => {
         <Feedback
           v-if="showFeedback"
           :modal-mode="true"
+          :theme-color="headerStyle['--header-bg-start']"
           @close="showFeedback = false"
         />
       </Transition>
@@ -760,8 +774,40 @@ onMounted(() => {
             <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
               <NButton
                 type="primary"
-                color="#6366f1"
+                :color="headerStyle['--header-bg-start']"
                 @click="showCityModal = false"
+              >
+                {{ t('button.confirm') || 'OK' }}
+              </NButton>
+            </div>
+          </NSpace>
+        </NCard>
+      </NModal>
+
+      <NModal v-model:show="showThemeModal">
+        <NCard
+          style="width: 90%; max-width: 400px;"
+          :title="t('settings.theme_title') || '主题设置'"
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+          closable
+          @close="showThemeModal = false"
+        >
+          <NSpace vertical>
+            <NSelect
+              :value="settingStore.settings.theme"
+              :options="themeOptions"
+              :render-label="renderThemeLabel"
+              :placeholder="t('settings.theme_placeholder') || '选择主题'"
+              @update:value="handleThemeChange"
+            />
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+              <NButton
+                type="primary"
+                :color="headerStyle['--header-bg-start']" @click="showThemeModal = false"
               >
                 {{ t('button.confirm') || 'OK' }}
               </NButton>

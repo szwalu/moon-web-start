@@ -34,6 +34,7 @@ button:
 
 settings:
   title: Settings
+  theme_title: Theme Settings
   font_title: Font Size Settings
   font_size_label: Font Size
   font_size_small: Small
