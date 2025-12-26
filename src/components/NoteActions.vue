@@ -1199,7 +1199,10 @@ defineExpose({ executeSearch, clearSearch })
 
   background: transparent;
   border: none;
-  color: #6366f1;
+
+  /* 👇 [修改] 文字颜色：跟随主题色 */
+  color: v-bind('props.themeColor');
+
   font-size: 13px;
   font-weight: 500;
   display: flex;
@@ -1208,10 +1211,24 @@ defineExpose({ executeSearch, clearSearch })
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
+  transition: all 0.2s ease;
 }
-.advanced-toggle-btn:hover { background-color: rgba(99, 102, 241, 0.1); }
-.dark .advanced-toggle-btn { color: #818cf8; }
-.dark .advanced-toggle-btn:hover { background-color: rgba(129, 140, 248, 0.15); }
+
+.advanced-toggle-btn:hover {
+  /* 👇 [修改] 悬停背景：使用主题色混合 90% 的透明度，制造淡淡的背景色 */
+  background-color: color-mix(in srgb, v-bind('props.themeColor'), transparent 90%);
+}
+
+.dark .advanced-toggle-btn {
+  /* 👇 [修改] 深色模式下文字颜色（稍微提亮一点点，或者直接用主题色） */
+  color: v-bind('props.themeColor');
+  filter: brightness(1.1); /* 让深色模式下的文字稍微亮一点，更易读 */
+}
+
+.dark .advanced-toggle-btn:hover {
+  /* 👇 [修改] 深色模式下的悬停背景 */
+  background-color: color-mix(in srgb, v-bind('props.themeColor'), transparent 85%);
+}
 /* 3. 快捷搜索按钮组 (网格布局) */
 .quick-search-grid {
   display: grid;
@@ -1323,14 +1340,28 @@ defineExpose({ executeSearch, clearSearch })
   display: inline-flex;
   align-items: center;
   padding: 6px 10px 6px 12px;
-  background-color: #e0e7ff;
+
+  /* 👇 [修改] 背景色：混合 90% 的白色，生成极淡的主题色背景 */
+  background-color: color-mix(in srgb, v-bind('props.themeColor'), white 90%);
+
   border-radius: 999px;
   font-size: 13px;
-  color: #3730a3;
+
+  /* 👇 [修改] 文字颜色：混合 20% 的黑色，生成较深的主题色文字 */
+  color: color-mix(in srgb, v-bind('props.themeColor'), black 20%);
+
   cursor: pointer;
   max-width: 100%;
 }
-.dark .history-chip { background-color: #312e81; color: #e0e7ff; }
+
+/* 👇 [修改] 深色模式适配 */
+.dark .history-chip {
+  /* 背景：混合 60% 的黑色，生成深沉的暗色背景 */
+  background-color: color-mix(in srgb, v-bind('props.themeColor'), black 60%);
+
+  /* 文字：混合 80% 的白色，生成明亮的浅色文字 */
+  color: color-mix(in srgb, v-bind('props.themeColor'), white 80%);
+}
 .history-delete-btn {
   background: transparent;
   border: none;

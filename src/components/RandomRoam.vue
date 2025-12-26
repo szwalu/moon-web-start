@@ -25,12 +25,12 @@ const props = defineProps<{
   isLoading: boolean
   loadMore: () => Promise<void> | void
   loadRandomBatch?: () => Promise<void> | void
+  themeColor?: string
 }>()
-
 const emit = defineEmits<{
   close: []
 }>()
-
+const currentThemeColor = computed(() => props.themeColor || '#6366f1')
 const isDark = useDark()
 const { t, locale } = useI18n()
 const settingsStore = useSettingStore()
@@ -420,7 +420,17 @@ function getCardStyle(index: number) {
 </script>
 
 <template>
-  <div class="random-roam-page" :class="{ 'random-roam-page--dark': isDark }">
+  <div
+    class="random-roam-page"
+    :class="{ 'random-roam-page--dark': isDark }"
+    :style="{
+      '--theme-color': currentThemeColor,
+      '--theme-color-light': `color-mix(in srgb, ${currentThemeColor}, white 20%)`, // 浅一点
+      '--theme-color-dark': `color-mix(in srgb, ${currentThemeColor}, black 10%)`, // 深一点
+      '--theme-bg-gradient-1': currentThemeColor,
+      '--theme-bg-gradient-2': `color-mix(in srgb, ${currentThemeColor}, white 40%)`, // 渐变色另一端
+    }"
+  >
     <header class="random-roam-header">
       <button class="rr-back-btn" type="button" @click="emit('close')">
         ‹ {{ t('notes.random_roam.back') }}
@@ -621,7 +631,7 @@ function getCardStyle(index: number) {
 
 .rr-refresh-btn {
   border: none;
-  background: #6366f1;
+  background: var(--theme-color);
   color: #fff;
   font-size: 13px;
   padding: 10px 18px;
@@ -633,7 +643,7 @@ function getCardStyle(index: number) {
 }
 
 .random-roam-page--dark .rr-refresh-btn {
-  background: #4f46e5;
+  background: var(--theme-color-dark);
 }
 
 .rr-refresh-btn:disabled {
@@ -643,7 +653,7 @@ function getCardStyle(index: number) {
 
 .rr-card-img-placeholder {
   height: 90px;
-  background: linear-gradient(135deg, #6366f1, #a78bfa);
+  background: linear-gradient(135deg, var(--theme-bg-gradient-1), var(--theme-bg-gradient-2));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -740,8 +750,8 @@ function getCardStyle(index: number) {
 }
 
 .rr-card-content :deep(.custom-tag) {
-  background-color: #eef2ff;
-  color: #4338ca;
+  background-color: color-mix(in srgb, var(--theme-color), white 90%);
+  color: var(--theme-color);
   padding: 2px 8px;
   border-radius: 9999px;
   font-size: 0.875em;
@@ -749,8 +759,8 @@ function getCardStyle(index: number) {
   margin: 0 2px;
 }
 .random-roam-page--dark .rr-card-content :deep(.custom-tag) {
-  background-color: #312e81;
-  color: #c7d2fe;
+  background-color: color-mix(in srgb, var(--theme-color), black 80%);
+  color: color-mix(in srgb, var(--theme-color), white 80%);
 }
 
 .rr-card-content :deep(a),

@@ -19,8 +19,15 @@ const props = defineProps({
   email: { type: String, default: '' },
   totalNotes: { type: Number, default: 0 },
   user: { type: Object as () => User | null, required: true },
+  themeColor: { type: String, default: '#6366f1' },
 })
 const emit = defineEmits(['close'])
+const themeVars = computed(() => ({
+  '--theme-color': props.themeColor,
+  '--theme-hover': `color-mix(in srgb, ${props.themeColor}, black 10%)`, // 深色悬停
+  '--theme-light': `color-mix(in srgb, ${props.themeColor}, white 90%)`, // 极浅背景
+  '--theme-alpha': `color-mix(in srgb, ${props.themeColor}, transparent 90%)`, // 半透明背景
+}))
 const VueCropper = defineAsyncComponent(() =>
   import('vue-cropper').then(mod => mod.VueCropper),
 )
@@ -588,7 +595,7 @@ function handleForgotOldPwd() {
 
 <template>
   <Transition name="fade">
-    <div v-if="show" class="modal-overlay" @click.self="emit('close')">
+    <div v-if="show" class="modal-overlay" :style="themeVars" @click.self="emit('close')">
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title">
@@ -612,7 +619,11 @@ function handleForgotOldPwd() {
                 alt="Avatar"
               />
 
-              <div v-else class="profile-avatar placeholder">
+              <div
+                v-else
+                class="profile-avatar placeholder"
+                :style="{ background: `linear-gradient(135deg, ${props.themeColor}, color-mix(in srgb, ${props.themeColor}, black 20%))` }"
+              >
                 {{ userName.charAt(0).toUpperCase() }}
               </div>
 
@@ -701,7 +712,12 @@ function handleForgotOldPwd() {
               <span class="info-value-simple">{{ storageUsedMB }} MB / {{ storageLimitMB }} MB</span>
             </div>
             <div class="progress-track">
-              <div class="progress-fill" :style="{ width: `${storagePercent}%`, backgroundColor: storagePercent > 90 ? '#ef4444' : '#00b386' }" />
+              <div
+                class="progress-fill" :style="{
+                  width: `${storagePercent}%`,
+                  backgroundColor: storagePercent > 90 ? '#ef4444' : props.themeColor,
+                }"
+              />
             </div>
           </div>
           <div class="info-item">
@@ -731,7 +747,7 @@ function handleForgotOldPwd() {
   </Transition>
 
   <Transition name="fade">
-    <div v-if="showPwdModal" class="modal-overlay pwd-overlay">
+    <div v-if="showPwdModal" class="modal-overlay pwd-overlay" :style="themeVars">
       <div class="modal-content pwd-content">
         <div class="pwd-header">
           <h3>{{ t('auth.change_password_title') }}</h3>
@@ -762,7 +778,7 @@ function handleForgotOldPwd() {
     </div>
   </Transition>
   <Transition name="fade">
-    <div v-if="showCropper" class="modal-overlay cropper-overlay">
+    <div v-if="showCropper" class="modal-overlay cropper-overlay" :style="themeVars">
       <div class="modal-content cropper-content">
         <div class="modal-header">
           <h3 class="modal-title">{{ t('auth.adjust_avatar') || '调整头像' }}</h3>
@@ -803,7 +819,9 @@ function handleForgotOldPwd() {
       :show="showInternalActivation"
       :allow-close="true"
       :activated="isUserActivated"
-      :days-remaining="daysRemaining" @close="showInternalActivation = false"
+      :days-remaining="daysRemaining"
+      :theme-color="themeColor"
+      @close="showInternalActivation = false"
       @success="onInternalActivationSuccess"
     />
 
@@ -913,7 +931,6 @@ function handleForgotOldPwd() {
 }
 
 .profile-avatar.placeholder {
-  background: linear-gradient(135deg, #00b386, #009a74);
   color: white; display: flex; align-items: center; justify-content: center;
   font-size: 36px; font-weight: bold;
 }
@@ -927,17 +944,17 @@ function handleForgotOldPwd() {
   transition: all 0.2s; z-index: 2;
 
   /* 应用变量: 这里稍特殊，为了保证可见性，深色模式也用较亮背景或跟随主背景 */
-  background-color: var(--ac-bg);
-  border: 1px solid var(--ac-border);
-  color: var(--ac-text-sub);
+  background-color: #ffffff;
+  border: 1px solid #ffffff;
+  color: #666666;
 }
-.avatar-wrapper:hover .avatar-edit-badge { background-color: #00b386; color: white; border-color: #00b386; }
+.avatar-wrapper:hover .avatar-edit-badge { background-color: var(--theme-color); color: #ffffff; border-color: #ffffff; }
 
 .avatar-overlay.loading {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(255, 255, 255, 0.7); /* 加载层保持半透明白即可 */
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  color: #00b386; font-weight: bold; z-index: 3;
+  color: var(--theme-color); font-weight: bold; z-index: 3;
 }
 :global(.dark) .avatar-overlay.loading { background: rgba(0, 0, 0, 0.7); }
 
@@ -953,7 +970,8 @@ function handleForgotOldPwd() {
   cursor: pointer; transition: background-color 0.2s; max-width: 100%;
 }
 .name-display-wrapper:hover {
-  background-color: var(--ac-hover);
+  color: var(--theme-color);
+  background-color: var(--theme-alpha);
 }
 
 .profile-name {
@@ -964,16 +982,16 @@ function handleForgotOldPwd() {
 /* 编辑笔图标 */
 .edit-icon-btn {
   position: static !important; margin: 0 !important; transform: none !important;
-  background: none; border: none; padding: 4px;
+  background-color: var(--theme-alpha); border: none; padding: 4px;
   cursor: pointer; opacity: 1 !important;
   display: flex; align-items: center; transition: all 0.2s; border-radius: 4px;
-  color: var(--ac-icon-color);
+  color: var(--theme-color);
 }
 .edit-icon-btn.small { padding: 2px; }
 .name-display-wrapper:hover .edit-icon-btn { color: #00b386; background-color: rgba(0, 179, 134, 0.1); }
 
 .name-input {
-  font-size: 16px; padding: 4px 8px; border: 1px solid #00b386; border-radius: 4px;
+  font-size: 16px; padding: 4px 8px; border: 1px solid var(--theme-color); border-radius: 4px;
   outline: none; width: 140px; text-align: center; background: transparent; color: inherit;
 }
 
@@ -984,7 +1002,7 @@ function handleForgotOldPwd() {
   padding: 2px 6px; border-radius: 6px; transition: background-color 0.2s;
 }
 .signature-clickable:hover { background-color: var(--ac-hover); }
-.signature-clickable:hover .edit-icon-btn { color: #00b386; }
+.signature-clickable:hover .edit-icon-btn { color: var(--theme-color); }
 
 .signature-text {
   font-size: 14px; max-width: 200px;
@@ -993,7 +1011,7 @@ function handleForgotOldPwd() {
 }
 
 .signature-input {
-  font-size: 14px; padding: 4px 8px; border: 1px solid #00b386; border-radius: 4px;
+  font-size: 14px; padding: 4px 8px; border: 1px solid var(--theme-color); border-radius: 4px;
   outline: none; width: 100%; max-width: 220px; text-align: right; background: transparent; color: inherit;
 }
 
@@ -1053,14 +1071,14 @@ function handleForgotOldPwd() {
 .info-value-success {
   font-weight: 600;
   font-size: 14px;
-  color: #00b386;
+  color: var(--theme-color);
 }
 
 /* ✅ [新增] "输入" 按钮样式 (模拟链接) */
 .input-action {
   font-weight: 500;
   font-size: 14px;
-  color: #00b386;
+  color: var(--theme-color);
   text-decoration: underline;
   cursor: pointer;
   transition: opacity 0.2s;
@@ -1104,10 +1122,10 @@ function handleForgotOldPwd() {
 
 .btn-green {
   display: inline-block; text-decoration: none; text-align: center; width: 100%;
-  background-color: #6366f1; color: #fff; border-radius: 6px; padding: 0.8rem;
+  background-color: var(--theme-color); color: #fff; border-radius: 6px; padding: 0.8rem;
   font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 0.2s; border: none;
 }
-.btn-green:hover { background-color: #4f46e5; }
+.btn-green:hover { background-color: var(--theme-hover); }
 .btn-green:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-grey {
@@ -1134,14 +1152,14 @@ function handleForgotOldPwd() {
   border: 1px solid var(--ac-input-border);
   color: var(--ac-text);
 }
-.pwd-input:focus { border-color: #00b386; }
+.pwd-input:focus { border-color: var(--theme-color);}
 
 .pwd-actions { display: flex; justify-content: space-between; align-items: center; }
 .pwd-btns { display: flex; gap: 2rem; justify-content: center; }
 .pwd-btn-item { width: 90px; padding: 0.6rem 0; }
 .forgot-link { font-size: 13px; color: #4a90e2; cursor: pointer; }
 :global(.dark) .forgot-link { color: #64b5f6; } /* 蓝色微调，可保留 global */
-.link-btn { background: none; border: none; color: #00b386; cursor: pointer; font-size: 14px; padding: 0; text-decoration: underline; }
+.link-btn { background: none; border: none; color: var(--theme-color); cursor: pointer; font-size: 14px; padding: 0; text-decoration: underline; }
 :global(.dark) .link-btn { color: #2dd4bf; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }

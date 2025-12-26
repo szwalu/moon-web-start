@@ -3322,7 +3322,7 @@ function onCalendarUpdated(updated: any) {
       </div>
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
-      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" @close="showAccountModal = false" />
+      <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" :theme-color="currentThemeColor" @close="showAccountModal = false" />
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
@@ -3335,6 +3335,7 @@ function onCalendarUpdated(updated: any) {
       <Transition name="slide-up-fade">
         <CalendarView
           v-if="showCalendarView" ref="calendarViewRef"
+          :theme-color="currentThemeColor"
           @close="showCalendarView = false"
           @created="onCalendarCreated"
           @updated="(payload) => {
@@ -3352,6 +3353,7 @@ function onCalendarUpdated(updated: any) {
         <RandomRoam
           v-if="showRandomRoam"
           :notes="notes"
+          :theme-color="currentThemeColor"
           :total-notes="totalNotes"
           :has-more="hasMoreNotes"
           :is-loading="isLoadingNotes"
@@ -3401,7 +3403,9 @@ function onCalendarUpdated(updated: any) {
         :show="showActivation"
         :allow-close="canDismissActivation"
         :activated="isUserActivated"
-        :days-remaining="daysRemaining" @close="showActivation = false"
+        :days-remaining="daysRemaining"
+        :theme-color="currentThemeColor"
+        @close="showActivation = false"
         @success="onActivationSuccess"
       />
     </template>

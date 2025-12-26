@@ -12,6 +12,10 @@ import NoteEditor from '@/components/NoteEditor.vue'
 
 import { queuePendingNote, queuePendingUpdate } from '@/utils/offline-db'
 
+const props = defineProps({
+  // 👇 新增这一行：接收父组件传来的颜色，默认绿色
+  themeColor: { type: String, default: '#00b386' },
+})
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite'])
 const allTags = ref<string[]>([])
 const tagCounts = ref<Record<string, number>>({})
@@ -996,7 +1000,15 @@ async function saveNewNote(content: string, weather: string | null) {
 </script>
 
 <template>
-  <div ref="rootRef" class="calendar-view">
+  <div
+    ref="rootRef"
+    class="calendar-view"
+    :style="{
+      '--theme-color': props.themeColor,
+      '--theme-color-dark': `color-mix(in srgb, ${props.themeColor}, black 10%)`, // 按钮悬停色
+      '--theme-text-dark': `color-mix(in srgb, ${props.themeColor}, white 20%)`, // 深色模式下的文字色
+    }"
+  >
     <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
@@ -1366,19 +1378,29 @@ async function saveNewNote(content: string, weather: string | null) {
   gap: 10px;
 }
 .compose-btn {
-  background: #6366f1;
+  /* 👇 保持你刚才修改的主题色 */
+  background: var(--theme-color);
   color: #fff;
   border: none;
   border-radius: 6px;
-  /* 更紧凑的内边距 */
-  padding: 6px 10px;
-  /* 稍小的字体 */
+
+  /* 👇 [修改]：加大内边距，恢复高度 */
+  /* 原来是 6px 10px，太扁了；改为 10px 16px 会更像截图中的高度 */
+  padding: 6px 8px;
+
+  /* 👇 [修改]：稍微加大字号，看起来更协调 */
   font-size: 13px;
+
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+  transition: background-color 0.2s; /* 加上过渡更顺滑 */
 }
-.compose-btn:hover { background: #4f46e5; }
+
+.compose-btn:hover {
+  /* 👇 保持深色悬停效果 */
+  background: var(--theme-color-dark);
+}
 .inline-editor {
   margin-bottom: 16px;
 }
@@ -1397,15 +1419,15 @@ async function saveNewNote(content: string, weather: string | null) {
   color: #6b7280;
 }
 
-/* ✅ 紫色数字样式 */
 .stat-num {
-  color: #8b5cf6;
+  /* 👇 修改：使用主题色 */
+  color: var(--theme-color);
   font-weight: 600;
-
   margin: 0 -1px;
 }
 .dark .stat-num {
-  color: #a78bfa;
+  /* 👇 修改：深色模式下稍微提亮一点 */
+  color: var(--theme-text-dark);
 }
 
 /* 全局覆盖 */

@@ -12,6 +12,7 @@ const props = defineProps({
   activated: { type: Boolean, default: false },
   // ✅ [新增] 接收剩余天数，默认为 7
   daysRemaining: { type: Number, default: 7 },
+  themeColor: { type: String, default: '#6366f1' },
 })
 
 const emit = defineEmits(['success', 'close'])
@@ -93,7 +94,16 @@ async function handleSecondaryAction() {
 </script>
 
 <template>
-  <div v-if="show" class="activation-overlay">
+  <div
+    v-if="show"
+    class="activation-overlay"
+    :style="{
+      '--act-title': props.themeColor,
+      '--act-success': props.themeColor,
+      '--act-btn-bg': props.themeColor,
+      '--act-link-hover': props.themeColor,
+    }"
+  >
     <div class="activation-box">
       <div v-if="activated" class="activated-content">
         <CheckCircle2 :size="64" class="success-icon" />
