@@ -15,7 +15,8 @@ import AnniversaryBanner from '@/components/AnniversaryBanner.vue'
 import NoteActions from '@/components/NoteActions.vue'
 import 'easymde/dist/easymde.min.css'
 import { useTagMenu } from '@/composables/useTagMenu'
-
+import { useSettingStore } from '@/stores/setting'
+import * as S from '@/utils/settings'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 
 import { useOfflineSync } from '@/composables/useSync'
@@ -26,6 +27,7 @@ import AvatarImage from '@/components/AvatarImage.vue'
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false) // [新增] 控制侧边栏显示
 const authStore = useAuthStore()
+const settingStore = useSettingStore()
 const showActivation = ref(false)
 const canDismissActivation = ref(false)
 
@@ -163,6 +165,31 @@ const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
+
+const themeStyle = computed(() => {
+  const currentKey = settingStore.settings.theme
+  const themeItem = S.theme.children.find(item => item.key === currentKey)
+  // 默认兜底颜色 (Indigo)
+  const val = themeItem?.value || {
+    primaryC: '#6366f1',
+    primaryDarkC: '#4338ca',
+    primaryLightC: '#818cf8',
+  }
+
+  return {
+    // 定义核心 CSS 变量，供模板使用
+    '--theme-primary': val.primaryC, // 主色 (如 +号按钮背景)
+    '--theme-primary-dark': val.primaryDarkC, // 深色 (如 横幅文字)
+    '--theme-primary-light': val.primaryLightC, // 亮色 (如 深色模式下的文字)
+  }
+})
+
+const currentThemeColor = computed(() => {
+  const currentKey = settingStore.settings.theme
+  const themeItem = S.theme.children.find(item => item.key === currentKey)
+  // 返回 primaryC，如果没有找到则返回默认的紫色
+  return themeItem?.value?.primaryC || '#6366f1'
+})
 
 // === 新增辅助函数：不依赖组件实例，强制修正“那年今日”的本地缓存 ===
 function forceUpdateAnniversaryCache(idsToDelete: string[]) {
@@ -3075,6 +3102,7 @@ function onCalendarUpdated(updated: any) {
     class="full-viewport auth-container"
     :class="{ 'is-typing': compactWhileTyping }"
     :aria-busy="!isReady"
+    :style="themeStyle"
   >
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
@@ -3117,6 +3145,7 @@ function onCalendarUpdated(updated: any) {
       <AnniversaryBanner
         v-if="(!showSearchBar || hasSearchRun) && showAnniversaryBanner && !headerCollapsed"
         ref="anniversaryBannerRef"
+        :theme-color="currentThemeColor"
         @toggle-view="handleAnniversaryToggle"
       />
 
@@ -3177,6 +3206,7 @@ function onCalendarUpdated(updated: any) {
             :search-query="searchQuery"
             :user="user"
             :show-export-button="!isShowingSearchResults"
+            :theme-color="currentThemeColor"
             @export="handleExportTrigger"
             @search-started="handleSearchStarted"
             @search-completed="handleSearchCompleted"
@@ -3529,14 +3559,20 @@ function onCalendarUpdated(updated: any) {
   top: 44px;
   z-index: 2500;
 
-  /* 与 .active-filter-bar 一致的底色与布局 */
+  /* 布局保持不变 */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 
-  background-color: #eef2ff;   /* 浅靛蓝底色 */
-  color: #4338ca;              /* 文字主色 */
+  /* 🔥 [修改] 背景色：使用主题主色混合 90% 白色 */
+  /* 原来是 #eef2ff */
+  background-color: color-mix(in srgb, var(--theme-primary), white 90%);
+
+  /* 🔥 [修改] 文字颜色：使用主题深色 */
+  /* 原来是 #4338ca，导致了左侧文字还是蓝色 */
+  color: var(--theme-primary-dark);
+
   padding: 8px 12px;
   border-radius: 8px;
   margin: 8px 0 10px 0;
@@ -3544,8 +3580,10 @@ function onCalendarUpdated(updated: any) {
 }
 
 .dark .selection-actions-banner {
-  background-color: #312e81;   /* 深色模式下与搜索横幅一致 */
-  color: #c7d2fe;
+  /* 原来是 #312e81 */
+  background-color: color-mix(in srgb, var(--theme-primary), black 60%);
+  /* 原来是 #c7d2fe */
+  color: color-mix(in srgb, var(--theme-primary), white 80%);
 }
 
 /* 新增：标签按钮样式 */
@@ -3722,11 +3760,16 @@ function onCalendarUpdated(updated: any) {
 }
 
 /* ++ 修改：让导出按钮样式能应用于所有横幅 */
+.selection-actions-banner .action-btn,
+.selection-actions-banner .finish-btn,
 .active-filter-bar .export-results-btn {
   background: none;
-  border: 1px solid #6366f1;
-  color: #4338ca;
-  padding: 4px 16px;
+
+  /* 🔥 [修改] 边框和文字跟随主题 */
+  border: 1px solid var(--theme-primary);
+  color: var(--theme-primary-dark);
+
+  padding: 4px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -3735,30 +3778,44 @@ function onCalendarUpdated(updated: any) {
   white-space: nowrap;
 }
 
+.selection-actions-banner .action-btn:hover,
 .search-results-bar .export-results-btn:hover {
-  background-color: #4338ca;
-  color: white;
+  /* 🔥 [修改] 悬停背景变为主色 */
+  background-color: var(--theme-primary-dark);
+  color: #fff;
 }
 
+.dark .selection-actions-banner .action-btn,
 .dark .search-results-bar .export-results-btn {
-  border-color: #a5b4fc;
-  color: #c7d2fe;
+  border-color: var(--theme-primary-light);
+  color: color-mix(in srgb, var(--theme-primary), white 80%);
 }
-
+.dark .selection-actions-banner .action-btn:hover,
 .dark .search-results-bar .export-results-btn:hover {
-  background-color: #a5b4fc;
-  color: #312e81;
+  background-color: var(--theme-primary-light);
+  color: #1e1e1e;
 }
 
+selection-actions-banner,
 .active-filter-bar {
+  position: sticky;
+  top: 44px;
+  z-index: 2500;
+
   display: flex;
   align-items: center;
-  gap: 1rem; /* 在内容和按钮之间设置一个间距 */
-  background-color: #eef2ff;
-  color: #4338ca;
+  justify-content: space-between;
+  gap: 0.75rem;
+
+  /* 🔥 [修改] 背景色：使用主色混合 90% 白色 (自动生成浅色背景) */
+  background-color: color-mix(in srgb, var(--theme-primary), white 90%);
+
+  /* 🔥 [修改] 文字颜色：使用主题深色 */
+  color: var(--theme-primary-dark);
+
   padding: 8px 12px;
   border-radius: 8px;
-  margin-bottom: 1rem;
+  margin: 8px 0 10px 0;
   font-size: 14px;
 }
 
@@ -3790,9 +3847,13 @@ function onCalendarUpdated(updated: any) {
   color: #adb5bd;
 }
 
+.dark .selection-actions-banner,
 .dark .active-filter-bar {
-  background-color: #312e81;
-  color: #c7d2fe;
+  /* 🔥 [修改] 深色模式背景：使用主色混合 60% 黑色 */
+  background-color: color-mix(in srgb, var(--theme-primary), black 60%);
+
+  /* 🔥 [修改] 深色模式文字：使用主题亮色 */
+  color: color-mix(in srgb, var(--theme-primary), white 80%);
 }
 
 .auth-container.is-typing .new-note-editor-container {
@@ -3911,7 +3972,7 @@ function onCalendarUpdated(updated: any) {
   padding-bottom: 2px; /* 这一行是关键：因为 "+" 符号在很多字体里本身重心偏低，往上顶 2px 视觉上才是在圆心 */
 
   cursor: pointer;
-  background: #6366f1;
+background: var(--theme-primary); /* 原 #6366f1 */
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
@@ -3928,7 +3989,9 @@ function onCalendarUpdated(updated: any) {
 }
 
 /* 深色模式下的微调 */
-.dark .fab-add { background: #818cf8; color: #111; }
+.dark .fab-add {
+  background: var(--theme-primary-light); /* 原 #818cf8 */
+  color: #111;}
 .cancel-search-btn {
   /* 绝对定位：固定在容器右上角 */
   position: absolute;
@@ -3971,8 +4034,7 @@ function onCalendarUpdated(updated: any) {
   background: transparent;
   border: none;
 
-  /* 设置为你截图中的紫色 (品牌色) */
-  color: #6366f1;
+  color: var(--theme-primary);
 
   /* 增加一点内边距方便点击，同时稍微拉开点左边距 */
   padding: 4px;
@@ -3994,7 +4056,7 @@ function onCalendarUpdated(updated: any) {
 
 .dark .close-results-btn {
   /* 深色模式下的紫色稍微亮一点 */
-  color: #818cf8;
+  color: var(--theme-primary-light);
 }
 </style>
 

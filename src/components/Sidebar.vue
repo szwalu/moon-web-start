@@ -28,6 +28,7 @@ import { supabase } from '@/utils/supabaseClient'
 
 // 🔥 [新增] 引入 Firebase 工具
 import { requestFcmToken } from '@/utils/firebase'
+import * as S from '@/utils/settings'
 
 const props = defineProps({
   show: {
@@ -59,6 +60,23 @@ const settingStore = useSettingStore()
 const { t } = useI18n()
 const message = useMessage() // 🔥 [新增] 初始化消息提示
 const showFeedback = ref(false)
+
+const headerStyle = computed(() => {
+  // 1. 获取当前设置的主题 Key (如 'Iris', 'EarlySpring', 'MoonWhite')
+  const currentKey = settingStore.settings.theme
+
+  // 2. 在配置中找到对应的主题对象
+  const themeItem = S.theme.children.find(item => item.key === currentKey)
+
+  // 3. 获取颜色值 (如果找不到则兜底)
+  const colors = themeItem?.value || { primaryC: '#6366f1', primaryLightC: '#818cf8' }
+
+  // 4. 返回 CSS 变量样式
+  return {
+    '--header-bg-start': colors.primaryC, // 渐变开始色 (主色)
+    '--header-bg-end': colors.primaryLightC, // 渐变结束色 (亮色)
+  }
+})
 
 function onAvatarClick() {
   handleItemClick('account')
@@ -553,7 +571,7 @@ onMounted(() => {
     <div class="sidebar-wrapper-root">
       <Transition name="slide-sidebar">
         <div v-if="show" class="sidebar-container">
-          <div class="sidebar-header-card">
+          <div class="sidebar-header-card" :style="headerStyle">
             <div class="user-info-row" @click="onAvatarClick">
               <div class="avatar-circle">
                 <img
@@ -816,7 +834,10 @@ onMounted(() => {
 .sidebar-container::-webkit-scrollbar { display: none; }
 
 .sidebar-header-card {
-  background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%);
+  /* 🔥 [修改] 使用 CSS 变量替换原来的固定颜色 */
+  /* 原代码: background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%); */
+  background: linear-gradient(to bottom, var(--header-bg-start) 0%, var(--header-bg-end) 100%);
+
   padding-top: calc(2rem + env(safe-area-inset-top));
   padding-right: 1.5rem;
   padding-bottom: 1.5rem;
@@ -824,6 +845,9 @@ onMounted(() => {
   color: white;
   position: relative;
   flex-shrink: 0;
+
+  /* 建议添加一个过渡效果，这样切换主题时颜色会平滑渐变 */
+  transition: background 0.3s ease;
 }
 
 /* 用户信息行 */

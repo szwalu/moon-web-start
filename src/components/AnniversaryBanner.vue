@@ -3,7 +3,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
-
+const props = defineProps({
+  // 👇 新增这一行
+  themeColor: { type: String, default: '#00b386' },
+})
 const emit = defineEmits(['toggleView'])
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -398,6 +401,12 @@ defineExpose({
   <div
     v-if="!isLoading && anniversaryNotes.length > 0"
     class="anniversary-banner"
+    :style="{
+      '--theme-color': props.themeColor,
+      '--theme-bg': `color-mix(in srgb, ${props.themeColor}, white 90%)`,
+      '--theme-bg-dark': `color-mix(in srgb, ${props.themeColor}, black 60%)`, // 深色模式背景
+      '--theme-text-dark': `color-mix(in srgb, ${props.themeColor}, white 80%)`, // 深色模式文字
+    }"
     @click="handleBannerClick"
   >
     <div class="banner-line">
@@ -439,24 +448,32 @@ defineExpose({
 
 <style scoped>
 .anniversary-banner {
-  background-color: #eef2ff;
-  color: #4338ca;
+  /* 👇 修改：使用变量 */
+  background-color: var(--theme-bg);
+  color: var(--theme-color);
+
   padding: 0.75rem 1rem;
   border-radius: 8px;
   cursor: pointer;
   margin-bottom: 1rem;
   transition: all 0.2s ease-in-out;
 }
+
 .anniversary-banner:hover {
-  background-color: #e0e7ff;
+  /* 👇 修改：悬停时稍微加深背景 (混合 85% 白色) */
+  background-color: color-mix(in srgb, var(--theme-color), white 85%);
   transform: translateY(-1px);
 }
+
 .dark .anniversary-banner {
-  background-color: #312e81;
-  color: #c7d2fe;
+  /* 👇 修改：深色模式使用专用变量 */
+  background-color: var(--theme-bg-dark);
+  color: var(--theme-text-dark);
 }
+
 .dark .anniversary-banner:hover {
-  background-color: #3730a3;
+  /* 👇 修改：深色模式悬停加亮 */
+  background-color: color-mix(in srgb, var(--theme-color), black 50%);
 }
 
 .banner-line {
@@ -474,18 +491,19 @@ defineExpose({
 }
 
 .banner-view-btn {
-  /* margin-left: 8px; 这个可以去掉或保留，不影响了 */
   padding: 2px 10px;
   border-radius: 999px;
   border: none;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  background-color: rgba(79, 70, 229, 0.12);
-  color: #4338ca;
 
-  position: absolute; /* ✨ 新增这一行 */
-  right: 0;           /* ✨ 新增这一行 */
+  /* 👇 修改：按钮背景也是浅色，但比横幅背景深一点 */
+  background-color: color-mix(in srgb, var(--theme-color), white 80%);
+  color: var(--theme-color);
+
+  position: absolute;
+  right: 0;
 }
 
 .banner-view-btn:active {
@@ -493,7 +511,7 @@ defineExpose({
 }
 
 .dark .banner-view-btn {
-  background-color: rgba(129, 140, 248, 0.25);
+background-color: color-mix(in srgb, var(--theme-color), white 20%);
   color: #e5e7eb;
 }
 

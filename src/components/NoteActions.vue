@@ -23,6 +23,7 @@ const props = defineProps({
   allTags: { type: Array as () => string[], default: () => [] },
   searchQuery: { type: String, default: '' },
   user: { type: Object as () => { id?: string }, required: true },
+  themeColor: { type: String, default: '#00b386' },
 })
 
 const emit = defineEmits([
@@ -1086,8 +1087,10 @@ defineExpose({ executeSearch, clearSearch })
 }
 .search-input:focus {
   background-color: #fff;
-  border-color: #00b386;
-  box-shadow: 0 0 0 2px rgba(0,179,134,0.1);
+  /* 👇 修改：也绑定主题色，保持一致 */
+  border-color: v-bind('props.themeColor');
+  /* 注意：box-shadow 里的 rgba 颜色很难直接用 hex 绑定，暂时保持原样或去掉 */
+  box-shadow: 0 0 0 2px rgba(0, 179, 134, 0.1);
   outline: none;
 }
 .dark .search-input:focus {
@@ -1116,13 +1119,16 @@ defineExpose({ executeSearch, clearSearch })
   right: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
-  background-color: #6366f1; /* 使用与高级搜索按钮一致的靛蓝色 */
+
+  /* 👇 修改：绑定 Props 中的颜色 */
+  background-color: v-bind('props.themeColor');
+
   color: #ffffff;
   border: none;
   cursor: pointer;
-  width: 28px; /* 比清除按钮稍大，方便点击 */
+  width: 28px;
   height: 28px;
-  border-radius: 8px; /* 圆角矩形，与整体风格统一 */
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1132,7 +1138,8 @@ defineExpose({ executeSearch, clearSearch })
 }
 
 .submit-search-button:hover {
-  background-color: #4f46e5;
+  /* 👇 修改：使用滤镜让亮度变暗，代替写死的深色背景，这样无论什么主题色都能自动适配 */
+  filter: brightness(0.9);
   transform: translateY(-50%) scale(1.05);
 }
 .submit-search-button:active {
@@ -1143,25 +1150,6 @@ defineExpose({ executeSearch, clearSearch })
   background-color: #818cf8;
   color: #1f2937;
 }
-.submit-search-button {
-  position: absolute;
-  right: 0.6rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background-color: #6366f1; /* 使用与高级搜索按钮一致的靛蓝色 */
-  color: #ffffff;
-  border: none;
-  cursor: pointer;
-  width: 28px; /* 比清除按钮稍大，方便点击 */
-  height: 28px;
-  border-radius: 8px; /* 圆角矩形，与整体风格统一 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-  transition: all 0.2s ease;
-  z-index: 10;
-}
 .submit-search-button:hover {
   background-color: #4f46e5;
   transform: translateY(-50%) scale(1.05);
@@ -1170,10 +1158,6 @@ defineExpose({ executeSearch, clearSearch })
   transform: translateY(-50%) scale(0.95);
 }
 
-.dark .submit-search-button {
-  background-color: #818cf8;
-  color: #1f2937;
-}
 .clear-search-button:hover {
   background-color: #7c3aed;
   transform: translateY(-50%) scale(1.1);
@@ -1269,7 +1253,8 @@ defineExpose({ executeSearch, clearSearch })
 }
 .chip-icon {
   opacity: 0.7;
-  color: #6366f1;
+  /* 👇 修改：绑定 Props 中的颜色 */
+  color: v-bind('props.themeColor');
 }
 
 /* 4. 高级筛选面板 */
