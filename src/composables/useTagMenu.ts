@@ -1,6 +1,7 @@
 // src/composables/useTagMenu.ts
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import draggable from 'vuedraggable'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { ChevronRight, GripVertical, Pencil, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
@@ -75,30 +76,24 @@ function ensureTagMenuInputFontFix() {
   const style = document.createElement('style')
   style.id = id
   style.textContent = `
-    /* 1. iOS 字体 16px 修复 */
+    /* ... 原有的 iOS 修复代码 ... */
     .tag-search-row .n-input__input-el,
-    .icon-picker-root .n-input__input-el { 
-        font-size: 16px !important; 
-    }
+    .icon-picker-root .n-input__input-el { font-size: 16px !important; }
+    .tag-search-row .n-input .n-input-wrapper { width: 100% !important; display: flex !important; }
+    .tag-search-row .n-input .n-input__suffix { margin-left: auto !important; }
+    .tag-search-row .n-input .n-input__input { flex: 1 1 auto !important; width: auto !important; }
 
-    /* 2. [终极修复] 强制 X 按钮靠右 */
-    
-    /* 确保 wrapper 填满整个灰色边框 */
-    .tag-search-row .n-input .n-input-wrapper {
-        width: 100% !important;
-        display: flex !important;
+    /* 🔥 新增：vuedraggable 样式 */
+    .sortable-ghost {
+      opacity: 0.4;
+      background: #eef2ff !important; /* 拖拽时的占位背景色 */
+      border: 1px dashed #6366f1 !important;
     }
-
-    /* 核心修改：给后缀（X按钮）添加 margin-left: auto
-       这会无视中间文字的宽度，强制把自己推到最右边 */
-    .tag-search-row .n-input .n-input__suffix {
-        margin-left: auto !important;
+    .drag-handle {
+      cursor: grab;
     }
-
-    /* 同时也保证中间的输入区域是自适应的 */
-    .tag-search-row .n-input .n-input__input {
-        flex: 1 1 auto !important;
-        width: auto !important;
+    .drag-handle:active {
+      cursor: grabbing;
     }
   `
   document.head.appendChild(style)
@@ -811,11 +806,11 @@ export function useTagMenu(
 
   // 🔥 新增：标签排序管理器 (弹窗 + 拖拽)
   // ==========================================================================
+
   function openTagSortManager() {
     // 1. 准备数据：只对当前 allTags 进行排序管理
     // 创建一个临时的 ref 用于弹窗内部状态
     const editList = ref([...allTags.value].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b))))
-    let dragSrcIndex: number | null = null
 
     // 定义拖拽组件
     const SortableListComponent = defineComponent({
@@ -825,67 +820,54 @@ export function useTagMenu(
           if (items.length === 0)
             return h('div', { style: 'padding:20px;text-align:center;color:#999' }, '暂无标签')
 
-          return h('div', { class: 'tag-sort-list', style: 'max-height:60vh;overflow-y:auto;padding-right:4px;' }, items.map((tag, index) => {
-            const displayName = tagKeyName(tag)
-            const icon = tagIconMap.value[tag] || '#'
+          // 🔥 使用 vuedraggable 组件
+          return h(draggable, {
+            // v-model 绑定 (在 h 函数中是 modelValue + onUpdate:modelValue)
+            'modelValue': editList.value,
+            'onUpdate:modelValue': (val: any[]) => { editList.value = val },
 
-            return h('div', {
-              key: tag,
-              draggable: true,
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                marginBottom: '8px',
-                background: '#fff',
-                border: '1px solid #eee',
-                borderRadius: '6px',
-                cursor: 'grab',
-                transition: 'all 0.2s',
-                // 拖拽时的样式变化
-                opacity: dragSrcIndex === index ? '0.4' : '1',
-              },
-              // --- 拖拽事件 ---
-              onDragstart: (e: DragEvent) => {
-                dragSrcIndex = index
-                // 必须设置 dataTransfer 否则 Firefox 可能不拖拽
-                e.dataTransfer!.effectAllowed = 'move'
-                e.dataTransfer!.setData('text/plain', String(index))
-                // 延迟添加 dragging 类以免影响视觉
-                setTimeout(() => {
-                  if (e.target instanceof HTMLElement)
-                    e.target.style.opacity = '0.5'
-                }, 0)
-              },
-              onDragend: (e: DragEvent) => {
-                dragSrcIndex = null
-                if (e.target instanceof HTMLElement)
-                  e.target.style.opacity = '1'
-              },
-              onDragover: (e: DragEvent) => {
-                e.preventDefault() // 允许 drop
-                e.dataTransfer!.dropEffect = 'move'
-              },
-              onDrop: (e: DragEvent) => {
-                e.stopPropagation()
-                if (dragSrcIndex === null || dragSrcIndex === index)
-                  return
+            // 关键配置
+            'itemKey': (item: string) => item,
+            'animation': 200, // 动画时长，体验顺滑的关键
+            'handle': '.drag-handle', // 🔥 核心：只允许拖拽“手柄图标”，否则移动端没法滚动列表
+            'ghostClass': 'sortable-ghost', // 拖拽时的占位样式类名
 
-                // 移动数组元素
-                const item = editList.value[dragSrcIndex]
-                editList.value.splice(dragSrcIndex, 1) // 移除旧的
-                editList.value.splice(index, 0, item) // 插入新的
+            'style': 'max-height:60vh;overflow-y:auto;padding-right:4px;',
+          }, {
+            // 渲染每一个 Item (Scoped Slot)
+            item: ({ element: tag }: { element: string }) => {
+              const displayName = tagKeyName(tag)
+              const icon = tagIconMap.value[tag] || '#'
 
-                dragSrcIndex = null
-              },
-            }, [
-              // 拖拽手柄图标
-              h(GripVertical, { size: 16, color: '#ccc', style: 'margin-right:8px; flex-shrink:0;' }),
-              // 内容
-              h('span', { style: 'margin-right:6px;width:18px;text-align:center;flex-shrink:0;' }, icon),
-              h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;' }, displayName),
-            ])
-          }))
+              return h('div', {
+                class: 'tag-sort-item', // 方便写 CSS
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '10px 12px', // 移动端加大一点点击区域
+                  marginBottom: '8px',
+                  background: '#fff',
+                  border: '1px solid #eee',
+                  borderRadius: '8px',
+                  // userSelect: 'none' // 防止文字被选中
+                },
+              }, [
+                // 1. 拖拽手柄 (添加 drag-handle 类名)
+                h('div', {
+                  class: 'drag-handle', // 👈 对应上面的 handle 配置
+                  style: 'cursor: grab; padding: 4px 8px 4px 0; touch-action: none;', // touch-action: none 对移动端很重要
+                }, [
+                  h(GripVertical, { size: 18, color: '#ccc' }),
+                ]),
+
+                // 2. 图标
+                h('span', { style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0;' }, icon),
+
+                // 3. 标签名
+                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333;' }, displayName),
+              ])
+            },
+          })
         }
       },
     })
@@ -895,7 +877,7 @@ export function useTagMenu(
       title: t('tags.manage_sort') || '标签排序',
       showIcon: false,
       content: () => h('div', [
-        h('div', { style: 'font-size:12px;color:#999;margin-bottom:12px;' }, t('tags.drag_to_sort_tip') || '拖拽即可调整标签在列表中的显示顺序'),
+        h('div', { style: 'font-size:12px;color:#999;margin-bottom:12px;' }, t('tags.drag_to_sort_tip') || '按住左侧手柄拖拽排序'),
         h(SortableListComponent),
       ]),
       positiveText: t('auth.save') || '保存排序',
@@ -904,12 +886,9 @@ export function useTagMenu(
       style: 'width: 400px; max-width: 90vw;',
       onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
       onPositiveClick: async () => {
-        // 保存 tagKeyName 即可 (或者保存完整 tag，取决于你的 compareTagsCustom 实现)
-        // 这里我们保存 tagKeyName，因为 allTags 里可能有 #，也可能没有，要统一
         const newOrder = editList.value.map(t => tagKeyName(t))
         tagOrder.value = newOrder
         await saveTagOrder()
-        // 强制触发一次重绘
         await refreshTagCountsFromServer(true)
         message.success(t('tags.save_success') || '排序已保存')
       },
@@ -1391,7 +1370,9 @@ export function useTagMenu(
               style: [
                 'background: transparent;',
                 'border: none;',
-                'padding: 2px 6px;',
+                'padding: 4px 14px;',
+                'margin-right: -8px;',
+                'height: 32px;',
                 'margin: 0;',
                 'cursor: pointer;',
                 'display: flex;',
@@ -1422,7 +1403,7 @@ export function useTagMenu(
               },
               onDblclick: (e: MouseEvent) => e.stopPropagation(),
             }, [
-              h(Settings2, { size: 14 }),
+              h(Settings2, { size: 15 }),
             ]),
           ]),
           children: body,
