@@ -821,52 +821,69 @@ export function useTagMenu(
             return h('div', { style: 'padding:20px;text-align:center;color:#999' }, '暂无标签')
 
           // 🔥 使用 vuedraggable 组件
+          // 🔥 使用 vuedraggable 组件
           return h(draggable, {
-            // v-model 绑定 (在 h 函数中是 modelValue + onUpdate:modelValue)
+            // v-model 绑定
             'modelValue': editList.value,
             'onUpdate:modelValue': (val: any[]) => { editList.value = val },
 
-            // 关键配置
             'itemKey': (item: string) => item,
-            'animation': 200, // 动画时长，体验顺滑的关键
-            'handle': '.drag-handle', // 🔥 核心：只允许拖拽“手柄图标”，否则移动端没法滚动列表
-            'ghostClass': 'sortable-ghost', // 拖拽时的占位样式类名
+            'animation': 200,
+            'ghostClass': 'sortable-ghost',
+
+            // ❌ 删除 handle: '.drag-handle'，允许整行拖拽
+            // handle: '.drag-handle',
+
+            // 🔥🔥 新增：移动端优化配置 🔥🔥
+            'delay': 150, // 核心：按住 150ms 后才开始拖拽，解决无法滚动的问题
+            'delayOnTouchOnly': true, // 核心：电脑上鼠标点击不需要延迟，只有触摸屏需要
+            'touchStartThreshold': 5, // 手指抖动容差（防止手滑误触）
 
             'style': 'max-height:60vh;overflow-y:auto;padding-right:4px;',
           }, {
-            // 渲染每一个 Item (Scoped Slot)
+            // 渲染 Item
             item: ({ element: tag }: { element: string }) => {
               const displayName = tagKeyName(tag)
               const icon = tagIconMap.value[tag] || '#'
 
               return h('div', {
-                class: 'tag-sort-item', // 方便写 CSS
+                class: 'tag-sort-item',
                 style: {
                   'display': 'flex',
                   'alignItems': 'center',
-                  'padding': '10px 12px', // 移动端加大一点点击区域
+                  'padding': '10px 12px',
                   'marginBottom': '8px',
                   'background': '#fff',
                   'border': '1px solid #eee',
                   'borderRadius': '8px',
+
+                  // 🔥 修改：将鼠标手势加在整个 Row 上
+                  'cursor': 'grab',
+
+                  // 保持禁用文字选中
                   'userSelect': 'none',
-                  'WebkitUserSelect': 'none', // 兼容 Safari/iOS
+                  'WebkitUserSelect': 'none',
                   '-webkit-tap-highlight-color': 'transparent',
+                  // 注意：这里不要加 touch-action: none，否则会彻底禁止滚动
                 },
               }, [
-                // 1. 拖拽手柄 (添加 drag-handle 类名)
+                // 1. 拖拽手柄 (保留作为视觉提示，但不再是唯一触发点)
                 h('div', {
-                  class: 'drag-handle', // 👈 对应上面的 handle 配置
-                  style: 'cursor: grab; padding: 4px 12px 4px 0; touch-action: none;', // touch-action: none 对移动端很重要
+                  class: 'drag-handle-visual', // 改个名，不再用于逻辑
+                  style: 'padding: 4px 12px 4px 0; display: flex; align-items: center; opacity: 0.5;',
                 }, [
                   h(GripVertical, { size: 18, color: '#ccc' }),
                 ]),
 
                 // 2. 图标
-                h('span', { style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0; pointer-events: none;' }, icon),
+                h('span', {
+                  style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0; pointer-events: none;',
+                }, icon),
 
                 // 3. 标签名
-                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333; pointer-events: none;' }, displayName),
+                h('span', {
+                  style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333; pointer-events: none;',
+                }, displayName),
               ])
             },
           })
