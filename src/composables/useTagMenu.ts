@@ -201,11 +201,11 @@ function treeToDownwardGroups(
       const hasL3 = Object.keys(node2.children).length > 0
 
       if (!hasL3) {
-        rows.push(makeRow(tag2, name2, 16))
+        rows.push(makeRow(tag2, name2, 24))
         continue
       }
 
-      rows.push(makeHeader(node2, tag2, name2, () => isExpanded(path2), () => toggle(path2), 16))
+      rows.push(makeHeader(node2, tag2, name2, () => isExpanded(path2), () => toggle(path2), 24))
 
       if (!isExpanded(path2))
         continue
@@ -216,7 +216,7 @@ function treeToDownwardGroups(
         const node3 = node2.children[name3]
         const path3 = `${path2}/${name3}`
         const tag3 = node3.full ?? `#${path3}`
-        rows.push(makeRow(tag3, name3, 32))
+        rows.push(makeRow(tag3, name3, 48))
       }
     }
   }
@@ -422,6 +422,10 @@ export function useTagMenu(
     saveExpanded()
   }
 
+  // 定义两个固定的 Key用于持久化
+  const KEY_PINNED_GROUP = 'section-starred' // 原 pinned-group
+  const KEY_ALL_TAGS_GROUP = 'section-every' // 原 all-tags-group
+
   function hydrateExpanded(uid: string) {
     try {
       const raw = localStorage.getItem(getExpandedStorageKey(uid))
@@ -430,6 +434,13 @@ export function useTagMenu(
     catch {
       expandedGroups.value = {}
     }
+
+    // 🔥 新增：如果本地缓存中不存在状态（即首次加载），默认将“常用”和“全部”设为展开 (true)
+    if (expandedGroups.value[KEY_PINNED_GROUP] === undefined)
+      expandedGroups.value[KEY_PINNED_GROUP] = true
+
+    if (expandedGroups.value[KEY_ALL_TAGS_GROUP] === undefined)
+      expandedGroups.value[KEY_ALL_TAGS_GROUP] = true
   }
 
   // 🔥 新增：加载/保存 排序
@@ -803,6 +814,73 @@ export function useTagMenu(
     const list = filteredTags.value
     return buildTagTree(list)
   })
+
+  // ==========================================================================
+  // 🔥 新增：生成分组头部的辅助函数 (实现持久化折叠 + 样式统一)
+  // ==========================================================================
+  function makeGroupHeaderRow(
+    key: string,
+    titleLabel: string,
+    hasSettingsBtn = false,
+  ) {
+    const expanded = isExpandedKey(key)
+
+    // 箭头图标
+    const arrowVNode = h(ChevronRight, {
+      size: 16,
+      strokeWidth: 2.5,
+      color: '#999',
+      style: `display:inline-block; transform: translateY(1px) rotate(${expanded ? 90 : 0}deg); transition: transform .15s ease;`,
+    })
+
+    return {
+      key,
+      type: 'render' as const,
+      render: () => h('div', {
+        class: 'group-header-row',
+        style: [
+          // 🔥 关键布局：两端对齐
+          'display:flex; justify-content:space-between; align-items:center;',
+          'padding: 8px 0; padding-left: 20px; padding-right: 12px;',
+          'cursor: pointer; width: 100%; box-sizing: border-box;',
+          'user-select: none;',
+        ].join(''),
+        onClick: (e: MouseEvent) => {
+          e.stopPropagation()
+          toggleExpandedKey(key)
+        },
+      }, [
+        // 左侧容器：标题 + 设置按钮
+        h('div', { style: 'display:flex; align-items:center; flex:1; gap: 8px; overflow: hidden;' }, [
+          h('span', { style: 'font-weight: bold; color: #888; font-size: 12px; white-space: nowrap;' }, titleLabel),
+
+          hasSettingsBtn
+            ? h('button', {
+              type: 'button',
+              title: t('tags.manage_sort') || '管理排序',
+              style: [
+                'background: transparent; border: none; padding: 4px 14px; margin-right: -8px; height: 32px; margin: 0;',
+                'cursor: pointer; display: flex; align-items: center; border-radius: 4px;',
+                'opacity: 0.6; transition: opacity 0.2s; outline: none;',
+                'pointer-events: auto !important; z-index: 10;',
+              ].join(''),
+              onMouseover: (e: any) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)' },
+              onMouseout: (e: any) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'transparent' },
+              onClick: (e: MouseEvent) => {
+                e.preventDefault(); e.stopPropagation()
+                openTagSortManager()
+              },
+              onMousedown: (e: MouseEvent) => e.stopPropagation(),
+              onDblclick: (e: MouseEvent) => e.stopPropagation(),
+            }, [h(Settings2, { size: 15 })])
+            : null,
+        ]),
+
+        // 右侧容器：箭头 (推到最右边)
+        h('div', { style: 'opacity: 0.5; display: flex; align-items: center;' }, [arrowVNode]),
+      ]),
+    }
+  }
 
   // 🔥 新增：标签排序管理器 (弹窗 + 拖拽)
   // ==========================================================================
@@ -1313,153 +1391,67 @@ export function useTagMenu(
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
-
     const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
 
-    // 1. 搜索框 (保持不变)
+    // 1. 搜索框
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
-      render: () =>
-        h('div', { class: 'tag-search-row' }, [
-          h(NInput, {
-            'value': tagSearch.value,
-            'onUpdate:value': (v: string) => { tagSearch.value = v },
-            'placeholder': placeholderText,
-            'clearable': true,
-            'autofocus': true,
-            'size': 'small',
-            'style': '--n-input-font-size:16px;font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;',
-            'inputProps': { style: 'font-size:16px' },
-            'onKeydown': (e: KeyboardEvent) => e.stopPropagation(),
-          }),
-        ]),
+      render: () => h('div', { class: 'tag-search-row' }, [
+        h(NInput, { 'value': tagSearch.value, 'onUpdate:value': (v: string) => { tagSearch.value = v }, 'placeholder': placeholderText, 'clearable': true, 'autofocus': true, 'size': 'small', 'style': '--n-input-font-size:16px;font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;', 'inputProps': { style: 'font-size:16px' }, 'onKeydown': (e: KeyboardEvent) => e.stopPropagation() }),
+      ]),
     }
 
     // 2. 常用标签 (Pinned)
-    const pinnedChildren = pinnedTags.value
-      .filter((tag) => {
-        if (!tag)
-          return false
-        if (!tagExistsOrIsAncestor(tag))
-          return false
-        const q = tagSearch.value.trim().toLowerCase()
-        if (!q)
-          return true
-        return tagKeyName(tag).toLowerCase().includes(q)
-      })
-      .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-      .map(tag => makeTagRow(tag))
+    const pinnedChildren = pinnedTags.value.filter((tag) => {
+      if (!tag || !tagExistsOrIsAncestor(tag))
+        return false
+      const q = tagSearch.value.trim().toLowerCase()
+      return !q || tagKeyName(tag).toLowerCase().includes(q)
+    }).sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b))).map(tag => makeTagRow(tag))
 
-    // 🔥 修改点 A：将常用标签封装为 Group，建立父子关系
-    const pinnedGroup = pinnedChildren.length > 0
-      ? [{
-          type: 'group' as const,
-          key: 'pinned-group', // 使用特定 key
-          // label 使用 span 纯文本，移除所有 margin，由 Sidebar 负责对齐
-          label: () => h('span', {
-            style: 'font-weight: bold; color: #888; font-size: 12px;',
-          }, `⭐ ${t('notes.favorites') || '常用'}`),
-          children: pinnedChildren, // 👈 关键：标签作为子节点
-        }]
-      : []
+    // 🔥 修改：使用 makeGroupHeaderRow 创建可持久化折叠的 Pinned 组
+    const pinnedHeader = pinnedChildren.length > 0
+      ? makeGroupHeaderRow(KEY_PINNED_GROUP, `⭐ ${t('notes.favorites') || '常用'}`)
+      : null
+
+    // 🔥 根据持久化状态决定是否显示子元素
+    const pinnedBody = (pinnedHeader && isExpandedKey(KEY_PINNED_GROUP)) ? pinnedChildren : []
 
     // 3. 构建全部标签树
-    const treeChildren = treeToDownwardGroups(
-      hierarchicalTags.value,
-      tagCounts.value,
-      tagIconMap.value,
-      makeTagRow,
-      makeHeaderRow,
-      isExpandedKey,
-      toggleExpandedKey,
-      compareTagsCustom,
-    )
+    const treeChildren = treeToDownwardGroups(hierarchicalTags.value, tagCounts.value, tagIconMap.value, makeTagRow, makeHeaderRow, isExpandedKey, toggleExpandedKey, compareTagsCustom)
 
-    const letterGroups = groupedTags.value
-      .filter(({ tags }) => tags.length > 0)
-      .map(({ letter, tags }) => ({
-        type: 'group' as const,
-        key: `grp-${letter}`,
-        label: () => h('div', { style: 'color: #888; font-weight: bold; font-size: 12px;' }, letter),
-        children: tags.map(tag => makeTagRow(tag)),
-      }))
+    // 字母分组 (通常只在搜索或无层级时出现，这里暂时不加持久化，或者你可以按需加)
+    const letterGroups = groupedTags.value.filter(({ tags }) => tags.length > 0).map(({ letter, tags }) => ({
+      type: 'group' as const,
+      key: `grp-${letter}`,
+      label: () => h('div', { style: 'color: #888; font-weight: bold; font-size: 12px;' }, letter),
+      children: tags.map(tag => makeTagRow(tag)),
+    }))
 
     const body = treeChildren.length > 0 ? treeChildren : letterGroups
 
-    // 🔥 修改点 B：将“全部标签”也封装为 Group
-    const allTagsGroup = (pinnedGroup.length > 0 && body.length > 0)
-      ? [{
-          type: 'group' as const,
-          key: 'all-tags-group',
-          label: () => h('div', {
-            style: 'display:flex; justify-content:space-between; align-items:center; padding-right:8px; width: 100%;',
-          }, [
-            h('span', {
-              style: 'font-weight: bold; color: #888; font-size: 12px;',
-            }, t('notes.all_favorites') || '全部标签'),
+    // 🔥 修改：使用 makeGroupHeaderRow 创建可持久化折叠的 All Tags 组
+    const showAllTagsHeader = pinnedChildren.length > 0 && body.length > 0
+    let allTagsRows: any[] = body
 
-            // 🔥🔥🔥 终极修复：使用 <button> 标签隔离交互 🔥🔥🔥
-            // 大多数 UI 库（包括 Naive UI）会自动忽略 Group Label 内部 button 的点击事件，
-            // 从而不会触发折叠或选中。
-            h('button', {
-              type: 'button', // 必须显式声明 type="button" 避免触发表单提交
-              title: t('tags.manage_sort') || '管理排序',
-              style: [
-                'background: transparent;',
-                'border: none;',
-                'padding: 4px 14px;',
-                'margin-right: -8px;',
-                'height: 32px;',
-                'margin: 0;',
-                'cursor: pointer;',
-                'display: flex;',
-                'align-items: center;',
-                'border-radius: 4px;',
-                'opacity: 0.6;',
-                'transition: opacity 0.2s;',
-                'outline: none;', // 去掉聚焦边框
-                'pointer-events: auto !important;', // 🔥 加上这一行，确保它能被点到
-                'z-index: 10;', // 🔥 稍微提高层级
-              ].join(''),
+    if (showAllTagsHeader) {
+      const allHeader = makeGroupHeaderRow(KEY_ALL_TAGS_GROUP, t('notes.all_favorites') || '全部标签', true)
+      const allBody = isExpandedKey(KEY_ALL_TAGS_GROUP) ? body : []
+      allTagsRows = [allHeader, ...allBody]
+    }
 
-              // 鼠标交互样式
-              onMouseover: (e: any) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)' },
-              onMouseout: (e: any) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'transparent' },
-
-              // 事件阻断（依然保留作为双重保险）
-              onClick: (e: MouseEvent) => {
-                e.preventDefault()
-                e.stopPropagation()
-                // e.stopImmediatePropagation(); // 有些时候这个反而会干扰 button 内部逻辑，先尝试去掉，或者保留
-                openTagSortManager()
-              },
-              // 拦截 mousedown 防止焦点转移导致父级响应
-              onMousedown: (e: MouseEvent) => {
-                e.stopPropagation()
-                // e.preventDefault(); // 既然是 button，保留默认行为可能更好让浏览器识别它是交互元素
-              },
-              onDblclick: (e: MouseEvent) => e.stopPropagation(),
-            }, [
-              h(Settings2, { size: 15 }),
-            ]),
-          ]),
-          children: body,
-        }]
-      : body
-
-    // 4. 无标签 (底部)
+    // 4. 无标签
     const untaggedRow = makeUntaggedRow(0)
-    const bottomSpacer = (body.length > 0)
-      ? [{
-          key: 'sep-untagged',
-          type: 'render' as const,
-          render: () => h('div', { style: 'height:6px;' }),
-        }]
-      : []
+    const bottomSpacer = (body.length > 0) ? [{ key: 'sep-untagged', type: 'render' as const, render: () => h('div', { style: 'height:6px;' }) }] : []
 
-    // 最终组合：搜索框 -> 常用分组 -> 全部标签分组 -> 垫片 -> 无标签
-    return [searchOption, ...pinnedGroup, ...allTagsGroup, ...bottomSpacer, untaggedRow]
+    // 组合数组：扁平化结构 (Header 和 Body 是兄弟节点，不是父子，这样我们才能完全控制显示隐藏)
+    const result = [searchOption]
+    if (pinnedHeader)
+      result.push(pinnedHeader, ...pinnedBody)
+    result.push(...allTagsRows, ...bottomSpacer, untaggedRow)
+
+    return result
   })
 
   function makeTagRow(tag: string, labelName?: string, indentPx = 0) {
@@ -1484,19 +1476,27 @@ export function useTagMenu(
     }
 
     const MORE_DOT_SIZE = 20
-    const rowPadding = indentPx > 0 ? `padding-left:${indentPx}px;` : ''
+
+    // 🔥 修复缩进的核心：
+    // Sidebar CSS 强制了 padding-left: 20px。
+    // 我们必须用 !important 才能覆盖它，实现层级缩进。
+    const BASE_PADDING = 20
+    const finalPadding = BASE_PADDING + indentPx
 
     return {
       key: tag,
+      // 使用 render 函数直接渲染内容，绕过部分组件库默认样式干扰
       label: () =>
         h('div', {
           class: 'tag-row-wrapper',
           style: [
-            `width: calc(100% + ${SHIFT_LEFT_PX}px);`,
-            `margin-left: -${SHIFT_LEFT_PX}px;`,
-            rowPadding,
+            'width: 100%;',
+            `padding-left: ${finalPadding}px !important;`, // ⚡️ 强制应用缩进
             'padding-right: 16px;',
             'box-sizing: border-box;',
+            // 确保内部垂直居中
+            'display: flex;',
+            'align-items: center;',
           ].join(''),
         }, [
           h('div', {
@@ -1504,8 +1504,13 @@ export function useTagMenu(
             style: 'display: table; width: 100%; table-layout: fixed;',
             title: fullTitle,
           }, [
+            // 1. 图标列
             h('div', { style: 'display: table-cell; width: 22px; vertical-align: middle; padding-right: 6px;' }, icon),
+
+            // 2. 文本列 (自动截断)
             h('div', { style: 'display: table-cell; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }, textLabel),
+
+            // 3. 操作按钮列 (居右)
             h('div', { style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;' }, [
               h(NDropdown, {
                 options: getRowMenuOptions(tag, closeMenu),
@@ -1540,9 +1545,11 @@ export function useTagMenu(
                     `line-height:${MORE_DOT_SIZE + 16}px !important;`,
                     'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
+                  'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
+                  'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
                     e.stopPropagation()
-                    // 💥 关键修复: 如果刚刚是因为点击外部关闭的（即点击了本按钮），则不再重复打开
+                    // 修复：如果刚刚因点击外部关闭，则不立即重开
                     if (lastMoreClosedByOutside)
                       return
 
@@ -1575,7 +1582,10 @@ export function useTagMenu(
     onToggle: () => void,
     indentPx = 0,
   ) {
-    const HORIZONTAL_PADDING = BASE_NAIVE_PADDING - SHIFT_LEFT_PX
+    // 🔥 对齐修复 1：基准 Padding 统一为 20，与 makeTagRow 保持一致
+    const BASE_PADDING = 20
+    const finalPadding = BASE_PADDING + indentPx
+
     const total = getNodeCount(node, tagCounts.value)
     const icon = tagIconMap.value[tagFull] || '#'
     const textLabel = total > 0 ? `${labelName}（${total}）` : `${labelName}`
@@ -1613,27 +1623,35 @@ export function useTagMenu(
         })
 
         return h('div', {
+          class: 'tag-row-wrapper',
           style: [
-          `padding-left: ${HORIZONTAL_PADDING + indentPx}px;`,
-          'padding-right: 16px;',
-          'box-sizing: border-box;',
-          'width: 100%;',
-          'user-select: none;',
+            'width: 100%;',
+            // 🔥 对齐修复 2：强制应用计算后的缩进，解决二级标签不缩进的问题
+            `padding-left: ${finalPadding}px !important;`,
+            'padding-right: 16px;',
+            'box-sizing: border-box;',
+            'display: flex;',
+            'align-items: center;',
+            'user-select: none;',
           ].join(''),
         }, [
           h('div', { style: 'display: table; width: 100%; table-layout: fixed;' }, [
-          // Cell 1: Icon + Text
+
+            // 🔥 对齐修复 3：将图标拆分到独立的单元格 (Cell 1)，宽度固定 22px
+            // 这样它就和 makeTagRow 的图标位置完全重叠了
+            h('div', {
+              style: 'display: table-cell; width: 22px; vertical-align: middle; padding-right: 6px;',
+              onClick: () => { selectTag(tagFull) }, // 点击图标也能筛选
+            }, icon),
+
+            // Cell 2: 文字 (点击筛选)
             h('div', {
               style: 'display: table-cell; vertical-align: middle; overflow: hidden; white-space: nowrap; cursor: pointer;',
               title: fullTitle,
               onClick: () => { selectTag(tagFull) },
-            }, [
-              h('span', { style: 'text-overflow: ellipsis; overflow: hidden; display: inline-block; max-width: 100%;' }, [
-                h('span', null, icon),
-                h('span', { style: 'margin-left: 6px;' }, textLabel),
-              ]),
-            ]),
-            // Cell 2: Arrow (single icon rotates)
+            }, textLabel),
+
+            // Cell 3: 折叠箭头 (点击切换折叠) - 放在文字和更多按钮中间
             h('div', {
               'style': 'display: table-cell; width: 24px; vertical-align: middle; text-align: center; cursor: pointer;',
               'role': 'button',
@@ -1641,10 +1659,9 @@ export function useTagMenu(
               'aria-expanded': String(expanded),
               'onClick': (e: MouseEvent) => { e.stopPropagation(); onToggle() },
             }, [arrowVNode]),
-            // Cell 3: "More" button
-            h('div', {
-              style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;',
-            }, [
+
+            // Cell 4: 更多操作按钮
+            h('div', { style: 'display: table-cell; width: 42px; vertical-align: middle; text-align: right;' }, [
               h(NDropdown, {
                 options: getRowMenuOptions(tagFull, closeMenu),
                 trigger: 'manual',
@@ -1672,19 +1689,21 @@ export function useTagMenu(
                     'background:none;border:none;cursor:pointer;',
                     'display:inline-flex;align-items:center;justify-content:center;',
                     'flex-shrink:0;',
-                  `width:${MORE_DOT_SIZE + 16}px !important;`,
-                  `height:${MORE_DOT_SIZE + 16}px !important;`,
-                  `font-size:${MORE_DOT_SIZE}px !important;`,
-                  `line-height:${MORE_DOT_SIZE + 16}px !important;`,
-                  'font-weight:600;border-radius:10px;opacity:0.95;',
+                    `width:${MORE_DOT_SIZE + 16}px !important;`,
+                    `height:${MORE_DOT_SIZE + 16}px !important;`,
+                    `font-size:${MORE_DOT_SIZE}px !important;`,
+                    `line-height:${MORE_DOT_SIZE + 16}px !important;`,
+                    'font-weight:600;border-radius:10px;opacity:0.95;',
                   ].join(''),
                   'onMousedown': (e: MouseEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onPointerdown': (e: PointerEvent) => { e.preventDefault(); e.stopPropagation() },
                   'onClick': (e: MouseEvent) => {
                     e.stopPropagation()
+                    if (lastMoreClosedByOutside)
+                      return // 防止误触重开
+
                     btnEl = e.currentTarget as HTMLElement
                     if (showRef.value) {
-                      lastMoreClosedByOutside = false
                       closeMenu()
                     }
                     else {
