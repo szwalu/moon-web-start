@@ -842,29 +842,31 @@ export function useTagMenu(
               return h('div', {
                 class: 'tag-sort-item', // 方便写 CSS
                 style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '10px 12px', // 移动端加大一点点击区域
-                  marginBottom: '8px',
-                  background: '#fff',
-                  border: '1px solid #eee',
-                  borderRadius: '8px',
-                  // userSelect: 'none' // 防止文字被选中
+                  'display': 'flex',
+                  'alignItems': 'center',
+                  'padding': '10px 12px', // 移动端加大一点点击区域
+                  'marginBottom': '8px',
+                  'background': '#fff',
+                  'border': '1px solid #eee',
+                  'borderRadius': '8px',
+                  'userSelect': 'none',
+                  'WebkitUserSelect': 'none', // 兼容 Safari/iOS
+                  '-webkit-tap-highlight-color': 'transparent',
                 },
               }, [
                 // 1. 拖拽手柄 (添加 drag-handle 类名)
                 h('div', {
                   class: 'drag-handle', // 👈 对应上面的 handle 配置
-                  style: 'cursor: grab; padding: 4px 8px 4px 0; touch-action: none;', // touch-action: none 对移动端很重要
+                  style: 'cursor: grab; padding: 4px 12px 4px 0; touch-action: none;', // touch-action: none 对移动端很重要
                 }, [
                   h(GripVertical, { size: 18, color: '#ccc' }),
                 ]),
 
                 // 2. 图标
-                h('span', { style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0;' }, icon),
+                h('span', { style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0; pointer-events: none;' }, icon),
 
                 // 3. 标签名
-                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333;' }, displayName),
+                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333; pointer-events: none;' }, displayName),
               ])
             },
           })
