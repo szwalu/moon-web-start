@@ -2,8 +2,8 @@ name: Daily Journal Reminder
 
 on:
   schedule:
-    # 第一次：加州上午 10:12+8 (UTC 18:12)
-    - cron: '12 18 * * *'
+    # 第一次：加州上午 09:12+8 (UTC 17:12)
+    - cron: '12 17 * * *'
     # 第二次：加州晚上 20:12 (UTC 04:12)
     - cron: '12 4 * * *'
   # 允许手动触发

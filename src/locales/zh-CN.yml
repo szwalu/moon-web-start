@@ -704,7 +704,7 @@ notes:
   ok: 确定
 
   HelpDialog:
-    title: 星云笔记 · 使用说明
+    title: 星云笔记 · 使用帮助
     aria_label: 帮助与使用说明
     close: 关闭
     got_it: 知道了
