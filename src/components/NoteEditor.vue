@@ -2681,20 +2681,22 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 🔴 修改这里：新建笔记时，不再强制 100dvh */
-  /* height: 100dvh;  <-- 删除或注释掉这一行 */
+  /* 1. 默认高度（新建模式） */
+  height: 360px;
 
-  /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
-  /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
-  height: 80vh;
+  /* 2. 依然保留这个上限，防止在超大屏幕过高 */
   max-height: 100dvh;
 
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
-  /* 加上这个过渡，切换高度时顺滑一点 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* 3. 编辑模式高度 */
+.note-editor-reborn.editing-viewport {
+  height: 80vh;
 }
 
 .note-editor-reborn:focus-within {
@@ -3095,11 +3097,6 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
-
-/* 新增：编辑模式下，允许 textarea 无限增高 */
-.note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:75dvh;
-}
 
 /* tag 面板样式增强 */
 .tag-suggestions li {
