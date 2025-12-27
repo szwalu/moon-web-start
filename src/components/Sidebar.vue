@@ -7,7 +7,6 @@ import {
   Bell,
   Calendar,
   CheckSquare,
-  ChevronRight,
   Download,
   HelpCircle,
   MapPin,
@@ -577,31 +576,37 @@ onMounted(() => {
       <Transition name="slide-sidebar">
         <div v-if="show" class="sidebar-container">
           <div class="sidebar-header-card" :style="headerStyle">
-            <div class="user-info-row" @click="onAvatarClick">
-              <div class="avatar-circle">
-                <img
-                  v-if="userAvatar"
-                  :src="userAvatar"
-                  alt="Avatar"
-                  @error="userAvatar = null"
-                >
-                <div v-else class="avatar-placeholder">
-                  {{ userName.charAt(0).toUpperCase() }}
+            <div class="header-user-container">
+              <div class="user-info-row" @click="onAvatarClick">
+                <div class="avatar-circle">
+                  <img
+                    v-if="userAvatar"
+                    :src="userAvatar"
+                    alt="Avatar"
+                    @error="userAvatar = null"
+                  >
+                  <div v-else class="avatar-placeholder">
+                    {{ userName.charAt(0).toUpperCase() }}
+                  </div>
+                </div>
+
+                <div class="user-text-col">
+                  <div class="user-name-line">
+                    <div class="user-name">
+                      {{ userName }}
+                    </div>
+                    <div v-if="props.user?.email === 'vip'" class="user-badge">
+                      高级
+                    </div>
+                  </div>
+                  <div class="user-signature">
+                    {{ userSignature }}
+                  </div>
                 </div>
               </div>
 
-              <div class="user-text-col">
-                <div class="user-name-line">
-                  <div class="user-name">
-                    {{ userName }}
-                  </div>
-                  <div v-if="props.user?.email === 'vip'" class="user-badge">
-                    高级
-                  </div>
-                </div>
-                <div class="user-signature">
-                  {{ userSignature }}
-                </div>
+              <div class="header-settings-btn" @click="handleItemClick('settings-group')">
+                <Settings :size="22" />
               </div>
             </div>
 
@@ -611,49 +616,25 @@ onMounted(() => {
               @click="showStatsDetail = true"
             >
               <div class="stat-item">
-                <div class="stat-num">
-                  {{ displayTotalNotes }}
-                </div>
-                <div class="stat-label">
-                  {{ t('notes.notes_bj') || '笔记' }}
-                </div>
+                <div class="stat-num">{{ displayTotalNotes }}</div>
+                <div class="stat-label">{{ t('notes.notes_bj') || '笔记' }}</div>
               </div>
               <div class="stat-item">
-                <div class="stat-num">
-                  {{ tagCount }}
-                </div>
-                <div class="stat-label">
-                  {{ t('notes.search_filter_tag') || '标签' }}
-                </div>
+                <div class="stat-num">{{ tagCount }}</div>
+                <div class="stat-label">{{ t('notes.search_filter_tag') || '标签' }}</div>
               </div>
               <div class="stat-item">
-                <div class="stat-num">
-                  {{ journalingDays }}
-                </div>
-                <div class="stat-label">
-                  {{ t('notes.days') || '天数' }}
-                </div>
+                <div class="stat-num">{{ journalingDays }}</div>
+                <div class="stat-label">{{ t('notes.days') || '天数' }}</div>
               </div>
             </div>
           </div>
 
           <div class="menu-list">
-            <div class="menu-item" @click="handleItemClick('calendar')">
-              <Calendar :size="20" /><span>{{ t('auth.Calendar') }}</span>
-            </div>
-            <div class="menu-item" @click="handleItemClick('toggleSelection')">
-              <CheckSquare :size="20" /><span>{{ t('notes.select_notes') }}</span>
-            </div>
-            <div class="menu-item has-arrow" @click="handleItemClick('settings-group')">
-              <div class="item-left">
-                <Settings :size="20" />
-                <span>{{ t('settings.title') || '设置' }}</span>
-              </div>
-              <ChevronRight :size="18" class="caret" :class="{ rotated: settingsExpanded }" />
-            </div>
+            <div v-if="settingsExpanded" class="submenu settings-panel">
+              <div class="menu-section-label" style="padding-left: 20px;">{{ t('settings.title') || '设置选项' }}</div>
 
-            <div v-if="settingsExpanded" class="submenu">
-              <div class="menu-item sub" @click="handleItemClick('settings')">
+              <div class="sub menu-item" @click="handleItemClick('settings')">
                 <Type :size="18" /><span>{{ t('settings.font_title') }}</span>
               </div>
 
@@ -687,6 +668,16 @@ onMounted(() => {
                 <MapPin :size="18" />
                 <span>{{ t('settings.default_city') || '默认城市' }}</span>
               </div>
+
+              <div class="divider" style="margin: 4px 24px 12px 24px;" />
+            </div>
+
+            <div class="menu-item" @click="handleItemClick('calendar')">
+              <Calendar :size="20" /><span>{{ t('auth.Calendar') }}</span>
+            </div>
+
+            <div class="menu-item" @click="handleItemClick('toggleSelection')">
+              <CheckSquare :size="20" /><span>{{ t('notes.select_notes') }}</span>
             </div>
 
             <div class="menu-item" @click="handleItemClick('randomRoam')">
@@ -694,6 +685,7 @@ onMounted(() => {
             </div>
 
             <div class="divider" />
+
             <div class="tag-menu-container">
               <RecursiveMenu :items="tagMenuOptions" @item-click="emit('close')" />
             </div>
@@ -821,6 +813,60 @@ onMounted(() => {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+/* ⚠️ 请确保你的 CSS 包含以下关键部分，
+   特别是 .header-user-container 和 .header-settings-btn
+*/
+
+.header-user-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  margin-bottom: 24px;
+}
+
+.user-info-row {
+  display: flex; align-items: center; gap: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  border-radius: 8px;
+  margin-left: -8px; padding: 8px;
+  flex: 0 1 auto; /* 缩小点击区域 */
+  margin-right: auto;
+}
+.user-info-row:hover { background: rgba(255, 255, 255, 0.1); }
+.user-info-row:active { opacity: 0.8; transform: scale(0.98); }
+
+.header-settings-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s;
+
+  /* ✅ 这里控制左移的距离 */
+  margin-right: 12px;
+}
+.header-settings-btn:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.15);
+  transform: rotate(90deg);
+}
+
+.submenu.settings-panel {
+  background: var(--sb-submenu-bg);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.03);
+  padding-bottom: 8px;
+}
+</style>
 
 <style scoped>
 /* ===========================================================================
@@ -1068,6 +1114,78 @@ onMounted(() => {
 :deep(.group-label) {
   pointer-events: none;
   color: var(--sb-text);
+}
+
+/* ===========================================================================
+   ✨✨✨ 新增和修改的 Header 样式 ✨✨✨
+   =========================================================================== */
+
+/* ✨ 新增：头部用户区域容器
+  作用：使用 flex 布局来控制左侧用户信息和右侧设置按钮的位置关系
+*/
+.header-user-container {
+  display: flex;
+  /* 两端对齐：左侧是信息，右侧是按钮，中间留空 */
+  justify-content: space-between;
+  /* ✅ 核心：垂直居中对齐，实现图标与头像对齐 */
+  align-items: center;
+  /* 将原本 user-info-row 上的上下边距移到这里，保持整体间距 */
+  margin-top: 10px;
+  margin-bottom: 24px;
+}
+
+/* 修改：用户信息行
+*/
+.user-info-row {
+  display: flex; align-items: center; gap: 12px;
+  /* ❌ 删除：原来的 margin-bottom 和 margin-top 已移到父级容器 */
+  /* margin-bottom: 24px; margin-top: 10px; */
+
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  border-radius: 8px;
+  /* 保留负 margin 和 padding，用于维持 hover 时的背景范围，但不影响布局 */
+  margin-left: -8px; padding: 8px;
+
+  /* ✅ 核心：限制宽度，只占用内容所需的空间，从而缩小点击区域 */
+  flex: 0 1 auto;
+}
+/* hover 和 active 样式保持不变 */
+.user-info-row:hover { background: rgba(255, 255, 255, 0.1); }
+.user-info-row:active { opacity: 0.8; transform: scale(0.98); }
+
+/* 修改：右上角设置按钮样式
+*/
+.header-settings-btn {
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+
+.header-settings-btn:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.15);
+  transform: rotate(90deg);
+}
+
+/* ✨ 新增：专门针对设置面板的缩进调整 */
+.submenu.settings-panel .menu-item.sub {
+  /* 原来是 56px，现在改为 20px，与上方的“设置选项”标题对齐 */
+  padding-left: 20px;
+}
+
+/* 如果你觉得“每日提醒”那个特殊的开关行也需要对齐，加上这个 */
+.submenu.settings-panel .menu-item.sub[style*="justify-content: space-between"] {
+   padding-left: 20px;
 }
 </style>
 
