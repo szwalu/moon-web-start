@@ -860,6 +860,8 @@ tags:
   manage_sort: 标签排序
   drag_to_sort_tip: 拖拽即可调整标签在列表中的显示顺序
   save_success: 排序已保存
+  reset_default: 恢复默认排序
+  order_reset_tip: 已恢复字母排序，点击保存生效
 
 stats:
   tabs:
