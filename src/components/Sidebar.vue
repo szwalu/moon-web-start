@@ -4,6 +4,7 @@ import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, toR
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
+  ArrowUpRight,
   Bell,
   Calendar,
   CheckSquare,
@@ -666,17 +667,23 @@ onMounted(() => {
 
             <div
               class="stats-grid"
-              style="cursor: pointer;"
+              style="cursor: pointer; position: relative;"
               @click="showStatsDetail = true"
             >
+              <div style="position: absolute; right: 6px; top: 6px; opacity: 0.7;">
+                <ArrowUpRight :size="18" color="white" style="stroke-width: 2.5px;" />
+              </div>
+
               <div class="stat-item">
                 <div class="stat-num">{{ displayTotalNotes }}</div>
                 <div class="stat-label">{{ t('notes.notes_bj') || '笔记' }}</div>
               </div>
+
               <div class="stat-item">
                 <div class="stat-num">{{ tagCount }}</div>
                 <div class="stat-label">{{ t('notes.search_filter_tag') || '标签' }}</div>
               </div>
+
               <div class="stat-item">
                 <div class="stat-num">{{ journalingDays }}</div>
                 <div class="stat-label">{{ t('notes.days') || '天数' }}</div>
