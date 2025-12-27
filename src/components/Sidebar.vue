@@ -7,6 +7,7 @@ import {
   Bell,
   Calendar,
   CheckSquare,
+  ChevronDown,
   ChevronUp,
   Download,
   HelpCircle,
@@ -350,43 +351,91 @@ function handleUpdateCity(val: string | null) {
     settingStore.setManualLocation(loc)
   }
 }
-
 // ===========================================================================
-// 🔥 递归渲染组件 (严格修复多语句问题)
+// 🔥 递归渲染组件 (V6: 搜索框隔离 + 标题强制接管)
 // ===========================================================================
 const RecursiveMenu = defineComponent({
   props: ['items'],
   emits: ['itemClick'],
   setup(props, { emit }) {
+    const collapsedMap = ref<Record<string, boolean>>({})
+
+    const toggleGroup = (key: string) => {
+      collapsedMap.value[key] = !collapsedMap.value[key]
+    }
+
     const resolve = (val: any) => (typeof val === 'function' ? val() : val)
 
     const renderNode = (item: any): any => {
+      // 1. 🛑 搜索框特例：原样输出，绝不包裹 Flex
+      // 这样它就会占满一行，不会变短，也不会有箭头
+      if (item.key === 'tag-search') {
+        return h('div', {
+          key: item.key,
+          class: 'search-wrapper-raw', // 专用类名，不做 Flex
+          onClick: (e: MouseEvent) => e.stopPropagation(),
+        }, [resolve(item.render)])
+      }
+
+      // 2. 🔍 识别分组
+      const hasChildren = item.children && item.children.length > 0
+      const keyStr = String(item.key || '')
+      // 只要 key 或 label 包含特定关键词，就强制视为分组
+      const isHeader
+        = keyStr.includes('pinned')
+        || keyStr.includes('all')
+        || keyStr.includes('header')
+        || (typeof item.label === 'string' && (item.label.includes('常用') || item.label.includes('全部')))
+
+      const isGroup = item.type === 'group' || hasChildren || isHeader
+
+      // --- 🅰️ 分组渲染 (强制 Flex 左对齐 + 箭头) ---
+      if (isGroup) {
+        const isCollapsed = collapsedMap.value[item.key]
+        const labelContent = item.type === 'render' && item.render
+          ? resolve(item.render)
+          : resolve(item.label)
+
+        return h('div', { key: item.key, class: 'group-node' }, [
+          // 标题栏：这是我们手动创建的 Flex 容器
+          h('div', {
+            class: 'group-header-row hover-effect',
+            onClick: (e: MouseEvent) => {
+              e.stopPropagation()
+              toggleGroup(item.key)
+            },
+          }, [
+            // 左侧内容：加了 !important 样式的容器
+            h('div', { class: 'group-title-force-left' }, [labelContent]),
+
+            // 右侧箭头
+            h(isCollapsed ? ChevronDown : ChevronUp, {
+              size: 16,
+              class: 'group-arrow',
+            }),
+          ]),
+
+          // 子元素
+          !isCollapsed
+            ? h('div', { class: 'group-children' }, (item.children || []).map(renderNode))
+            : null,
+        ])
+      }
+
+      // --- 🅱️ 普通渲染节点 (非搜索框) ---
       if (item.type === 'render') {
         return h('div', {
           key: item.key,
           class: 'render-node',
           onClick: () => {
-            if (item.key !== 'tag-search' && item.key !== 'pinned-header')
+            // 只有不是 Header 的时候才触发点击
+            if (!isHeader)
               emit('itemClick')
           },
         }, [resolve(item.render)])
       }
 
-      if (item.type === 'group') {
-        const groupProps = item.props || {}
-        return h('div', { key: item.key, class: 'group-node' }, [
-          h('div', {
-            class: 'group-label',
-            onClick: (e: MouseEvent) => {
-              if (groupProps.onClick)
-                groupProps.onClick(e)
-              emit('itemClick')
-            },
-          }, [resolve(item.label)]),
-          h('div', { class: 'group-children' }, item.children.map(renderNode)),
-        ])
-      }
-
+      // --- 🆎 普通菜单节点 ---
       const originalProps = item.props || {}
       return h('div', {
         key: item.key,
@@ -880,7 +929,6 @@ onMounted(() => {
    🎨 主题变量定义
    =========================================================================== */
 .sidebar-container {
-  /* --- 默认浅色模式变量 --- */
   --sb-bg: white;
   --sb-text: #333;
   --sb-text-sub: #999;
@@ -924,22 +972,16 @@ onMounted(() => {
   display: flex; flex-direction: column;
   overflow-y: auto;
   scrollbar-width: none;
-
   background: var(--sb-bg);
   color: var(--sb-text);
   box-shadow: 4px 0 15px var(--sb-shadow);
   transition: background-color 0.3s, color 0.3s;
-
-  /* 🔥 核心修改：设置侧边栏的基础字号为全局 UI 字号 */
   font-size: var(--ui-font, 14px);
 }
 .sidebar-container::-webkit-scrollbar { display: none; }
 
 .sidebar-header-card {
-  /* 🔥 [修改] 使用 CSS 变量替换原来的固定颜色 */
-  /* 原代码: background: linear-gradient(to bottom, #6366f1 0%, #818cf8 100%); */
   background: linear-gradient(to bottom, var(--header-bg-start) 0%, var(--header-bg-end) 100%);
-
   padding-top: calc(2rem + env(safe-area-inset-top));
   padding-right: 1.5rem;
   padding-bottom: 1.5rem;
@@ -947,19 +989,27 @@ onMounted(() => {
   color: white;
   position: relative;
   flex-shrink: 0;
-
-  /* 建议添加一个过渡效果，这样切换主题时颜色会平滑渐变 */
   transition: background 0.3s ease;
+}
+
+/* Header User Container */
+.header-user-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  margin-bottom: 24px;
 }
 
 /* 用户信息行 */
 .user-info-row {
   display: flex; align-items: center; gap: 12px;
-  margin-bottom: 24px; margin-top: 10px;
   cursor: pointer;
   transition: opacity 0.2s, transform 0.1s;
   border-radius: 8px;
   margin-left: -8px; padding: 8px;
+  flex: 0 1 auto;
+  margin-right: auto;
 }
 .user-info-row:hover { background: rgba(255, 255, 255, 0.1); }
 .user-info-row:active { opacity: 0.8; transform: scale(0.98); }
@@ -968,52 +1018,59 @@ onMounted(() => {
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: white; }
 
-/* 🔥 修改：用户名大小使用 calc 计算 */
 .user-name {
-  font-size: calc(var(--ui-font, 14px) * 1.4); /* 原 20px */
+  font-size: calc(var(--ui-font, 14px) * 1.4);
   font-weight: 600;
   letter-spacing: 0.5px;
 }
-
 .user-badge { background: rgba(255,255,255,0.3); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
-
-/* 🔥 修改：签名文字大小 */
 .user-signature {
-  font-size: calc(var(--ui-font, 14px) * 0.85); /* 原 12px */
+  font-size: calc(var(--ui-font, 14px) * 0.85);
   opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;
 }
 
-/* ... 原有的 CSS ... */
+/* Header Settings Button */
+.header-settings-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s;
+  margin-right: 12px;
+}
+.header-settings-btn:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.15);
+  transform: rotate(90deg);
+}
 
+/* Stats */
 .stats-grid {
   display: flex;
   justify-content: space-between;
-  /* [新增] 增加一点内边距和圆角，让点击反馈更好看 */
   padding: 8px 0;
   border-radius: 8px;
   transition: background-color 0.2s;
 }
-
-/* [新增] 悬停高亮效果 */
 .stats-grid:hover {
   background-color: rgba(255, 255, 255, 0.15);
   cursor: pointer;
 }
-
-/* ... 原有的 CSS ... */
 .stat-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
-
-/* 🔥 修改：统计数字大小 */
 .stat-num {
-  font-size: calc(var(--ui-font, 14px) * 1.4); /* 原 20px */
+  font-size: calc(var(--ui-font, 14px) * 1.4);
   font-weight: 700; margin-bottom: 4px;
   color: #ffffff;
   font-family: inherit;
 }
-
-/* 🔥 修改：统计标签大小 */
 .stat-label {
-  font-size: calc(var(--ui-font, 14px) * 0.85); /* 原 12px */
+  font-size: calc(var(--ui-font, 14px) * 0.85);
   opacity: 0.9;
 }
 
@@ -1029,10 +1086,7 @@ onMounted(() => {
   padding: 6px 20px;
   cursor: pointer;
   transition: background 0.1s;
-
-  /* 🔥 修改：主菜单字号跟随系统设置 */
   font-size: var(--ui-font, 15px);
-
   gap: 16px;
   position: relative;
   min-height: 36px;
@@ -1042,7 +1096,6 @@ onMounted(() => {
   background: var(--sb-hover);
 }
 .menu-item.has-arrow { justify-content: space-between; }
-.item-left { display: flex; align-items: center; gap: 16px; }
 
 .caret { transition: transform 0.2s; color: var(--sb-text-sub); }
 .caret.rotated { transform: rotate(90deg); }
@@ -1052,28 +1105,21 @@ onMounted(() => {
   background: var(--sb-submenu-bg);
   overflow: hidden;
 }
-
-/* ✅ 修改子菜单样式 */
+.submenu.settings-panel {
+  background: var(--sb-submenu-bg);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.03);
+  padding-bottom: 8px;
+}
 .menu-item.sub {
-  /* 1. 字号修改：直接使用全局 UI 变量，不再缩小 */
-  /* 原代码是: font-size: calc(var(--ui-font, 14px) * 0.93); */
   font-size: var(--ui-font, 15px);
-
-  /* 2. 对齐修改：配合你刚才说的左对齐 */
-  /* 如果你的 HTML 结构中 settings-panel 是直接放在 menu-list 下的第一层 */
   padding-left: 20px !important;
-
-  /* 3. 间距微调：为了让它看起来和下面的日历等更像，可以稍微增加一点上下内边距 */
   padding-top: 8px;
   padding-bottom: 8px;
 }
-
-/* ⚠️ 特殊处理：确保“每日提醒”那个带开关的行也能对齐 */
 .submenu.settings-panel .menu-item.sub[style*="justify-content: space-between"] {
    padding-left: 20px !important;
 }
 
-/* 分割线 */
 .divider {
   height: 1px;
   background: var(--sb-divider);
@@ -1082,10 +1128,21 @@ onMounted(() => {
 
 .menu-section-label {
   padding: 12px 24px 4px 24px;
-  /* 🔥 修改 */
   font-size: calc(var(--ui-font, 14px) * 0.85);
   color: var(--sb-text-sub);
   font-weight: 500;
+}
+.submenu.settings-panel .menu-section-label.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 10px 20px;
+  transition: color 0.2s, background-color 0.2s;
+}
+.submenu.settings-panel .menu-section-label.header-row:hover {
+  color: var(--sb-text);
+  background-color: rgba(0,0,0,0.02);
 }
 
 .sidebar-overlay {
@@ -1094,30 +1151,99 @@ onMounted(() => {
   backdrop-filter: blur(2px);
 }
 
-/* 动画 */
 .slide-sidebar-enter-active, .slide-sidebar-leave-active { transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1); }
 .slide-sidebar-enter-from, .slide-sidebar-leave-to { transform: translateX(-100%); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* 标签菜单布局修正 */
+/* ===========================================================================
+   🏷️ 标签菜单专用修复 (Final CSS Fix)
+   ===========================================================================
+*/
+
+/* 1. 容器修复：去掉左边距，让它像普通菜单一样靠边 */
 .tag-menu-container {
-  padding-left: 35px;
+  padding-left: 0 !important; /* ⚡️ 核心：从 35px 改为 0 */
   padding-right: 0;
   overflow: visible;
 }
 
-/* 递归组件样式透传 (:deep) */
+/* 2. 搜索框修复：强行撑满宽度，去掉 margin */
+:deep(.search-wrapper-raw) {
+  display: block !important;
+  width: 100% !important;
+  margin-bottom: 8px;
+  padding: 0 20px; /* 两侧留白，跟菜单项对齐 */
+}
+/* 覆盖 useTagMenu.ts 里 NInput 的内联样式 */
+:deep(.tag-search-row .n-input) {
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+/* 3. 分组标题行（常用标签/全部标签）：左对齐 */
+:deep(.group-header-row) {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  width: 100%;
+  padding: 8px 0;
+  padding-left: 20px !important; /* ⚡️ 核心：左侧对齐 20px */
+  padding-right: 12px;
+  cursor: pointer;
+}
+
+/* 4. 左侧内容强制靠左 */
+:deep(.group-title-force-left) {
+  flex: 1;
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  text-align: left !important;
+  overflow: hidden;
+  pointer-events: none !important;
+}
+/* 暴力重置内部元素样式（比如星星图标） */
+:deep(.group-title-force-left > *) {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
+  display: flex !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+/* 5. 标签项修复：修正 useTagMenu.ts 自带的负 margin */
+:deep(.tag-row-wrapper) {
+  width: 100% !important;
+  margin-left: 0 !important; /* ⚡️ 核心：去掉 -23px 偏移 */
+  padding-left: 20px !important; /* 重新加上 20px 内边距 */
+  box-sizing: border-box;
+}
+
+/* 6. 图标与通用 */
+:deep(.group-arrow) {
+  opacity: 0.5;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: transform 0.2s;
+}
+:deep(.group-header-row:hover .group-arrow) {
+  opacity: 1;
+}
+:deep(.group-node) {
+  margin-bottom: 2px;
+  width: 100%;
+}
 :deep(.render-node) {
   position: relative;
-  margin-left: -35px !important;
-  width: calc(100% + 35px) !important;
+  width: 100% !important;
+  margin-left: 0 !important;
 }
-:deep(.menu-node), :deep(.group-node) {
+:deep(.menu-node) {
+  font-size: var(--ui-font, 14px);
   position: relative;
   color: var(--sb-text);
-  /* 🔥 新增：确保标签列表继承字号，或者明确设置 */
-  font-size: var(--ui-font, 14px);
 }
 :deep(.hover-effect) {
   cursor: pointer;
@@ -1128,105 +1254,12 @@ onMounted(() => {
 :deep(.hover-effect:hover) {
   background-color: var(--sb-hover);
 }
-:deep(.group-label) {
-  pointer-events: none;
-  color: var(--sb-text);
-}
-
-/* ===========================================================================
-   ✨✨✨ 新增和修改的 Header 样式 ✨✨✨
-   =========================================================================== */
-
-/* ✨ 新增：头部用户区域容器
-  作用：使用 flex 布局来控制左侧用户信息和右侧设置按钮的位置关系
-*/
-.header-user-container {
-  display: flex;
-  /* 两端对齐：左侧是信息，右侧是按钮，中间留空 */
-  justify-content: space-between;
-  /* ✅ 核心：垂直居中对齐，实现图标与头像对齐 */
-  align-items: center;
-  /* 将原本 user-info-row 上的上下边距移到这里，保持整体间距 */
-  margin-top: 10px;
-  margin-bottom: 24px;
-}
-
-/* 修改：用户信息行
-*/
-.user-info-row {
-  display: flex; align-items: center; gap: 12px;
-  /* ❌ 删除：原来的 margin-bottom 和 margin-top 已移到父级容器 */
-  /* margin-bottom: 24px; margin-top: 10px; */
-
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.1s;
-  border-radius: 8px;
-  /* 保留负 margin 和 padding，用于维持 hover 时的背景范围，但不影响布局 */
-  margin-left: -8px; padding: 8px;
-
-  /* ✅ 核心：限制宽度，只占用内容所需的空间，从而缩小点击区域 */
-  flex: 0 1 auto;
-}
-/* hover 和 active 样式保持不变 */
-.user-info-row:hover { background: rgba(255, 255, 255, 0.1); }
-.user-info-row:active { opacity: 0.8; transform: scale(0.98); }
-
-/* 修改：右上角设置按钮样式
-*/
-.header-settings-btn {
-  color: rgba(255, 255, 255, 0.8);
-  cursor: pointer;
-  transition: all 0.2s;
-
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-right: 10px;
-}
-
-.header-settings-btn:hover {
-  color: white;
-  background-color: rgba(255, 255, 255, 0.15);
-  transform: rotate(90deg);
-}
-
-/* ✨ 新增：专门针对设置面板的缩进调整 */
-.submenu.settings-panel .menu-item.sub {
-  /* 原来是 56px，现在改为 20px，与上方的“设置选项”标题对齐 */
-  padding-left: 20px;
-}
-
-/* 如果你觉得“每日提醒”那个特殊的开关行也需要对齐，加上这个 */
-.submenu.settings-panel .menu-item.sub[style*="justify-content: space-between"] {
-   padding-left: 20px;
-}
-
-.submenu.settings-panel .menu-section-label.header-row {
-  display: flex;
-  justify-content: space-between; /* 文字左，图标右 */
-  align-items: center;
-  cursor: pointer; /* 鼠标变小手 */
-
-  /* 这里的 padding-left: 20px 确保了文字与下面的二级菜单对齐 */
-  padding: 10px 20px;
-
-  /* 稍微增加一点颜色过渡，交互感更好 */
-  transition: color 0.2s, background-color 0.2s;
-}
-
-/* 悬停时稍微高亮一下，提示用户它可以点击 */
-.submenu.settings-panel .menu-section-label.header-row:hover {
-  color: var(--sb-text); /* 字体变深色 */
-  background-color: rgba(0,0,0,0.02); /* 极其微弱的背景色 */
-}
-.header-settings-btn.is-expanded {
-  transform: rotate(90deg); /* 或者 180deg */
-  color: white; /* 保持高亮颜色 */
-  background-color: rgba(255, 255, 255, 0.15); /* 保持背景状态 */
+/* 7. 修复“无标签”行太靠左的问题 */
+:deep(.tag-row) {
+  width: 100% !important;
+  margin-left: 0 !important; /* ⚡️ 核心：去掉负边距 */
+  padding-left: 20px !important; /* ⚡️ 核心：补上 20px 内边距，跟上面对齐 */
+  box-sizing: border-box;
 }
 </style>
 

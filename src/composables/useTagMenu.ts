@@ -335,7 +335,6 @@ export function useTagMenu(
   const BASE_NAIVE_PADDING = 35
   const FINAL_LEFT_PADDING = 12
   const SHIFT_LEFT_PX = BASE_NAIVE_PADDING - FINAL_LEFT_PADDING
-  const SHIFT_LEFT_GROUP_HEADER_PX = 24 - FINAL_LEFT_PADDING
   // ================================================================================================
 
   const mainMenuVisible = ref(false)
@@ -1109,6 +1108,8 @@ export function useTagMenu(
       return [] as any[]
 
     const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
+
+    // 1. 搜索框 (保持不变)
     const searchOption = {
       key: 'tag-search',
       type: 'render' as const,
@@ -1128,6 +1129,7 @@ export function useTagMenu(
         ]),
     }
 
+    // 2. 常用标签 (Pinned)
     const pinnedChildren = pinnedTags.value
       .filter((tag) => {
         if (!tag)
@@ -1140,24 +1142,22 @@ export function useTagMenu(
         return tagKeyName(tag).toLowerCase().includes(q)
       })
       .sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-    // .map(tag => makeTagRow(tag, compactLabelForPinned(tag)))
       .map(tag => makeTagRow(tag))
 
+    // 🔥 修改点 A：将常用标签封装为 Group，建立父子关系
     const pinnedGroup = pinnedChildren.length > 0
-      ? [
-          // 使用一个自定义的、不可点击的 “render” 类型作为标题
-          {
-            key: 'pinned-header',
-            type: 'render' as const,
-            render: () => h('div', {
-              style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size: 12px; font-weight: bold; color: #888; padding: 4px 12px;`,
-            }, `⭐ ${t('notes.favorites') || '常用'}`),
-          },
-          // 将所有常用标签作为普通项直接展开，不再嵌套在 children 里
-          ...pinnedChildren,
-        ]
+      ? [{
+          type: 'group' as const,
+          key: 'pinned-group', // 使用特定 key
+          // label 使用 span 纯文本，移除所有 margin，由 Sidebar 负责对齐
+          label: () => h('span', {
+            style: 'font-weight: bold; color: #888; font-size: 12px;',
+          }, `⭐ ${t('notes.favorites') || '常用'}`),
+          children: pinnedChildren, // 👈 关键：标签作为子节点
+        }]
       : []
 
+    // 3. 构建全部标签树
     const treeChildren = treeToDownwardGroups(
       hierarchicalTags.value,
       tagCounts.value,
@@ -1173,42 +1173,28 @@ export function useTagMenu(
       .map(({ letter, tags }) => ({
         type: 'group' as const,
         key: `grp-${letter}`,
-        label: () => h('div', { style: `margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px;` }, letter),
+        label: () => h('div', { style: 'color: #888; font-weight: bold; font-size: 12px;' }, letter),
         children: tags.map(tag => makeTagRow(tag)),
       }))
 
     const body = treeChildren.length > 0 ? treeChildren : letterGroups
 
-    // 在 useTagMenu.ts 中找到 separatorOption 定义处
-    const separatorOption = (pinnedGroup.length > 0 && body.length > 0)
+    // 🔥 修改点 B：将“全部标签”也封装为 Group
+    // 只有当既有常用标签，又有普通标签时，才显示“全部标签”这个分组标题
+    const allTagsGroup = (pinnedGroup.length > 0 && body.length > 0)
       ? [{
-          key: 'separator',
-          type: 'render' as const,
-          render: () => h('div', {
-            style: `
-          margin-left: -${SHIFT_LEFT_GROUP_HEADER_PX}px; 
-          padding-left: 12px; 
-          color: #888; 
-          font-weight: bold; 
-          font-size: 12px; 
-          padding-top: 4px; 
-          padding-bottom: 4px; 
-          user-select: none;
-          cursor: default; /* 👈 1. 鼠标放上去不显示手指手势 */
-        `,
-            // 👇 2. 核心修改：阻止点击事件冒泡，防止菜单关闭
-            onClick: (e: MouseEvent) => {
-              e.stopPropagation()
-            },
-          }, t('notes.all_favorites')), // 这里应该是 '全部标签' 或对应的翻译 key
+          type: 'group' as const,
+          key: 'all-tags-group',
+          label: () => h('span', {
+            style: 'font-weight: bold; color: #888; font-size: 12px;',
+          }, t('notes.all_favorites') || '全部标签'),
+          children: body, // 👈 关键：所有字母/层级分组都包在这里面
         }]
-      : []
+      : body // 如果没有常用标签，直接展示全部标签列表，不需要再包一层标题
 
-    const mainBody = body
-
-    // —— 底部追加 “∅ 无标签（N）” —— //
+    // 4. 无标签 (底部)
     const untaggedRow = makeUntaggedRow(0)
-    const bottomSpacer = (mainBody.length > 0)
+    const bottomSpacer = (body.length > 0)
       ? [{
           key: 'sep-untagged',
           type: 'render' as const,
@@ -1216,7 +1202,8 @@ export function useTagMenu(
         }]
       : []
 
-    return [searchOption, ...pinnedGroup, ...separatorOption, ...mainBody, ...bottomSpacer, untaggedRow]
+    // 最终组合：搜索框 -> 常用分组 -> 全部标签分组 -> 垫片 -> 无标签
+    return [searchOption, ...pinnedGroup, ...allTagsGroup, ...bottomSpacer, untaggedRow]
   })
 
   function makeTagRow(tag: string, labelName?: string, indentPx = 0) {
