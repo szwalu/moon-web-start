@@ -7,6 +7,7 @@ import {
   Bell,
   Calendar,
   CheckSquare,
+  ChevronUp,
   Download,
   HelpCircle,
   MapPin,
@@ -605,7 +606,11 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div class="header-settings-btn" @click="handleItemClick('settings-group')">
+              <div
+                class="header-settings-btn"
+                :class="{ 'is-expanded': settingsExpanded }"
+                @click="handleItemClick('settings-group')"
+              >
                 <Settings :size="22" />
               </div>
             </div>
@@ -632,8 +637,10 @@ onMounted(() => {
 
           <div class="menu-list">
             <div v-if="settingsExpanded" class="submenu settings-panel">
-              <div class="menu-section-label" style="padding-left: 20px;">{{ t('settings.title') || '设置选项' }}</div>
-
+              <div class="header-row menu-section-label" @click="settingsExpanded = false">
+                <span>{{ t('settings.title') || '设置选项' }}</span>
+                <ChevronUp :size="16" />
+              </div>
               <div class="sub menu-item" @click="handleItemClick('settings')">
                 <Type :size="18" /><span>{{ t('settings.font_title') }}</span>
               </div>
@@ -1046,14 +1053,24 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* ✅ 修改子菜单样式 */
 .menu-item.sub {
-  padding-left: 56px;
+  /* 1. 字号修改：直接使用全局 UI 变量，不再缩小 */
+  /* 原代码是: font-size: calc(var(--ui-font, 14px) * 0.93); */
+  font-size: var(--ui-font, 15px);
 
-  /* 🔥 修改：子菜单字号稍微小一点 */
-  font-size: calc(var(--ui-font, 14px) * 0.93); /* 原 14px */
+  /* 2. 对齐修改：配合你刚才说的左对齐 */
+  /* 如果你的 HTML 结构中 settings-panel 是直接放在 menu-list 下的第一层 */
+  padding-left: 20px !important;
 
-  padding-top: 6px;
-  padding-bottom: 6px;
+  /* 3. 间距微调：为了让它看起来和下面的日历等更像，可以稍微增加一点上下内边距 */
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* ⚠️ 特殊处理：确保“每日提醒”那个带开关的行也能对齐 */
+.submenu.settings-panel .menu-item.sub[style*="justify-content: space-between"] {
+   padding-left: 20px !important;
 }
 
 /* 分割线 */
@@ -1186,6 +1203,30 @@ onMounted(() => {
 /* 如果你觉得“每日提醒”那个特殊的开关行也需要对齐，加上这个 */
 .submenu.settings-panel .menu-item.sub[style*="justify-content: space-between"] {
    padding-left: 20px;
+}
+
+.submenu.settings-panel .menu-section-label.header-row {
+  display: flex;
+  justify-content: space-between; /* 文字左，图标右 */
+  align-items: center;
+  cursor: pointer; /* 鼠标变小手 */
+
+  /* 这里的 padding-left: 20px 确保了文字与下面的二级菜单对齐 */
+  padding: 10px 20px;
+
+  /* 稍微增加一点颜色过渡，交互感更好 */
+  transition: color 0.2s, background-color 0.2s;
+}
+
+/* 悬停时稍微高亮一下，提示用户它可以点击 */
+.submenu.settings-panel .menu-section-label.header-row:hover {
+  color: var(--sb-text); /* 字体变深色 */
+  background-color: rgba(0,0,0,0.02); /* 极其微弱的背景色 */
+}
+.header-settings-btn.is-expanded {
+  transform: rotate(90deg); /* 或者 180deg */
+  color: white; /* 保持高亮颜色 */
+  background-color: rgba(255, 255, 255, 0.15); /* 保持背景状态 */
 }
 </style>
 
