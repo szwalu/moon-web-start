@@ -861,6 +861,7 @@ function handleForgotOldPwd() {
 
   --ac-avatar-border: #ffffff;
   --ac-icon-color: #bbbbbb;
+  z-index: 4000 !important;
 }
 
 /* 🌑 情况1：系统设置为深色模式 */
@@ -1023,7 +1024,7 @@ function handleForgotOldPwd() {
   background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000;
   backdrop-filter: blur(2px);
 }
-.pwd-overlay { z-index: 1010; }
+.pwd-overlay { z-index: 4010; }
 
 .modal-content {
   padding: 2rem; border-radius: 12px;

@@ -8,6 +8,7 @@ import { supabase } from '@/utils/supabaseClient'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   initialDate: { type: [Date, String, Number], default: () => new Date() },
+  themeColor: { type: String, default: '#6366f1' },
 })
 
 const emit = defineEmits(['close'])
@@ -317,7 +318,16 @@ watch(() => props.visible, (val) => {
 </script>
 
 <template>
-  <div class="stats-overlay" @click.self="emit('close')">
+  <div
+    class="stats-overlay"
+    :style="{
+      '--st-accent': props.themeColor,
+      '--st-bar-fill': props.themeColor,
+      '--st-bar-bg': `color-mix(in srgb, ${props.themeColor}, white 80%)`, // 浅色背景条
+      '--st-bar-bg-dark': `color-mix(in srgb, ${props.themeColor}, black 60%)`, // 深色模式背景条
+    }"
+    @click.self="emit('close')"
+  >
     <div class="stats-modal-content">
       <div class="nav-header">
         <div class="nav-left" />
@@ -456,7 +466,7 @@ watch(() => props.visible, (val) => {
     --st-accent: #818cf8;
     --st-icon-hover: rgba(255,255,255,0.1);
     --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
-    --st-bar-bg: #3f3f46;
+    --st-bar-bg: var(--st-bar-bg-dark);
     --st-bar-fill: #6366f1;
     --st-grid-line: #3f3f46;
   }
@@ -471,7 +481,7 @@ watch(() => props.visible, (val) => {
   --st-accent: #818cf8;
   --st-icon-hover: rgba(255,255,255,0.1);
   --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
-  --st-bar-bg: #3f3f46;
+  --st-bar-bg: var(--st-bar-bg-dark);
   --st-bar-fill: #6366f1;
   --st-grid-line: #3f3f46;
 }

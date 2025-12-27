@@ -532,7 +532,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 4000;
 }
 .modal-content {
   background: #fff;

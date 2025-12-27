@@ -546,13 +546,15 @@ function handleItemClick(key: string) {
   }
   if (key === 'feedback') {
     showFeedback.value = true
-    emit('close')
+    // emit('close')
     return
   }
   emit('menuClick', key)
 
-  if (key !== 'settings-group')
-    emit('close')
+  if (['help', 'trash', 'settings', 'export', 'account'].includes(key)) {
+    return
+  }
+  emit('close')
 }
 
 const showStatsDetail = ref(false)
@@ -731,6 +733,7 @@ onMounted(() => {
         <StatsDetail
           v-if="showStatsDetail"
           :stats="statsData"
+          :theme-color="headerStyle['--header-bg-start']"
           @close="showStatsDetail = false"
         />
       </Transition>
