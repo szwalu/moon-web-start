@@ -2,13 +2,14 @@
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
-import { ChevronRight, Pencil, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
+import { ChevronRight, GripVertical, Pencil, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
 
 /** 本地存储 Key */
 const PINNED_TAGS_KEY = 'pinned_tags_v1'
+const TAG_ORDER_KEY = 'tag_order_v1'
 const TAG_COUNT_CACHE_KEY_PREFIX = 'tag_counts_v1:'
 const TAG_ICON_MAP_KEY = 'tag_icons_v1'
 const LAST_KNOWN_USER_ID_KEY = 'last_known_user_id_v1'
@@ -170,9 +171,15 @@ function treeToDownwardGroups(
   makeHeader: (node: TagTreeNode, tagFull: string, labelName: string, expanded: boolean, onToggle: () => void, indentPx?: number) => any,
   isExpanded: (key: string) => boolean,
   toggle: (key: string) => void,
+  compareFn?: (nameA: string, nameB: string) => number, // 🔥 接收比较函数
 ): any[] {
   const rows: any[] = []
-  const level1Names = Object.keys(root.children).sort((a, b) => a.localeCompare(b))
+
+  // 🔥 定义排序器：优先使用传入的 compareFn，否则降级为字母排序
+  const sorter = compareFn || ((a, b) => a.localeCompare(b))
+
+  // Level 1
+  const level1Names = Object.keys(root.children).sort(sorter)
 
   for (const name1 of level1Names) {
     const node1 = root.children[name1]
@@ -190,7 +197,8 @@ function treeToDownwardGroups(
     if (!isExpanded(path1))
       continue
 
-    const level2Names = Object.keys(node1.children).sort((a, b) => a.localeCompare(b))
+    // Level 2
+    const level2Names = Object.keys(node1.children).sort(sorter) // 🔥 使用 sorter
     for (const name2 of level2Names) {
       const node2 = node1.children[name2]
       const path2 = `${path1}/${name2}`
@@ -207,7 +215,8 @@ function treeToDownwardGroups(
       if (!isExpanded(path2))
         continue
 
-      const level3Names = Object.keys(node2.children).sort((a, b) => a.localeCompare(b))
+      // Level 3
+      const level3Names = Object.keys(node2.children).sort(sorter) // 🔥 使用 sorter
       for (const name3 of level3Names) {
         const node3 = node2.children[name3]
         const path3 = `${path2}/${name3}`
@@ -324,6 +333,22 @@ async function saveTagIconsToAuth(map: Record<string, string>): Promise<boolean>
   }
 }
 
+/** 🔥 新增：保存标签自定义排序到 Auth.user_metadata */
+async function saveTagOrderToAuth(orderList: string[]): Promise<boolean> {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        tag_order: orderList,
+        tag_order_updated_at: new Date().toISOString(),
+      },
+    })
+    return !error
+  }
+  catch {
+    return false
+  }
+}
+
 export function useTagMenu(
   allTags: Ref<string[]>,
   onSelectTag: (tag: string) => void,
@@ -349,6 +374,7 @@ export function useTagMenu(
   const isLoadingCounts = ref(false)
   const currentUserId = ref<string | null>(null)
   const tagIconMap = ref<Record<string, string>>({})
+  const tagOrder = ref<string[]>([])
   let tagCountsChannel: ReturnType<typeof supabase.channel> | null = null
   let lastFetchAt = 0
 
@@ -363,6 +389,32 @@ export function useTagMenu(
   let lastUntaggedFetchAt = 0
   let isLoadingUntagged = false
   const isUntaggedSelected = computed(() => selectedTag.value === UNTAGGED_SENTINEL)
+
+  // 🔥 优化后的比较函数
+  function compareTagsCustom(nameA: string, nameB: string) {
+    // 1. 尝试直接在排序列表中找
+    let indexA = tagOrder.value.indexOf(nameA)
+    let indexB = tagOrder.value.indexOf(nameB)
+
+    // 2. [关键优化] 如果找不到确切名字（比如这是个文件夹名 'parent'，而列表中只有 'parent/child'）
+    // 我们尝试在 tagOrder 中找“第一个以 nameA/ 开头的项”，用它的位置代表文件夹的位置
+    if (indexA === -1)
+      indexA = tagOrder.value.findIndex(t => t === nameA || t.startsWith(`${nameA}/`))
+
+    if (indexB === -1)
+      indexB = tagOrder.value.findIndex(t => t === nameB || t.startsWith(`${nameB}/`))
+
+    // 3. 比较逻辑
+    if (indexA !== -1 && indexB !== -1)
+      return indexA - indexB
+    if (indexA !== -1)
+      return -1 // A 有序，A 排前
+    if (indexB !== -1)
+      return 1 // B 有序，B 排前
+
+    // 4. 都没设置过顺序，默认字母排序
+    return nameA.localeCompare(nameB)
+  }
 
   // —— 可折叠状态 —— //
   const expandedGroups = ref<Record<string, boolean>>({})
@@ -384,6 +436,21 @@ export function useTagMenu(
       expandedGroups.value = {}
     }
   }
+
+  // 🔥 新增：加载/保存 排序
+  function hydrateTagOrder() {
+    try {
+      const raw = localStorage.getItem(TAG_ORDER_KEY)
+      tagOrder.value = raw ? JSON.parse(raw) : []
+    }
+    catch { tagOrder.value = [] }
+  }
+
+  async function saveTagOrder() {
+    localStorage.setItem(TAG_ORDER_KEY, JSON.stringify(tagOrder.value))
+    await saveTagOrderToAuth(tagOrder.value)
+  }
+
   function saveExpanded() {
     const uid = currentUserId.value
     if (!uid)
@@ -544,6 +611,7 @@ export function useTagMenu(
 
     // 1. 总是先从本地加载非用户相关的缓存（图标和置顶的 key 是全局的）
     hydrateIconsFromLocal()
+    hydrateTagOrder()
     try {
       const raw = localStorage.getItem(PINNED_TAGS_KEY)
       pinnedTags.value = raw ? JSON.parse(raw) : []
@@ -568,6 +636,13 @@ export function useTagMenu(
       currentUserId.value = uid
       localStorage.setItem(LAST_KNOWN_USER_ID_KEY, uid)
       hydrateExpanded(uid)
+
+      hydrateTagOrder() // 先读本地
+      const serverOrder = (user.user_metadata as any)?.tag_order
+      if (Array.isArray(serverOrder)) {
+        tagOrder.value = serverOrder
+        localStorage.setItem(TAG_ORDER_KEY, JSON.stringify(tagOrder.value))
+      }
 
       // --- 同步 Metadata (置顶 & 图标) ---
       const serverPinned = (user.user_metadata as any)?.pinned_tags
@@ -698,18 +773,27 @@ export function useTagMenu(
 
   const groupedTags = computed(() => {
     const groups: Record<string, string[]> = {}
-    for (const tt of filteredTags.value) {
-      // if (isPinned(tt))
-      //  continue
+
+    // 先对 allTags 整体做一次排序，保证放入分组时的顺序也是对的
+    const sortedAll = [...filteredTags.value].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b)))
+
+    for (const tt of sortedAll) {
       const name = tagKeyName(tt)
       const letter = /^[A-Za-z]/.test(name) ? name[0].toUpperCase() : '#'
       if (!groups[letter])
         groups[letter] = []
       groups[letter].push(tt)
     }
+
+    // 组内再确保一次 (其实上面 sort 过了，这里可以省略，但保留保险)
     Object.keys(groups).forEach((k) => {
-      groups[k].sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
+      groups[k].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b)))
     })
+
+    // 字母分组本身的排序 (也受自定义排序影响吗？通常分组还是按字母，但如果用户想让 'B' 组排在 'A' 组前，比较少见)
+    // 这里我们保持字母分组按字母排，但内容按自定义排。
+    // *如果你希望完全自定义排序而忽略字母分组，建议把 groupedTags 逻辑改为直接返回一个 "自定义" 组*
+    // 这里保持原逻辑：
     const letters = Object.keys(groups).sort((a, b) => {
       if (a === '#')
         return 1
@@ -719,12 +803,118 @@ export function useTagMenu(
     })
     return letters.map(letter => ({ letter, tags: groups[letter] }))
   })
-
   /** 基于 filteredTags 的分层结果；不包含置顶标签 */
   const hierarchicalTags = computed(() => {
     const list = filteredTags.value
     return buildTagTree(list)
   })
+
+  // 🔥 新增：标签排序管理器 (弹窗 + 拖拽)
+  // ==========================================================================
+  function openTagSortManager() {
+    // 1. 准备数据：只对当前 allTags 进行排序管理
+    // 创建一个临时的 ref 用于弹窗内部状态
+    const editList = ref([...allTags.value].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b))))
+    let dragSrcIndex: number | null = null
+
+    // 定义拖拽组件
+    const SortableListComponent = defineComponent({
+      setup() {
+        return () => {
+          const items = editList.value
+          if (items.length === 0)
+            return h('div', { style: 'padding:20px;text-align:center;color:#999' }, '暂无标签')
+
+          return h('div', { class: 'tag-sort-list', style: 'max-height:60vh;overflow-y:auto;padding-right:4px;' }, items.map((tag, index) => {
+            const displayName = tagKeyName(tag)
+            const icon = tagIconMap.value[tag] || '#'
+
+            return h('div', {
+              key: tag,
+              draggable: true,
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 12px',
+                marginBottom: '8px',
+                background: '#fff',
+                border: '1px solid #eee',
+                borderRadius: '6px',
+                cursor: 'grab',
+                transition: 'all 0.2s',
+                // 拖拽时的样式变化
+                opacity: dragSrcIndex === index ? '0.4' : '1',
+              },
+              // --- 拖拽事件 ---
+              onDragstart: (e: DragEvent) => {
+                dragSrcIndex = index
+                // 必须设置 dataTransfer 否则 Firefox 可能不拖拽
+                e.dataTransfer!.effectAllowed = 'move'
+                e.dataTransfer!.setData('text/plain', String(index))
+                // 延迟添加 dragging 类以免影响视觉
+                setTimeout(() => {
+                  if (e.target instanceof HTMLElement)
+                    e.target.style.opacity = '0.5'
+                }, 0)
+              },
+              onDragend: (e: DragEvent) => {
+                dragSrcIndex = null
+                if (e.target instanceof HTMLElement)
+                  e.target.style.opacity = '1'
+              },
+              onDragover: (e: DragEvent) => {
+                e.preventDefault() // 允许 drop
+                e.dataTransfer!.dropEffect = 'move'
+              },
+              onDrop: (e: DragEvent) => {
+                e.stopPropagation()
+                if (dragSrcIndex === null || dragSrcIndex === index)
+                  return
+
+                // 移动数组元素
+                const item = editList.value[dragSrcIndex]
+                editList.value.splice(dragSrcIndex, 1) // 移除旧的
+                editList.value.splice(index, 0, item) // 插入新的
+
+                dragSrcIndex = null
+              },
+            }, [
+              // 拖拽手柄图标
+              h(GripVertical, { size: 16, color: '#ccc', style: 'margin-right:8px; flex-shrink:0;' }),
+              // 内容
+              h('span', { style: 'margin-right:6px;width:18px;text-align:center;flex-shrink:0;' }, icon),
+              h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;' }, displayName),
+            ])
+          }))
+        }
+      },
+    })
+
+    dialogOpenCount.value += 1
+    dialog.create({
+      title: t('tags.manage_sort') || '标签排序',
+      showIcon: false,
+      content: () => h('div', [
+        h('div', { style: 'font-size:12px;color:#999;margin-bottom:12px;' }, t('tags.drag_to_sort_tip') || '拖拽即可调整标签在列表中的显示顺序'),
+        h(SortableListComponent),
+      ]),
+      positiveText: t('auth.save') || '保存排序',
+      negativeText: t('auth.cancel') || '取消',
+      maskClosable: false,
+      style: 'width: 400px; max-width: 90vw;',
+      onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
+      onPositiveClick: async () => {
+        // 保存 tagKeyName 即可 (或者保存完整 tag，取决于你的 compareTagsCustom 实现)
+        // 这里我们保存 tagKeyName，因为 allTags 里可能有 #，也可能没有，要统一
+        const newOrder = editList.value.map(t => tagKeyName(t))
+        tagOrder.value = newOrder
+        await saveTagOrder()
+        // 强制触发一次重绘
+        await refreshTagCountsFromServer(true)
+        message.success(t('tags.save_success') || '排序已保存')
+      },
+    })
+  }
 
   function invalidateOneTagCache(tag: string) {
     const k = getTagCacheKey(tag)
@@ -1166,6 +1356,7 @@ export function useTagMenu(
       makeHeaderRow,
       isExpandedKey,
       toggleExpandedKey,
+      compareTagsCustom,
     )
 
     const letterGroups = groupedTags.value
@@ -1180,17 +1371,63 @@ export function useTagMenu(
     const body = treeChildren.length > 0 ? treeChildren : letterGroups
 
     // 🔥 修改点 B：将“全部标签”也封装为 Group
-    // 只有当既有常用标签，又有普通标签时，才显示“全部标签”这个分组标题
     const allTagsGroup = (pinnedGroup.length > 0 && body.length > 0)
       ? [{
           type: 'group' as const,
           key: 'all-tags-group',
-          label: () => h('span', {
-            style: 'font-weight: bold; color: #888; font-size: 12px;',
-          }, t('notes.all_favorites') || '全部标签'),
-          children: body, // 👈 关键：所有字母/层级分组都包在这里面
+          label: () => h('div', {
+            style: 'display:flex; justify-content:space-between; align-items:center; padding-right:8px; width: 100%;',
+          }, [
+            h('span', {
+              style: 'font-weight: bold; color: #888; font-size: 12px;',
+            }, t('notes.all_favorites') || '全部标签'),
+
+            // 🔥🔥🔥 终极修复：使用 <button> 标签隔离交互 🔥🔥🔥
+            // 大多数 UI 库（包括 Naive UI）会自动忽略 Group Label 内部 button 的点击事件，
+            // 从而不会触发折叠或选中。
+            h('button', {
+              type: 'button', // 必须显式声明 type="button" 避免触发表单提交
+              title: t('tags.manage_sort') || '管理排序',
+              style: [
+                'background: transparent;',
+                'border: none;',
+                'padding: 2px 6px;',
+                'margin: 0;',
+                'cursor: pointer;',
+                'display: flex;',
+                'align-items: center;',
+                'border-radius: 4px;',
+                'opacity: 0.6;',
+                'transition: opacity 0.2s;',
+                'outline: none;', // 去掉聚焦边框
+                'pointer-events: auto !important;', // 🔥 加上这一行，确保它能被点到
+                'z-index: 10;', // 🔥 稍微提高层级
+              ].join(''),
+
+              // 鼠标交互样式
+              onMouseover: (e: any) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)' },
+              onMouseout: (e: any) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'transparent' },
+
+              // 事件阻断（依然保留作为双重保险）
+              onClick: (e: MouseEvent) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // e.stopImmediatePropagation(); // 有些时候这个反而会干扰 button 内部逻辑，先尝试去掉，或者保留
+                openTagSortManager()
+              },
+              // 拦截 mousedown 防止焦点转移导致父级响应
+              onMousedown: (e: MouseEvent) => {
+                e.stopPropagation()
+                // e.preventDefault(); // 既然是 button，保留默认行为可能更好让浏览器识别它是交互元素
+              },
+              onDblclick: (e: MouseEvent) => e.stopPropagation(),
+            }, [
+              h(Settings2, { size: 14 }),
+            ]),
+          ]),
+          children: body,
         }]
-      : body // 如果没有常用标签，直接展示全部标签列表，不需要再包一层标题
+      : body
 
     // 4. 无标签 (底部)
     const untaggedRow = makeUntaggedRow(0)

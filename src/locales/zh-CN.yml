@@ -857,6 +857,9 @@ tags:
   tip_icon_custom: 也可以直接在上方粘贴表情或符号搜索
   no_icons_found: 图标没有找到
   untagged: 无标签
+  manage_sort: 标签排序
+  drag_to_sort_tip: 拖拽即可调整标签在列表中的显示顺序
+  save_success: 排序已保存
 
 stats:
   tabs:

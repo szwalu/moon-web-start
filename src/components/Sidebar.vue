@@ -1201,7 +1201,7 @@ onMounted(() => {
   align-items: center !important;
   text-align: left !important;
   overflow: hidden;
-  pointer-events: none !important;
+  pointer-events: auto !important;
 }
 /* 暴力重置内部元素样式（比如星星图标） */
 :deep(.group-title-force-left > *) {
@@ -1211,6 +1211,7 @@ onMounted(() => {
   display: flex !important;
   justify-content: flex-start !important;
   text-align: left !important;
+  pointer-events: auto !important;
 }
 
 /* 5. 标签项修复：修正 useTagMenu.ts 自带的负 margin */
