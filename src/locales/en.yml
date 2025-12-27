@@ -758,7 +758,7 @@ notes:
     s3_i3: 'Filter Notes: Click a tag in the menu to filter; supports filtering for ''No Tag''.'
     s3_i4: 'Select Filtered: After filtering, use ''Select Notes'' in the menu bar to select notes.'
     s3_i5: 'Clear Filter: The ''×'' on the right side of the banner.'
-    s3_i6: Tags support pinning, renaming, changing icons, and removal.
+    s3_i6: Tags support pinning, renaming, changing icons, and removal.Manual drag-and-drop sorting is supported for all tags.
 
     s4_title: 4) Search
     s4_i1_before: 'Click '
@@ -803,6 +803,7 @@ notes:
     s10_i4: 'Font Settings: Independently adjust "Content Font Size" (note body) and "System Font Size" (UI controls); enable "Follow" to automatically adapt system font size to content size.'
     s10_i5: 'default_city: Set a default city and get weather instantly for new notes;Not set: Using GPS/IP auto-location.'
     s10_i6: 'Daily reminder: When enabled, the system will send a notification at a fixed time each day to remind you to write or review notes. Please ensure browser notification permissions are granted.'
+    s10_i7: 'Theme settings: Your theme configuration is synced to the cloud and stays consistent across devices.'
 
     s11_title: '11) Offline & Cache'
     s11_i1_tail: ': New/Edit/Pin/Fav/Delete update UI and local snapshots instantly offline, syncing when online.'
@@ -861,6 +862,11 @@ tags:
   tip_icon_custom: You can also paste emoji or symbols above to search
   no_icons_found: No icons found
   untagged: Untagged
+  manage_sort: Tag Order
+  drag_to_sort_tip: Drag to reorder tags in the list
+  save_success: Order saved
+  reset_default: Restore default order
+  order_reset_tip: Alphabetical order restored. Click Save to apply
 
 stats:
   tabs:

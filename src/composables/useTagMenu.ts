@@ -2,7 +2,7 @@
 /* eslint-disable style/max-statements-per-line */
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
-import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
+import { NButton, NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { ChevronRight, GripVertical, Pencil, RotateCcw, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
@@ -885,13 +885,9 @@ export function useTagMenu(
   // 🔥 新增：标签排序管理器 (弹窗 + 拖拽)
   // ==========================================================================
 
-  // src/composables/useTagMenu.ts 内部
-
   function openTagSortManager() {
-    // 初始化时，尝试按现有顺序排序；如果没有顺序，默认就是字母序
     const editList = ref([...allTags.value].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b))))
 
-    // 定义拖拽组件
     const SortableListComponent = defineComponent({
       setup() {
         return () => {
@@ -902,57 +898,36 @@ export function useTagMenu(
           return h(draggable, {
             'modelValue': editList.value,
             'onUpdate:modelValue': (val: any[]) => { editList.value = val },
-
             'itemKey': (item: string) => item,
             'animation': 200,
             'ghostClass': 'sortable-ghost',
             'delay': 150,
             'delayOnTouchOnly': true,
             'touchStartThreshold': 5,
-
-            // 🔥 修改：让列表占满剩余空间，并处理滚动
             'style': 'flex: 1; overflow-y: auto; padding-right: 4px; min-height: 0;',
           }, {
             item: ({ element: tag }: { element: string }) => {
               const displayName = tagKeyName(tag)
               const icon = tagIconMap.value[tag] || '#'
-
               return h('div', {
                 class: 'tag-sort-item',
                 style: {
                   'display': 'flex',
                   'alignItems': 'center',
-                  // 🔥🔥 核心修改：大幅减小高度 🔥🔥
-                  'padding': '5px 8px', // 原来是 10px 12px
-                  'marginBottom': '4px', // 原来是 8px
-                  // -----------------------------
+                  'padding': '5px 8px',
+                  'marginBottom': '2px',
                   'background': '#fff',
                   'border': '1px solid #eee',
-                  'borderRadius': '6px', // 圆角稍微改小一点适配高度
+                  'borderRadius': '6px',
                   'cursor': 'grab',
                   'userSelect': 'none',
                   'WebkitUserSelect': 'none',
                   '-webkit-tap-highlight-color': 'transparent',
                 },
               }, [
-                // 手柄
-                h('div', {
-                  class: 'drag-handle-visual',
-                  // 手柄的 padding 也相应减小
-                  style: 'padding: 2px 8px 2px 0; display: flex; align-items: center; opacity: 0.4;',
-                }, [
-                  h(GripVertical, { size: 16, color: '#ccc' }), // 图标缩小一点点
-                ]),
-
-                // 标签图标
-                h('span', {
-                  style: 'margin-right:8px;width:18px;text-align:center;flex-shrink:0; pointer-events: none; font-size: 14px;',
-                }, icon),
-
-                // 标签名 (字体稍微改小)
-                h('span', {
-                  style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#333; pointer-events: none;',
-                }, displayName),
+                h('div', { class: 'drag-handle-visual', style: 'padding: 2px 8px 2px 0; display: flex; align-items: center; opacity: 0.4;' }, [h(GripVertical, { size: 16, color: '#ccc' })]),
+                h('span', { style: 'margin-right:8px;width:18px;text-align:center;flex-shrink:0; pointer-events: none; font-size: 14px;' }, icon),
+                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#333; pointer-events: none;' }, displayName),
               ])
             },
           })
@@ -961,53 +936,65 @@ export function useTagMenu(
     })
 
     dialogOpenCount.value += 1
-    dialog.create({
+
+    // 定义对话框实例变量，稍后赋值
+    let d: any = null
+
+    // 封装保存逻辑
+    const handleSave = async () => {
+      const newOrder = editList.value.map(t => tagKeyName(t))
+      tagOrder.value = newOrder
+      await saveTagOrder()
+      await refreshTagCountsFromServer(true)
+      message.success(t('tags.save_success') || '排序已保存')
+      d?.destroy()
+    }
+
+    d = dialog.create({
       title: t('tags.manage_sort') || '标签排序',
       showIcon: false,
-      // 🔥 修改：使用 flex 布局来容纳底部的按钮
-      content: () => h('div', { style: 'display: flex; flex-direction: column; height: 60vh; max-height: 500px;' }, [
-        h('div', { style: 'font-size:12px;color:#999;margin-bottom:8px;flex-shrink:0;' }, t('tags.drag_to_sort_tip') || '长按拖拽可调整顺序'),
-
-        // 列表组件 (会自动撑开中间区域)
-        h(SortableListComponent),
-
-        // 🔥🔥 新增：底部操作栏 (恢复默认按钮) 🔥🔥
-        h('div', { style: 'margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; display: flex; align-items: center;' }, [
-          h('button', {
-            type: 'button',
-            style: [
-              'background: transparent; border: none; cursor: pointer; color: #888;',
-              'display: flex; align-items: center; gap: 4px; font-size: 13px;',
-              'padding: 4px 0;',
-              'transition: color 0.2s;',
-            ].join(''),
-            // 鼠标悬停变色
-            onMouseover: (e: any) => e.currentTarget.style.color = '#555',
-            onMouseout: (e: any) => e.currentTarget.style.color = '#888',
-            onClick: () => {
-              // 🔥 恢复默认逻辑：简单地按字母重新排序
-              editList.value.sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
-              message.info(t('tags.order_reset_tip') || '已恢复字母排序，点击保存生效')
-            },
-          }, [
-            h(RotateCcw, { size: 14 }),
-            h('span', null, t('tags.reset_default') || '恢复默认排序'),
-          ]),
-        ]),
-      ]),
-      positiveText: t('auth.save') || '保存排序',
-      negativeText: t('auth.cancel') || '取消',
-      maskClosable: false,
       style: 'width: 400px; max-width: 90vw;',
       onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
-      onPositiveClick: async () => {
-        // 保存逻辑
-        const newOrder = editList.value.map(t => tagKeyName(t))
-        tagOrder.value = newOrder
-        await saveTagOrder()
-        await refreshTagCountsFromServer(true)
-        message.success(t('tags.save_success') || '排序已保存')
-      },
+
+      // 1. 内容区域：包含提示语 + 列表
+      content: () => h('div', { style: 'display: flex; flex-direction: column; height: 60vh; max-height: 500px;' }, [
+        // 顶部提示语 (11px)
+        h('div', { style: 'font-size: 11px; color: #999; margin-bottom: 8px; flex-shrink: 0;' }, t('tags.drag_to_sort_tip') || '长按拖拽可调整顺序'),
+        // 列表
+        h(SortableListComponent),
+      ]),
+
+      // 2. 自定义页脚 (Action)：实现“左侧恢复，右侧按钮组”
+      action: () => h('div', { style: 'display: flex; justify-content: space-between; align-items: center; width: 100%;' }, [
+
+        // 左侧：恢复默认按钮 (11px)
+        h('button', {
+          type: 'button',
+          style: 'background: transparent; border: none; cursor: pointer; color: #888; display: flex; align-items: center; gap: 3px; font-size: 11px; padding: 4px 0; transition: color 0.2s; white-space: nowrap;',
+          onMouseover: (e: any) => e.currentTarget.style.color = '#555',
+          onMouseout: (e: any) => e.currentTarget.style.color = '#888',
+          onClick: () => {
+            editList.value.sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
+            message.info(t('tags.order_reset_tip') || '已恢复字母排序，点击保存生效')
+          },
+        }, [h(RotateCcw, { size: 11 }), h('span', null, t('tags.reset_default') || '恢复默认')]),
+
+        // 右侧：取消/保存按钮组
+        h('div', { style: 'display: flex; gap: 12px;' }, [
+          h(NButton, {
+            size: 'small',
+            onClick: () => d?.destroy(),
+          }, { default: () => t('auth.cancel') || '取消' }),
+
+          h(NButton, {
+            type: 'primary',
+            size: 'small',
+            // 按钮颜色跟随主题色 (可选，如果不需要特定颜色可去掉 color 属性)
+            color: '#6366f1',
+            onClick: handleSave,
+          }, { default: () => t('auth.save') || '保存' }),
+        ]),
+      ]),
     })
   }
 

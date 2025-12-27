@@ -159,6 +159,7 @@ const { t } = useI18n()
             <li>{{ t('notes.HelpDialog.s10_i4') }}</li>
             <li>{{ t('notes.HelpDialog.s10_i5') }}</li>
             <li>{{ t('notes.HelpDialog.s10_i6') }}</li>
+            <li>{{ t('notes.HelpDialog.s10_i7') }}</li>
           </ul>
         </section>
 
