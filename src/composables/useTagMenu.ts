@@ -3,7 +3,7 @@
 import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
-import { ChevronRight, GripVertical, Pencil, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
+import { ChevronRight, GripVertical, Pencil, RotateCcw, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -807,9 +807,10 @@ export function useTagMenu(
   // 🔥 新增：标签排序管理器 (弹窗 + 拖拽)
   // ==========================================================================
 
+  // src/composables/useTagMenu.ts 内部
+
   function openTagSortManager() {
-    // 1. 准备数据：只对当前 allTags 进行排序管理
-    // 创建一个临时的 ref 用于弹窗内部状态
+    // 初始化时，尝试按现有顺序排序；如果没有顺序，默认就是字母序
     const editList = ref([...allTags.value].sort((a, b) => compareTagsCustom(tagKeyName(a), tagKeyName(b))))
 
     // 定义拖拽组件
@@ -820,28 +821,20 @@ export function useTagMenu(
           if (items.length === 0)
             return h('div', { style: 'padding:20px;text-align:center;color:#999' }, '暂无标签')
 
-          // 🔥 使用 vuedraggable 组件
-          // 🔥 使用 vuedraggable 组件
           return h(draggable, {
-            // v-model 绑定
             'modelValue': editList.value,
             'onUpdate:modelValue': (val: any[]) => { editList.value = val },
 
             'itemKey': (item: string) => item,
             'animation': 200,
             'ghostClass': 'sortable-ghost',
+            'delay': 150,
+            'delayOnTouchOnly': true,
+            'touchStartThreshold': 5,
 
-            // ❌ 删除 handle: '.drag-handle'，允许整行拖拽
-            // handle: '.drag-handle',
-
-            // 🔥🔥 新增：移动端优化配置 🔥🔥
-            'delay': 150, // 核心：按住 150ms 后才开始拖拽，解决无法滚动的问题
-            'delayOnTouchOnly': true, // 核心：电脑上鼠标点击不需要延迟，只有触摸屏需要
-            'touchStartThreshold': 5, // 手指抖动容差（防止手滑误触）
-
-            'style': 'max-height:60vh;overflow-y:auto;padding-right:4px;',
+            // 🔥 修改：让列表占满剩余空间，并处理滚动
+            'style': 'flex: 1; overflow-y: auto; padding-right: 4px; min-height: 0;',
           }, {
-            // 渲染 Item
             item: ({ element: tag }: { element: string }) => {
               const displayName = tagKeyName(tag)
               const icon = tagIconMap.value[tag] || '#'
@@ -851,38 +844,36 @@ export function useTagMenu(
                 style: {
                   'display': 'flex',
                   'alignItems': 'center',
-                  'padding': '10px 12px',
-                  'marginBottom': '8px',
+                  // 🔥🔥 核心修改：大幅减小高度 🔥🔥
+                  'padding': '5px 8px', // 原来是 10px 12px
+                  'marginBottom': '4px', // 原来是 8px
+                  // -----------------------------
                   'background': '#fff',
                   'border': '1px solid #eee',
-                  'borderRadius': '8px',
-
-                  // 🔥 修改：将鼠标手势加在整个 Row 上
+                  'borderRadius': '6px', // 圆角稍微改小一点适配高度
                   'cursor': 'grab',
-
-                  // 保持禁用文字选中
                   'userSelect': 'none',
                   'WebkitUserSelect': 'none',
                   '-webkit-tap-highlight-color': 'transparent',
-                  // 注意：这里不要加 touch-action: none，否则会彻底禁止滚动
                 },
               }, [
-                // 1. 拖拽手柄 (保留作为视觉提示，但不再是唯一触发点)
+                // 手柄
                 h('div', {
-                  class: 'drag-handle-visual', // 改个名，不再用于逻辑
-                  style: 'padding: 4px 12px 4px 0; display: flex; align-items: center; opacity: 0.5;',
+                  class: 'drag-handle-visual',
+                  // 手柄的 padding 也相应减小
+                  style: 'padding: 2px 8px 2px 0; display: flex; align-items: center; opacity: 0.4;',
                 }, [
-                  h(GripVertical, { size: 18, color: '#ccc' }),
+                  h(GripVertical, { size: 16, color: '#ccc' }), // 图标缩小一点点
                 ]),
 
-                // 2. 图标
+                // 标签图标
                 h('span', {
-                  style: 'margin-right:8px;width:20px;text-align:center;flex-shrink:0; pointer-events: none;',
+                  style: 'margin-right:8px;width:18px;text-align:center;flex-shrink:0; pointer-events: none; font-size: 14px;',
                 }, icon),
 
-                // 3. 标签名
+                // 标签名 (字体稍微改小)
                 h('span', {
-                  style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#333; pointer-events: none;',
+                  style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#333; pointer-events: none;',
                 }, displayName),
               ])
             },
@@ -895,9 +886,36 @@ export function useTagMenu(
     dialog.create({
       title: t('tags.manage_sort') || '标签排序',
       showIcon: false,
-      content: () => h('div', [
-        h('div', { style: 'font-size:12px;color:#999;margin-bottom:12px;' }, t('tags.drag_to_sort_tip') || '按住左侧手柄拖拽排序'),
+      // 🔥 修改：使用 flex 布局来容纳底部的按钮
+      content: () => h('div', { style: 'display: flex; flex-direction: column; height: 60vh; max-height: 500px;' }, [
+        h('div', { style: 'font-size:12px;color:#999;margin-bottom:8px;flex-shrink:0;' }, t('tags.drag_to_sort_tip') || '长按拖拽可调整顺序'),
+
+        // 列表组件 (会自动撑开中间区域)
         h(SortableListComponent),
+
+        // 🔥🔥 新增：底部操作栏 (恢复默认按钮) 🔥🔥
+        h('div', { style: 'margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; display: flex; align-items: center;' }, [
+          h('button', {
+            type: 'button',
+            style: [
+              'background: transparent; border: none; cursor: pointer; color: #888;',
+              'display: flex; align-items: center; gap: 4px; font-size: 13px;',
+              'padding: 4px 0;',
+              'transition: color 0.2s;',
+            ].join(''),
+            // 鼠标悬停变色
+            onMouseover: (e: any) => e.currentTarget.style.color = '#555',
+            onMouseout: (e: any) => e.currentTarget.style.color = '#888',
+            onClick: () => {
+              // 🔥 恢复默认逻辑：简单地按字母重新排序
+              editList.value.sort((a, b) => tagKeyName(a).localeCompare(tagKeyName(b)))
+              message.info(t('tags.order_reset_tip') || '已恢复字母排序，点击保存生效')
+            },
+          }, [
+            h(RotateCcw, { size: 14 }),
+            h('span', null, t('tags.reset_default') || '恢复默认排序'),
+          ]),
+        ]),
       ]),
       positiveText: t('auth.save') || '保存排序',
       negativeText: t('auth.cancel') || '取消',
@@ -905,6 +923,7 @@ export function useTagMenu(
       style: 'width: 400px; max-width: 90vw;',
       onAfterLeave: () => { dialogOpenCount.value = Math.max(0, dialogOpenCount.value - 1) },
       onPositiveClick: async () => {
+        // 保存逻辑
         const newOrder = editList.value.map(t => tagKeyName(t))
         tagOrder.value = newOrder
         await saveTagOrder()
