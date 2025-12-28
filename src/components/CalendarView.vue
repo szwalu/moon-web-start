@@ -1294,10 +1294,10 @@ async function saveNewNote(content: string, weather: string | null) {
   height: auto !important;       /* 允许高度随内容稍微变化（如果有JS生效的话） */
 
   /* ✅ 按照你的思路：起步就是屏幕高度的 56%，既够大又不会被键盘顶飞 */
-  min-height: 450px !important;
+  min-height: 300px !important;
 
   /* 🔒 加一个最大高度保险，防止内容写了几千字后把头部标题栏顶出屏幕 */
-  max-height: 80vh !important;
+  /* max-height: 80vh !important;*/
 }
 
 .calendar-nav-title {
