@@ -2525,7 +2525,7 @@ function handleBeforeInput(e: InputEvent) {
   height: 45dvh;
   /* 2. 🔥 核心救星：设置一个像素(px) 最小值 */
   /* 这保证了在 Android 键盘弹起导致 dvh 变得很小时，编辑器依然至少有 360px 高 */
-  min-height: 450px;
+  min-height: 45vh;
   /* 3. 封顶：保证不管怎么算，都绝不会超过当前的可见区域（防止被键盘遮挡） */
   max-height: 100dvh;
   /* 4. 沉底逻辑 */
