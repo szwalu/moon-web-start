@@ -1345,7 +1345,7 @@ function handleFocus() {
 
       if (document.documentElement.scrollTop !== 0)
         document.documentElement.scrollTop = 0
-    }, 100) // 100ms 足够等待键盘动画开始，把页面按回去
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
   }
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
@@ -2542,7 +2542,7 @@ function handleBeforeInput(e: InputEvent) {
 
   /* --- 场景 A：键盘收起时 (浏览态) --- */
   /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
-  height: 85dvh;
+  height: 80dvh;
 
   /* 2. 最小高度保底 */
   min-height: 430px;
@@ -2592,7 +2592,7 @@ function handleBeforeInput(e: InputEvent) {
   .note-editor-reborn {
     /* 1. 高度调整 */
     /* 手机是 45dvh，电脑屏幕大，可以设为 60vh 甚至 70vh */
-    height: 85vh !important;
+    height: 90vh !important;
 
     /* 或者你喜欢固定像素，也可以写：
     height: 600px !important;
