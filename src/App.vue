@@ -58,8 +58,12 @@ body, html {
   top: 10% !important;
 }
 
-/* 让 html/body/#app 可被子元素 100% 高度继承 */
-html, body, #app { height: 100%; }
+/* 修改这里：锁死全局滚动，禁止 iOS 橡皮筋 */
+html, body, #app {
+  height: 100%;
+  overflow: hidden;          /* 关键：禁止 body 产生滚动条 */
+  overscroll-behavior: none; /* 关键：禁止 iOS 拖拽回弹（橡皮筋） */
+}
 
 /* 页面通用：真正铺到“最大视口”（含 home 指示条下方） */
 :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
