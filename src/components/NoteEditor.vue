@@ -2681,11 +2681,7 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 1. 默认高度（新建模式） */
-  height: 430px;
-
-  /* 2. 依然保留这个上限，防止在超大屏幕过高 */
-  max-height: 100dvh;
+  height: 100dvh;
 
   overflow: hidden;
   display: flex;
