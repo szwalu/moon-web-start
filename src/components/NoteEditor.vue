@@ -2541,6 +2541,7 @@ function handleBeforeInput(e: InputEvent) {
 .note-editor-reborn.editing-viewport {
   height: 80vh;
 }
+}
 
 .note-editor-reborn:focus-within {
   border-color: #00b386;
