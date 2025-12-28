@@ -2565,7 +2565,7 @@ function handleBeforeInput(e: InputEvent) {
   /* 🔥 终极魔法公式：屏幕总高 - 预估键盘高度(350px) */
   /* iPhone 键盘通常在 300-340px 之间，预留 350px 非常安全 */
   /* 这样屏幕越大，剩下的空间越大，输入框就自动变高，完美消除空隙 */
-  height: calc(100dvh - 350px) !important;
+  height: calc(100dvh - 550px) !important;
 
   /* 保持相对定位，不要用 fixed，这样就不会盖住键盘 */
   position: relative !important;
