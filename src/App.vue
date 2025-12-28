@@ -59,10 +59,22 @@ body, html {
 }
 
 /* 修改这里：锁死全局滚动，禁止 iOS 橡皮筋 */
-html, body, #app {
+/* 核心方案：在 iOS 上彻底锁死页面主体，禁止“橡皮筋”效果 */
+html,
+body {
+  width: 100%;
   height: 100%;
-  overflow: hidden;          /* 关键：禁止 body 产生滚动条 */
-  overscroll-behavior: none; /* 关键：禁止 iOS 拖拽回弹（橡皮筋） */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* 禁止出现原生滚动条 */
+  position: fixed;  /* 关键：把画幅钉死在视口，物理禁止 iOS 页面整体拖拽 */
+  overscroll-behavior: none; /* 现代浏览器辅助禁止 */
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* 确保 App 容器本身也不产生滚动 */
 }
 
 /* 页面通用：真正铺到“最大视口”（含 home 指示条下方） */
