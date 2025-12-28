@@ -2540,16 +2540,22 @@ function handleBeforeInput(e: InputEvent) {
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 } /* 👈 【重点】这里必须先闭合基础样式！ */
 
-/* 👇 然后另起一行写编辑模式的样式 */
+/* 1. 基础编辑模式样式 (主要针对 iOS 和 电脑端) */
 .note-editor-reborn.editing-viewport {
-  /* 恢复为 80vh */
   height: 80vh !important;
+  margin-top: 0 !important;   /* 取消沉底 */
+  min-height: 0 !important;   /* 取消最小高度限制 */
+  border-radius: 12px 12px 0 0; /* 可选：加个圆角好看点 */
+}
 
-  /* 🔥 建议加上这两行：
-     因为基础样式里写了 min-height 和 margin-top: auto，
-     如果不重置，编辑模式可能会奇怪地贴在底部或者被撑大 */
-  min-height: 0 !important;
-  margin-top: 0 !important;
+/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
+/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
+   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
+@media (max-height: 600px) {
+  .note-editor-reborn.editing-viewport {
+    height: 100dvh !important;
+    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
+  }
 }
 
 .note-editor-reborn:focus-within {
