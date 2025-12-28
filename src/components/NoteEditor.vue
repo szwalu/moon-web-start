@@ -63,18 +63,6 @@ onMounted(() => {
   }
 })
 
-const vvHeight = ref(0)
-
-function updateViewportHeight() {
-  if (window.visualViewport) {
-    // 拿到最精准的“当前可见高度” (已减去键盘)
-    vvHeight.value = window.visualViewport.height
-  }
-  else {
-    vvHeight.value = window.innerHeight
-  }
-}
-
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
 // 平台判定（尽量保守）
@@ -579,24 +567,12 @@ watch(() => props.isEditing, (v) => {
 
 // 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
-  updateViewportHeight() // 初始化
-  if (window.visualViewport) {
-    // 🔥 关键：监听 visualViewport 的 resize，这是 iOS 键盘弹出的唯一信号
-    window.visualViewport.addEventListener('resize', updateViewportHeight)
-    window.visualViewport.addEventListener('scroll', updateViewportHeight)
-  }
-  window.addEventListener('resize', updateViewportHeight)
   if (props.isEditing)
     focusToEnd()
 })
 
 // 组件卸载：收尾
 onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateViewportHeight)
-    window.visualViewport.removeEventListener('scroll', updateViewportHeight)
-  }
-  window.addEventListener('resize', updateViewportHeight)
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
@@ -2136,12 +2112,7 @@ function handleBeforeInput(e: InputEvent) {
       'editing-viewport': isEditing,
       'is-focused': isInputFocused, /* ✅ 新增绑定 */
     }"
-    :style="{
-      paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 核心修复：聚焦时，强制使用 JS 算出来的精准像素高度 */
-      height: isInputFocused ? `${vvHeight}px` : undefined,
-    }"
-    @click.stop
+    :style="{ paddingBottom: `${bottomSafePadding}px` }"
   >
     <input
       ref="imageInputRef"
@@ -2592,7 +2563,11 @@ function handleBeforeInput(e: InputEvent) {
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 /* 当检测到聚焦时，把高度压低，变成半屏卡片 */
 .note-editor-reborn.is-focused {
+  /* 这里设置你想要的“短高度” */
+  /* 45dvh 约为屏幕的一半，通常正好在键盘上方 */
+  height: 100%;
   min-height: 200px !important;
+  transition: none;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
