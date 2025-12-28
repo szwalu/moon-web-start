@@ -78,7 +78,7 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const editorHeight = computed(() => {
   // 1. 键盘收起时（浏览模式）：85% 屏幕高度
   if (!isInputFocused.value)
-    return '75dvh'
+    return '80dvh'
 
   // 2. 键盘弹出时（输入模式）：
 
@@ -90,8 +90,6 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 🍎 iOS 专用：手动减去键盘高度
     // 如果 430px 还不够，说明你的键盘更高，或者是 Pro Max 机型
-    // 你可以试着改成 450px 甚至 500px 看看有没有变化
-    // 只要这里生效了，你改数字一定会有反应！
     return 'calc(100dvh - 430px)'
   }
 
