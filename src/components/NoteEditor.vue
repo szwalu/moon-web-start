@@ -78,13 +78,13 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const editorHeight = computed(() => {
   // 1. 如果键盘收起（浏览模式）：
   if (!isInputFocused.value)
-    return '85dvh'
+    return '75dvh'
 
   // 2. 如果键盘弹出（输入模式）：
 
   // 🍎 iOS：键盘遮挡网页，必须手动减去键盘高度
   if (isIOS)
-    return 'calc(100dvh - 430px)'
+    return 'calc(100dvh - 630px)'
 
   // 🤖 Android：键盘挤压网页，100dvh 会自动变成“剩余空间”
   // 所以 Android 直接设为 100dvh 即可完美铺满，不需要减
