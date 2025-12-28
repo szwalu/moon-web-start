@@ -572,6 +572,11 @@ watch(() => props.isEditing, (v) => {
 onMounted(() => {
   if (props.isEditing)
     focusToEnd()
+  if (!props.isEditing) {
+    document.body.style.overflow = 'hidden'
+    // iOS 某些版本可能还需要这句来防止橡皮筋效果
+    document.body.style.touchAction = 'none'
+  }
 })
 
 // 组件卸载：收尾
@@ -579,6 +584,10 @@ onUnmounted(() => {
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
+  }
+  if (!props.isEditing) {
+    document.body.style.overflow = ''
+    document.body.style.touchAction = ''
   }
 })
 
@@ -2698,27 +2707,10 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
 
-  /* 你的过渡动画 */
+/* 🔥🔥 新增这两行：防止整个组件被拖动（防抖动/防橡皮筋） 🔥🔥 */
+  overscroll-behavior: none;
+  touch-action: pan-y; /* 允许垂直滚动内容，但禁止其他手势 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-/* 场景A：如果是【编辑已有笔记】(isEditing=true) */
-/* 直接铺满，取消最小高度限制，取消沉底 */
-.note-editor-reborn.editing-viewport {
-  height: 100dvh !important; /* 强制铺满键盘上方的所有空间 */
-  min-height: 0 !important;  /* 允许它变矮，适应小屏幕+键盘 */
-  margin-top: 0 !important;  /* 取消沉底，让它自然顶格显示 */
-  border-radius: 0;          /* 可选：编辑模式通常不需要圆角 */
-}
-
-/* 场景B：如果是【新建笔记】但在【打字时】(键盘弹起导致屏幕变矮) */
-/* 利用媒体查询检测：当可视高度小于 600px 时（意味着键盘大概率弹起了） */
-@media (max-height: 600px) {
-  .note-editor-reborn {
-    height: 100dvh !important; /* 变为全屏铺满 */
-    min-height: 0 !important;  /* 关键：允许小于 450px，防止顶部被切 */
-    margin-top: 0 !important;  /* 关键：取消沉底，防止顶部溢出 */
-  }
 }
 
 /* 3. 编辑模式高度 */
@@ -2777,6 +2769,7 @@ function handleBeforeInput(e: InputEvent) {
   height: 100%;
   overflow-y: auto; /* 让文字在内部滚动 */
   padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
+  touch-action: pan-y;
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
