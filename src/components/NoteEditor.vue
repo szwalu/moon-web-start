@@ -2565,7 +2565,7 @@ function handleBeforeInput(e: InputEvent) {
 .note-editor-reborn.is-focused {
   /* 这里设置你想要的“短高度” */
   /* 45dvh 约为屏幕的一半，通常正好在键盘上方 */
-  height: 45dvh;
+  height: 42dvh;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
