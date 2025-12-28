@@ -2528,7 +2528,7 @@ function handleBeforeInput(e: InputEvent) {
   min-height: 430px;
 
   /* 3. 封顶 */
-  max-height: 100dvh;
+  max-height: 90dvh;
 
   /* 4. 沉底逻辑（新建模式需要沉底） */
   margin-top: auto;
@@ -2555,6 +2555,25 @@ function handleBeforeInput(e: InputEvent) {
   .note-editor-reborn.editing-viewport {
     height: 100dvh !important;
     border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
+  }
+}
+
+/* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式 🔥🔥🔥 */
+@media (min-width: 768px) {
+  .note-editor-reborn {
+    /* 1. 高度调整 */
+    /* 手机是 45dvh，电脑屏幕大，可以设为 60vh 甚至 70vh */
+    height: 85vh !important;
+
+    /* 或者你喜欢固定像素，也可以写：
+    height: 600px !important;
+    */
+
+    /* 3. 视觉优化 (可选) */
+    /* 电脑上圆角可以稍微大一点，阴影重一点，更有卡片感 */
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
   }
 }
 
@@ -2956,11 +2975,6 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
-
-/* 新增：编辑模式下，允许 textarea 无限增高 */
-.note-editor-reborn.editing-viewport .editor-textarea {
-  max-height:75dvh;
-}
 
 /* tag 面板样式增强 */
 .tag-suggestions li {
