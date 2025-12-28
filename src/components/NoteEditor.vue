@@ -2521,26 +2521,35 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-/* 1. 基础高度：依然用 dvh，保证大屏（如 iPhone Max）上卡片更高，比例协调 */
+  /* 1. 基础高度（新建模式） */
   height: 45dvh;
-  /* 2. 🔥 核心救星：设置一个像素(px) 最小值 */
-  /* 这保证了在 Android 键盘弹起导致 dvh 变得很小时，编辑器依然至少有 360px 高 */
-  min-height: 45vh;
-  /* 3. 封顶：保证不管怎么算，都绝不会超过当前的可见区域（防止被键盘遮挡） */
+
+  /* 2. 最小高度保底 */
+  min-height: 48vh;
+
+  /* 3. 封顶 */
   max-height: 100dvh;
-  /* 4. 沉底逻辑 */
+
+  /* 4. 沉底逻辑（新建模式需要沉底） */
   margin-top: auto;
 
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
-  /* 加上这个过渡，切换高度时顺滑一点 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-  /* 2. 新增这里：针对编辑模式 (isEditing=true) 恢复 80vh 高度 */
+} /* 👈 【重点】这里必须先闭合基础样式！ */
+
+/* 👇 然后另起一行写编辑模式的样式 */
 .note-editor-reborn.editing-viewport {
-  height: 80vh;
-}
+  /* 恢复为 80vh */
+  height: 80vh !important;
+
+  /* 🔥 建议加上这两行：
+     因为基础样式里写了 min-height 和 margin-top: auto，
+     如果不重置，编辑模式可能会奇怪地贴在底部或者被撑大 */
+  min-height: 0 !important;
+  margin-top: 0 !important;
 }
 
 .note-editor-reborn:focus-within {
