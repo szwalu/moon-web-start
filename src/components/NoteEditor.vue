@@ -1005,7 +1005,7 @@ function ensureCaretVisibleInTextarea() {
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
-  const HEADER_OFFSET = 100
+
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
@@ -1013,7 +1013,7 @@ function ensureCaretVisibleInTextarea() {
 
   if (caretDesiredBottom > viewBottom)
     el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop + HEADER_OFFSET)
+  else if (caretDesiredTop < viewTop)
     el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
