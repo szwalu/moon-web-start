@@ -58,25 +58,8 @@ body, html {
   top: 10% !important;
 }
 
-/* 修改这里：锁死全局滚动，禁止 iOS 橡皮筋 */
-/* 1. 锁住全局手势（禁止缩放、禁止拖拽背景） */
-html, body {
-  touch-action: none;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* 2. 只允许 App 容器内部的特定方向操作 */
-#app {
-  touch-action: pan-y; /* 允许垂直拖动 */
-  height: 100%;
-  overflow: hidden;
-}
-
-/* 3. 确保你的编辑器也是允许垂直拖动的 */
-.editor-textarea {
-  touch-action: pan-y;
-}
+/* 让 html/body/#app 可被子元素 100% 高度继承 */
+html, body, #app { height: 100%; }
 
 /* 页面通用：真正铺到“最大视口”（含 home 指示条下方） */
 :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
