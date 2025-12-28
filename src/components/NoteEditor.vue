@@ -91,10 +91,8 @@ function onTextPointerMove() {
 function onTextPointerUp() {
   isFreezingBottom.value = false
   requestAnimationFrame(() => {
-    recomputeBottomSafePadding()
   })
   window.setTimeout(() => {
-    recomputeBottomSafePadding()
   }, 120)
 }
 // ============== Store ==============
@@ -138,7 +136,6 @@ async function focusToEnd() {
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
   })
 }
 
@@ -792,7 +789,6 @@ async function handleAudioFinished(blob: Blob) {
       captureCaret()
       ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => {
-        recomputeBottomSafePadding()
       })
     }
   }
@@ -1043,135 +1039,6 @@ function getFooterHeight(): number {
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
-
-function recomputeBottomSafePadding() {
-  if (!isMobile) {
-    emit('bottomSafeChange', 0)
-    return
-  }
-  if (isFreezingBottom.value)
-    return
-
-  const el = textarea.value
-  if (!el) {
-    emit('bottomSafeChange', 0)
-    return
-  }
-
-  const vv = window.visualViewport
-  if (!vv) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  const keyboardHeight = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop))
-  if (!isAndroid && keyboardHeight < 60) {
-    emit('bottomSafeChange', 0)
-    _hasPushedPage = false
-    return
-  }
-
-  const style = getComputedStyle(el)
-  const lineHeight = Number.parseFloat(style.lineHeight || '20') || 20
-
-  const caretYInContent = (() => {
-    const mirror = document.createElement('div')
-    mirror.style.cssText
-      = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
-      + `box-sizing:border-box;top:0;left:-9999px;width:${el.clientWidth}px;`
-      + `font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing};`
-      + `padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft};`
-      + `border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
-      + 'border-style:solid;'
-    document.body.appendChild(mirror)
-    const val = el.value
-    const selEnd = el.selectionEnd ?? val.length
-    mirror.textContent = val.slice(0, selEnd).replace(/\n$/u, '\n ').replace(/ /g, '\u00A0')
-    const y = mirror.scrollHeight
-    document.body.removeChild(mirror)
-    return y
-  })()
-
-  const rect = el.getBoundingClientRect()
-  const caretBottomInViewport
-    = (rect.top - vv.offsetTop)
-    + (caretYInContent - el.scrollTop)
-    + (isAndroid ? lineHeight * 1.25 : lineHeight * 1.15) // iOS 抬高估值，避免被候选栏吃掉
-
-  const caretBottomAdjusted = isAndroid
-    ? (caretBottomInViewport + lineHeight * 2)
-    : caretBottomInViewport
-
-  const footerH = getFooterHeight()
-  const EXTRA = isAndroid ? 28 : (iosFirstInputLatch.value ? 48 : 32) // iOS 提高冗余量
-  const safeInset = (() => {
-    try {
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;bottom:0;left:0;height:0;padding-bottom:env(safe-area-inset-bottom);'
-      document.body.appendChild(div)
-      const px = Number.parseFloat(getComputedStyle(div).paddingBottom || '0')
-      document.body.removeChild(div)
-      return Number.isFinite(px) ? px : 0
-    }
-    catch { return 0 }
-  })()
-  const HEADROOM = isAndroid ? 60 : 70
-  const SAFE = footerH + safeInset + EXTRA + HEADROOM
-
-  const threshold = vv.height - SAFE
-  const rawNeed = isAndroid
-    ? Math.ceil(Math.max(0, caretBottomAdjusted - threshold))
-    : Math.ceil(Math.max(0, caretBottomInViewport - threshold))
-
-  // === 新增：迟滞/死区 + 最小触发步长 + 微抖动抑制 ===
-  const DEADZONE = isAndroid ? 72 : 46 // 离底部还差这么多像素就先不托
-  const MIN_STEP = isAndroid ? 24 : 14 // 小于这个像素的需要值不托，避免细碎抖动
-  const STICKY = 12 // 微抖动抑制阈值
-
-  let need = rawNeed - DEADZONE
-  if (need < MIN_STEP)
-    need = 0
-
-  // 抑制小幅抖动：与上次差异很小时保持不变
-  if (need > 0 && _lastBottomNeed > 0 && Math.abs(need - _lastBottomNeed) < STICKY)
-    need = _lastBottomNeed
-
-  _lastBottomNeed = need
-
-  // 把需要的像素交给外层垫片（只有超过死区与步长才会非零）
-  emit('bottomSafeChange', need)
-
-  // —— Android 与 iOS 都只轻推“一次”，iOS 推得更温和 —— //
-  if (need > 0) {
-    if (!_hasPushedPage) {
-      if (isAndroid) {
-        const ratio = 1.6
-        const cap = 420
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      else {
-        const ratio = 0.35
-        const cap = 80
-        const delta = Math.min(Math.ceil(need * ratio), cap)
-        if (delta > 0 && props.enableScrollPush)
-          window.scrollBy(0, delta) // ✅ 仅在开启时推页
-      }
-      _hasPushedPage = true
-      window.setTimeout(() => {
-        _hasPushedPage = false
-        recomputeBottomSafePadding()
-      }, 140)
-    }
-    if (isIOS && iosFirstInputLatch.value)
-      iosFirstInputLatch.value = false
-  }
-  else {
-    _hasPushedPage = false
-  }
-}
 
 // ========= 新建时写入天气：工具函数（从版本1移植） =========
 function getMappedCityName(enCity: string) {
@@ -1444,7 +1311,6 @@ function onDocSelectionChange() {
   selectionIdleTimer = window.setTimeout(() => {
     captureCaret()
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
   }, 80)
 }
 
@@ -1468,18 +1334,15 @@ function handleFocus() {
   // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
   })
 
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
-    recomputeBottomSafePadding()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
-    recomputeBottomSafePadding()
   }, t2)
 
   // 启动短时“助推轮询”（iOS 尤其需要）
@@ -1516,7 +1379,6 @@ function handleClick() {
   captureCaret()
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
   })
 }
 // —— 计算并展示“# 标签联想面板”（智能决定在光标下方或上方，不够则限高）
@@ -1673,21 +1535,17 @@ function handleInput(event: Event) {
 
   // 分三次重算，覆盖键盘动画 / visualViewport 延迟
   requestAnimationFrame(() => {
-    recomputeBottomSafePadding()
     // iOS 常见：vv 延迟 ~120–240ms
     window.setTimeout(() => {
-      recomputeBottomSafePadding()
     }, 140)
 
     window.setTimeout(() => {
-      recomputeBottomSafePadding()
     }, 280)
   })
 
   // Android 专用加一道兜底
   if (isAndroid) {
     window.setTimeout(() => {
-      recomputeBottomSafePadding()
     }, 240)
   }
 }
@@ -2106,21 +1964,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
-onMounted(() => {
-  const vv = window.visualViewport
-  if (vv) {
-    vv.addEventListener('resize', recomputeBottomSafePadding)
-    vv.addEventListener('scroll', recomputeBottomSafePadding)
-  }
-})
-onUnmounted(() => {
-  const vv = window.visualViewport
-  if (vv) {
-    vv.removeEventListener('resize', recomputeBottomSafePadding)
-    vv.removeEventListener('scroll', recomputeBottomSafePadding)
-  }
-})
-
 // —— 点击外部 & ESC 关闭（排除 Aa 按钮与面板自身）
 function onGlobalPointerDown(e: Event) {
   if (!showFormatPalette.value)
@@ -2202,13 +2045,11 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const vv = window.visualViewport
   const startVvH = vv ? vv.height : 0
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
     if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
@@ -2243,7 +2084,6 @@ function handleBeforeInput(e: InputEvent) {
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
-    recomputeBottomSafePadding()
   })
 }
 </script>
@@ -2681,13 +2521,15 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 🔴 修改这里：新建笔记时，不再强制 100dvh */
-  /* height: 100dvh;  <-- 删除或注释掉这一行 */
-
-  /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
-  /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
-  height: 80vh;
+/* 1. 基础高度：依然用 dvh，保证大屏（如 iPhone Max）上卡片更高，比例协调 */
+  height: 45dvh;
+  /* 2. 🔥 核心救星：设置一个像素(px) 最小值 */
+  /* 这保证了在 Android 键盘弹起导致 dvh 变得很小时，编辑器依然至少有 360px 高 */
+  min-height: 450px;
+  /* 3. 封顶：保证不管怎么算，都绝不会超过当前的可见区域（防止被键盘遮挡） */
   max-height: 100dvh;
+  /* 4. 沉底逻辑 */
+  margin-top: auto;
 
   overflow: hidden;
   display: flex;
