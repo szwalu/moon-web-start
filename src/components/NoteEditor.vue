@@ -2681,7 +2681,7 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 /* 让它占据可视区域的 50% 或 60% */
-  height: 60dvh;
+  height: 62dvh;
 
   /* 关键：利用 margin-top: auto 把它顶到底部 */
   margin-top: auto;
