@@ -74,20 +74,29 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 核心逻辑：用 JS 决定高度，不再依赖 CSS 类名
+// 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 如果键盘收起（浏览模式）：
+  // 1. 键盘收起时（浏览模式）：85% 屏幕高度
   if (!isInputFocused.value)
     return '75dvh'
 
-  // 2. 如果键盘弹出（输入模式）：
+  // 2. 键盘弹出时（输入模式）：
 
-  // 🍎 iOS：键盘遮挡网页，必须手动减去键盘高度
-  if (isIOS)
-    return 'calc(100dvh - 630px)'
+  // 现场获取 UserAgent，确保判断准确
+  const currentUA = navigator.userAgent.toLowerCase()
+  // 增加 'macintosh' 判断，因为 iPad 有时会伪装成 Mac
+  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
-  // 🤖 Android：键盘挤压网页，100dvh 会自动变成“剩余空间”
-  // 所以 Android 直接设为 100dvh 即可完美铺满，不需要减
+  if (isReallyIOS) {
+    // 🍎 iOS 专用：手动减去键盘高度
+    // 如果 430px 还不够，说明你的键盘更高，或者是 Pro Max 机型
+    // 你可以试着改成 450px 甚至 500px 看看有没有变化
+    // 只要这里生效了，你改数字一定会有反应！
+    return 'calc(100dvh - 430px)'
+  }
+
+  // 🤖 Android / 其他：直接填满
+  // Android 配合 interactive-widget 会自动挤压 100dvh，所以不用减
   return '100dvh'
 })
 
