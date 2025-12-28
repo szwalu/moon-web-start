@@ -134,9 +134,11 @@ async function focusToEnd() {
   }
   catch {}
 
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-  })
+  if (len > 0) {
+    requestAnimationFrame(() => {
+      ensureCaretVisibleInTextarea()
+    })
+  }
 }
 
 // ===== 简单自动草稿 =====
