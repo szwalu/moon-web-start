@@ -2630,7 +2630,7 @@ function handleBeforeInput(e: InputEvent) {
   padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
 
   scroll-padding-top: 80px;
-  padding-top: 10px;
+  padding-top: 20px;
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
