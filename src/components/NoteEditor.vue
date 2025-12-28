@@ -31,8 +31,8 @@ const props = defineProps({
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -134,11 +134,9 @@ async function focusToEnd() {
   }
   catch {}
 
-  if (len > 0) {
-    requestAnimationFrame(() => {
-      ensureCaretVisibleInTextarea()
-    })
-  }
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
 }
 
 // ===== 简单自动草稿 =====
@@ -1324,6 +1322,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  isInputFocused.value = true
   emit('focus')
   captureCaret()
 
@@ -1352,6 +1351,7 @@ function handleFocus() {
 }
 
 function onBlur() {
+  isInputFocused.value = false
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
@@ -2094,7 +2094,10 @@ function handleBeforeInput(e: InputEvent) {
   <div
     ref="rootRef"
     class="note-editor-reborn"
-    :class="{ 'editing-viewport': isEditing }"
+    :class="{
+      'editing-viewport': isEditing,
+      'is-focused': isInputFocused, /* ✅ 新增绑定 */
+    }"
     :style="{ paddingBottom: `${bottomSafePadding}px` }"
   >
     <input
@@ -2523,8 +2526,9 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 1. 基础高度（新建模式） */
-  height: 45dvh;
+  /* --- 场景 A：键盘收起时 (浏览态) --- */
+  /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
+  height: 85dvh;
 
   /* 2. 最小高度保底 */
   min-height: 430px;
@@ -2532,22 +2536,30 @@ function handleBeforeInput(e: InputEvent) {
   /* 3. 封顶 */
   max-height: 90dvh;
 
-  /* 4. 沉底逻辑（新建模式需要沉底） */
+  /* 4. 沉底逻辑 */
   margin-top: auto;
-
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
-  transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-} /* 👈 【重点】这里必须先闭合基础样式！ */
+  /* 加上过渡动画，让变高变矮时丝般顺滑 */
+  transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
+}
 
-/* 1. 基础编辑模式样式 (主要针对 iOS 和 电脑端) */
+/* --- 场景 B：键盘弹出时 (输入态) --- */
+/* 当检测到聚焦时，把高度压低，变成半屏卡片 */
+.note-editor-reborn.is-focused {
+  /* 这里设置你想要的“短高度” */
+  /* 45dvh 约为屏幕的一半，通常正好在键盘上方 */
+  height: 45dvh;
+}
+
+/* --- 场景 C：编辑旧笔记 (全屏模式) --- */
+/* 保持原有的逻辑，优先级最高 */
 .note-editor-reborn.editing-viewport {
-  height: 80vh !important;
-  margin-top: 0 !important;   /* 取消沉底 */
-  min-height: 0 !important;   /* 取消最小高度限制 */
-  border-radius: 12px 12px 0 0; /* 可选：加个圆角好看点 */
+  height: 100dvh !important;
+  margin-top: 0 !important;
+  border-radius: 0;
 }
 
 /* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
