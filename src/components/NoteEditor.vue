@@ -2537,6 +2537,9 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 加上这个过渡，切换高度时顺滑一点 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  /* 2. 新增这里：针对编辑模式 (isEditing=true) 恢复 80vh 高度 */
+.note-editor-reborn.editing-viewport {
+  height: 80vh;
 }
 
 .note-editor-reborn:focus-within {
