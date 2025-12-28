@@ -572,11 +572,6 @@ watch(() => props.isEditing, (v) => {
 onMounted(() => {
   if (props.isEditing)
     focusToEnd()
-  if (!props.isEditing) {
-    document.body.style.overflow = 'hidden'
-    // iOS 某些版本可能还需要这句来防止橡皮筋效果
-    document.body.style.touchAction = 'none'
-  }
 })
 
 // 组件卸载：收尾
@@ -584,10 +579,6 @@ onUnmounted(() => {
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
-  }
-  if (!props.isEditing) {
-    document.body.style.overflow = ''
-    document.body.style.touchAction = ''
   }
 })
 
@@ -2690,32 +2681,20 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 1. 基础高度：依然用 dvh，保证大屏（如 iPhone Max）上卡片更高，比例协调 */
-  height: 45dvh;
+  /* 🔴 修改这里：新建笔记时，不再强制 100dvh */
+  /* height: 100dvh;  <-- 删除或注释掉这一行 */
 
-  /* 2. 🔥 核心救星：设置一个像素(px) 最小值 */
-  /* 这保证了在 Android 键盘弹起导致 dvh 变得很小时，编辑器依然至少有 360px 高 */
-  min-height: 450px;
-
-  /* 3. 封顶：保证不管怎么算，都绝不会超过当前的可见区域（防止被键盘遮挡） */
+  /* ✅ 改为：给一个较小的高度 (比如屏幕高度的 55% 或 500px) */
+  /* 这样键盘弹起时，工具栏和保存按钮会稳稳地在键盘上方 */
+  height: 80vh;
   max-height: 100dvh;
-
-  /* 4. 沉底逻辑 */
-  margin-top: auto;
 
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
-/* 🔥🔥 新增这两行：防止整个组件被拖动（防抖动/防橡皮筋） 🔥🔥 */
-  overscroll-behavior: none;
-  touch-action: pan-y; /* 允许垂直滚动内容，但禁止其他手势 */
+  /* 加上这个过渡，切换高度时顺滑一点 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-/* 3. 编辑模式高度 */
-.note-editor-reborn.editing-viewport {
-  height: 80vh;
 }
 
 .note-editor-reborn:focus-within {
@@ -2769,7 +2748,6 @@ function handleBeforeInput(e: InputEvent) {
   height: 100%;
   overflow-y: auto; /* 让文字在内部滚动 */
   padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
-  touch-action: pan-y;
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
@@ -3117,6 +3095,11 @@ function handleBeforeInput(e: InputEvent) {
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
 .dark .tag-suggestions li:hover { background-color: #404040; }
+
+/* 新增：编辑模式下，允许 textarea 无限增高 */
+.note-editor-reborn.editing-viewport .editor-textarea {
+  max-height:75dvh;
+}
 
 /* tag 面板样式增强 */
 .tag-suggestions li {
