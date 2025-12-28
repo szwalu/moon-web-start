@@ -2548,13 +2548,24 @@ function handleBeforeInput(e: InputEvent) {
   border-radius: 12px 12px 0 0; /* 可选：加个圆角好看点 */
 }
 
-/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
-/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
-   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
+/* 2. 🔥🔥🔥 键盘弹起 / 小屏幕适配 🔥🔥🔥 */
 @media (max-height: 600px) {
   .note-editor-reborn.editing-viewport {
     height: 100dvh !important;
-    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
+    border-radius: 0 !important;
+
+    /* ✅ 核心修改：就像日历组件一样！ */
+    /* 当编辑器撑满全屏时，自动增加顶部内边距，避开刘海 */
+    /* 在 iPhone 上这会自动变成约 47px，在电脑/旧手机上是 0px */
+    padding-top: env(safe-area-inset-top) !important;
+
+    /* 保持背景色，让刘海区域显示为编辑器的背景色，而不是透出后面的内容 */
+    background-color: #f9f9f9;
+  }
+
+  /* 深色模式适配 */
+  .dark .note-editor-reborn.editing-viewport {
+    background-color: #2c2c2e;
   }
 }
 
@@ -2629,8 +2640,8 @@ function handleBeforeInput(e: InputEvent) {
   overflow-y: auto; /* 让文字在内部滚动 */
   padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
 
-  scroll-padding-top: 80px;
-  padding-top: 20px;
+  /* scroll-padding-top: 80px; */
+  /* padding-top: 20px; */
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
