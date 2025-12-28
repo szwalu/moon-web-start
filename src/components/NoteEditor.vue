@@ -2111,6 +2111,8 @@ function handleBeforeInput(e: InputEvent) {
     :class="{
       'editing-viewport': isEditing,
       'is-focused': isInputFocused, /* ✅ 新增绑定 */
+      'platform-ios': isIOS, /* ✅ 新增：如果是 iOS */
+      'platform-android': isAndroid, /* ✅ 新增：如果是 Android */
     }"
     :style="{ paddingBottom: `${bottomSafePadding}px` }"
   >
@@ -2561,20 +2563,33 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
+/* =========================================
+   通用设置 (所有平台聚焦时的基础)
+   ========================================= */
 .note-editor-reborn.is-focused {
-  /* 🔥 终极魔法公式：屏幕总高 - 预估键盘高度(350px) */
-  /* iPhone 键盘通常在 300-340px 之间，预留 350px 非常安全 */
-  /* 这样屏幕越大，剩下的空间越大，输入框就自动变高，完美消除空隙 */
-  height: calc(100dvh - 430px) !important;
-
-  /* 保持相对定位，不要用 fixed，这样就不会盖住键盘 */
   position: relative !important;
-
-  /* 解除最小高度限制，防止小屏溢出 */
+  transition: none;
   min-height: 200px !important;
 
-  /* 去掉过渡，响应更干脆 */
-  transition: none;
+  /* 先给一个默认值，防止没匹配上 */
+  height: 100%;
+}
+
+/* =========================================
+   🍎 iOS 专用逻辑 (键盘是浮层，不挤压布局)
+   ========================================= */
+.note-editor-reborn.platform-ios.is-focused {
+  /* iOS 必须手动减去键盘高度 (你测量的 430px) */
+  height: calc(100dvh - 430px) !important;
+}
+
+/* =========================================
+   🤖 Android 专用逻辑 (键盘会挤压布局)
+   ========================================= */
+.note-editor-reborn.platform-android.is-focused {
+  /* Android 键盘弹起时，视口本身变矮了 */
+  /* 所以直接填满 100% 就可以完美贴合，不需要减去键盘 */
+  height: 100% !important;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
