@@ -2680,16 +2680,25 @@ function handleBeforeInput(e: InputEvent) {
 .note-editor-reborn {
   position: relative;
   background-color: #f9f9f9;
-/* 让它占据可视区域的 50% 或 60% */
-  height: 62dvh;
 
-  /* 关键：利用 margin-top: auto 把它顶到底部 */
+  /* 1. 基础高度：依然用 dvh，保证大屏（如 iPhone Max）上卡片更高，比例协调 */
+  height: 45dvh;
+
+  /* 2. 🔥 核心救星：设置一个像素(px) 最小值 */
+  /* 这保证了在 Android 键盘弹起导致 dvh 变得很小时，编辑器依然至少有 360px 高 */
+  min-height: 450px;
+
+  /* 3. 封顶：保证不管怎么算，都绝不会超过当前的可见区域（防止被键盘遮挡） */
+  max-height: 100dvh;
+
+  /* 4. 沉底逻辑 */
   margin-top: auto;
 
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
+  /* 你的过渡动画 */
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
