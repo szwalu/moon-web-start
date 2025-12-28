@@ -1356,6 +1356,10 @@ function handleFocus() {
   window.setTimeout(() => {
   }, t2)
 
+  setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+  }, 400) // 400ms > transition 0.3s
+
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
