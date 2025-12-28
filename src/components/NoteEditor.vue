@@ -74,6 +74,23 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
+// 🔥 核心逻辑：用 JS 决定高度，不再依赖 CSS 类名
+const editorHeight = computed(() => {
+  // 1. 如果键盘收起（浏览模式）：
+  if (!isInputFocused.value)
+    return '85dvh'
+
+  // 2. 如果键盘弹出（输入模式）：
+
+  // 🍎 iOS：键盘遮挡网页，必须手动减去键盘高度
+  if (isIOS)
+    return 'calc(100dvh - 430px)'
+
+  // 🤖 Android：键盘挤压网页，100dvh 会自动变成“剩余空间”
+  // 所以 Android 直接设为 100dvh 即可完美铺满，不需要减
+  return '100dvh'
+})
+
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -2110,11 +2127,14 @@ function handleBeforeInput(e: InputEvent) {
     class="note-editor-reborn"
     :class="{
       'editing-viewport': isEditing,
-      'is-focused': isInputFocused, /* ✅ 新增绑定 */
-      'platform-ios': isIOS, /* ✅ 新增：如果是 iOS */
-      'platform-android': isAndroid, /* ✅ 新增：如果是 Android */
+      'is-focused': isInputFocused,
     }"
-    :style="{ paddingBottom: `${bottomSafePadding}px` }"
+    :style="{
+      paddingBottom: `${bottomSafePadding}px`,
+      /* ✅✅✅ 核心修改：高度直接由 JS 接管，谁也别想乱改 */
+      height: props.isEditing ? undefined : editorHeight,
+    }"
+    @click.stop
   >
     <input
       ref="imageInputRef"
@@ -2563,33 +2583,17 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
-/* =========================================
-   通用设置 (所有平台聚焦时的基础)
-   ========================================= */
 .note-editor-reborn.is-focused {
+  /* 高度已经由 style 绑定控制了，这里不需要写 height */
+
+  /* 1. 保持相对定位，不要用 fixed */
   position: relative !important;
-  transition: none;
+
+  /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
   min-height: 200px !important;
 
-  /* 先给一个默认值，防止没匹配上 */
-  height: 100%;
-}
-
-/* =========================================
-   🍎 iOS 专用逻辑 (键盘是浮层，不挤压布局)
-   ========================================= */
-.note-editor-reborn.platform-ios.is-focused {
-  /* iOS 必须手动减去键盘高度 (你测量的 430px) */
-  height: calc(100dvh - 430px) !important;
-}
-
-/* =========================================
-   🤖 Android 专用逻辑 (键盘会挤压布局)
-   ========================================= */
-.note-editor-reborn.platform-android.is-focused {
-  /* Android 键盘弹起时，视口本身变矮了 */
-  /* 所以直接填满 100% 就可以完美贴合，不需要减去键盘 */
-  height: 100% !important;
+  /* 3. 去掉过渡，响应更干脆 */
+  transition: none;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
