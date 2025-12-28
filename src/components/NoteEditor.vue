@@ -2525,7 +2525,7 @@ function handleBeforeInput(e: InputEvent) {
   height: 45dvh;
 
   /* 2. 最小高度保底 */
-  min-height: 48vh;
+  min-height: 430px;
 
   /* 3. 封顶 */
   max-height: 100dvh;
