@@ -2566,6 +2566,7 @@ function handleBeforeInput(e: InputEvent) {
   /* 这里设置你想要的“短高度” */
   /* 45dvh 约为屏幕的一半，通常正好在键盘上方 */
   height: 35dvh;
+  min-height: 200px !important;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
