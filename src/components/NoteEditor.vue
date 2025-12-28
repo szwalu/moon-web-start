@@ -2702,6 +2702,25 @@ function handleBeforeInput(e: InputEvent) {
   transition: height 0.3s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
+/* 场景A：如果是【编辑已有笔记】(isEditing=true) */
+/* 直接铺满，取消最小高度限制，取消沉底 */
+.note-editor-reborn.editing-viewport {
+  height: 100dvh !important; /* 强制铺满键盘上方的所有空间 */
+  min-height: 0 !important;  /* 允许它变矮，适应小屏幕+键盘 */
+  margin-top: 0 !important;  /* 取消沉底，让它自然顶格显示 */
+  border-radius: 0;          /* 可选：编辑模式通常不需要圆角 */
+}
+
+/* 场景B：如果是【新建笔记】但在【打字时】(键盘弹起导致屏幕变矮) */
+/* 利用媒体查询检测：当可视高度小于 600px 时（意味着键盘大概率弹起了） */
+@media (max-height: 600px) {
+  .note-editor-reborn {
+    height: 100dvh !important; /* 变为全屏铺满 */
+    min-height: 0 !important;  /* 关键：允许小于 450px，防止顶部被切 */
+    margin-top: 0 !important;  /* 关键：取消沉底，防止顶部溢出 */
+  }
+}
+
 /* 3. 编辑模式高度 */
 .note-editor-reborn.editing-viewport {
   height: 80vh;
