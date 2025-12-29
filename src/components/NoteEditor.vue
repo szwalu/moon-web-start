@@ -90,7 +90,7 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性
+// 🔥 修正版：样式计算属性 (最终版：解决遮挡与定位)
 const editorStyle = computed(() => {
   const _tick = layoutTick.value
 
@@ -115,20 +115,20 @@ const editorStyle = computed(() => {
 
     if (props.isEditing) {
       // 🅰️ 编辑旧笔记（全屏模式）
-      // 底部留 15px 缝隙，既防遮挡又避开 Home 条
-      const BOTTOM_GAP = 15
+      const BOTTOM_GAP = 12
       return {
         ...common,
         position: 'fixed',
         left: 0,
-        top: `${vv.offsetTop}px`, // 紧贴顶部，内容靠 padding-top 避开刘海
+        // 配合 handleFocus 的 scrollTo(0,0)，这里紧贴视口顶部
+        top: `${vv.offsetTop}px`,
+        // 减去底部空隙，防误触 Home 条
         height: `${vv.height - BOTTOM_GAP}px`,
         bottom: 'auto',
       }
     }
     else {
       // 🅱️ 新建笔记（抽屉模式）
-      // 保持你觉得“差不多”的逻辑
       const DRAWER_HEADER_OFFSET = 56
       return {
         ...common,
@@ -1407,46 +1407,30 @@ onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
+// 1. 修改 handleFocus：按住页面
 function handleFocus() {
   isInputFocused.value = true
   emit('focus')
   captureCaret()
 
-  // 允许再次“轻推”
   _hasPushedPage = false
-
-  // 用真实 footer 高度“临时托起”，不等 vv
   emit('bottomSafeChange', getFooterHeight())
 
-  // 立即一轮计算
+  // 🔥 核心修复：强制重置 Window 滚动！
+  // 这能防止浏览器为了露出光标而把整个页面往上推，导致坐标系错乱。
+  // 我们靠自己的 ensureCaretVisibleInTextarea 来让光标可见。
+  window.scrollTo(0, 0)
+  if (document.body.scrollTop !== 0)
+    document.body.scrollTop = 0
+  if (document.documentElement.scrollTop !== 0)
+    document.documentElement.scrollTop = 0
+
+  // 立即校准内部光标
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
 
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
-  }
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-  }, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-  }, t2)
-
-  setTimeout(() => {
-    ensureCaretVisibleInTextarea()
-  }, 400) // 400ms > transition 0.3s
-
-  // 启动短时“助推轮询”（iOS 尤其需要）
+  // ... 后面的 startFocusBoost 等逻辑保持不变 ...
   startFocusBoost()
 }
 
@@ -2200,9 +2184,8 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       ...editorStyle,
-      paddingBottom: isInputFocused
-        ? '0px'
-        : `calc(${bottomSafePadding}px + env(safe-area-inset-bottom))`,
+      /* 键盘弹起时，底部 padding 归零 */
+      paddingBottom: isInputFocused ? '0px' : `calc(${bottomSafePadding}px + env(safe-area-inset-bottom))`,
     }"
     @click.stop
   >
@@ -2633,27 +2616,21 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* --- 场景 A：键盘收起时 (浏览态) --- */
-  /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
+  /* 🔥 核心修复：把 safe-area 加在这里！
+     因为容器是 fixed/absolute 不动的，所以这个 padding 永远挡在刘海下面，
+     文字怎么滚都滚不上去。 */
+  padding-top: env(safe-area-inset-top);
+
   height: 80dvh;
-
-  /* 2. 最小高度保底 */
   min-height: 430px;
-
-  /* 3. 封顶 */
   max-height: 90dvh;
-
-  /* 4. 沉底逻辑 */
   margin-top: auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-
-  /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
   box-sizing: border-box;
 }
-
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
   transition: none;
@@ -2716,16 +2693,12 @@ function handleBeforeInput(e: InputEvent) {
   height: 100%;
   flex: 1;
 
-  /* 🔥 修改 1：顶部 padding 加上 safe-area，防止文字顶到刘海 */
-  /* 原来是 padding: 12px 16px; */
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-right: 16px;
+  /* 🔥 恢复正常的内边距，不再需要 calc(env...) */
+  padding: 12px 16px;
   padding-bottom: 10px;
-  padding-left: 16px;
 
-  /* 🔥 修改 2：增加 scroll-padding，帮助浏览器定位光标，缓解跳动 */
-  scroll-padding-top: 80px;
-  scroll-padding-bottom: 80px; /* 让光标不要贴着底边，预留视线空间 */
+  /* 保持底部的 scroll-padding，这对光标定位有帮助 */
+  scroll-padding-bottom: 80px;
 
   border: none;
   background-color: transparent;
