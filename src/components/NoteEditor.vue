@@ -1377,77 +1377,44 @@ function handleFocus() {
 
   const textarea = document.querySelector('.note-editor-reborn textarea')
 
-  // 1. 初始化
+  // 1. 初始化 Padding
   if (textarea)
     textarea.style.paddingBottom = '80px'
 
-  // 2. 【核心大招】启动实时拦截循环
-  // 我们不等待 300ms，而是从聚焦的那一刻起，持续 400ms 监控
-  const startTime = performance.now()
-  const duration = 400 // 略大于键盘动画时间
+  // --- 2. 【核武器】锁死 Body 滚动 ---
+  // 这是消灭“工具条跳动”的唯一物理手段
+  // 暂时禁止页面整体滚动，浏览器就无法把工具条顶出去了
+  const originalOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  document.documentElement.style.overflow = 'hidden' // 双重保险
 
-  const lockLoop = () => {
-    // 如果已经失焦，停止循环
-    if (!isInputFocused.value)
-      return
+  // 立即重置视口，防止已经跳了一点
+  window.scrollTo(0, 0)
 
-    const elapsed = performance.now() - startTime
+  // --- 3. 核心等待 (300ms) ---
+  // 在这期间，键盘会弹起，Body 被锁死不动，只有键盘盖在内容上
+  setTimeout(() => {
+    // A. 再次强制归位 (防止某些顽固浏览器内核)
+    window.scrollTo(0, 0)
 
-    // A. 获取浏览器这一帧偷偷推了多少
-    const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
-
-    // B. 如果发生了偏移，立刻进行“无感置换”
-    if (textarea && scrollOffset > 0) {
-      // --- 扩容逻辑 (防止撞墙) ---
-      const maxScroll = textarea.scrollHeight - textarea.clientHeight
-      const targetScrollTop = textarea.scrollTop + scrollOffset
-
-      if (targetScrollTop > maxScroll) {
-        const shortage = targetScrollTop - maxScroll
-        const currentPadding = Number.parseFloat(textarea.style.paddingBottom || '80')
-        // 实时撑大 Padding，确保能滚上去
-        textarea.style.paddingBottom = `${currentPadding + shortage}px`
-      }
-
-      // --- 移形换影 ---
-      // 1. 把 Window 按回去
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-
-      // 2. 把输入框卷上去 (抵消 Window 的下移)
-      textarea.scrollTop += scrollOffset
-    }
-    else {
-      // 即使没偏移，也要强制锁死 Window，防止偶发跳动
-      if (window.scrollY !== 0)
-        window.scrollTo(0, 0)
-    }
-
-    // 继续循环，直到动画结束
-    if (elapsed < duration) {
-      requestAnimationFrame(lockLoop)
-    }
-    else {
-      // 动画结束了，做最后一次精准定位 (确保优雅停靠)
-      ensureCaretVisibleInTextarea()
-    }
-  }
-
-  // 启动循环
-  requestAnimationFrame(lockLoop)
-
-  // 3. 退场清理
-  const restorePadding = () => {
+    // B. 执行光标可见性检查
+    // 此时键盘已经完全弹起，窗口稳稳地停在顶部
+    // 我们只需要计算光标位置，然后在输入框内部优雅地滚过去
     if (textarea)
-      textarea.style.paddingBottom = '80px'
+      ensureCaretVisibleInTextarea()
 
-    textarea.removeEventListener('blur', restorePadding)
-  }
-  if (textarea)
-    textarea.addEventListener('blur', restorePadding)
+    // C. 【解锁】恢复 Body 滚动能力
+    // 延迟一点点恢复，以免键盘动画还没结束导致最后一下跳动
+    setTimeout(() => {
+      document.body.style.overflow = originalOverflow
+      document.documentElement.style.overflow = ''
+    }, 100)
+  }, 300)
+
+  // 保底检查
+  setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+  }, 450)
 
   startFocusBoost()
 }
