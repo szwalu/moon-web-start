@@ -1019,38 +1019,52 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // 1. 镜像计算 (保持不变，精准)
+  // 1. 镜像计算
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
+
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
+
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const caretBottomAbsolute = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  // 注意：用最新的实时 padding 计算
+  const currentPadding = Number.parseFloat(style.paddingBottom || '0')
+  const contentHeight = mirror.scrollHeight - currentPadding
+
+  const caretBottomAbsolute = contentHeight
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
   document.body.removeChild(mirror)
 
-  // 2. 视口计算
+  // 2. 视口
   const viewTop = el.scrollTop
-  // 关键：此时的 el.clientHeight 已经是减去键盘后的真实高度了！
   const viewBottom = el.scrollTop + el.clientHeight
 
-  // 3. 极简停靠逻辑
+  // 3. 智能策略
   const topBuffer = 40
-  const bottomBuffer = 40 // 只需要留两行的高度
+  const desiredBottomOffset = 80 // 黄金托起高度
 
-  // A. 顶部被挡
   if (caretTopAbsolute < viewTop + topBuffer) {
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
   }
-  // B. 底部被挡
-  else if (caretBottomAbsolute > viewBottom - bottomBuffer) {
-    // 只需要轻轻把光标“托”进视口即可
-    // 因为容器高度已经是对的，这里不需要任何 Padding 扩容
-    // 只要 CSS 里那个固定的 80px padding 还在，这里就一定能滚上来
-    el.scrollTop = caretBottomAbsolute - (el.clientHeight - bottomBuffer)
+  else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
+    const targetScroll = caretBottomAbsolute - (el.clientHeight - desiredBottomOffset)
+    const maxScrollPossible = el.scrollHeight - el.clientHeight
+
+    // 【二次检查】
+    // 如果 ensureCaret 计算出的目标位置比 handleFocus 预判的还要深
+    // 这里做最后的扩容补救
+    if (targetScroll > maxScrollPossible) {
+      const shortage = targetScroll - maxScrollPossible
+      const newPadding = currentPadding + shortage + 20
+      el.style.paddingBottom = `${newPadding}px`
+      el.scrollTop = targetScroll
+    }
+    else {
+      el.scrollTop = targetScroll
+    }
   }
 }
 
@@ -1357,54 +1371,67 @@ function handleFocus() {
   emit('focus')
   captureCaret()
   _hasPushedPage = false
-  emit('bottomSafeChange', getFooterHeight()) // 这个可能不需要了，或者保留做兼容
+  emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 获取核心 DOM
-  const editorContainer = document.querySelector('.note-editor-reborn')
+  const textarea = document.querySelector('.note-editor-reborn textarea')
 
-  // 2. 【核心大招】监听视口变化，实时调整容器高度
-  // 这就像是把输入框的“底座”抬高了，完全避开了键盘
-  const updateLayout = () => {
-    if (window.visualViewport && isInputFocused.value) {
-      // 视口高度（不含键盘）
-      const viewportHeight = window.visualViewport.height
-      // 顶部工具条的位置（如果有的话，通常是 0 或者 offsetTop）
-      const offsetTop = editorContainer.getBoundingClientRect().top
+  // 1. 进场初始化
+  if (textarea)
+    textarea.style.paddingBottom = '80px'
 
-      // 计算出编辑器应该有的高度：视口高度 - 顶部距离
-      // 这样编辑器的底部刚好贴在键盘上方
-      const newHeight = viewportHeight - offsetTop // 如果是全屏模式，可能直接是 viewportHeight
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
 
-      // 强制应用高度
-      editorContainer.style.height = `${newHeight}px`
-
-      // 顺便锁死 Body 滚动，防止顶飞工具条（你的老需求）
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-    }
-  }
-
-  // 立即执行一次
-  updateLayout()
-
-  // 挂载监听器（防止键盘动画过程中高度不准）
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateLayout)
-    window.visualViewport.addEventListener('scroll', updateLayout)
-  }
-
-  // 3. 延迟确保光标可见
-  // 因为容器高度变矮了，原生的 scrollIntoView 就能工作得很好了
-  // 但为了那是“优雅的托起 2 行”，我们还是保留你的 ensureCaret
+  // 2. 核心逻辑 (300ms)
   setTimeout(() => {
-    window.scrollTo(0, 0) // 双重保险
-    updateLayout() // 再次确认高度
+    // A. 计算补偿
+    const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
 
+    // B. 死守顶部 (修复 ESLint)
+    window.scrollTo(0, 0)
+    if (document.body.scrollTop !== 0)
+      document.body.scrollTop = 0
+
+    if (document.documentElement.scrollTop !== 0)
+      document.documentElement.scrollTop = 0
+
+    // C. 智能扩容 + 补偿滚动
+    if (textarea && scrollOffset > 0) {
+      const maxScroll = textarea.scrollHeight - textarea.clientHeight
+      const targetScrollTop = textarea.scrollTop + scrollOffset
+
+      if (targetScrollTop > maxScroll) {
+        const shortage = targetScrollTop - maxScroll
+        const currentPadding = 80
+        // 动态扩容
+        textarea.style.paddingBottom = `${currentPadding + shortage + 10}px`
+      }
+
+      textarea.scrollTop += scrollOffset
+    }
+
+    // D. 微调
     requestAnimationFrame(() => {
       ensureCaretVisibleInTextarea()
     })
   }, 300)
+
+  // 3. 退场清理 (修复 ESLint)
+  const restorePadding = () => {
+    if (textarea)
+      textarea.style.paddingBottom = '80px'
+
+    textarea.removeEventListener('blur', restorePadding)
+  }
+
+  if (textarea)
+    textarea.addEventListener('blur', restorePadding)
+
+  // 保底
+  setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+  }, 450)
 
   startFocusBoost()
 }
@@ -3235,10 +3262,14 @@ function handleBeforeInput(e: InputEvent) {
   border-bottom: none;
 }
 
+/* 基础状态 */
 .note-editor-reborn textarea {
-  /* 无论什么时候，都只留这么点，美观大方 */
+  /* 80px 足够托起光标，平时看着也不突兀 */
   padding-bottom: 80px;
-  height: 100%; /* 确保填满父容器 */
-  box-sizing: border-box;
+  /* 必须去掉 transition，防止高度计算时的延迟导致“压下来” */
+}
+
+.note-editor-reborn.is-focused textarea {
+  padding-bottom: 80px; /* 聚焦时也保持这个初始值，剩下的交给 JS */
 }
 </style>
