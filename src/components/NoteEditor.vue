@@ -84,8 +84,7 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性
-// 🔥 修正版：样式计算属性 (引入防遮挡缓冲机制)
+// 🔥 修正版：样式计算属性 (精确像素控制 + 顶部/底部扣减)
 const editorStyle = computed(() => {
   // 依赖收集
   const _tick = layoutTick.value
@@ -101,13 +100,16 @@ const editorStyle = computed(() => {
   // 2. 键盘弹出（输入模式）
   const vv = window.visualViewport
   if (vv) {
-    // 🔥 核心策略：为了防止工具栏被键盘边缘吃掉，我们减去 2px 的缓冲
-    // 这能有效解决“测得不准、高度偏高”的问题
-    const safeHeight = Math.floor(vv.height - 2)
+    // 🛠 参数配置区
+    // -------------------------
+    // 抽屉头部高度估算 (通常 Header 是 44~56px，我们预留 56px)
+    const DRAWER_HEADER_OFFSET = 56
+    // 底部安全缝隙 (防止工具条贴太死被键盘边缘遮挡，预留 12px)
+    const BOTTOM_GAP = 12
+    // -------------------------
 
     const common = {
       width: '100%',
-      // 这里先留空，下面根据场景填
       borderRadius: 0,
       margin: 0,
       transition: 'none',
@@ -115,28 +117,30 @@ const editorStyle = computed(() => {
     }
 
     if (props.isEditing) {
-      // 🅰️ 编辑旧笔记（全屏）：必须 Fixed + Top 偏移
+      // 🅰️ 编辑旧笔记（全屏）：
+      // 策略：Fixed 定位 + Top 修正。
+      // 高度 = 可视高度 - 底部防遮挡缝隙
       return {
         ...common,
         position: 'fixed',
         left: 0,
-        top: `${vv.offsetTop}px`,
-        // 这里的 height 依然用计算值，但减去了缓冲
-        height: `${safeHeight}px`,
+        top: `${vv.offsetTop}px`, // 必须跟随滚动
+        height: `${vv.height - BOTTOM_GAP}px`, // 🔥 主动减去 12px，确保工具条露出
         bottom: 'auto',
       }
     }
     else {
       // 🅱️ 新建笔记（抽屉）：
-      // 🛑 重点修正：在 Drawer 里，千万不要设固定像素高度！
-      // 因为 Drawer 顶部可能有 Header，设了全屏高度就会把底部挤出去。
-      // 直接设 100%，让它自动填满 Drawer 剩下的空间。
+      // 策略：Absolute 定位 + Top: 0。
+      // 高度 = 可视高度 - 抽屉Header高度 - 底部防遮挡缝隙
+      // 解释：因为在抽屉里，编辑器是从 Header 下方开始的，所以总高度必须减去 Header 的高度，
+      // 否则底部肯定会被挤到键盘后面去。
       return {
         ...common,
-        position: 'absolute', // 在 transform 容器内 absolute 等同于铺满
+        position: 'absolute',
         left: 0,
-        top: 0,
-        height: '100%', // 🔥 关键：交给 CSS Flex 布局去自适应，不要 JS 算
+        top: 0, // 紧贴抽屉内容区的顶部
+        height: `${vv.height - DRAWER_HEADER_OFFSET - BOTTOM_GAP}px`, // 🔥 核心：扣除 Header 和 Gap
       }
     }
   }
