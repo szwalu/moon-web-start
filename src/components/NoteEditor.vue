@@ -1012,6 +1012,7 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
+
   const textarea = document.querySelector('.note-editor-reborn textarea')
   if (!textarea)
     return
@@ -1019,7 +1020,7 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // --- 1. 镜像克隆 (保持你觉得好用的这段逻辑) ---
+  // 1. 镜像计算 (保持不变，精准获取光标位置)
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
@@ -1030,43 +1031,42 @@ function ensureCaretVisibleInTextarea() {
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  // 计算出光标底部的绝对像素坐标 (mirror.scrollHeight 包含了 padding)
-  // 注意：这里我们减去 paddingBottom，得到的是“文本内容的底部”
-  // 但为了保险，我们直接用 mirror.scrollHeight 作为基准，更稳妥
   const caretBottomAbsolute = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
-
   document.body.removeChild(mirror)
 
-  // --- 2. 获取当前可视窗口范围 ---
+  // 2. 视口计算
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
 
-  // --- 3. 智能判断逻辑 (修改了这里) ---
+  // 3. 智能停靠策略
+  const topBuffer = 40
 
-  // 定义缓冲距离
-  const topBuffer = 40 // 顶部工具条缓冲
-  const bottomBuffer = 30 // 底部键盘缓冲
+  // 【关键调整】：定义我们希望光标距离底部的“舒适距离”
+  // 80px 大约是键盘上方 2-3 行文字的高度
+  // 配合 CSS 的 150px padding，这完全在物理可滚动的范围内
+  const desiredBottomOffset = 80
 
-  // 【情况 A】：光标在视野内 (ViewTop < 光标 < ViewBottom)
-  if (caretTopAbsolute >= viewTop + topBuffer && caretBottomAbsolute <= viewBottom - bottomBuffer) {
-    // 核心修改：如果光标已经看得到了，绝对不动！
-    // 这就解决了“点击上方文字也乱跳”的问题
-    return
-  }
-
-  // 【情况 B】：光标在上方被挡住 (比如点击了第一行，但目前滚在第十行)
+  // 场景 A: 顶部被挡 -> 微微调整露出
   if (caretTopAbsolute < viewTop + topBuffer) {
-    // 只需要“稍微往上滚一点”，露出来就行，不需要跳到中间
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
   }
 
-  // 【情况 C】：光标在下方被挡住 (被键盘遮住)
-  else if (caretBottomAbsolute > viewBottom - bottomBuffer) {
-    // 只有这种情况，我们才执行“Day One 风格”的居中跳转
-    // 把它拉到屏幕 40% 的高度，体验最优雅
-    const targetOffset = el.clientHeight * 0.4
-    el.scrollTop = caretBottomAbsolute - targetOffset
+  // 场景 B: 底部被挡 (修改重点)
+  // 判定条件：光标已经跑到了视口下方，或者距离底部太近(小于缓冲)
+  else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
+    // 计算目标位置：
+    // 我们希望光标位于：当前视口高度 - 80px 的位置
+    // 公式：光标绝对位置 - (视口高度 - 80px)
+    const targetScroll = caretBottomAbsolute - (el.clientHeight - desiredBottomOffset)
+
+    // 执行滚动
+    el.scrollTop = targetScroll
+  }
+
+  // 场景 C: 在舒适区内 -> 不动
+  else {
+    // 完美，什么都不做
   }
 }
 
@@ -3249,8 +3249,10 @@ function handleBeforeInput(e: InputEvent) {
   padding-bottom: 120px;
 }
 
-/* 聚焦状态：提供足够的空间以便将文末光标“拉”到屏幕中间 */
+/* 聚焦状态 */
+/* 不再需要夸张的 35dvh，保持 120px 或稍微增加一点点即可 */
+/* 这个高度足以配合 JS 把最后一行推到键盘上方 */
 .note-editor-reborn.is-focused textarea {
-  padding-bottom: 35dvh !important;
+  padding-bottom: 150px !important;
 }
 </style>
