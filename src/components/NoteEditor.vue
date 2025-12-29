@@ -2358,7 +2358,7 @@ function handleBeforeInput(e: InputEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.image_dialog.title')"
-            @pointerdown="onPickImageSync"
+            @mousedown.prevent
             @click="onPickImageSync"
           >
             <svg
