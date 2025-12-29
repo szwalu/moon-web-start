@@ -33,6 +33,20 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const isInputFocused = ref(false)
+
+// 🔥 新增：用于存储实时可视高度
+const viewportHeight = ref(typeof window !== 'undefined' && window.visualViewport
+  ? window.visualViewport.height
+  : 0)
+
+// 🔥 新增：更新视口高度的函数
+function updateViewportHeight() {
+  if (window.visualViewport)
+    viewportHeight.value = window.visualViewport.height
+  else
+    viewportHeight.value = window.innerHeight
+}
+
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -76,28 +90,21 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：高度计算属性 (统一接管所有模式)
+// 🔥 修正版：高度计算属性 (Visual Viewport 实时驱动)
 const editorHeight = computed(() => {
-  // 1. 键盘收起时（浏览模式）
+  // 1. 键盘收起时（浏览模式）：逻辑不变
   if (!isInputFocused.value) {
-    // 如果是编辑旧笔记，保持全屏；如果是新建，保持抽屉高度
+    // 编辑旧笔记全屏，新建笔记 80%
     return props.isEditing ? '100dvh' : '80dvh'
   }
 
   // 2. 键盘弹出时（输入模式）：
-  // 下面的逻辑对“新建”和“编辑”完全通用，确保都能露出工具栏
+  // 直接使用 Visual Viewport 测量出的真实高度。
+  // 这个高度已经自动减去了键盘、顶栏、底栏的高度。
+  if (viewportHeight.value > 0)
+    return `${viewportHeight.value}px`
 
-  const currentUA = navigator.userAgent.toLowerCase()
-  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
-
-  if (isReallyIOS) {
-    // 如果是 PWA 模式：减去 430px
-    // 如果是 网页模式：减去 295px (你上一版测出的数值)
-    const offset = isPWA.value ? '435px' : '290px'
-    return `calc(100dvh - ${offset})`
-  }
-
-  // Android
+  // 兜底（万一取不到视口高度，虽然在现代手机上极少发生）
   return '100dvh'
 })
 
@@ -570,6 +577,26 @@ onMounted(() => {
         cachedWeather.value = null
       })
     }
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportHeight)
+    window.visualViewport.addEventListener('scroll', updateViewportHeight)
+    // 初始化一次
+    updateViewportHeight()
+  }
+  else {
+    window.addEventListener('resize', updateViewportHeight)
+  }
+})
+
+onUnmounted(() => {
+  // 🔥 新增：移除监听
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', updateViewportHeight)
+    window.visualViewport.removeEventListener('scroll', updateViewportHeight)
+  }
+  else {
+    window.removeEventListener('resize', updateViewportHeight)
   }
 })
 
@@ -2591,6 +2618,7 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
+  box-sizing: border-box;
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
