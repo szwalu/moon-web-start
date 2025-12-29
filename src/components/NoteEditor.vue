@@ -1351,33 +1351,34 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 第一步：300ms，只负责把“被顶飞的页面”按回来 ---
+  // --- 核心修复逻辑 ---
   setTimeout(() => {
+    // 1. 先按住页面头部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
-  }, 300)
 
-  // --- 第二步：350ms，专门负责“捞光标” ---
-  // 必须等上面 window.scrollTo 执行完，渲染稳定了再动光标
-  setTimeout(() => {
-    // 1. 标准确保光标可见
-    ensureCaretVisibleInTextarea()
+    // 2. 获取编辑器 DOM
+    const textarea = document.querySelector('.note-editor-reborn textarea')
 
-    // 2.【绝杀招】针对 iOS 无法点击末尾的问题
-    // 强制检查：如果输入框很长，我们人为地把内容再往上卷一点
-    // 这样光标就不会贴在键盘边缘，而是会处于编辑区的中下部
-    const editor = document.querySelector('.note-editor-reborn textarea') // 请确认你的 textarea 选择器是否正确
-    if (editor && isIOS) {
-      // 这是一个经验值逻辑：聚焦时强制让当前滚动位置再加 50-100px
-      // 这样能把底部的文字“抬”起来
-      const currentScroll = editor.scrollTop
-      editor.scrollTop = currentScroll + 80
+    if (textarea) {
+      const textLength = textarea.value.length
+      const cursorVal = textarea.selectionStart
+
+      // 【判定】如果光标在最后 200 个字符以内（说明在编辑末尾）
+      if (textLength - cursorVal < 200) {
+        // 直接暴力把滚动条拉到最底
+        textarea.scrollTop = textarea.scrollHeight
+      }
+      else {
+        // 如果在中间编辑，尝试用你的通用方法（或此时手动计算一下）
+        ensureCaretVisibleInTextarea()
+      }
     }
-  }, 350)
-  // ----------------------------------------------------
+  }, 300) // 300ms 等待键盘完全弹起 + 视口 Resize 完成
+  // ------------------
 
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {}, t1)
@@ -1385,10 +1386,9 @@ function handleFocus() {
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {}, t2)
 
-  // 最后的兜底
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 500) // 稍微延后一点，避开前面的冲突
+  }, 450)
 
   startFocusBoost()
 }
@@ -3219,14 +3219,12 @@ function handleBeforeInput(e: InputEvent) {
   border-bottom: none;
 }
 
+/* 让输入框内容底部多出一大截空白，聚焦时更多 */
 .note-editor-reborn textarea {
-  /* 平时 */
-  padding-bottom: 50px;
+  padding-bottom: 100px; /* 平时 */
 }
 
 .note-editor-reborn.is-focused textarea {
-  /* 聚焦时，给底部留出巨大的空间，让最后一行字能被卷到屏幕中间 */
-  /* 哪怕键盘遮住了底部 100px，我也能看到文字 */
-  padding-bottom: 50vh !important;
+  padding-bottom: 50vh !important; /* 关键：聚焦时给相当于半屏的留白 */
 }
 </style>
