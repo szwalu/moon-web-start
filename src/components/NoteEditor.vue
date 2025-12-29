@@ -1375,32 +1375,39 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 立即尝试
+  // 1. 立即检查一次
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 2. 核心延时
+  // 2. 核心逻辑：300ms 后执行“移形换影”
   setTimeout(() => {
-    // A. 必须：先把 Body 按住
-    window.scrollTo(0, 0)
+    // --- 关键步骤 A：计算浏览器把页面推上去多少 ---
+    // 这就是我们要“补偿”给输入框的距离
+    // 如果浏览器没推（scrollY=0），offset 就是 0，无副作用
+    const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
 
-    // 修复 ESLint: 加花括号
+    // --- 关键步骤 B：先把页面按死在顶部 (保住工具条) ---
+    window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
 
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // B. 核心：执行计算
-    ensureCaretVisibleInTextarea()
+    // --- 关键步骤 C：父债子偿 (立刻补偿滚动) ---
+    // 页面被拉下来了 scrollOffset，输入框就要立刻往上滚 scrollOffset
+    // 这样文字在屏幕上的绝对位置才不会变！
+    const textarea = document.querySelector('.note-editor-reborn textarea')
+    if (textarea && scrollOffset > 0)
+      textarea.scrollTop += scrollOffset
 
-    // C. iOS 补丁 (需要时解开)
-    // const textarea = document.querySelector('.note-editor-reborn textarea')
-    // if (textarea && isIOS) {
-    //     textarea.scrollTop += 1
-    //     textarea.scrollTop -= 1
-    // }
+    // --- 关键步骤 D：最后再做一次精细调整 ---
+    // 上面的补偿只是为了“不跳”，这里是为了“更优雅”（比如居中）
+    // 必须用 requestAnimationFrame 等下一帧，确保界面稳定了再算
+    requestAnimationFrame(() => {
+      ensureCaretVisibleInTextarea()
+    })
   }, 300)
 
   // 保底检查
