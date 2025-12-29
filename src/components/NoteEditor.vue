@@ -1351,9 +1351,10 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 核心修复逻辑 ---
+  // --- 300ms 核心修正逻辑 ---
   setTimeout(() => {
-    // 1. 先按住页面头部（保住工具条）
+    // 1. 【通用】先把被顶上去的页面强制按回顶部（保住工具条）
+    // 这一点无论是新旧笔记都需要，因为 iOS 键盘有时候很暴力
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
@@ -1367,17 +1368,22 @@ function handleFocus() {
       const textLength = textarea.value.length
       const cursorVal = textarea.selectionStart
 
-      // 【判定】如果光标在最后 200 个字符以内（说明在编辑末尾）
-      if (textLength - cursorVal < 200) {
-        // 直接暴力把滚动条拉到最底
+      // 【关键修改】判断条件：
+      // 只有当是“编辑旧笔记” 或者 “字数较多(超过一屏)”时，才执行暴力置底
+      // 200字是一个大概的经验阈值，你可以根据实际情况调整
+      const isLongContent = props.isEditing || textLength > 200
+
+      // 只有长内容且光标在末尾附近时，才暴力拉到底
+      if (isLongContent && (textLength - cursorVal < 200)) {
         textarea.scrollTop = textarea.scrollHeight
       }
       else {
-        // 如果在中间编辑，尝试用你的通用方法（或此时手动计算一下）
+        // 【新建笔记/短内容】走这里
+        // 只是普通的确保可见，不会把两行字顶飞
         ensureCaretVisibleInTextarea()
       }
     }
-  }, 300) // 300ms 等待键盘完全弹起 + 视口 Resize 完成
+  }, 300)
   // ------------------
 
   const t1 = isIOS ? 120 : 80
