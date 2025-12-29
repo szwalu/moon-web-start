@@ -1012,6 +1012,7 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
+
   const textarea = document.querySelector('.note-editor-reborn textarea')
   if (!textarea)
     return
@@ -1019,38 +1020,44 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // --- 1. 镜像克隆 (计算光标像素位置最准确的方法) ---
+  // --- 1. 镜像计算 ---
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
-  // 核心：截取光标之前的所有文本
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
-  // --- 2. 获取光标在文档流中的绝对 Y 坐标 ---
-  // scrollHeight 是镜像是总高度，paddingBottom 是 CSS 里的填充
-  // 我们要的是光标底部的坐标
-  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  const caretBottomAbsolute = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
+  // 计算顶部坐标
+  const caretTopAbsolute = caretBottomAbsolute - lineHeight
+
   document.body.removeChild(mirror)
 
-  // --- 3. Day One 风格计算 (黄金分割位) ---
-  // 获取当前可视窗口的高度 (键盘弹出后的高度)
-  const clientHeight = el.clientHeight
+  // --- 2. 视口计算 ---
+  const viewTop = el.scrollTop
+  const viewBottom = el.scrollTop + el.clientHeight
 
-  // 目标：我们希望光标处于屏幕视口的 "40% 高度" 处
-  // 这样既不会贴顶，也不会贴底，符合人眼阅读习惯
-  const targetOffset = clientHeight * 0.4
+  // --- 3. 智能策略 (Flomo Logic) ---
+  const topBuffer = 40
+  const bottomBuffer = 30
 
-  // 计算目标滚动条位置：光标坐标 - 屏幕上的目标偏移量
-  const targetScrollTop = caretTopInTextarea - targetOffset
-
-  // --- 4. 执行平滑修正 ---
-  // 如果算出来是负数 (新建笔记)，它会自动归零
-  // 如果算出来很大 (旧笔记末尾)，配合 CSS 的 padding，它会滚到中间
-  el.scrollTop = targetScrollTop
+  // 场景 A: 顶部被挡
+  if (caretTopAbsolute < viewTop + topBuffer) {
+    el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
+  }
+  // 场景 B: 底部被挡 (跳到中间)
+  else if (caretBottomAbsolute > viewBottom - bottomBuffer) {
+    const halfScreen = el.clientHeight / 2
+    el.scrollTop = caretBottomAbsolute - halfScreen
+  }
+  // 场景 C: 在视野内 (不动)
+  else {
+    // Do nothing
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1358,33 +1365,33 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 立即尝试一次 (针对极快响应)
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 2. 核心延时 (等待键盘弹起)
+  // 延迟修正
   setTimeout(() => {
-    // A. 必须：先把 Body 按住，防止工具条飞走
+    // 1. 死守工具条
     window.scrollTo(0, 0)
+
+    // 修复：ESLint 不允许单行 if，必须换行或加花括号
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
+
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // B. 核心：执行“居中”计算
-    // 无论是新建笔记、中间插入、还是文末续写，全部通用
+    // 2. 智能滚动
     ensureCaretVisibleInTextarea()
+  }, 300)
 
-    // C. iOS 顽固症候群补丁 (可选，如果还有偶发不显示，解开下面注释)
-    // const textarea = document.querySelector('.note-editor-reborn textarea')
-    // if (textarea && isIOS) {
-    //    textarea.scrollTop += 1
-    //    textarea.scrollTop -= 1
-    // }
-  }, 300) // 保持 300ms
+  // 兜底逻辑
+  const t1 = isIOS ? 120 : 80
+  window.setTimeout(() => {}, t1)
 
-  // 保底检查
+  const t2 = isIOS ? 260 : 180
+  window.setTimeout(() => {}, t2)
+
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
   }, 450)
@@ -3223,11 +3230,8 @@ function handleBeforeInput(e: InputEvent) {
   padding-bottom: 120px;
 }
 
-/* 聚焦状态：Day One 风格 */
+/* 聚焦状态：提供足够的空间以便将文末光标“拉”到屏幕中间 */
 .note-editor-reborn.is-focused textarea {
-  /* 关键：必须留出约 40% 屏幕高度的 buffer。
-     没有这个空间，最后一行字永远只能贴在底边，怎么算都滚不上来。
-  */
-  padding-bottom: 40dvh !important;
+  padding-bottom: 35dvh !important;
 }
 </style>
