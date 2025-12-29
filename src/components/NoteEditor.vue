@@ -2792,6 +2792,9 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 确保内边距不会撑大整体高度导致溢出 */
   box-sizing: border-box;
+  /* 🔥🔥🔥 新增：当键盘弹出（输入框聚焦）时，强制去掉底部多余的空白 🔥🔥🔥 */
+.note-editor-reborn.is-focused .editor-footer {
+  padding-bottom: 0px !important; /* 这里设为 0 或 2px 即可 */
 }
 /* 深色模式适配 */
 .dark .editor-footer {
