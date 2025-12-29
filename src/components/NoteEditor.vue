@@ -34,6 +34,13 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const isInputFocused = ref(false)
 
+// 定义一个触发更新的 ref，仅用于强制 computed 重新计算
+const layoutTick = ref(0)
+
+function updateLayout() {
+  layoutTick.value++
+}
+
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -77,39 +84,55 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性 (取代 editorHeight)
+// 🔥 修正版：样式计算属性
 const editorStyle = computed(() => {
-  // 1. 键盘收起时（浏览模式）：保持原有逻辑
+  // 🔥 3. 改成赋值给临时变量 (解决 no-unused-expressions)
+  // Vue 的依赖收集只需要“读取”即可，赋值给 _tick 是为了满足 ESLint 语法检查
+  const _tick = layoutTick.value
+
+  // 1. 键盘收起（浏览模式）
   if (!isInputFocused.value) {
     return {
       height: props.isEditing ? '100dvh' : '80dvh',
-      transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)', // 恢复动画
+      transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
     }
   }
 
-  // 2. 键盘弹出时（输入模式）：
-  // 使用 Visual Viewport 的全套数据来“钉死”位置
+  // 2. 键盘弹出（输入模式）
   const vv = window.visualViewport
-
   if (vv) {
-    return {
-      position: 'fixed', // 强制固定，不再受页面滚动影响
-      left: 0,
+    const common = {
       width: '100%',
-      height: `${vv.height}px`, // 精确高度（不含键盘）
-      top: `${vv.offsetTop}px`, // 🔥 核心：跟随 iOS 的推挤偏移量
-      bottom: 'auto', // 清除可能存在的 bottom 干扰
-      borderRadius: 0, // 键盘弹出时直角更好看
-      margin: 0, // 清除 margin
-      transition: 'none', // 键盘跟随需要由浏览器原生驱动，不要 CSS 动画
-      zIndex: 9999, // 确保浮在最上层
+      height: `${vv.height}px`,
+      borderRadius: 0,
+      margin: 0,
+      transition: 'none',
+      zIndex: 9999,
+    }
+
+    if (props.isEditing) {
+      // 🅰️ 编辑旧笔记（全屏）：Fixed + Top偏移
+      return {
+        ...common,
+        position: 'fixed',
+        left: 0,
+        top: `${vv.offsetTop}px`,
+        bottom: 'auto',
+      }
+    }
+    else {
+      // 🅱️ 新建笔记（抽屉）：Absolute + Top:0
+      // 解决新建笔记键盘遮挡工具条的问题
+      return {
+        ...common,
+        position: 'absolute',
+        left: 0,
+        top: '0px',
+      }
     }
   }
 
-  // 兜底（极少数不支持 API 的旧机型）
-  return {
-    height: '100dvh',
-  }
+  return { height: '100dvh' }
 })
 
 const isFreezingBottom = ref(false)
@@ -563,13 +586,6 @@ function clearDraft() {
   }
 }
 
-// 定义一个触发更新的 ref，仅用于强制 computed 重新计算
-const layoutTick = ref(0)
-
-function updateLayout() {
-  layoutTick.value++
-}
-
 // 初次挂载：尝试恢复
 onMounted(() => {
   checkAndPromptDraft()
@@ -593,12 +609,18 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', updateLayout)
     window.visualViewport.addEventListener('scroll', updateLayout)
   }
+  else {
+    window.addEventListener('resize', updateLayout)
+  }
 })
 
 onUnmounted(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateLayout)
     window.visualViewport.removeEventListener('scroll', updateLayout)
+  }
+  else {
+    window.removeEventListener('resize', updateLayout)
   }
 })
 
@@ -2170,7 +2192,7 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       ...editorStyle,
-      paddingBottom: `${bottomSafePadding}px`,
+      paddingBottom: isInputFocused ? '0px' : `${bottomSafePadding}px`,
     }"
     @click.stop
   >
