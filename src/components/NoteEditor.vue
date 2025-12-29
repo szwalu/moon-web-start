@@ -2407,13 +2407,14 @@ function handleBeforeInput(e: InputEvent) {
       </div>
 
       <div class="actions">
-        <button type="button" class="btn-secondary" @click="emit('cancel')">
+        <button type="button" class="btn-secondary" @mousedown.prevent @click="emit('cancel')">
           {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
           type="button"
           class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
+          @mousedown.prevent
           @click="handleSave"
         >
           {{ t('notes.editor.save.button_save') }}
