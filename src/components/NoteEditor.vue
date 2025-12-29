@@ -93,7 +93,7 @@ const editorHeight = computed(() => {
     // 🍎 iOS 专用逻辑：
     // 如果是 PWA 模式：减去 430px (全屏无工具栏，键盘显得“低”，需要留更多空)
     // 如果是 网页模式：减去 320px (Safari 底部工具栏已经占了位置，所以我们少减一点)
-    const offset = isPWA.value ? '430px' : '320px'
+    const offset = isPWA.value ? '430px' : '300px'
 
     return `calc(100dvh - ${offset})`
   }
