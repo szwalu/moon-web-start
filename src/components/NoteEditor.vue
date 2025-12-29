@@ -76,59 +76,29 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：全能样式计算属性 (解决 unused 报错 + 样式逻辑收口)
-const editorStyle = computed(() => {
-  const _tick = layoutTick.value
-
-  // 1. 键盘收起 (浏览模式)
+// 🔥 修正版：高度计算属性 (统一接管所有模式)
+const editorHeight = computed(() => {
+  // 1. 键盘收起时（浏览模式）
   if (!isInputFocused.value) {
-    return {
-      height: props.isEditing ? '100dvh' : '80dvh',
-      transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
-      // 在这里定义默认 padding，20px 是基础间距
-      paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
-    }
+    // 如果是编辑旧笔记，保持全屏；如果是新建，保持抽屉高度
+    return props.isEditing ? '100dvh' : '80dvh'
   }
 
-  // 2. 键盘弹出 (输入模式)
-  const vv = window.visualViewport
-  if (vv) {
-    const common = {
-      width: '100%',
-      margin: 0,
-      borderRadius: 0,
-      transition: 'none',
-      zIndex: 9999,
-    }
+  // 2. 键盘弹出时（输入模式）：
+  // 下面的逻辑对“新建”和“编辑”完全通用，确保都能露出工具栏
 
-    if (props.isEditing) {
-      // 🅰️ 编辑旧笔记 (全屏 Relative 方案)
-      // 算出被键盘遮挡的高度，转化成底部的 Padding 把内容顶上来
-      // 屏幕总高 - 可视高度 = 键盘高度。再加 15px 让工具栏悬浮一点
-      const keyboardHeight = window.innerHeight - vv.height
-      return {
-        ...common,
-        position: 'relative',
-        height: '100dvh',
-        paddingBottom: `${keyboardHeight + 15}px`,
-      }
-    }
-    else {
-      // 🅱️ 新建笔记 (抽屉 Absolute 方案)
-      // 减去头部 Header 高度 (56px)
-      const DRAWER_HEADER_HEIGHT = 56
-      return {
-        ...common,
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        height: `${vv.height - DRAWER_HEADER_HEIGHT}px`,
-        paddingBottom: '0px',
-      }
-    }
+  const currentUA = navigator.userAgent.toLowerCase()
+  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+
+  if (isReallyIOS) {
+    // 如果是 PWA 模式：减去 430px
+    // 如果是 网页模式：减去 295px (你上一版测出的数值)
+    const offset = isPWA.value ? '435px' : '290px'
+    return `calc(100dvh - ${offset})`
   }
 
-  return { height: '100dvh' }
+  // Android
+  return '100dvh'
 })
 
 const isFreezingBottom = ref(false)
@@ -2169,7 +2139,11 @@ function handleBeforeInput(e: InputEvent) {
       'editing-viewport': isEditing,
       'is-focused': isInputFocused,
     }"
-    :style="editorStyle"
+    :style="{
+      paddingBottom: `${bottomSafePadding}px`,
+      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
+      height: editorHeight,
+    }"
     @click.stop
   >
     <input
