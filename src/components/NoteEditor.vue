@@ -2792,10 +2792,6 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 确保内边距不会撑大整体高度导致溢出 */
   box-sizing: border-box;
-  /* 🔥🔥🔥 新增：当键盘弹出（输入框聚焦）时，强制去掉底部多余的空白 🔥🔥🔥 */
-.note-editor-reborn.is-focused .editor-footer {
-  padding-bottom: 0px !important; /* 这里设为 0 或 2px 即可 */
- }
 }
 /* 深色模式适配 */
 .dark .editor-footer {
@@ -3169,5 +3165,16 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
+}
+
+/* 当屏幕高度小于 600px 时（说明键盘弹起了），强制消除底部空白 */
+@media (max-height: 600px) {
+  .editor-footer {
+    /* 强制底部没有内边距 */
+    padding-bottom: 0px !important;
+
+    /* 如果觉得还是高，可以把下面这行注释解开，通过负边距强制往下拉 */
+    /* margin-bottom: -5px !important; */
+  }
 }
 </style>
