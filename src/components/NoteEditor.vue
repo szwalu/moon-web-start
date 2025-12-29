@@ -1354,24 +1354,27 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
 
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
-  }
+  // 1. 【修改重点】去掉了 if (!props.isEditing) 判断
+  // 无论是新建还是编辑旧笔记，都强制执行归位逻辑
+  setTimeout(() => {
+    window.scrollTo(0, 0)
+    if (document.body.scrollTop !== 0)
+      document.body.scrollTop = 0
+
+    if (document.documentElement.scrollTop !== 0)
+      document.documentElement.scrollTop = 0
+  }, 300) // 2. 【修改建议】改为 300ms，确保覆盖 iOS 键盘弹起后的原生滚动行为
+
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
+    // 原有逻辑保留
   }, t1)
 
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
+    // 原有逻辑保留
   }, t2)
 
   setTimeout(() => {
