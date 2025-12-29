@@ -85,9 +85,9 @@ const iosFirstInputLatch = ref(false)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // 🔥 修正版：样式计算属性
+// 🔥 修正版：样式计算属性 (引入防遮挡缓冲机制)
 const editorStyle = computed(() => {
-  // 🔥 3. 改成赋值给临时变量 (解决 no-unused-expressions)
-  // Vue 的依赖收集只需要“读取”即可，赋值给 _tick 是为了满足 ESLint 语法检查
+  // 依赖收集
   const _tick = layoutTick.value
 
   // 1. 键盘收起（浏览模式）
@@ -101,9 +101,13 @@ const editorStyle = computed(() => {
   // 2. 键盘弹出（输入模式）
   const vv = window.visualViewport
   if (vv) {
+    // 🔥 核心策略：为了防止工具栏被键盘边缘吃掉，我们减去 2px 的缓冲
+    // 这能有效解决“测得不准、高度偏高”的问题
+    const safeHeight = Math.floor(vv.height - 2)
+
     const common = {
       width: '100%',
-      height: `${vv.height}px`,
+      // 这里先留空，下面根据场景填
       borderRadius: 0,
       margin: 0,
       transition: 'none',
@@ -111,23 +115,28 @@ const editorStyle = computed(() => {
     }
 
     if (props.isEditing) {
-      // 🅰️ 编辑旧笔记（全屏）：Fixed + Top偏移
+      // 🅰️ 编辑旧笔记（全屏）：必须 Fixed + Top 偏移
       return {
         ...common,
         position: 'fixed',
         left: 0,
         top: `${vv.offsetTop}px`,
+        // 这里的 height 依然用计算值，但减去了缓冲
+        height: `${safeHeight}px`,
         bottom: 'auto',
       }
     }
     else {
-      // 🅱️ 新建笔记（抽屉）：Absolute + Top:0
-      // 解决新建笔记键盘遮挡工具条的问题
+      // 🅱️ 新建笔记（抽屉）：
+      // 🛑 重点修正：在 Drawer 里，千万不要设固定像素高度！
+      // 因为 Drawer 顶部可能有 Header，设了全屏高度就会把底部挤出去。
+      // 直接设 100%，让它自动填满 Drawer 剩下的空间。
       return {
         ...common,
-        position: 'absolute',
+        position: 'absolute', // 在 transform 容器内 absolute 等同于铺满
         left: 0,
-        top: '0px',
+        top: 0,
+        height: '100%', // 🔥 关键：交给 CSS Flex 布局去自适应，不要 JS 算
       }
     }
   }
@@ -2192,7 +2201,9 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       ...editorStyle,
-      paddingBottom: isInputFocused ? '0px' : `${bottomSafePadding}px`,
+      paddingBottom: isInputFocused
+        ? '0px'
+        : `calc(${bottomSafePadding}px + env(safe-area-inset-bottom))`,
     }"
     @click.stop
   >
