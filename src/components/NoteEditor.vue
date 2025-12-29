@@ -1019,7 +1019,7 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // 1. 镜像计算
+  // --- 1. 镜像计算 (获取光标绝对位置) ---
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
@@ -1034,18 +1034,19 @@ function ensureCaretVisibleInTextarea() {
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
   document.body.removeChild(mirror)
 
-  // 2. 真实视口计算 (Visual Viewport)
-  const rect = el.getBoundingClientRect()
+  // --- 2. 真实视口计算 ---
+  // 必须用 visualViewport，因为 Body 锁死后，window.innerHeight 也是准的，但我们要排除键盘高度
   let viewportHeight = window.innerHeight
   if (window.visualViewport)
     viewportHeight = window.visualViewport.height
 
-  // 计算真实的可见高度 (视口高度 - 编辑器顶部位置)
+  const rect = el.getBoundingClientRect()
+  // 真实可见高度 = 视口高度 - 编辑器顶部位置
   const realVisibleHeight = viewportHeight - Math.max(0, rect.top)
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + realVisibleHeight
 
-  // 3. 智能策略
+  // --- 3. 智能策略 ---
   const topBuffer = 40
   const desiredBottomOffset = 80
 
@@ -1053,18 +1054,23 @@ function ensureCaretVisibleInTextarea() {
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
   }
   else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
-    // 目标滚动位置
+    // 目标位置
     const targetScroll = caretBottomAbsolute - (realVisibleHeight - desiredBottomOffset)
     const maxScrollPossible = el.scrollHeight - el.clientHeight
 
-    // 再次检查扩容 (作为循环后的双重保险)
+    // 【关键修复】
+    // 即使 scrollOffset 为 0 (因为Body锁死了)，只要 targetScroll > maxScrollPossible
+    // 我们就必须扩容！这就是之前“锁死版”失败的原因。
     if (targetScroll > maxScrollPossible) {
       const shortage = targetScroll - maxScrollPossible
+      // 动态撑大
       const newPadding = currentPadding + shortage + 10
       el.style.paddingBottom = `${newPadding}px`
+      // 撑大后立即滚动
       el.scrollTop = targetScroll
     }
     else {
+      // 空间够，直接滚
       el.scrollTop = targetScroll
     }
   }
@@ -1381,73 +1387,56 @@ function handleFocus() {
   if (textarea)
     textarea.style.paddingBottom = '80px'
 
-  // 2. 【核心大招】启动实时拦截循环
-  // 我们不等待 300ms，而是从聚焦的那一刻起，持续 400ms 监控
-  const startTime = performance.now()
-  const duration = 400 // 略大于键盘动画时间
+  // 2. 【核武器】锁死 Body
+  // 这一步彻底根治“工具条跳动”
+  const lockBody = () => {
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    // 强制归位，防止已经微小跳动
+    window.scrollTo(0, 0)
+  }
+  lockBody()
 
-  const lockLoop = () => {
-    // 如果已经失焦，停止循环
+  // 3. 启动驱动循环 (持续 400ms)
+  // 因为 Body 锁死了，浏览器不会帮我们滚，我们必须自己高频检查并滚动输入框
+  const startTime = performance.now()
+  const duration = 400
+
+  const driveLoop = () => {
     if (!isInputFocused.value)
       return
 
     const elapsed = performance.now() - startTime
 
-    // A. 获取浏览器这一帧偷偷推了多少
-    const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
-
-    // B. 如果发生了偏移，立刻进行“无感置换”
-    if (textarea && scrollOffset > 0) {
-      // --- 扩容逻辑 (防止撞墙) ---
-      const maxScroll = textarea.scrollHeight - textarea.clientHeight
-      const targetScrollTop = textarea.scrollTop + scrollOffset
-
-      if (targetScrollTop > maxScroll) {
-        const shortage = targetScrollTop - maxScroll
-        const currentPadding = Number.parseFloat(textarea.style.paddingBottom || '80')
-        // 实时撑大 Padding，确保能滚上去
-        textarea.style.paddingBottom = `${currentPadding + shortage}px`
-      }
-
-      // --- 移形换影 ---
-      // 1. 把 Window 按回去
+    // 持续强制归位 (双重保险)
+    if (window.scrollY !== 0)
       window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
 
-      // 2. 把输入框卷上去 (抵消 Window 的下移)
-      textarea.scrollTop += scrollOffset
-    }
-    else {
-      // 即使没偏移，也要强制锁死 Window，防止偶发跳动
-      if (window.scrollY !== 0)
-        window.scrollTo(0, 0)
-    }
-
-    // 继续循环，直到动画结束
-    if (elapsed < duration) {
-      requestAnimationFrame(lockLoop)
-    }
-    else {
-      // 动画结束了，做最后一次精准定位 (确保优雅停靠)
+    // 【核心】驱动光标检测
+    // 在 Body 锁死的情况下，这是唯一能让内容动起来的动力源
+    if (textarea)
       ensureCaretVisibleInTextarea()
-    }
+
+    if (elapsed < duration)
+      requestAnimationFrame(driveLoop)
   }
+  requestAnimationFrame(driveLoop)
 
-  // 启动循环
-  requestAnimationFrame(lockLoop)
+  // 4. 退场清理 (至关重要)
+  const onBlur = () => {
+    // 解锁 Body
+    document.body.style.overflow = ''
+    document.documentElement.style.overflow = ''
 
-  // 3. 退场清理
-  const restorePadding = () => {
+    // 还原 Padding (消除大白边)
     if (textarea)
       textarea.style.paddingBottom = '80px'
 
-    textarea.removeEventListener('blur', restorePadding)
+    textarea.removeEventListener('blur', onBlur)
   }
+
   if (textarea)
-    textarea.addEventListener('blur', restorePadding)
+    textarea.addEventListener('blur', onBlur)
 
   startFocusBoost()
 }
