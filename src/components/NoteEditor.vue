@@ -1019,7 +1019,7 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // 1. 镜像计算 (保持不变)
+  // 1. 镜像计算
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
@@ -1030,7 +1030,7 @@ function ensureCaretVisibleInTextarea() {
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  // 注意：这里计算的是【内容底部】，所以要减去当前的 paddingBottom
+  // 务必使用最新的 padding 数据
   const currentPadding = Number.parseFloat(style.paddingBottom || '0')
   const contentHeight = mirror.scrollHeight - currentPadding
 
@@ -1038,55 +1038,31 @@ function ensureCaretVisibleInTextarea() {
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
   document.body.removeChild(mirror)
 
-  // 2. 视口计算
+  // 2. 视口
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
 
-  // 3. 智能停靠 + 动态扩容
+  // 3. 智能停靠
   const topBuffer = 40
-  const desiredBottomOffset = 80 // 还是保持这个优雅的“托起高度”
+  const desiredBottomOffset = 80 // 优雅托起高度
 
-  // 场景 A: 顶部被挡
   if (caretTopAbsolute < viewTop + topBuffer) {
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
-    // 如果光标跑上面去了，说明不需要大 padding，可以尝试还原（可选，为了稳妥可以先不还原）
   }
-
-  // 场景 B: 底部被挡 (重点修改)
   else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
-    // 1. 计算我们【想要】滚到的位置
-    // 目标：光标底部 = 视口底部 - 80px
     const targetScroll = caretBottomAbsolute - (el.clientHeight - desiredBottomOffset)
-
-    // 2. 计算现在的物理极限能滚多少
-    // 极限 = 内容高度 + 当前Padding - 视口高度
-    // 注意：el.scrollHeight 包含了 padding
     const maxScrollPossible = el.scrollHeight - el.clientHeight
 
-    // 3. 【核心逻辑】如果想去的地方比极限还远，说明 Padding 不够用了
+    // 这里再次检查 padding，作为 handleFocus 之后的双重保险
     if (targetScroll > maxScrollPossible) {
-      // 计算缺口多少
       const shortage = targetScroll - maxScrollPossible
-
-      // 动态撑大 Padding！
-      // 新的 padding = 当前 padding + 缺口 + 一点点余量(防止计算误差)
-      const newPadding = currentPadding + shortage + 10
-
-      // 直接修改 DOM 样式，配合 CSS 的 transition 会很丝滑
+      // 累加 padding
+      const newPadding = currentPadding + shortage + 20
       el.style.paddingBottom = `${newPadding}px`
-
-      // 等下一帧 Padding 生效了，再滚动
-      // (由于 CSS 有 transition，可能需要一点时间，但通常浏览器会立即更新 layout 计算)
-      // 为了保险，我们可以直接滚，因为 scrollHeight 会立即更新
       el.scrollTop = targetScroll
     }
     else {
-      // 空间足够，直接优雅滚动
       el.scrollTop = targetScroll
-
-      // (可选) 如果发现空间绰绰有余（比如用户删了很多字），可以慢慢把 Padding 收回来
-      // 这里为了稳定性，暂时不自动收缩，防止抖动。
-      // 只要用户不是一直盯着最底部看，平时是看不到这个大 Padding 的。
     }
   }
 }
@@ -1396,37 +1372,54 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
-  // --- 新增：每次聚焦时，先重置回优雅的小 Padding ---
+  // 1. 重置 Padding，保证干净的开始
   const textarea = document.querySelector('.note-editor-reborn textarea')
-  if (textarea) {
-    // 100px 是我们在 CSS 里设定的基础值
-    // 这样每次进来都是清爽的，只有需要时才会变大
+  if (textarea)
     textarea.style.paddingBottom = '100px'
-  }
-  // -----------------------------------------------
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 延迟修正 (保持原来的逻辑不变)
+  // 2. 核心逻辑
   setTimeout(() => {
-    // A. 补偿计算
+    // A. 获取浏览器推了多少 (需要补偿的距离)
     const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
 
-    // B. 固定视口
+    // B. 按住页面 (保住工具条)
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
-
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // C. 滚动补偿
-    if (textarea && scrollOffset > 0)
-      textarea.scrollTop += scrollOffset
+    // C. 【关键修复】预判并扩容 + 补偿滚动
+    if (textarea && scrollOffset > 0) {
+      // 计算当前物理极限
+      // maxScroll 是当前内容能滚到的最底部
+      const maxScroll = textarea.scrollHeight - textarea.clientHeight
 
-    // D. 最终微调 (这里会触发上面的动态 Padding 逻辑)
+      // 我们想要滚到的目标位置
+      const targetScrollTop = textarea.scrollTop + scrollOffset
+
+      // 【预判】：如果目标位置超过了极限，说明会“撞墙”
+      if (targetScrollTop > maxScroll) {
+        // 计算缺口
+        const shortage = targetScrollTop - maxScroll
+
+        // 获取当前 padding
+        const currentPadding = Number.parseFloat(getComputedStyle(textarea).paddingBottom || '0')
+
+        // 立即扩容！直接加上缺口 + 50px 余量
+        // 这样天花板就变高了，scrollTop 就能滚上去了
+        textarea.style.paddingBottom = `${currentPadding + shortage + 50}px`
+      }
+
+      // 现在的天花板已经够高了，放心滚，不会被压下来了
+      textarea.scrollTop += scrollOffset
+    }
+
+    // D. 最终优雅归位 (交给 ensureCaret 做最后的 80px 停靠微调)
     requestAnimationFrame(() => {
       ensureCaretVisibleInTextarea()
     })
@@ -3269,13 +3262,11 @@ function handleBeforeInput(e: InputEvent) {
 /* 基础状态 */
 .note-editor-reborn textarea {
   padding-bottom: 100px;
-  /* 关键：加上过渡动画，让 padding 的变化像是在“呼吸”一样自然 */
-  transition: padding-bottom 0.2s ease-out;
+  /* 删掉 transition，我们要瞬间响应 */
 }
 
-/* 聚焦状态：也不要写死大数值了，交给 JS 动态控制 */
+/* 聚焦状态 */
 .note-editor-reborn.is-focused textarea {
-  /* 保持基础值，剩下的交给 JS */
-  padding-bottom: 100px;
+  padding-bottom: 100px; /* 初始值 */
 }
 </style>
