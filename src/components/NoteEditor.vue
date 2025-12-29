@@ -1343,58 +1343,43 @@ function handleFocus() {
   isInputFocused.value = true
   emit('focus')
   captureCaret()
-
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
+  // 1. 立即尝试一次（针对新建笔记这种简单情况，可能立刻就生效了）
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 300ms 核心逻辑 ---
+  // 2. 核心延迟处理（针对所有情况：旧笔记、长的新笔记）
   setTimeout(() => {
-    // 1. 【通用】固定工具条
+    // A. 【第一动作】保住工具条
+    // 无论什么情况，坚决不允许浏览器推走整个页面
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
+    // B. 【第二动作】校准光标
+    // 在页面被按住后，立刻重新计算光标位置
+    // 如果是新建笔记，这里执行一下也无妨
+    // 如果是旧笔记，这一步至关重要，它会把藏在下面的光标卷上来
+    ensureCaretVisibleInTextarea()
+
+    // C. 【补救措施】针对 iOS 偶尔算不准的情况
+    // 稍微给一点点“微小的”滚动补偿，触发浏览器的重绘，防止光标卡死
     const textarea = document.querySelector('.note-editor-reborn textarea')
-
-    if (textarea) {
-      if (!props.isEditing) {
-        // 【场景A：新建笔记】保持原样，交给浏览器
-        // 新建笔记通常不需要干预，ensureCaretVisibleInTextarea 足够好用
-        ensureCaretVisibleInTextarea()
-      }
-      else {
-        // 【场景B：编辑旧笔记】
-        // 使用“比例估算定位法”解决中间和末尾被遮挡的问题
-
-        const textLength = textarea.value.length
-        const cursorVal = textarea.selectionStart
-
-        // 1. 计算光标在全文的百分比位置 (0.0 - 1.0)
-        // 防止除以0
-        const ratio = textLength > 0 ? (cursorVal / textLength) : 0
-
-        // 2. 计算目标滚动高度
-        // 我们希望光标所在的位置，尽量处于屏幕的“中上部” (约 1/3 处)，而不是贴着底边
-        // textarea.clientHeight * 0.3 就是留出的顶部余量
-        let targetScroll = (textarea.scrollHeight * ratio) - (textarea.clientHeight * 0.3)
-
-        // 3. 修正：如果是末尾，利用 CSS 的 padding 稍微多滚一点，确保露出来
-        if (textLength - cursorVal < 50)
-          targetScroll = textarea.scrollHeight // 末尾直接拉到底
-
-        // 4. 执行滚动
-        textarea.scrollTop = targetScroll
-      }
+    if (textarea && isIOS) {
+      // 这是一个“无感”操作，甚至不需要改变数值，只要触碰一下 scrollTop 属性
+      // 有时候浏览器需要被“提醒”一下去更新渲染层
+      const current = textarea.scrollTop
+      textarea.scrollTop = current + 1
+      textarea.scrollTop = current
     }
   }, 300)
-  // -------------------------
 
+  // --- 后面全是保底逻辑，保持不变 ---
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {}, t1)
 
