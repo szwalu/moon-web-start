@@ -1353,47 +1353,44 @@ function handleFocus() {
 
   // --- 300ms 核心逻辑 ---
   setTimeout(() => {
-    // 1. 【通用操作】无论新旧笔记，都先把页面按回顶部（保住工具条）
+    // 1. 【通用】固定工具条
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 获取编辑器 DOM
     const textarea = document.querySelector('.note-editor-reborn textarea')
 
     if (textarea) {
-      // === 分流开始 ===
       if (!props.isEditing) {
-        // 【场景 A：新建笔记】
-        // 保持“原汁原味”。不加 Padding，不强制滚到底。
-        // 因为新建笔记通常浏览器处理得很好，我们只做了 window.scrollTo 修复工具条即可。
-        // 即使内容很长，浏览器默认的滚动逻辑通常也是对的。
-        textarea.style.paddingBottom = '100px' // 保持 CSS 原样
+        // 【场景A：新建笔记】保持原样，交给浏览器
+        // 新建笔记通常不需要干预，ensureCaretVisibleInTextarea 足够好用
         ensureCaretVisibleInTextarea()
       }
       else {
-        // 【场景 B：编辑旧笔记】
-        // 只有这种情况才出现“光标陷在键盘后”的问题，所以只在这里下重药。
+        // 【场景B：编辑旧笔记】
+        // 使用“比例估算定位法”解决中间和末尾被遮挡的问题
 
-        // 1. 动态加大 Padding，把底部撑起来
-        textarea.style.paddingBottom = '50vh'
-
-        // 2. 判断是否在末尾，强制上拉
         const textLength = textarea.value.length
         const cursorVal = textarea.selectionStart
 
-        if (textLength - cursorVal < 200) {
-          // 光标在末尾，暴力滚到底
-          textarea.scrollTop = textarea.scrollHeight
-        }
-        else {
-          // 光标在中间
-          ensureCaretVisibleInTextarea()
-        }
+        // 1. 计算光标在全文的百分比位置 (0.0 - 1.0)
+        // 防止除以0
+        const ratio = textLength > 0 ? (cursorVal / textLength) : 0
+
+        // 2. 计算目标滚动高度
+        // 我们希望光标所在的位置，尽量处于屏幕的“中上部” (约 1/3 处)，而不是贴着底边
+        // textarea.clientHeight * 0.3 就是留出的顶部余量
+        let targetScroll = (textarea.scrollHeight * ratio) - (textarea.clientHeight * 0.3)
+
+        // 3. 修正：如果是末尾，利用 CSS 的 padding 稍微多滚一点，确保露出来
+        if (textLength - cursorVal < 50)
+          targetScroll = textarea.scrollHeight // 末尾直接拉到底
+
+        // 4. 执行滚动
+        textarea.scrollTop = targetScroll
       }
-      // === 分流结束 ===
     }
   }, 300)
   // -------------------------
@@ -3237,8 +3234,14 @@ function handleBeforeInput(e: InputEvent) {
   border-bottom: none;
 }
 
-/* 让输入框内容底部多出一大截空白，聚焦时更多 */
+/* 基础状态 */
 .note-editor-reborn textarea {
-  padding-bottom: 100px; /* 平时 */
+  padding-bottom: 100px;
+}
+
+/* 聚焦时：给一个刚好能抵消键盘高度的缓冲 */
+/* 35dvh 在 iPhone 上大约是 250px-300px，足够把最后一行字托起，又不像 50vh 那么空 */
+.note-editor-reborn.is-focused textarea {
+  padding-bottom: 35dvh !important;
 }
 </style>
