@@ -34,19 +34,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const isInputFocused = ref(false)
 
-// 🔥 新增：用于存储实时可视高度
-const viewportHeight = ref(typeof window !== 'undefined' && window.visualViewport
-  ? window.visualViewport.height
-  : 0)
-
-// 🔥 新增：更新视口高度的函数
-function updateViewportHeight() {
-  if (window.visualViewport)
-    viewportHeight.value = window.visualViewport.height
-  else
-    viewportHeight.value = window.innerHeight
-}
-
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -90,22 +77,39 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：高度计算属性 (Visual Viewport 实时驱动)
-const editorHeight = computed(() => {
-  // 1. 键盘收起时（浏览模式）：逻辑不变
+// 🔥 修正版：样式计算属性 (取代 editorHeight)
+const editorStyle = computed(() => {
+  // 1. 键盘收起时（浏览模式）：保持原有逻辑
   if (!isInputFocused.value) {
-    // 编辑旧笔记全屏，新建笔记 80%
-    return props.isEditing ? '100dvh' : '80dvh'
+    return {
+      height: props.isEditing ? '100dvh' : '80dvh',
+      transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)', // 恢复动画
+    }
   }
 
   // 2. 键盘弹出时（输入模式）：
-  // 直接使用 Visual Viewport 测量出的真实高度。
-  // 这个高度已经自动减去了键盘、顶栏、底栏的高度。
-  if (viewportHeight.value > 0)
-    return `${viewportHeight.value}px`
+  // 使用 Visual Viewport 的全套数据来“钉死”位置
+  const vv = window.visualViewport
 
-  // 兜底（万一取不到视口高度，虽然在现代手机上极少发生）
-  return '100dvh'
+  if (vv) {
+    return {
+      position: 'fixed', // 强制固定，不再受页面滚动影响
+      left: 0,
+      width: '100%',
+      height: `${vv.height}px`, // 精确高度（不含键盘）
+      top: `${vv.offsetTop}px`, // 🔥 核心：跟随 iOS 的推挤偏移量
+      bottom: 'auto', // 清除可能存在的 bottom 干扰
+      borderRadius: 0, // 键盘弹出时直角更好看
+      margin: 0, // 清除 margin
+      transition: 'none', // 键盘跟随需要由浏览器原生驱动，不要 CSS 动画
+      zIndex: 9999, // 确保浮在最上层
+    }
+  }
+
+  // 兜底（极少数不支持 API 的旧机型）
+  return {
+    height: '100dvh',
+  }
 })
 
 const isFreezingBottom = ref(false)
@@ -559,6 +563,13 @@ function clearDraft() {
   }
 }
 
+// 定义一个触发更新的 ref，仅用于强制 computed 重新计算
+const layoutTick = ref(0)
+
+function updateLayout() {
+  layoutTick.value++
+}
+
 // 初次挂载：尝试恢复
 onMounted(() => {
   checkAndPromptDraft()
@@ -579,24 +590,15 @@ onMounted(() => {
     }
   }
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateViewportHeight)
-    window.visualViewport.addEventListener('scroll', updateViewportHeight)
-    // 初始化一次
-    updateViewportHeight()
-  }
-  else {
-    window.addEventListener('resize', updateViewportHeight)
+    window.visualViewport.addEventListener('resize', updateLayout)
+    window.visualViewport.addEventListener('scroll', updateLayout)
   }
 })
 
 onUnmounted(() => {
-  // 🔥 新增：移除监听
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateViewportHeight)
-    window.visualViewport.removeEventListener('scroll', updateViewportHeight)
-  }
-  else {
-    window.removeEventListener('resize', updateViewportHeight)
+    window.visualViewport.removeEventListener('resize', updateLayout)
+    window.visualViewport.removeEventListener('scroll', updateLayout)
   }
 })
 
@@ -2167,9 +2169,8 @@ function handleBeforeInput(e: InputEvent) {
       'is-focused': isInputFocused,
     }"
     :style="{
+      ...editorStyle,
       paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
-      height: editorHeight,
     }"
     @click.stop
   >
