@@ -1012,7 +1012,6 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
-
   const textarea = document.querySelector('.note-editor-reborn textarea')
   if (!textarea)
     return
@@ -1020,7 +1019,7 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // 1. 镜像计算
+  // --- 1. 镜像克隆 (保持你觉得好用的这段逻辑) ---
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
@@ -1031,33 +1030,43 @@ function ensureCaretVisibleInTextarea() {
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
+  // 计算出光标底部的绝对像素坐标 (mirror.scrollHeight 包含了 padding)
+  // 注意：这里我们减去 paddingBottom，得到的是“文本内容的底部”
+  // 但为了保险，我们直接用 mirror.scrollHeight 作为基准，更稳妥
   const caretBottomAbsolute = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
+
   document.body.removeChild(mirror)
 
-  // 2. 视口计算
+  // --- 2. 获取当前可视窗口范围 ---
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
 
-  // 3. 智能策略 (Flomo Logic)
-  const topBuffer = 40
-  const bottomBuffer = 40 // 稍微加大一点 buffer
+  // --- 3. 智能判断逻辑 (修改了这里) ---
 
+  // 定义缓冲距离
+  const topBuffer = 40 // 顶部工具条缓冲
+  const bottomBuffer = 30 // 底部键盘缓冲
+
+  // 【情况 A】：光标在视野内 (ViewTop < 光标 < ViewBottom)
+  if (caretTopAbsolute >= viewTop + topBuffer && caretBottomAbsolute <= viewBottom - bottomBuffer) {
+    // 核心修改：如果光标已经看得到了，绝对不动！
+    // 这就解决了“点击上方文字也乱跳”的问题
+    return
+  }
+
+  // 【情况 B】：光标在上方被挡住 (比如点击了第一行，但目前滚在第十行)
   if (caretTopAbsolute < viewTop + topBuffer) {
-    // 场景 A: 顶部被挡 -> 微微调整露出
+    // 只需要“稍微往上滚一点”，露出来就行，不需要跳到中间
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
   }
-  else if (caretBottomAbsolute > viewBottom - bottomBuffer) {
-    // 场景 B: 底部被挡 -> 把它捞到屏幕中间！
-    // 这里的动作幅度很大
-    const halfScreen = el.clientHeight / 2
 
-    // 【关键修正】直接定位到 "光标位于屏幕偏上方" 的位置
-    // 这样能更有效地对抗 "被按下去" 的视觉偏差
-    el.scrollTop = caretBottomAbsolute - halfScreen
-  }
-  else {
-    // 场景 C: 在视野内 -> 不动
+  // 【情况 C】：光标在下方被挡住 (被键盘遮住)
+  else if (caretBottomAbsolute > viewBottom - bottomBuffer) {
+    // 只有这种情况，我们才执行“Day One 风格”的居中跳转
+    // 把它拉到屏幕 40% 的高度，体验最优雅
+    const targetOffset = el.clientHeight * 0.4
+    el.scrollTop = caretBottomAbsolute - targetOffset
   }
 }
 
@@ -1366,42 +1375,38 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 立即尝试一次（这主要是为了新建笔记的快速响应，旧笔记这里通常无效，但这步无害）
+  // 1. 立即尝试
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 2. 第一阶段：300ms —— 只负责“维稳”
-  // 无论如何，先把页面按住，防止工具条飞走
+  // 2. 核心延时
   setTimeout(() => {
+    // A. 必须：先把 Body 按住
     window.scrollTo(0, 0)
+
+    // 修复 ESLint: 加花括号
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
 
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 注意：这里不要直接调用 ensureCaret，否则会和上面的 scrollTo 打架
+    // B. 核心：执行计算
+    ensureCaretVisibleInTextarea()
+
+    // C. iOS 补丁 (需要时解开)
+    // const textarea = document.querySelector('.note-editor-reborn textarea')
+    // if (textarea && isIOS) {
+    //     textarea.scrollTop += 1
+    //     textarea.scrollTop -= 1
+    // }
   }, 300)
 
-  // 3. 第二阶段：350ms —— 专门负责“捞光标”
-  // 等上面 scrollTo 执行完、高度渲染稳定后，再执行这个
+  // 保底检查
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 350) // 延迟 50ms，避开渲染冲突
-
-  // 4. 第三阶段：500ms —— 最终兜底
-  // 防止有些老旧 iOS 设备动画较慢，最后再检查一次
-  setTimeout(() => {
-    ensureCaretVisibleInTextarea()
-  }, 500)
-
-  // --- 其他原有逻辑保持不变 ---
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {}, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {}, t2)
+  }, 450)
 
   startFocusBoost()
 }
