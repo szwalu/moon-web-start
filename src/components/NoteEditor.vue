@@ -2782,8 +2782,8 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
-  padding-bottom: calc(-20px + constant(safe-area-inset-bottom));
-  padding-bottom: calc(-20px + env(safe-area-inset-bottom));
+  padding-bottom: calc(-30px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(-30px + env(safe-area-inset-bottom));
 
   background-color: #fff;
   border-top: 1px solid #eee;
@@ -3165,16 +3165,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-
-/* 当屏幕高度小于 600px 时（说明键盘弹起了），强制消除底部空白 */
-@media (max-height: 600px) {
-  .editor-footer {
-    /* 强制底部没有内边距 */
-    padding-bottom: 0px !important;
-
-    /* 如果觉得还是高，可以把下面这行注释解开，通过负边距强制往下拉 */
-    /* margin-bottom: -5px !important; */
-  }
 }
 </style>
