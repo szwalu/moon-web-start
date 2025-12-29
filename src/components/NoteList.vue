@@ -974,7 +974,7 @@ async function restoreScrollIfNeeded() {
 <template>
   <div ref="wrapperRef" class="notes-list-wrapper">
     <div
-      v-if="currentMonthLabel"
+      v-if="currentMonthLabel && !isEditingTop"
       class="sticky-month"
       :style="{ transform: `translateY(${-pushOffset}px)` }"
     >
