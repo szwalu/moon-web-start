@@ -1383,60 +1383,74 @@ function handleFocus() {
 
   const textarea = document.querySelector('.note-editor-reborn textarea')
 
-  // 1. 初始化
+  // 1. 初始化 Padding
   if (textarea)
     textarea.style.paddingBottom = '80px'
 
-  // 2. 【核武器】锁死 Body
-  // 这一步彻底根治“工具条跳动”
-  const lockBody = () => {
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
-    // 强制归位，防止已经微小跳动
-    window.scrollTo(0, 0)
-  }
-  lockBody()
-
-  // 3. 启动驱动循环 (持续 400ms)
-  // 因为 Body 锁死了，浏览器不会帮我们滚，我们必须自己高频检查并滚动输入框
+  // 2. 启动实时拦截循环 (让文字不跳)
+  // 工具条现在由 CSS sticky 保护，稳如泰山
+  // 这个循环只负责平滑处理输入框内容的滚动
   const startTime = performance.now()
   const duration = 400
 
-  const driveLoop = () => {
+  const lockLoop = () => {
     if (!isInputFocused.value)
       return
 
     const elapsed = performance.now() - startTime
 
-    // 持续强制归位 (双重保险)
-    if (window.scrollY !== 0)
+    // A. 侦测偏移
+    const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
+
+    // B. 如果发生了偏移，立刻进行“移形换影”
+    if (textarea && scrollOffset > 0) {
+      // 扩容防撞墙
+      const maxScroll = textarea.scrollHeight - textarea.clientHeight
+      const targetScrollTop = textarea.scrollTop + scrollOffset
+
+      if (targetScrollTop > maxScroll) {
+        const shortage = targetScrollTop - maxScroll
+        const currentPadding = Number.parseFloat(textarea.style.paddingBottom || '80')
+        textarea.style.paddingBottom = `${currentPadding + shortage}px`
+      }
+
+      // 1. 把 Window 按回去 (此时 sticky 的工具条会自动吸附在顶部，不会跳)
       window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
 
-    // 【核心】驱动光标检测
-    // 在 Body 锁死的情况下，这是唯一能让内容动起来的动力源
-    if (textarea)
+      // 2. 把输入框卷上去 (抵消 Window 的下移)
+      textarea.scrollTop += scrollOffset
+    }
+    else {
+      // 强制锁死 Window
+      if (window.scrollY !== 0)
+        window.scrollTo(0, 0)
+    }
+
+    // 继续循环
+    if (elapsed < duration) {
+      requestAnimationFrame(lockLoop)
+    }
+    else {
+      // 循环结束，做最后一次精准定位
       ensureCaretVisibleInTextarea()
-
-    if (elapsed < duration)
-      requestAnimationFrame(driveLoop)
+    }
   }
-  requestAnimationFrame(driveLoop)
 
-  // 4. 退场清理 (至关重要)
-  const onBlur = () => {
-    // 解锁 Body
-    document.body.style.overflow = ''
-    document.documentElement.style.overflow = ''
+  requestAnimationFrame(lockLoop)
 
-    // 还原 Padding (消除大白边)
+  // 3. 退场清理
+  const restorePadding = () => {
     if (textarea)
       textarea.style.paddingBottom = '80px'
 
-    textarea.removeEventListener('blur', onBlur)
+    textarea.removeEventListener('blur', restorePadding)
   }
-
   if (textarea)
-    textarea.addEventListener('blur', onBlur)
+    textarea.addEventListener('blur', restorePadding)
 
   startFocusBoost()
 }
@@ -2834,6 +2848,16 @@ function handleBeforeInput(e: InputEvent) {
   align-items: center;
   justify-content: space-between;
 
+position: -webkit-sticky; /* Safari 兼容 */
+  position: sticky;
+  top: 0;
+
+  /* 层级必须高，防止被文字遮挡 */
+  z-index: 1002;
+
+  /* 可选：加个小阴影让层次更分明，遮挡感更好 */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+
   /* 原来可能写的 8px 太少了，改成 20px 或更多 */
   padding: 4px 10px;
 
@@ -2844,7 +2868,6 @@ function handleBeforeInput(e: InputEvent) {
 
   background-color: #fff;
   border-top: 1px solid #eee;
-  z-index: 100;
   flex-shrink: 0;
 
   /* 确保内边距不会撑大整体高度导致溢出 */
@@ -3271,16 +3294,5 @@ function handleBeforeInput(e: InputEvent) {
   padding-bottom: 80px;
   /* 禁止 transition，确保 JS 改了 padding 立即生效 */
   transition: none !important;
-}
-
-/* 强制工具条钉在屏幕顶部，不随 Body 滚动而移动 */
-.your-toolbar-class {
-  position: fixed; /* 或 sticky */
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  /* 确保有背景色，防止透出下面内容 */
-  background-color: var(--bg-color);
 }
 </style>
