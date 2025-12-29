@@ -1351,36 +1351,36 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 300ms 核心修正逻辑 ---
+  // --- 300ms 核心逻辑修正 ---
   setTimeout(() => {
-    // 1. 【通用】先把被顶上去的页面强制按回顶部（保住工具条）
-    // 这一点无论是新旧笔记都需要，因为 iOS 键盘有时候很暴力
+    // 1. 【通用】先把整个页面（Body）按回顶部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 获取编辑器 DOM
+    // 2. 处理输入框内部滚动
     const textarea = document.querySelector('.note-editor-reborn textarea')
 
     if (textarea) {
       const textLength = textarea.value.length
-      const cursorVal = textarea.selectionStart
 
-      // 【关键修改】判断条件：
-      // 只有当是“编辑旧笔记” 或者 “字数较多(超过一屏)”时，才执行暴力置底
-      // 200字是一个大概的经验阈值，你可以根据实际情况调整
-      const isLongContent = props.isEditing || textLength > 200
-
-      // 只有长内容且光标在末尾附近时，才暴力拉到底
-      if (isLongContent && (textLength - cursorVal < 200)) {
-        textarea.scrollTop = textarea.scrollHeight
+      // 【关键修正点】
+      // 设定一个阈值（比如150字符），低于这个值认为是“短笔记”
+      if (textLength < 150) {
+        // 【场景 A：新建/短笔记】
+        // 强制把滚动条锁死在顶部，防止浏览器为了展示 padding 而把字顶飞
+        textarea.scrollTop = 0
       }
       else {
-        // 【新建笔记/短内容】走这里
-        // 只是普通的确保可见，不会把两行字顶飞
-        ensureCaretVisibleInTextarea()
+        // 【场景 B：长笔记/旧笔记】
+        // 这里的逻辑保持昨天的方案：如果光标在末尾，就强制滚到底部捞光标
+        const cursorVal = textarea.selectionStart
+        if (textLength - cursorVal < 200)
+          textarea.scrollTop = textarea.scrollHeight
+        else
+          ensureCaretVisibleInTextarea()
       }
     }
   }, 300)
