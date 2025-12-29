@@ -84,12 +84,11 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性 (精确像素控制 + 顶部/底部扣减)
+// 🔥 修正版：样式计算属性 (移除干扰，精确回归)
 const editorStyle = computed(() => {
-  // 依赖收集
   const _tick = layoutTick.value
 
-  // 1. 键盘收起（浏览模式）
+  // 1. 键盘收起
   if (!isInputFocused.value) {
     return {
       height: props.isEditing ? '100dvh' : '80dvh',
@@ -97,17 +96,10 @@ const editorStyle = computed(() => {
     }
   }
 
-  // 2. 键盘弹出（输入模式）
+  // 2. 键盘弹出
   const vv = window.visualViewport
   if (vv) {
-    // 🛠 参数配置区
-    // -------------------------
-    // 抽屉头部高度估算 (通常 Header 是 44~56px，我们预留 56px)
-    const DRAWER_HEADER_OFFSET = 56
-    // 底部安全缝隙 (防止工具条贴太死被键盘边缘遮挡，预留 12px)
-    const BOTTOM_GAP = 12
-    // -------------------------
-
+    // 公共重置
     const common = {
       width: '100%',
       borderRadius: 0,
@@ -116,31 +108,35 @@ const editorStyle = computed(() => {
       zIndex: 9999,
     }
 
+    // -----------------------------------------------------
+    // 🅰️ 编辑旧笔记（全屏模式）
+    // -----------------------------------------------------
     if (props.isEditing) {
-      // 🅰️ 编辑旧笔记（全屏）：
-      // 策略：Fixed 定位 + Top 修正。
-      // 高度 = 可视高度 - 底部防遮挡缝隙
+      // 只要你删掉了 CSS 里的 !important，这里用 vv.height 就绝对精准。
+      // 减去 2px 是为了防止子像素渲染导致的 1px 白边，不需要更多了。
       return {
         ...common,
         position: 'fixed',
         left: 0,
-        top: `${vv.offsetTop}px`, // 必须跟随滚动
-        height: `${vv.height - BOTTOM_GAP}px`, // 🔥 主动减去 12px，确保工具条露出
+        top: `${vv.offsetTop}px`, // 跟随 iOS 页面推挤
+        height: `${vv.height - 2}px`,
         bottom: 'auto',
       }
     }
+
+    // -----------------------------------------------------
+    // 🅱️ 新建笔记（抽屉模式）
+    // -----------------------------------------------------
     else {
-      // 🅱️ 新建笔记（抽屉）：
-      // 策略：Absolute 定位 + Top: 0。
-      // 高度 = 可视高度 - 抽屉Header高度 - 底部防遮挡缝隙
-      // 解释：因为在抽屉里，编辑器是从 Header 下方开始的，所以总高度必须减去 Header 的高度，
-      // 否则底部肯定会被挤到键盘后面去。
+      // 你反馈说这个模式“差不多可以了”，那我们保持逻辑：
+      // 用 absolute 顶在抽屉上，减去 56px 的 Header 高度
+      const DRAWER_HEADER_OFFSET = 56
       return {
         ...common,
         position: 'absolute',
         left: 0,
-        top: 0, // 紧贴抽屉内容区的顶部
-        height: `${vv.height - DRAWER_HEADER_OFFSET - BOTTOM_GAP}px`, // 🔥 核心：扣除 Header 和 Gap
+        top: 0,
+        height: `${vv.height - DRAWER_HEADER_OFFSET}px`,
       }
     }
   }
@@ -2680,16 +2676,6 @@ function handleBeforeInput(e: InputEvent) {
 
   margin-top: 0 !important;
   border-radius: 0;
-}
-
-/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
-/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
-   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
-@media (max-height: 600px) {
-  .note-editor-reborn.editing-viewport {
-    height: 100dvh !important;
-    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
-  }
 }
 
 /* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式 🔥🔥🔥 */
