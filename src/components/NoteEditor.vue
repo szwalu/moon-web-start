@@ -1365,33 +1365,39 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
+  // 1. 立即尝试一次（针对新建笔记等无需等待的情况）
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 延迟修正
+  // 2. 核心延迟处理
   setTimeout(() => {
-    // 1. 死守工具条
+    // --- 第一步：先安内（固定视口）---
+    // 这一步是造成“压下去”感觉的元凶，所以必须让它先执行完
     window.scrollTo(0, 0)
-
-    // 修复：ESLint 不允许单行 if，必须换行或加花括号
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
 
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 智能滚动
-    ensureCaretVisibleInTextarea()
+    // --- 第二步：再攘外（调整光标）---
+    // 关键！不要立即执行，而是等下一帧。
+    // 告诉浏览器：“等你把 window.scrollTo(0,0) 的画面画好了，再帮我滚光标”
+    requestAnimationFrame(() => {
+      // 这里执行 Flomo 逻辑，把光标拉到中间
+      ensureCaretVisibleInTextarea()
+    })
   }, 300)
 
-  // 兜底逻辑
+  // --- 这里的兜底保持不变 ---
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {}, t1)
 
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {}, t2)
 
+  // 最后再检查一次，防止任何意外
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
   }, 450)
