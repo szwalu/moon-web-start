@@ -1344,50 +1344,42 @@ function handleFocus() {
   emit('focus')
   captureCaret()
 
-  // 允许再次“轻推”
   _hasPushedPage = false
-
-  // 用真实 footer 高度“临时托起”，不等 vv
   emit('bottomSafeChange', getFooterHeight())
 
-  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 核心修改区域 Start ---
-  // 无论是新建还是编辑，都执行强制归位
+  // --- 核心修改区域 ---
   setTimeout(() => {
-    // 1. 先把被顶上去的页面强制按回顶部（保住工具条）
+    // 1. 先把整个页面按死在顶部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 【关键新增】页面按下来后，光标可能被埋在键盘后面了
-    // 必须立刻通知编辑器内部滚动，把光标露出来
-    ensureCaretVisibleInTextarea()
-  }, 300) // 保持 300ms 等待键盘完全弹起
-  // --- 核心修改区域 End ---
+    // 2. 【关键修正】不要立刻找光标，而是等“下一帧”
+    // 告诉浏览器：“等你把页面按好之后，马上帮我把光标捞出来”
+    requestAnimationFrame(() => {
+      ensureCaretVisibleInTextarea()
+    })
+  }, 300) // 维持 300ms 不变
+  // --- 核心修改结束 ---
 
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  // 这里的延时保持原样，处理视口兼容性
   const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-    // ...
-  }, t1)
+  window.setTimeout(() => {}, t1)
 
   const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-    // ...
-  }, t2)
+  window.setTimeout(() => {}, t2)
 
-  // 400ms 的兜底检查依然保留，作为双重保险
+  // 最后的兜底检查，建议延后一点点到 450ms 或 500ms，避开前面的操作
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 400)
+  }, 450)
 
-  // 启动短时“助推轮询”
   startFocusBoost()
 }
 
