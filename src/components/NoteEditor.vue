@@ -1012,58 +1012,45 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
-  const textarea = document.querySelector('.note-editor-reborn textarea') // 确保获取 DOM
+  const textarea = document.querySelector('.note-editor-reborn textarea')
   if (!textarea)
     return
 
-  const el = textarea // 方便后续引用
+  const el = textarea
   const style = getComputedStyle(el)
 
+  // --- 1. 镜像克隆 (计算光标像素位置最准确的方法) ---
   const mirror = document.createElement('div')
-  // 保持原有镜像逻辑，这是核心计算基础
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
+  // 核心：截取光标之前的所有文本
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
 
-  const lineHeight = Number.parseFloat(style.lineHeight || '20')
-
-  // 这里的计算保持不变，获取光标的绝对像素位置
+  // --- 2. 获取光标在文档流中的绝对 Y 坐标 ---
+  // scrollHeight 是镜像是总高度，paddingBottom 是 CSS 里的填充
+  // 我们要的是光标底部的坐标
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
+  // --- 3. Day One 风格计算 (黄金分割位) ---
+  // 获取当前可视窗口的高度 (键盘弹出后的高度)
+  const clientHeight = el.clientHeight
 
-  // 计算光标上下边界
-  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  // 目标：我们希望光标处于屏幕视口的 "40% 高度" 处
+  // 这样既不会贴顶，也不会贴底，符合人眼阅读习惯
+  const targetOffset = clientHeight * 0.4
 
-  /* --- 核心修改区域 --- */
+  // 计算目标滚动条位置：光标坐标 - 屏幕上的目标偏移量
+  const targetScrollTop = caretTopInTextarea - targetOffset
 
-  // 定义一个“底部安全距离”，比如 80px
-  // 这意味着：我们希望光标至少距离可视区域底部 80px，而不是紧贴着边缘
-  const bottomBuffer = 80
-
-  if (caretDesiredBottom > viewBottom) {
-    // 【场景：光标在视野下方】
-    // 原来是：caretDesiredBottom - el.clientHeight
-    // 修改为：再多滚 bottomBuffer 这么多距离，把光标“抬”起来
-    // 配合 CSS 的 padding-bottom: 100px，这会让光标舒服地浮在键盘上方
-    el.scrollTop = Math.min(
-      caretDesiredBottom - el.clientHeight + bottomBuffer,
-      el.scrollHeight - el.clientHeight,
-    )
-  }
-  else if (caretDesiredTop < viewTop) {
-    // 【场景：光标在视野上方】
-    // 同样可以给顶部加一点 buffer，防止贴着顶边
-    const topBuffer = 20
-    el.scrollTop = Math.max(caretDesiredTop - topBuffer, 0)
-  }
+  // --- 4. 执行平滑修正 ---
+  // 如果算出来是负数 (新建笔记)，它会自动归零
+  // 如果算出来很大 (旧笔记末尾)，配合 CSS 的 padding，它会滚到中间
+  el.scrollTop = targetScrollTop
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1371,46 +1358,33 @@ function handleFocus() {
   _hasPushedPage = false
   emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 立即尝试一次（针对新建笔记这种简单情况，可能立刻就生效了）
+  // 1. 立即尝试一次 (针对极快响应)
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // 2. 核心延迟处理（针对所有情况：旧笔记、长的新笔记）
+  // 2. 核心延时 (等待键盘弹起)
   setTimeout(() => {
-    // A. 【第一动作】保住工具条
-    // 无论什么情况，坚决不允许浏览器推走整个页面
+    // A. 必须：先把 Body 按住，防止工具条飞走
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // B. 【第二动作】校准光标
-    // 在页面被按住后，立刻重新计算光标位置
-    // 如果是新建笔记，这里执行一下也无妨
-    // 如果是旧笔记，这一步至关重要，它会把藏在下面的光标卷上来
+    // B. 核心：执行“居中”计算
+    // 无论是新建笔记、中间插入、还是文末续写，全部通用
     ensureCaretVisibleInTextarea()
 
-    // C. 【补救措施】针对 iOS 偶尔算不准的情况
-    // 稍微给一点点“微小的”滚动补偿，触发浏览器的重绘，防止光标卡死
-    const textarea = document.querySelector('.note-editor-reborn textarea')
-    if (textarea && isIOS) {
-      // 这是一个“无感”操作，甚至不需要改变数值，只要触碰一下 scrollTop 属性
-      // 有时候浏览器需要被“提醒”一下去更新渲染层
-      const current = textarea.scrollTop
-      textarea.scrollTop = current + 1
-      textarea.scrollTop = current
-    }
-  }, 300)
+    // C. iOS 顽固症候群补丁 (可选，如果还有偶发不显示，解开下面注释)
+    // const textarea = document.querySelector('.note-editor-reborn textarea')
+    // if (textarea && isIOS) {
+    //    textarea.scrollTop += 1
+    //    textarea.scrollTop -= 1
+    // }
+  }, 300) // 保持 300ms
 
-  // --- 后面全是保底逻辑，保持不变 ---
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {}, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {}, t2)
-
+  // 保底检查
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
   }, 450)
@@ -3246,12 +3220,14 @@ function handleBeforeInput(e: InputEvent) {
 
 /* 基础状态 */
 .note-editor-reborn textarea {
-  padding-bottom: 100px;
+  padding-bottom: 120px;
 }
 
-/* 聚焦时：给一个刚好能抵消键盘高度的缓冲 */
-/* 35dvh 在 iPhone 上大约是 250px-300px，足够把最后一行字托起，又不像 50vh 那么空 */
+/* 聚焦状态：Day One 风格 */
 .note-editor-reborn.is-focused textarea {
-  padding-bottom: 35dvh !important;
+  /* 关键：必须留出约 40% 屏幕高度的 buffer。
+     没有这个空间，最后一行字永远只能贴在底边，怎么算都滚不上来。
+  */
+  padding-bottom: 40dvh !important;
 }
 </style>
