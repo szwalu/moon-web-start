@@ -1012,7 +1012,6 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
-
   const textarea = document.querySelector('.note-editor-reborn textarea')
   if (!textarea)
     return
@@ -1020,72 +1019,48 @@ function ensureCaretVisibleInTextarea() {
   const el = textarea
   const style = getComputedStyle(el)
 
-  // --- 1. 镜像计算 (保持不变) ---
+  // 1. 镜像计算
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
-
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
-
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
   const currentPadding = Number.parseFloat(style.paddingBottom || '0')
   const contentHeight = mirror.scrollHeight - currentPadding
-
   const caretBottomAbsolute = contentHeight
   const caretTopAbsolute = caretBottomAbsolute - lineHeight
   document.body.removeChild(mirror)
 
-  // --- 2. 视口计算 (核心修复) ---
-  // 获取元素相对于视口顶部的距离
+  // 2. 真实视口计算 (Visual Viewport)
   const rect = el.getBoundingClientRect()
-
-  // 【关键】计算真实的可见高度
-  // 如果支持 visualViewport (iOS/Android)，用它；否则降级用 innerHeight
-  // visualViewport.height 是减去键盘后的高度
   let viewportHeight = window.innerHeight
   if (window.visualViewport)
     viewportHeight = window.visualViewport.height
 
-  // 编辑器的可见高度 = 视口高度 - 编辑器顶部位置
-  // (防止编辑器顶部被工具条遮挡，这里假设顶部是干净的，如果不干净可以再减去 rect.top)
-  // 如果 rect.top 是负数（说明滚上去了），我们只关心视口内的相对空间
-  // 这里简化处理：可视底边 = scrollTop + (视口高度 - 顶部偏移)
-  // 为了稳妥，我们直接算：视口底部在文档流中的绝对位置
-  // 视口底部Y = 滚动条位置 + (视口高度 - 编辑器距离顶部的距离)
-  // 但要注意 rect.top 随滚动变化。
-
-  // 更简单的算法：
-  // 只要 光标相对于视口的位置 > 视口高度，就是被挡住了
-  // 光标相对于视口的位置 = caretBottomAbsolute - el.scrollTop + rect.top (初始布局位置)
-  // 但为了兼容现有的 scrollTop 逻辑，我们修正 viewBottom 的定义：
-
-  // 真实的可视窗口高度（编辑器内部能显示的高度）
-  // 还要减去 rect.top (因为编辑器不一定是从屏幕 0px 开始的)
+  // 计算真实的可见高度 (视口高度 - 编辑器顶部位置)
   const realVisibleHeight = viewportHeight - Math.max(0, rect.top)
-
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + realVisibleHeight
 
-  // --- 3. 智能策略 ---
+  // 3. 智能策略
   const topBuffer = 40
   const desiredBottomOffset = 80
 
   if (caretTopAbsolute < viewTop + topBuffer) {
     el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
   }
-  // 【关键】现在 viewBottom 是真实的（减去键盘了），所以这里能正确检测到倒数第2-9行是被遮挡的
   else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
-    // 目标：把光标拉到 (真实可视底边 - 80px)
-    // 注意：这里要用 realVisibleHeight 来计算偏移
+    // 目标滚动位置
     const targetScroll = caretBottomAbsolute - (realVisibleHeight - desiredBottomOffset)
     const maxScrollPossible = el.scrollHeight - el.clientHeight
 
+    // 再次检查扩容 (作为循环后的双重保险)
     if (targetScroll > maxScrollPossible) {
       const shortage = targetScroll - maxScrollPossible
-      const newPadding = currentPadding + shortage + 20
+      const newPadding = currentPadding + shortage + 10
       el.style.paddingBottom = `${newPadding}px`
       el.scrollTop = targetScroll
     }
@@ -1402,48 +1377,67 @@ function handleFocus() {
 
   const textarea = document.querySelector('.note-editor-reborn textarea')
 
-  // 1. 初始化 padding
+  // 1. 初始化
   if (textarea)
     textarea.style.paddingBottom = '80px'
 
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-  })
+  // 2. 【核心大招】启动实时拦截循环
+  // 我们不等待 300ms，而是从聚焦的那一刻起，持续 400ms 监控
+  const startTime = performance.now()
+  const duration = 400 // 略大于键盘动画时间
 
-  // 2. 核心逻辑
-  setTimeout(() => {
-    // A. 补偿计算
+  const lockLoop = () => {
+    // 如果已经失焦，停止循环
+    if (!isInputFocused.value)
+      return
+
+    const elapsed = performance.now() - startTime
+
+    // A. 获取浏览器这一帧偷偷推了多少
     const scrollOffset = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop
 
-    // B. 固定视口
-    window.scrollTo(0, 0)
-    if (document.body.scrollTop !== 0)
-      document.body.scrollTop = 0
-
-    if (document.documentElement.scrollTop !== 0)
-      document.documentElement.scrollTop = 0
-
-    // C. 补偿滚动 (防止文字下沉)
+    // B. 如果发生了偏移，立刻进行“无感置换”
     if (textarea && scrollOffset > 0) {
-      // 这里还是要做一个简单的撞墙检测，防止补偿时被压住
+      // --- 扩容逻辑 (防止撞墙) ---
       const maxScroll = textarea.scrollHeight - textarea.clientHeight
       const targetScrollTop = textarea.scrollTop + scrollOffset
 
       if (targetScrollTop > maxScroll) {
         const shortage = targetScrollTop - maxScroll
-        // 稍微扩容一点，保证补偿能生效
-        const currentPadding = 80
-        textarea.style.paddingBottom = `${currentPadding + shortage + 10}px`
+        const currentPadding = Number.parseFloat(textarea.style.paddingBottom || '80')
+        // 实时撑大 Padding，确保能滚上去
+        textarea.style.paddingBottom = `${currentPadding + shortage}px`
       }
 
+      // --- 移形换影 ---
+      // 1. 把 Window 按回去
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+
+      // 2. 把输入框卷上去 (抵消 Window 的下移)
       textarea.scrollTop += scrollOffset
     }
+    else {
+      // 即使没偏移，也要强制锁死 Window，防止偶发跳动
+      if (window.scrollY !== 0)
+        window.scrollTo(0, 0)
+    }
 
-    // D. 最终交给 ensureCaret 去做“真实视口检测”和“优雅托起”
-    requestAnimationFrame(() => {
+    // 继续循环，直到动画结束
+    if (elapsed < duration) {
+      requestAnimationFrame(lockLoop)
+    }
+    else {
+      // 动画结束了，做最后一次精准定位 (确保优雅停靠)
       ensureCaretVisibleInTextarea()
-    })
-  }, 300)
+    }
+  }
+
+  // 启动循环
+  requestAnimationFrame(lockLoop)
 
   // 3. 退场清理
   const restorePadding = () => {
@@ -1452,14 +1446,8 @@ function handleFocus() {
 
     textarea.removeEventListener('blur', restorePadding)
   }
-
   if (textarea)
     textarea.addEventListener('blur', restorePadding)
-
-  // 保底
-  setTimeout(() => {
-    ensureCaretVisibleInTextarea()
-  }, 450)
 
   startFocusBoost()
 }
@@ -3290,14 +3278,9 @@ function handleBeforeInput(e: InputEvent) {
   border-bottom: none;
 }
 
-/* 基础状态 */
 .note-editor-reborn textarea {
-  /* 80px 足够托起光标，平时看着也不突兀 */
   padding-bottom: 80px;
-  /* 必须去掉 transition，防止高度计算时的延迟导致“压下来” */
-}
-
-.note-editor-reborn.is-focused textarea {
-  padding-bottom: 80px; /* 聚焦时也保持这个初始值，剩下的交给 JS */
+  /* 禁止 transition，确保 JS 改了 padding 立即生效 */
+  transition: none !important;
 }
 </style>
