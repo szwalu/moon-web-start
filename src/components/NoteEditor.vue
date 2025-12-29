@@ -84,7 +84,7 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性 (移除干扰，精确回归)
+// 🔥 修正版：样式计算属性 (CSS 修复后的最终逻辑)
 const editorStyle = computed(() => {
   const _tick = layoutTick.value
 
@@ -99,7 +99,6 @@ const editorStyle = computed(() => {
   // 2. 键盘弹出
   const vv = window.visualViewport
   if (vv) {
-    // 公共重置
     const common = {
       width: '100%',
       borderRadius: 0,
@@ -108,28 +107,23 @@ const editorStyle = computed(() => {
       zIndex: 9999,
     }
 
-    // -----------------------------------------------------
-    // 🅰️ 编辑旧笔记（全屏模式）
-    // -----------------------------------------------------
     if (props.isEditing) {
-      // 只要你删掉了 CSS 里的 !important，这里用 vv.height 就绝对精准。
-      // 减去 2px 是为了防止子像素渲染导致的 1px 白边，不需要更多了。
+      // 🅰️ 编辑旧笔记（全屏模式）
+      // CSS 的 position: relative !important 删掉后，这里的 fixed 终于能生效了。
+      // 我们减去 12px，是为了避开 iPhone 底部的小黑条/小白条。
+      const BOTTOM_GAP = 12
       return {
         ...common,
-        position: 'fixed',
+        position: 'fixed', // ✅ 终于生效了
         left: 0,
-        top: `${vv.offsetTop}px`, // 跟随 iOS 页面推挤
-        height: `${vv.height - 2}px`,
+        top: `${vv.offsetTop}px`,
+        height: `${vv.height - BOTTOM_GAP}px`,
         bottom: 'auto',
       }
     }
-
-    // -----------------------------------------------------
-    // 🅱️ 新建笔记（抽屉模式）
-    // -----------------------------------------------------
     else {
-      // 你反馈说这个模式“差不多可以了”，那我们保持逻辑：
-      // 用 absolute 顶在抽屉上，减去 56px 的 Header 高度
+      // 🅱️ 新建笔记（抽屉模式）
+      // 这里的逻辑你觉得没问题，我们保持不变
       const DRAWER_HEADER_OFFSET = 56
       return {
         ...common,
@@ -2657,15 +2651,6 @@ function handleBeforeInput(e: InputEvent) {
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
-  /* 高度已经由 style 绑定控制了，这里不需要写 height */
-
-  /* 1. 保持相对定位，不要用 fixed */
-  position: relative !important;
-
-  /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
-  min-height: 200px !important;
-
-  /* 3. 去掉过渡，响应更干脆 */
   transition: none;
 }
 
