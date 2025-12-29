@@ -117,7 +117,7 @@ function onTextPointerUp() {
   requestAnimationFrame(() => {
   })
   window.setTimeout(() => {
-  })
+  }, 120)
 }
 // ============== Store ==============
 const settingsStore = useSettingStore()
@@ -1012,62 +1012,33 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
-  const textarea = document.querySelector('.note-editor-reborn textarea')
-  if (!textarea)
+  const el = textarea.value
+  if (!el)
     return
 
-  const el = textarea
   const style = getComputedStyle(el)
-
-  // 1. 镜像计算
   const mirror = document.createElement('div')
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
+
   const val = el.value
   const selEnd = el.selectionEnd ?? val.length
   const before = val.slice(0, selEnd).replace(/\n$/, '\n ').replace(/ /g, '\u00A0')
   mirror.textContent = before
+
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
-  const currentPadding = Number.parseFloat(style.paddingBottom || '0')
-  const contentHeight = mirror.scrollHeight - currentPadding
-  const caretBottomAbsolute = contentHeight
-  const caretTopAbsolute = caretBottomAbsolute - lineHeight
+  const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
-  // 2. 真实视口计算 (Visual Viewport)
-  const rect = el.getBoundingClientRect()
-  let viewportHeight = window.innerHeight
-  if (window.visualViewport)
-    viewportHeight = window.visualViewport.height
-
-  // 计算真实的可见高度 (视口高度 - 编辑器顶部位置)
-  const realVisibleHeight = viewportHeight - Math.max(0, rect.top)
   const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + realVisibleHeight
+  const viewBottom = el.scrollTop + el.clientHeight
+  const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  // 3. 智能策略
-  const topBuffer = 40
-  const desiredBottomOffset = 80
-
-  if (caretTopAbsolute < viewTop + topBuffer) {
-    el.scrollTop = Math.max(0, caretTopAbsolute - topBuffer)
-  }
-  else if (caretBottomAbsolute > viewBottom - desiredBottomOffset) {
-    // 目标滚动位置
-    const targetScroll = caretBottomAbsolute - (realVisibleHeight - desiredBottomOffset)
-    const maxScrollPossible = el.scrollHeight - el.clientHeight
-
-    // 再次检查扩容 (作为循环后的双重保险)
-    if (targetScroll > maxScrollPossible) {
-      const shortage = targetScroll - maxScrollPossible
-      const newPadding = currentPadding + shortage + 10
-      el.style.paddingBottom = `${newPadding}px`
-      el.scrollTop = targetScroll
-    }
-    else {
-      el.scrollTop = targetScroll
-    }
-  }
+  if (caretDesiredBottom > viewBottom)
+    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+  else if (caretDesiredTop < viewTop)
+    el.scrollTop = Math.max(caretDesiredTop, 0)
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1082,6 +1053,12 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
     el = el.parentElement
   }
   return null
+}
+
+function getFooterHeight(): number {
+  const root = rootRef.value
+  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
+  return footerEl ? footerEl.offsetHeight : 88 // 兜底
 }
 
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
@@ -1372,50 +1349,42 @@ function handleFocus() {
   isInputFocused.value = true
   emit('focus')
   captureCaret()
+
+  // 允许再次“轻推”
   _hasPushedPage = false
+
+  // 用真实 footer 高度“临时托起”，不等 vv
   emit('bottomSafeChange', getFooterHeight())
 
-  const textarea = document.querySelector('.note-editor-reborn textarea')
-
-  // 1. 初始化 Padding
-  if (textarea)
-    textarea.style.paddingBottom = '80px'
-
-  // --- 2. 【核武器】锁死 Body 滚动 ---
-  // 这是消灭“工具条跳动”的唯一物理手段
-  // 暂时禁止页面整体滚动，浏览器就无法把工具条顶出去了
-  const originalOverflow = document.body.style.overflow
-  document.body.style.overflow = 'hidden'
-  document.documentElement.style.overflow = 'hidden' // 双重保险
-
-  // 立即重置视口，防止已经跳了一点
-  window.scrollTo(0, 0)
-
-  // --- 3. 核心等待 (300ms) ---
-  // 在这期间，键盘会弹起，Body 被锁死不动，只有键盘盖在内容上
-  setTimeout(() => {
-    // A. 再次强制归位 (防止某些顽固浏览器内核)
-    window.scrollTo(0, 0)
-
-    // B. 执行光标可见性检查
-    // 此时键盘已经完全弹起，窗口稳稳地停在顶部
-    // 我们只需要计算光标位置，然后在输入框内部优雅地滚过去
-    if (textarea)
-      ensureCaretVisibleInTextarea()
-
-    // C. 【解锁】恢复 Body 滚动能力
-    // 延迟一点点恢复，以免键盘动画还没结束导致最后一下跳动
+  // 立即一轮计算
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
     setTimeout(() => {
-      document.body.style.overflow = originalOverflow
-      document.documentElement.style.overflow = ''
-    }, 100)
-  }, 300)
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
-  // 保底检查
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  }
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  const t1 = isIOS ? 120 : 80
+  window.setTimeout(() => {
+  }, t1)
+
+  const t2 = isIOS ? 260 : 180
+  window.setTimeout(() => {
+  }, t2)
+
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 450)
+  }, 400) // 400ms > transition 0.3s
 
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -1721,7 +1690,7 @@ function addTable() {
     return
 
   // 这是一个 3列 x 2行 的基础表格模板
-  const tableTemplate = '| Header 1 | Header 2 | Header 3 |\n|----------|----------|----------|\n|          |          |          |\n|          |          |          |'
+  const tableTemplate = '| Header 1 | Header 2 | Header 3 |\n|----------|----------|----------|\n|          |          |          |\n|          |          |          |'
 
   const startPos = el.selectionStart
   const textBefore = el.value.substring(0, startPos)
@@ -1943,8 +1912,7 @@ function openTagMenu() {
   })
 }
 
-// —— 样式弹层定位（改为在 Aa 按钮【下方】）
-// —— 样式弹层定位（改为在 Aa 按钮【下方】）
+// —— 样式弹层定位（固定在 Aa 按钮上方）
 function placeFormatPalette() {
   const btn = formatBtnRef.value
   const root = rootRef.value
@@ -1955,21 +1923,21 @@ function placeFormatPalette() {
   const btnRect = btn.getBoundingClientRect()
   const rootRect = root.getBoundingClientRect()
   const gap = 8
-
-  // 🔴 删除这行: const panelH = panel.offsetHeight || 0
-  // 因为现在是在下方显示，不需要知道面板高度也能算出 top
-
+  const panelH = panel.offsetHeight || 0
   const panelW = panel.offsetWidth || 0
   const rootWidth = rootRect.width
 
-  // 🔥 计算 Top: 按钮底部 + 间隙
-  const top = (btnRect.bottom - rootRect.top) + gap
+  // 垂直位置：保持原来的在 Aa 上方
+  const top = (btnRect.top - rootRect.top) - panelH - gap
 
   // 基准：Aa 按钮中点
   const centerBase = (btnRect.left - rootRect.left) + btnRect.width / 2
+
+  // 微调：整体向右平移几个像素（你可以改成 8 或 10 做微调）
   const H_OFFSET = 6
   let left = centerBase + H_OFFSET
 
+  // 防止左/右溢出：考虑 transform: translateX(-50%)
   const margin = 4
   const minLeft = (panelW / 2) + margin
   const maxLeft = rootWidth - (panelW / 2) - margin
@@ -1979,13 +1947,6 @@ function placeFormatPalette() {
     top: `${Math.max(top, 0)}px`,
     left: `${left}px`,
   }
-}
-
-// 另外，原来的 getFooterHeight 可能需要调整
-// 因为底部没有工具栏了，键盘弹起时不需要额外把工具栏的高度算进去
-// 你可以把这个函数改为返回一个较小的安全距离（比如 20）
-function getFooterHeight(): number {
-  return 20 // 底部只需留一点点缝隙即可
 }
 
 let paletteFollowRaf: number | null = null
@@ -2124,8 +2085,6 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  // ✅ 修复：vv 变量未定义的问题
-  const vv = window.visualViewport
   const startVvH = vv ? vv.height : 0
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
@@ -2191,7 +2150,160 @@ function handleBeforeInput(e: InputEvent) {
       style="display:none"
       @change="onImageChosen"
     >
+    <div class="editor-wrapper">
+      <div v-if="showDraftPrompt" class="draft-prompt-overlay" @click.stop>
+        <div class="draft-prompt-card">
+          <div class="draft-prompt-title">
+            {{ promptMode === 'draft' ? t('notes.draft.title') : t('notes.upload.error_title') }}
+          </div>
 
+          <div
+            class="draft-prompt-content"
+            :style="promptMode === 'error' ? 'white-space: pre-wrap; text-align: center; line-height: 1.6;' : ''"
+          >
+            <template v-if="promptMode === 'draft'">
+              {{ t('notes.draft.restore_confirm') }}
+            </template>
+            <template v-else>
+              {{ promptErrorMsg }}
+            </template>
+          </div>
+
+          <div class="draft-prompt-actions">
+            <template v-if="promptMode === 'draft'">
+              <button
+                class="btn-secondary draft-btn"
+                @click.prevent="handleDiscardDraft"
+              >
+                {{ t('notes.draft.discard') }}
+              </button>
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleRecoverDraft"
+              >
+                {{ t('notes.draft.continue') }}
+              </button>
+            </template>
+
+            <template v-else>
+              <button
+                class="draft-btn btn-primary"
+                @click.prevent="handleErrorConfirm"
+              >
+                {{ t('notes.ok') }}
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+      <textarea
+        ref="textarea"
+        v-model="input"
+        class="editor-textarea"
+        :class="`font-size-${settingsStore.noteFontSize}`"
+        :placeholder="placeholder"
+        autocomplete="off"
+        autocorrect="on"
+        autocapitalize="sentences"
+        inputmode="text"
+        enterkeyhint="done"
+        @beforeinput="handleBeforeInput"
+        @focus="handleFocus"
+        @blur="onBlur"
+        @click="handleClick"
+        @keydown="captureCaret"
+        @keyup="captureCaret"
+        @mouseup="captureCaret"
+        @keydown.enter="handleEnterKey"
+        @compositionstart="isComposing = true"
+        @compositionend="isComposing = false"
+        @input="handleInput"
+        @pointerdown="onTextPointerDown"
+        @pointerup="onTextPointerUp"
+
+        @pointercancel="onTextPointerUp"
+        @touchstart.passive="onTextPointerDown"
+        @touchmove.passive="onTextPointerMove"
+        @touchend.passive="onTextPointerUp"
+        @touchcancel.passive="onTextPointerUp"
+      />
+      <div
+        v-if="showTagSuggestions && tagSuggestions.length"
+        class="tag-suggestions"
+        :style="suggestionsStyle"
+      >
+        <ul>
+          <li
+            v-for="tag in tagSuggestions"
+            :key="tag"
+            @mousedown.prevent="selectTag(tag)"
+          >
+            <span class="tag-text">{{ tag }}</span>
+            <span v-if="isPinned(tag)" class="tag-star">★</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 固定录音条：点击麦克风后出现在工具栏上方 -->
+    <div v-if="showRecordBar" class="record-bar">
+      <div class="record-status">
+        <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
+        <span class="record-text">
+          <template v-if="isUploadingAudio">
+            {{ t('notes.editor.record.uploading') }}
+          </template>
+          <template v-else-if="!isRecording">
+            {{ t('notes.editor.record.status_ready') }}
+          </template>
+          <template v-else-if="isRecordPaused">
+            {{ t('notes.editor.record.status_paused') }}
+          </template>
+          <template v-else>
+            {{ t('notes.editor.record.status_recording') }}
+          </template>
+        </span>
+        <span
+          v-if="recordSeconds > 0 || isRecording"
+          class="record-time"
+        >
+          {{ recordTimeText }}
+          <span
+            v-if="recordRemainingText"
+            class="record-remaining"
+          >
+            |{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}
+          </span>
+        </span>
+      </div>
+      <div class="record-actions">
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          @click="handleRecordCancelClick"
+        >
+          {{ t('notes.editor.record.button_cancel') }}
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-secondary"
+          :disabled="!isRecording || isUploadingAudio"
+          @click="handleRecordPauseClick"
+        >
+          {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
+        </button>
+        <button
+          type="button"
+          class="record-btn record-btn-primary"
+          :disabled="isUploadingAudio"
+          @click="handleRecordButtonClick"
+        >
+          {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 底部工具栏 + 字数 + 按钮 -->
     <div class="editor-footer">
       <div class="footer-left">
         <div class="editor-toolbar">
@@ -2303,158 +2415,6 @@ function handleBeforeInput(e: InputEvent) {
         >
           {{ t('notes.editor.save.button_save') }}
         </button>
-      </div>
-    </div>
-
-    <div v-if="showRecordBar" class="record-bar">
-      <div class="record-status">
-        <span class="record-dot" :class="{ active: isRecording && !isRecordPaused }" />
-        <span class="record-text">
-          <template v-if="isUploadingAudio">
-            {{ t('notes.editor.record.uploading') }}
-          </template>
-          <template v-else-if="!isRecording">
-            {{ t('notes.editor.record.status_ready') }}
-          </template>
-          <template v-else-if="isRecordPaused">
-            {{ t('notes.editor.record.status_paused') }}
-          </template>
-          <template v-else>
-            {{ t('notes.editor.record.status_recording') }}
-          </template>
-        </span>
-        <span
-          v-if="recordSeconds > 0 || isRecording"
-          class="record-time"
-        >
-          {{ recordTimeText }}
-          <span
-            v-if="recordRemainingText"
-            class="record-remaining"
-          >
-            |{{ t('notes.editor.record.remaining', { time: recordRemainingText }) }}
-          </span>
-        </span>
-      </div>
-      <div class="record-actions">
-        <button
-          type="button"
-          class="record-btn record-btn-secondary"
-          @click="handleRecordCancelClick"
-        >
-          {{ t('notes.editor.record.button_cancel') }}
-        </button>
-        <button
-          type="button"
-          class="record-btn record-btn-secondary"
-          :disabled="!isRecording || isUploadingAudio"
-          @click="handleRecordPauseClick"
-        >
-          {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
-        </button>
-        <button
-          type="button"
-          class="record-btn record-btn-primary"
-          :disabled="isUploadingAudio"
-          @click="handleRecordButtonClick"
-        >
-          {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
-        </button>
-      </div>
-    </div>
-
-    <div class="editor-wrapper">
-      <div v-if="showDraftPrompt" class="draft-prompt-overlay" @click.stop>
-        <div class="draft-prompt-card">
-          <div class="draft-prompt-title">
-            {{ promptMode === 'draft' ? t('notes.draft.title') : t('notes.upload.error_title') }}
-          </div>
-
-          <div
-            class="draft-prompt-content"
-            :style="promptMode === 'error' ? 'white-space: pre-wrap; text-align: center; line-height: 1.6;' : ''"
-          >
-            <template v-if="promptMode === 'draft'">
-              {{ t('notes.draft.restore_confirm') }}
-            </template>
-            <template v-else>
-              {{ promptErrorMsg }}
-            </template>
-          </div>
-
-          <div class="draft-prompt-actions">
-            <template v-if="promptMode === 'draft'">
-              <button
-                class="btn-secondary draft-btn"
-                @click.prevent="handleDiscardDraft"
-              >
-                {{ t('notes.draft.discard') }}
-              </button>
-              <button
-                class="draft-btn btn-primary"
-                @click.prevent="handleRecoverDraft"
-              >
-                {{ t('notes.draft.continue') }}
-              </button>
-            </template>
-
-            <template v-else>
-              <button
-                class="draft-btn btn-primary"
-                @click.prevent="handleErrorConfirm"
-              >
-                {{ t('notes.ok') }}
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-      <textarea
-        ref="textarea"
-        v-model="input"
-        class="editor-textarea"
-        :class="`font-size-${settingsStore.noteFontSize}`"
-        :placeholder="placeholder"
-        autocomplete="off"
-        autocorrect="on"
-        autocapitalize="sentences"
-        inputmode="text"
-        enterkeyhint="done"
-        @beforeinput="handleBeforeInput"
-        @focus="handleFocus"
-        @blur="onBlur"
-        @click="handleClick"
-        @keydown="captureCaret"
-        @keyup="captureCaret"
-        @mouseup="captureCaret"
-        @keydown.enter="handleEnterKey"
-        @compositionstart="isComposing = true"
-        @compositionend="isComposing = false"
-        @input="handleInput"
-        @pointerdown="onTextPointerDown"
-        @pointerup="onTextPointerUp"
-
-        @pointercancel="onTextPointerUp"
-        @touchstart.passive="onTextPointerDown"
-        @touchmove.passive="onTextPointerMove"
-        @touchend.passive="onTextPointerUp"
-        @touchcancel.passive="onTextPointerUp"
-      />
-      <div
-        v-if="showTagSuggestions && tagSuggestions.length"
-        class="tag-suggestions"
-        :style="suggestionsStyle"
-      >
-        <ul>
-          <li
-            v-for="tag in tagSuggestions"
-            :key="tag"
-            @mousedown.prevent="selectTag(tag)"
-          >
-            <span class="tag-text">{{ tag }}</span>
-            <span v-if="isPinned(tag)" class="tag-star">★</span>
-          </li>
-        </ul>
       </div>
     </div>
 
@@ -3200,54 +3160,5 @@ function handleBeforeInput(e: InputEvent) {
   padding: 6px 16px; /* 比工具栏按钮稍微大一点 */
   height: auto;
   font-size: 14px;
-}
-
-/* 🔥 新增/修改：顶部工具栏样式 */
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 10px;
-
-  /* ✅ 核心 1：适配刘海屏 */
-  /* 使用 env(safe-area-inset-top) 确保内容不会被刘海挡住 */
-  padding-top: calc(8px + env(safe-area-inset-top));
-  height: calc(44px + env(safe-area-inset-top)); /* 稍微定高一点，保证点击区域 */
-
-  background-color: #fff;
-
-  /* ✅ 核心 2：改为下边框 */
-  border-bottom: 1px solid #eee;
-  /* border-top: 1px solid #eee;  <-- 删掉原来的上边框 */
-
-  z-index: 100;
-  flex-shrink: 0; /* 防止被挤压 */
-  box-sizing: border-box;
-}
-
-.dark .editor-header {
-  background-color: #1e1e1e;
-  border-bottom-color: #333;
-}
-
-/* 录音条稍微调整 margin-top，避免贴太紧 */
-.record-bar {
-  margin-top: 4px;
-}
-
-/* 样式小三角的方向调整（可选） */
-/* 因为菜单在下方，小三角应该指向上面 */
-.format-caret {
-  top: -3px; /* 移到上面 */
-  bottom: auto;
-  border-left: 1px solid inherit;
-  border-top: 1px solid inherit; /* 改为上边框 */
-  border-bottom: none;
-}
-
-.note-editor-reborn textarea {
-  padding-bottom: 80px;
-  /* 禁止 transition，确保 JS 改了 padding 立即生效 */
-  transition: none !important;
 }
 </style>
