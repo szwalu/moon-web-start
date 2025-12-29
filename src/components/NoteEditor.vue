@@ -93,7 +93,7 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 如果是 PWA 模式：减去 430px
     // 如果是 网页模式：减去 295px (你上一版测出的数值)
-    const offset = isPWA.value ? '430px' : '295px'
+    const offset = isPWA.value ? '440px' : '305px'
     return `calc(100dvh - ${offset})`
   }
 
