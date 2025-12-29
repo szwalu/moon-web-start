@@ -76,30 +76,28 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：高度计算属性
+// 🔥 修正版：高度计算属性 (统一接管所有模式)
 const editorHeight = computed(() => {
-  // 1. 键盘收起时（浏览模式）：85% 屏幕高度
-  if (!isInputFocused.value)
-    return '80dvh'
+  // 1. 键盘收起时（浏览模式）
+  if (!isInputFocused.value) {
+    // 如果是编辑旧笔记，保持全屏；如果是新建，保持抽屉高度
+    return props.isEditing ? '100dvh' : '80dvh'
+  }
 
   // 2. 键盘弹出时（输入模式）：
+  // 下面的逻辑对“新建”和“编辑”完全通用，确保都能露出工具栏
 
-  // 现场获取 UserAgent，确保判断准确
   const currentUA = navigator.userAgent.toLowerCase()
-  // 增加 'macintosh' 判断，因为 iPad 有时会伪装成 Mac
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // 🍎 iOS 专用逻辑：
-    // 如果是 PWA 模式：减去 430px (全屏无工具栏，键盘显得“低”，需要留更多空)
-    // 如果是 网页模式：减去 320px (Safari 底部工具栏已经占了位置，所以我们少减一点)
+    // 如果是 PWA 模式：减去 430px
+    // 如果是 网页模式：减去 295px (你上一版测出的数值)
     const offset = isPWA.value ? '430px' : '295px'
-
     return `calc(100dvh - ${offset})`
   }
 
-  // 🤖 Android / 其他：直接填满
-  // Android 配合 interactive-widget 会自动挤压 100dvh，所以不用减
+  // Android
   return '100dvh'
 })
 
@@ -2143,8 +2141,8 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 核心修改：高度直接由 JS 接管，谁也别想乱改 */
-      height: props.isEditing ? undefined : editorHeight,
+      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
+      height: editorHeight,
     }"
     @click.stop
   >
@@ -2609,9 +2607,10 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
-/* 保持原有的逻辑，优先级最高 */
 .note-editor-reborn.editing-viewport {
-  height: 100dvh !important;
+  /* ❌ 删除这一行： height: 100dvh !important; */
+  /* 现在高度由 JS (style="") 控制，这里只控制圆角和边距 */
+
   margin-top: 0 !important;
   border-radius: 0;
 }
