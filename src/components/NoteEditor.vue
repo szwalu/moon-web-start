@@ -1012,12 +1012,15 @@ watch(() => props.isLoading, (newValue) => {
 function ensureCaretVisibleInTextarea() {
   if (isFreezingBottom.value)
     return
-  const el = textarea.value
-  if (!el)
+  const textarea = document.querySelector('.note-editor-reborn textarea') // 确保获取 DOM
+  if (!textarea)
     return
 
+  const el = textarea // 方便后续引用
   const style = getComputedStyle(el)
+
   const mirror = document.createElement('div')
+  // 保持原有镜像逻辑，这是核心计算基础
   mirror.style.cssText = `position:absolute; visibility:hidden; white-space:pre-wrap; word-wrap:break-word; box-sizing:border-box; top:0; left:-9999px; width:${el.clientWidth}px; font:${style.font}; line-height:${style.lineHeight}; padding:${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}; border:solid transparent; border-width:${style.borderTopWidth} ${style.borderRightWidth} ${style.borderBottomWidth} ${style.borderLeftWidth};`
   document.body.appendChild(mirror)
 
@@ -1027,18 +1030,40 @@ function ensureCaretVisibleInTextarea() {
   mirror.textContent = before
 
   const lineHeight = Number.parseFloat(style.lineHeight || '20')
+
+  // 这里的计算保持不变，获取光标的绝对像素位置
   const caretTopInTextarea = mirror.scrollHeight - Number.parseFloat(style.paddingBottom || '0')
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
+
+  // 计算光标上下边界
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  /* --- 核心修改区域 --- */
+
+  // 定义一个“底部安全距离”，比如 80px
+  // 这意味着：我们希望光标至少距离可视区域底部 80px，而不是紧贴着边缘
+  const bottomBuffer = 80
+
+  if (caretDesiredBottom > viewBottom) {
+    // 【场景：光标在视野下方】
+    // 原来是：caretDesiredBottom - el.clientHeight
+    // 修改为：再多滚 bottomBuffer 这么多距离，把光标“抬”起来
+    // 配合 CSS 的 padding-bottom: 100px，这会让光标舒服地浮在键盘上方
+    el.scrollTop = Math.min(
+      caretDesiredBottom - el.clientHeight + bottomBuffer,
+      el.scrollHeight - el.clientHeight,
+    )
+  }
+  else if (caretDesiredTop < viewTop) {
+    // 【场景：光标在视野上方】
+    // 同样可以给顶部加一点 buffer，防止贴着顶边
+    const topBuffer = 20
+    el.scrollTop = Math.max(caretDesiredTop - topBuffer, 0)
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
