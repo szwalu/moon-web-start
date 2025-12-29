@@ -1351,40 +1351,50 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 300ms 核心逻辑修正 ---
+  // --- 300ms 核心修复逻辑 ---
   setTimeout(() => {
-    // 1. 【通用】先把整个页面（Body）按回顶部（保住工具条）
+    // 1. 【通用】先把被顶上去的页面强制按回顶部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 处理输入框内部滚动
+    // 2. 动态处理输入框
     const textarea = document.querySelector('.note-editor-reborn textarea')
 
     if (textarea) {
       const textLength = textarea.value.length
+      // 设定阈值：比如 200 字符或者判断 scrollHeight > clientHeight
+      // 这里用长度判断最简单直接
+      const isShortNote = textLength < 200
 
-      // 【关键修正点】
-      // 设定一个阈值（比如150字符），低于这个值认为是“短笔记”
-      if (textLength < 150) {
+      if (isShortNote) {
         // 【场景 A：新建/短笔记】
-        // 强制把滚动条锁死在顶部，防止浏览器为了展示 padding 而把字顶飞
+        // 1. 撤销巨大的 Padding，防止浏览器把内容顶飞
+        textarea.style.paddingBottom = '100px'
+        // 2. 强制锁死在顶部
         textarea.scrollTop = 0
       }
       else {
         // 【场景 B：长笔记/旧笔记】
-        // 这里的逻辑保持昨天的方案：如果光标在末尾，就强制滚到底部捞光标
+        // 1. 动态加上巨大的 Padding，确保能把光标托起来
+        textarea.style.paddingBottom = '50vh'
+
+        // 2. 判断光标位置进行滚动
         const cursorVal = textarea.selectionStart
-        if (textLength - cursorVal < 200)
+        if (textLength - cursorVal < 200) {
+          // 光标在末尾，暴力滚到底
           textarea.scrollTop = textarea.scrollHeight
-        else
+        }
+        else {
+          // 光标在中间，正常计算
           ensureCaretVisibleInTextarea()
+        }
       }
     }
   }, 300)
-  // ------------------
+  // -------------------------
 
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {}, t1)
@@ -3228,9 +3238,5 @@ function handleBeforeInput(e: InputEvent) {
 /* 让输入框内容底部多出一大截空白，聚焦时更多 */
 .note-editor-reborn textarea {
   padding-bottom: 100px; /* 平时 */
-}
-
-.note-editor-reborn.is-focused textarea {
-  padding-bottom: 50vh !important; /* 关键：聚焦时给相当于半屏的留白 */
 }
 </style>
