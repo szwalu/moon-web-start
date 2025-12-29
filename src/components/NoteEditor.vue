@@ -90,11 +90,12 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性 (最终版：解决遮挡与定位)
+// 🔥 修正版：基于原版架构的动态高度计算
+// 核心：保持 position: relative，只改变 height
 const editorStyle = computed(() => {
   const _tick = layoutTick.value
 
-  // 1. 键盘收起
+  // 1. 键盘收起（浏览模式）
   if (!isInputFocused.value) {
     return {
       height: props.isEditing ? '100dvh' : '80dvh',
@@ -102,44 +103,38 @@ const editorStyle = computed(() => {
     }
   }
 
-  // 2. 键盘弹出
+  // 2. 键盘弹出（输入模式）
   const vv = window.visualViewport
   if (vv) {
-    const common = {
-      width: '100%',
-      borderRadius: 0,
-      margin: 0,
-      transition: 'none',
-      zIndex: 9999,
-    }
+    // 🛠 配置参数
+    const DRAWER_HEADER_HEIGHT = 56 // 新建笔记时的顶部栏高度
+    const BOTTOM_GAP = 12 // 编辑旧笔记时的底部防遮挡空隙
+
+    let targetHeight = vv.height
 
     if (props.isEditing) {
-      // 🅰️ 编辑旧笔记（全屏模式）
-      const BOTTOM_GAP = 12
-      return {
-        ...common,
-        position: 'fixed',
-        left: 0,
-        // 配合 handleFocus 的 scrollTo(0,0)，这里紧贴视口顶部
-        top: `${vv.offsetTop}px`,
-        // 减去底部空隙，防误触 Home 条
-        height: `${vv.height - BOTTOM_GAP}px`,
-        bottom: 'auto',
-      }
+      // 🅰️ 编辑旧笔记
+      // 减去底部空隙即可
+      targetHeight -= BOTTOM_GAP
     }
     else {
-      // 🅱️ 新建笔记（抽屉模式）
-      const DRAWER_HEADER_OFFSET = 56
-      return {
-        ...common,
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        height: `${vv.height - DRAWER_HEADER_OFFSET}px`,
-      }
+      // 🅱️ 新建笔记
+      // 因为是 relative 布局，编辑器在 Header 下面。
+      // 可用高度 = 视口总高 - Header高度
+      targetHeight -= DRAWER_HEADER_HEIGHT
+    }
+
+    return {
+      width: '100%',
+      // 🔥 直接应用计算出的高度，不改变 position
+      height: `${targetHeight}px`,
+      transition: 'none',
+      margin: 0,
+      borderRadius: 0,
     }
   }
 
+  // 兜底
   return { height: '100dvh' }
 })
 
@@ -1407,30 +1402,24 @@ onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
-// 1. 修改 handleFocus：按住页面
 function handleFocus() {
   isInputFocused.value = true
   emit('focus')
   captureCaret()
 
   _hasPushedPage = false
+
+  // 临时托起底部，防止瞬时遮挡
   emit('bottomSafeChange', getFooterHeight())
 
-  // 🔥 核心修复：强制重置 Window 滚动！
-  // 这能防止浏览器为了露出光标而把整个页面往上推，导致坐标系错乱。
-  // 我们靠自己的 ensureCaretVisibleInTextarea 来让光标可见。
-  window.scrollTo(0, 0)
-  if (document.body.scrollTop !== 0)
-    document.body.scrollTop = 0
-  if (document.documentElement.scrollTop !== 0)
-    document.documentElement.scrollTop = 0
+  // ❌ 删掉 window.scrollTo(0, 0) 那些强行控制滚动的代码
+  // 让浏览器自己决定怎么滚动来露出光标
 
-  // 立即校准内部光标
+  // 仅仅保留这个微调，确保光标在视野内
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
 
-  // ... 后面的 startFocusBoost 等逻辑保持不变 ...
   startFocusBoost()
 }
 
@@ -2184,8 +2173,8 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       ...editorStyle,
-      /* 键盘弹起时，底部 padding 归零 */
-      paddingBottom: isInputFocused ? '0px' : `calc(${bottomSafePadding}px + env(safe-area-inset-bottom))`,
+      /* 键盘弹起时 padding 归零，完全依靠 height 控制 */
+      paddingBottom: isInputFocused ? '0px' : `${bottomSafePadding}px`,
     }"
     @click.stop
   >
@@ -2616,14 +2605,14 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* 🔥 核心修复：把 safe-area 加在这里！
-     因为容器是 fixed/absolute 不动的，所以这个 padding 永远挡在刘海下面，
-     文字怎么滚都滚不上去。 */
-  padding-top: env(safe-area-inset-top);
+  /* ❌ 删掉 padding-top: env(...)，不需要了，原版不需要这个 */
+  /* padding-top: env(safe-area-inset-top); */
 
+  /* 保持原版的浏览模式高度逻辑 */
   height: 80dvh;
   min-height: 430px;
   max-height: 90dvh;
+
   margin-top: auto;
   overflow: hidden;
   display: flex;
@@ -2633,9 +2622,10 @@ function handleBeforeInput(e: InputEvent) {
 }
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
+  position: relative !important; /* 保持原版的 relative，这是解决光标乱跳的关键 */
   transition: none;
+  /* 高度将由 style 绑定接管 */
 }
-
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
 .note-editor-reborn.editing-viewport {
   /* ❌ 删除这一行： height: 100dvh !important; */
@@ -2692,13 +2682,9 @@ function handleBeforeInput(e: InputEvent) {
   width: 100%;
   height: 100%;
   flex: 1;
-
-  /* 🔥 恢复正常的内边距，不再需要 calc(env...) */
+  /* 恢复正常的 padding */
   padding: 12px 16px;
   padding-bottom: 10px;
-
-  /* 保持底部的 scroll-padding，这对光标定位有帮助 */
-  scroll-padding-bottom: 80px;
 
   border: none;
   background-color: transparent;
