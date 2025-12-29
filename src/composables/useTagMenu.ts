@@ -1378,16 +1378,6 @@ export function useTagMenu(
     const total = allTags.value.length
     if (total === 0)
       return [] as any[]
-    const placeholderText = t('tags.search_from_count', { count: total }) || `从 ${total} 条标签中搜索`
-
-    // 1. 搜索框
-    const searchOption = {
-      key: 'tag-search',
-      type: 'render' as const,
-      render: () => h('div', { class: 'tag-search-row' }, [
-        h(NInput, { 'value': tagSearch.value, 'onUpdate:value': (v: string) => { tagSearch.value = v }, 'placeholder': placeholderText, 'clearable': true, 'autofocus': true, 'size': 'small', 'style': '--n-input-font-size:16px;font-size:16px;width:calc(100% - 20px);margin:0 auto;display:block;', 'inputProps': { style: 'font-size:16px' }, 'onKeydown': (e: KeyboardEvent) => e.stopPropagation() }),
-      ]),
-    }
 
     // 2. 常用标签 (Pinned)
     const pinnedChildren = pinnedTags.value.filter((tag) => {
@@ -1433,7 +1423,7 @@ export function useTagMenu(
     const bottomSpacer = (body.length > 0) ? [{ key: 'sep-untagged', type: 'render' as const, render: () => h('div', { style: 'height:6px;' }) }] : []
 
     // 组合数组：扁平化结构 (Header 和 Body 是兄弟节点，不是父子，这样我们才能完全控制显示隐藏)
-    const result = [searchOption]
+    const result = [] as any[]
     if (pinnedHeader)
       result.push(pinnedHeader, ...pinnedBody)
     result.push(...allTagsRows, ...bottomSpacer, untaggedRow)

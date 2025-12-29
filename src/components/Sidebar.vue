@@ -368,16 +368,6 @@ const RecursiveMenu = defineComponent({
     const resolve = (val: any) => (typeof val === 'function' ? val() : val)
 
     const renderNode = (item: any): any => {
-      // 1. 🛑 搜索框特例：原样输出，绝不包裹 Flex
-      // 这样它就会占满一行，不会变短，也不会有箭头
-      if (item.key === 'tag-search') {
-        return h('div', {
-          key: item.key,
-          class: 'search-wrapper-raw', // 专用类名，不做 Flex
-          onClick: (e: MouseEvent) => e.stopPropagation(),
-        }, [resolve(item.render)])
-      }
-
       // 2. 🔍 识别分组
       const hasChildren = item.children && item.children.length > 0
       const keyStr = String(item.key || '')
@@ -1173,19 +1163,6 @@ onMounted(() => {
   padding-left: 0 !important; /* ⚡️ 核心：从 35px 改为 0 */
   padding-right: 0;
   overflow: visible;
-}
-
-/* 2. 搜索框修复：强行撑满宽度，去掉 margin */
-:deep(.search-wrapper-raw) {
-  display: block !important;
-  width: 100% !important;
-  margin-bottom: 8px;
-  padding: 0 20px; /* 两侧留白，跟菜单项对齐 */
-}
-/* 覆盖 useTagMenu.ts 里 NInput 的内联样式 */
-:deep(.tag-search-row .n-input) {
-  width: 100% !important;
-  margin: 0 !important;
 }
 
 /* 3. 分组标题行（常用标签/全部标签）：左对齐 */
