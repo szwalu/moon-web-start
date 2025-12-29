@@ -1351,47 +1351,49 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 300ms 核心修复逻辑 ---
+  // --- 300ms 核心逻辑 ---
   setTimeout(() => {
-    // 1. 【通用】先把被顶上去的页面强制按回顶部（保住工具条）
+    // 1. 【通用操作】无论新旧笔记，都先把页面按回顶部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
 
-    // 2. 动态处理输入框
+    // 2. 获取编辑器 DOM
     const textarea = document.querySelector('.note-editor-reborn textarea')
 
     if (textarea) {
-      const textLength = textarea.value.length
-      // 设定阈值：比如 200 字符或者判断 scrollHeight > clientHeight
-      // 这里用长度判断最简单直接
-      const isShortNote = textLength < 200
-
-      if (isShortNote) {
-        // 【场景 A：新建/短笔记】
-        // 1. 撤销巨大的 Padding，防止浏览器把内容顶飞
-        textarea.style.paddingBottom = '100px'
-        // 2. 强制锁死在顶部
-        textarea.scrollTop = 0
+      // === 分流开始 ===
+      if (!props.isEditing) {
+        // 【场景 A：新建笔记】
+        // 保持“原汁原味”。不加 Padding，不强制滚到底。
+        // 因为新建笔记通常浏览器处理得很好，我们只做了 window.scrollTo 修复工具条即可。
+        // 即使内容很长，浏览器默认的滚动逻辑通常也是对的。
+        textarea.style.paddingBottom = '100px' // 保持 CSS 原样
+        ensureCaretVisibleInTextarea()
       }
       else {
-        // 【场景 B：长笔记/旧笔记】
-        // 1. 动态加上巨大的 Padding，确保能把光标托起来
+        // 【场景 B：编辑旧笔记】
+        // 只有这种情况才出现“光标陷在键盘后”的问题，所以只在这里下重药。
+
+        // 1. 动态加大 Padding，把底部撑起来
         textarea.style.paddingBottom = '50vh'
 
-        // 2. 判断光标位置进行滚动
+        // 2. 判断是否在末尾，强制上拉
+        const textLength = textarea.value.length
         const cursorVal = textarea.selectionStart
+
         if (textLength - cursorVal < 200) {
           // 光标在末尾，暴力滚到底
           textarea.scrollTop = textarea.scrollHeight
         }
         else {
-          // 光标在中间，正常计算
+          // 光标在中间
           ensureCaretVisibleInTextarea()
         }
       }
+      // === 分流结束 ===
     }
   }, 300)
   // -------------------------
