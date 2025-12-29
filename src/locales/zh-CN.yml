@@ -274,6 +274,7 @@ auth:
   redirecting: 正在跳转...
   activation_menu: 输入邀请码
   default_signature: 记录当下，点亮灵感
+  restored_default: 已恢复默认签名
   signature_label: 签名
   input_signature: 输入个性签名...
   signature_updated: 签名更新成功

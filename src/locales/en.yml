@@ -275,6 +275,7 @@ auth:
   redirecting: Redirecting...
   activation_menu: Enter invitation code
   default_signature: 'Capture the moment, spark inspiration'
+  restored_default: Default signature restored.
   signature_label: Bio
   input_signature: Enter your bio...
   signature_updated: Bio updated successfully

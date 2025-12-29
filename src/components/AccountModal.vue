@@ -108,7 +108,13 @@ const userName = computed(() => {
 })
 
 const userSignature = computed(() => {
-  return props.user?.user_metadata?.signature || t('auth.default_signature')
+  const sig = props.user?.user_metadata?.signature
+  // 只有当 sig 存在且不是纯空格时，才显示自定义签名
+  if (sig && typeof sig === 'string' && sig.trim().length > 0)
+    return sig
+
+  // 否则回退到多语言默认值
+  return t('auth.default_signature')
 })
 
 const canChangePassword = computed(() => {
@@ -373,26 +379,35 @@ async function saveName() {
 }
 
 function startEditSignature() {
-  tempSignature.value = userSignature.value
+  const rawSig = props.user?.user_metadata?.signature
+  if (rawSig && rawSig.trim())
+    tempSignature.value = rawSig
+  else
+    tempSignature.value = ''
+
   isEditingSignature.value = true
 }
 
 async function saveSignature() {
   const newSig = tempSignature.value.trim()
-  if (!newSig) {
+  const valueToSave = newSig || null
+  const currentRawSig = props.user?.user_metadata?.signature || null
+  if (valueToSave === currentRawSig) {
     isEditingSignature.value = false
     return
   }
-  if (newSig === userSignature.value) {
-    isEditingSignature.value = false
-    return
-  }
+
   try {
-    const { error } = await supabase.auth.updateUser({ data: { signature: newSig } })
+    const { error } = await supabase.auth.updateUser({
+      data: { signature: valueToSave },
+    })
     if (error)
       throw error
     await authStore.refreshUser()
-    messageHook.success(t('auth.signature_updated'))
+    if (valueToSave)
+      messageHook.success(t('auth.signature_updated'))
+    else
+      messageHook.success(t('auth.restored_default') || '已恢复默认签名')
   }
   catch (e: any) {
     messageHook.error(e.message || t('auth.update_failed'))

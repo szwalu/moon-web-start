@@ -275,6 +275,7 @@ auth:
   redirecting: 移動中...
   activation_menu: 招待コード入力
   default_signature: 今を記録し、ひらめきを灯す
+  restored_default: デフォルトの署名が復元されました
   signature_label: 自己紹介
   input_signature: 自己紹介を入力...
   signature_updated: 自己紹介を更新しました
