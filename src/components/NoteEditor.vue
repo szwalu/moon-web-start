@@ -1351,34 +1351,44 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // --- 核心修改区域 ---
+  // --- 第一步：300ms，只负责把“被顶飞的页面”按回来 ---
   setTimeout(() => {
-    // 1. 先把整个页面按死在顶部（保住工具条）
     window.scrollTo(0, 0)
     if (document.body.scrollTop !== 0)
       document.body.scrollTop = 0
     if (document.documentElement.scrollTop !== 0)
       document.documentElement.scrollTop = 0
+  }, 300)
 
-    // 2. 【关键修正】不要立刻找光标，而是等“下一帧”
-    // 告诉浏览器：“等你把页面按好之后，马上帮我把光标捞出来”
-    requestAnimationFrame(() => {
-      ensureCaretVisibleInTextarea()
-    })
-  }, 300) // 维持 300ms 不变
-  // --- 核心修改结束 ---
+  // --- 第二步：350ms，专门负责“捞光标” ---
+  // 必须等上面 window.scrollTo 执行完，渲染稳定了再动光标
+  setTimeout(() => {
+    // 1. 标准确保光标可见
+    ensureCaretVisibleInTextarea()
 
-  // 这里的延时保持原样，处理视口兼容性
+    // 2.【绝杀招】针对 iOS 无法点击末尾的问题
+    // 强制检查：如果输入框很长，我们人为地把内容再往上卷一点
+    // 这样光标就不会贴在键盘边缘，而是会处于编辑区的中下部
+    const editor = document.querySelector('.note-editor-reborn textarea') // 请确认你的 textarea 选择器是否正确
+    if (editor && isIOS) {
+      // 这是一个经验值逻辑：聚焦时强制让当前滚动位置再加 50-100px
+      // 这样能把底部的文字“抬”起来
+      const currentScroll = editor.scrollTop
+      editor.scrollTop = currentScroll + 80
+    }
+  }, 350)
+  // ----------------------------------------------------
+
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {}, t1)
 
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {}, t2)
 
-  // 最后的兜底检查，建议延后一点点到 450ms 或 500ms，避开前面的操作
+  // 最后的兜底
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 450)
+  }, 500) // 稍微延后一点，避开前面的冲突
 
   startFocusBoost()
 }
@@ -3207,5 +3217,16 @@ function handleBeforeInput(e: InputEvent) {
   border-left: 1px solid inherit;
   border-top: 1px solid inherit; /* 改为上边框 */
   border-bottom: none;
+}
+
+.note-editor-reborn textarea {
+  /* 平时 */
+  padding-bottom: 50px;
+}
+
+.note-editor-reborn.is-focused textarea {
+  /* 聚焦时，给底部留出巨大的空间，让最后一行字能被卷到屏幕中间 */
+  /* 哪怕键盘遮住了底部 100px，我也能看到文字 */
+  padding-bottom: 50vh !important;
 }
 </style>
