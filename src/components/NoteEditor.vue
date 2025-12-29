@@ -93,7 +93,7 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 如果是 PWA 模式：减去 430px
     // 如果是 网页模式：减去 295px (你上一版测出的数值)
-    const offset = isPWA.value ? '440px' : '305px'
+    const offset = isPWA.value ? '430px' : '295px'
     return `calc(100dvh - ${offset})`
   }
 
@@ -2782,8 +2782,8 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
-  padding-bottom: calc(-30px + constant(safe-area-inset-bottom));
-  padding-bottom: calc(-30px + env(safe-area-inset-bottom));
+  padding-bottom: calc(-20px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(-20px + env(safe-area-inset-bottom));
 
   background-color: #fff;
   border-top: 1px solid #eee;
