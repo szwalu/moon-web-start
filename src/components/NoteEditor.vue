@@ -33,20 +33,6 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const isInputFocused = ref(false)
-
-// 定义一个触发更新的 ref，仅用于强制 computed 重新计算
-const layoutTick = ref(0)
-
-// 🔥 修改版：视图更新时，不仅重算外框，还要强行校准光标位置
-function updateLayout() {
-  layoutTick.value++
-
-  // 解决“点击下方内容光标乱跳”的核心：
-  // 这一帧，外框高度变了，我们必须立即让 textarea 内部滚动的光标位置跟上变化
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-  })
-}
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -90,51 +76,58 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：基于原版架构的动态高度计算
-// 核心：保持 position: relative，只改变 height
+// 🔥 修正版：全能样式计算属性 (解决 unused 报错 + 样式逻辑收口)
 const editorStyle = computed(() => {
   const _tick = layoutTick.value
 
-  // 1. 键盘收起（浏览模式）
+  // 1. 键盘收起 (浏览模式)
   if (!isInputFocused.value) {
     return {
       height: props.isEditing ? '100dvh' : '80dvh',
       transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
+      // 在这里定义默认 padding，20px 是基础间距
+      paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
     }
   }
 
-  // 2. 键盘弹出（输入模式）
+  // 2. 键盘弹出 (输入模式)
   const vv = window.visualViewport
   if (vv) {
-    // 🛠 配置参数
-    const DRAWER_HEADER_HEIGHT = 56 // 新建笔记时的顶部栏高度
-    const BOTTOM_GAP = 12 // 编辑旧笔记时的底部防遮挡空隙
-
-    let targetHeight = vv.height
-
-    if (props.isEditing) {
-      // 🅰️ 编辑旧笔记
-      // 减去底部空隙即可
-      targetHeight -= BOTTOM_GAP
-    }
-    else {
-      // 🅱️ 新建笔记
-      // 因为是 relative 布局，编辑器在 Header 下面。
-      // 可用高度 = 视口总高 - Header高度
-      targetHeight -= DRAWER_HEADER_HEIGHT
-    }
-
-    return {
+    const common = {
       width: '100%',
-      // 🔥 直接应用计算出的高度，不改变 position
-      height: `${targetHeight}px`,
-      transition: 'none',
       margin: 0,
       borderRadius: 0,
+      transition: 'none',
+      zIndex: 9999,
+    }
+
+    if (props.isEditing) {
+      // 🅰️ 编辑旧笔记 (全屏 Relative 方案)
+      // 算出被键盘遮挡的高度，转化成底部的 Padding 把内容顶上来
+      // 屏幕总高 - 可视高度 = 键盘高度。再加 15px 让工具栏悬浮一点
+      const keyboardHeight = window.innerHeight - vv.height
+      return {
+        ...common,
+        position: 'relative',
+        height: '100dvh',
+        paddingBottom: `${keyboardHeight + 15}px`,
+      }
+    }
+    else {
+      // 🅱️ 新建笔记 (抽屉 Absolute 方案)
+      // 减去头部 Header 高度 (56px)
+      const DRAWER_HEADER_HEIGHT = 56
+      return {
+        ...common,
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        height: `${vv.height - DRAWER_HEADER_HEIGHT}px`,
+        paddingBottom: '0px',
+      }
     }
   }
 
-  // 兜底
   return { height: '100dvh' }
 })
 
@@ -607,23 +600,6 @@ onMounted(() => {
         cachedWeather.value = null
       })
     }
-  }
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateLayout)
-    window.visualViewport.addEventListener('scroll', updateLayout)
-  }
-  else {
-    window.addEventListener('resize', updateLayout)
-  }
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateLayout)
-    window.visualViewport.removeEventListener('scroll', updateLayout)
-  }
-  else {
-    window.removeEventListener('resize', updateLayout)
   }
 })
 
@@ -1407,19 +1383,41 @@ function handleFocus() {
   emit('focus')
   captureCaret()
 
+  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 临时托起底部，防止瞬时遮挡
+  // 用真实 footer 高度“临时托起”，不等 vv
   emit('bottomSafeChange', getFooterHeight())
 
-  // ❌ 删掉 window.scrollTo(0, 0) 那些强行控制滚动的代码
-  // 让浏览器自己决定怎么滚动来露出光标
-
-  // 仅仅保留这个微调，确保光标在视野内
+  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  }
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  const t1 = isIOS ? 120 : 80
+  window.setTimeout(() => {
+  }, t1)
+
+  const t2 = isIOS ? 260 : 180
+  window.setTimeout(() => {
+  }, t2)
+
+  setTimeout(() => {
+    ensureCaretVisibleInTextarea()
+  }, 400) // 400ms > transition 0.3s
+
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -2171,11 +2169,7 @@ function handleBeforeInput(e: InputEvent) {
       'editing-viewport': isEditing,
       'is-focused': isInputFocused,
     }"
-    :style="{
-      ...editorStyle,
-      /* 键盘弹起时 padding 归零，完全依靠 height 控制 */
-      paddingBottom: isInputFocused ? '0px' : `${bottomSafePadding}px`,
-    }"
+    :style="editorStyle"
     @click.stop
   >
     <input
@@ -2605,27 +2599,40 @@ function handleBeforeInput(e: InputEvent) {
   position: relative;
   background-color: #f9f9f9;
 
-  /* ❌ 删掉 padding-top: env(...)，不需要了，原版不需要这个 */
-  /* padding-top: env(safe-area-inset-top); */
-
-  /* 保持原版的浏览模式高度逻辑 */
+  /* --- 场景 A：键盘收起时 (浏览态) --- */
+  /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
   height: 80dvh;
+
+  /* 2. 最小高度保底 */
   min-height: 430px;
+
+  /* 3. 封顶 */
   max-height: 90dvh;
 
+  /* 4. 沉底逻辑 */
   margin-top: auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+
+  /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
-  box-sizing: border-box;
 }
+
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
-  position: relative !important; /* 保持原版的 relative，这是解决光标乱跳的关键 */
+  /* 高度已经由 style 绑定控制了，这里不需要写 height */
+
+  /* 1. 保持相对定位，不要用 fixed */
+  position: relative !important;
+
+  /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
+  min-height: 200px !important;
+
+  /* 3. 去掉过渡，响应更干脆 */
   transition: none;
-  /* 高度将由 style 绑定接管 */
 }
+
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
 .note-editor-reborn.editing-viewport {
   /* ❌ 删除这一行： height: 100dvh !important; */
@@ -2633,6 +2640,16 @@ function handleBeforeInput(e: InputEvent) {
 
   margin-top: 0 !important;
   border-radius: 0;
+}
+
+/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
+/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
+   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
+@media (max-height: 600px) {
+  .note-editor-reborn.editing-viewport {
+    height: 100dvh !important;
+    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
+  }
 }
 
 /* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式 🔥🔥🔥 */
@@ -2680,22 +2697,34 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
+  /* 🔥 核心修改：高度 100%，不再由内容决定高度 */
   height: 100%;
   flex: 1;
-  /* 恢复正常的 padding */
-  padding: 12px 16px;
-  padding-bottom: 10px;
+  padding: 12px 16px; /* 调整内边距 */
 
   border: none;
   background-color: transparent;
   color: inherit;
   line-height: 1.6;
+
+  /* 🔥 核心修改：禁止调整大小，开启内部滚动 */
   resize: none;
   overflow-y: auto;
+
+  /* 🔴 删除 min-height 和 max-height */
+  /* min-height: 360px; */
+  /* max-height: 75dvh; */
+
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable;
+  height: 100%;
+  overflow-y: auto; /* 让文字在内部滚动 */
+  padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
+
+  scroll-padding-top: 80px;
+  padding-top: 10px;
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
