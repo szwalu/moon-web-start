@@ -37,10 +37,16 @@ const isInputFocused = ref(false)
 // 定义一个触发更新的 ref，仅用于强制 computed 重新计算
 const layoutTick = ref(0)
 
+// 🔥 修改版：视图更新时，不仅重算外框，还要强行校准光标位置
 function updateLayout() {
   layoutTick.value++
-}
 
+  // 解决“点击下方内容光标乱跳”的核心：
+  // 这一帧，外框高度变了，我们必须立即让 textarea 内部滚动的光标位置跟上变化
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
+}
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -84,7 +90,7 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 🔥 修正版：样式计算属性 (CSS 修复后的最终逻辑)
+// 🔥 修正版：样式计算属性
 const editorStyle = computed(() => {
   const _tick = layoutTick.value
 
@@ -109,21 +115,20 @@ const editorStyle = computed(() => {
 
     if (props.isEditing) {
       // 🅰️ 编辑旧笔记（全屏模式）
-      // CSS 的 position: relative !important 删掉后，这里的 fixed 终于能生效了。
-      // 我们减去 12px，是为了避开 iPhone 底部的小黑条/小白条。
-      const BOTTOM_GAP = 12
+      // 底部留 15px 缝隙，既防遮挡又避开 Home 条
+      const BOTTOM_GAP = 15
       return {
         ...common,
-        position: 'fixed', // ✅ 终于生效了
+        position: 'fixed',
         left: 0,
-        top: `${vv.offsetTop}px`,
+        top: `${vv.offsetTop}px`, // 紧贴顶部，内容靠 padding-top 避开刘海
         height: `${vv.height - BOTTOM_GAP}px`,
         bottom: 'auto',
       }
     }
     else {
       // 🅱️ 新建笔记（抽屉模式）
-      // 这里的逻辑你觉得没问题，我们保持不变
+      // 保持你觉得“差不多”的逻辑
       const DRAWER_HEADER_OFFSET = 56
       return {
         ...common,
@@ -2708,34 +2713,30 @@ function handleBeforeInput(e: InputEvent) {
 
 .editor-textarea {
   width: 100%;
-  /* 🔥 核心修改：高度 100%，不再由内容决定高度 */
   height: 100%;
   flex: 1;
-  padding: 12px 16px; /* 调整内边距 */
+
+  /* 🔥 修改 1：顶部 padding 加上 safe-area，防止文字顶到刘海 */
+  /* 原来是 padding: 12px 16px; */
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-right: 16px;
+  padding-bottom: 10px;
+  padding-left: 16px;
+
+  /* 🔥 修改 2：增加 scroll-padding，帮助浏览器定位光标，缓解跳动 */
+  scroll-padding-top: 80px;
+  scroll-padding-bottom: 80px; /* 让光标不要贴着底边，预留视线空间 */
 
   border: none;
   background-color: transparent;
   color: inherit;
   line-height: 1.6;
-
-  /* 🔥 核心修改：禁止调整大小，开启内部滚动 */
   resize: none;
   overflow-y: auto;
-
-  /* 🔴 删除 min-height 和 max-height */
-  /* min-height: 360px; */
-  /* max-height: 75dvh; */
-
   box-sizing: border-box;
   font-family: inherit;
   caret-color: currentColor;
   scrollbar-gutter: stable;
-  height: 100%;
-  overflow-y: auto; /* 让文字在内部滚动 */
-  padding-bottom: 10px; /* 给文字底部留点空隙，别贴着工具栏太紧 */
-
-  scroll-padding-top: 80px;
-  padding-top: 10px;
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
