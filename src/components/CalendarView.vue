@@ -1289,17 +1289,36 @@ async function saveNewNote(content: string, weather: string | null) {
   padding-bottom: 8px !important;
 }
 
-/* 3. 🔥 核心修复：新建和编辑统一使用大高度 */
+/* 3. 🔥 核心修复：内嵌编辑器的固定高度 (带大屏适配) */
 :deep(.inline-editor .note-editor-reborn .editor-textarea) {
-  height: auto !important;       /* 允许高度随内容稍微变化（如果有JS生效的话） */
+  height: auto !important;
 
-  /* ✅ 按照你的思路：起步就是屏幕高度的 56%，既够大又不会被键盘顶飞 */
+  /* ✅ 场景 A：默认情况 (iPhone 13/14/15 标准版, 6.1英寸) */
+  /* 你测试过，这个数值刚刚好 */
   min-height: 42dvh !important;
-
-  /* 🔒 加一个最大高度保险，防止内容写了几千字后把头部标题栏顶出屏幕 */
-  /* max-height: 80vh !important;*/
 }
 
+/* ✅ 场景 B：针对大屏手机 (iPhone Pro Max / Plus, 6.7英寸) */
+/* 逻辑：宽度 > 420px (Pro Max 通常是 428px 或 430px) */
+@media screen and (min-width: 420px) {
+  :deep(.inline-editor .note-editor-reborn .editor-textarea) {
+    /* 逻辑解释：
+      大屏的 1dvh 像素更多，42dvh 算出来的绝对高度太高了，会把工具栏顶到键盘后面。
+      所以我们稍微调小比例（从 42 降到 38），
+      这样算出来的像素高度其实和 6.1寸 差不多，能完美露出工具栏。
+    */
+    min-height: 38dvh !important;
+  }
+}
+
+/* ✅ 场景 C：针对超小屏 (iPhone SE / mini, 5.4英寸或更小) */
+/* 宽度 < 380px */
+@media screen and (max-width: 380px) {
+  :deep(.inline-editor .note-editor-reborn .editor-textarea) {
+    /* 小屏本来就矮，键盘占比高，需要把编辑器压得更扁一点才能露出工具栏 */
+    min-height: 35dvh !important;
+  }
+}
 .calendar-nav-title {
   font-weight: 600;
 }
