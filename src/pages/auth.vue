@@ -2406,31 +2406,9 @@ async function restoreHomeAndScrollTop() {
 
   // 2. 回到顶部（对当前视图：主页 / 搜索结果 / 标签筛选 / 那年今日 都只滚动）
   await nextTick()
-  // 🔥 健壮性修改开始 🔥
-  const listCmp = noteListRef.value as any
-  if (!listCmp) {
-    showScrollTopButton.value = false
-    return
-  }
+  if (noteListRef.value)
+    (noteListRef.value as any).scrollToTop?.()
 
-  // 尝试获取组件根元素
-  const rootEl = listCmp.$el
-  // A. 优先找 vue-virtual-scroller 的标准容器类名
-  // B. 如果找不到，就用根元素自己（以防你没用虚拟列表或结构不同）
-  const scroller = rootEl?.classList?.contains('vue-recycle-scroller')
-    ? rootEl
-    : (rootEl?.querySelector('.vue-recycle-scroller') || rootEl)
-
-  // 检查该元素是否真的支持 scrollTo 方法 (防止极老旧浏览器报错)
-  if (scroller && typeof scroller.scrollTo === 'function') {
-    // 核心：使用原生平滑滚动
-    scroller.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-  else {
-    // 兜底：如果环境不支持或找不到元素，回退到瞬间跳转
-    listCmp.scrollToTop?.()
-  }
-  // 🔥 健壮性修改结束 🔥
   showScrollTopButton.value = false
 }
 

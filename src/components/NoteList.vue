@@ -939,8 +939,56 @@ async function focusAndEditNote(noteId: string) {
   }
 }
 
+// 在 NoteList.vue 底部找到 scrollToTop 函数，替换为：
+
 function scrollToTop() {
-  scrollerRef.value?.scrollToItem(0)
+  const el = scrollerRef.value?.$el as HTMLElement | undefined
+  if (!el)
+    return
+
+  const startTop = el.scrollTop
+  if (startTop <= 0)
+    return
+
+  // ⚡️ 优化策略：如果距离太远（例如 2万像素），先瞬间“瞬移”到近处（3000px）
+  // 这样避免动画时间过长，也减少虚拟列表在高速滚动下的渲染压力
+  const MAX_ANIMATION_DIST = 3000
+  let effectiveStart = startTop
+
+  if (startTop > MAX_ANIMATION_DIST) {
+    effectiveStart = MAX_ANIMATION_DIST
+    el.scrollTop = effectiveStart
+  }
+
+  const startTime = performance.now()
+  const duration = 500 // 动画持续 500ms，你可以根据喜好调整（比如 800）
+
+  // 缓动函数：Cubic Ease-out (一开始快，快到终点时慢慢停下)
+  const easeOutCubic = (t: number) => 1 - (1 - t) ** 3
+
+  const frame = (now: number) => {
+    const elapsed = now - startTime
+    const progress = Math.min(elapsed / duration, 1) // 0 到 1
+
+    const ease = easeOutCubic(progress)
+
+    // 计算当前应该在哪
+    const currentTop = effectiveStart * (1 - ease)
+
+    el.scrollTop = currentTop
+
+    if (progress < 1) {
+      requestAnimationFrame(frame)
+    }
+    else {
+      // 确保最后严丝合缝归零
+      el.scrollTop = 0
+      // 触发一次逻辑更新，确保月份条等状态正确
+      handleScroll()
+    }
+  }
+
+  requestAnimationFrame(frame)
 }
 
 defineExpose({ scrollToTop, focusAndEditNote, restorePwaScroll, scrollToMonth })
