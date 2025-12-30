@@ -336,6 +336,8 @@ function checkAndPromptDraft() {
     pendingDraftText.value = tVal
     promptMode.value = 'draft'
     showDraftPrompt.value = true
+    if (textarea.value)
+      textarea.value.blur()
   }
 }
 
@@ -659,7 +661,7 @@ watch(() => contentModel.value, () => {
 
 // 进入编辑态：把光标移到末端并聚焦
 watch(() => props.isEditing, (v) => {
-  if (v)
+  if (v && !showDraftPrompt.value)
     focusToEnd()
 })
 
@@ -2255,12 +2257,14 @@ function handleBeforeInput(e: InputEvent) {
             <template v-if="promptMode === 'draft'">
               <button
                 class="btn-secondary draft-btn"
+                @mousedown.prevent
                 @click.prevent="handleDiscardDraft"
               >
                 {{ t('notes.draft.discard') }}
               </button>
               <button
                 class="draft-btn btn-primary"
+                @mousedown.prevent
                 @click.prevent="handleRecoverDraft"
               >
                 {{ t('notes.draft.continue') }}
@@ -2270,6 +2274,7 @@ function handleBeforeInput(e: InputEvent) {
             <template v-else>
               <button
                 class="draft-btn btn-primary"
+                @mousedown.prevent
                 @click.prevent="handleErrorConfirm"
               >
                 {{ t('notes.ok') }}
