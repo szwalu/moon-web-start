@@ -2224,68 +2224,6 @@ function handleBeforeInput(e: InputEvent) {
     ensureCaretVisibleInTextarea()
   })
 }
-
-// 记录手指按下的 Y 坐标
-const touchStartY = ref(0)
-
-// 1. 手指按下：记录初始位置
-function handleTouchStart(e: TouchEvent) {
-  if (!isInputFocused.value)
-    return
-  // 记录第一根手指的坐标
-  touchStartY.value = e.touches[0].clientY
-}
-
-// 2. 手指移动：智能拦截
-function handleTouchMove(e: TouchEvent) {
-  // 非编辑态不管
-  if (!isInputFocused.value)
-    return
-
-  const target = e.target as HTMLElement
-  const isTextarea = target.tagName === 'TEXTAREA'
-
-  // 🔥 情景一：手指没在输入框上（比如摸到了工具栏、空白处）
-  // 直接禁死，背景纹丝不动
-  if (!isTextarea) {
-    if (e.cancelable)
-      e.preventDefault()
-    return
-  }
-
-  // 🔥 情景二：手指在输入框上，但需要判断“能不能动”
-  const el = target as HTMLTextAreaElement
-
-  // A. 内容太少，根本没有滚动条？ -> 禁死！
-  // (修复了“输入框没有任何内容时划动穿透”的问题)
-  if (el.scrollHeight <= el.clientHeight) {
-    if (e.cancelable)
-      e.preventDefault()
-    return
-  }
-
-  // B. 到了边界还想硬拉？ -> 禁死！
-  const currentY = e.touches[0].clientY
-  const distanceY = currentY - touchStartY.value // 正数=向下拉(看上面)，负数=向上推(看下面)
-
-  // 如果已经在顶部，且用户手指向下拉 -> 阻止（防止拉出顶部刘海缝隙）
-  if (distanceY > 0 && el.scrollTop <= 0) {
-    if (e.cancelable)
-      e.preventDefault()
-    return
-  }
-
-  // 如果已经在底部，且用户手指向上推 -> 阻止（防止拉出底部空白）
-  // 留 1px 的容错空间
-  if (distanceY < 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
-    if (e.cancelable)
-      e.preventDefault()
-    return
-  }
-
-  // C. 其他情况（在中间正常滚动） -> 允许滚动，但阻止冒泡防止外层干扰
-  e.stopPropagation()
-}
 </script>
 
 <template>
@@ -2302,8 +2240,6 @@ function handleTouchMove(e: TouchEvent) {
       height: editorHeight,
     }"
     @click.stop
-    @touchstart="handleTouchStart"
-    @touchmove="handleTouchMove"
   >
     <input
       ref="imageInputRef"
@@ -2776,11 +2712,18 @@ function handleTouchMove(e: TouchEvent) {
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
 .note-editor-reborn.editing-viewport {
-  /* ❌ 删除这一行： height: 100dvh !important; */
-  /* 现在高度由 JS (style="") 控制，这里只控制圆角和边距 */
 
   margin-top: 0 !important;
   border-radius: 0;
+  /* 父级有 1.5rem (约24px) 的 padding，我们用负 margin 抵消它 */
+  margin-left: -1.5rem !important;
+  margin-right: -1.5rem !important;
+
+  /* 强制宽度增加，补回减去的边距 */
+  width: calc(100% + 3rem) !important;
+
+  /* 顺便移除可能存在的 scrollbar 占位，让宽度利用率达到 100% */
+  scrollbar-gutter: auto !important;
 }
 
 /* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
@@ -2831,7 +2774,6 @@ function handleTouchMove(e: TouchEvent) {
   flex-direction: column;
   min-height: 0; /* Flex 布局防溢出经典补丁 */
   overflow: hidden;
-  touch-action: none;
   overscroll-behavior: none;
 }
 .note-editor-reborn.android .editor-wrapper {
