@@ -1069,7 +1069,7 @@ async function restoreScrollIfNeeded() {
       v-show="!isEditingTop"
       ref="scrollerRef"
       :items="mixedItems"
-      :min-item-size="140"
+      :min-item-size="120"
       :buffer="400"
       class="scroller"
       key-field="vid"
