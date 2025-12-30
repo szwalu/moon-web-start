@@ -1111,10 +1111,22 @@ function ensureCaretVisibleInTextarea() {
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
-  if (caretDesiredBottom > viewBottom)
-    el.scrollTop = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-  else if (caretDesiredTop < viewTop)
-    el.scrollTop = Math.max(caretDesiredTop, 0)
+  if (caretDesiredBottom > viewBottom) {
+    const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+    // 原代码：el.scrollTop = targetScroll
+    el.scrollTo({
+      top: targetScroll,
+      behavior: 'smooth', // 👈 加上这句，就是原生般的丝滑动画
+    })
+  }
+  else if (caretDesiredTop < viewTop) {
+    const targetScroll = Math.max(caretDesiredTop, 0)
+    // 原代码：el.scrollTop = targetScroll
+    el.scrollTo({
+      top: targetScroll,
+      behavior: 'smooth', // 👈 加上这句
+    })
+  }
 }
 
 function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -1436,6 +1448,7 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
+  /*
   if (!props.isEditing) {
     // 加一点点延迟，覆盖掉浏览器原生的滚动行为
     setTimeout(() => {
@@ -1447,6 +1460,7 @@ function handleFocus() {
         document.documentElement.scrollTop = 0
     }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
   }
+  */
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
