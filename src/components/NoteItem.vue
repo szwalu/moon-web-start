@@ -1779,48 +1779,59 @@ function handleImageLoad() {
 }
 
 /* ============================================ */
-/* 新增：微信朋友圈风格 - 固定高度列表项样式 */
+/* 核心修改：三行文字 + 右侧固定图 完美对齐版 */
 /* ============================================ */
 
-/* 1. 卡片容器：左右布局，高度锁死 */
+/* 1. 卡片容器 */
 .note-preview-card {
   display: flex;
-  gap: 12px;           /* 文字和图片的间距 */
-  align-items: flex-start;
+  gap: 12px;
+  align-items: flex-start; /* 顶部对齐 */
   cursor: pointer;
-  height: 84px;        /* 🔥 强制固定高度 (根据 3行文字+行高计算得出) */
-  overflow: hidden;    /* 超出部分切除 */
+
+  /* 🔥 核心修改：高度严格等于 3行文字的高度 (24px * 3 = 72px) */
+  height: 72px;
+
+  overflow: hidden;
 }
 
 /* 2. 左侧文字容器 */
 .note-preview-left {
-  flex: 1;             /* 占满剩余空间 */
-  min-width: 0;        /* 防止文字撑开容器 */
-  display: flex;       /*用于垂直居中文字(可选)，这里设为 flex */
-  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 3. 紧凑模式：强制 3 行省略 */
 .compact-mode {
-  /* 限制显示 3 行 */
+  /* 开启 Webkit 盒子模式以支持省略号 */
   display: -webkit-box;
   -webkit-box-orient: vertical;
+
+  /* 🔥 限制为 3 行 */
   -webkit-line-clamp: 3;
+  line-clamp: 3;
+
   overflow: hidden;
   text-overflow: ellipsis;
 
-  /* 强制统一行高，确保高度可预测 */
-  line-height: 1.6 !important;
-  max-height: 4.8em; /* 1.6 * 3行 = 4.8em */
+  /* 🔥 核心数学题： */
+  /* 字号 15px */
+  font-size: 15px !important;
+  /* 行高 24px (1.6倍) */
+  line-height: 24px !important;
+  /* 总高度 72px (正好放下3行，不给第4行露头的机会) */
+  height: 72px;
 
-  /* 清除外边距 */
   margin: 0 !important;
   padding: 0 !important;
-  font-size: 15px !important; /* 列表页稍微统一一下字号，防抖动 */
+  color: #374151; /* 稍微加深一点颜色增加可读性 */
 }
 
-/* 4. 黑魔法：把所有 Markdown 块级元素变成“内联”
-   这样标题、列表、段落就会连成一整段话，中间的空行也会消失 */
+.dark .compact-mode {
+  color: #d1d5db;
+}
+
+/* 4. 压扁 Markdown 块级元素 */
 .compact-mode :deep(p),
 .compact-mode :deep(ul),
 .compact-mode :deep(ol),
@@ -1831,31 +1842,32 @@ function handleImageLoad() {
 .compact-mode :deep(h4),
 .compact-mode :deep(blockquote),
 .compact-mode :deep(pre) {
-  display: inline;      /* 关键！变成一行 */
+  display: inline;
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
-  font-weight: normal !important; /* 标题不加粗，保持排版整齐 */
-  background: none !important;    /* 去掉代码块背景 */
+  font-weight: normal !important;
+  background: none !important;
 }
 
-/* 给原本的块之间加一个空格，防止字粘在一起 */
+/* 标点和空格处理 */
 .compact-mode :deep(p)::after,
 .compact-mode :deep(li)::after,
 .compact-mode :deep(h1)::after {
   content: " ";
 }
 
-/* 在预览文字里隐藏掉原本的图片（因为我们要把图提到右边去） */
+/* 隐藏预览中的原图 */
 .compact-mode :deep(img) {
   display: none !important;
 }
 
-/* 5. 右侧缩略图容器：正方形 */
+/* 5. 右侧缩略图容器：跟随文字高度 */
 .note-preview-right {
-  flex-shrink: 0;    /* 禁止压缩 */
-  width: 84px;       /* 与高度一致，正方形 */
-  height: 84px;
+  flex-shrink: 0;
+  /* 🔥 与卡片高度保持一致，形成正方形 */
+  width: 72px;
+  height: 72px;
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1863,7 +1875,7 @@ function handleImageLoad() {
 .thumb-img {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* 关键：裁切图片填满正方形，不变形 */
+  object-fit: cover;
   display: block;
   background-color: #f3f4f6;
   border: 1px solid rgba(0,0,0,0.05);
