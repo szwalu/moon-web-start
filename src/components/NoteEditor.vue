@@ -2708,6 +2708,17 @@ function handleBeforeInput(e: InputEvent) {
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
+  margin-left: -1.5rem !important;
+  margin-right: -1.5rem !important;
+
+  /* 强制宽度增加，补回减去的边距，确保占满 100% 屏幕宽 */
+  width: calc(100% + 3rem) !important;
+
+  /* 移除滚动条占位，保证贴边 */
+  scrollbar-gutter: auto !important;
+
+  /* 确保圆角变直角，贴合键盘和顶部 */
+  border-radius: 0 !important;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
