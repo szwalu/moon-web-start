@@ -1322,7 +1322,7 @@ async function saveNewNote(content: string, weather: string | null) {
 }
 
 .calendar-view.android-device :deep(.inline-editor .note-editor-reborn .editor-textarea) {
-  min-height: 62dvh !important;
+  min-height: 72dvh !important;
 }
 
 .calendar-nav-title {
