@@ -830,51 +830,23 @@ function handleImageLoad() {
         </div>
 
         <div v-else>
-          <div class="note-preview-wrapper">
-            <div
-              ref="contentRef"
-              class="prose dark:prose-invert note-content note-preview-text line-clamp-3 max-w-none"
-              :class="fontSizeClass"
-              v-html="renderMarkdown(note.content)"
-            />
+          <div class="note-preview-card" @click.stop="emit('toggleExpand', note.id)">
+            <div class="note-preview-left">
+              <div
+                class="prose dark:prose-invert note-content compact-mode"
+                :class="fontSizeClass"
+                v-html="renderMarkdown(note.content)"
+              />
+            </div>
 
-            <div
-              ref="fullContentRef"
-              class="prose dark:prose-invert note-content note-content-measure max-w-none"
-              :class="fontSizeClass"
-              aria-hidden="true"
-              v-html="renderMarkdown(note.content)"
-            />
-
-            <div v-if="firstImageUrl" class="preview-image-container">
+            <div v-if="firstImageUrl" class="note-preview-right">
               <img
                 :src="firstImageUrl"
-                class="preview-extracted-img"
+                class="thumb-img"
                 loading="lazy"
                 alt="preview"
                 @load="handleImageLoad"
-                @click.stop="emit('toggleExpand', note.id)"
               >
-            </div>
-          </div>
-
-          <div
-            v-if="noteOverflowStatus || firstImageUrl"
-            class="toggle-button-row"
-            @click.stop="emit('toggleExpand', note.id)"
-          >
-            <button class="toggle-button">
-              {{ $t('notes.expand') }}
-            </button>
-          </div>
-
-          <div
-            v-else
-            class="comment-trigger-bar"
-            @click.stop="openCommentModal"
-          >
-            <div class="comment-trigger-input">
-              {{ $t('notes.comment.trigger') }}
             </div>
           </div>
         </div>
@@ -1804,6 +1776,102 @@ function handleImageLoad() {
 /* 可选：如果你希望占位符文字也跟着变大，加这一段 */
 :deep(.comment-textarea .n-input__textarea-el::placeholder) {
    font-size: var(--comment-fs) !important;
+}
+
+/* ============================================ */
+/* 新增：微信朋友圈风格 - 固定高度列表项样式 */
+/* ============================================ */
+
+/* 1. 卡片容器：左右布局，高度锁死 */
+.note-preview-card {
+  display: flex;
+  gap: 12px;           /* 文字和图片的间距 */
+  align-items: flex-start;
+  cursor: pointer;
+  height: 84px;        /* 🔥 强制固定高度 (根据 3行文字+行高计算得出) */
+  overflow: hidden;    /* 超出部分切除 */
+}
+
+/* 2. 左侧文字容器 */
+.note-preview-left {
+  flex: 1;             /* 占满剩余空间 */
+  min-width: 0;        /* 防止文字撑开容器 */
+  display: flex;       /*用于垂直居中文字(可选)，这里设为 flex */
+  flex-direction: column;
+}
+
+/* 3. 紧凑模式：强制 3 行省略 */
+.compact-mode {
+  /* 限制显示 3 行 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  /* 强制统一行高，确保高度可预测 */
+  line-height: 1.6 !important;
+  max-height: 4.8em; /* 1.6 * 3行 = 4.8em */
+
+  /* 清除外边距 */
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 15px !important; /* 列表页稍微统一一下字号，防抖动 */
+}
+
+/* 4. 黑魔法：把所有 Markdown 块级元素变成“内联”
+   这样标题、列表、段落就会连成一整段话，中间的空行也会消失 */
+.compact-mode :deep(p),
+.compact-mode :deep(ul),
+.compact-mode :deep(ol),
+.compact-mode :deep(li),
+.compact-mode :deep(h1),
+.compact-mode :deep(h2),
+.compact-mode :deep(h3),
+.compact-mode :deep(h4),
+.compact-mode :deep(blockquote),
+.compact-mode :deep(pre) {
+  display: inline;      /* 关键！变成一行 */
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  font-weight: normal !important; /* 标题不加粗，保持排版整齐 */
+  background: none !important;    /* 去掉代码块背景 */
+}
+
+/* 给原本的块之间加一个空格，防止字粘在一起 */
+.compact-mode :deep(p)::after,
+.compact-mode :deep(li)::after,
+.compact-mode :deep(h1)::after {
+  content: " ";
+}
+
+/* 在预览文字里隐藏掉原本的图片（因为我们要把图提到右边去） */
+.compact-mode :deep(img) {
+  display: none !important;
+}
+
+/* 5. 右侧缩略图容器：正方形 */
+.note-preview-right {
+  flex-shrink: 0;    /* 禁止压缩 */
+  width: 84px;       /* 与高度一致，正方形 */
+  height: 84px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 关键：裁切图片填满正方形，不变形 */
+  display: block;
+  background-color: #f3f4f6;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+.dark .thumb-img {
+  background-color: #1f2937;
+  border-color: rgba(255,255,255,0.1);
 }
 </style>
 
