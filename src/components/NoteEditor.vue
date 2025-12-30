@@ -81,26 +81,15 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-const realTimeHeight = ref(0)
 
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
-  // ✅ 修复核心 bug：
-  // 无论是否聚焦，必须无条件实时更新 Android 的高度！
-  // 之前因为放在了 if (!isInputFocused) 之后，导致 Android 键盘弹出时被拦截了。
-  if (typeof window !== 'undefined') {
-    // Android 键盘弹出最准的指标就是 window.innerHeight 变小了
-    realTimeHeight.value = window.innerHeight
-  }
-
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
 
-  // --- 以下是 iOS 专用逻辑 (保持不变) ---
-
-  // 1. 键盘收起时
+  // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
     if (currentHeight > 300)
       baseHeight = currentHeight
@@ -113,10 +102,12 @@ function updateKeyboardOffset() {
   if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
 
+    // 只有差值合理才认为是键盘
     if (diff > 150) {
-      // iOS 缓冲值
       const extraBuffer = isPWA.value ? 50 : 15
+
       const finalOffset = diff + extraBuffer
+
       keyboardOffset.value = `${finalOffset}px`
     }
     else {
@@ -127,27 +118,14 @@ function updateKeyboardOffset() {
 
 // 在 onMounted 里监听
 onMounted(() => {
-  // ... 其他代码 ...
-
-  // 初始化
-  updateKeyboardOffset()
-
-  // ✅ Android 命门：必须监听 window resize
-  window.addEventListener('resize', updateKeyboardOffset)
-
   if (window.visualViewport) {
     baseHeight = window.visualViewport.height
-    // iOS 命门
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
 })
 
-// 在 onUnmounted 里移除
 onUnmounted(() => {
-  // ... 其他代码 ...
-  window.removeEventListener('resize', updateKeyboardOffset)
-
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
@@ -165,22 +143,34 @@ const editorHeight = computed(() => {
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // iOS 逻辑
+    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
+    // 如果算出来了 offset，就用算出来的；
+    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
     if (keyboardOffset.value !== '0px')
       return `calc(100dvh - ${keyboardOffset.value})`
-    const fallback = isPWA.value ? '435px' : '290px'
-    return `calc(100dvh - ${fallback})`
+
+    // 🛡️ 兜底逻辑 (万一 resize 没触发)
+    // 区分大屏 (6.7寸) 和 普通屏 (6.1寸)
+    // 6.7寸宽通常 > 420px (例如 428px 或 430px)
+    const isLargeScreen = window.screen.width > 420
+
+    let fallbackOffset = ''
+    if (isLargeScreen) {
+      // 大屏：键盘略高，但屏幕高很多，所以要减去更多，防止编辑器太长盖住工具栏
+      // 经验值：比 6.1寸多减约 45px
+      fallbackOffset = isPWA.value ? '480px' : '335px'
+    }
+    else {
+      // 普通屏 (6.1寸)：保留你觉得完美的数值
+      fallbackOffset = isPWA.value ? '435px' : '290px'
+    }
+
+    return `calc(100dvh - ${fallbackOffset})`
   }
 
-  // 🔥 Android 逻辑 (生效版)
-  // 只要 innerHeight 变小了（说明键盘弹出了），就直接用这个值。
-  // 之前你说有空隙，所以加 15px 填补可能的缝隙。
-  if (realTimeHeight.value > 0 && realTimeHeight.value < window.screen.height)
-    return `${realTimeHeight.value + 15}px`
-
+  // Android
   return '100dvh'
 })
-
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
