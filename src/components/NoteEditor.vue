@@ -2753,6 +2753,11 @@ function handleTouchMove(e: TouchEvent) {
 
   /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
+  /* 🔥 核心修复 A：禁止根容器响应任何浏览器默认手势（如拖拽页面） */
+  touch-action: none;
+
+  /* 之前的这个也可以保留作为双重保险 */
+  overscroll-behavior: none;
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
@@ -2826,6 +2831,8 @@ function handleTouchMove(e: TouchEvent) {
   flex-direction: column;
   min-height: 0; /* Flex 布局防溢出经典补丁 */
   overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 .note-editor-reborn.android .editor-wrapper {
   overflow-anchor: auto;
@@ -2846,6 +2853,7 @@ function handleTouchMove(e: TouchEvent) {
   /* 🔥 核心修改：禁止调整大小，开启内部滚动 */
   resize: none;
   overflow-y: auto;
+  touch-action: pan-y;
   overscroll-behavior-y: contain;
   /* 🔴 删除 min-height 和 max-height */
   /* min-height: 360px; */
