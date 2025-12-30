@@ -659,10 +659,51 @@ watch(() => contentModel.value, () => {
   }, DRAFT_SAVE_DELAY) as unknown as number
 })
 
-// 进入编辑态：把光标移到末端并聚焦
+// 定义一个变量记录滚动位置，防止锁定时页面跳动
+const lockedScrollY = ref(0)
+
+// 🔒 核心修复：iOS 专用防拖拽锁
+// 当进入编辑时，把 Body 钉死在当前位置；退出时恢复。
+function toggleBodyLock(lock: boolean) {
+  if (lock) {
+    // 1. 记录当前滚到了哪里
+    lockedScrollY.value = window.scrollY
+    // 2. 强制钉死 Body
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    // 3. 这一步最关键：把 Body 向上提，抵消掉固定定位带来的跳动
+    document.body.style.top = `-${lockedScrollY.value}px`
+    document.body.style.overflow = 'hidden'
+  }
+  else {
+    // 1. 解锁
+    document.body.style.position = ''
+    document.body.style.width = ''
+    document.body.style.top = ''
+    document.body.style.overflow = ''
+    // 2. 瞬间滚回原来的位置，用户无感知
+    window.scrollTo(0, lockedScrollY.value)
+  }
+}
+
+// 监听编辑状态
 watch(() => props.isEditing, (v) => {
+  // 执行锁定/解锁
+  toggleBodyLock(v)
+
+  // 原有的聚焦逻辑
   if (v && !showDraftPrompt.value)
     focusToEnd()
+})
+
+// 组件卸载时必须解锁，防止页面卡死
+onUnmounted(() => {
+  toggleBodyLock(false)
+
+  if (draftTimer) {
+    window.clearTimeout(draftTimer)
+    draftTimer = null
+  }
 })
 
 // 如果组件一挂载就处于编辑态，也执行一次
@@ -2240,7 +2281,6 @@ function handleBeforeInput(e: InputEvent) {
       height: editorHeight,
     }"
     @click.stop
-    @touchmove.prevent
   >
     <input
       ref="imageInputRef"
@@ -2322,7 +2362,7 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-        @touchmove.stop
+
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
@@ -2694,23 +2734,16 @@ function handleBeforeInput(e: InputEvent) {
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
-  /* 🔥 核心修复：从 relative 改为 fixed，彻底钉死在屏幕上 */
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  width: 100%;
+  /* 高度已经由 style 绑定控制了，这里不需要写 height */
 
-  /* 确保层级够高，盖住其它内容 */
-  z-index: 2000;
+  /* 1. 保持相对定位，不要用 fixed */
+  position: relative !important;
 
   /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
   min-height: 200px !important;
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
-
-  /* 保持之前的禁止回弹设置 */
-  overscroll-behavior: none;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
