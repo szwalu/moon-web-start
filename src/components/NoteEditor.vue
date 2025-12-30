@@ -2224,6 +2224,22 @@ function handleBeforeInput(e: InputEvent) {
     ensureCaretVisibleInTextarea()
   })
 }
+
+// 🔥 核心 JS：智能判断输入框是否需要滚动
+function handleTextareaMove(e: TouchEvent) {
+  const el = e.target as HTMLTextAreaElement
+
+  // 1. 如果内容高度 <= 容器高度（说明没滚动条，或者内容空的）
+  //    此时禁止默认行为，防止 iOS 穿透去拖拽 body
+  if (el.scrollHeight <= el.clientHeight) {
+    if (e.cancelable)
+      e.preventDefault()
+  }
+
+  // 2. 无论是否允许滚动，都要阻止冒泡
+  //    防止触发根容器上的 @touchmove.prevent
+  e.stopPropagation()
+}
 </script>
 
 <template>
@@ -2240,6 +2256,7 @@ function handleBeforeInput(e: InputEvent) {
       height: editorHeight,
     }"
     @click.stop
+    @touchmove.prevent
   >
     <input
       ref="imageInputRef"
@@ -2321,7 +2338,7 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
+        @touchmove="handleTextareaMove"
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
@@ -2696,44 +2713,18 @@ function handleBeforeInput(e: InputEvent) {
   overscroll-behavior: none;
 }
 
-/* NoteEditor.vue -> <style scoped> */
-
 /* --- 场景 B：键盘弹出时 (输入态) --- */
-/* 🔥 终极修复：只要聚焦，无论新旧笔记，统统变成全屏 Fixed 层 */
 .note-editor-reborn.is-focused {
-  /* 1. 强制脱离文档流，钉死在屏幕左上角 */
-  position: fixed !important;
-  top: 0;
-  left: 0;
+  /* 高度已经由 style 绑定控制了，这里不需要写 height */
 
-  /* 2. 强制宽度 100vw (视口宽度)，无视父级 Padding */
-  width: 100vw !important;
-  margin: 0 !important;
+  /* 1. 保持相对定位，不要用 fixed */
+  position: relative !important;
 
-  /* 3. 层级极高，确保盖住父级 Header 和所有内容 */
-  z-index: 10000;
+  /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
+  min-height: 200px !important;
 
-  /* 4. 关键：加上顶部安全区内边距，防止顶到刘海 */
-  padding-top: env(safe-area-inset-top);
-
-  /* 5. 确保背景不透明，遮住底部页面 */
-  background-color: #f9f9f9;
-
-  /* 6. 核心：禁止这个层响应任何拖拽页面的手势 */
-  /* 这会让除了 editor-textarea 以外的所有区域（包括边缘）都变成“死”的 */
-  touch-action: none;
-  overscroll-behavior: none;
-
-  /* 7. 移除圆角，让它看起来像原生页面 */
-  border-radius: 0 !important;
-
-  /* 8. 去除没用的过渡，防止切换时闪烁 */
+  /* 3. 去掉过渡，响应更干脆 */
   transition: none;
-}
-
-/* 深色模式适配背景 */
-.dark .note-editor-reborn.is-focused {
-  background-color: #1e1e1e;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
