@@ -2697,28 +2697,39 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
+/* 🔥 终极修复：一旦聚焦，立刻变身为“全屏固定层”，彻底脱离文档流 */
 .note-editor-reborn.is-focused {
-  /* 高度已经由 style 绑定控制了，这里不需要写 height */
+  /* 1. 强制固定定位，钉死在屏幕左上角 */
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
 
-  /* 1. 保持相对定位，不要用 fixed */
-  position: relative !important;
-
-  /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
-  min-height: 200px !important;
-
-  /* 3. 去掉过渡，响应更干脆 */
-  transition: none;
-  margin-left: -1.5rem !important;
-  margin-right: -1.5rem !important;
-
-  /* 强制宽度增加，补回减去的边距，确保占满 100% 屏幕宽 */
-  width: calc(100% + 3rem) !important;
-
-  /* 移除滚动条占位，保证贴边 */
-  scrollbar-gutter: auto !important;
-
-  /* 确保圆角变直角，贴合键盘和顶部 */
+  /* 2. 宽度强制 100%，无视父级 Padding */
+  width: 100% !important;
+  margin: 0 !important;
   border-radius: 0 !important;
+
+  /* 3. 层级极高，盖住 header 和父级所有内容 */
+  z-index: 9999;
+
+  /* 4. 关键：加上顶部内边距，防止顶到刘海里 */
+  padding-top: env(safe-area-inset-top);
+
+  /* 5. 确保背景不透明，遮住底部页面 */
+  background-color: #f9f9f9;
+
+  /* 6. 禁止这个层触发橡皮筋效果 */
+  overscroll-behavior: none;
+  touch-action: none;
+
+  /* 7. 去除没用的过渡，防止切换时闪烁 */
+  transition: none;
+}
+
+/* 深色模式适配背景 */
+.dark .note-editor-reborn.is-focused {
+  background-color: #1e1e1e;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
