@@ -76,101 +76,33 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// ... imports ...
-
-// 🔥 新增：基础高度与键盘偏移量
-const keyboardOffset = ref('0px')
-let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-
-// 🔥 修改版：updateKeyboardOffset
-function updateKeyboardOffset() {
-  if (!window.visualViewport)
-    return
-
-  const currentHeight = window.visualViewport.height
-
-  // 1. 键盘收起时：更新基准高度
-  if (!isInputFocused.value) {
-    if (currentHeight > 300)
-      baseHeight = currentHeight
-
-    keyboardOffset.value = '0px'
-    return
-  }
-
-  // 2. 键盘弹出时
-  if (baseHeight > 0) {
-    const diff = baseHeight - currentHeight
-
-    // 只有差值合理才认为是键盘
-    if (diff > 150) {
-      const extraBuffer = isPWA.value ? 50 : 15
-
-      const finalOffset = diff + extraBuffer
-
-      keyboardOffset.value = `${finalOffset}px`
-    }
-    else {
-      keyboardOffset.value = '0px'
-    }
-  }
-}
-
-// 在 onMounted 里监听
-onMounted(() => {
-  if (window.visualViewport) {
-    baseHeight = window.visualViewport.height
-    window.visualViewport.addEventListener('resize', updateKeyboardOffset)
-    window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
-  }
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
-    window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
-  }
-})
-
 // 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
+  // 1. 键盘收起时（浏览模式）：85% 屏幕高度
   if (!isInputFocused.value)
-    return props.isEditing ? '100dvh' : '80dvh'
+    return '80dvh'
 
-  // 2. 键盘弹出时
+  // 2. 键盘弹出时（输入模式）：
+
+  // 现场获取 UserAgent，确保判断准确
   const currentUA = navigator.userAgent.toLowerCase()
+  // 增加 'macintosh' 判断，因为 iPad 有时会伪装成 Mac
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
-    // 如果算出来了 offset，就用算出来的；
-    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
-    if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value})`
+    // 🍎 iOS 专用逻辑：
+    // 如果是 PWA 模式：减去 430px (全屏无工具栏，键盘显得“低”，需要留更多空)
+    // 如果是 网页模式：减去 320px (Safari 底部工具栏已经占了位置，所以我们少减一点)
+    const offset = isPWA.value ? '430px' : '295px'
 
-    // 🛡️ 兜底逻辑 (万一 resize 没触发)
-    // 区分大屏 (6.7寸) 和 普通屏 (6.1寸)
-    // 6.7寸宽通常 > 420px (例如 428px 或 430px)
-    const isLargeScreen = window.screen.width > 420
-
-    let fallbackOffset = ''
-    if (isLargeScreen) {
-      // 大屏：键盘略高，但屏幕高很多，所以要减去更多，防止编辑器太长盖住工具栏
-      // 经验值：比 6.1寸多减约 45px
-      fallbackOffset = isPWA.value ? '480px' : '335px'
-    }
-    else {
-      // 普通屏 (6.1寸)：保留你觉得完美的数值
-      fallbackOffset = isPWA.value ? '435px' : '290px'
-    }
-
-    return `calc(100dvh - ${fallbackOffset})`
+    return `calc(100dvh - ${offset})`
   }
 
-  // Android
+  // 🤖 Android / 其他：直接填满
+  // Android 配合 interactive-widget 会自动挤压 100dvh，所以不用减
   return '100dvh'
 })
+
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -1479,14 +1411,6 @@ function onBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
-  // 🔥 新增：键盘收起时，手动重置 offset 并尝试更新 baseHeight
-  keyboardOffset.value = '0px'
-  if (window.visualViewport) {
-    // 稍微延迟一点点，等键盘完全收起后再记录新的高度
-    setTimeout(() => {
-      baseHeight = window.visualViewport!.height
-    }, 300)
-  }
 }
 
 function handleClick() {
@@ -2219,8 +2143,8 @@ function handleBeforeInput(e: InputEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
-      height: editorHeight,
+      /* ✅✅✅ 核心修改：高度直接由 JS 接管，谁也别想乱改 */
+      height: props.isEditing ? undefined : editorHeight,
     }"
     @click.stop
   >
@@ -2436,7 +2360,7 @@ function handleBeforeInput(e: InputEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.image_dialog.title')"
-            @mousedown.prevent
+            @pointerdown="onPickImageSync"
             @click="onPickImageSync"
           >
             <svg
@@ -2485,14 +2409,13 @@ function handleBeforeInput(e: InputEvent) {
       </div>
 
       <div class="actions">
-        <button type="button" class="btn-secondary" @mousedown.prevent @click="emit('cancel')">
+        <button type="button" class="btn-secondary" @click="emit('cancel')">
           {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
           type="button"
           class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
-          @mousedown.prevent
           @click="handleSave"
         >
           {{ t('notes.editor.save.button_save') }}
@@ -2686,10 +2609,9 @@ function handleBeforeInput(e: InputEvent) {
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
+/* 保持原有的逻辑，优先级最高 */
 .note-editor-reborn.editing-viewport {
-  /* ❌ 删除这一行： height: 100dvh !important; */
-  /* 现在高度由 JS (style="") 控制，这里只控制圆角和边距 */
-
+  height: 100dvh !important;
   margin-top: 0 !important;
   border-radius: 0;
 }
