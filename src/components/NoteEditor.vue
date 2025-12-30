@@ -85,20 +85,20 @@ const realTimeHeight = ref(0)
 
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
-  // ✅ Android 核心修复：
-  // 必须优先读取 visualViewport，因为它是最准的“键盘上方剩余空间”。
-  // 如果没有，再降级用 innerHeight。
-  // 这里的关键是：这个函数现在会被 window.resize 触发，所以一定能读到最新值。
-  if (window.visualViewport)
-    realTimeHeight.value = window.visualViewport.height
-  else if (typeof window !== 'undefined')
+  // ✅ 修复核心 bug：
+  // 无论是否聚焦，必须无条件实时更新 Android 的高度！
+  // 之前因为放在了 if (!isInputFocused) 之后，导致 Android 键盘弹出时被拦截了。
+  if (typeof window !== 'undefined') {
+    // Android 键盘弹出最准的指标就是 window.innerHeight 变小了
     realTimeHeight.value = window.innerHeight
+  }
 
-  // --- 以下是 iOS 专用逻辑 (保持不变) ---
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
+
+  // --- 以下是 iOS 专用逻辑 (保持不变) ---
 
   // 1. 键盘收起时
   if (!isInputFocused.value) {
@@ -129,15 +129,15 @@ function updateKeyboardOffset() {
 onMounted(() => {
   // ... 其他代码 ...
 
-  // ✅ Android 核心修复 1：挂载时立即读一次，确保 realTimeHeight 不为 0
+  // 初始化
   updateKeyboardOffset()
 
-  // ✅ Android 核心修复 2：必须监听 window 的 resize，这是 Android 键盘生效的命门
+  // ✅ Android 命门：必须监听 window resize
   window.addEventListener('resize', updateKeyboardOffset)
 
   if (window.visualViewport) {
     baseHeight = window.visualViewport.height
-    // iOS 依然靠这两个
+    // iOS 命门
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
@@ -146,8 +146,6 @@ onMounted(() => {
 // 在 onUnmounted 里移除
 onUnmounted(() => {
   // ... 其他代码 ...
-
-  // ✅ 记得移除 Android 监听
   window.removeEventListener('resize', updateKeyboardOffset)
 
   if (window.visualViewport) {
@@ -166,8 +164,8 @@ const editorHeight = computed(() => {
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
-  // iOS 逻辑 (保持不变)
   if (isReallyIOS) {
+    // iOS 逻辑
     if (keyboardOffset.value !== '0px')
       return `calc(100dvh - ${keyboardOffset.value})`
     const fallback = isPWA.value ? '435px' : '290px'
@@ -175,12 +173,9 @@ const editorHeight = computed(() => {
   }
 
   // 🔥 Android 逻辑 (生效版)
-  // realTimeHeight 现在一定有值了。
-  // 我们直接用这个高度。
-  // ⚠️ 注意：如果你发现还有空隙，是因为你的 handleFocus 里加了 bottomSafePadding。
-  // Android 键盘弹出时窗口会自动缩小，不需要 padding。
-  // 但为了稳妥，我们在这里加 15px 填补可能存在的微小缝隙。
-  if (realTimeHeight.value > 0)
+  // 只要 innerHeight 变小了（说明键盘弹出了），就直接用这个值。
+  // 之前你说有空隙，所以加 15px 填补可能的缝隙。
+  if (realTimeHeight.value > 0 && realTimeHeight.value < window.screen.height)
     return `${realTimeHeight.value + 15}px`
 
   return '100dvh'
