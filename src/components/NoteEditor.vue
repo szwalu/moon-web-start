@@ -82,17 +82,15 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
-// 核心更新函数
+// 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
 
-  // 1. 如果没聚焦，说明键盘收起了，此时更新“基准高度”
-  // 这里加个 50ms 延迟或者判断，确保不是键盘动画过程中的中间值
+  // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
-    // 只有当高度大于 300 (防止异常小数值) 时才认为是有效基准
     if (currentHeight > 300)
       baseHeight = currentHeight
 
@@ -100,15 +98,21 @@ function updateKeyboardOffset() {
     return
   }
 
-  // 2. 如果聚焦了，说明键盘大概率弹出了
-  // 计算逻辑：丢失的高度 = 基准高度 - 当前可视高度
+  // 2. 键盘弹出时
   if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
-    // 只有差值合理（比如大于 150px）才认为是键盘
+
+    // 只有差值合理才认为是键盘
     if (diff > 150) {
-      // PWA 模式下可能需要一点点额外补偿 (比如 10px) 避免贴太紧
-      // 网页模式下这个 diff 通常是非常精准的
-      keyboardOffset.value = `${diff}px`
+      // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
+      // 定义一个额外缓冲值 (Buffer)
+      // 如果是 PWA，多减 40px (解决盖住工具条，覆盖 Home Indicator 区域)
+      // 如果是 网页，多减 15px (解决你说的“盖住一点点”)
+      const extraBuffer = isPWA.value ? 50 : 15
+
+      const finalOffset = diff + extraBuffer
+
+      keyboardOffset.value = `${finalOffset}px`
     }
     else {
       keyboardOffset.value = '0px'
