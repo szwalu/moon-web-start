@@ -659,51 +659,10 @@ watch(() => contentModel.value, () => {
   }, DRAFT_SAVE_DELAY) as unknown as number
 })
 
-// 定义一个变量记录滚动位置，防止锁定时页面跳动
-const lockedScrollY = ref(0)
-
-// 🔒 核心修复：iOS 专用防拖拽锁
-// 当进入编辑时，把 Body 钉死在当前位置；退出时恢复。
-function toggleBodyLock(lock: boolean) {
-  if (lock) {
-    // 1. 记录当前滚到了哪里
-    lockedScrollY.value = window.scrollY
-    // 2. 强制钉死 Body
-    document.body.style.position = 'fixed'
-    document.body.style.width = '100%'
-    // 3. 这一步最关键：把 Body 向上提，抵消掉固定定位带来的跳动
-    document.body.style.top = `-${lockedScrollY.value}px`
-    document.body.style.overflow = 'hidden'
-  }
-  else {
-    // 1. 解锁
-    document.body.style.position = ''
-    document.body.style.width = ''
-    document.body.style.top = ''
-    document.body.style.overflow = ''
-    // 2. 瞬间滚回原来的位置，用户无感知
-    window.scrollTo(0, lockedScrollY.value)
-  }
-}
-
-// 监听编辑状态
+// 进入编辑态：把光标移到末端并聚焦
 watch(() => props.isEditing, (v) => {
-  // 执行锁定/解锁
-  toggleBodyLock(v)
-
-  // 原有的聚焦逻辑
   if (v && !showDraftPrompt.value)
     focusToEnd()
-})
-
-// 组件卸载时必须解锁，防止页面卡死
-onUnmounted(() => {
-  toggleBodyLock(false)
-
-  if (draftTimer) {
-    window.clearTimeout(draftTimer)
-    draftTimer = null
-  }
 })
 
 // 如果组件一挂载就处于编辑态，也执行一次
@@ -2265,6 +2224,33 @@ function handleBeforeInput(e: InputEvent) {
     ensureCaretVisibleInTextarea()
   })
 }
+
+// 🔥 新增：精准触摸控制
+function handleTouchMove(e: TouchEvent) {
+  // 1. 如果键盘没弹起，或者不在编辑状态，啥也不管，按默认行为走
+  if (!isInputFocused.value)
+    return
+
+  const target = e.target as HTMLElement
+
+  // 2. 检查手指是不是在 textarea 上
+  // (注意：这里用 contains 是为了防止点到了 textarea 里的某种子元素，虽然 textarea 通常没有子元素)
+  const isTextarea = target.tagName === 'TEXTAREA'
+
+  if (isTextarea) {
+    // ✅ 如果是在输入框里滑：
+    // 阻止事件冒泡 (stopPropagation)，防止触发浏览器的“连带滚动”
+    // 这样手指滑到顶/底时，就不会拉动整个页面了
+    e.stopPropagation()
+  }
+  else {
+    // 🚫 如果是在 工具栏、空白处、底部条 上滑：
+    // 直接禁止默认行为 (preventDefault)
+    // 浏览器会认为“这里不许拖”，于是背景就纹丝不动了
+    if (e.cancelable)
+      e.preventDefault()
+  }
+}
 </script>
 
 <template>
@@ -2281,6 +2267,7 @@ function handleBeforeInput(e: InputEvent) {
       height: editorHeight,
     }"
     @click.stop
+    @touchmove="handleTouchMove"
   >
     <input
       ref="imageInputRef"
@@ -2823,7 +2810,7 @@ function handleBeforeInput(e: InputEvent) {
   /* 🔥 核心修改：禁止调整大小，开启内部滚动 */
   resize: none;
   overflow-y: auto;
-
+  overscroll-behavior-y: contain;
   /* 🔴 删除 min-height 和 max-height */
   /* min-height: 360px; */
   /* max-height: 75dvh; */
