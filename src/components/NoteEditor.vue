@@ -661,6 +661,13 @@ watch(() => contentModel.value, () => {
 
 // 进入编辑态：把光标移到末端并聚焦
 watch(() => props.isEditing, (v) => {
+  // 处理 Body 锁定
+  if (v)
+    document.body.style.overflow = 'hidden' // 🚫 锁定：禁止页面整体滚动
+  else
+    document.body.style.overflow = '' // ✅ 解锁：恢复正常
+
+  // 原有的聚焦逻辑
   if (v && !showDraftPrompt.value)
     focusToEnd()
 })
@@ -673,6 +680,7 @@ onMounted(() => {
 
 // 组件卸载：收尾
 onUnmounted(() => {
+  document.body.style.overflow = ''
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
@@ -2686,6 +2694,10 @@ function handleBeforeInput(e: InputEvent) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+
+/* 🔥🔥 新增这两行：禁止橡皮筋效果和滚动链 🔥🔥 */
+  overscroll-behavior: none;
+  touch-action: pan-y; /* 明确告知浏览器只处理垂直滚动，优化手势判定 */
 
   /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
