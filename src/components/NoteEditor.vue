@@ -81,14 +81,14 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-
+const realTimeHeight = ref(0)
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
-
+  realTimeHeight.value = currentHeight
   // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
     if (currentHeight > 300)
@@ -166,6 +166,9 @@ const editorHeight = computed(() => {
   }
 
   // Android
+  if (realTimeHeight.value > 0)
+    return `${realTimeHeight.value}px`
+
   return '100dvh'
 })
 const isFreezingBottom = ref(false)
