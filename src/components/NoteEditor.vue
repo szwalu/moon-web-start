@@ -2696,34 +2696,38 @@ function handleBeforeInput(e: InputEvent) {
   overscroll-behavior: none;
 }
 
+/* NoteEditor.vue -> <style scoped> */
+
 /* --- 场景 B：键盘弹出时 (输入态) --- */
-/* 🔥 终极修复：一旦聚焦，立刻变身为“全屏固定层”，彻底脱离文档流 */
+/* 🔥 终极修复：只要聚焦，无论新旧笔记，统统变成全屏 Fixed 层 */
 .note-editor-reborn.is-focused {
-  /* 1. 强制固定定位，钉死在屏幕左上角 */
+  /* 1. 强制脱离文档流，钉死在屏幕左上角 */
   position: fixed !important;
   top: 0;
   left: 0;
-  right: 0;
 
-  /* 2. 宽度强制 100%，无视父级 Padding */
-  width: 100% !important;
+  /* 2. 强制宽度 100vw (视口宽度)，无视父级 Padding */
+  width: 100vw !important;
   margin: 0 !important;
-  border-radius: 0 !important;
 
-  /* 3. 层级极高，盖住 header 和父级所有内容 */
-  z-index: 9999;
+  /* 3. 层级极高，确保盖住父级 Header 和所有内容 */
+  z-index: 10000;
 
-  /* 4. 关键：加上顶部内边距，防止顶到刘海里 */
+  /* 4. 关键：加上顶部安全区内边距，防止顶到刘海 */
   padding-top: env(safe-area-inset-top);
 
   /* 5. 确保背景不透明，遮住底部页面 */
   background-color: #f9f9f9;
 
-  /* 6. 禁止这个层触发橡皮筋效果 */
-  overscroll-behavior: none;
+  /* 6. 核心：禁止这个层响应任何拖拽页面的手势 */
+  /* 这会让除了 editor-textarea 以外的所有区域（包括边缘）都变成“死”的 */
   touch-action: none;
+  overscroll-behavior: none;
 
-  /* 7. 去除没用的过渡，防止切换时闪烁 */
+  /* 7. 移除圆角，让它看起来像原生页面 */
+  border-radius: 0 !important;
+
+  /* 8. 去除没用的过渡，防止切换时闪烁 */
   transition: none;
 }
 
