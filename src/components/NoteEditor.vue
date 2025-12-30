@@ -2225,31 +2225,66 @@ function handleBeforeInput(e: InputEvent) {
   })
 }
 
-// 🔥 新增：精准触摸控制
+// 记录手指按下的 Y 坐标
+const touchStartY = ref(0)
+
+// 1. 手指按下：记录初始位置
+function handleTouchStart(e: TouchEvent) {
+  if (!isInputFocused.value)
+    return
+  // 记录第一根手指的坐标
+  touchStartY.value = e.touches[0].clientY
+}
+
+// 2. 手指移动：智能拦截
 function handleTouchMove(e: TouchEvent) {
-  // 1. 如果键盘没弹起，或者不在编辑状态，啥也不管，按默认行为走
+  // 非编辑态不管
   if (!isInputFocused.value)
     return
 
   const target = e.target as HTMLElement
-
-  // 2. 检查手指是不是在 textarea 上
-  // (注意：这里用 contains 是为了防止点到了 textarea 里的某种子元素，虽然 textarea 通常没有子元素)
   const isTextarea = target.tagName === 'TEXTAREA'
 
-  if (isTextarea) {
-    // ✅ 如果是在输入框里滑：
-    // 阻止事件冒泡 (stopPropagation)，防止触发浏览器的“连带滚动”
-    // 这样手指滑到顶/底时，就不会拉动整个页面了
-    e.stopPropagation()
-  }
-  else {
-    // 🚫 如果是在 工具栏、空白处、底部条 上滑：
-    // 直接禁止默认行为 (preventDefault)
-    // 浏览器会认为“这里不许拖”，于是背景就纹丝不动了
+  // 🔥 情景一：手指没在输入框上（比如摸到了工具栏、空白处）
+  // 直接禁死，背景纹丝不动
+  if (!isTextarea) {
     if (e.cancelable)
       e.preventDefault()
+    return
   }
+
+  // 🔥 情景二：手指在输入框上，但需要判断“能不能动”
+  const el = target as HTMLTextAreaElement
+
+  // A. 内容太少，根本没有滚动条？ -> 禁死！
+  // (修复了“输入框没有任何内容时划动穿透”的问题)
+  if (el.scrollHeight <= el.clientHeight) {
+    if (e.cancelable)
+      e.preventDefault()
+    return
+  }
+
+  // B. 到了边界还想硬拉？ -> 禁死！
+  const currentY = e.touches[0].clientY
+  const distanceY = currentY - touchStartY.value // 正数=向下拉(看上面)，负数=向上推(看下面)
+
+  // 如果已经在顶部，且用户手指向下拉 -> 阻止（防止拉出顶部刘海缝隙）
+  if (distanceY > 0 && el.scrollTop <= 0) {
+    if (e.cancelable)
+      e.preventDefault()
+    return
+  }
+
+  // 如果已经在底部，且用户手指向上推 -> 阻止（防止拉出底部空白）
+  // 留 1px 的容错空间
+  if (distanceY < 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
+    if (e.cancelable)
+      e.preventDefault()
+    return
+  }
+
+  // C. 其他情况（在中间正常滚动） -> 允许滚动，但阻止冒泡防止外层干扰
+  e.stopPropagation()
 }
 </script>
 
@@ -2267,6 +2302,7 @@ function handleTouchMove(e: TouchEvent) {
       height: editorHeight,
     }"
     @click.stop
+    @touchstart="handleTouchStart"
     @touchmove="handleTouchMove"
   >
     <input
