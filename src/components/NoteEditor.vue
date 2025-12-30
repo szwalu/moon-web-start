@@ -76,6 +76,38 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
+// ... 原有的 imports ...
+
+// 🔥 新增：用于存储可视视口高度
+const vvHeight = ref(0)
+
+function updateVV() {
+  // 只有在 window 对象存在且有 visualViewport 时才更新
+  if (typeof window !== 'undefined' && window.visualViewport)
+    vvHeight.value = window.visualViewport.height
+}
+
+onMounted(() => {
+  // ... 原有的 onMounted 代码 ...
+
+  // 🔥 新增：监听 VisualViewport 变化
+  if (window.visualViewport) {
+    vvHeight.value = window.visualViewport.height // 初始化
+    window.visualViewport.addEventListener('resize', updateVV)
+    window.visualViewport.addEventListener('scroll', updateVV) // 有些iOS版本滚动也会触发
+  }
+})
+
+onUnmounted(() => {
+  // ... 原有的 onUnmounted 代码 ...
+
+  // 🔥 新增：移除监听
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', updateVV)
+    window.visualViewport.removeEventListener('scroll', updateVV)
+  }
+})
+
 // 🔥 修正版：高度计算属性 (统一接管所有模式)
 const editorHeight = computed(() => {
   // 1. 键盘收起时（浏览模式）
@@ -85,15 +117,18 @@ const editorHeight = computed(() => {
   }
 
   // 2. 键盘弹出时（输入模式）：
-  // 下面的逻辑对“新建”和“编辑”完全通用，确保都能露出工具栏
-
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // 如果是 PWA 模式：减去 430px
-    // 如果是 网页模式：减去 295px (你上一版测出的数值)
-    const offset = isPWA.value ? '440px' : '285px'
+    // ✅ 核心修改：不再猜测 435px 或 290px
+    // 直接使用 VisualViewport 的高度，这代表了屏幕减去键盘后的剩余可视高度
+    // 如果 vvHeight 还没获取到（极少情况），兜底用 calc 方案
+    if (vvHeight.value > 0)
+      return `${vvHeight.value}px`
+
+    // 只有获取不到 API 时才回退到旧逻辑（兜底）
+    const offset = isPWA.value ? '435px' : '290px'
     return `calc(100dvh - ${offset})`
   }
 
