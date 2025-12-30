@@ -78,41 +78,52 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // ... 原有的 imports ...
 
-// 🔥 新增：用于存储可视视口高度
-const vvHeight = ref(0)
+// 🔥 新增：用于动态计算键盘高度
+const keyboardOffset = ref(0)
 
-function updateVV() {
-  // 只有在 window 对象存在且有 visualViewport 时才更新
-  if (typeof window !== 'undefined' && window.visualViewport)
-    vvHeight.value = window.visualViewport.height
+function updateDimensions() {
+  if (typeof window === 'undefined' || !window.visualViewport)
+    return
+
+  const vv = window.visualViewport.height
+  const windowH = window.innerHeight
+
+  // 计算差值：窗口总高度 - 可视高度 = 键盘高度(大约)
+  // Math.max(0, ...) 是为了防止负数
+  const diff = Math.max(0, windowH - vv)
+
+  // 只有当差值大于 150px 时才认为是键盘弹出了（避开地址栏伸缩的微小变化）
+  // 这里的 100~150 是经验值，键盘通常都在 250px 以上
+  keyboardOffset.value = diff > 150 ? diff : 0
 }
 
 onMounted(() => {
-  // ... 原有的 onMounted 代码 ...
+  // ... 原有的 onMounted ...
 
-  // 🔥 新增：监听 VisualViewport 变化
   if (window.visualViewport) {
-    vvHeight.value = window.visualViewport.height // 初始化
-    window.visualViewport.addEventListener('resize', updateVV)
-    window.visualViewport.addEventListener('scroll', updateVV) // 有些iOS版本滚动也会触发
+    updateDimensions() // 初始化
+    window.visualViewport.addEventListener('resize', updateDimensions)
+    window.visualViewport.addEventListener('scroll', updateDimensions)
+    // 额外监听 window resize 以防万一
+    window.addEventListener('resize', updateDimensions)
   }
 })
 
 onUnmounted(() => {
-  // ... 原有的 onUnmounted 代码 ...
+  // ... 原有的 onUnmounted ...
 
-  // 🔥 新增：移除监听
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateVV)
-    window.visualViewport.removeEventListener('scroll', updateVV)
+    window.visualViewport.removeEventListener('resize', updateDimensions)
+    window.visualViewport.removeEventListener('scroll', updateDimensions)
+    window.removeEventListener('resize', updateDimensions)
   }
 })
 
-// 🔥 修正版：高度计算属性 (统一接管所有模式)
+// 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
   // 1. 键盘收起时（浏览模式）
   if (!isInputFocused.value) {
-    // 如果是编辑旧笔记，保持全屏；如果是新建，保持抽屉高度
+    // 这里的逻辑保持不变
     return props.isEditing ? '100dvh' : '80dvh'
   }
 
@@ -121,18 +132,15 @@ const editorHeight = computed(() => {
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // ✅ 核心修改：不再猜测 435px 或 290px
-    // 直接使用 VisualViewport 的高度，这代表了屏幕减去键盘后的剩余可视高度
-    // 如果 vvHeight 还没获取到（极少情况），兜底用 calc 方案
-    if (vvHeight.value > 0)
-      return `${vvHeight.value}px`
+    // ✅ 核心修改：动态减去计算出来的“键盘偏移量”
+    // 如果 keyboardOffset 有值（例如 335 或 435），就减去它
+    // 如果没值（例如0），说明键盘没算出来，就回退到 0（即 100dvh），或者你可以保留一个保底值
+    const offset = keyboardOffset.value > 0 ? `${keyboardOffset.value}px` : '0px'
 
-    // 只有获取不到 API 时才回退到旧逻辑（兜底）
-    const offset = isPWA.value ? '435px' : '290px'
     return `calc(100dvh - ${offset})`
   }
 
-  // Android
+  // Android 通常会自动 resize，保持 100dvh 即可
   return '100dvh'
 })
 
