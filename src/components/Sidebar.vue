@@ -608,6 +608,40 @@ const statsData = computed(() => ({
 
 onMounted(() => {
   settingStore.loadManualLocation?.()
+
+  // 🔥 2. 新增：新用户引导逻辑（无笔记 + 无定位 = 自动弹出设置）
+  // 给一个短暂延迟（如 800ms），有两个目的：
+  // A. 等待 Pinia store 和 props 数据同步完成（避免 totalNotes 还没从 0 变成 100）
+  // B. 给用户一点视觉缓冲，不要页面刚刷出来就弹窗，体验太突兀
+  setTimeout(() => {
+    // 必须满足三个条件：
+    // 1. 用户已登录 (props.user)
+    // 2. 还没有设置过手动城市 (!settingStore.manualLocation)
+    // 3. 当前笔记总数为 0 (props.totalNotes === 0)
+    if (props.user && !settingStore.manualLocation && props.totalNotes === 0) {
+      // 🛡️ 防御性检查：防止 props.totalNotes 还没来得及更新
+      // 检查一下 localStorage 里的缓存数据，如果缓存里有笔记，就不弹了
+      const cacheKey = `total_notes_cache_${props.user.id}`
+      const cachedCount = Number(localStorage.getItem(cacheKey) || 0)
+
+      if (cachedCount > 0) {
+        return
+      }
+
+      // 🛡️ 体验优化：本次会话只弹一次
+      // 防止用户刷新页面时反复弹出（用户可能就是不想设，别一直烦他）
+      const SESSION_KEY = 'has_prompted_city_setup'
+      if (sessionStorage.getItem(SESSION_KEY)) {
+        return
+      }
+
+      // ✅ 条件满足，弹出城市设置框
+      openCityModal()
+
+      // 标记已弹出过
+      sessionStorage.setItem(SESSION_KEY, 'true')
+    }
+  }, 800)
 })
 </script>
 
