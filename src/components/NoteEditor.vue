@@ -82,13 +82,22 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 const realTimeHeight = ref(0)
+
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
+  // ✅ Android 关键修复：
+  // 优先读取 window.innerHeight，因为 Android 键盘弹出主要触发 window resize，
+  // 且这个值就是键盘弹出后的真实可视高度。这解决了“一直为0”的问题。
+  if (typeof window !== 'undefined')
+    realTimeHeight.value = window.innerHeight
+
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
-  realTimeHeight.value = currentHeight
+
+  // --- 以下是 iOS 专用逻辑 (保持完全不变) ---
+
   // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
     if (currentHeight > 300)
@@ -104,10 +113,9 @@ function updateKeyboardOffset() {
 
     // 只有差值合理才认为是键盘
     if (diff > 150) {
-      // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
-      // 定义一个额外缓冲值 (Buffer)
-      // 如果是 PWA，多减 40px (解决盖住工具条，覆盖 Home Indicator 区域)
-      // 如果是 网页，多减 15px (解决你说的“盖住一点点”)
+      // 🔥🔥🔥 iOS 缓冲值 (Buffer) 🔥🔥🔥
+      // 如果是 PWA，多减 50px (解决盖住工具条)
+      // 如果是 网页，多减 15px (解决盖住一点点)
       const extraBuffer = isPWA.value ? 50 : 15
 
       const finalOffset = diff + extraBuffer
@@ -124,11 +132,17 @@ function updateKeyboardOffset() {
 onMounted(() => {
   // ... 其他代码 ...
 
+  // ✅ Android 关键修复 1：挂载时立即执行一次，防止初始值为 0
+  updateKeyboardOffset()
+
+  // ✅ Android 关键修复 2：监听 window resize (Android 键盘弹出主要触发这个)
+  window.addEventListener('resize', updateKeyboardOffset)
+
   if (window.visualViewport) {
     // 初始化基准高度
     baseHeight = window.visualViewport.height
 
-    // 监听变化
+    // 监听变化 (iOS 主要靠这个)
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
@@ -137,6 +151,10 @@ onMounted(() => {
 // 在 onUnmounted 里移除
 onUnmounted(() => {
   // ... 其他代码 ...
+
+  // ✅ 记得移除 Android 的监听
+  window.removeEventListener('resize', updateKeyboardOffset)
+
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
@@ -154,23 +172,24 @@ const editorHeight = computed(() => {
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
-    // 如果算出来了 offset，就用算出来的；
-    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
+    // ✅ iOS 逻辑：保持不变
     if (keyboardOffset.value !== '0px')
       return `calc(100dvh - ${keyboardOffset.value})`
 
-    // 兜底逻辑 (万一 resize 没触发)
+    // 兜底逻辑
     const fallback = isPWA.value ? '435px' : '290px'
     return `calc(100dvh - ${fallback})`
   }
 
-  // Android
+  // 🔥 Android 逻辑
+  // 现在 realTimeHeight 一定有值了 (window.innerHeight)。
+  // +30 是为了填补你说的“空隙”，如果觉得太高可以把 30 改小。
   if (realTimeHeight.value > 0)
     return `${realTimeHeight.value + 30}px`
 
   return '100dvh'
 })
+
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
