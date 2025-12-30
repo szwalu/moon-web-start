@@ -35,7 +35,7 @@ const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
 const calendarRef = ref<any>(null)
-
+const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 watch(isExpanded, async (val) => {
   if (!val) {
     await nextTick()
@@ -1003,6 +1003,7 @@ async function saveNewNote(content: string, weather: string | null) {
   <div
     ref="rootRef"
     class="calendar-view"
+    :class="{ 'android-device': isAndroid }"
     :style="{
       '--theme-color': props.themeColor,
       '--theme-color-dark': `color-mix(in srgb, ${props.themeColor}, black 10%)`, // 按钮悬停色
@@ -1319,6 +1320,11 @@ async function saveNewNote(content: string, weather: string | null) {
     min-height: 35dvh !important;
   }
 }
+
+.calendar-view.android-device :deep(.inline-editor .note-editor-reborn .editor-textarea) {
+  min-height: 62dvh !important;
+}
+
 .calendar-nav-title {
   font-weight: 600;
 }
