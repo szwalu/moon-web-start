@@ -167,7 +167,7 @@ const editorHeight = computed(() => {
 
   // Android
   if (realTimeHeight.value > 0)
-    return `${realTimeHeight.value}px`
+    return `${realTimeHeight.value + 30}px`
 
   return '100dvh'
 })
