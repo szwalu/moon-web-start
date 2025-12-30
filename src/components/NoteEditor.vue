@@ -661,13 +661,6 @@ watch(() => contentModel.value, () => {
 
 // 进入编辑态：把光标移到末端并聚焦
 watch(() => props.isEditing, (v) => {
-  // 处理 Body 锁定
-  if (v)
-    document.body.style.overflow = 'hidden' // 🚫 锁定：禁止页面整体滚动
-  else
-    document.body.style.overflow = '' // ✅ 解锁：恢复正常
-
-  // 原有的聚焦逻辑
   if (v && !showDraftPrompt.value)
     focusToEnd()
 })
@@ -680,7 +673,6 @@ onMounted(() => {
 
 // 组件卸载：收尾
 onUnmounted(() => {
-  document.body.style.overflow = ''
   if (draftTimer) {
     window.clearTimeout(draftTimer)
     draftTimer = null
@@ -2248,6 +2240,7 @@ function handleBeforeInput(e: InputEvent) {
       height: editorHeight,
     }"
     @click.stop
+    @touchmove.prevent
   >
     <input
       ref="imageInputRef"
@@ -2329,7 +2322,7 @@ function handleBeforeInput(e: InputEvent) {
         @input="handleInput"
         @pointerdown="onTextPointerDown"
         @pointerup="onTextPointerUp"
-
+        @touchmove.stop
         @pointercancel="onTextPointerUp"
         @touchstart.passive="onTextPointerDown"
         @touchmove.passive="onTextPointerMove"
@@ -2695,26 +2688,29 @@ function handleBeforeInput(e: InputEvent) {
   display: flex;
   flex-direction: column;
 
-/* 🔥🔥 新增这两行：禁止橡皮筋效果和滚动链 🔥🔥 */
-  overscroll-behavior: none;
-  touch-action: pan-y; /* 明确告知浏览器只处理垂直滚动，优化手势判定 */
-
   /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
 }
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
-  /* 高度已经由 style 绑定控制了，这里不需要写 height */
+  /* 🔥 核心修复：从 relative 改为 fixed，彻底钉死在屏幕上 */
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100%;
 
-  /* 1. 保持相对定位，不要用 fixed */
-  position: relative !important;
+  /* 确保层级够高，盖住其它内容 */
+  z-index: 2000;
 
   /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
   min-height: 200px !important;
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
+
+  /* 保持之前的禁止回弹设置 */
+  overscroll-behavior: none;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
