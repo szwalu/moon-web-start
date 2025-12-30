@@ -78,74 +78,92 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // ... imports ...
 
-// 🔥 新增：动态计算键盘占用高度（用来替代固定的 435px）
-const iosSafeOffset = ref('0px')
+// 🔥 新增：基础高度与键盘偏移量
+const keyboardOffset = ref('0px')
+let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
-function updateIOSOffset() {
+// 核心更新函数
+function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
-  const vv = window.visualViewport.height
-  const screenH = window.screen.height
+  const currentHeight = window.visualViewport.height
 
-  // 核心算法：屏幕物理高度 - 当前可视高度 = 键盘+其他栏的高度
-  // 额外 +10px 是为了保险起见，防止贴得太死被底部黑条(Home Indicator)挡住
-  const diff = screenH - vv + 10
+  // 1. 如果没聚焦，说明键盘收起了，此时更新“基准高度”
+  // 这里加个 50ms 延迟或者判断，确保不是键盘动画过程中的中间值
+  if (!isInputFocused.value) {
+    // 只有当高度大于 300 (防止异常小数值) 时才认为是有效基准
+    if (currentHeight > 300)
+      baseHeight = currentHeight
 
-  // 只有当差值比较大（说明键盘弹出来了），才更新 offset
-  if (diff > 100) {
-    iosSafeOffset.value = `${diff}px`
+    keyboardOffset.value = '0px'
+    return
   }
-  else {
-    // 键盘没弹出来时，重置为 0 (或者保留上次的值也行，这里重置更安全)
-    iosSafeOffset.value = '0px'
+
+  // 2. 如果聚焦了，说明键盘大概率弹出了
+  // 计算逻辑：丢失的高度 = 基准高度 - 当前可视高度
+  if (baseHeight > 0) {
+    const diff = baseHeight - currentHeight
+    // 只有差值合理（比如大于 150px）才认为是键盘
+    if (diff > 150) {
+      // PWA 模式下可能需要一点点额外补偿 (比如 10px) 避免贴太紧
+      // 网页模式下这个 diff 通常是非常精准的
+      keyboardOffset.value = `${diff}px`
+    }
+    else {
+      keyboardOffset.value = '0px'
+    }
   }
 }
 
+// 在 onMounted 里监听
 onMounted(() => {
-  // ... 原有的代码 ...
+  // ... 其他代码 ...
 
-  // 监听可视区域变化
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateIOSOffset)
-    // iOS 上滚动有时也会影响视口计算，加上更稳
-    window.visualViewport.addEventListener('scroll', updateIOSOffset)
+    // 初始化基准高度
+    baseHeight = window.visualViewport.height
+
+    // 监听变化
+    window.visualViewport.addEventListener('resize', updateKeyboardOffset)
+    window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
 })
 
+// 在 onUnmounted 里移除
 onUnmounted(() => {
-  // ... 原有的代码 ...
-
+  // ... 其他代码 ...
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateIOSOffset)
-    window.visualViewport.removeEventListener('scroll', updateIOSOffset)
+    window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
+    window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
   }
 })
 
-// 🔥 修正版：高度计算属性 (统一接管所有模式)
+// 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 键盘收起时（浏览模式）
+  // 1. 键盘收起时
   if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
 
-  // 2. 键盘弹出时（输入模式）：
+  // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // 如果算出来的 offset 是 0 (极少数情况获取失败)，给一个兜底值
-    // 兜底值：PWA 用 435，网页用 290 (保留你的经验值作为最后防线)
-    const fallback = isPWA.value ? '435px' : '290px'
-    const offset = iosSafeOffset.value !== '0px' ? iosSafeOffset.value : fallback
+    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
+    // 如果算出来了 offset，就用算出来的；
+    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
+    if (keyboardOffset.value !== '0px')
+      return `calc(100dvh - ${keyboardOffset.value})`
 
-    // ✅ 此时 offset 是根据当前屏幕动态算出来的（比如 Pro Max 上可能是 330px）
-    return `calc(100dvh - ${offset})`
+    // 兜底逻辑 (万一 resize 没触发)
+    const fallback = isPWA.value ? '435px' : '290px'
+    return `calc(100dvh - ${fallback})`
   }
 
   // Android
   return '100dvh'
 })
-
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -1454,6 +1472,14 @@ function onBlur() {
   blurTimeoutId = window.setTimeout(() => {
     showTagSuggestions.value = false
   }, 200)
+  // 🔥 新增：键盘收起时，手动重置 offset 并尝试更新 baseHeight
+  keyboardOffset.value = '0px'
+  if (window.visualViewport) {
+    // 稍微延迟一点点，等键盘完全收起后再记录新的高度
+    setTimeout(() => {
+      baseHeight = window.visualViewport!.height
+    }, 300)
+  }
 }
 
 function handleClick() {
