@@ -627,7 +627,8 @@ onMounted(() => {
   checkAndPromptDraft()
 
   if (props.isEditing) {
-    focusToEnd()
+    if (!showDraftPrompt.value)
+      focusToEnd()
   }
   else {
     weatherPromise = fetchWeatherLine()
