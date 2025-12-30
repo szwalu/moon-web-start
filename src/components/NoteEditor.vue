@@ -76,71 +76,73 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// ... 原有的 imports ...
+// ... imports ...
 
-// 🔥 新增：用于动态计算键盘高度
-const keyboardOffset = ref(0)
+// 🔥 新增：动态计算键盘占用高度（用来替代固定的 435px）
+const iosSafeOffset = ref('0px')
 
-function updateDimensions() {
-  if (typeof window === 'undefined' || !window.visualViewport)
+function updateIOSOffset() {
+  if (!window.visualViewport)
     return
 
   const vv = window.visualViewport.height
-  const windowH = window.innerHeight
+  const screenH = window.screen.height
 
-  // 计算差值：窗口总高度 - 可视高度 = 键盘高度(大约)
-  // Math.max(0, ...) 是为了防止负数
-  const diff = Math.max(0, windowH - vv)
+  // 核心算法：屏幕物理高度 - 当前可视高度 = 键盘+其他栏的高度
+  // 额外 +10px 是为了保险起见，防止贴得太死被底部黑条(Home Indicator)挡住
+  const diff = screenH - vv + 10
 
-  // 只有当差值大于 150px 时才认为是键盘弹出了（避开地址栏伸缩的微小变化）
-  // 这里的 100~150 是经验值，键盘通常都在 250px 以上
-  keyboardOffset.value = diff > 150 ? diff : 0
+  // 只有当差值比较大（说明键盘弹出来了），才更新 offset
+  if (diff > 100) {
+    iosSafeOffset.value = `${diff}px`
+  }
+  else {
+    // 键盘没弹出来时，重置为 0 (或者保留上次的值也行，这里重置更安全)
+    iosSafeOffset.value = '0px'
+  }
 }
 
 onMounted(() => {
-  // ... 原有的 onMounted ...
+  // ... 原有的代码 ...
 
+  // 监听可视区域变化
   if (window.visualViewport) {
-    updateDimensions() // 初始化
-    window.visualViewport.addEventListener('resize', updateDimensions)
-    window.visualViewport.addEventListener('scroll', updateDimensions)
-    // 额外监听 window resize 以防万一
-    window.addEventListener('resize', updateDimensions)
+    window.visualViewport.addEventListener('resize', updateIOSOffset)
+    // iOS 上滚动有时也会影响视口计算，加上更稳
+    window.visualViewport.addEventListener('scroll', updateIOSOffset)
   }
 })
 
 onUnmounted(() => {
-  // ... 原有的 onUnmounted ...
+  // ... 原有的代码 ...
 
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateDimensions)
-    window.visualViewport.removeEventListener('scroll', updateDimensions)
-    window.removeEventListener('resize', updateDimensions)
+    window.visualViewport.removeEventListener('resize', updateIOSOffset)
+    window.visualViewport.removeEventListener('scroll', updateIOSOffset)
   }
 })
 
-// 🔥 修正版：高度计算属性
+// 🔥 修正版：高度计算属性 (统一接管所有模式)
 const editorHeight = computed(() => {
   // 1. 键盘收起时（浏览模式）
-  if (!isInputFocused.value) {
-    // 这里的逻辑保持不变
+  if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
-  }
 
   // 2. 键盘弹出时（输入模式）：
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // ✅ 核心修改：动态减去计算出来的“键盘偏移量”
-    // 如果 keyboardOffset 有值（例如 335 或 435），就减去它
-    // 如果没值（例如0），说明键盘没算出来，就回退到 0（即 100dvh），或者你可以保留一个保底值
-    const offset = keyboardOffset.value > 0 ? `${keyboardOffset.value}px` : '0px'
+    // 如果算出来的 offset 是 0 (极少数情况获取失败)，给一个兜底值
+    // 兜底值：PWA 用 435，网页用 290 (保留你的经验值作为最后防线)
+    const fallback = isPWA.value ? '435px' : '290px'
+    const offset = iosSafeOffset.value !== '0px' ? iosSafeOffset.value : fallback
 
+    // ✅ 此时 offset 是根据当前屏幕动态算出来的（比如 Pro Max 上可能是 330px）
     return `calc(100dvh - ${offset})`
   }
 
-  // Android 通常会自动 resize，保持 100dvh 即可
+  // Android
   return '100dvh'
 })
 
