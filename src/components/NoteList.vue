@@ -34,37 +34,6 @@ const emit = defineEmits([
   'favoriteNote',
 ])
 
-const savedScrollPosition = ref(0)
-const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
-// 🚫 告诉浏览器：切回来时别乱动，我自己来
-onMounted(() => {
-  if ('scrollRestoration' in history)
-    history.scrollRestoration = 'manual'
-})
-onDeactivated(() => {
-  // 记录切走前那一刻的精确位置
-  if (scrollerRef.value && scrollerRef.value.$el)
-    savedScrollPosition.value = scrollerRef.value.$el.scrollTop
-})
-onActivated(async () => {
-  // 1. 先让 Vue 把数据算好，DOM 渲染出来
-  await nextTick()
-
-  // 2. 检查是否有保存的位置
-  if (savedScrollPosition.value > 0 && scrollerRef.value) {
-    const el = scrollerRef.value.$el
-
-    // 第一次尝试：数据可能已经好了
-    el.scrollTop = savedScrollPosition.value
-
-    // 🔥 关键保险：延迟 50ms。
-    // 这给 DynamicScroller 足够的时间去突破“25个卡片”的限制，加载出后面的内容
-    setTimeout(() => {
-      el.scrollTop = savedScrollPosition.value
-    }, 50)
-  }
-})
-
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -74,6 +43,7 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
 
 const { t } = useI18n()
 
+const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const collapseBtnRef = ref<HTMLElement | null>(null)
 const collapseVisible = ref(false)
@@ -96,6 +66,68 @@ const editReturnScrollTop = ref<number | null>(null)
 
 // ✅ 新增：用于存储 PWA 返回时需要滚动的目标笔记 ID
 const pendingPwaScrollId = ref<string | null>(null)
+
+const savedScrollPosition = ref(0)
+
+// 🚫 1. 明确告诉浏览器：不要帮我自动恢复位置，我要自己动
+onMounted(() => {
+  if ('scrollRestoration' in history)
+    history.scrollRestoration = 'manual'
+})
+
+onDeactivated(() => {
+  // 必须通过 $el 获取滚动容器
+  if (scrollerRef.value && scrollerRef.value.$el)
+    savedScrollPosition.value = scrollerRef.value.$el.scrollTop
+})
+onActivated(async () => {
+  // 0. 如果位置是 0，不需要恢复
+  if (savedScrollPosition.value === 0)
+    return
+
+  // 1. 等待 Vue 基本 DOM 结构挂载
+  await nextTick()
+
+  const targetTop = savedScrollPosition.value
+  const scrollerEl = scrollerRef.value?.$el
+
+  if (!scrollerEl)
+    return
+
+  // 🔄 2. 定义“重试恢复”函数
+  let retryCount = 0
+  const maxRetries = 20 // 最多尝试 20 次 (约 1 秒)
+
+  const tryRestore = () => {
+    // 尝试滚动到目标位置
+    scrollerEl.scrollTop = targetTop
+
+    // 检查：我们真的到了吗？
+    // (允许 5px 的误差，因为移动端有时候不精确)
+    const currentTop = scrollerEl.scrollTop
+    const diff = Math.abs(currentTop - targetTop)
+
+    if (diff < 10) {
+      // ✅ 成功到了！停止重试
+      return
+    }
+
+    // ❌ 没到 (说明撞墙了，页面高度还没撑开)
+    retryCount++
+    if (retryCount < maxRetries) {
+      // ⏳ 等 50ms，给 DynamicScroller 时间去渲染更多卡片，然后再试
+      requestAnimationFrame(() => {
+        setTimeout(tryRestore, 50)
+      })
+    }
+    else {
+      console.warn('恢复超时，停留在:', currentTop)
+    }
+  }
+
+  // 3. 开始尝试
+  tryRestore()
+})
 
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
