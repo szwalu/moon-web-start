@@ -34,6 +34,37 @@ const emit = defineEmits([
   'favoriteNote',
 ])
 
+const savedScrollPosition = ref(0)
+const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
+// 🚫 告诉浏览器：切回来时别乱动，我自己来
+onMounted(() => {
+  if ('scrollRestoration' in history)
+    history.scrollRestoration = 'manual'
+})
+onDeactivated(() => {
+  // 记录切走前那一刻的精确位置
+  if (scrollerRef.value && scrollerRef.value.$el)
+    savedScrollPosition.value = scrollerRef.value.$el.scrollTop
+})
+onActivated(async () => {
+  // 1. 先让 Vue 把数据算好，DOM 渲染出来
+  await nextTick()
+
+  // 2. 检查是否有保存的位置
+  if (savedScrollPosition.value > 0 && scrollerRef.value) {
+    const el = scrollerRef.value.$el
+
+    // 第一次尝试：数据可能已经好了
+    el.scrollTop = savedScrollPosition.value
+
+    // 🔥 关键保险：延迟 50ms。
+    // 这给 DynamicScroller 足够的时间去突破“25个卡片”的限制，加载出后面的内容
+    setTimeout(() => {
+      el.scrollTop = savedScrollPosition.value
+    }, 50)
+  }
+})
+
 // 记录“展开瞬间”的锚点，用于收起时恢复
 const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: number }>({
   noteId: null,
@@ -43,7 +74,6 @@ const expandAnchor = ref<{ noteId: string | null; topOffset: number; scrollTop: 
 
 const { t } = useI18n()
 
-const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const collapseBtnRef = ref<HTMLElement | null>(null)
 const collapseVisible = ref(false)
