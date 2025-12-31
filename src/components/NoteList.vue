@@ -1017,6 +1017,28 @@ async function restoreScrollIfNeeded() {
   ))
   editReturnScrollTop.value = null
 }
+
+function checkSameDay(currentItem, index) {
+  // 1. 如果是第一项，肯定不是同一天
+  if (index <= 0)
+    return false
+
+  // 2. 获取上一项
+  // 注意：这里要用 mixedItems.value (因为在 script 中 ref 需要 .value)
+  // 如果你在 template 中直接传了 array 也可以，但在 script 里这样写最稳
+  const prevItem = mixedItems.value[index - 1]
+
+  // 3. 安全检查：
+  // 如果上一项不存在，或者上一项没有 created_at (可能是月份标题)，则不算同一天
+  if (!prevItem || !prevItem.created_at)
+    return false
+
+  // 4. 比较日期 (截取 YYYY-MM-DD)
+  const currentStr = String(currentItem.created_at).substring(0, 10)
+  const prevStr = String(prevItem.created_at).substring(0, 10)
+
+  return currentStr === prevStr
+}
 </script>
 
 <template>
@@ -1118,6 +1140,7 @@ async function restoreScrollIfNeeded() {
                 :is-expanded="expandedNote === item.id"
                 :is-selection-mode-active="isSelectionModeActive"
                 :search-query="searchQuery"
+                :is-same-day="checkSameDay(item, index)"
                 @toggle-expand="toggleExpand"
                 @edit="handleEditTop(item)"
                 @copy="(content) => emit('copyNote', content)"

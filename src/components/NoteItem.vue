@@ -23,6 +23,7 @@ const props = defineProps({
   searchQuery: { type: String, default: '' },
   dropdownInPlace: { type: Boolean, default: false },
   showInternalCollapseButton: { type: Boolean, default: false },
+  isSameDay: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -560,7 +561,7 @@ function formatTime(dateStr: string) {
 
         <div v-else>
           <div class="note-preview-card" :style="previewStyle" @click.stop="emit('toggleExpand', note.id)">
-            <div class="note-preview-date">
+            <div class="note-preview-date" :class="{ 'dimmed-date': isSameDay }">
               <span class="date-day">{{ getDayNumber(note.created_at) }}</span>
               <span class="date-weekday">{{ getWeekday(note.created_at) }}</span>
             </div>
@@ -768,6 +769,24 @@ function formatTime(dateStr: string) {
   border-right-color: rgba(255, 255, 255, 0.1);
 }
 
+/* ✅ 新增：弱化后的日期样式 */
+.dimmed-date .date-day {
+  color: #d1d5db; /* 浅灰色 (Tailwind gray-300) */
+  font-weight: 600; /*稍微降低字重，可选*/
+}
+
+.dimmed-date .date-weekday {
+  color: #e5e7eb; /* 更浅的灰色 (Tailwind gray-200) */
+}
+
+/* 深色模式适配 */
+.dark .dimmed-date .date-day {
+  color: #4b5563; /* 深色模式下的暗灰 */
+}
+.dark .dimmed-date .date-weekday {
+  color: #374151;
+}
+
 .date-day {
   font-size: 17px;
   font-weight: 700;
@@ -893,25 +912,56 @@ function formatTime(dateStr: string) {
 .dark .compact-mode {
   color: #d1d5db;
 }
+/* ========================================= */
+/* ✅ 最佳实践：Markdown 元素“压扁”处理 */
+/* ========================================= */
 
-/* Markdown 元素压扁 */
+/* 1. 所有块级元素（P, Li, H1-H6） -> 统统变行内元素，连成一片 */
 .compact-mode :deep(p),
 .compact-mode :deep(ul),
+.compact-mode :deep(ol),
+.compact-mode :deep(li),
+.compact-mode :deep(blockquote),
 .compact-mode :deep(h1),
-.compact-mode :deep(blockquote) {
+.compact-mode :deep(h2),
+.compact-mode :deep(h3),
+.compact-mode :deep(h4),
+.compact-mode :deep(h5),
+.compact-mode :deep(h6) {
   display: inline;
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
-  font-weight: normal !important;
   background: none !important;
+
+  /* 强制重置字号和行高，跟随父容器 */
+  font-size: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
 }
 
-.compact-mode :deep(p)::after {
+/* 2. 标题特殊处理：保留一点点加粗（可选，如果不想要加粗就把这行删掉） */
+.compact-mode :deep(h1),
+.compact-mode :deep(h2),
+.compact-mode :deep(h3) {
+  font-weight: 600 !important;
+}
+
+/* 3. 关键：给所有块级元素后面加个空格，防止“标题”和“正文”粘在一起 */
+.compact-mode :deep(h1)::after,
+.compact-mode :deep(h2)::after,
+.compact-mode :deep(h3)::after,
+.compact-mode :deep(h4)::after,
+.compact-mode :deep(h5)::after,
+.compact-mode :deep(h6)::after,
+.compact-mode :deep(p)::after,
+.compact-mode :deep(li)::after {
   content: " ";
 }
 
-.compact-mode :deep(img) {
+/* 4. 图片、分割线 -> 隐藏（保持界面整洁） */
+.compact-mode :deep(img),
+.compact-mode :deep(hr) {
   display: none !important;
 }
 
@@ -1131,6 +1181,37 @@ function formatTime(dateStr: string) {
 .dark .compact-mode :deep(.custom-tag) {
   background-color: #312e81 !important;
   color: #c7d2fe !important;
+}
+
+/* ========================================= */
+/* ✅ 修复：预览模式下“隐身”高亮效果 */
+/* ========================================= */
+.compact-mode :deep(mark) {
+  /* 去掉背景色，变回透明 */
+  background-color: transparent !important;
+
+  /* 去掉文字颜色强制，跟随正文颜色 */
+  color: inherit !important;
+
+  /* 关键：去掉内边距，防止撑高卡片 */
+  padding: 0 !important;
+  margin: 0 !important;
+
+  /* 去掉任何可能的边框或阴影 */
+  box-shadow: none !important;
+  border: none !important;
+
+  /* ========================================= */
+/* ✅ 修复：预览模式下隐藏所有标题 (H1-H6) */
+/* ========================================= */
+.compact-mode :deep(h1),
+.compact-mode :deep(h2),
+.compact-mode :deep(h3),
+.compact-mode :deep(h4),
+.compact-mode :deep(h5),
+.compact-mode :deep(h6) {
+  display: none !important;
+}
 }
 </style>
 
