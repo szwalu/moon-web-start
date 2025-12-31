@@ -116,6 +116,32 @@ function updateKeyboardOffset() {
   }
 }
 
+// 🔥 PWA 专用修复：处理应用从后台切回前台的情况
+function handleVisibilityChange() {
+  // 只有当应用变为“可见”状态时（切回来了）
+  if (document.visibilityState === 'visible') {
+    // 1. 此时键盘肯定是没有弹出的，强制归零偏移量
+    keyboardOffset.value = '0px'
+
+    // 2. 重新读取“干净”的屏幕高度作为基准
+    // 加一点延迟，因为 iOS PWA 切回来的动画结束前，viewport 可能还没稳
+    setTimeout(() => {
+      if (window.visualViewport) {
+        const h = window.visualViewport.height
+        // 只有高度看起来正常（比如 > 400）才认为是有效高度，避免读取到 0
+        if (h > 400) {
+          baseHeight = h
+          // 顺便手动修正一下当前的布局
+          if (!isInputFocused.value) {
+            // 如果切回来时没聚焦，确保 offset 是 0
+            keyboardOffset.value = '0px'
+          }
+        }
+      }
+    }, 200) // 200ms 足够让 iOS 完成切回动画并稳定 viewport
+  }
+}
+
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
@@ -123,6 +149,7 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
@@ -130,6 +157,7 @@ onUnmounted(() => {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
   }
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 // 🔥 修正版：高度计算属性
