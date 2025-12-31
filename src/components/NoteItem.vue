@@ -743,7 +743,7 @@ function formatTime(dateStr: string) {
 /* Day One 预览模式布局 (V2: 图片下沉版) */
 .note-preview-card {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   /* 总高度固定 */
   height: var(--pv-height);
   align-items: stretch;
@@ -757,11 +757,11 @@ function formatTime(dateStr: string) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 30px;
   flex-shrink: 0;
   border-right: 1px solid rgba(0, 0, 0, 0.05);
   height: 100%;
-  padding-right: 6px;
+  padding-right: 4px;
   margin-right: -2px;
 }
 
