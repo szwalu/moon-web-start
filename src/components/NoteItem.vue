@@ -51,7 +51,7 @@ const showDatePicker = ref(false)
 const hasDraft = ref(false)
 
 // =========================================================
-// ⬇️⬇️⬇️ 旧版分享功能代码 (完全替换) ⬇️⬇️⬇️
+// ⬇️⬇️⬇️ 分享功能修复核心代码 ⬇️⬇️⬇️
 // =========================================================
 
 const isIOS = typeof navigator !== 'undefined'
@@ -61,6 +61,7 @@ const isIOS = typeof navigator !== 'undefined'
     || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
   )
 
+// 针对 iOS，通常建议直接展示系统分享按钮，而不是下载按钮
 const showSeparateSaveShareButtons = !isIOS
 
 const showShareCard = ref(false)
@@ -87,19 +88,16 @@ function formatShareDate(dateStr: string) {
   })
 }
 
-// 优化后的图片转 Base64 函数：优先使用缓存，速度极快
+// 优化后的图片转 Base64 函数：优先使用缓存
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
-
-  // 使用 Promise.all 并行处理所有图片
   const promises = imgs.map(async (img) => {
     const src = img.getAttribute('src')
     if (!src || src.startsWith('data:'))
       return
 
     try {
-      // 🌟 核心修改 1：去掉了 url 中的 timestamp 参数，避免强制重新下载
-      // 🌟 核心修改 2：cache 设置为 'force-cache' (优先读缓存) 而不是 'no-cache'
+      // 使用 force-cache 利用浏览器缓存，加快二次生成速度
       const response = await fetch(src, {
         mode: 'cors',
         cache: 'force-cache',
@@ -120,7 +118,6 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
       img.removeAttribute('crossorigin')
     }
     catch (err) {
-      // 即使个别图片失败，也不要阻塞整个流程，只打印警告
       console.warn('图片转 Base64 失败 (将使用原链接):', src, err)
     }
   })
@@ -128,7 +125,7 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   await Promise.all(promises)
 }
 
-// 优化后的分享函数
+// 生成分享图片
 async function handleShare() {
   if (!props.note)
     return
@@ -137,17 +134,15 @@ async function handleShare() {
     shareGenerating.value = true
     showShareCard.value = true
 
-    // 等待 DOM 渲染
     await nextTick()
 
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
 
-    // 🌟 图片处理：现在利用缓存，速度会快很多
     await convertSupabaseImagesToDataURL(el as HTMLElement)
 
-    // 🌟 核心修改 3：稍微缩短等待时间 (从 100ms 减到 50ms)，提升体感速度
+    // 稍微等待渲染稳定
     await new Promise(resolve => setTimeout(resolve, 50))
 
     const scale = Math.min(window.devicePixelRatio || 1, 2)
@@ -174,18 +169,15 @@ async function handleShare() {
   }
 }
 
+// 下载图片 (PC端常用)
 async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
 
   const appName = t('notes.notes', '云笔记')
   const d = new Date(props.note.created_at)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hour = String(d.getHours()).padStart(2, '0')
-  const minute = String(d.getMinutes()).padStart(2, '0')
-  const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
+  const fileName = `${appName}_${d.toISOString().slice(0, 10)}.jpg`
+
   const link = document.createElement('a')
   link.href = shareImageUrl.value
   link.download = fileName
@@ -194,34 +186,34 @@ async function downloadShareImage() {
   document.body.removeChild(link)
 }
 
+// 🌟 修复后的系统分享逻辑 (适配 Mobile)
 async function systemShareImage() {
   if (!shareImageUrl.value)
     return
 
   const navAny = navigator as any
+  // 基础检测：如果连 share 都不支持，直接提示
   if (!navAny.share) {
-    messageHook.warning(t('notes.share_not_supported', '当前浏览器不支持系统分享，请先保存图片再手动分享'))
+    messageHook.warning(t('notes.share_not_supported', '当前浏览器不支持系统分享，请长按图片保存'))
     return
   }
+
   try {
     const appName = t('notes.notes', '云笔记')
     const d = new Date(props.note.created_at)
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    const hour = String(d.getHours()).padStart(2, '0')
-    const minute = String(d.getMinutes()).padStart(2, '0')
-    const fileName = `${appName}_${year}-${month}-${day}_${hour}${minute}.jpg`
+    // 构造文件名，确保后缀名为 .jpg
+    const fileName = `${appName}_${d.toISOString().slice(0, 10)}.jpg`
+
     let blob: Blob
+
+    // 1. 获取 Blob 数据
     if (shareCanvasRef.value) {
       blob = await new Promise<Blob>((resolve, reject) => {
         shareCanvasRef.value!.toBlob(
           (b) => {
             if (b)
               resolve(b)
-
-            else
-              reject(new Error('canvas toBlob failed'))
+            else reject(new Error('Canvas toBlob failed'))
           },
           'image/jpeg',
           0.8,
@@ -229,33 +221,47 @@ async function systemShareImage() {
       })
     }
     else {
+      // 这里的 fetch 能够把 data:image/jpeg;base64,... 转换回 Blob
       const response = await fetch(shareImageUrl.value)
       blob = await response.blob()
     }
+
+    // 2. 关键：构造 File 对象
     const file = new File([blob], fileName, { type: 'image/jpeg' })
     const files = [file]
-    const shareData: any = {
+
+    // 3. 构造 shareData，注意：如果要分享文件，最好不要带 text，否则部分安卓/iOS会忽略文件
+    const shareData: ShareData = {
       title: t('notes.share_title', '分享笔记'),
-      text: '',
     }
-    if (!navAny.canShare || navAny.canShare({ files }))
+
+    // 4. 检测是否支持文件分享
+    if (navAny.canShare && navAny.canShare({ files })) {
       shareData.files = files
+    }
+    else {
+      // 降级：如果不支持分享文件，则只分享纯文本内容
+      console.warn('当前浏览器不支持分享此文件类型，降级为文本分享')
+      shareData.text = props.note?.content?.slice(0, 100) || '分享笔记'
+    }
 
-    else
-      shareData.text = props.note?.content?.slice(0, 100) || ''
-
+    // 5. 调用分享
     await navAny.share(shareData)
   }
-  catch (err) {
-    console.warn('share cancelled or failed', err)
+  catch (err: any) {
+    // AbortError 是用户点击取消，忽略即可
+    if (err.name !== 'AbortError') {
+      console.error('System share failed:', err)
+      messageHook.error(t('notes.share_failed', '分享调起失败'))
+    }
   }
 }
 
 // =========================================================
-// ⬆️⬆️⬆️ 旧版分享功能代码结束 ⬆️⬆️⬆️
+// ⬆️⬆️⬆️ 分享功能修复代码结束 ⬆️⬆️⬆️
 // =========================================================
 
-// --- 计算属性：字体与布局 (保留新版逻辑) ---
+// --- 计算属性：字体与布局 ---
 const fontSizeNumMap: Record<string, number> = {
   'small': 14,
   'medium': 17,
@@ -306,7 +312,6 @@ const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
   .use(ins)
   .use(linkAttrs, { attrs: { target: '_blank', rel: 'noopener noreferrer' } })
 
-// 图片渲染：添加 lazy loading 和样式
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('loading', 'lazy')
   tokens[idx].attrSet('decoding', 'async')
@@ -323,7 +328,6 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
 }
 
-// 音频处理
 function isAudio(url: string) {
   return /\.(mp3|wav|m4a|ogg|aac|flac|webm)(\?|$)/i.test(url)
 }
@@ -366,7 +370,7 @@ function renderMarkdown(content: string) {
   return html
 }
 
-// --- 业务逻辑：草稿、日期、评论 ---
+// --- 业务逻辑 ---
 
 function checkDraftStatus() {
   if (!props.note?.id)
@@ -442,7 +446,7 @@ async function handleAppendComment() {
   }
 }
 
-// --- 格式化辅助函数 (保留新版非分享相关的) ---
+// --- 格式化辅助 ---
 function formatDateWithWeekday(dateStr: string) {
   const d = new Date(dateStr)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -463,7 +467,7 @@ function formatTime(d: string) {
   return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
 }
 
-// --- 菜单与交互 ---
+// --- 菜单 ---
 function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string, any> = {}) {
   return () => h(
     'div',
@@ -566,7 +570,6 @@ function handleDropdownSelect(key: string) {
 
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-  // 处理链接点击
   const link = target.closest('a')
   if (link) {
     localStorage.setItem('pwa_return_note_id', props.note.id)
@@ -575,7 +578,6 @@ function handleNoteContentClick(event: MouseEvent) {
 
     return
   }
-  // 处理 Checklist 点击
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
@@ -597,7 +599,6 @@ function openCommentModal() {
   showCommentModal.value = true
 }
 
-// --- Lifecycle ---
 onMounted(() => {
   checkDraftStatus()
   window.addEventListener('note-draft-changed', onDraftChanged)
