@@ -1244,6 +1244,34 @@ function formatTime(dateStr: string) {
   display: none !important;
 }
 }
+
+/* ========================================= */
+/* ✅ 修复：预览模式正文禁止交互，确保点击必定展开 */
+/* ========================================= */
+.compact-mode {
+  /* 关键属性：让点击事件“穿透”文字和Checkbox，直接传给父容器的卡片 */
+  pointer-events: none !important;
+
+  /* 之前的样式保持不变 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #374151;
+
+  /* 再次强制内部所有元素也无交互 */
+  /* 这样 checkbox 也不会因为 hover 变色，彻底变成静态展示 */
+}
+
+/* 深色模式适配 */
+.dark .compact-mode {
+  color: #d1d5db;
+}
 </style>
 
 <style>
