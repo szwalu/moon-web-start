@@ -58,10 +58,11 @@ const previewStyle = computed(() => {
   const fs = fontSizeNumMap[sizeKey] || 17
   // 行高倍数
   const lh = Math.round(fs * 1.5)
-  // 计算总高度
+  // 图片高度 = 严格的 3 行文字高度
   const imgSize = lh * 3
-  // 顶部header(24px) + 图片高度 + 缓冲
+  // 卡片总高度 = 顶部元数据栏(24px) + 正文区域(3行) + 缓冲
   const totalHeight = 24 + imgSize + 2
+
   return {
     '--pv-fs': `${fs}px`,
     '--pv-lh': `${lh}px`,
@@ -559,8 +560,8 @@ function formatTime(dateStr: string) {
               <span class="date-weekday">{{ getWeekday(note.created_at) }}</span>
             </div>
 
-            <div class="note-preview-left">
-              <div class="note-preview-inner-header">
+            <div class="note-preview-main">
+              <div class="note-preview-header-row">
                 <div class="preview-meta-info">
                   <span v-if="note.is_pinned" class="pinned-indicator-preview">{{ t('notes.pin') }}</span>
                   <span class="time-text">{{ formatTime(note.created_at) }}</span>
@@ -796,6 +797,8 @@ function formatTime(dateStr: string) {
   height: 24px;
   /* 固定头部高度 */
   flex-shrink: 0;
+  width: 100%; /* ✅ 核心修复：强制占满宽度 */
+  flex-wrap: nowrap; /* ✅ 核心修复：禁止换行 */
 }
 
 /* 底部行：正文 + 图片 */
@@ -822,6 +825,7 @@ function formatTime(dateStr: string) {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0; /* ✅ 确保菜单不被挤压 */
 }
 
 .time-text {
