@@ -182,9 +182,6 @@ function onDraftChanged(e: Event) {
 }
 
 const showDatePicker = ref(false)
-const noteOverflowStatus = ref(false)
-const contentRef = ref<Element | null>(null)
-const fullContentRef = ref<Element | null>(null)
 
 const md = new MarkdownIt({
   html: false,
@@ -283,24 +280,6 @@ function formatShareDate(dateStr: string) {
   })
 }
 
-function attachImgLoadListener(root: Element | null) {
-  if (!root)
-    return
-  const imgs = Array.from(root.querySelectorAll('img'))
-  if (!imgs.length)
-    return
-  imgs.forEach((img) => {
-    const htmlImg = img as HTMLImageElement
-    if (htmlImg.complete) {
-      checkIfNoteOverflows()
-    }
-    else {
-      htmlImg.addEventListener('load', checkIfNoteOverflows, { once: true })
-      htmlImg.addEventListener('error', checkIfNoteOverflows, { once: true })
-    }
-  })
-}
-
 function formatDateWithWeekday(dateStr: string) {
   const d = new Date(dateStr)
   const day = d.getDate()
@@ -334,44 +313,7 @@ function renderMarkdown(content: string) {
   return html
 }
 
-function checkIfNoteOverflows() {
-  const preview = contentRef.value as HTMLElement | null
-  const full = fullContentRef.value as HTMLElement | null
-  if (!preview || !preview.offsetParent)
-    return
-
-  if (!preview || !full) {
-    noteOverflowStatus.value = false
-    return
-  }
-  const clampHeight = preview.clientHeight
-  const fullHeight = full.scrollHeight
-  const diff = fullHeight - clampHeight
-  noteOverflowStatus.value = diff > 1
-}
-
-function scheduleOverflowCheck() {
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      checkIfNoteOverflows()
-      attachImgLoadListener(contentRef.value)
-      attachImgLoadListener(fullContentRef.value)
-    })
-  })
-}
-
-let observer: ResizeObserver | null = null
-
 onMounted(() => {
-  observer = new ResizeObserver(() => {
-    checkIfNoteOverflows()
-  })
-  if (contentRef.value) {
-    observer.observe(contentRef.value)
-    scheduleOverflowCheck()
-  }
-  if (fullContentRef.value)
-    observer.observe(fullContentRef.value)
   checkDraftStatus()
   window.addEventListener('note-draft-changed', onDraftChanged)
 })
@@ -385,32 +327,7 @@ watch(() => props.note, () => {
 }, { deep: true })
 
 onUnmounted(() => {
-  if (observer) {
-    observer.disconnect()
-    observer = null
-  }
   window.removeEventListener('note-draft-changed', onDraftChanged)
-})
-
-watch(contentRef, (el) => {
-  if (el && observer) {
-    observer.observe(el)
-    scheduleOverflowCheck()
-  }
-})
-
-watch(fullContentRef, (el) => {
-  if (el && observer)
-    observer.observe(el)
-})
-
-watch(() => props.note.content, () => {
-  scheduleOverflowCheck()
-})
-
-watch(() => props.isExpanded, (val) => {
-  if (!val)
-    scheduleOverflowCheck()
 })
 
 function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string, any> = {}) {
@@ -751,10 +668,6 @@ async function systemShareImage() {
     console.warn('share cancelled or failed', err)
   }
 }
-
-function handleImageLoad() {
-  checkIfNoteOverflows()
-}
 </script>
 
 <template>
@@ -845,7 +758,6 @@ function handleImageLoad() {
                 class="thumb-img"
                 loading="lazy"
                 alt="preview"
-                @load="handleImageLoad"
               >
             </div>
           </div>
@@ -1598,25 +1510,6 @@ function handleImageLoad() {
 .note-preview-wrapper {
   position: relative;
 }
-
-/* 隐藏的完整内容，只用于测量高度，不参与布局 */
-.note-content-measure {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  visibility: hidden;
-  pointer-events: none;
-  max-height: none;
-  overflow: visible;
-
-  /* 确保不受 line-clamp 影响 */
-  display: block;
-  -webkit-line-clamp: initial;
-  -webkit-box-orient: initial;
-}
-
-/* ... 之前的 CSS ... */
 
 /* ✅ 隐藏预览文字流里原本的图片 */
 .note-preview-text :deep(img) {
