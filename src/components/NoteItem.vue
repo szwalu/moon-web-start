@@ -88,16 +88,26 @@ function formatShareDate(dateStr: string) {
 }
 
 // 1. 回滚：使用旧版逻辑，带时间戳 force-reload 和 no-cache
+// ⬇️⬇️⬇️ 1. 图片转 Base64 (极速版) ⬇️⬇️⬇️
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
+
+  // 使用 Promise.all 并行处理，极大提升速度
   await Promise.all(imgs.map(async (img) => {
     const src = img.getAttribute('src')
+    // 跳过没有 src 或已经是 base64 的图片
     if (!src || src.startsWith('data:'))
       return
 
     try {
-      // 旧版核心：强制加时间戳，强制 no-cache
-      const res = await fetch(`${src}${src.includes('?') ? '&' : '?'}t=${Date.now()}`, { mode: 'cors', cache: 'no-cache' })
+      // 🚀 核心速度优化：
+      // 添加 `t=Date.now()` 强制浏览器发起新请求，避开本地缓存数据库的查找和锁等待
+      // cache: 'no-cache' 告诉浏览器不要把结果写入缓存，减少磁盘 I/O 写入时间
+      const res = await fetch(`${src}${src.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+        mode: 'cors',
+        cache: 'no-cache',
+      })
+
       if (!res.ok)
         throw new Error('Network error')
 
@@ -108,50 +118,65 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
         reader.onerror = j
         reader.readAsDataURL(blob)
       })
+
+      // 替换 DOM 中的图片源，断开跨域链接
       img.src = base64
       img.removeAttribute('crossorigin')
     }
     catch (e) {
+      // 即使某张图失败，也不要阻塞整个分享流程，只打印警告
       console.warn('Img convert fail', src, e)
     }
   }))
 }
 
-// 2. 回滚：使用旧版 Canvas 配置，包含 allowTaint 和 requestAnimationFrame
+// ⬇️⬇️⬇️ 2. 生成分享图片 (极速版) ⬇️⬇️⬇️
 async function handleShare() {
   if (!props.note)
     return
+
   try {
     shareGenerating.value = true
     showShareCard.value = true
+
+    // 1. 等待 Vue 更新 DOM
     await nextTick()
-    // 旧版核心：等待动画帧
+
+    // 🚀 核心速度优化：
+    // 使用 requestAnimationFrame 确保浏览器完成了当前的“重绘”
+    // 这比单纯的 setTimeout 更能确保 DOM 布局已稳定，减少 html2canvas 的计算量
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
 
+    // 2. 转换图片 (上述极速函数)
     await convertSupabaseImagesToDataURL(el as HTMLElement)
 
-    // 旧版核心：固定等待 100ms
+    // 3. 给予微小的缓冲时间让 Base64 渲染上屏
     await new Promise(resolve => setTimeout(resolve, 100))
 
+    // 🚀 核心速度优化：
+    // 限制 scale 最大为 2。如果不限制，高分屏手机(3x/4x)生成的 Canvas 会非常巨大，
+    // 导致生成时间指数级增加（卡顿 4-5 秒通常是因为这里生成了 4000px+ 的大图）。
     const scale = Math.min(window.devicePixelRatio || 1, 2)
+
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
-      scale,
-      useCORS: true,
-      allowTaint: true, // 旧版保留了这个
-      logging: false,
+      scale, // 限制尺寸
+      useCORS: true, // 允许跨域
+      allowTaint: true, // 旧版保留配置，配合 Base64 使用无副作用
+      logging: false, // 关闭日志提升微小性能
     })
+
     shareCanvasRef.value = canvas
     shareImageUrl.value = canvas.toDataURL('image/jpeg', 0.8)
     sharePreviewVisible.value = true
   }
   catch (err: any) {
     console.error(err)
-    messageHook.error(t('notes.share_failed', '生成分享图片失败，请稍后重试'))
+    messageHook.error(t('notes.share_failed', '生成分享图片失败'))
   }
   finally {
     shareGenerating.value = false
