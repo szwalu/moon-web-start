@@ -59,11 +59,14 @@ const previewStyle = computed(() => {
   // 行高倍数
   const lh = Math.round(fs * 1.5)
   // 计算总高度
-  const totalHeight = (lh * 3) + 24
+  const imgSize = lh * 3
+  // 顶部header(24px) + 图片高度 + 缓冲
+  const totalHeight = 24 + imgSize + 2
   return {
     '--pv-fs': `${fs}px`,
     '--pv-lh': `${lh}px`,
     '--pv-height': `${totalHeight}px`,
+    '--img-size': `${imgSize}px`,
   }
 })
 
@@ -180,11 +183,9 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 
 const isAudio = (url: string) => /\.(mp3|wav|m4a|ogg|aac|flac|webm)(\?|$)/i.test(url)
 
-// ✅ 修复 1：拆分多语句行
 const defaultLinkOpen = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
   return self.renderToken(tokens, idx, options)
 }
-// ✅ 修复 2：拆分多语句行
 const defaultLinkClose = md.renderer.rules.link_close || function (tokens, idx, options, env, self) {
   return self.renderToken(tokens, idx, options)
 }
@@ -214,7 +215,6 @@ const isIOS = typeof navigator !== 'undefined'
     || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
   )
 
-// ✅ 修复 3：这个变量将在 template 中使用
 const showSeparateSaveShareButtons = !isIOS
 
 const showShareCard = ref(false)
@@ -459,7 +459,6 @@ async function handleShare() {
   }
 }
 
-// ✅ 修复 4：此函数现在将在 template 中被调用
 async function downloadShareImage() {
   if (!shareImageUrl.value)
     return
@@ -512,10 +511,6 @@ function formatTime(dateStr: string) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${hh}:${mm}`
-}
-
-function handleImageLoad() {
-  // Placeholder just in case
 }
 </script>
 
@@ -586,11 +581,13 @@ function handleImageLoad() {
                 </div>
               </div>
 
-              <div class="prose dark:prose-invert note-content compact-mode" v-html="renderMarkdown(note.content)" />
-            </div>
+              <div class="note-preview-body-row">
+                <div class="prose dark:prose-invert note-content compact-mode" v-html="renderMarkdown(note.content)" />
 
-            <div v-if="firstImageUrl" class="note-preview-right">
-              <img :src="firstImageUrl" class="thumb-img" loading="lazy" alt="preview" @load="handleImageLoad">
+                <div v-if="firstImageUrl" class="note-preview-image-box">
+                  <img :src="firstImageUrl" class="thumb-img" loading="lazy" alt="preview">
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -736,13 +733,13 @@ function handleImageLoad() {
   background-color: rgba(0, 0, 0, 0.1);
 }
 
-/* Day One 预览模式布局 (核心修改) */
+/* Day One 预览模式布局 (V2: 图片下沉版) */
 .note-preview-card {
   display: flex;
   gap: 10px;
-  /* 🔥 总高度 = 变量计算值 */
+  /* 总高度固定 */
   height: var(--pv-height);
-  align-items: flex-start;
+  align-items: stretch;
   cursor: pointer;
   overflow: hidden;
 }
@@ -782,25 +779,37 @@ function handleImageLoad() {
   margin-top: 2px;
 }
 
-/* 中间内容区 */
-.note-preview-left {
+/* 右侧主容器：垂直排列 */
+.note-preview-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  justify-content: flex-start;
 }
 
-/* ✅ 内部顶部栏 (时间/天气 + 菜单) */
-.note-preview-inner-header {
+/* 顶部行：元数据 + 菜单 */
+.note-preview-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 20px;
+  height: 24px;
   /* 固定头部高度 */
-  margin-bottom: 2px;
+  flex-shrink: 0;
 }
 
+/* 底部行：正文 + 图片 */
+.note-preview-body-row {
+  display: flex;
+  flex: 1;
+  /* 占满剩余高度 */
+  gap: 10px;
+  min-height: 0;
+  /* 关键：防止溢出 */
+  align-items: flex-start;
+}
+
+/* 元数据样式 */
 .preview-meta-info {
   display: flex;
   align-items: center;
@@ -852,9 +861,12 @@ function handleImageLoad() {
 
   font-size: var(--pv-fs) !important;
   line-height: var(--pv-lh) !important;
-  /* 填满剩余高度 */
-  flex: 1;
 
+  /* 高度严格受控 */
+  height: var(--img-size);
+
+  flex: 1;
+  /* 占满左边空间 */
   margin: 0 !important;
   padding: 0 !important;
   color: #374151;
@@ -885,13 +897,16 @@ function handleImageLoad() {
   display: none !important;
 }
 
-/* 右侧图片 */
-.note-preview-right {
+/* 图片容器：使用新变量 */
+.note-preview-image-box {
   flex-shrink: 0;
-  width: var(--pv-height);
-  height: var(--pv-height);
+  width: var(--img-size);
+  /* 3行文字的高度 */
+  height: var(--img-size);
+  /* 正方形 */
   border-radius: 6px;
   overflow: hidden;
+  margin-top: 1px;
 }
 
 .thumb-img {
@@ -1078,7 +1093,7 @@ function handleImageLoad() {
 </style>
 
 <style>
-/* ✅ 修复：不强制高度，只控制内边距，让内容（三行信息）自然撑开 */
+/* 下拉菜单样式 */
 .n-dropdown-menu .n-dropdown-option-body {
   padding: 0 10px !important;
   font-size: 14px !important;
