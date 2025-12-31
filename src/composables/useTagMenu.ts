@@ -4,6 +4,7 @@ import { type Ref, computed, defineComponent, h, nextTick, onBeforeUnmount, onMo
 import draggable from 'vuedraggable'
 import { NButton, NDropdown, NInput, useDialog, useMessage } from 'naive-ui'
 import { ChevronRight, GripVertical, Pencil, RotateCcw, Settings2, Sparkles, Star, StarOff, Trash2 } from 'lucide-vue-next'
+import { useDark } from '@vueuse/core'
 import { ICON_CATEGORIES } from './icon-data'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getTagCacheKey } from '@/utils/cacheKeys'
@@ -890,6 +891,9 @@ export function useTagMenu(
 
     const SortableListComponent = defineComponent({
       setup() {
+      // 1. 获取黑暗模式状态
+        const isDark = useDark()
+
         return () => {
           const items = editList.value
           if (items.length === 0)
@@ -909,6 +913,13 @@ export function useTagMenu(
             item: ({ element: tag }: { element: string }) => {
               const displayName = tagKeyName(tag)
               const icon = tagIconMap.value[tag] || '#'
+
+              // 2. 定义动态颜色变量
+              const isDarkMode = isDark.value
+              const itemBg = isDarkMode ? '#26262a' : '#fff' // 深色背景 vs 白色背景
+              const itemBorder = isDarkMode ? '1px solid rgba(255,255,255,0.09)' : '1px solid #eee'
+              const textColor = isDarkMode ? '#e5e7eb' : '#333'
+
               return h('div', {
                 class: 'tag-sort-item',
                 style: {
@@ -916,8 +927,8 @@ export function useTagMenu(
                   'alignItems': 'center',
                   'padding': '5px 8px',
                   'marginBottom': '2px',
-                  'background': '#fff',
-                  'border': '1px solid #eee',
+                  'background': itemBg, // ✅ 应用背景色
+                  'border': itemBorder, // ✅ 应用边框
                   'borderRadius': '6px',
                   'cursor': 'grab',
                   'userSelect': 'none',
@@ -927,7 +938,17 @@ export function useTagMenu(
               }, [
                 h('div', { class: 'drag-handle-visual', style: 'padding: 2px 8px 2px 0; display: flex; align-items: center; opacity: 0.4;' }, [h(GripVertical, { size: 16, color: '#ccc' })]),
                 h('span', { style: 'margin-right:8px;width:18px;text-align:center;flex-shrink:0; pointer-events: none; font-size: 14px;' }, icon),
-                h('span', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#333; pointer-events: none;' }, displayName),
+                h('span', {
+                  style: {
+                    flex: '1',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: '14px',
+                    color: textColor, // ✅ 应用文字颜色
+                    pointerEvents: 'none',
+                  },
+                }, displayName),
               ])
             },
           })
