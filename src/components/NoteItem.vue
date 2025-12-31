@@ -61,7 +61,7 @@ const previewStyle = computed(() => {
   // 1. 定义文字高度 (3行)
   const textHeight = lh * 3
 
-  // 2. 定义图片高度 (你设定的 2.6 倍行高)
+  // 2. 定义图片高度 (2.6 倍行高)
   const imgSize = lh * 2.6
 
   // 3. 计算卡片总高度 (由较高的文字区域撑开 + 顶部栏 24px + 缓冲)
@@ -71,7 +71,7 @@ const previewStyle = computed(() => {
     '--pv-fs': `${fs}px`,
     '--pv-lh': `${lh}px`,
     '--pv-height': `${totalHeight}px`,
-    '--pv-text-height': `${textHeight}px`, // ✅ 修复：在返回对象中使用了 textHeight
+    '--pv-text-height': `${textHeight}px`,
     '--img-size': `${imgSize}px`,
   }
 })
@@ -566,14 +566,14 @@ function formatTime(dateStr: string) {
             </div>
 
             <div class="note-preview-left">
-              <div class="note-preview-inner-header">
-                <div class="preview-meta-info" @click.stop>
+              <div class="note-preview-inner-header" @click.stop>
+                <div class="preview-meta-info">
                   <span v-if="note.is_pinned" class="pinned-indicator-preview">{{ t('notes.pin') }}</span>
                   <span class="time-text">{{ formatTime(note.created_at) }}</span>
                   <span v-if="weatherDisplay" class="weather-text">· {{ weatherDisplay }}</span>
                 </div>
 
-                <div class="preview-meta-menu" @click.stop>
+                <div class="preview-meta-menu">
                   <div v-if="hasDraft" class="draft-icon-wrapper-small" @click.stop="emit('edit', note)">
                     <Edit3 :size="12" />
                   </div>
@@ -786,7 +786,7 @@ function formatTime(dateStr: string) {
 }
 
 /* 右侧主容器：垂直排列 */
-.note-preview-main {
+.note-preview-left {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -795,7 +795,7 @@ function formatTime(dateStr: string) {
 }
 
 /* 顶部行：元数据 + 菜单 */
-.note-preview-header-row {
+.note-preview-inner-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -824,7 +824,7 @@ function formatTime(dateStr: string) {
   gap: 6px;
   font-size: 12px;
   color: #999;
-  /* 添加鼠标手势，暗示可交互但不展开（因为有@click.stop） */
+  /* 鼠标手势，暗示可交互但不展开 */
   cursor: default;
 }
 
@@ -833,6 +833,8 @@ function formatTime(dateStr: string) {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  /* ✅ 核心：强制推到最右侧 */
+  margin-left: auto;
 }
 
 .time-text {
@@ -851,12 +853,11 @@ function formatTime(dateStr: string) {
   border-radius: 50%;
   display: flex;
   align-items: center;
-  /* ✅ 修复：颜色恢复为深色 #333 */
+  /* ✅ 恢复深色 */
   color: #333;
 }
 
 .dark .kebab-menu-small {
-  /* 深色模式适配 */
   color: #e5e7eb;
 }
 
@@ -1106,6 +1107,30 @@ function formatTime(dateStr: string) {
 .share-btn-secondary {
   background: #e5e7eb;
   color: #111827;
+}
+/* ========================================= */
+/* ✅ 修复：在预览模式下强制保留标签颜色 */
+/* ========================================= */
+.compact-mode :deep(.custom-tag) {
+  /* 强制恢复标签的蓝紫色背景和文字颜色 */
+  background-color: #eef2ff !important;
+  color: #4338ca !important;
+
+  /* 恢复标签的小圆角和内边距，让它看起来像个胶囊 */
+  padding: 0 6px !important;
+  border-radius: 999px !important;
+  margin: 0 2px !important;
+
+  /* 确保它在一行内显示 */
+  display: inline-block !important;
+  font-size: 0.9em !important;
+  line-height: 1.4 !important;
+}
+
+/* 深色模式下的标签适配 */
+.dark .compact-mode :deep(.custom-tag) {
+  background-color: #312e81 !important;
+  color: #c7d2fe !important;
 }
 </style>
 
