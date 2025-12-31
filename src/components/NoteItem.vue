@@ -56,17 +56,18 @@ const fontSizeNumMap: Record<string, number> = {
 const previewStyle = computed(() => {
   const sizeKey = settingsStore.noteFontSize || 'medium'
   const fs = fontSizeNumMap[sizeKey] || 17
-  // 行高倍数
   const lh = Math.round(fs * 1.5)
-  // 图片高度 = 严格的 3 行文字高度
-  const imgSize = lh * 3
-  // 卡片总高度 = 顶部元数据栏(24px) + 正文区域(3行) + 缓冲
-  const totalHeight = 24 + imgSize + 2
+
+  // ✅ 修改：更新为你觉得舒适的 2.6 倍行高
+  const imgSize = lh * 2.6
+
+  const totalHeight = 24 + (lh * 3) + 2 // 总高度逻辑不变，还是由文字撑开
 
   return {
     '--pv-fs': `${fs}px`,
     '--pv-lh': `${lh}px`,
     '--pv-height': `${totalHeight}px`,
+    '--pv-text-height': `${lh * 3}px`, // 文字区域依然保持 3 行高
     '--img-size': `${imgSize}px`,
   }
 })
@@ -585,7 +586,7 @@ function formatTime(dateStr: string) {
               <div class="note-preview-body-row">
                 <div class="prose dark:prose-invert note-content compact-mode" v-html="renderMarkdown(note.content)" />
 
-                <div v-if="firstImageUrl" class="note-preview-image-box">
+                <div v-if="firstImageUrl" class="note-preview-image-box" @click.stop>
                   <img :src="firstImageUrl" class="thumb-img" loading="lazy" alt="preview">
                 </div>
               </div>
@@ -805,11 +806,9 @@ function formatTime(dateStr: string) {
 .note-preview-body-row {
   display: flex;
   flex: 1;
-  /* 占满剩余高度 */
   gap: 10px;
   min-height: 0;
-  /* 关键：防止溢出 */
-  align-items: flex-start;
+  align-items: center; /* ✅ 改为垂直居中 */
 }
 
 /* 元数据样式 */
@@ -867,7 +866,7 @@ function formatTime(dateStr: string) {
   line-height: var(--pv-lh) !important;
 
   /* 高度严格受控 */
-  height: var(--img-size);
+  height: var(--pv-text-height);
 
   flex: 1;
   /* 占满左边空间 */
