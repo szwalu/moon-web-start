@@ -67,66 +67,26 @@ const editReturnScrollTop = ref<number | null>(null)
 // ✅ 新增：用于存储 PWA 返回时需要滚动的目标笔记 ID
 const pendingPwaScrollId = ref<string | null>(null)
 
-const savedScrollPosition = ref(0)
+const lastVisibleIndex = ref(0) // 专门用来存“我看到了第几个”
 
-// 🚫 1. 明确告诉浏览器：不要帮我自动恢复位置，我要自己动
-onMounted(() => {
-  if ('scrollRestoration' in history)
-    history.scrollRestoration = 'manual'
-})
+// ✅ 1. 实时记录当前看到的第一个卡片的索引
+// 修改：去掉了未使用的 endIndex 参数
+function onScrollerUpdate(startIndex) {
+  lastVisibleIndex.value = startIndex
+}
 
-onDeactivated(() => {
-  // 必须通过 $el 获取滚动容器
-  if (scrollerRef.value && scrollerRef.value.$el)
-    savedScrollPosition.value = scrollerRef.value.$el.scrollTop
-})
+// ✅ 2. 切回应用时，命令组件跳到指定索引
 onActivated(async () => {
-  // 0. 如果位置是 0，不需要恢复
-  if (savedScrollPosition.value === 0)
+  // 如果是第一条，就不用恢复了
+  if (lastVisibleIndex.value === 0)
     return
 
-  // 1. 等待 Vue 基本 DOM 结构挂载
   await nextTick()
 
-  const targetTop = savedScrollPosition.value
-  const scrollerEl = scrollerRef.value?.$el
-
-  if (!scrollerEl)
-    return
-
-  // 🔄 2. 定义“重试恢复”函数
-  let retryCount = 0
-  const maxRetries = 20 // 最多尝试 20 次 (约 1 秒)
-
-  const tryRestore = () => {
-    // 尝试滚动到目标位置
-    scrollerEl.scrollTop = targetTop
-
-    // 检查：我们真的到了吗？
-    // (允许 5px 的误差，因为移动端有时候不精确)
-    const currentTop = scrollerEl.scrollTop
-    const diff = Math.abs(currentTop - targetTop)
-
-    if (diff < 10) {
-      // ✅ 成功到了！停止重试
-      return
-    }
-
-    // ❌ 没到 (说明撞墙了，页面高度还没撑开)
-    retryCount++
-    if (retryCount < maxRetries) {
-      // ⏳ 等 50ms，给 DynamicScroller 时间去渲染更多卡片，然后再试
-      requestAnimationFrame(() => {
-        setTimeout(tryRestore, 50)
-      })
-    }
-    else {
-      console.warn('恢复超时，停留在:', currentTop)
-    }
+  if (scrollerRef.value) {
+    // 修改：去掉了 console.log
+    scrollerRef.value.scrollToItem(lastVisibleIndex.value)
   }
-
-  // 3. 开始尝试
-  tryRestore()
 })
 
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
@@ -1161,6 +1121,7 @@ function checkSameDay(currentItem, index) {
       :buffer="400"
       class="scroller"
       key-field="vid"
+      @update="onScrollerUpdate"
     >
       <template #before>
         <div :style="{ height: hasLeadingMonthHeader ? '0px' : `${HEADER_HEIGHT}px` }" />
