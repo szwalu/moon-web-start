@@ -58,16 +58,20 @@ const previewStyle = computed(() => {
   const fs = fontSizeNumMap[sizeKey] || 17
   const lh = Math.round(fs * 1.5)
 
-  // ✅ 修改：更新为你觉得舒适的 2.6 倍行高
+  // 1. 定义文字高度 (3行)
+  const textHeight = lh * 3
+
+  // 2. 定义图片高度 (你设定的 2.6 倍行高)
   const imgSize = lh * 2.6
 
-  const totalHeight = 24 + (lh * 3) + 2 // 总高度逻辑不变，还是由文字撑开
+  // 3. 计算卡片总高度 (由较高的文字区域撑开 + 顶部栏 24px + 缓冲)
+  const totalHeight = 24 + textHeight + 2
 
   return {
     '--pv-fs': `${fs}px`,
     '--pv-lh': `${lh}px`,
     '--pv-height': `${totalHeight}px`,
-    '--pv-text-height': `${lh * 3}px`, // 文字区域依然保持 3 行高
+    '--pv-text-height': `${textHeight}px`, // ✅ 修复：在返回对象中使用了 textHeight
     '--img-size': `${imgSize}px`,
   }
 })
@@ -561,9 +565,9 @@ function formatTime(dateStr: string) {
               <span class="date-weekday">{{ getWeekday(note.created_at) }}</span>
             </div>
 
-            <div class="note-preview-main">
-              <div class="note-preview-header-row">
-                <div class="preview-meta-info">
+            <div class="note-preview-left">
+              <div class="note-preview-inner-header">
+                <div class="preview-meta-info" @click.stop>
                   <span v-if="note.is_pinned" class="pinned-indicator-preview">{{ t('notes.pin') }}</span>
                   <span class="time-text">{{ formatTime(note.created_at) }}</span>
                   <span v-if="weatherDisplay" class="weather-text">· {{ weatherDisplay }}</span>
@@ -575,7 +579,7 @@ function formatTime(dateStr: string) {
                   </div>
                   <NDropdown trigger="click" placement="bottom-end" :options="getDropdownOptions(note)" :style="{ minWidth: '220px' }" @select="handleDropdownSelect">
                     <div class="kebab-menu-small">
-                      <svg width="16" height="16" viewBox="0 0 24 24">
+                      <svg width="20" height="20" viewBox="0 0 24 24">
                         <path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" />
                       </svg>
                     </div>
@@ -798,17 +802,19 @@ function formatTime(dateStr: string) {
   height: 24px;
   /* 固定头部高度 */
   flex-shrink: 0;
-  width: 100%; /* ✅ 核心修复：强制占满宽度 */
-  flex-wrap: nowrap; /* ✅ 核心修复：禁止换行 */
+  width: 100%;
+  flex-wrap: nowrap;
 }
 
 /* 底部行：正文 + 图片 */
 .note-preview-body-row {
   display: flex;
   flex: 1;
+  /* 占满剩余高度 */
   gap: 10px;
   min-height: 0;
-  align-items: center; /* ✅ 改为垂直居中 */
+  /* 关键：防止溢出 */
+  align-items: center;
 }
 
 /* 元数据样式 */
@@ -818,13 +824,15 @@ function formatTime(dateStr: string) {
   gap: 6px;
   font-size: 12px;
   color: #999;
+  /* 添加鼠标手势，暗示可交互但不展开（因为有@click.stop） */
+  cursor: default;
 }
 
 .preview-meta-menu {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-shrink: 0; /* ✅ 确保菜单不被挤压 */
+  flex-shrink: 0;
 }
 
 .time-text {
@@ -843,7 +851,13 @@ function formatTime(dateStr: string) {
   border-radius: 50%;
   display: flex;
   align-items: center;
-  color: #999;
+  /* ✅ 修复：颜色恢复为深色 #333 */
+  color: #333;
+}
+
+.dark .kebab-menu-small {
+  /* 深色模式适配 */
+  color: #e5e7eb;
 }
 
 .draft-icon-wrapper-small {
