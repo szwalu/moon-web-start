@@ -87,23 +87,24 @@ function formatShareDate(dateStr: string) {
   })
 }
 
+// 优化后的图片转 Base64 函数：优先使用缓存，速度极快
 async function convertSupabaseImagesToDataURL(container: HTMLElement) {
   const imgs = Array.from(container.querySelectorAll('img'))
+
+  // 使用 Promise.all 并行处理所有图片
   const promises = imgs.map(async (img) => {
     const src = img.getAttribute('src')
-    if (!src)
-      return
-
-    if (src.startsWith('data:'))
+    if (!src || src.startsWith('data:'))
       return
 
     try {
-      const suffix = src.includes('?') ? '&' : '?'
-      const fetchUrl = `${src}${suffix}t=${new Date().getTime()}`
-      const response = await fetch(fetchUrl, {
+      // 🌟 核心修改 1：去掉了 url 中的 timestamp 参数，避免强制重新下载
+      // 🌟 核心修改 2：cache 设置为 'force-cache' (优先读缓存) 而不是 'no-cache'
+      const response = await fetch(src, {
         mode: 'cors',
-        cache: 'no-cache',
+        cache: 'force-cache',
       })
+
       if (!response.ok)
         throw new Error('Network response was not ok')
 
@@ -114,16 +115,20 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
         reader.onerror = reject
         reader.readAsDataURL(blob)
       })
+
       img.src = base64Url
       img.removeAttribute('crossorigin')
     }
     catch (err) {
-      console.warn('图片转 Base64 失败，可能是跨域限制或链接失效:', src, err)
+      // 即使个别图片失败，也不要阻塞整个流程，只打印警告
+      console.warn('图片转 Base64 失败 (将使用原链接):', src, err)
     }
   })
+
   await Promise.all(promises)
 }
 
+// 优化后的分享函数
 async function handleShare() {
   if (!props.note)
     return
@@ -131,15 +136,22 @@ async function handleShare() {
   try {
     shareGenerating.value = true
     showShareCard.value = true
+
+    // 等待 DOM 渲染
     await nextTick()
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
 
+    // 🌟 图片处理：现在利用缓存，速度会快很多
     await convertSupabaseImagesToDataURL(el as HTMLElement)
-    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 🌟 核心修改 3：稍微缩短等待时间 (从 100ms 减到 50ms)，提升体感速度
+    await new Promise(resolve => setTimeout(resolve, 50))
+
     const scale = Math.min(window.devicePixelRatio || 1, 2)
+
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale,
@@ -147,13 +159,14 @@ async function handleShare() {
       allowTaint: true,
       logging: false,
     })
+
     shareCanvasRef.value = canvas
     shareImageUrl.value = canvas.toDataURL('image/jpeg', 0.8)
     sharePreviewVisible.value = true
   }
   catch (err: any) {
     console.error(err)
-    messageHook.error(t('notes.share_failed', '生成分享图片失败，请稍后重试'))
+    messageHook.error(t('notes.share_failed', '生成分享图片失败'))
   }
   finally {
     shareGenerating.value = false
