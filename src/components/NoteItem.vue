@@ -948,7 +948,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: #999;
   cursor: default;
 }
