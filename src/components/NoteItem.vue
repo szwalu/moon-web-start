@@ -126,6 +126,7 @@ async function convertSupabaseImagesToDataURL(container: HTMLElement) {
 }
 
 // 生成分享图片
+// 优化后的分享生成函数
 async function handleShare() {
   if (!props.note)
     return
@@ -134,24 +135,27 @@ async function handleShare() {
     shareGenerating.value = true
     showShareCard.value = true
 
+    // 等待 DOM 渲染
     await nextTick()
 
     const el = shareCardRef.value
     if (!el)
       throw new Error('share card element not found')
 
+    // 1. 先把图片转 Base64 (避免跨域问题)
     await convertSupabaseImagesToDataURL(el as HTMLElement)
 
-    // 稍微等待渲染稳定
-    await new Promise(resolve => setTimeout(resolve, 50))
+    // 2. 稍微等待渲染同步
+    await new Promise(resolve => setTimeout(resolve, 100)) // 稍微给多一点时间
 
     const scale = Math.min(window.devicePixelRatio || 1, 2)
 
+    // 3. 生成 Canvas
+    // 🔴 关键修复：去掉了 allowTaint: true，防止 Canvas 被污染导致无法导出
     const canvas = await html2canvas(el, {
       backgroundColor: isDark.value ? '#020617' : '#f9fafb',
       scale,
-      useCORS: true,
-      allowTaint: true,
+      useCORS: true, // 必须开启
       logging: false,
     })
 
@@ -160,8 +164,8 @@ async function handleShare() {
     sharePreviewVisible.value = true
   }
   catch (err: any) {
-    console.error(err)
-    messageHook.error(t('notes.share_failed', '生成分享图片失败'))
+    console.error('Canvas 生成失败:', err)
+    messageHook.error(t('notes.share_failed', '生成图片失败，请检查网络或图片权限'))
   }
   finally {
     shareGenerating.value = false
@@ -187,71 +191,68 @@ async function downloadShareImage() {
 }
 
 // 🌟 修复后的系统分享逻辑 (适配 Mobile)
+// 修复后的系统分享逻辑
 async function systemShareImage() {
   if (!shareImageUrl.value)
     return
 
   const navAny = navigator as any
-  // 基础检测：如果连 share 都不支持，直接提示
   if (!navAny.share) {
-    messageHook.warning(t('notes.share_not_supported', '当前浏览器不支持系统分享，请长按图片保存'))
+    messageHook.warning(t('notes.share_not_supported', '浏览器不支持分享，请长按保存'))
     return
   }
 
   try {
     const appName = t('notes.notes', '云笔记')
     const d = new Date(props.note.created_at)
-    // 构造文件名，确保后缀名为 .jpg
+    // 必须有后缀名
     const fileName = `${appName}_${d.toISOString().slice(0, 10)}.jpg`
 
-    let blob: Blob
+    // 1. 优先从 Canvas 获取 Blob (性能更好)
+    let blob: Blob | null = null
 
-    // 1. 获取 Blob 数据
     if (shareCanvasRef.value) {
-      blob = await new Promise<Blob>((resolve, reject) => {
-        shareCanvasRef.value!.toBlob(
-          (b) => {
-            if (b)
-              resolve(b)
-            else reject(new Error('Canvas toBlob failed'))
-          },
-          'image/jpeg',
-          0.8,
-        )
-      })
+      blob = await new Promise<Blob | null>(resolve =>
+        shareCanvasRef.value!.toBlob(resolve, 'image/jpeg', 0.8),
+      )
     }
     else {
-      // 这里的 fetch 能够把 data:image/jpeg;base64,... 转换回 Blob
+      // 降级：从 URL 获取
       const response = await fetch(shareImageUrl.value)
       blob = await response.blob()
     }
 
-    // 2. 关键：构造 File 对象
+    if (!blob)
+      throw new Error('Blob creation failed')
+
+    // 2. 创建 File 对象
     const file = new File([blob], fileName, { type: 'image/jpeg' })
     const files = [file]
 
-    // 3. 构造 shareData，注意：如果要分享文件，最好不要带 text，否则部分安卓/iOS会忽略文件
+    // 3. 🔴 关键修复：构建纯净的 shareData
+    // 如果要分享文件，对象里不要带 text 或 url，否则 iOS 会忽略文件
     const shareData: ShareData = {
+      files,
       title: t('notes.share_title', '分享笔记'),
     }
 
-    // 4. 检测是否支持文件分享
+    // 4. 检测并调用
     if (navAny.canShare && navAny.canShare({ files })) {
-      shareData.files = files
+      // 支持文件分享：直接调用，不带 text
+      await navAny.share(shareData)
     }
     else {
-      // 降级：如果不支持分享文件，则只分享纯文本内容
-      console.warn('当前浏览器不支持分享此文件类型，降级为文本分享')
-      shareData.text = props.note?.content?.slice(0, 100) || '分享笔记'
+      // 不支持文件分享：降级为文本
+      console.warn('当前环境不支持文件分享，降级为文本')
+      await navAny.share({
+        title: t('notes.share_title', '分享笔记'),
+        text: props.note?.content?.slice(0, 100) || '分享笔记',
+      })
     }
-
-    // 5. 调用分享
-    await navAny.share(shareData)
   }
   catch (err: any) {
-    // AbortError 是用户点击取消，忽略即可
     if (err.name !== 'AbortError') {
-      console.error('System share failed:', err)
+      console.error('Share failed:', err)
       messageHook.error(t('notes.share_failed', '分享调起失败'))
     }
   }
