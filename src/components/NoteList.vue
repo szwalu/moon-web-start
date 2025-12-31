@@ -64,31 +64,6 @@ const editTopEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const noteContainers = ref<Record<string, HTMLElement>>({})
 const editReturnScrollTop = ref<number | null>(null)
 
-// ✅ 新增：用于存储 PWA 返回时需要滚动的目标笔记 ID
-const pendingPwaScrollId = ref<string | null>(null)
-
-const lastVisibleIndex = ref(0) // 专门用来存“我看到了第几个”
-
-// ✅ 1. 实时记录当前看到的第一个卡片的索引
-// 修改：去掉了未使用的 endIndex 参数
-function onScrollerUpdate(startIndex) {
-  lastVisibleIndex.value = startIndex
-}
-
-// ✅ 2. 切回应用时，命令组件跳到指定索引
-onActivated(async () => {
-  // 如果是第一条，就不用恢复了
-  if (lastVisibleIndex.value === 0)
-    return
-
-  await nextTick()
-
-  if (scrollerRef.value) {
-    // 修改：去掉了 console.log
-    scrollerRef.value.scrollToItem(lastVisibleIndex.value)
-  }
-})
-
 // ---- 供 :ref 使用的辅助函数（仅记录 note 卡片） ----
 function setNoteContainer(el: Element | null, id: string) {
   if (el) {
@@ -275,59 +250,11 @@ function scrollToMonth(year: number, month: number): boolean {
   return false
 }
 
-// ✅ 修复：双重锁定策略 (Active Loop + Reactive Fix)
-function tryRestorePwaScroll() {
-  if (!pendingPwaScrollId.value)
-    return
-  if (!scrollerRef.value)
-    return
-  if (mixedItems.value.length === 0)
-    return
-
-  const targetId = pendingPwaScrollId.value
-  const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
-
-  if (index === -1)
-    return
-
-  const startTime = performance.now()
-  const DURATION = 2000 // 锁定 2 秒
-
-  const lockLoop = () => {
-    // 停止条件
-    if (!pendingPwaScrollId.value)
-      return
-    if (performance.now() - startTime > DURATION) {
-      pendingPwaScrollId.value = null
-      localStorage.removeItem('pwa_return_note_id')
-      return
-    }
-
-    // 核心：使用虚拟列表 API 进行定位
-    // 这不会破坏虚拟列表内部状态，也不会引发空白块
-    if (scrollerRef.value)
-      scrollerRef.value.scrollToItem(index, { align: 'center' })
-
-    requestAnimationFrame(lockLoop)
-  }
-
-  lockLoop()
-}
-
 // ✅ 新增：统一处理 Resize 事件
 // 既负责更新收起按钮位置，又负责在 PWA 恢复期修正滚动位置
 function handleItemResize() {
   // 1. 原有逻辑：更新收起按钮
   updateCollapsePos()
-
-  // 2. 新增逻辑：如果正在恢复滚动位置，且发生了高度变化（如长图加载）
-  // 立即触发一次对齐，不要等下一帧
-  if (pendingPwaScrollId.value && scrollerRef.value) {
-    const targetId = pendingPwaScrollId.value
-    const index = mixedItems.value.findIndex(item => item.type === 'note' && item.id === targetId)
-    if (index !== -1)
-      scrollerRef.value.scrollToItem(index, { align: 'center' })
-  }
 }
 
 const HEADER_HEIGHT = 26 // 与样式一致
@@ -595,8 +522,6 @@ watch(() => props.notes, () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         recomputeStickyState()
-        // ✅ 新增：数据变化（加载完成）后，尝试恢复位置
-        tryRestorePwaScroll()
       })
     })
   })
@@ -626,16 +551,6 @@ function handleWindowResize() {
 }
 
 onMounted(() => {
-  // ✅ 新增：组件挂载时，检查是否有需要恢复的 PWA 滚动位置
-  try {
-    const lastId = localStorage.getItem('pwa_return_note_id')
-    if (lastId) {
-      pendingPwaScrollId.value = lastId
-      // 尝试立即滚动（如果数据由于 keep-alive 已经存在）
-      tryRestorePwaScroll()
-    }
-  }
-  catch (e) { console.error(e) }
   window.addEventListener('resize', handleWindowResize, { passive: true })
   syncStickyGutters()
   const root = scrollerRef.value?.$el as HTMLElement | undefined
@@ -644,7 +559,6 @@ onMounted(() => {
       recomputeStickyState()
     }, { root })
   }
-  // 🔁 冷启动“双 RAF”以确保虚拟列表完成首屏布局后再计算悬浮月份条
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       recomputeStickyState()
@@ -1013,18 +927,7 @@ function scrollToTop() {
   requestAnimationFrame(frame)
 }
 
-defineExpose({ scrollToTop, focusAndEditNote, restorePwaScroll, scrollToMonth })
-
-function restorePwaScroll(noteId: string | null) {
-  if (!noteId)
-    return
-
-  // 把目标 ID 记录到本组件的状态中
-  pendingPwaScrollId.value = noteId
-
-  // 立即尝试一次恢复（内部会自己判断列表是否已就绪）
-  tryRestorePwaScroll()
-}
+defineExpose({ scrollToTop, focusAndEditNote, scrollToMonth })
 
 async function restoreScrollIfNeeded() {
   const scroller = scrollerRef.value?.$el as HTMLElement | undefined
@@ -1121,7 +1024,6 @@ function checkSameDay(currentItem, index) {
       :buffer="400"
       class="scroller"
       key-field="vid"
-      @update="onScrollerUpdate"
     >
       <template #before>
         <div :style="{ height: hasLeadingMonthHeader ? '0px' : `${HEADER_HEIGHT}px` }" />
