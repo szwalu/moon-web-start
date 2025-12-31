@@ -913,56 +913,87 @@ function formatTime(dateStr: string) {
   color: #d1d5db;
 }
 /* ========================================= */
-/* ✅ 最佳实践：Markdown 元素“压扁”处理 */
+/* ✅ 终极修复：预览模式强制统一字号和排版 */
 /* ========================================= */
 
-/* 1. 所有块级元素（P, Li, H1-H6） -> 统统变行内元素，连成一片 */
+/* 1. 选中所有可能的文本标签，强制应用计算字号 */
 .compact-mode :deep(p),
+.compact-mode :deep(span),
+.compact-mode :deep(strong),
+.compact-mode :deep(em),
+.compact-mode :deep(u),
+.compact-mode :deep(s),
 .compact-mode :deep(ul),
 .compact-mode :deep(ol),
 .compact-mode :deep(li),
 .compact-mode :deep(blockquote),
+.compact-mode :deep(code),
+.compact-mode :deep(a),
 .compact-mode :deep(h1),
 .compact-mode :deep(h2),
 .compact-mode :deep(h3),
 .compact-mode :deep(h4),
 .compact-mode :deep(h5),
 .compact-mode :deep(h6) {
+  /* 强制变成行内元素，连成一片 */
   display: inline;
+
+  /* 🔥 核心：无视 prose 默认字号，强制使用我们计算的变量 */
+  font-size: var(--pv-fs) !important;
+  line-height: var(--pv-lh) !important;
+
+  /* 清除默认间距和样式 */
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
   background: none !important;
-
-  /* 强制重置字号和行高，跟随父容器 */
-  font-size: inherit !important;
-  line-height: inherit !important;
   color: inherit !important;
+  font-family: inherit !important;
+  font-weight: normal !important; /* 默认不加粗，标题除外 */
 }
 
-/* 2. 标题特殊处理：保留一点点加粗（可选，如果不想要加粗就把这行删掉） */
+/* 2. 标题特殊处理：保留一点点加粗 (可选) */
 .compact-mode :deep(h1),
 .compact-mode :deep(h2),
 .compact-mode :deep(h3) {
   font-weight: 600 !important;
 }
 
-/* 3. 关键：给所有块级元素后面加个空格，防止“标题”和“正文”粘在一起 */
-.compact-mode :deep(h1)::after,
-.compact-mode :deep(h2)::after,
-.compact-mode :deep(h3)::after,
-.compact-mode :deep(h4)::after,
-.compact-mode :deep(h5)::after,
-.compact-mode :deep(h6)::after,
-.compact-mode :deep(p)::after,
-.compact-mode :deep(li)::after {
+/* 3. 标签(Tag)特殊处理：恢复颜色和胶囊背景 (你之前的要求) */
+.compact-mode :deep(.custom-tag) {
+  background-color: #eef2ff !important;
+  color: #4338ca !important;
+  padding: 0 6px !important;
+  border-radius: 999px !important;
+  display: inline-block !important; /* 标签还是保持块状一点好看 */
+  font-size: 0.9em !important; /* 标签稍微小一点点 */
+  margin: 0 2px !important;
+}
+.dark .compact-mode :deep(.custom-tag) {
+  background-color: #312e81 !important;
+  color: #c7d2fe !important;
+}
+
+/* 4. 间距处理：防止元素粘连 */
+.compact-mode :deep(h1)::after, .compact-mode :deep(h2)::after,
+.compact-mode :deep(h3)::after, .compact-mode :deep(h4)::after,
+.compact-mode :deep(p)::after, .compact-mode :deep(li)::after,
+.compact-mode :deep(blockquote)::after {
   content: " ";
 }
 
-/* 4. 图片、分割线 -> 隐藏（保持界面整洁） */
+/* 5. 隐藏不需要的元素 */
 .compact-mode :deep(img),
-.compact-mode :deep(hr) {
+.compact-mode :deep(hr),
+.compact-mode :deep(br) { /* br标签也隐藏，防止意外换行 */
   display: none !important;
+}
+
+/* 6. 高亮隐身 */
+.compact-mode :deep(mark) {
+  background-color: transparent !important;
+  color: inherit !important;
+  padding: 0 !important;
 }
 
 /* 图片容器：使用新变量 */

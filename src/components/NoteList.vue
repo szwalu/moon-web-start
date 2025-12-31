@@ -1019,25 +1019,29 @@ async function restoreScrollIfNeeded() {
 }
 
 function checkSameDay(currentItem, index) {
-  // 1. 如果是第一项，肯定不是同一天
+  // 1. 第一项肯定是新的，不弱化
   if (index <= 0)
     return false
 
   // 2. 获取上一项
-  // 注意：这里要用 mixedItems.value (因为在 script 中 ref 需要 .value)
-  // 如果你在 template 中直接传了 array 也可以，但在 script 里这样写最稳
   const prevItem = mixedItems.value[index - 1]
 
-  // 3. 安全检查：
-  // 如果上一项不存在，或者上一项没有 created_at (可能是月份标题)，则不算同一天
-  if (!prevItem || !prevItem.created_at)
+  // 3. 关键修复：排除“非笔记”元素（如月份标题）
+  // 如果上一项没有 id，或者没有 content，通常说明它是个标题
+  // 这种情况下，当前笔记应该是新的一组，所以返回 false (黑色)
+  if (!prevItem || !prevItem.id || typeof prevItem.content === 'undefined')
     return false
 
-  // 4. 比较日期 (截取 YYYY-MM-DD)
-  const currentStr = String(currentItem.created_at).substring(0, 10)
-  const prevStr = String(prevItem.created_at).substring(0, 10)
+  // 4. 严谨的时间比较：完全基于本地时间（和界面显示保持一致）
+  const d1 = new Date(currentItem.created_at)
+  const d2 = new Date(prevItem.created_at)
 
-  return currentStr === prevStr
+  // 5. 比较 年、月、日 是否完全相等
+  return (
+    d1.getFullYear() === d2.getFullYear()
+    && d1.getMonth() === d2.getMonth()
+    && d1.getDate() === d2.getDate()
+  )
 }
 </script>
 
