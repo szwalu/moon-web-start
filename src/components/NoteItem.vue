@@ -1137,19 +1137,24 @@ onUnmounted(() => {
 }
 
 /* 标签特殊处理 */
-.compact-mode :deep(.custom-tag) {
-  background-color: #eef2ff !important;
-  color: #4338ca !important;
-  padding: 0 6px !important;
+.note-content :deep(.custom-tag) {
+  background-color: #eef2ff !important; /* 浅蓝背景 */
+  color: #4338ca !important;           /* 深蓝文字 */
+  padding: 0 6px !important;           /* 内边距 */
+  border-radius: 4px !important;       /* 圆角 (稍微改小一点点，看你喜好，999px是胶囊形，4px是方圆角) */
+  /* 如果喜欢完全圆润的胶囊，保持 999px 即可 */
   border-radius: 999px !important;
+
   display: inline-block !important;
   font-size: 0.9em !important;
   margin: 0 2px !important;
   line-height: 1.4 !important;
+  font-weight: 500 !important;         /* 加一点字重更清晰 */
 }
-.dark .compact-mode :deep(.custom-tag) {
-  background-color: #312e81 !important;
-  color: #c7d2fe !important;
+
+.dark .note-content :deep(.custom-tag) {
+  background-color: #312e81 !important; /* 深色模式背景 */
+  color: #c7d2fe !important;           /* 深色模式文字 */
 }
 
 /* 隐藏不需要的元素 */
