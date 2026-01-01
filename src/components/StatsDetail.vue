@@ -18,6 +18,7 @@ const { t } = useI18n()
 // --- 状态定义 ---
 const tabs = ['monthly', 'yearly', 'overview']
 const activeTab = ref('monthly')
+const chartMode = ref<'words' | 'notes'>('words')
 
 function getValidDate(val: any): Date {
   const d = new Date(val)
@@ -31,61 +32,61 @@ const stats = ref({
   days: 0,
   notes: 0,
   words: 0,
+  locations: 0,
+  images: 0,
+  audios: 0,
 })
 
-const chartData = ref<{ label: string; value: number; percent: number }[]>([])
+const wordChartData = ref<{ label: string; value: number; percent: number }[]>([])
+const noteChartData = ref<{ label: string; value: number; percent: number }[]>([])
 
-// --- 新增：计算 Y 轴刻度 ---
-const yAxisTicks = computed(() => {
-  if (chartData.value.length === 0)
-    return []
+const currentChartData = computed(() => {
+  return chartMode.value === 'words' ? wordChartData.value : noteChartData.value
+})
 
-  // 找出当前数据的最大值
-  const maxVal = Math.max(...chartData.value.map(d => d.value))
+function calculateYAxisTicks(data: { value: number }[]) {
+  if (data.length === 0)
+    return ['10', '5', '0']
+  const maxVal = Math.max(...data.map(d => d.value))
 
-  // 如果全是0，默认刻度
   if (maxVal === 0)
-    return ['100', '50', '0']
+    return ['4', '2', '0']
 
-  // 辅助函数：格式化数字 (1200 -> 1.2k)
+  let top = maxVal
+  if (maxVal <= 5)
+    top = maxVal
+  else
+    top = Math.ceil(maxVal * 1.1)
+
   const format = (n: number) => {
     if (n >= 1000)
       return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
-    return String(Math.round(n))
+    return String(Math.floor(n))
   }
 
-  // 返回 [顶部, 中间, 底部]
-  return [
-    format(maxVal),
-    format(maxVal / 2),
-    '0',
-  ]
-})
+  return [format(top), format(top / 2), '0']
+}
+
+const currentAxisTicks = computed(() => calculateYAxisTicks(currentChartData.value))
 
 const yearOptions = computed(() => {
   const start = 1980
   const end = 2080
   const years = []
-  for (let y = end; y >= start; y--)
-    years.push(y)
+  for (let y = end; y >= start; y--) years.push(y)
   return years
 })
-
-// --- 计算属性 ---
 
 const formattedDateText = computed(() => {
   let d = currentDate.value
   if (Number.isNaN(d.getTime()))
     d = new Date()
-
   const y = d.getFullYear()
   const m = d.getMonth() + 1
-
   if (activeTab.value === 'monthly')
     return t('stats.date_format_monthly', { y, m })
   if (activeTab.value === 'yearly')
     return t('stats.date_format_yearly', { y })
-
   return t('stats.all_time')
 })
 
@@ -96,9 +97,7 @@ const monthPickerValue = computed({
       const m = String(currentDate.value.getMonth() + 1).padStart(2, '0')
       return `${y}-${m}`
     }
-    catch {
-      return new Date().toISOString().slice(0, 7)
-    }
+    catch { return new Date().toISOString().slice(0, 7) }
   },
   set: (val: string) => {
     if (val) {
@@ -121,6 +120,33 @@ const yearPickerValue = computed({
 
 // --- 核心逻辑 ---
 
+function getNoteRaw(note: any): string {
+  if (!note)
+    return ''
+  let text = ''
+  if (typeof note.content === 'string')
+    text += note.content
+  if (typeof note.weather === 'string')
+    text += ` ${note.weather}`
+  return text
+}
+
+function checkHasImage(note: any): boolean {
+  return getNoteRaw(note).includes('note-images/')
+}
+
+function checkHasAudio(note: any): boolean {
+  const raw = getNoteRaw(note)
+  let hit = 0
+  if (raw.includes('note-audios/'))
+    hit++
+  if (raw.includes('.webm'))
+    hit++
+  if (raw.includes('录音'))
+    hit++
+  return hit >= 2
+}
+
 function toDateKeyStrFromISO(iso: string) {
   const d = new Date(iso)
   const y = d.getFullYear()
@@ -134,23 +160,17 @@ async function fetchAllData(queryBuilder: any) {
   let allData: any[] = []
   let page = 0
   let hasMore = true
-
   while (hasMore) {
-    const { data, error } = await queryBuilder
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-
+    const { data, error } = await queryBuilder.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
     if (error)
       throw error
-
     if (data && data.length > 0) {
       allData = allData.concat(data)
       if (data.length < PAGE_SIZE)
         hasMore = false
       else page++
     }
-    else {
-      hasMore = false
-    }
+    else { hasMore = false }
   }
   return allData
 }
@@ -158,69 +178,83 @@ async function fetchAllData(queryBuilder: any) {
 function getStorageKey(userId: string) {
   const y = currentDate.value.getFullYear()
   const m = currentDate.value.getMonth()
-  let typeKey = ''
-  if (activeTab.value === 'overview')
-    typeKey = 'all'
-  else if (activeTab.value === 'yearly')
-    typeKey = `y_${y}`
-  else typeKey = `m_${y}_${m}`
-  return `stats_cache_${userId}_${typeKey}`
+  const typeKey = activeTab.value === 'overview' ? 'all' : (activeTab.value === 'yearly' ? `y_${y}` : `m_${y}_${m}`)
+  return `stats_cache_v16_${userId}_${typeKey}`
 }
 
 function processChartData(notes: any[], year: number, month: number) {
-  const dataMap = new Map<number, number>()
-  let maxVal = 0
+  const wordsMap = new Map<number, number>()
+  const notesMap = new Map<number, number>()
+  let maxWords = 0
+  let maxNotes = 0
 
   if (activeTab.value === 'monthly') {
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    for (let i = 1; i <= daysInMonth; i++) dataMap.set(i, 0)
+    for (let i = 1; i <= daysInMonth; i++) {
+      wordsMap.set(i, 0)
+      notesMap.set(i, 0)
+    }
 
     notes.forEach((n) => {
       const d = new Date(n.created_at)
-      const day = d.getDate()
-      const words = n.content?.length || 0
-      dataMap.set(day, (dataMap.get(day) || 0) + words)
+      if (d.getMonth() === month && d.getFullYear() === year) {
+        const day = d.getDate()
+        wordsMap.set(day, (wordsMap.get(day) || 0) + (n.content?.length || 0))
+        notesMap.set(day, (notesMap.get(day) || 0) + 1)
+      }
     })
 
-    const result = []
+    const wordRes = []
+    const noteRes = []
     for (let i = 1; i <= daysInMonth; i++) {
-      const val = dataMap.get(i) || 0
-      if (val > maxVal)
-        maxVal = val
-      result.push({
-        label: i % 5 === 0 || i === 1 ? String(i) : '',
-        value: val,
-        percent: 0,
-      })
+      const wVal = wordsMap.get(i) || 0
+      const nVal = notesMap.get(i) || 0
+      if (wVal > maxWords)
+        maxWords = wVal
+      if (nVal > maxNotes)
+        maxNotes = nVal
+      const label = i % 5 === 0 || i === 1 ? String(i) : ''
+      wordRes.push({ label, value: wVal, percent: 0 })
+      noteRes.push({ label, value: nVal, percent: 0 })
     }
-    return result.map(item => ({
-      ...item,
-      percent: maxVal > 0 ? (item.value / maxVal) * 100 : 0,
-    }))
+
+    return {
+      wordChart: wordRes.map(item => ({ ...item, percent: maxWords > 0 ? (item.value / maxWords) * 100 : 0 })),
+      noteChart: noteRes.map(item => ({ ...item, percent: maxNotes > 0 ? (item.value / maxNotes) * 100 : 0 })),
+    }
   }
   else if (activeTab.value === 'yearly') {
-    for (let i = 0; i < 12; i++) dataMap.set(i, 0)
-
+    for (let i = 0; i < 12; i++) {
+      wordsMap.set(i, 0)
+      notesMap.set(i, 0)
+    }
     notes.forEach((n) => {
       const d = new Date(n.created_at)
-      const m = d.getMonth()
-      const words = n.content?.length || 0
-      dataMap.set(m, (dataMap.get(m) || 0) + words)
+      if (d.getFullYear() === year) {
+        const m = d.getMonth()
+        wordsMap.set(m, (wordsMap.get(m) || 0) + (n.content?.length || 0))
+        notesMap.set(m, (notesMap.get(m) || 0) + 1)
+      }
     })
-
-    const result = []
+    const wordRes = []
+    const noteRes = []
     for (let i = 0; i < 12; i++) {
-      const val = dataMap.get(i) || 0
-      if (val > maxVal)
-        maxVal = val
-      result.push({ label: String(i + 1), value: val, percent: 0 })
+      const wVal = wordsMap.get(i) || 0
+      const nVal = notesMap.get(i) || 0
+      if (wVal > maxWords)
+        maxWords = wVal
+      if (nVal > maxNotes)
+        maxNotes = nVal
+      const label = String(i + 1)
+      wordRes.push({ label, value: wVal, percent: 0 })
+      noteRes.push({ label, value: nVal, percent: 0 })
     }
-    return result.map(item => ({
-      ...item,
-      percent: maxVal > 0 ? (item.value / maxVal) * 100 : 0,
-    }))
+    return {
+      wordChart: wordRes.map(item => ({ ...item, percent: maxWords > 0 ? (item.value / maxWords) * 100 : 0 })),
+      noteChart: noteRes.map(item => ({ ...item, percent: maxNotes > 0 ? (item.value / maxNotes) * 100 : 0 })),
+    }
   }
-  return []
+  return { wordChart: [], noteChart: [] }
 }
 
 async function fetchStats() {
@@ -229,35 +263,42 @@ async function fetchStats() {
     return
 
   const storageKey = getStorageKey(user.id)
-
   const cachedJson = localStorage.getItem(storageKey)
   let hasCache = false
 
   if (cachedJson) {
     try {
       const cached = JSON.parse(cachedJson)
-      stats.value = { days: cached.days, notes: cached.notes, words: cached.words }
-
-      if (cached.chartData && Array.isArray(cached.chartData))
-        chartData.value = cached.chartData
-      else
-        chartData.value = []
-
+      stats.value = {
+        days: cached.days,
+        notes: cached.notes,
+        words: cached.words,
+        locations: cached.locations || 0,
+        images: cached.images || 0,
+        audios: cached.audios || 0,
+      }
+      wordChartData.value = cached.wordChart || []
+      noteChartData.value = cached.noteChart || []
       hasCache = true
       isLoading.value = false
     }
-    catch (e) {
-    }
+    catch (e) {}
   }
 
   if (!hasCache) {
     isLoading.value = true
-    stats.value = { days: 0, notes: 0, words: 0 }
-    chartData.value = []
+    stats.value = { days: 0, notes: 0, words: 0, locations: 0, images: 0, audios: 0 }
+    wordChartData.value = []
+    noteChartData.value = []
   }
 
   try {
-    let query = supabase.from('notes').select('content, created_at').eq('user_id', user.id).order('created_at', { ascending: false })
+    let query = supabase
+      .from('notes')
+      .select('id, content, created_at, weather')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
     const year = currentDate.value.getFullYear()
     const month = currentDate.value.getMonth()
 
@@ -272,29 +313,94 @@ async function fetchStats() {
       query = query.gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString())
     }
 
-    const notes = await fetchAllData(query)
+    const rawNotes = await fetchAllData(query)
+
+    const uniqueMap = new Map()
+    rawNotes.forEach((n: any) => {
+      if (n.id)
+        uniqueMap.set(n.id, n)
+    })
+    let notes = Array.from(uniqueMap.values())
+
+    notes = notes.filter((n: any) => n.content && n.content.trim().length > 0)
+
+    if (notes.length > 1) {
+      notes.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      const deduped: any[] = []
+      for (let i = 0; i < notes.length; i++) {
+        const curr = notes[i]
+        const next = notes[i + 1]
+        if (next && curr.content === next.content) {
+          const timeDiff = Math.abs(new Date(next.created_at).getTime() - new Date(curr.created_at).getTime())
+          if (timeDiff < 2000)
+            continue
+        }
+        deduped.push(curr)
+      }
+      notes = deduped
+    }
+
     const count = notes.length
-    const chars = notes.reduce((sum, n) => sum + (n.content?.length || 0), 0)
     const uniqueDays = new Set(notes.map(n => toDateKeyStrFromISO(n.created_at))).size
 
-    let newChartData: any[] = []
-    if (activeTab.value !== 'overview')
-      newChartData = processChartData(notes, year, month)
+    let totalChars = 0
+    let imgNotesCount = 0
+    let audioNotesCount = 0
+    const uniqueLocs = new Set<string>()
 
-    stats.value = { days: uniqueDays, notes: count, words: chars }
-    if (activeTab.value !== 'overview')
-      chartData.value = newChartData
+    notes.forEach((n) => {
+      totalChars += (n.content || '').length
+
+      if (checkHasImage(n))
+        imgNotesCount++
+      if (checkHasAudio(n))
+        audioNotesCount++
+
+      if (n.weather && typeof n.weather === 'string') {
+        const parts = n.weather.trim().split(' ')
+        if (parts.length > 0 && parts[0])
+          uniqueLocs.add(parts[0])
+      }
+    })
+
+    let charts = { wordChart: [], noteChart: [] }
+    if (activeTab.value !== 'overview') {
+      // @ts-expect-error: inferred type mismatch
+      charts = processChartData(notes, year, month)
+    }
+
+    stats.value = {
+      days: uniqueDays,
+      notes: count,
+      words: totalChars,
+      locations: uniqueLocs.size,
+      images: imgNotesCount,
+      audios: audioNotesCount,
+    }
+
+    if (activeTab.value !== 'overview') {
+      wordChartData.value = charts.wordChart
+      noteChartData.value = charts.noteChart
+    }
 
     const dataToCache = {
       days: uniqueDays,
       notes: count,
-      words: chars,
-      chartData: newChartData,
+      words: totalChars,
+      locations: uniqueLocs.size,
+      images: imgNotesCount,
+      audios: audioNotesCount,
+      wordChart: charts.wordChart,
+      noteChart: charts.noteChart,
     }
     localStorage.setItem(storageKey, JSON.stringify(dataToCache))
   }
-  catch (e) { console.error('Stats error:', e) }
-  finally { isLoading.value = false }
+  catch (e) {
+    console.error('Stats error:', e)
+  }
+  finally {
+    isLoading.value = false
+  }
 }
 
 function handleTabClick(tab: string) {
@@ -323,8 +429,8 @@ watch(() => props.visible, (val) => {
     :style="{
       '--st-accent': props.themeColor,
       '--st-bar-fill': props.themeColor,
-      '--st-bar-bg': `color-mix(in srgb, ${props.themeColor}, white 80%)`, // 浅色背景条
-      '--st-bar-bg-dark': `color-mix(in srgb, ${props.themeColor}, black 60%)`, // 深色模式背景条
+      '--st-bar-bg': `color-mix(in srgb, ${props.themeColor}, white 80%)`,
+      '--st-bar-bg-dark': `color-mix(in srgb, ${props.themeColor}, black 60%)`,
     }"
     @click.self="emit('close')"
   >
@@ -357,7 +463,6 @@ watch(() => props.visible, (val) => {
         >
           <span class="date-text">{{ formattedDateText }}</span>
           <ChevronDown v-if="activeTab !== 'overview'" :size="18" class="date-arrow" />
-
           <input
             v-if="activeTab === 'monthly'"
             v-model="monthPickerValue"
@@ -376,18 +481,35 @@ watch(() => props.visible, (val) => {
         </div>
 
         <div class="stats-card summary-card" :class="{ 'loading-state': isLoading }">
-          <div class="stat-grid">
-            <div class="stat-item">
-              <span class="stat-num">{{ stats.days }}</span>
-              <span class="stat-label">{{ t('stats.days') }}</span>
+          <div class="stat-rows-container">
+            <div class="stat-row">
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.days }}</span>
+                <span class="stat-label">{{ t('stats.days') }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.notes }}</span>
+                <span class="stat-label">{{ t('stats.notes') }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.words }}</span>
+                <span class="stat-label">{{ t('stats.words') }}</span>
+              </div>
             </div>
-            <div class="stat-item">
-              <span class="stat-num">{{ stats.notes }}</span>
-              <span class="stat-label">{{ t('stats.notes') }}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-num">{{ stats.words }}</span>
-              <span class="stat-label">{{ t('stats.words') }}</span>
+
+            <div class="stat-row">
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.locations }}</span>
+                <span class="stat-label">{{ t('stats.locations') || '地点' }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.images }}</span>
+                <span class="stat-label">图片</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">{{ stats.audios }}</span>
+                <span class="stat-label">音频</span>
+              </div>
             </div>
           </div>
         </div>
@@ -398,15 +520,34 @@ watch(() => props.visible, (val) => {
           :class="{ 'loading-state': isLoading }"
         >
           <div class="card-header-row">
-            <span class="card-title">{{ t('stats.words1') }}</span>
+            <span class="card-title">
+              {{ chartMode === 'words' ? t('stats.words_trend') : t('stats.notes_trend') }}
+            </span>
+
+            <div class="chart-switch-container">
+              <div
+                class="switch-pill"
+                :class="{ active: chartMode === 'words' }"
+                @click="chartMode = 'words'"
+              >
+                {{ t('stats.words_short') }}
+              </div>
+              <div
+                class="switch-pill"
+                :class="{ active: chartMode === 'notes' }"
+                @click="chartMode = 'notes'"
+              >
+                {{ t('stats.notes_short') }}
+              </div>
+            </div>
           </div>
 
-          <div class="chart-content-wrapper">
-            <div v-if="chartData.length > 0" class="chart-layout">
+          <div class="chart-content-wrapper fixed-height">
+            <div v-if="currentChartData.length > 0" class="chart-layout">
               <div class="chart-y-axis">
-                <span class="y-tick">{{ yAxisTicks[0] }}</span>
-                <span class="y-tick">{{ yAxisTicks[1] }}</span>
-                <span class="y-tick">{{ yAxisTicks[2] }}</span>
+                <span class="y-tick">{{ currentAxisTicks[0] }}</span>
+                <span class="y-tick">{{ currentAxisTicks[1] }}</span>
+                <span class="y-tick">{{ currentAxisTicks[2] }}</span>
               </div>
               <div class="chart-bars-container">
                 <div class="grid-line line-top" />
@@ -414,25 +555,33 @@ watch(() => props.visible, (val) => {
                 <div class="grid-line line-bottom" />
                 <div class="chart-bars">
                   <div
-                    v-for="(bar, index) in chartData"
+                    v-for="(bar, index) in currentChartData"
                     :key="index"
                     class="bar-wrapper"
-                    :title="`${bar.value} words`"
+                    :title="`${bar.value}`"
                   >
-                    <div class="bar-fill" :style="{ height: `${bar.percent}%` }" />
+                    <div
+                      class="bar-fill"
+                      :style="{
+                        height: `${bar.percent}%`,
+                        backgroundColor: chartMode === 'words' ? 'var(--st-bar-fill)' : 'var(--st-bar-fill-notes)',
+                      }"
+                    />
                     <span class="bar-label">{{ bar.label }}</span>
                   </div>
                 </div>
               </div>
             </div>
-
             <div v-else class="chart-placeholder">
-              <span v-if="!isLoading" class="placeholder-text">
-                No Data
-              </span>
+              <span v-if="!isLoading" class="placeholder-text">No Data</span>
             </div>
           </div>
         </div>
+
+        <div
+          v-else
+          class="stats-card chart-card-placeholder"
+        />
       </div>
     </div>
   </div>
@@ -452,8 +601,11 @@ watch(() => props.visible, (val) => {
   --st-icon-hover: rgba(0,0,0,0.05);
   --st-shadow: 0 10px 40px rgba(0,0,0,0.2);
   --st-bar-bg: #e0e7ff;
+
   --st-bar-fill: #818cf8;
-  --st-grid-line: #f0f0f0; /* 辅助线颜色 */
+  --st-bar-fill-notes: #34d399;
+
+  --st-grid-line: #f0f0f0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -468,6 +620,7 @@ watch(() => props.visible, (val) => {
     --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
     --st-bar-bg: var(--st-bar-bg-dark);
     --st-bar-fill: #6366f1;
+    --st-bar-fill-notes: #34d399;
     --st-grid-line: #3f3f46;
   }
 }
@@ -483,6 +636,7 @@ watch(() => props.visible, (val) => {
   --st-shadow: 0 10px 40px rgba(0,0,0,0.5);
   --st-bar-bg: var(--st-bar-bg-dark);
   --st-bar-fill: #6366f1;
+  --st-bar-fill-notes: #34d399;
   --st-grid-line: #3f3f46;
 }
 
@@ -499,9 +653,10 @@ watch(() => props.visible, (val) => {
 }
 
 .stats-modal-content {
-  width: 420px;
+  width: 440px;
   max-width: 90vw;
-  height: 540px;
+  height: auto;
+  max-height: 85vh;
   background-color: var(--st-bg);
   color: var(--st-text);
   box-shadow: var(--st-shadow);
@@ -547,20 +702,23 @@ watch(() => props.visible, (val) => {
   padding: 20px 30px;
   display: flex; flex-direction: column;
   flex: 1;
-  gap: 16px;
+  /* 🔥 修改 1: 减少内容区域的间距，让总表和日期更近 */
+  gap: 10px;
   padding-bottom: 30px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
+.content-body::-webkit-scrollbar { width: 4px; }
+.content-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 2px; }
 
 .date-picker-wrapper {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
-  margin-bottom: 8px; align-self: flex-start;
+  /* 🔥 修改 2: 减少日期选择器的下边距 */
+  margin-bottom: 4px;
+  align-self: flex-start;
   cursor: pointer; transition: opacity 0.2s; flex-shrink: 0;
 }
-.date-picker-wrapper.no-pointer {
-  cursor: default;
-  /* 也可以稍微降低一点不透明度来表示不可点，但不用全消失 */
-  /* opacity: 1; */
-}
+.date-picker-wrapper.no-pointer { cursor: default; }
 .date-text {
   font-size: 20px; font-weight: 600; color: var(--st-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -571,7 +729,6 @@ watch(() => props.visible, (val) => {
   opacity: 0; z-index: 10; cursor: pointer; font-size: 20px;
 }
 
-/* --- 📦 通用卡片样式 --- */
 .stats-card {
   background-color: var(--st-card-bg);
   box-shadow: 0 4px 12px rgba(0,0,0,0.03);
@@ -580,127 +737,143 @@ watch(() => props.visible, (val) => {
 }
 .stats-card.loading-state { opacity: 0.6; }
 
+/* 🔥 修改 3: 进一步减小总表的高度 (内边距) */
 .summary-card {
-  padding: 24px 0;
+  padding: 9px 0;
   flex-shrink: 0;
 }
 
-.chart-card {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 20px 24px;
-  min-height: 150px;
+.stat-rows-container {
+  display: flex; flex-direction: column;
+  /* 🔥 修改 4: 减小两行之间的间距 */
+  gap: 9px;
 }
 
-.card-header-row {
-  display: flex; align-items: center; margin-bottom: 16px;
-}
-.card-title {
-  font-size: 16px; font-weight: 600; color: var(--st-text);
+.stat-row {
+  display: flex; justify-content: space-around; align-items: center;
 }
 
-.stat-grid { display: flex; justify-content: space-around; align-items: center; }
 .stat-item {
   display: flex; flex-direction: column; align-items: center;
   flex: 1; position: relative;
 }
-.stat-item:not(:last-child)::after {
-  content: ''; position: absolute; right: 0; top: 25%;
-  height: 50%; width: 1px; background-color: var(--st-divider);
-}
+
 .stat-num {
-  font-size: 22px; font-weight: 700; color: var(--st-text);
-  margin-bottom: 6px; font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 18px;
+  font-weight: 700; color: var(--st-text);
+  /* 🔥 修改 5: 减小数字和文字之间的间距 */
+  margin-bottom: 2px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
 }
-.stat-label { font-size: 13px; color: var(--st-text-sub); }
+.stat-label {
+  font-size: 12px;
+  color: var(--st-text-sub);
+}
 
-/* --- 📊 Chart Layout (Flex Row) --- */
-.chart-content-wrapper { flex: 1; width: 100%; position: relative; }
-
-.chart-layout {
+.card-header-row {
   display: flex;
-  width: 100%;
-  height: 100%;
-  gap: 12px; /* Y轴和柱子之间的间距 */
-  padding-bottom: 10px; /* 留给X轴标签的空间 */
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.card-title { font-size: 16px; font-weight: 600; color: var(--st-text); }
+
+.chart-switch-container {
+  display: flex;
+  background-color: rgba(0,0,0,0.06);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.switch-pill {
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--st-text-sub);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.5, 1);
+  font-weight: 500;
+  user-select: none;
+}
+.switch-pill.active {
+  background-color: #fff;
+  color: var(--st-text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  font-weight: 600;
+}
+.dark .switch-pill.active {
+  background-color: #444;
+  color: #fff;
 }
 
-/* 左侧刻度 */
-.chart-y-axis {
+.chart-card {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  text-align: right;
-  height: 100%;
-  padding-bottom: 2px; /* 对齐底部 */
-  min-width: 30px; /* 保证有宽度显示 12k */
+  padding: 20px 24px;
+}
+
+/* 🔥 空白占位卡片：保持与有图表时相同的高度 */
+/* header 40 + content 130 + padding 40 = 210 */
+.chart-card-placeholder {
+  min-height: 210px;
+}
+
+/* 🔥 修复：固定高度改为 130px */
+.chart-content-wrapper.fixed-height {
+  height: 130px;
+  width: 100%;
+  position: relative;
+  flex: none;
+}
+
+.chart-layout {
+  display: flex; width: 100%; height: 100%;
+  gap: 12px; padding-bottom: 10px;
+}
+
+.chart-y-axis {
+  display: flex; flex-direction: column; justify-content: space-between;
+  text-align: right; height: 100%; padding-bottom: 2px; min-width: 30px;
 }
 .y-tick {
-  font-size: 11px;
-  color: var(--st-text-sub);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  line-height: 1;
+  font-size: 11px; color: var(--st-text-sub);
+  font-family: ui-monospace, SFMono-Regular, monospace; line-height: 1;
 }
 
-/* 右侧柱状图容器 */
 .chart-bars-container {
-  flex: 1;
-  position: relative; /* 用于定位辅助线 */
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
+  flex: 1; position: relative; height: 100%;
+  display: flex; align-items: flex-end;
 }
 
-/* 辅助虚线 */
 .grid-line {
-  position: absolute;
-  left: 0; right: 0;
-  height: 1px;
-  background-color: var(--st-grid-line);
-  z-index: 0;
-  pointer-events: none;
+  position: absolute; left: 0; right: 0; height: 1px;
+  background-color: var(--st-grid-line); z-index: 0; pointer-events: none;
 }
 .line-top { top: 0; border-top: 1px dashed var(--st-grid-line); background: none; }
 .line-mid { top: 50%; border-top: 1px dashed var(--st-grid-line); background: none; }
 .line-bottom { bottom: 0; background-color: var(--st-grid-line); }
 
 .chart-bars {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 2px;
-  z-index: 1; /* 在辅助线之上 */
+  display: flex; width: 100%; height: 100%;
+  align-items: flex-end; justify-content: space-between;
+  gap: 2px; z-index: 1;
 }
 
 .bar-wrapper {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  position: relative;
+  flex: 1; height: 100%; display: flex; flex-direction: column;
+  justify-content: flex-end; align-items: center; position: relative;
 }
 .bar-fill {
-  width: 60%;
-  min-width: 4px;
-  background-color: var(--st-bar-fill);
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-  transition: height 0.4s cubic-bezier(0.17, 0.67, 0.83, 0.67);
+  width: 60%; min-width: 4px;
+  border-radius: 2px 2px 0 0; min-height: 2px;
+  transition: height 0.4s cubic-bezier(0.17, 0.67, 0.83, 0.67), background-color 0.3s;
   opacity: 0.8;
 }
 .bar-wrapper:hover .bar-fill { opacity: 1; }
 .bar-label {
-  position: absolute;
-  bottom: -20px;
-  font-size: 10px;
-  color: var(--st-text-sub);
-  width: 20px;
-  text-align: center;
+  position: absolute; bottom: -20px; font-size: 10px;
+  color: var(--st-text-sub); width: 20px; text-align: center;
 }
 
 .chart-placeholder {

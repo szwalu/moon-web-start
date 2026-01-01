@@ -881,7 +881,13 @@ stats:
   days: Days
   notes: Note
   words: Words
-  words1: Words
+  words_trend: Word Count
+  notes_trend: Note Count
+  words_short: Words
+  notes_short: Notes
+  locations: Locations
+  images: Images
+  audios: Audio
   activity_trend: Activity Trend
   days_suffix: ''
   month_suffix: ''

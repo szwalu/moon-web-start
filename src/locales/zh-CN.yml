@@ -878,7 +878,13 @@ stats:
   days: 天
   notes: 笔记
   words: 字
-  words1: 字数
+  words_trend: 字数统计
+  notes_trend: 笔记数量
+  words_short: 字数
+  notes_short: 篇数
+  locations: 地点
+  images: 图片
+  audios: 音频
   activity_trend: 趋势图
   days_suffix: 日
   month_suffix: 月
