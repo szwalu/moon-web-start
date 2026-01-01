@@ -605,7 +605,11 @@ onUnmounted(() => {
 
       <div class="flex-1 min-w-0">
         <div v-if="isExpanded">
-          <div class="note-content prose dark:prose-invert max-w-none" :class="fontSizeClass" v-html="renderMarkdown(note.content)" />
+          <div
+            class="note-content prose dark:prose-invert max-w-none px-4"
+            :class="fontSizeClass"
+            v-html="renderMarkdown(note.content)"
+          />
           <div class="comment-trigger-bar" @click.stop="openCommentModal">
             <div class="comment-trigger-input">{{ $t('notes.comment.trigger') }}</div>
           </div>
@@ -633,7 +637,7 @@ onUnmounted(() => {
                   </div>
                   <NDropdown trigger="click" placement="bottom-end" :options="getDropdownOptions(note)" :style="{ minWidth: '220px' }" @select="handleDropdownSelect">
                     <div class="kebab-menu-small">
-                      <svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
+                      <svg width="17" height="17" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
                     </div>
                   </NDropdown>
                 </div>
