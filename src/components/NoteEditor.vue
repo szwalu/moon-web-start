@@ -2530,7 +2530,6 @@ function handleTextareaMove(e: TouchEvent) {
           class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
           @mousedown.prevent
-          @touchstart.prevent
           @click="handleSave"
         >
           {{ t('notes.editor.save.button_save') }}
