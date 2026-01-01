@@ -1836,6 +1836,9 @@ function addLink() {
     title: t('notes.editor.toolbar.link'),
     maskClosable: true,
     zIndex: 4000, // 把层级拉高，盖住编辑器
+    style: {
+      marginBottom: '46vh',
+    },
     content: () =>
       h(NInput, {
         'value': urlRef.value,
