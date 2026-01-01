@@ -2262,7 +2262,7 @@ function handleTextareaMove(e: TouchEvent) {
       ref="imageInputRef"
       type="file"
       accept="image/*"
-      style="display:none"
+      style="position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; z-index: -1;"
       @change="onImageChosen"
     >
     <div class="editor-wrapper">
@@ -2530,6 +2530,7 @@ function handleTextareaMove(e: TouchEvent) {
           class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
           @mousedown.prevent
+          @touchstart.prevent
           @click="handleSave"
         >
           {{ t('notes.editor.save.button_save') }}
@@ -2549,6 +2550,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.todo')"
+          @mousedown.prevent
           @click="handleFormat(addTodo)"
         >
           <svg
@@ -2571,6 +2573,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.format.ordered_list')"
+          @mousedown.prevent
           @click="handleFormat(addOrderedList)"
         >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2587,6 +2590,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.format.heading')"
+          @mousedown.prevent
           @click="handleFormat(addHeading)"
         >
           H
@@ -2596,6 +2600,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.format.underline')"
+          @mousedown.prevent
           @click="handleFormat(addUnderline)"
         >
           U
@@ -2605,6 +2610,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.format.highlight')"
+          @mousedown.prevent
           @click="handleFormat(addMarkHighlight)"
         >
           <svg
@@ -2623,6 +2629,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.format.insert_table')"
+          @mousedown.prevent
           @click="handleFormat(addTable)"
         >
           <svg
@@ -2645,6 +2652,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.link') || '插入链接'"
+          @mousedown.prevent
           @click="handleFormat(addLink)"
         >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -2657,6 +2665,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.time') || '插入时间'"
+          @mousedown.prevent
           @click="handleFormat(addCurrentTime)"
         >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -2669,6 +2678,7 @@ function handleTextareaMove(e: TouchEvent) {
           type="button"
           class="format-btn"
           :title="t('notes.editor.toolbar.recording') || '录音'"
+          @mousedown.prevent
           @click="handleFormat(() => toggleRecordBarVisible())"
         >
           <svg class="icon-bleed" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
