@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import MarkdownIt from 'markdown-it'
-import taskLists from 'markdown-it-task-lists'
+
+// 移除原有的 MarkdownIt 及插件 import
 import { NButton, NCard, NDropdown, NInput, NModal, useMessage } from 'naive-ui'
-import ins from 'markdown-it-ins'
 import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
-import mark from 'markdown-it-mark'
-import linkAttrs from 'markdown-it-link-attributes'
 import { Calendar, Copy, Edit3, Heart, HeartOff, Pin, PinOff, Share, Trash2 } from 'lucide-vue-next'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { supabase } from '@/utils/supabaseClient'
 import { useSettingStore } from '@/stores/setting.ts'
+
+// 引入全局 Markdown 单例
+import { md } from '@/utils/markdownRenderer'
 
 defineOptions({ inheritAttrs: false })
 
@@ -311,67 +311,30 @@ const weatherDisplay = computed(() => {
   return w ? w.replace(/[;；][^\s]*/, '') : ''
 })
 
-// --- Markdown 配置 ---
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-  .use(taskLists, { enabled: true, label: true })
-  .use(mark)
-  .use(ins)
-  .use(linkAttrs, { attrs: { target: '_blank', rel: 'noopener noreferrer' } })
-
-md.renderer.rules.image = (tokens, idx, options, env, self) => {
-  tokens[idx].attrSet('loading', 'lazy')
-  tokens[idx].attrSet('decoding', 'async')
-  const style = tokens[idx].attrGet('style')
-  tokens[idx].attrSet('style', `${style ? `${style}; ` : ''}max-width:100%;height:auto;`)
-  const imgHtml = self.renderToken(tokens, idx, options)
-  const src = tokens[idx].attrGet('src') || ''
-  const alt = tokens[idx].content || ''
-  const prev = tokens[idx - 1]?.type
-  const next = tokens[idx + 1]?.type
-  if (prev === 'link_open' && next === 'link_close')
-    return imgHtml
-
-  return `<a href="${src}" download target="_blank" rel="noopener noreferrer" title="${alt}">${imgHtml}</a>`
-}
-
-function isAudio(url: string) {
-  return /\.(mp3|wav|m4a|ogg|aac|flac|webm)(\?|$)/i.test(url)
-}
-
-const defaultLinkOpen = md.renderer.rules.link_open || function (tokens, idx, options, env, self) {
-  return self.renderToken(tokens, idx, options)
-}
-const defaultLinkClose = md.renderer.rules.link_close || function (tokens, idx, options, env, self) {
-  return self.renderToken(tokens, idx, options)
-}
-
-md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  const href = tokens[idx].attrGet('href') || ''
-  if (isAudio(href)) {
-    env.inAudioLink = true
-    return `<audio controls src="${href}" preload="metadata" onclick="event.stopPropagation()" style="display: block; width: 100%; max-width: 240px; height: 32px; margin: 6px auto; border-radius: 9999px; outline: none;"></audio><span style="display:none">`
-  }
-  return defaultLinkOpen(tokens, idx, options, env, self)
-}
-
-md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
-  if (env.inAudioLink) {
-    env.inAudioLink = false
-    return '</span>'
-  }
-  return defaultLinkClose(tokens, idx, options, env, self)
-}
+// --- Markdown 渲染 (使用单例) ---
+// 逻辑说明：原有的 new MarkdownIt() 和配置逻辑已全部移除，转而调用 utils/markdownRenderer
 
 function renderMarkdown(content: string) {
   if (!content)
     return ''
 
-  let html = md.render(content)
+  // 1. 调用单例渲染。
+  // 重要：传入空对象 {} 作为 env，确保每次渲染的状态（如音频链接解析）是隔离的
+  let html = md.render(content, {})
+
+  // 2. 后处理：自定义 Tag 样式
   html = html.replace(/(?<!\w)#([^\s#.,?!;:"'()\[\]{}]+)/g, '<span class="custom-tag">#$1</span>')
+
+  // 3. 后处理：搜索高亮
   const query = props.searchQuery.trim()
   if (query) {
-    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    html = html.replace(new RegExp(escapedQuery, 'gi'), match => `<mark class="search-highlight">${match}</mark>`)
+    try {
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      html = html.replace(new RegExp(escapedQuery, 'gi'), match => `<mark class="search-highlight">${match}</mark>`)
+    }
+    catch (e) {
+      console.warn('Search highlight regex error', e)
+    }
   }
   return html
 }
@@ -1065,8 +1028,35 @@ onUnmounted(() => {
 
 /* 隐藏不需要的元素 */
 .compact-mode :deep(img), .compact-mode :deep(hr), .compact-mode :deep(br) { display: none !important; }
-.compact-mode :deep(h1), .compact-mode :deep(h2), .compact-mode :deep(h3),
-.compact-mode :deep(h4), .compact-mode :deep(h5), .compact-mode :deep(h6) { display: none !important; }
+/* ========================================= */
+/* 修复：强制将标题 H1-H6 变成“行内普通文字” */
+/* ========================================= */
+.compact-mode :deep(h1),
+.compact-mode :deep(h2),
+.compact-mode :deep(h3),
+.compact-mode :deep(h4),
+.compact-mode :deep(h5),
+.compact-mode :deep(h6) {
+  display: inline !important;        /* 关键：强制不换行，跟后面的字连在一起 */
+  font-size: 1em !important;         /* 关键：强制字号跟正文一样大 */
+  font-weight: bold !important;      /* 保留加粗，以便区分 */
+  margin: 0 !important;              /* 关键：去除所有外边距，防止撑开高度 */
+  padding: 0 !important;             /* 去除内边距 */
+  line-height: inherit !important;   /* 跟随正文行高 */
+  color: inherit !important;         /* 跟随正文颜色 */
+  border: none !important;           /* 去除可能存在的下划线 */
+}
+
+/* 优化：给标题后面强制加一个空格，防止标题和正文粘在一起 */
+.compact-mode :deep(h1)::after,
+.compact-mode :deep(h2)::after,
+.compact-mode :deep(h3)::after,
+.compact-mode :deep(h4)::after,
+.compact-mode :deep(h5)::after,
+.compact-mode :deep(h6)::after {
+  content: " ";
+  white-space: pre;
+}
 
 /* 高亮隐身 */
 .compact-mode :deep(mark) {
