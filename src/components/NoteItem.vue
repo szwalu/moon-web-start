@@ -42,7 +42,7 @@ const { t } = useI18n()
 const messageHook = useMessage()
 const isDark = useDark()
 const settingsStore = useSettingStore()
-const isInputFocused = ref(false)
+
 // --- 基础状态 ---
 const showCommentModal = ref(false)
 const commentText = ref('')
@@ -801,18 +801,10 @@ onUnmounted(() => {
         :style="{
           width: '90%',
           maxWidth: '600px',
-          transition: 'margin-bottom 0.3s',
-          marginBottom: (isIOS && isInputFocused) ? '46vh' : '0',
+          marginBottom: isIOS ? '46vh' : '0',
         }"
       >
-        <NInput
-          v-model:value="commentText"
-          type="textarea"
-          autofocus
-          :style="commentInputStyle"
-          @focus="isInputFocused = true"
-          @blur="isInputFocused = false"
-        />
+        <NInput v-model:value="commentText" type="textarea" autofocus :style="commentInputStyle" />
         <template #footer>
           <NButton size="small" @click="showCommentModal = false">{{ $t('notes.comment.cancel') }}</NButton>
           <NButton type="primary" size="small" :loading="isSubmittingComment" @click="handleAppendComment">{{ $t('notes.comment.submit') }}</NButton>
