@@ -798,7 +798,7 @@ onUnmounted(() => {
       <NCard
         :title="$t('notes.comment.title')"
         size="small"
-        style="width: 90%; max-width: 600px; margin-bottom: 60vh;"
+        style="width: 90%; max-width: 600px; margin-bottom: 40vh;"
       >
         <NInput v-model:value="commentText" type="textarea" autofocus :style="commentInputStyle" />
         <template #footer>
