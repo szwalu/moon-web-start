@@ -2707,7 +2707,7 @@ function handleTextareaMove(e: TouchEvent) {
   /* 加上过渡动画，让变高变矮时丝般顺滑 */
   transition: height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), box-shadow 0.2s ease;
   /* 🔥 核心修复 A：禁止根容器响应任何浏览器默认手势（如拖拽页面） */
-  touch-action: none;
+  touch-action: manipulation;
 
   /* 之前的这个也可以保留作为双重保险 */
   overscroll-behavior: none;
