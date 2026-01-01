@@ -606,7 +606,7 @@ onUnmounted(() => {
       <div class="flex-1 min-w-0">
         <div v-if="isExpanded">
           <div
-            class="note-content prose dark:prose-invert max-w-none px-4"
+            class="note-content prose dark:prose-invert max-w-none px-15"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
