@@ -435,6 +435,9 @@ function formatTime(d: string) {
   return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
 }
 
+// ✅ 1. 新增这个状态变量
+const showDropdown = ref(false)
+
 // --- 菜单与交互 ---
 function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string, any> = {}) {
   return () => h(
@@ -446,7 +449,6 @@ function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string,
         justifyContent: 'space-between',
         width: '100%',
         flex: '1',
-        height: '34px',
       },
     },
     [
@@ -456,24 +458,115 @@ function makeDropdownItem(iconComp: any, text: string, iconStyle: Record<string,
   )
 }
 
+// 2. 顶部单个按钮渲染
+// ✅ 修复：删除了所有 DOM Hack，只负责单纯的点击响应
+function renderHeaderBtn(iconComp: any, text: string, onClick: () => void) {
+  return h(
+    'div',
+    {
+      style: {
+        width: '50px', // 保持漂亮的间距
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+    },
+    [
+      h(
+        'div',
+        {
+          class: 'header-btn-inner',
+          style: {
+            width: '100%',
+            padding: '8px 0',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation()
+            // 这里只执行回调，关闭逻辑在 getDropdownOptions 里统一处理
+            onClick()
+          },
+        },
+        [
+          h('div', { style: { height: '24px', display: 'flex', alignItems: 'center' } }, [
+            h(iconComp, { size: 20, strokeWidth: 1.5 }),
+          ]),
+          h('span', { style: { fontSize: '11px', marginTop: '4px', color: '#555' } }, text),
+        ],
+      ),
+    ],
+  )
+}
+
+// 3. 宽分隔线 (保持漂亮的负边距)
+function renderWideGap() {
+  return h('div', {
+    style: {
+      height: '8px',
+      backgroundColor: isDark.value ? '#1f2937' : '#f5f5f7',
+      margin: '4px -12px', // 负边距抵消 padding
+      borderTop: isDark.value ? '1px solid #374151' : '1px solid #ebedf0',
+      borderBottom: isDark.value ? '1px solid #374151' : '1px solid #ebedf0',
+    },
+  })
+}
+
+// 4. 菜单配置主函数
 function getDropdownOptions(note: any) {
   const charCount = note.content ? note.content.length : 0
-  const opts: any[] = [
+
+  // ✅ 修复：强制显示年份 (year: 'numeric')
+  const dateOpts: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }
+
+  // ✅ 辅助函数：执行动作并关闭菜单
+  const doAction = (action: () => void) => {
+    action()
+    showDropdown.value = false // 手动关闭菜单
+  }
+
+  return [
+    // --- 顶部 Grid 区域 ---
     {
-      key: 'edit',
-      label: makeDropdownItem(Edit3, t('notes.edit')),
+      key: 'header-actions',
+      type: 'render',
+      class: 'custom-no-hover',
+      render: () => h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            justifyContent: 'space-evenly',
+            alignItems: 'center',
+            margin: '-6px -12px', // 保持漂亮的负边距
+            width: 'calc(100% + 24px)',
+            padding: '6px 0',
+            cursor: 'default',
+          },
+        },
+        [
+          // ✅ 修复：在这里包裹 doAction，确保点击后关闭菜单
+          renderHeaderBtn(Share, t('notes.share', '分享'), () => doAction(handleShare)),
+          renderHeaderBtn(Edit3, t('notes.edit'), () => doAction(() => emit('edit', props.note))),
+          renderHeaderBtn(Copy, t('notes.copy'), () => doAction(() => emit('copy', props.note.content))),
+        ],
+      ),
     },
-    { type: 'divider', key: 'd1' },
-    {
-      key: 'share',
-      label: makeDropdownItem(Share, t('notes.share', '分享')),
-    },
-    { type: 'divider', key: 'd2' },
-    {
-      key: 'copy',
-      label: makeDropdownItem(Copy, t('notes.copy')),
-    },
-    { type: 'divider', key: 'd3' },
+
+    { key: 'g1', type: 'render', render: renderWideGap, class: 'custom-no-hover' },
+
+    // --- 中间列表区域 ---
     {
       key: 'pin',
       label: makeDropdownItem(
@@ -481,7 +574,7 @@ function getDropdownOptions(note: any) {
         note.is_pinned ? t('notes.unpin') : t('notes.pin'),
       ),
     },
-    { type: 'divider', key: 'd4' },
+    { type: 'divider', key: 'd1' },
     {
       key: 'favorite',
       label: makeDropdownItem(
@@ -490,36 +583,42 @@ function getDropdownOptions(note: any) {
         { color: note.is_favorited ? '#ef4444' : undefined },
       ),
     },
-    { type: 'divider', key: 'd5' },
+    { type: 'divider', key: 'd2' },
     {
       key: 'set_date',
       label: makeDropdownItem(Calendar, t('notes.card.set_date')),
     },
-    { type: 'divider', key: 'd6' },
+    { type: 'divider', key: 'd3' },
     {
       key: 'delete',
       label: makeDropdownItem(Trash2, t('notes.delete'), { color: '#d03050' }),
     },
-    { key: 'divider-info', type: 'divider' },
+
+    { key: 'g2', type: 'render', render: renderWideGap, class: 'custom-no-hover' },
+
+    // --- 底部信息区域 ---
     {
-      key: 'info-block',
+      key: 'info',
       type: 'render',
+      class: 'custom-no-hover',
       render: () => h('div', {
+        class: 'dropdown-info-block',
         style: {
-          padding: '6px 12px',
-          cursor: 'default',
-          fontSize: '13px',
-          color: isDark.value ? '#aaa' : '#666',
-          lineHeight: '1.8',
+          padding: '8px 4px 12px 4px',
+          fontSize: '11px',
+          color: '#9ca3af',
+          textAlign: 'left',
+          lineHeight: '1.6',
         },
       }, [
-        h('p', { style: { margin: 0 } }, t('notes.word_count', { count: charCount })),
-        h('p', { style: { margin: 0 } }, t('notes.created_at', { time: new Date(note.created_at).toLocaleString('zh-CN') })),
-        h('p', { style: { margin: 0 } }, t('notes.updated2_at', { time: new Date(note.updated_at).toLocaleString('zh-CN') })),
+        h('div', null, t('notes.word_count', { count: charCount })),
+        // ✅ 新增：创建时间 (带年份)
+        h('div', null, `${t('notes.created_at', { time: '' })} ${new Date(note.created_at).toLocaleString('zh-CN', dateOpts)}`),
+        // ✅ 修复：更新时间 (带年份)
+        h('div', null, `${t('notes.updated2_at', { time: '' })} ${new Date(note.updated_at).toLocaleString('zh-CN', dateOpts)}`),
       ]),
     },
   ]
-  return opts
 }
 
 function handleDropdownSelect(key: string) {
@@ -595,7 +694,14 @@ onUnmounted(() => {
           <div v-if="hasDraft" class="draft-icon-wrapper" @click.stop="emit('edit', note)">
             <Edit3 :size="14" />
           </div>
-          <NDropdown trigger="click" placement="bottom-end" :options="getDropdownOptions(note)" :style="{ minWidth: '220px' }" @select="handleDropdownSelect">
+          <NDropdown
+            v-model:show="showDropdown"
+            trigger="click"
+            placement="bottom-end"
+            :options="getDropdownOptions(note)"
+            :style="{ minWidth: '220px' }"
+            @select="handleDropdownSelect"
+          >
             <div class="kebab-menu">
               <svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
             </div>
@@ -635,8 +741,15 @@ onUnmounted(() => {
                   <div v-if="hasDraft" class="draft-icon-wrapper-small" @click.stop="emit('edit', note)">
                     <Edit3 :size="12" />
                   </div>
-                  <NDropdown trigger="click" placement="bottom-end" :options="getDropdownOptions(note)" :style="{ minWidth: '220px' }" @select="handleDropdownSelect">
-                    <div class="kebab-menu-small">
+                  <NDropdown
+                    v-model:show="showDropdown"
+                    trigger="click"
+                    placement="bottom-end"
+                    :options="getDropdownOptions(note)"
+                    :style="{ minWidth: '220px' }"
+                    @select="handleDropdownSelect"
+                  >
+                    <div class="kebab-menu">
                       <svg width="17" height="17" viewBox="0 0 24 24"><path fill="currentColor" d="M6 12a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0zm8 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0z" /></svg>
                     </div>
                   </NDropdown>
@@ -778,6 +891,14 @@ onUnmounted(() => {
         </template>
       </NCard>
     </NModal>
+    <Teleport to="body">
+      <div v-if="shareGenerating" class="full-screen-loading">
+        <div class="loading-content">
+          <div class="spinner" />
+          <p class="loading-text">{{ $t('notes.share_generating', '正在生成精美卡片...') }}</p>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1383,44 +1504,104 @@ onUnmounted(() => {
   background-color: rgba(255, 255, 255, 0.03);
   border-left-color: #4b5563;
 }
+
+/* ... 上面是原有的 CSS ... */
+
+/* ========================================= */
+/* ✅ 新增：全屏加载遮罩层样式 */
+/* ========================================= */
+.full-screen-loading {
+  position: fixed;
+  inset: 0; /* 占满全屏 */
+  background-color: rgba(0, 0, 0, 0.6); /* 深色半透明背景 */
+  backdrop-filter: blur(4px); /* 背景模糊，增加高级感 */
+  z-index: 9999; /* 确保在最顶层 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+}
+
+.loading-text {
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+/* 纯 CSS 旋转圆圈动画 */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff; /* 顶部白色，旋转产生动画 */
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 修改前：是针对整个 .header-btn-hover 改颜色 */
+/* 修改后：针对内部的 .header-btn-inner 改颜色 */
+
+.header-btn-inner {
+  transition: background-color 0.2s;
+}
+
+.header-btn-inner:hover {
+  background-color: rgba(0, 0, 0, 0.05); /* 浅灰背景只出现在按钮范围内 */
+}
+
+.dark .header-btn-inner:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
 </style>
 
 <style>
-/* 1. 强制压缩每一行的高度 */
+/* 1. 基础设置 */
 .n-dropdown-menu .n-dropdown-option-body {
-  height: 35px !important;       /* 强制每行高度为 28px */
-  min-height: 35px !important;   /* 覆盖默认的最小高度 */
-  padding: 0 10px !important;    /* 左右内边距 */
+  min-height: 40px;
+  padding: 0 12px !important; /* 保持默认 Padding，让 JS 的负边距去抵消它 */
   display: flex !important;
   align-items: center !important;
-  font-size: 14px !important;    /*稍微改小一点字体让它看起来精致 */
 }
 
-/* 2. 修正图标和文字的垂直对齐 */
-.n-dropdown-menu .n-dropdown-option-body > div {
-  display: flex;
-  align-items: center;
-  height: 100%; /* 占满高度 */
+/* 2. 去掉悬停背景色 */
+.n-dropdown-option:has(.custom-no-hover) .n-dropdown-option-body:hover,
+.n-dropdown-option:has(.custom-no-hover) .n-dropdown-option-body.n-dropdown-option-body--pending {
+  background-color: transparent !important;
 }
 
-/* 3. 极简分割线 */
+/* 3. 顶部和分隔线：取消高度限制 */
+.n-dropdown-option:has(.custom-no-hover) .n-dropdown-option-body {
+  display: block !important;
+  height: auto !important;
+  min-height: auto !important;
+  /* 关键：允许内容溢出，这样负边距才不会被切掉 */
+  overflow: visible !important;
+  /* 这里我们保留 padding，让 JS 的 -12px margin 去自动吸附边缘 */
+}
+
+/* 4. 底部信息块 */
+.n-dropdown-option:has(.dropdown-info-block) .n-dropdown-option-body {
+   padding-bottom: 0 !important;
+   margin-bottom: 4px;
+}
+
+/* 5. 分隔线颜色 */
 .n-dropdown-menu .n-dropdown-divider {
   margin: 0 !important;
-  padding: 0 !important;
-  height: 1px !important;
-  background-color: rgba(0, 0, 0, 0.08) !important;
+  background-color: rgba(0, 0, 0, 0.06) !important;
 }
-
-/* 4. 收紧整个菜单容器的上下留白 */
-.n-dropdown-menu {
-  padding: 4px 0 !important;
-}
-
-.vc-title,
-.vc-title-wrapper,
-.vc-arrow {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
+.dark .n-dropdown-menu .n-dropdown-divider {
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 </style>
