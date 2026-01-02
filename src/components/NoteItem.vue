@@ -3,7 +3,7 @@ import { computed, h, nextTick, onActivated, onMounted, onUnmounted, ref, watch 
 import { useI18n } from 'vue-i18n'
 
 // 移除原有的 MarkdownIt 及插件 import
-import { NButton, NCard, NDropdown, NInput, NModal, useMessage } from 'naive-ui'
+import { NButton, NCard, NDropdown, NInput, NModal, useMessage, useThemeVars } from 'naive-ui'
 import { useDark } from '@vueuse/core'
 import html2canvas from 'html2canvas'
 import { Calendar, Copy, Edit3, Heart, HeartOff, Pin, PinOff, Share, Trash2 } from 'lucide-vue-next'
@@ -299,7 +299,16 @@ const commentInputStyle = computed(() => {
 })
 
 const fontSizeClass = computed(() => `font-size-${settingsStore.noteFontSize || 'medium'}`)
+// 1. 获取当前 Naive UI 的主题变量（会自动跟随深色模式和全局主题配置）
+const themeVars = useThemeVars()
 
+// 2. 修改 computed，让 CSS 变量直接读取 themeVars 里的主色
+const dynamicThemeStyle = computed(() => {
+  return {
+    // themeVars.value.primaryColor 会拿到当前生效的颜色（例如 #18a058 或你自定义的颜色）
+    '--theme-primary': themeVars.value.primaryColor,
+  }
+})
 const firstImageUrl = computed(() => {
   const c = String(props.note?.content || '')
   const mdMatch = /!\[[^\]]*]\((https?:\/\/[^)]+)\)/.exec(c)
@@ -772,7 +781,7 @@ onUnmounted(() => {
       ref="shareCardRef"
       class="share-card-root"
     >
-      <div class="share-card">
+      <div class="share-card" :style="dynamicThemeStyle">
         <div class="share-card-header">
           <p class="share-card-date">
             {{ formatShareDate(note.created_at) }}
@@ -834,6 +843,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="share-btn"
+                :style="dynamicThemeStyle"
                 @click="downloadShareImage"
               >
                 {{ $t('notes.share_save_only', '保存') }}
@@ -841,15 +851,12 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="share-btn"
+                :style="dynamicThemeStyle"
                 @click="systemShareImage"
               >
                 {{ $t('notes.share_button', '分享') }}
               </button>
-              <button
-                type="button"
-                class="share-btn share-btn-secondary"
-                @click="sharePreviewVisible = false"
-              >
+              <button type="button" class="share-btn share-btn-secondary" @click="sharePreviewVisible = false">
                 {{ $t('common.close', '关闭') }}
               </button>
             </template>
@@ -858,15 +865,12 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="share-btn"
+                :style="dynamicThemeStyle"
                 @click="systemShareImage"
               >
                 {{ $t('notes.share_save', '保存/分享') }}
               </button>
-              <button
-                type="button"
-                class="share-btn share-btn-secondary"
-                @click="sharePreviewVisible = false"
-              >
+              <button type="button" class="share-btn share-btn-secondary" @click="sharePreviewVisible = false">
                 {{ $t('common.close', '关闭') }}
               </button>
             </template>
@@ -1223,30 +1227,21 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #f9fafb, #e5edff);
   padding: 12px 14px 10px;
 
-  /* 3. 加深阴影：让卡片更有立体感，与背景区分开 */
+  /* 3. 加深阴影 */
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0,0,0,0.03);
 
   font-family: system-ui, -apple-system, BlinkMacSystemFont,
                    'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 
-  /* ================================ */
-  /* 🌟 修改这里：加粗边框并提高不透明度 */
-  /* ================================ */
-  /* 原来是 1px solid rgba(99, 102, 241, 0.18) 太淡了 */
-  border: 2px solid #6366f1; /* 使用明显的品牌色（靛蓝），且是实线 */
-
-  /* 如果想要“深色硬边框”风格，可以用下面这句代替上面那句： */
-  /* border: 2px solid #333; */
+  /* ✅ 只保留这一行动态边框，删除下面所有写死的 border */
+  border: 2px solid var(--theme-primary);
 
   backdrop-filter: blur(4px);
 }
-
 .dark .share-card {
   background: linear-gradient(135deg, #020617, #020b3a);
   color: #e5e7eb;
-
-  /* 深色模式下也加粗 */
-  border: 2px solid #818cf8;
+  border: 2px solid var(--theme-primary);
   /* 深色模式下的阴影 */
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
@@ -1262,12 +1257,11 @@ onUnmounted(() => {
   height: 3px;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
-
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  background: var(--theme-primary);
 }
 
 .dark .share-card::before {
-  background: linear-gradient(90deg, #818cf8, #c4b5fd);
+  background: var(--theme-primary);
 }
 
 .share-card-header {
@@ -1417,7 +1411,7 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  background: #6366f1;
+  background: var(--theme-primary);
   color: #ffffff;
 }
 
