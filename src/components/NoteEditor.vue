@@ -2401,26 +2401,25 @@ function handleTextareaMove(e: TouchEvent) {
         <button
           type="button"
           class="record-btn record-btn-secondary"
-          @mousedown.prevent
-          @click="handleRecordCancelClick"
+          @pointerdown.prevent="handleRecordCancelClick"
         >
           {{ t('notes.editor.record.button_cancel') }}
         </button>
+
         <button
           type="button"
           class="record-btn record-btn-secondary"
           :disabled="!isRecording || isUploadingAudio"
-          @mousedown.prevent
-          @click="handleRecordPauseClick"
+          @pointerdown.prevent="handleRecordPauseClick"
         >
           {{ isRecordPaused ? t('notes.editor.record.button_resume') : t('notes.editor.record.button_pause') }}
         </button>
+
         <button
           type="button"
           class="record-btn record-btn-primary"
           :disabled="isUploadingAudio"
-          @mousedown.prevent
-          @click="handleRecordButtonClick"
+          @pointerdown.prevent="handleRecordButtonClick"
         >
           {{ isRecording ? t('notes.editor.record.button_stop') : t('notes.editor.record.button_start') }}
         </button>
