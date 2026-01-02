@@ -1005,6 +1005,7 @@ defineExpose({ executeSearch, clearSearch })
   padding-top: 1rem;
   padding-bottom: 0.5rem;
   margin-bottom: 0.5rem;
+  padding-right: 4rem;
 }
 .dark .search-export-bar { background-color: #374151; }
 

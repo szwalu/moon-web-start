@@ -24,7 +24,7 @@ button:
   exportData: データをエクスポート
   complete: 完了
   confirm: 確認
-  cancel: キャンセル
+  cancel: 戻る
   delete: 削除
   dataInSync: データ同期中
   save: 保存
@@ -225,7 +225,7 @@ auth:
   email_placeholder: メールアドレスを入力してください
   forgot_password: パスワードをお忘れですか？
   confirm: 確定
-  cancel: キャンセル
+  cancel: 戻る
   return: 戻る
   reset_password: パスワード再設定
   invalid_link: リンクが無効か期限切れです。再申請してください。
@@ -400,7 +400,7 @@ notes:
   delete_confirm_title: 削除の確認
   delete_confirm_content: このメモを削除してもよろしいですか？
   confirm_delete: 削除を確認
-  cancel: キャンセル
+  cancel: 戻る
   fetch_error: オフラインモード
   saving: 保存中...
   export_confirm_title: 日付範囲を選択
@@ -486,7 +486,7 @@ notes:
     title: 感想や追記を追加
     placeholder: あなたの考えを書いてください...
     submit: 追加
-    cancel: キャンセル
+    cancel: 戻る
     success: 追加しました
     fail: '追加失敗: {reason}'
     header: 📝
@@ -590,7 +590,7 @@ notes:
 
     purge_confirm_title: 削除の確認
     purge_confirm_content: '選択した {count} 件のノートを完全に削除してもよろしいですか？この操作は元に戻せません。'
-    cancel: キャンセル
+    cancel: 戻る
     confirm_delete: 削除
 
   calendar:
@@ -660,7 +660,7 @@ notes:
       status_ready: 録音の準備ができました
       status_paused: 一時停止中
       status_recording: 録音中…
-      button_cancel: キャンセル
+      button_cancel: 戻る
       button_pause: 一時停止
       button_resume: 再開
       button_start: 録音開始
@@ -680,7 +680,7 @@ notes:
     char_limit_content: '1つのノートは {max} 文字までです。保存前に短くしてください。'
     save:
       button_save: 保存
-      button_cancel: キャンセル
+      button_cancel: 戻る
       success: 保存が完了しました！
       weather_fetch_failed: 天気情報の取得に失敗しました。天気データなしでノートを保存します。
     image_dialog:
@@ -845,7 +845,7 @@ dialog:
   delete_note_content2: '{count} 件のメモを削除してもよろしいですか？'
   delete_note_content: このメモを削除してもよろしいですか？
   confirm_button: 確認
-  cancel_button: キャンセル
+  cancel_button: 戻る
 
 tags:
   delete_tag_title: タグを削除

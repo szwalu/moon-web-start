@@ -447,7 +447,7 @@ async function onImageChosen(e: Event) {
 
     // 5) 上传并插入
     const url = await uploadImageToSupabase(best.blob, best.ext, best.type)
-    insertText(`![](${url})`, '')
+    insertText(`![🖼️图片](${url})`, '')
   }
   catch (err: any) {
     const isQuotaError = err.message && err.message.includes('row-level security policy')

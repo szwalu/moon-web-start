@@ -1140,6 +1140,21 @@ onUnmounted(() => {
   font-weight: normal !important;
 }
 
+/* ✅ 修复：让加粗字体 (strong/b) 在预览模式下恢复粗体 */
+.compact-mode :deep(strong),
+.compact-mode :deep(b) {
+  font-weight: bold !important;
+  /* 可选：如果你希望加粗字体的颜色更深一点，可以加上下面这行 */
+  /* color: #000 !important; */
+}
+
+/* ✅ 修复：深色模式下的加粗 */
+.dark .compact-mode :deep(strong),
+.dark .compact-mode :deep(b) {
+  font-weight: bold !important;
+  /* color: #fff !important; */
+}
+
 /* 标签特殊处理 */
 .note-content :deep(.custom-tag) {
   background-color: #eef2ff !important; /* 浅蓝背景 */

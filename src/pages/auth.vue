@@ -3999,29 +3999,36 @@ background: var(--theme-primary); /* 原 #6366f1 */
   background: var(--theme-primary-light); /* 原 #818cf8 */
   color: #111;}
 .cancel-search-btn {
-  /* 绝对定位：固定在容器右上角 */
+  /* 定位：垂直居中 */
   position: absolute;
-  right: 4px;
-
-  /* ✅ 修改：垂直居中计算公式 */
-  /* 容器 padding-top (16px) + 输入框半高 (22px) = 38px */
-  top: 24px;
-  transform: translateY(-50%); /* 自身垂直居中 */
-
-  /* 确保按钮在最上层，不被输入框遮挡 */
+  top: 24px;  /* 根据你的容器高度微调 */
+  transform: translateY(-50%);
   z-index: 200;
 
-  /* 样式 */
+  /* ✅ 修复 1：不要贴死边缘，给右边留出 10px 左右的安全距离 */
+  right: 7px;
+
+  /* ✅ 修复 2：使用 min-width 代替 width */
+  /* 这样中文“取消”会撑开到 48px 宽（显得不那么窄，且居中） */
+  /* 英文 Cancel 如果更长，会自动撑开，不会换行 */
+  width: auto;
+  min-width: 48px;
+
+  /* ✅ 修复 3：布局与对齐 */
+  display: flex;
+  align-items: center;
+  justify-content: center; /* 保证“取消”二字在 48px 里居中 */
+  white-space: nowrap;     /* 保证绝对不换行 */
+
+  /* 样式重置 */
   background: none;
   border: none;
+  padding: 0 4px; /* 稍微加点内边距作为缓冲 */
+  height: 44px;   /* 保持大的点击高度 */
+
   font-size: 15px;
   color: #666;
   cursor: pointer;
-  padding: 0 4px;
-  /* 增加高度点击热区，确保容易点到 */
-  height: 44px;
-  display: flex;
-  align-items: center;
 }
 .dark .cancel-search-btn {
   color: #bbb;
