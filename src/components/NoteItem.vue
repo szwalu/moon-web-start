@@ -1177,7 +1177,7 @@ onUnmounted(() => {
 }
 
 /* 隐藏不需要的元素 */
-.compact-mode :deep(img), .compact-mode :deep(hr), .compact-mode :deep(br) { display: none !important; }
+.compact-mode :deep(img), .compact-mode :deep(hr) { display: none !important; }
 /* ========================================= */
 /* 修复：强制将标题 H1-H6 变成“行内普通文字” */
 /* ========================================= */
@@ -1216,7 +1216,10 @@ onUnmounted(() => {
   margin: 0 !important;
 }
 /* 间距处理 */
-.compact-mode :deep(p)::after, .compact-mode :deep(li)::after, .compact-mode :deep(blockquote)::after { content: " "; }
+.compact-mode :deep(p)::after, .compact-mode :deep(li)::after, .compact-mode :deep(blockquote)::after {
+  content: "\A";
+  white-space: pre;
+}
 
 /* ========================================= */
 /* ⬇️⬇️⬇️ 4. 旧版分享卡片样式 (完全替换) ⬇️⬇️⬇️ */
