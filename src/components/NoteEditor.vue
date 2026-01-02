@@ -3,6 +3,7 @@ import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch
 
 import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import fixWebmDuration from 'fix-webm-duration'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -730,10 +731,9 @@ const isRecording = ref(false)
 const isRecordPaused = ref(false)
 const isUploadingAudio = ref(false)
 
-// 录音时长（秒）+ 定时器句柄
-// 录音时长（秒）+ 定时器句柄
 const recordSeconds = ref(0)
 let recordTimer: number | null = null
+let recordStartTime = 0
 
 const MAX_RECORD_SECONDS = 10 * 60
 const WARNING_SECONDS = 2 * 60
@@ -826,8 +826,8 @@ function buildAudioPath(userId: string, ext = 'webm') {
 }
 
 // 上传音频到 Supabase，返回可访问 URL
-// 找到这个函数，把入参改为 (blob, ext, contentType)
-async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
+// 上传函数：保持 webm 扩展名，但确保 contentType 与 Blob 一致
+async function uploadAudioToSupabase(blob: Blob): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error(t('notes.editor.record.login_required'))
@@ -835,7 +835,11 @@ async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: strin
   const userId = userData.user.id
   const bucket = 'note-audios'
 
-  // 使用传入的 ext 生成路径
+  // 保持你想要的 webm 后缀 (因为经过修复后它确实是标准 webm)
+  const ext = 'webm'
+  // 使用 blob 自身的类型，通常是 'audio/webm;codecs=opus'
+  const contentType = blob.type || 'audio/webm'
+
   const filePath = buildAudioPath(userId, ext)
 
   const { error: upErr } = await supabase
@@ -861,30 +865,20 @@ async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: strin
   return signed.signedUrl
 }
 
-// 当一段录音结束后：上传并在光标处插入链接（无成功弹窗）
-// 修改入参逻辑，或者直接在函数体内判断类型
+// 结束处理函数：不需要改动，它只负责接收最终的 Blob 并上传
 async function handleAudioFinished(blob: Blob) {
   if (!blob.size)
     return
 
   isUploadingAudio.value = true
   try {
-    // 🔥 核心修改：根据 blob.type 智能判断扩展名
-    let ext = 'webm' // 默认兜底
-    if (blob.type.includes('mp4'))
-      ext = 'm4a'
-    else if (blob.type.includes('aac'))
-      ext = 'aac'
-    else if (blob.type.includes('ogg'))
-      ext = 'ogg'
+    const url = await uploadAudioToSupabase(blob)
 
-    // 把 blob.type 和计算出的 ext 传进去
-    const url = await uploadAudioToSupabase(blob, ext, blob.type)
-
-    // ... 下面保持不变 ...
+    // 1. 插入录音链接到当前光标位置
     const label = t('notes.editor.record.link_label')
     insertText(`[🎙️${label}](${url}) `, '')
 
+    // 2. 下一帧把焦点和光标拉回 textarea
     await nextTick()
     const el = textarea.value
     if (el) {
@@ -901,7 +895,6 @@ async function handleAudioFinished(blob: Blob) {
     }
   }
   catch (err: any) {
-    // ... 错误处理保持不变 ...
     const isQuotaError = err.message && err.message.includes('row-level security policy')
     promptErrorMsg.value = isQuotaError
       ? `${t('notes.account.errors.quota_exceeded_1')}\n${t('notes.account.errors.quota_exceeded_2')}`
@@ -915,7 +908,7 @@ async function handleAudioFinished(blob: Blob) {
   }
 }
 
-// 开始录音
+// 开始录音函数：核心修改都在这里
 async function startRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     dialog.warning({
@@ -929,32 +922,17 @@ async function startRecording() {
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-    // 🔥 核心修改：优先尝试 mp4 (iOS 完美支持)，其次是 webm
-    const types = [
-      'audio/mp4', // iOS Safari 首选 (生成 .m4a)
-      'audio/webm;codecs=opus', // Android/Chrome 首选
-      'audio/webm', // 兜底
-    ]
-
-    let mimeType = ''
-    for (const t of types) {
-      if (MediaRecorder.isTypeSupported(t)) {
-        mimeType = t
-        break
-      }
-    }
-    // 如果都不支持（极端情况），回退为空让浏览器自己决定
-    if (!mimeType)
-      mimeType = ''
+    // 优先使用 Opus 编码的 WebM，体积最小
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
 
     const targetBits = 16000
 
-    // 创建 Recorder
-    const options: any = { audioBitsPerSecond: targetBits }
-    if (mimeType)
-      options.mimeType = mimeType
-
-    mediaRecorder = new MediaRecorder(audioStream, options)
+    mediaRecorder = new MediaRecorder(audioStream, {
+      mimeType,
+      audioBitsPerSecond: targetBits,
+    })
 
     audioChunks = []
 
@@ -963,25 +941,41 @@ async function startRecording() {
         audioChunks.push(e.data)
     }
 
+    // 🔥 1. 记录开始时间
+    recordStartTime = Date.now()
+
     mediaRecorder.onstop = () => {
-      // 🔥 注意：这里用 mediaRecorder.mimeType 获取最终实际使用的类型
-      // 这样 handleAudioFinished 就能拿到正确的 blob.type
-      const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || mimeType })
+      // 获取最终录制的 Blob
+      const rawBlob = new Blob(audioChunks, { type: mimeType })
       cleanupMediaRecorder()
 
-      handleAudioFinished(blob)
-        .then(() => {
-          showRecordBar.value = false
-          isRecording.value = false
-          isRecordPaused.value = false
-          recordSeconds.value = 0
+      // 🔥 2. 计算实际时长 (毫秒)
+      const durationMs = Date.now() - recordStartTime
+
+      // 定义统一的回调逻辑：上传成功/失败后关闭 UI
+      const onFinished = () => {
+        showRecordBar.value = false
+        isRecording.value = false
+        isRecordPaused.value = false
+        recordSeconds.value = 0
+      }
+
+      // 🔥 3. 只有 WebM 格式才需要修复时长
+      if (mimeType.includes('webm')) {
+        // 使用 fix-webm-duration 库修复元数据
+        fixWebmDuration(rawBlob, durationMs, (fixedBlob) => {
+          // fixedBlob 就是修复后带时长信息的文件，体积依然很小
+          handleAudioFinished(fixedBlob)
+            .then(onFinished)
+            .catch(onFinished)
         })
-        .catch(() => {
-          showRecordBar.value = false
-          isRecording.value = false
-          isRecordPaused.value = false
-          recordSeconds.value = 0
-        })
+      }
+      else {
+        // 如果浏览器不支持 WebM (虽然少见)，则直接上传原始文件
+        handleAudioFinished(rawBlob)
+          .then(onFinished)
+          .catch(onFinished)
+      }
     }
 
     mediaRecorder.start()
