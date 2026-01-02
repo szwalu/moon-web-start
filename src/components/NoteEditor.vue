@@ -826,16 +826,16 @@ function buildAudioPath(userId: string, ext = 'webm') {
 }
 
 // 上传音频到 Supabase，返回可访问 URL
-async function uploadAudioToSupabase(blob: Blob): Promise<string> {
+// 找到这个函数，把入参改为 (blob, ext, contentType)
+async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error(t('notes.editor.record.login_required'))
 
   const userId = userData.user.id
-  const bucket = 'note-audios' // 你原来用的桶名如果不一样，这里要改成原来的
-  const ext = 'webm'
-  const contentType = 'audio/webm'
+  const bucket = 'note-audios'
 
+  // 使用传入的 ext 生成路径
   const filePath = buildAudioPath(userId, ext)
 
   const { error: upErr } = await supabase
@@ -862,19 +862,29 @@ async function uploadAudioToSupabase(blob: Blob): Promise<string> {
 }
 
 // 当一段录音结束后：上传并在光标处插入链接（无成功弹窗）
+// 修改入参逻辑，或者直接在函数体内判断类型
 async function handleAudioFinished(blob: Blob) {
   if (!blob.size)
     return
 
   isUploadingAudio.value = true
   try {
-    const url = await uploadAudioToSupabase(blob)
+    // 🔥 核心修改：根据 blob.type 智能判断扩展名
+    let ext = 'webm' // 默认兜底
+    if (blob.type.includes('mp4'))
+      ext = 'm4a'
+    else if (blob.type.includes('aac'))
+      ext = 'aac'
+    else if (blob.type.includes('ogg'))
+      ext = 'ogg'
 
-    // 1. 插入录音链接到当前光标位置
+    // 把 blob.type 和计算出的 ext 传进去
+    const url = await uploadAudioToSupabase(blob, ext, blob.type)
+
+    // ... 下面保持不变 ...
     const label = t('notes.editor.record.link_label')
     insertText(`[🎙️${label}](${url}) `, '')
 
-    // 2. 下一帧把焦点和光标拉回 textarea（避免光标消失）
     await nextTick()
     const el = textarea.value
     if (el) {
@@ -883,9 +893,7 @@ async function handleAudioFinished(blob: Blob) {
       try {
         el.setSelectionRange(len, len)
       }
-      catch {
-        // 某些环境会抛错，忽略即可
-      }
+      catch {}
       captureCaret()
       ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => {
@@ -893,6 +901,7 @@ async function handleAudioFinished(blob: Blob) {
     }
   }
   catch (err: any) {
+    // ... 错误处理保持不变 ...
     const isQuotaError = err.message && err.message.includes('row-level security policy')
     promptErrorMsg.value = isQuotaError
       ? `${t('notes.account.errors.quota_exceeded_1')}\n${t('notes.account.errors.quota_exceeded_2')}`
@@ -920,17 +929,32 @@ async function startRecording() {
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm'
+    // 🔥 核心修改：优先尝试 mp4 (iOS 完美支持)，其次是 webm
+    const types = [
+      'audio/mp4', // iOS Safari 首选 (生成 .m4a)
+      'audio/webm;codecs=opus', // Android/Chrome 首选
+      'audio/webm', // 兜底
+    ]
 
-    // 🔽 新增：尽量请求更低的码率（16 kbps 左右）
-    const targetBits = 16000 // 也可以换成 24000，看你能接受的音质
+    let mimeType = ''
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t)) {
+        mimeType = t
+        break
+      }
+    }
+    // 如果都不支持（极端情况），回退为空让浏览器自己决定
+    if (!mimeType)
+      mimeType = ''
 
-    mediaRecorder = new MediaRecorder(audioStream, {
-      mimeType,
-      audioBitsPerSecond: targetBits,
-    })
+    const targetBits = 16000
+
+    // 创建 Recorder
+    const options: any = { audioBitsPerSecond: targetBits }
+    if (mimeType)
+      options.mimeType = mimeType
+
+    mediaRecorder = new MediaRecorder(audioStream, options)
 
     audioChunks = []
 
@@ -940,20 +964,19 @@ async function startRecording() {
     }
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(audioChunks, { type: mimeType })
+      // 🔥 注意：这里用 mediaRecorder.mimeType 获取最终实际使用的类型
+      // 这样 handleAudioFinished 就能拿到正确的 blob.type
+      const blob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || mimeType })
       cleanupMediaRecorder()
 
-      // 录音结束后上传并插入链接
       handleAudioFinished(blob)
         .then(() => {
-          // ✅ 上传成功后关闭录音条
           showRecordBar.value = false
           isRecording.value = false
           isRecordPaused.value = false
           recordSeconds.value = 0
         })
         .catch(() => {
-          // ❗ 上传失败时，同样关闭录音条（可按需保留）
           showRecordBar.value = false
           isRecording.value = false
           isRecordPaused.value = false
