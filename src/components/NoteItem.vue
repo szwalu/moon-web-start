@@ -506,7 +506,7 @@ function renderHeaderBtn(iconComp: any, text: string, onClick: () => void) {
           h('div', { style: { height: '24px', display: 'flex', alignItems: 'center' } }, [
             h(iconComp, { size: 20, strokeWidth: 1.5 }),
           ]),
-          h('span', { style: { fontSize: '11px', marginTop: '4px', color: '#555' } }, text),
+          h('span', { style: { fontSize: '11px', marginTop: '4px' } }, text),
         ],
       ),
     ],
@@ -766,7 +766,7 @@ onUnmounted(() => {
               </div>
               <div class="note-preview-body-row">
                 <div class="prose dark:prose-invert note-content compact-mode" v-html="renderMarkdown(note.content)" />
-                <div v-if="firstImageUrl" class="note-preview-image-box" @click.stop>
+                <div v-if="firstImageUrl" class="note-preview-image-box">
                   <img :src="firstImageUrl" class="thumb-img" loading="lazy" alt="preview">
                 </div>
               </div>
@@ -919,8 +919,7 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
 }
 .dark .note-card {
-  background-color: #000000;
-  border: 1px solid #333;
+  background-color: #374151;
 }
 .note-card-top-bar {
   display: flex;
@@ -1566,11 +1565,13 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* 修改前：是针对整个 .header-btn-hover 改颜色 */
-/* 修改后：针对内部的 .header-btn-inner 改颜色 */
-
 .header-btn-inner {
   transition: background-color 0.2s;
+  color: #555;
+}
+
+.dark .header-btn-inner {
+  color: #e5e7eb; /* 🌙 暗色模式下的文字和图标颜色 (亮灰白) */
 }
 
 .header-btn-inner:hover {
