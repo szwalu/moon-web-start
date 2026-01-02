@@ -731,6 +731,11 @@ onMounted(() => {
                 if (newItems.length > 0) {
                   notes.value = [...newItems, ...notes.value]
                   totalNotes.value = (totalNotes.value || 0) + newItems.length
+
+                  try {
+                    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+                  }
+                  catch {}
                 }
               }
             }
