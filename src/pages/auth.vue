@@ -687,8 +687,53 @@ onMounted(() => {
             authResolved.value = true // ✅ 判定完成（路径E）
           }
           else {
-            // 路径D：没有任何缓存，正常首次加载主页
-            await fetchNotes(true) // fetchNotes内部会把加载状态设为false
+            // 路径D：无缓存或常规加载
+            if (notes.value.length === 0) {
+              // 1. 如果列表是空的，正常全量加载
+              await fetchNotes(true)
+            }
+            else {
+              // 2. 🔥 核心优化：静默更新（只拉取最新一页，合并变更，不重置列表）
+              // 这样既能同步手机上的新笔记，又不会把电脑上已经加载的 500 条数据清空
+              const { data: latestData } = await supabase
+                .from('notes')
+                .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
+                .eq('user_id', user.value.id)
+                .order('is_pinned', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(notesPerPage) // 只拉取前 30 条用于比对
+
+              if (latestData && latestData.length > 0) {
+                const existingMap = new Map(notes.value.map(n => [n.id, n]))
+                const newItems: any[] = []
+
+                for (const remoteNote of latestData) {
+                  if (existingMap.has(remoteNote.id)) {
+                    // A. 如果笔记已存在：检查是否需要更新（对比修改时间或置顶状态）
+                    const localNote = existingMap.get(remoteNote.id)
+                    if (
+                      localNote.updated_at !== remoteNote.updated_at
+            || localNote.is_pinned !== remoteNote.is_pinned
+                    ) {
+                      // 原地更新对象，Vue 会自动刷新 UI，且不会破坏滚动位置
+                      const idx = notes.value.findIndex(n => n.id === remoteNote.id)
+                      if (idx !== -1)
+                        notes.value[idx] = remoteNote
+                    }
+                  }
+                  else {
+                    // B. 如果是新笔记（手机刚写的）：收集起来
+                    newItems.push(remoteNote)
+                  }
+                }
+
+                // C. 将新笔记插入到最前面
+                if (newItems.length > 0) {
+                  notes.value = [...newItems, ...notes.value]
+                  totalNotes.value = (totalNotes.value || 0) + newItems.length
+                }
+              }
+            }
             // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
 
