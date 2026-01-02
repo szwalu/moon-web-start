@@ -778,6 +778,7 @@ notes:
     s6_i1: 'Choose "Select Notes" from the main menu; a batch operation bar appears at the top.'
     s6_i2_before: 'Supports batch '
     s6_i2_and: ' and '
+    s6_i2_and2: 、
     s6_i2_after: '; click ''Done'' to exit.'
 
     s7_title: 7) Pin / Copy / Delete / Set Date / Share / Favorite

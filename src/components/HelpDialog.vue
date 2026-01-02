@@ -114,6 +114,8 @@ const { t } = useI18n()
             <li>
               {{ t('notes.HelpDialog.s6_i2_before') }}
               <strong>{{ t('notes.HelpDialog.copy') }}</strong>
+              {{ t('notes.HelpDialog.s6_i2_and2') }}
+              <strong>{{ t('notes.editor.toolbar.add_tag') }}</strong>
               {{ t('notes.HelpDialog.s6_i2_and') }}
               <strong>{{ t('notes.HelpDialog.delete') }}</strong>
               {{ t('notes.HelpDialog.s6_i2_after') }}

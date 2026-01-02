@@ -731,11 +731,10 @@ const isRecordPaused = ref(false)
 const isUploadingAudio = ref(false)
 
 // 录音时长（秒）+ 定时器句柄
-// 录音时长（秒）+ 定时器句柄
 const recordSeconds = ref(0)
 let recordTimer: number | null = null
 
-const MAX_RECORD_SECONDS = 10 * 60
+const MAX_RECORD_SECONDS = 5 * 60
 const WARNING_SECONDS = 2 * 60
 
 // 已录制时长：mm:ss
