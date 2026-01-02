@@ -422,8 +422,8 @@ notes:
   word_count: 字数： {count}
   anniversary_found: 📅 那年今日，您记录了 {count} 条笔记
   anniversary_total: 那年今日共有 {count} 条笔记
-  created_at: 创建： {time}
-  updated2_at: 更新： {time}
+  created_at: 创建：{time}
+  updated2_at: 更新：{time}
   export_all: 导出笔记
   exporting: 导出中...
   export_results: 导出

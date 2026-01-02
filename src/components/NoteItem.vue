@@ -613,7 +613,7 @@ function getDropdownOptions(note: any) {
       render: () => h('div', {
         class: 'dropdown-info-block',
         style: {
-          padding: '8px 4px 12px 4px',
+          padding: '8px 4px 12px 26px',
           fontSize: '11px',
           color: '#9ca3af',
           textAlign: 'left',
