@@ -826,18 +826,19 @@ function buildAudioPath(userId: string, ext = 'webm') {
 }
 
 // 上传音频到 Supabase，返回可访问 URL
-async function uploadAudioToSupabase(blob: Blob): Promise<string> {
+// 接收 ext (扩展名) 和 contentType (MIME类型) 作为参数
+async function uploadAudioToSupabase(blob: Blob, ext: string, contentType: string): Promise<string> {
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr || !userData?.user)
     throw new Error(t('notes.editor.record.login_required'))
 
   const userId = userData.user.id
-  const bucket = 'note-audios' // 你原来用的桶名如果不一样，这里要改成原来的
-  const ext = 'webm'
-  const contentType = 'audio/webm'
+  const bucket = 'note-audios'
 
+  // ✅ 使用传入的 ext 生成路径 (例如 .m4a 或 .webm)
   const filePath = buildAudioPath(userId, ext)
 
+  // ✅ 使用传入的 contentType 上传 (例如 audio/mp4 或 audio/webm)
   const { error: upErr } = await supabase
     .storage
     .from(bucket)
@@ -868,13 +869,20 @@ async function handleAudioFinished(blob: Blob) {
 
   isUploadingAudio.value = true
   try {
-    const url = await uploadAudioToSupabase(blob)
+    // 🔥 核心修改：智能判断扩展名
+    // iOS 的 blob.type 通常是 'audio/mp4'
+    // Android 的 blob.type 通常是 'audio/webm;codecs=opus'
+    let ext = 'webm'
+    if (blob.type.includes('mp4') || blob.type.includes('aac'))
+      ext = 'm4a'
 
-    // 1. 插入录音链接到当前光标位置
+    // ✅ 把判断好的 ext 和 blob 自己的 type 传进去
+    const url = await uploadAudioToSupabase(blob, ext, blob.type)
+
+    // --- 下面的代码保持不变 ---
     const label = t('notes.editor.record.link_label')
     insertText(`[🎙️${label}](${url}) `, '')
 
-    // 2. 下一帧把焦点和光标拉回 textarea（避免光标消失）
     await nextTick()
     const el = textarea.value
     if (el) {
@@ -883,9 +891,7 @@ async function handleAudioFinished(blob: Blob) {
       try {
         el.setSelectionRange(len, len)
       }
-      catch {
-        // 某些环境会抛错，忽略即可
-      }
+      catch {}
       captureCaret()
       ensureCaretVisibleInTextarea()
       requestAnimationFrame(() => {
