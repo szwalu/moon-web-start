@@ -585,12 +585,8 @@ onMounted(() => {
             const isNotThereYet = Math.abs(scrollerEl.scrollTop - targetY) > 20
 
             // 3. 如果没到位，且重试次数在 5 次以内（约 250ms 内），就继续重试
-            if (isNotThereYet && retryCount < 5) {
-              // 使用 requestAnimationFrame 或 setTimeout 给虚拟列表一点渲染时间
-              setTimeout(() => {
-                tryScroll(retryCount + 1)
-              }, 50) // 每 50ms 检查一次
-            }
+            if (isNotThereYet && retryCount < 10)
+              setTimeout(() => { tryScroll(retryCount + 1) }, 200)
           }
 
           // 启动第一次尝试
