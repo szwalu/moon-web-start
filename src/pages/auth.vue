@@ -165,7 +165,7 @@ const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
-
+const SESSION_SCROLL_Y = 'session_scroll_y'
 const themeStyle = computed(() => {
   const currentKey = settingStore.settings.theme
   const themeItem = S.theme.children.find(item => item.key === currentKey)
@@ -562,8 +562,22 @@ onMounted(() => {
   const loadCache = async () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME)
-      if (cachedData)
+      if (cachedData) {
         notes.value = JSON.parse(cachedData)
+
+        // 🔥 新增：数据恢复后，尝试恢复滚动位置
+        const savedScrollY = sessionStorage.getItem(SESSION_SCROLL_Y)
+        if (savedScrollY) {
+          await nextTick() // 等待 Vue 渲染列表 DOM
+          // 尝试找到滚动容器并设置 scrollTop
+          // 注意：这里我们通过 ref 获取 DOM 元素，'.scroller' 是 NoteList 组件内部的类名
+          const scrollerEl = noteListRef.value?.$el?.querySelector('.scroller')
+          if (scrollerEl) {
+            // 恢复位置
+            scrollerEl.scrollTop = Number(savedScrollY)
+          }
+        }
+      }
     }
     catch (e) {
       console.error('Failed to load notes from cache', e)
@@ -1367,6 +1381,7 @@ function handleExportTrigger() {
 
 function onListScroll(top: number) {
   latestScrollTop.value = top
+  sessionStorage.setItem(SESSION_SCROLL_Y, String(top))
   // 不管能不能隐藏，都强制设为 false（不折叠）
   headerCollapsed.value = false
 
