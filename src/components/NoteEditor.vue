@@ -83,14 +83,17 @@ const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
+// NoteEditor.vue
+
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
 
-  // 1. 键盘收起时：更新基准高度
+  // 1. 键盘收起时：无条件更新基准高度
   if (!isInputFocused.value) {
+    // 只有当高度看起来像“非键盘状态”（>300）时才更新，防止在键盘关闭动画中途误判
     if (currentHeight > 300)
       baseHeight = currentHeight
 
@@ -98,21 +101,29 @@ function updateKeyboardOffset() {
     return
   }
 
-  // 2. 键盘弹出时
+  // 2. 键盘弹出时 (isInputFocused = true)
   if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
 
-    // 只有差值合理才认为是键盘
-    if (diff > 150) {
+    // 🔥 核心修复：智能区分“键盘弹出”与“浏览器栏变化”
+    // 如果高度差很大 (> 200)，说明是键盘
+    if (diff > 200) {
       const extraBuffer = isPWA.value ? 50 : 15
-
       const finalOffset = diff + extraBuffer
-
       keyboardOffset.value = `${finalOffset}px`
     }
+    // 🔥 如果高度差很小 (<= 200)，或者高度反而变大了 (diff < 0)
+    // 说明这不是键盘，而是浏览器地址栏伸缩/横竖屏切换
+    // 此时必须“认怂”，把基准高度更新为当前的 currentHeight！
     else {
+      baseHeight = currentHeight
       keyboardOffset.value = '0px'
     }
+  }
+  else {
+    // 兜底：如果 baseHeight 还没初始化，直接认领当前高度
+    if (currentHeight > 300)
+      baseHeight = currentHeight
   }
 }
 
