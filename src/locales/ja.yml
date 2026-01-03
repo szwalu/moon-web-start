@@ -48,6 +48,7 @@ settings:
   ui_font_md: 標準
   ui_font_lg: 大きめ
   ui_font_hint: ヒント：UIフォントサイズはドロワー、ドロップダウン、ダイアログ、メッセージなどに影響します。「合わせる」を有効にするとノートのフォントサイズに基づいて自動的に最適なUIサイズを選択します。
+  backup_data: データのバックアップと復元
 
   theme:
     title: テーマ
@@ -426,7 +427,7 @@ notes:
   anniversary_total: 'この日には合計 {count} 件のメモがあります'
   created_at: '作成日時: {time}'
   updated2_at: '更新日時: {time}'
-  export_all: メモをエクスポート
+  export_all: エクスポート / インポート
   exporting: エクスポート中...
   export_results: エクスポート
   search_placeholder_tags: '🔍 メモや #タグ を検索...'
@@ -449,6 +450,20 @@ notes:
   offline_update_success: オフラインで更新しました。オンラインになると自動的に同期されます。
   offline_save_success: オフラインで保存しました。オンラインになると自動的に同期されます。
   offline_edit_pending: 現在オフラインのため、編集はまだ同期されていません。後でオフライン編集キューに追加されます。
+  export_select_range: 日付範囲を選択
+  export_tip_json: 日付範囲の選択が必要です。1回につき最大5000件まで。天気データを保持するため、JSON形式を推奨します。
+  export_format: エクスポート形式
+  export_fmt_json_desc: 天気データを含む（推奨）
+  export_fmt_md_desc: 汎用的な閲覧形式
+  import_notes: ノートをインポート
+  import_completed: インポート完了
+  import_success_count: 'インポート成功：{count}件'
+  continue_import: インポートを続行
+  import_drag_drop: クリックまたはドラッグしてファイルを追加
+  import_formats: Markdown / JSON 対応
+  confirm_import: インポートを確認
+  import_desc: Markdown または JSON のバックアップファイルをインポートできます。
+  import_json_hint: JSONインポートでは天気データを復元できます。
   export_date_range_hint: 'ヒント：日付範囲を選択する必要があります。毎回最大 {max} 件までエクスポート可能。'
   select_date_range_first: まず日付範囲を選択してください
   exporting_search_results: 検索結果をエクスポート準備中…
@@ -460,7 +475,7 @@ notes:
   help_title: 説明書
   anniversary_view: チェック
   tag_filter_optional: タグフィルター（任意）
-  tag_filter_all: すべてのタグ
+  all_notes: すべてのタグ
   feedback_title: フィードバック
   no_notes_in_month: 今月のノートはありません
   jump_to_month_title: 移動する年月を選択
@@ -796,7 +811,7 @@ notes:
 
     s9_title: 9) エクスポート
     s9_i1_tail: 検索結果やタグフィルタ中にバナー内の「エクスポート」をクリック。
-    s9_i2_tail: メニュー「設定」-「ノートをエクスポート」から日付範囲指定でMD形式出力。1回最大1500件。
+    s9_i2_tail: メニュー「設定」-「ノートをエクスポート」から日付範囲指定でMD形式出力。1回最大5000件。
 
     s10_title: 10) アカウントとカスタマイズ
     s10_i1: プロフィール：アイコンクリックで画像変更。ニックネームや署名欄はクリックで直接編集可能。
@@ -831,7 +846,7 @@ notes:
     faq_2_q: オフラインでの編集・削除は消えますか？
     faq_2_a1: 消えません。操作はローカルスナップショットと同期キューに書き込まれ、接続時に自動送信されます。
 
-    faq_3_q: エクスポート上限1500件では足りない？
+    faq_3_q: エクスポート上限5000件では足りない？
     faq_3_a1: 月単位や四半期単位など、期間を分けて複数回エクスポートしてください。
 
     faq_4_q: リロードしても未保存の文字が残っているのはなぜ？

@@ -48,6 +48,7 @@ settings:
   ui_font_md: Medium
   ui_font_lg: Large
   ui_font_hint: 'Hint: UI font size affects drawers, dropdowns, dialogs, messages, etc. Enabling “Follow” will auto-select a suitable UI font size based on note font size.'
+  backup_data: Data backup & restore
 
   theme:
     title: Theme
@@ -427,7 +428,7 @@ notes:
   anniversary_total: 'On this day there were {count} notes'
   created_at: 'Created: {time}'
   updated2_at: 'Updated: {time}'
-  export_all: Export Notes
+  export_all: Export / Import
   exporting: Exporting...
   export_results: Export
   search_placeholder_tags: '🔍 Search notes or #tags ...'
@@ -450,6 +451,20 @@ notes:
   offline_update_success: 'Updated offline, will sync when online.'
   offline_save_success: 'Saved offline, will sync when online.'
   offline_edit_pending: Currently offline; edit not yet synced. It will be queued for later sync.
+  export_select_range: Select date range
+  export_tip_json: Date range is required; up to 5000 entries per export. JSON is recommended to preserve weather data.
+  export_format: Export format
+  export_fmt_json_desc: Includes weather data (recommended)
+  export_fmt_md_desc: Universal reading format
+  import_notes: Import notes
+  import_completed: Import completed
+  import_success_count: 'Successfully imported: {count}'
+  continue_import: Continue import
+  import_drag_drop: Click or drag files here
+  import_formats: Supports Markdown / JSON
+  confirm_import: Confirm import
+  import_desc: Supports importing Markdown or JSON backup files.
+  import_json_hint: JSON import supports restoring weather data.
   export_date_range_hint: 'Hint: You must select a date range; Every time up to {max} notes max.'
   select_date_range_first: Please select a date range first
   exporting_search_results: Preparing export of search results…
@@ -461,7 +476,7 @@ notes:
   help_title: Instructions
   anniversary_view: View
   tag_filter_optional: Tag Filter (Optional)
-  tag_filter_all: All Tags
+  all_notes: All tags
   feedback_title: Feedback
   no_notes_in_month: No notes this month
   jump_to_month_title: Select a month to jump to
@@ -795,7 +810,7 @@ notes:
     s8_i2: Calendar supports retroactive entry or creating future notes.
 
     s9_title: 9) Export
-    s9_i1_tail: ' Main Menu -> "Settings" -> "Export Notes", select date range for MD format; max 1500 items per batch.'
+    s9_i1_tail: ' Main Menu -> "Settings" -> "Export Notes", select date range for MD format; max 5000 items per batch.'
     s9_i2_tail: ' "Export Notes" supports exporting by tag.'
 
     s10_title: '10) Account & Personalization'
@@ -831,7 +846,7 @@ notes:
     faq_2_q: Will offline edits/deletes be lost?
     faq_2_a1: 'No, operations are written to local snapshots and sync queues, auto-submitting when online.'
 
-    faq_3_q: 1500 export limit not enough?
+    faq_3_q: 5000 export limit not enough?
     faq_3_a1: 'Please export in batches by time range, e.g., by month/quarter.'
 
     faq_4_q: Why is unsaved text still there after refresh?

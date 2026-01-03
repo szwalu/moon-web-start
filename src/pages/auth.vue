@@ -30,7 +30,8 @@ const authStore = useAuthStore()
 const settingStore = useSettingStore()
 const showActivation = ref(false)
 const canDismissActivation = ref(false)
-
+const DataBackup = defineAsyncComponent(() => import('@/components/DataBackup.vue'))
+const showDataBackup = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
 const isUserActivated = ref(false)
@@ -416,8 +417,6 @@ const SESSION_SEARCH_RESULTS_KEY = 'session_search_results'
 // ++ 新增：那年今日持久化键
 const SESSION_ANNIV_ACTIVE_KEY = 'session_anniv_active'
 const SESSION_ANNIV_RESULTS_KEY = 'session_anniv_results'
-const EXPORT_MAX_ROWS = 1500 // 批量导出最多导出条数（可按需调整）
-const EXPORT_BATCH_SIZE = 100 // 单次分页抓取大小（你原来就是 100）
 // ++ 新增：用于控制“回到顶部”按钮的 ref 和计时器变量
 const showScrollTopButton = ref(false)
 const latestScrollTop = ref(0)
@@ -1404,176 +1403,6 @@ function handleScrollTopClick() {
   // ✅ 在“年月跳转视图”下：先恢复 HOME，再滚到顶部（今天 + 置顶笔记）
   // ✅ 在普通 HOME 下：就是原来的 scrollToTop
   restoreHomeAndScrollTop()
-}
-
-async function handleBatchExport() {
-  showDropdown.value = false
-  if (isExporting.value)
-    return
-
-  if (!user.value?.id) {
-    messageHook.error(t('auth.session_expired'))
-    return
-  }
-
-  const dialogDateRange = ref<[number, number] | null>(null)
-  // 新增：导出用的标签过滤（可选）
-  const dialogTagFilter = ref<string | null>(null)
-
-  // 从当前 allTags 生成下拉选项（去重）
-  const seen = new Set<string>()
-  const tagOptions = allTags.value
-    .filter((tag) => {
-      if (!tag)
-        return false
-      if (seen.has(tag))
-        return false
-      seen.add(tag)
-      return true
-    })
-    .map(tag => ({
-      label: tag,
-      value: tag,
-    }))
-
-  dialog.info({
-    title: t('notes.export_confirm_title'),
-    // 在对话框里附一段说明“必须选择日期 + 上限提示”
-    content: () => h('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
-      // 日期范围选择器（保持原样）
-      h(MobileDateRangePicker, {
-        'modelValue': dialogDateRange.value,
-        'onUpdate:modelValue': (v: [number, number] | null) => { dialogDateRange.value = v },
-      }),
-
-      // 新增：标签过滤下拉框（可选）
-      tagOptions.length > 0
-        ? h('div', { style: 'display:flex;flex-direction:column;gap:4px;margin-top:4px;' }, [
-          h('div', {
-            style: 'font-size:13px;color:#6b7280;',
-          }, t('notes.tag_filter_optional')),
-          h(NSelect, {
-            'value': dialogTagFilter.value,
-            'onUpdate:value': (v: string | null) => { dialogTagFilter.value = v },
-            'options': tagOptions,
-            'clearable': true,
-            'placeholder': t('notes.tag_filter_all'),
-            'style': 'width:100%;',
-          }),
-        ])
-        : null,
-
-      h('small', {}, t('notes.export_date_range_hint', { max: EXPORT_MAX_ROWS })),
-    ]),
-    positiveText: t('notes.confirm_export'),
-    negativeText: t('notes.cancel'),
-
-    // 关键：如果没选范围，阻止对话框关闭
-    onPositiveClick: async () => {
-      if (!dialogDateRange.value) {
-        messageHook.warning(t('notes.select_date_range_first'))
-        return false // 阻止关闭对话框
-      }
-
-      isExporting.value = true
-      messageHook.info(t('notes.export_preparing'), { duration: 5000 })
-
-      try {
-        const [startDate, endDate] = dialogDateRange.value
-        const selectedTag = dialogTagFilter.value // 可能为 null
-
-        let allNotes: any[] = []
-        let page = 0
-        let hasMore = true
-
-        while (hasMore && allNotes.length < EXPORT_MAX_ROWS) {
-          const from = page * EXPORT_BATCH_SIZE
-          const to = from + EXPORT_BATCH_SIZE - 1
-
-          let query = supabase
-            .from('notes')
-            .select('content, created_at')
-            .eq('user_id', user.value!.id)
-            .order('created_at', { ascending: false })
-            .range(from, to)
-
-          if (startDate)
-            query = query.gte('created_at', new Date(startDate).toISOString())
-          if (endDate) {
-            const endOfDay = new Date(endDate)
-            endOfDay.setHours(23, 59, 59, 999)
-            query = query.lte('created_at', endOfDay.toISOString())
-          }
-
-          // 新增：按标签过滤（如果选择了标签）
-          if (selectedTag)
-            query = query.ilike('content', `%${selectedTag}%`)
-
-          const { data, error } = await query
-          if (error)
-            throw error
-
-          const chunk = data || []
-          if (chunk.length === 0) {
-            hasMore = false
-          }
-          else {
-            allNotes = allNotes.concat(chunk)
-            page++
-            if (chunk.length < EXPORT_BATCH_SIZE)
-              hasMore = false
-          }
-        }
-
-        // 上限裁剪（避免多抓几条）
-        if (allNotes.length > EXPORT_MAX_ROWS)
-          allNotes = allNotes.slice(0, EXPORT_MAX_ROWS)
-
-        if (allNotes.length === 0) {
-          messageHook.warning(t('notes.no_notes_to_export_in_range'))
-          return
-        }
-
-        // 导出 md
-        const textContent = allNotes.map((note) => {
-          const separator = '----------------------------------------'
-          const date = new Date(note.created_at).toLocaleString('zh-CN')
-          return `${separator}\n${t('notes.created_at_label')}： ${date}\n${separator}\n\n${note.content}\n\n========================================\n\n`
-        }).join('')
-
-        const blob = new Blob([textContent], { type: 'text/markdown;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-
-        const datePart = `${new Date(startDate).toISOString().slice(0, 10)}_to_${new Date(endDate).toISOString().slice(0, 10)}`
-        const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
-
-        // 可选：如果有标签，把标签简短地加进文件名
-        const tagSuffix = selectedTag ? `_tag_${encodeURIComponent(selectedTag.replace(/^#/, ''))}` : ''
-
-        a.download = `notes_export_${datePart}${tagSuffix}_${timestamp}.md`
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => {
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }, 100)
-
-        // 成功提示（若触发了上限，提示里也说清）
-        if (allNotes.length >= EXPORT_MAX_ROWS)
-          messageHook.success(`已导出 ${allNotes.length} 条（已达到上限 ${EXPORT_MAX_ROWS} 条）`)
-        else
-          messageHook.success(t('notes.export_all_success', { count: allNotes.length }))
-      }
-      catch (error: any) {
-        messageHook.error(`${t('notes.export_all_error')}: ${error.message}`)
-      }
-      finally {
-        isExporting.value = false
-      }
-    },
-  })
 }
 
 function handleExportResults() {
@@ -2993,7 +2822,7 @@ function handleMainMenuSelect(key: string) {
     showSettingsModal.value = true
   }
   else if (key === 'export') {
-    handleBatchExport()
+    showDataBackup.value = true
   }
   else if (key === 'account') {
     showAccountModal.value = true
@@ -3017,6 +2846,11 @@ function handleMainMenuSelect(key: string) {
   else if (key === 'feedback') {
     window.location.href = '/apply?from=auth'
   }
+}
+
+async function handleDataRefresh() {
+  // 重置分页并重新拉取
+  await fetchNotes({ reset: true })
 }
 
 async function handleEditFromCalendar(noteToFind: any) {
@@ -3313,6 +3147,13 @@ function onCalendarUpdated(updated: any) {
           <button class="cancel-search-btn" @click="handleCancelSearch">{{ $t('notes.cancel') }}</button>
         </div>
       </Transition>
+
+      <DataBackup
+        v-model:show="showDataBackup"
+        :user="user"
+        :all-tags="allTags"
+        @refresh="handleDataRefresh"
+      />
 
       <div v-if="activeTagFilter && (!showSearchBar || hasSearchRun)" v-show="!isEditorActive && !isSelectionModeActive && !isTopEditing" class="active-filter-bar">
         <span class="banner-info">

@@ -48,6 +48,7 @@ settings:
   ui_font_md: 适中
   ui_font_lg: 偏大
   ui_font_hint: 提示：系统字号影响抽屉、下拉、弹窗、消息等界面元素；开启“跟随”后将根据内容字号自动选择合适的系统字号。
+  backup_data: 数据备份与恢复
 
   theme:
     title: 主题
@@ -401,7 +402,6 @@ notes:
   cancel: 取消
   fetch_error: 离线模式
   saving: 保存中...
-  export_confirm_title: 选择日期范围
   export_confirm_content: 即将导出符合条件的笔记。此操作可能需要一些时间
   confirm_export: 确认导出
   export_preparing: 正在准备导出文件，请稍候...
@@ -424,7 +424,7 @@ notes:
   anniversary_total: 那年今日共有 {count} 条笔记
   created_at: 创建：{time}
   updated2_at: 更新：{time}
-  export_all: 导出笔记
+  export_all: 导出/导入
   exporting: 导出中...
   export_results: 导出
   search_placeholder_tags: '🔍搜索笔记或 #标签 ...'
@@ -447,8 +447,20 @@ notes:
   offline_update_success: 已离线修改，联网后将自动同步。
   offline_save_success: 已离线保存，联网后将自动同步。
   offline_edit_pending: 当前离线，编辑暂未同步；我们会在后续步骤加入离线编辑队列。
-  export_date_range_hint: 提示：必须选择日期范围；单次最多导出 {max} 条。
-  select_date_range_first: 请先选择日期范围
+  export_select_range: 选择日期范围
+  export_tip_json: 必须选择日期范围。单次最多导出5000条。建议使用 JSON 格式以保留天气数据。
+  export_format: 导出格式
+  export_fmt_json_desc: 含天气数据 (推荐)
+  export_fmt_md_desc: 阅读通用格式
+  import_notes: 导入笔记
+  import_completed: 导入完成
+  import_success_count: '成功导入：{count} 条'
+  continue_import: 继续导入
+  import_drag_drop: 点击或拖拽文件到此处
+  import_formats: 支持 Markdown / JSON
+  confirm_import: 确认导入
+  import_desc: 支持导入 Markdown 或 JSON 备份文件。
+  import_json_hint: JSON 导入支持恢复天气数据。
   exporting_search_results: 正在准备导出搜索结果…
   no_search_results_to_export: 没有可导出的搜索结果。
   created_at_label: 创建于
@@ -458,7 +470,7 @@ notes:
   help_title: 使用帮助
   anniversary_view: 查看
   tag_filter_optional: 标签过滤（可选）
-  tag_filter_all: 全部标签
+  all_notes: 全部标签
   feedback_title: 反馈建议
   no_notes_in_month: 本月没有笔记
   jump_to_month_title: 选择要跳转的年月
@@ -792,7 +804,7 @@ notes:
     s8_i2: 日历视图支持补写笔记或提前新建未来笔记。
 
     s9_title: 9) 导出
-    s9_i1_tail: 主菜单点「设置」-「导出笔记」，选择日期范围后导出为MD格式；单次最多 1500 条。
+    s9_i1_tail: 主菜单点「设置」-「导出笔记」，选择日期范围后导出为MD格式；单次最多 5000 条。
     s9_i2_tail: 「导出笔记」可按标签进行导出。
 
     s10_title: 10) 账户与个性化
@@ -828,7 +840,7 @@ notes:
     faq_2_q: 离线时的编辑/删除会丢吗？
     faq_2_a1: 不会，离线操作会写入本地快照与同步队列，联网后自动提交到服务器。
 
-    faq_3_q: 导出上限 1500 条不够怎么办？
+    faq_3_q: 导出上限 5000 条不够怎么办？
     faq_3_a1: 请分时间段多次导出，例如按月/季度拆分。
 
     faq_4_q: 刷新后未保存的文本为什么还在？
