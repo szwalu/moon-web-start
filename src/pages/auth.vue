@@ -686,21 +686,17 @@ onMounted(() => {
 
             authResolved.value = true // ✅ 判定完成（路径E）
           }
+          // 替换 auth.vue 中 onAuthStateChange 里的 else 分支
           else {
             // 路径D：无缓存或常规加载
-            if (notes.value.length === 0) {
-              // 1. 如果列表是空的，正常全量加载
+            if (!notes.value || notes.value.length === 0) {
               await fetchNotes(true)
             }
             else {
-            // 路径D：无缓存或常规加载
-              if (notes.value.length === 0) {
-                await fetchNotes(true)
-              }
-              else {
               // =========================================================
-              // 1. 🔥 核心逻辑：静默更新 (拉取最新数据，保护滚动位置)
+              // 1. 🔥 核心逻辑：静默更新 (带异常捕获的健壮版)
               // =========================================================
+              try {
                 const { data: latestData } = await supabase
                   .from('notes')
                   .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
@@ -715,11 +711,11 @@ onMounted(() => {
 
                   for (const remoteNote of latestData) {
                     if (existingMap.has(remoteNote.id)) {
-                    // A. 原地更新
+                      // A. 原地更新
                       const localNote = existingMap.get(remoteNote.id)
                       if (
                         localNote.updated_at !== remoteNote.updated_at
-                      || localNote.is_pinned !== remoteNote.is_pinned
+                        || localNote.is_pinned !== remoteNote.is_pinned
                       ) {
                         const idx = notes.value.findIndex(n => n.id === remoteNote.id)
                         if (idx !== -1)
@@ -727,7 +723,7 @@ onMounted(() => {
                       }
                     }
                     else {
-                    // B. 收集新笔记
+                      // B. 收集新笔记
                       newItems.push(remoteNote)
                     }
                   }
@@ -735,36 +731,57 @@ onMounted(() => {
                   // C. 插入新笔记
                   if (newItems.length > 0) {
                     notes.value = [...newItems, ...notes.value]
-                    totalNotes.value = (totalNotes.value || 0) + newItems.length
+                    // 更新总数 (防御性处理，确保是数字)
+                    totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
+
+                    // 顺手刷新一下缓存
                     try {
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+                      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
                     }
                     catch {}
                   }
                 }
+              }
+              catch (err) {
+                // 🛑 即使静默更新失败（比如断网），也只在控制台警告，
+                // 绝不阻断后续逻辑，确保用户依然能看缓存
+                console.warn('[Silent Update Failed] Continuing with cached data:', err)
+              }
 
-                // =========================================================
-                // 2. 🚑【关键修复】补算 oldestLoadedAt 游标
-                //    防止因跳过 fetchNotes(true) 导致无限滚动失效
-                // =========================================================
-                if (notes.value.length > 0) {
-                  let minCreated = notes.value[0].created_at
-                  for (const n of notes.value) {
-                    if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
-                      minCreated = n.created_at
-                  }
-                  // 手动修正游标，这样下次滚动加载时，就知道从 8 月份之后接着查了
-                  oldestLoadedAt.value = minCreated
+              // =========================================================
+              // 2. 🚑【关键修复 & 状态同步】
+              //    无论静默更新成功与否，都要根据当前的 notes 列表
+              //    重新校准所有滚动相关的指针
+              // =========================================================
+              if (notes.value.length > 0) {
+                // (1) 修正游标：找到当前列表中最旧的时间
+                let minCreated = notes.value[0].created_at
+                for (const n of notes.value) {
+                  if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+                    minCreated = n.created_at
+                }
+                oldestLoadedAt.value = minCreated
 
-                  // 顺便修正页码（防止页码错乱）
-                  currentPage.value = Math.ceil(notes.value.length / notesPerPage)
+                // (2) 修正页码：防止页码错乱
+                currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
+
+                // (3) 修正是否还有更多：如果当前数量 >= 总数，就标记没有更多了
+                //     防止滚到底部出现无效的加载转圈
+                if (totalNotes.value > 0) {
+                  hasMoreNotes.value = notes.value.length < totalNotes.value
+                }
+                else {
+                  // 兜底：如果缓存里没存 totalNotes，假定还有更多，让 fetchNotes 去修正
+                  hasMoreNotes.value = true
                 }
               }
-              // fetchAllTags()
-              anniversaryBannerRef.value?.loadAnniversaryNotes()
-
-              authResolved.value = true // ✅ 判定完成（路径D）
             }
+
+            // === 通用后续逻辑 ===
+            // fetchAllTags()
+            anniversaryBannerRef.value?.loadAnniversaryNotes()
+            authResolved.value = true
           }
         })
       }
