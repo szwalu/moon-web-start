@@ -79,9 +79,21 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 在 script setup 中添加
 const realViewportHeight = ref(0)
 
+// 1. 新增一个 ref 来存储顶部的距离
+const topOffset = ref(0)
+const rootRef = ref<HTMLElement | null>(null)
+// 2. 修改 updateDimensions 函数
 function updateDimensions() {
-  if (window.visualViewport)
+  if (window.visualViewport && rootRef.value) {
+    // 获取编辑器距离屏幕顶部的距离 (通常是Header的高度)
+    // Math.max(0, ...) 是防止滚动导致负值
+    const rect = rootRef.value.getBoundingClientRect()
+    topOffset.value = Math.max(0, rect.top)
+
+    // 3. 核心修正：真实视口高度 - 顶部被占用的高度
+    // 这样底部就不会被挤出去了
     realViewportHeight.value = window.visualViewport.height
+  }
 }
 
 // 在 onMounted 里监听
@@ -104,16 +116,19 @@ onUnmounted(() => {
 
 // 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 键盘收起时 (保持原样，或者用 100dvh)
+  // 1. 键盘收起时 (保持原样)
   if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
 
-  // 2. 键盘弹出时：直接使用视口高度
-  // 这里的 height 就是屏幕上“键盘上方可见区域”的真实像素值
-  if (realViewportHeight.value > 0)
-    return `${realViewportHeight.value}px`
+  // 2. 键盘弹出时
+  if (realViewportHeight.value > 0) {
+    // 🔥 核心修改：减去顶部的偏移量
+    // 比如：视口400px - 顶部Header 50px = 编辑器给 350px
+    // 稍微多减 2px 留一点余地，防止像素抖动
+    return `${realViewportHeight.value - topOffset.value}px`
+  }
 
-  // 3. 兜底 (万一不支持 visualViewport)
+  // 3. 兜底
   return '100dvh'
 })
 const isFreezingBottom = ref(false)
@@ -1039,7 +1054,6 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
-const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
@@ -1402,6 +1416,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  updateDimensions()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
