@@ -76,59 +76,99 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 在 script setup 中添加
-const realViewportHeight = ref(0)
+// ... imports ...
 
-// 1. 新增一个 ref 来存储顶部的距离
-const topOffset = ref(0)
-const rootRef = ref<HTMLElement | null>(null)
-// 2. 修改 updateDimensions 函数
-function updateDimensions() {
-  if (window.visualViewport && rootRef.value) {
-    // 获取编辑器距离屏幕顶部的距离 (通常是Header的高度)
-    // Math.max(0, ...) 是防止滚动导致负值
-    const rect = rootRef.value.getBoundingClientRect()
-    topOffset.value = Math.max(0, rect.top)
+// 🔥 新增：基础高度与键盘偏移量
+const keyboardOffset = ref('0px')
+let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
-    // 3. 核心修正：真实视口高度 - 顶部被占用的高度
-    // 这样底部就不会被挤出去了
-    realViewportHeight.value = window.visualViewport.height
+// 🔥 修改版：updateKeyboardOffset
+function updateKeyboardOffset() {
+  if (!window.visualViewport)
+    return
+
+  const currentHeight = window.visualViewport.height
+
+  // 1. 键盘收起时：更新基准高度
+  if (!isInputFocused.value) {
+    if (currentHeight > 300)
+      baseHeight = currentHeight
+
+    keyboardOffset.value = '0px'
+    return
+  }
+
+  // 2. 键盘弹出时
+  if (baseHeight > 0) {
+    const diff = baseHeight - currentHeight
+
+    // 只有差值合理才认为是键盘
+    if (diff > 150) {
+      const extraBuffer = isPWA.value ? 50 : 15
+
+      const finalOffset = diff + extraBuffer
+
+      keyboardOffset.value = `${finalOffset}px`
+    }
+    else {
+      keyboardOffset.value = '0px'
+    }
   }
 }
 
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
-    // 初始化
-    realViewportHeight.value = window.visualViewport.height
-    // 监听变化 (键盘弹起、切应用、浏览器栏伸缩都会触发 resize)
-    window.visualViewport.addEventListener('resize', updateDimensions)
-    window.visualViewport.addEventListener('scroll', updateDimensions)
+    baseHeight = window.visualViewport.height
+    window.visualViewport.addEventListener('resize', updateKeyboardOffset)
+    window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
 })
 
 onUnmounted(() => {
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateDimensions)
-    window.visualViewport.removeEventListener('scroll', updateDimensions)
+    window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
+    window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
   }
 })
 
 // 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 键盘收起时 (保持原样)
+  // 1. 键盘收起时
   if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
 
   // 2. 键盘弹出时
-  if (realViewportHeight.value > 0) {
-    // 🔥 核心修改：减去顶部的偏移量
-    // 比如：视口400px - 顶部Header 50px = 编辑器给 350px
-    // 稍微多减 2px 留一点余地，防止像素抖动
-    return `${realViewportHeight.value - topOffset.value}px`
+  const currentUA = navigator.userAgent.toLowerCase()
+  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+
+  if (isReallyIOS) {
+    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
+    // 如果算出来了 offset，就用算出来的；
+    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
+    if (keyboardOffset.value !== '0px')
+      return `calc(100dvh - ${keyboardOffset.value})`
+
+    // 🛡️ 兜底逻辑 (万一 resize 没触发)
+    // 区分大屏 (6.7寸) 和 普通屏 (6.1寸)
+    // 6.7寸宽通常 > 420px (例如 428px 或 430px)
+    const isLargeScreen = window.screen.width > 420
+
+    let fallbackOffset = ''
+    if (isLargeScreen) {
+      // 大屏：键盘略高，但屏幕高很多，所以要减去更多，防止编辑器太长盖住工具栏
+      // 经验值：比 6.1寸多减约 45px
+      fallbackOffset = isPWA.value ? '480px' : '335px'
+    }
+    else {
+      // 普通屏 (6.1寸)：保留你觉得完美的数值
+      fallbackOffset = isPWA.value ? '435px' : '290px'
+    }
+
+    return `calc(100dvh - ${fallbackOffset})`
   }
 
-  // 3. 兜底
+  // Android
   return '100dvh'
 })
 const isFreezingBottom = ref(false)
@@ -1054,6 +1094,7 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
+const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
@@ -1416,7 +1457,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  updateDimensions()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
