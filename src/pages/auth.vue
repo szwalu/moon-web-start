@@ -4025,7 +4025,7 @@ selection-actions-banner,
   opacity: 0;
 }
 /* ++ 新增：桌面端按钮位置修正 ++ */
-@media (min-width: 768px) {
+@media (min-width: 960px) {
   .scroll-top-button {
     /* 计算逻辑:
       (100vw - 960px) / 2  ->  计算出内容区外侧，左右两边灰色区域的宽度
@@ -4086,7 +4086,7 @@ background: var(--theme-primary); /* 原 #6366f1 */
 .fab-add:active { transform: scale(0.96); }
 
 /* 桌面端右侧对齐方式与回到顶部按钮一致（内容区 960px） */
-@media (min-width: 768px) {
+@media (min-width: 960px) {
   .fab-add {
     right: calc((100vw - 960px) / 2 + 20px);
   }
