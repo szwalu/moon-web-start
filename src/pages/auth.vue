@@ -568,14 +568,33 @@ onMounted(() => {
         // 🔥 新增：数据恢复后，尝试恢复滚动位置
         const savedScrollY = sessionStorage.getItem(SESSION_SCROLL_Y)
         if (savedScrollY) {
-          await nextTick() // 等待 Vue 渲染列表 DOM
-          // 尝试找到滚动容器并设置 scrollTop
-          // 注意：这里我们通过 ref 获取 DOM 元素，'.scroller' 是 NoteList 组件内部的类名
-          const scrollerEl = noteListRef.value?.$el?.querySelector('.scroller')
-          if (scrollerEl) {
-            // 恢复位置
-            scrollerEl.scrollTop = Number(savedScrollY)
+          const targetY = Number(savedScrollY)
+          await nextTick() // 等待 Vue 基本 DOM 生成
+
+          // 定义一个递归重试函数
+          const tryScroll = (retryCount = 0) => {
+            const scrollerEl = noteListRef.value?.$el?.querySelector('.scroller')
+            if (!scrollerEl)
+              return
+
+            // 1. 尝试滚动到目标位置
+            scrollerEl.scrollTop = targetY
+
+            // 2. 检查是否到位
+            // 如果当前位置离目标还很远（相差超过 20px），说明列表高度可能还没撑开
+            const isNotThereYet = Math.abs(scrollerEl.scrollTop - targetY) > 20
+
+            // 3. 如果没到位，且重试次数在 5 次以内（约 250ms 内），就继续重试
+            if (isNotThereYet && retryCount < 5) {
+              // 使用 requestAnimationFrame 或 setTimeout 给虚拟列表一点渲染时间
+              setTimeout(() => {
+                tryScroll(retryCount + 1)
+              }, 50) // 每 50ms 检查一次
+            }
           }
+
+          // 启动第一次尝试
+          tryScroll()
         }
       }
     }
