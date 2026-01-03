@@ -116,12 +116,29 @@ function updateKeyboardOffset() {
   }
 }
 
+function handleVisibilityChange() {
+  // 当用户切回 App 时 (visible)
+  if (document.visibilityState === 'visible') {
+    // 1. 立即清空偏移量，防止界面跳动
+    keyboardOffset.value = '0px'
+
+    // 2. 强制重置基准高度 (baseHeight)
+    // 为什么延时？因为切回来的瞬间，浏览器可能正在做动画或调整地址栏，
+    // 给 200ms 让 window.visualViewport 稳定下来，获取最真实的“无键盘高度”。
+    setTimeout(() => {
+      if (window.visualViewport)
+        baseHeight = window.visualViewport.height
+    }, 200)
+  }
+}
+
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
     baseHeight = window.visualViewport.height
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
   }
 })
 
@@ -129,6 +146,7 @@ onUnmounted(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   }
 })
 
