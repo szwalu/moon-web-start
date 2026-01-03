@@ -220,88 +220,127 @@ function _clearRange() {
 </template>
 
 <style scoped>
+/* 1. 核心布局改为 Grid，两列并排 */
 .mdrp {
   display: grid;
-  gap: 12px;
-  min-width: 260px;
-  max-width: 420px;
-}
-.row {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  align-items: center;
-  gap: 8px;
-}
-.label {
-  font-size: 14px;
-  color: var(--c-text-secondary, #666);
+  grid-template-columns: 1fr 1fr; /* 左一列，右一列 */
+  gap: 12px; /* 列间距 */
+  width: 100%;
 }
 
-/* 输入框容器，用于“假占位符” */
+/* 2. 每一个日期块内部：上下结构 (标签在上，输入框在下) */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* 防止 flex 子项撑开溢出 */
+}
+
+/* 3. 底部快捷按钮 (Today/7天/30天) 强制占满整行 */
+.chips {
+  grid-column: 1 / -1; /* 跨越所有列 */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0; /* 紧凑一点 */
+}
+
+.label {
+  font-size: 12px; /* 标签字改小一点，更精致 */
+  font-weight: 500;
+  color: var(--c-text-secondary, #666);
+  white-space: nowrap; /* 防止标签换行 */
+}
+
+/* 输入框容器 */
 .date-wrap {
   position: relative;
-}
-
-.fake-placeholder {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  transform: translateY(-50%);
-  font-size: 16px;
-  line-height: 1.2;
-  color: #9ca3af;
-  pointer-events: none;
-}
-.dark .fake-placeholder {
-  color: #6b7280;
-}
-
-/* 关键：iOS 避免整体放大 */
-.date-input {
-  font-size: 16px;
-  line-height: 1.2;
-  padding: 10px 12px;
-  border: 1px solid var(--c-divider, #e5e7eb);
-  border-radius: 10px;
+  height: 36px; /* 🔥 稍微压低高度 (原42px -> 36px) */
   width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+/* 输入框样式 */
+.date-input {
+  font-size: 14px; /* 🔥 字体稍微改小 (原16px -> 14px) 以适应半屏宽度 */
+  line-height: 1.2;
+  padding: 0 8px; /* 减少左右内边距 */
+  border: 1px solid var(--c-divider, #e5e7eb);
+  border-radius: 8px;
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
   background: var(--c-bg, #fff);
   color: var(--c-text, #111);
+  appearance: none;
+  text-align: center; /* 🔥 文字居中显示，更好看 */
 }
+
+.native-date {
+  position: relative;
+  z-index: 10;
+  background: transparent;
+}
+
+.native-date.opacity-0 {
+  color: transparent;
+  opacity: 0;
+}
+
+.custom-placeholder {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center; /* 🔥 占位符也居中 */
+  color: #9ca3af;
+  font-size: 13px; /* 占位符字体也对应改小 */
+  pointer-events: none;
+  z-index: 1;
+  border: 1px solid var(--c-divider, #e5e7eb);
+  border-radius: 8px;
+  background: var(--c-bg, #fff);
+}
+
 .dark .date-input {
   background: #111827;
   border-color: #374151;
   color: #e5e7eb;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-.chip {
-  font-size: 14px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #6366f1;
-  background: transparent;
-  color: #4338ca;
-}
-.chip:active {
-  transform: scale(0.98);
-}
-.dark .chip {
-  border-color: #a5b4fc;
-  color: #c7d2fe;
+.dark .custom-placeholder {
+  background: #111827;
+  border-color: #374151;
+  color: #6b7280;
 }
 
-.hint {
-  margin: 4px 0 0;
+/* 按钮样式微调 */
+.chip {
   font-size: 12px;
-  color: var(--c-text-secondary, #6b7280);
+  padding: 4px 10px; /* 按钮做小一点，省空间 */
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background: var(--c-bg, #fff);
+  color: #333;
+  flex: 1; /* 让三个按钮平分宽度 */
+  text-align: center;
 }
-.dark .hint {
-  color: #9ca3af;
+
+.chip:active {
+  background-color: #f3f4f6;
+  transform: scale(0.98);
+}
+
+.dark .chip {
+  background: #1f2937;
+  border-color: #374151;
+  color: #e5e7eb;
+}
+.dark .chip:active {
+  background-color: #374151;
 }
 </style>
