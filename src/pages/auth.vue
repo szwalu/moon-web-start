@@ -694,7 +694,7 @@ onMounted(() => {
             }
             else {
               // =========================================================
-              // 1. 🔥 核心逻辑：静默更新 (带异常捕获的健壮版)
+              // 1. 🔥 核心逻辑：静默更新
               // =========================================================
               try {
                 const { data: latestData } = await supabase
@@ -703,7 +703,7 @@ onMounted(() => {
                   .eq('user_id', user.value.id)
                   .order('is_pinned', { ascending: false })
                   .order('created_at', { ascending: false })
-                  .limit(notesPerPage) // 或 100
+                  .limit(notesPerPage)
 
                 if (latestData && latestData.length > 0) {
                   const existingMap = new Map(notes.value.map(n => [n.id, n]))
@@ -731,10 +731,9 @@ onMounted(() => {
                   // C. 插入新笔记
                   if (newItems.length > 0) {
                     notes.value = [...newItems, ...notes.value]
-                    // 更新总数 (防御性处理，确保是数字)
+                    // 只增不减，不需要严格校对 totalNotes，防止误判
                     totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
 
-                    // 顺手刷新一下缓存
                     try {
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
                       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
@@ -744,18 +743,14 @@ onMounted(() => {
                 }
               }
               catch (err) {
-                // 🛑 即使静默更新失败（比如断网），也只在控制台警告，
-                // 绝不阻断后续逻辑，确保用户依然能看缓存
                 console.warn('[Silent Update Failed] Continuing with cached data:', err)
               }
 
               // =========================================================
-              // 2. 🚑【关键修复 & 状态同步】
-              //    无论静默更新成功与否，都要根据当前的 notes 列表
-              //    重新校准所有滚动相关的指针
+              // 2. 🚑【关键修复 - 最终版】
               // =========================================================
               if (notes.value.length > 0) {
-                // (1) 修正游标：找到当前列表中最旧的时间
+                // (1) 修正游标：确保知道从哪里开始加载下一页
                 let minCreated = notes.value[0].created_at
                 for (const n of notes.value) {
                   if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
@@ -763,18 +758,17 @@ onMounted(() => {
                 }
                 oldestLoadedAt.value = minCreated
 
-                // (2) 修正页码：防止页码错乱
+                // (2) 修正页码
                 currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
 
-                // (3) 修正是否还有更多：如果当前数量 >= 总数，就标记没有更多了
-                //     防止滚到底部出现无效的加载转圈
-                if (totalNotes.value > 0) {
-                  hasMoreNotes.value = notes.value.length < totalNotes.value
-                }
-                else {
-                  // 兜底：如果缓存里没存 totalNotes，假定还有更多，让 fetchNotes 去修正
-                  hasMoreNotes.value = true
-                }
+                // (3) 🔥【重要修改】：只要列表里有数据，就默认允许尝试加载更多。
+                //     不要在这里判断 totalNotes，因为缓存的 totalNotes 可能滞后。
+                //     如果真的没数据了，fetchNotes 会在请求后自动把 hasMoreNotes 设为 false。
+                hasMoreNotes.value = true
+              }
+              else {
+                // 理论上进不来这里（外层已判断），但做个兜底
+                hasMoreNotes.value = false
               }
             }
 
