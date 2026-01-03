@@ -143,25 +143,30 @@ const editorHeight = computed(() => {
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (isReallyIOS) {
-    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
-    // 如果算出来了 offset，就用算出来的；
-    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
+    // 如果算出来了 offset (visualViewport 生效)，优先用算出来的
     if (keyboardOffset.value !== '0px')
       return `calc(100dvh - ${keyboardOffset.value})`
 
     // 🛡️ 兜底逻辑 (万一 resize 没触发)
-    // 区分大屏 (6.7寸) 和 普通屏 (6.1寸)
-    // 6.7寸宽通常 > 420px (例如 428px 或 430px)
-    const isLargeScreen = window.screen.width > 420
+    const screenW = window.screen.width
+
+    // ✅ 新增：专门针对 iPad 的判断 (宽度 >= 740 一般就是 iPad)
+    const isIPad = screenW >= 740
+    const isLargePhone = screenW > 420
 
     let fallbackOffset = ''
-    if (isLargeScreen) {
-      // 大屏：键盘略高，但屏幕高很多，所以要减去更多，防止编辑器太长盖住工具栏
-      // 经验值：比 6.1寸多减约 45px
+
+    if (isIPad) {
+      // 📝 iPad 键盘通常较高，且带有工具栏
+      // 普通 iPad 竖屏 offset 建议 400px+，如果是 PWA (无浏览器底栏) 则更大
+      fallbackOffset = isPWA.value ? '460px' : '380px'
+    }
+    else if (isLargePhone) {
+      // Pro Max
       fallbackOffset = isPWA.value ? '480px' : '335px'
     }
     else {
-      // 普通屏 (6.1寸)：保留你觉得完美的数值
+      // 普通 iPhone
       fallbackOffset = isPWA.value ? '435px' : '290px'
     }
 
@@ -2790,25 +2795,27 @@ function handleTextareaMove(e: TouchEvent) {
   }
 }
 
-/* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式 🔥🔥🔥 */
+/* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式修复 🔥🔥🔥 */
 @media (min-width: 768px) {
-  .note-editor-reborn {
-    /* 1. 高度调整 */
-    /* 手机是 45dvh，电脑屏幕大，可以设为 60vh 甚至 70vh */
+  /* ✅ 修改点：增加 :not(.is-focused) */
+  /* 只有在“不输入”的时候，才强制固定高度 */
+  .note-editor-reborn:not(.is-focused) {
     height: 90vh !important;
+  }
 
-    /* 或者你喜欢固定像素，也可以写：
-    height: 600px !important;
-    */
-
-    /* 3. 视觉优化 (可选) */
-    /* 电脑上圆角可以稍微大一点，阴影重一点，更有卡片感 */
+  /* 通用样式保持不变 */
+  .note-editor-reborn {
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
   }
-}
 
+  /* ✅ 补充：当 iPad 处于输入状态时，移除高度锁定，让行内 style 生效 */
+  .note-editor-reborn.is-focused {
+    /* 这里的 height 会被 template 里的 :style 覆盖，只要不加 !important 即可 */
+    transition: none; /* 键盘弹起时不要过渡动画，防止卡顿 */
+  }
+}
 .note-editor-reborn:focus-within {
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
