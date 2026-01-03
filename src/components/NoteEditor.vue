@@ -116,29 +116,12 @@ function updateKeyboardOffset() {
   }
 }
 
-function handleVisibilityChange() {
-  // 当用户切回 App 时 (visible)
-  if (document.visibilityState === 'visible') {
-    // 1. 立即清空偏移量，防止界面跳动
-    keyboardOffset.value = '0px'
-
-    // 2. 强制重置基准高度 (baseHeight)
-    // 为什么延时？因为切回来的瞬间，浏览器可能正在做动画或调整地址栏，
-    // 给 200ms 让 window.visualViewport 稳定下来，获取最真实的“无键盘高度”。
-    setTimeout(() => {
-      if (window.visualViewport)
-        baseHeight = window.visualViewport.height
-    }, 200)
-  }
-}
-
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
     baseHeight = window.visualViewport.height
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
   }
 })
 
@@ -146,7 +129,6 @@ onUnmounted(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
   }
 })
 
@@ -1475,6 +1457,17 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  // 🔥 核心修复：在标记聚焦之前，先强制更新一次 baseHeight！
+  // 此时键盘还没弹起，visualViewport.height 就是最真实的“无键盘屏幕高度”
+  // 这能完美解决“切换App后浏览器栏变化”导致的高度计算偏差
+  if (window.visualViewport) {
+    const currentH = window.visualViewport.height
+    // 只有当高度看起来合理（不是已经弹起键盘的小高度）时才更新
+    // 300px 是一个保守的阈值，防止极个别情况下的误判
+    if (currentH > 300)
+      baseHeight = currentH
+  }
+
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -1489,19 +1482,7 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  /*
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
 
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
-  }
-  */
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
@@ -1513,7 +1494,7 @@ function handleFocus() {
 
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 400) // 400ms > transition 0.3s
+  }, 400)
 
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
