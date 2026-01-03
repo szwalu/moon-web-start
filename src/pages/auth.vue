@@ -693,56 +693,78 @@ onMounted(() => {
               await fetchNotes(true)
             }
             else {
-              // 2. 🔥 核心优化：静默更新（只拉取最新一页，合并变更，不重置列表）
-              // 这样既能同步手机上的新笔记，又不会把电脑上已经加载的 500 条数据清空
-              const { data: latestData } = await supabase
-                .from('notes')
-                .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
-                .eq('user_id', user.value.id)
-                .order('is_pinned', { ascending: false })
-                .order('created_at', { ascending: false })
-                .limit(notesPerPage) // 只拉取前 30 条用于比对
+            // 路径D：无缓存或常规加载
+              if (notes.value.length === 0) {
+                await fetchNotes(true)
+              }
+              else {
+              // =========================================================
+              // 1. 🔥 核心逻辑：静默更新 (拉取最新数据，保护滚动位置)
+              // =========================================================
+                const { data: latestData } = await supabase
+                  .from('notes')
+                  .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
+                  .eq('user_id', user.value.id)
+                  .order('is_pinned', { ascending: false })
+                  .order('created_at', { ascending: false })
+                  .limit(notesPerPage) // 或 100
 
-              if (latestData && latestData.length > 0) {
-                const existingMap = new Map(notes.value.map(n => [n.id, n]))
-                const newItems: any[] = []
+                if (latestData && latestData.length > 0) {
+                  const existingMap = new Map(notes.value.map(n => [n.id, n]))
+                  const newItems: any[] = []
 
-                for (const remoteNote of latestData) {
-                  if (existingMap.has(remoteNote.id)) {
-                    // A. 如果笔记已存在：检查是否需要更新（对比修改时间或置顶状态）
-                    const localNote = existingMap.get(remoteNote.id)
-                    if (
-                      localNote.updated_at !== remoteNote.updated_at
-            || localNote.is_pinned !== remoteNote.is_pinned
-                    ) {
-                      // 原地更新对象，Vue 会自动刷新 UI，且不会破坏滚动位置
-                      const idx = notes.value.findIndex(n => n.id === remoteNote.id)
-                      if (idx !== -1)
-                        notes.value[idx] = remoteNote
+                  for (const remoteNote of latestData) {
+                    if (existingMap.has(remoteNote.id)) {
+                    // A. 原地更新
+                      const localNote = existingMap.get(remoteNote.id)
+                      if (
+                        localNote.updated_at !== remoteNote.updated_at
+                      || localNote.is_pinned !== remoteNote.is_pinned
+                      ) {
+                        const idx = notes.value.findIndex(n => n.id === remoteNote.id)
+                        if (idx !== -1)
+                          notes.value[idx] = remoteNote
+                      }
+                    }
+                    else {
+                    // B. 收集新笔记
+                      newItems.push(remoteNote)
                     }
                   }
-                  else {
-                    // B. 如果是新笔记（手机刚写的）：收集起来
-                    newItems.push(remoteNote)
+
+                  // C. 插入新笔记
+                  if (newItems.length > 0) {
+                    notes.value = [...newItems, ...notes.value]
+                    totalNotes.value = (totalNotes.value || 0) + newItems.length
+                    try {
+                      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+                    }
+                    catch {}
                   }
                 }
 
-                // C. 将新笔记插入到最前面
-                if (newItems.length > 0) {
-                  notes.value = [...newItems, ...notes.value]
-                  totalNotes.value = (totalNotes.value || 0) + newItems.length
-
-                  try {
-                    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+                // =========================================================
+                // 2. 🚑【关键修复】补算 oldestLoadedAt 游标
+                //    防止因跳过 fetchNotes(true) 导致无限滚动失效
+                // =========================================================
+                if (notes.value.length > 0) {
+                  let minCreated = notes.value[0].created_at
+                  for (const n of notes.value) {
+                    if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+                      minCreated = n.created_at
                   }
-                  catch {}
+                  // 手动修正游标，这样下次滚动加载时，就知道从 8 月份之后接着查了
+                  oldestLoadedAt.value = minCreated
+
+                  // 顺便修正页码（防止页码错乱）
+                  currentPage.value = Math.ceil(notes.value.length / notesPerPage)
                 }
               }
-            }
-            // fetchAllTags()
-            anniversaryBannerRef.value?.loadAnniversaryNotes()
+              // fetchAllTags()
+              anniversaryBannerRef.value?.loadAnniversaryNotes()
 
-            authResolved.value = true // ✅ 判定完成（路径D）
+              authResolved.value = true // ✅ 判定完成（路径D）
+            }
           }
         })
       }
