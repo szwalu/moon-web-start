@@ -400,7 +400,6 @@ const PREFETCH_LAST_TS_KEY = 'home_prefetch_last_ts'
 const PREFETCH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 天
 let authListener: any = null
 const noteListKey = ref(0)
-const editorBottomPadding = ref(0)
 const isOffline = ref(false)
 let offlineToastShown = false
 const isPrefetching = ref(false)
@@ -1364,7 +1363,6 @@ function onEditorBlur() {
   editorHideTimer = window.setTimeout(() => {
     isEditorActive.value = false
     compactWhileTyping.value = false
-    editorBottomPadding.value = 0 // ← 新增：失焦时清零垫片高度
   }, 120)
 }
 
@@ -3376,16 +3374,9 @@ function onCalendarUpdated(updated: any) {
           @focus="onEditorFocus"
           @blur="onEditorBlur"
           @cancel="closeComposer"
-          @bottom-safe-change="val => (editorBottomPadding = val)"
         />
       </div>
 
-      <div
-        v-show="isEditorActive && editorBottomPadding > 0"
-        :style="{ height: `${editorBottomPadding}px` }"
-        class="editor-bottom-spacer"
-        aria-hidden="true"
-      />
       <div v-if="showNotesList && (!showSearchBar || hasSearchRun)" class="notes-list-container">
         <NoteList
           ref="noteListRef" :key="noteListKey"

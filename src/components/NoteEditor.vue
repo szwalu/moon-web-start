@@ -76,110 +76,44 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// ... imports ...
+// 在 script setup 中添加
+const realViewportHeight = ref(0)
 
-// 🔥 新增：基础高度与键盘偏移量
-const keyboardOffset = ref('0px')
-let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-
-// 🔥 修改版：updateKeyboardOffset
-// NoteEditor.vue
-
-function updateKeyboardOffset() {
-  if (!window.visualViewport)
-    return
-
-  const currentHeight = window.visualViewport.height
-
-  // 1. 键盘收起时：无条件更新基准高度
-  if (!isInputFocused.value) {
-    // 只有当高度看起来像“非键盘状态”（>300）时才更新，防止在键盘关闭动画中途误判
-    if (currentHeight > 300)
-      baseHeight = currentHeight
-
-    keyboardOffset.value = '0px'
-    return
-  }
-
-  // 2. 键盘弹出时 (isInputFocused = true)
-  if (baseHeight > 0) {
-    const diff = baseHeight - currentHeight
-
-    // 🔥 核心修复：智能区分“键盘弹出”与“浏览器栏变化”
-    // 如果高度差很大 (> 200)，说明是键盘
-    if (diff > 200) {
-      const extraBuffer = isPWA.value ? 50 : 15
-      const finalOffset = diff + extraBuffer
-      keyboardOffset.value = `${finalOffset}px`
-    }
-    // 🔥 如果高度差很小 (<= 200)，或者高度反而变大了 (diff < 0)
-    // 说明这不是键盘，而是浏览器地址栏伸缩/横竖屏切换
-    // 此时必须“认怂”，把基准高度更新为当前的 currentHeight！
-    else {
-      baseHeight = currentHeight
-      keyboardOffset.value = '0px'
-    }
-  }
-  else {
-    // 兜底：如果 baseHeight 还没初始化，直接认领当前高度
-    if (currentHeight > 300)
-      baseHeight = currentHeight
-  }
+function updateDimensions() {
+  if (window.visualViewport)
+    realViewportHeight.value = window.visualViewport.height
 }
 
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
-    baseHeight = window.visualViewport.height
-    window.visualViewport.addEventListener('resize', updateKeyboardOffset)
-    window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
+    // 初始化
+    realViewportHeight.value = window.visualViewport.height
+    // 监听变化 (键盘弹起、切应用、浏览器栏伸缩都会触发 resize)
+    window.visualViewport.addEventListener('resize', updateDimensions)
+    window.visualViewport.addEventListener('scroll', updateDimensions)
   }
 })
 
 onUnmounted(() => {
   if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
-    window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
+    window.visualViewport.removeEventListener('resize', updateDimensions)
+    window.visualViewport.removeEventListener('scroll', updateDimensions)
   }
 })
 
 // 🔥 修正版：高度计算属性
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
+  // 1. 键盘收起时 (保持原样，或者用 100dvh)
   if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
 
-  // 2. 键盘弹出时
-  const currentUA = navigator.userAgent.toLowerCase()
-  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+  // 2. 键盘弹出时：直接使用视口高度
+  // 这里的 height 就是屏幕上“键盘上方可见区域”的真实像素值
+  if (realViewportHeight.value > 0)
+    return `${realViewportHeight.value}px`
 
-  if (isReallyIOS) {
-    // ✅ 核心：不再依赖 screen.height，而是依赖“丢失的高度”
-    // 如果算出来了 offset，就用算出来的；
-    // 如果没算出来（比如 baseHeight 还没初始化），才走兜底
-    if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value})`
-
-    // 🛡️ 兜底逻辑 (万一 resize 没触发)
-    // 区分大屏 (6.7寸) 和 普通屏 (6.1寸)
-    // 6.7寸宽通常 > 420px (例如 428px 或 430px)
-    const isLargeScreen = window.screen.width > 420
-
-    let fallbackOffset = ''
-    if (isLargeScreen) {
-      // 大屏：键盘略高，但屏幕高很多，所以要减去更多，防止编辑器太长盖住工具栏
-      // 经验值：比 6.1寸多减约 45px
-      fallbackOffset = isPWA.value ? '480px' : '335px'
-    }
-    else {
-      // 普通屏 (6.1寸)：保留你觉得完美的数值
-      fallbackOffset = isPWA.value ? '435px' : '290px'
-    }
-
-    return `calc(100dvh - ${fallbackOffset})`
-  }
-
-  // Android
+  // 3. 兜底 (万一不支持 visualViewport)
   return '100dvh'
 })
 const isFreezingBottom = ref(false)
@@ -1468,17 +1402,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  // 🔥 核心修复：在标记聚焦之前，先强制更新一次 baseHeight！
-  // 此时键盘还没弹起，visualViewport.height 就是最真实的“无键盘屏幕高度”
-  // 这能完美解决“切换App后浏览器栏变化”导致的高度计算偏差
-  if (window.visualViewport) {
-    const currentH = window.visualViewport.height
-    // 只有当高度看起来合理（不是已经弹起键盘的小高度）时才更新
-    // 300px 是一个保守的阈值，防止极个别情况下的误判
-    if (currentH > 300)
-      baseHeight = currentH
-  }
-
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -1493,7 +1416,19 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
+  /*
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  }
+  */
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
@@ -1505,7 +1440,7 @@ function handleFocus() {
 
   setTimeout(() => {
     ensureCaretVisibleInTextarea()
-  }, 400)
+  }, 400) // 400ms > transition 0.3s
 
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
