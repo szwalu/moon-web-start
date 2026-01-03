@@ -2272,6 +2272,9 @@ async function fetchNotesByTagPage(hashTag: string, page = 1) {
   }
 }
 async function handleTrashRestored(restoredNotes?: any[]) {
+  // ✅ 1. 先清理标签缓存（移到这里）
+  invalidateAllTagCaches()
+
   // 如果当前不是主页列表（有搜索/标签/那年今日），保持不打断，仅刷新数据源
   const inFilteredView = isAnniversaryViewActive.value || activeTagFilter.value || isShowingSearchResults.value
 
@@ -2306,6 +2309,10 @@ async function handleTrashRestored(restoredNotes?: any[]) {
 }
 
 async function handleTrashPurged() {
+  // ✅ 1. 先清理标签缓存
+  invalidateAllTagCaches()
+
+  // 2. 重新拉取列表
   await fetchNotes(true)
 }
 
@@ -3255,14 +3262,6 @@ function onCalendarUpdated(updated: any) {
 
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       <AccountModal :show="showAccountModal" :email="user?.email" :total-notes="totalNotes" :user="user" :theme-color="currentThemeColor" @close="showAccountModal = false" />
-      <TrashModal
-        :show="showTrashModal"
-        @close="showTrashModal = false"
-        @restored="invalidateAllTagCaches(); handleTrashRestored()"
-        @purged="invalidateAllTagCaches(); handleTrashPurged()"
-      />
-
-      <!-- （原底部 selection-actions-popup 已移除） -->
 
       <Transition name="slide-up-fade">
         <CalendarView
@@ -3327,8 +3326,8 @@ function onCalendarUpdated(updated: any) {
       <TrashModal
         :show="showTrashModal"
         @close="showTrashModal = false"
-        @restored="invalidateAllTagCaches(); handleTrashRestored()"
-        @purged="invalidateAllTagCaches(); handleTrashPurged()"
+        @restored="handleTrashRestored"
+        @purged="handleTrashPurged"
       />
 
       <ActivationModal
