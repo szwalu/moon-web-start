@@ -30,6 +30,7 @@ const props = defineProps({
   // 是否在点击保存按钮后立即清理草稿（默认 false，避免误删）
   clearDraftOnSave: { type: Boolean, default: false },
   enableScrollPush: { type: Boolean, default: false },
+  topOffset: { type: Number, default: 0 },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
 const isInputFocused = ref(false)
@@ -75,19 +76,8 @@ const isIOS = /iphone|ipad|ipod/.test(UA)
 const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
-const rootRef = ref<HTMLElement | null>(null)
-// 存储顶部障碍物（搜索栏）的高度
-const topOffset = ref(0)
 
-// 更新顶部距离的函数
-function updateTopOffset() {
-  if (rootRef.value) {
-    const rect = rootRef.value.getBoundingClientRect()
-    // rect.top 就是编辑器距离屏幕顶部的距离
-    // 如果小于 0 (比如滚动了)，取 0；保证非负
-    topOffset.value = Math.max(0, rect.top)
-  }
-}
+// ... imports ...
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
@@ -156,7 +146,7 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 如果算出来了 offset (visualViewport 生效)，优先用算出来的
     if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value} + ${topOffset.value}px)`
+      return `calc(100dvh - ${keyboardOffset.value})`
 
     // 🛡️ 兜底逻辑 (万一 resize 没触发)
     const screenW = window.screen.width
@@ -186,6 +176,11 @@ const editorHeight = computed(() => {
 
   // Android
   return '100dvh'
+  if (props.topOffset > 0)
+    return `${baseCalc} - ${props.topOffset}px)`
+
+  // 没有偏移（主页），直接闭合括号
+  return isReallyIOS || props.topOffset > 0 ? `${baseCalc})` : '100dvh'
 })
 const isFreezingBottom = ref(false)
 
@@ -683,14 +678,6 @@ watch(() => props.isEditing, (v) => {
 
 // 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
-// ✅ 挂载后立即计算一次
-  updateTopOffset()
-
-  // 为了保险，如果是动画弹出的，可以延迟一下再算一次
-  setTimeout(updateTopOffset, 300)
-
-  // 监听 resize 以防窗口变化
-  window.addEventListener('resize', updateTopOffset)
   if (props.isEditing)
     focusToEnd()
 })
@@ -701,7 +688,6 @@ onUnmounted(() => {
     window.clearTimeout(draftTimer)
     draftTimer = null
   }
-  window.removeEventListener('resize', updateTopOffset)
 })
 
 // ============== Autosize ==============
@@ -1119,6 +1105,7 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
+const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
