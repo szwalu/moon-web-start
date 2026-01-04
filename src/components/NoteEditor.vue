@@ -154,7 +154,7 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight (完全替换原有的 computed)
+// 🔥 修正版：editorHeight (针对新建笔记单独微调)
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
@@ -184,15 +184,16 @@ const editorHeight = computed(() => {
     }
   }
 
-  // 🔥🔥🔥 核心：优先使用外部传入的 props，没有传则使用自动测量的 autoTopOffset
-  // 这样 auth.vue 里的不用改，NoteList 里的也能自动生效
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 🔥🔥🔥 手动修补值：如果觉得空隙大，就把这个数字改大（比如 30）；如果输入框被遮住了，就改小
-  const manualPatch = 0
+  // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
+  // 如果是“编辑模式”，说明是全屏，不需要额外减
+  // 如果是“新建模式”(!props.isEditing)，因为它是弹窗，可能上面有缝隙或圆角，
+  // 我们手动多减去 20px，把工具栏“拉”回来。
+  const extraReduction = props.isEditing ? 0 : 30
 
-  // 公式：100dvh - 键盘 - 顶部偏移 + 手动修补
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px + ${manualPatch}px)`
+  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
 
