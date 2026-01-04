@@ -133,54 +133,46 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：高度计算属性
+// 🔥 修正版：editorHeight (请完全替换原有的 computed)
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
-  if (!isInputFocused.value)
+  // 1. 键盘收起时 (非输入状态)
+  if (!isInputFocused.value) {
+    // 保持原有逻辑：编辑模式全屏，新建模式 80%
     return props.isEditing ? '100dvh' : '80dvh'
+  }
 
-  // 2. 键盘弹出时
+  // 2. 键盘弹出时 (输入状态)
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
+  // 定义这就我们要减去的“键盘高度”
+  let keyboardSubtract = '0px'
+
   if (isReallyIOS) {
-    // 如果算出来了 offset (visualViewport 生效)，优先用算出来的
-    if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value})`
-
-    // 🛡️ 兜底逻辑 (万一 resize 没触发)
-    const screenW = window.screen.width
-
-    // ✅ 新增：专门针对 iPad 的判断 (宽度 >= 740 一般就是 iPad)
-    const isIPad = screenW >= 740
-    const isLargePhone = screenW > 420
-
-    let fallbackOffset = ''
-
-    if (isIPad) {
-      // 📝 iPad 键盘通常较高，且带有工具栏
-      // 普通 iPad 竖屏 offset 建议 400px+，如果是 PWA (无浏览器底栏) 则更大
-      fallbackOffset = isPWA.value ? '460px' : '380px'
-    }
-    else if (isLargePhone) {
-      // Pro Max
-      fallbackOffset = isPWA.value ? '480px' : '335px'
+    if (keyboardOffset.value !== '0px') {
+      // 优先用实时算出来的 visualViewport 偏移量
+      keyboardSubtract = keyboardOffset.value
     }
     else {
-      // 普通 iPhone
-      fallbackOffset = isPWA.value ? '435px' : '290px'
-    }
+      // 兜底逻辑：根据机型估算
+      const screenW = window.screen.width
+      const isIPad = screenW >= 740
+      const isLargePhone = screenW > 420
 
-    return `calc(100dvh - ${fallbackOffset})`
+      let fallback = isPWA.value ? '435px' : '290px' // 普通 iPhone
+      if (isIPad)
+        fallback = isPWA.value ? '460px' : '380px'
+      else if (isLargePhone)
+        fallback = isPWA.value ? '480px' : '335px'
+
+      keyboardSubtract = fallback
+    }
   }
 
-  // Android
-  return '100dvh'
-  if (props.topOffset > 0)
-    return `${baseCalc} - ${props.topOffset}px)`
-
-  // 没有偏移（主页），直接闭合括号
-  return isReallyIOS || props.topOffset > 0 ? `${baseCalc})` : '100dvh'
+  // 3. 🔥🔥🔥 最终公式 🔥🔥🔥
+  // 高度 = 100dvh - 键盘高度 - 顶部障碍物高度(topOffset)
+  // 无论 iOS 还是 Android，只要传了 topOffset，都要减去
+  return `calc(100dvh - ${keyboardSubtract} - ${props.topOffset}px)`
 })
 const isFreezingBottom = ref(false)
 
