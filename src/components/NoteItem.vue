@@ -658,6 +658,10 @@ function handleNoteContentClick(event: MouseEvent) {
       event.stopPropagation()
       return
     }
+    link.blur()
+    // 同时也移除 body 上可能的焦点，确保万无一失
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur()
 
     // --- 下面是正常的文字链接处理逻辑 (保留原样) ---
     localStorage.setItem('pwa_return_note_id', props.note.id)
