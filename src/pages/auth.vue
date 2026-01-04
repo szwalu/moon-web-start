@@ -205,6 +205,15 @@ const userInitials = computed(() => {
   return name.charAt(0).toUpperCase()
 })
 
+const lastUserId = ref(localStorage.getItem('last_user_id'))
+
+// 监听 user 变化，一旦登录成功，更新 last_user_id
+watch(user, (newUser) => {
+  if (newUser?.id) {
+    localStorage.setItem('last_user_id', newUser.id)
+    lastUserId.value = newUser.id
+  }
+}, { immediate: true })
 const currentThemeColor = computed(() => {
   const currentKey = settingStore.settings.theme
   const themeItem = S.theme.children.find(item => item.key === currentKey)
@@ -3077,11 +3086,12 @@ function onCalendarUpdated(updated: any) {
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
-            v-if="user?.user_metadata?.avatar_url"
-            :user-id="user.id"
-            :src="user.user_metadata.avatar_url"
+            v-if="(user?.user_metadata?.avatar_url || lastUserId) && !logoError"
+            :user-id="user?.id || lastUserId"
+            :src="user?.user_metadata?.avatar_url || null"
             class="header-avatar"
             alt="User"
+            @error="logoError = true"
           />
 
           <img
