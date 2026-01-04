@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+
+// ✅ [修改] 引入 computed, onMounted
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { CheckCircle2 } from 'lucide-vue-next'
@@ -8,9 +10,9 @@ import { supabase } from '@/utils/supabaseClient'
 const props = defineProps({
   show: { type: Boolean, required: true },
   allowClose: { type: Boolean, default: false },
-  // 接收激活状态
+  // 接收激活状态 (来自父组件/Supabase)
   activated: { type: Boolean, default: false },
-  // ✅ [新增] 接收剩余天数，默认为 7
+  // 接收剩余天数，默认为 7
   daysRemaining: { type: Number, default: 7 },
   themeColor: { type: String, default: '#6366f1' },
 })
@@ -21,6 +23,29 @@ const inviteCode = ref('')
 const loading = ref(false)
 const messageHook = useMessage()
 const { t } = useI18n()
+
+// ✅ [新增] 本地存储的 Key
+const STORAGE_KEY = 'app_activation_status'
+
+// ✅ [新增] 计算属性：综合判断激活状态
+// 逻辑：如果父组件传来的 props.activated 为 true，则肯定是 true。
+// 如果 props.activated 为 false (可能是过期，也可能是离线)，我们检查 localStorage 作为兜底。
+const isEffectiveActivated = computed(() => {
+  // 1. 优先信任父组件传来的“真”值（在线确认过）
+  if (props.activated) {
+    // 顺便同步更新本地缓存，确保下次离线可用
+    if (typeof window !== 'undefined')
+      localStorage.setItem(STORAGE_KEY, 'true')
+
+    return true
+  }
+
+  // 2. 如果父组件说是 false，检查本地缓存是否曾激活过
+  if (typeof window !== 'undefined')
+    return localStorage.getItem(STORAGE_KEY) === 'true'
+
+  return false
+})
 
 async function handleActivate() {
   if (!inviteCode.value)
@@ -36,35 +61,23 @@ async function handleActivate() {
       throw error
 
     if (data && data.success) {
+      // ✅ [新增] 激活成功，立即写入本地缓存
+      localStorage.setItem(STORAGE_KEY, 'true')
+
       messageHook.success(t('auth.activation.success_message'))
       emit('success')
     }
     else {
-      // ✅ [核心修改] 国际化处理逻辑
-      // 1. 获取后端返回的错误码 (例如: 'invite_code_invalid_or_used')
+      // 国际化错误处理逻辑
       const errorCode = data?.message
-
-      // 2. 尝试去语言包里找对应的翻译
-      //    假设语言包路径是 auth.activation.errors.xxx
-      //    如果不存这个翻译，就显示默认错误
       const i18nKey = `auth.activation.errors.${errorCode}`
-
-      // 3. 使用 te() (translate exists) 检查该 key 是否存在，不存在则用默认
-      //    (Vue I18n 的 te 函数需要从 useI18n 解构出来，或者直接尝试翻译)
-      //    更简单的写法是直接利用 t 的 fallback：
-
       let errorMsg = ''
 
-      // 这是一个简单的容错处理：
-      // 如果 errorCode 是空的，或者包含空格（说明可能是旧的中文），就直接显示
       if (!errorCode || errorCode.includes(' ')) {
         errorMsg = errorCode || t('auth.activation.errors.default')
       }
       else {
-        // 尝试翻译
         errorMsg = t(i18nKey)
-
-        // 如果翻译出来还是 key 本身（说明没找到翻译），就显示默认文案
         if (errorMsg === i18nKey)
           errorMsg = t('auth.activation.errors.default')
       }
@@ -74,7 +87,6 @@ async function handleActivate() {
   }
   catch (e: any) {
     console.error(e)
-    // 这里直接显示上面处理好的 errorMsg
     messageHook.error(e.message)
   }
   finally {
@@ -88,9 +100,19 @@ async function handleSecondaryAction() {
   }
   else {
     await supabase.auth.signOut()
+    // 登出时，最好也清除一下本地激活状态，以免换账号后状态混淆
+    localStorage.removeItem(STORAGE_KEY)
     window.location.href = '/auth'
   }
 }
+
+// ✅ [新增] 组件挂载时检查
+// 如果弹窗被打开，但我们发现本地已经是激活状态，可以选择自动关闭，
+// 或者保持打开但显示“已激活”界面（当前代码逻辑是显示“已激活”界面，体验更好）
+onMounted(() => {
+  if (props.activated)
+    localStorage.setItem(STORAGE_KEY, 'true')
+})
 </script>
 
 <template>
@@ -105,7 +127,7 @@ async function handleSecondaryAction() {
     }"
   >
     <div class="activation-box">
-      <div v-if="activated" class="activated-content">
+      <div v-if="isEffectiveActivated" class="activated-content">
         <CheckCircle2 :size="64" class="success-icon" />
         <h2>{{ t('notes.activation_success_title') }}</h2>
         <p class="desc">{{ t('notes.activation_success_desc') }}</p>
@@ -154,6 +176,8 @@ async function handleSecondaryAction() {
 </template>
 
 <style scoped>
+/* 样式保持不变，此处省略以节省篇幅，直接使用您原有的样式即可 */
+/* ... existing styles ... */
 /* ===========================================================================
    🎨 激活弹窗主题变量
    =========================================================================== */
