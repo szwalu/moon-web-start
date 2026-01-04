@@ -706,7 +706,7 @@ onMounted(() => {
             }
             else {
               // =========================================================
-              // 1. 🔥 核心逻辑：静默更新
+              // 1. 🔥 核心逻辑：静默更新 (简单合并版)
               // =========================================================
               try {
                 const { data: latestData } = await supabase
@@ -720,6 +720,7 @@ onMounted(() => {
                 if (latestData && latestData.length > 0) {
                   const existingMap = new Map(notes.value.map(n => [n.id, n]))
                   const newItems: any[] = []
+                  let hasUpdates = false // 👈 新增：标记是否有内容更新
 
                   for (const remoteNote of latestData) {
                     if (existingMap.has(remoteNote.id)) {
@@ -727,11 +728,13 @@ onMounted(() => {
                       const localNote = existingMap.get(remoteNote.id)
                       if (
                         localNote.updated_at !== remoteNote.updated_at
-                        || localNote.is_pinned !== remoteNote.is_pinned
+              || localNote.is_pinned !== remoteNote.is_pinned
                       ) {
                         const idx = notes.value.findIndex(n => n.id === remoteNote.id)
-                        if (idx !== -1)
+                        if (idx !== -1) {
                           notes.value[idx] = remoteNote
+                          hasUpdates = true // 👈 标记发生了更新
+                        }
                       }
                     }
                     else {
@@ -740,17 +743,25 @@ onMounted(() => {
                     }
                   }
 
-                  // C. 插入新笔记
-                  if (newItems.length > 0) {
-                    notes.value = [...newItems, ...notes.value]
-                    // 只增不减，不需要严格校对 totalNotes，防止误判
-                    totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
+                  // C. 只要有新笔记 或者 有更新，就刷新缓存
+                  if (newItems.length > 0 || hasUpdates) {
+                    // 如果有新笔记，合并进去
+                    if (newItems.length > 0) {
+                      notes.value = [...newItems, ...notes.value]
+                      totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
+                    }
 
+                    // D. 🔥 写入 LocalStorage 和 IndexedDB
                     try {
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
                       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+
+                      // ✅✅✅ 这里就是你要求的：补上快照保存
+                      await saveNotesSnapshot(notes.value)
                     }
-                    catch {}
+                    catch (e) {
+                      console.warn('缓存/快照写入失败', e)
+                    }
                   }
                 }
               }
@@ -759,10 +770,10 @@ onMounted(() => {
               }
 
               // =========================================================
-              // 2. 🚑【关键修复 - 最终版】
+              // 2. 🚑【后续状态修正】
               // =========================================================
               if (notes.value.length > 0) {
-                // (1) 修正游标：确保知道从哪里开始加载下一页
+                // (1) 修正游标
                 let minCreated = notes.value[0].created_at
                 for (const n of notes.value) {
                   if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
@@ -773,19 +784,15 @@ onMounted(() => {
                 // (2) 修正页码
                 currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
 
-                // (3) 🔥【重要修改】：只要列表里有数据，就默认允许尝试加载更多。
-                //     不要在这里判断 totalNotes，因为缓存的 totalNotes 可能滞后。
-                //     如果真的没数据了，fetchNotes 会在请求后自动把 hasMoreNotes 设为 false。
+                // (3) 默认允许加载更多
                 hasMoreNotes.value = true
               }
               else {
-                // 理论上进不来这里（外层已判断），但做个兜底
                 hasMoreNotes.value = false
               }
             }
 
             // === 通用后续逻辑 ===
-            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
             authResolved.value = true
           }
