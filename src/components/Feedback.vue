@@ -275,7 +275,7 @@ async function handleSubmit() {
     background-color: rgba(0, 0, 0, 0.7) !important;
   }
   .page-safearea.is-modal .form-container {
-    background: #1e1e1e;
+    background: var(--main-bg-c);
     border: 1px solid #333;
   }
 }
@@ -385,7 +385,7 @@ button:hover:not([disabled]) { background-color: var(--theme-hover); }
   select, textarea, input, button, .btn-back { font-size: 16px !important; }
 }
 @media (prefers-color-scheme: dark) {
-  .form-container { background: #1e1e1e; color: #eee; box-shadow: 0 0 8px rgba(255, 255, 255, 0.1); }
+  .form-container { background: var(--main-bg-c); color: #eee; box-shadow: 0 0 8px rgba(255, 255, 255, 0.1); }
   input, textarea, select { background: #2a2a2a; color: #eee; border: 1px solid #555; }
   .breadcrumb { background: color-mix(in srgb, var(--theme-color), black 60%); color: color-mix(in srgb, var(--theme-color), white 80%); }
   .tip { color: #ccc; }

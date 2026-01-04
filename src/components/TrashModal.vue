@@ -346,7 +346,7 @@ onMounted(() => {
         </div>
 
         <div class="content-area">
-          <div v-if="loading && list.length === 0" class="state-box loading">
+          <div v-if="loading && list.length === 0" class="loading state-box">
             <div class="spinner" />
             <span>{{ t('notes.trash.loading') }}</span>
           </div>
@@ -426,7 +426,7 @@ onMounted(() => {
   flex-direction: column;
   overflow: hidden;
 }
-.dark .modal-content { background: #2a2a2a; color: #e0e0e0; }
+.dark .modal-content { background: var(--main-bg-c); color: #e0e0e0; border: 1px solid #3f3f46; }
 
 /* 头部 */
 .modal-header {
@@ -506,8 +506,8 @@ onMounted(() => {
   transition: background .2s;
 }
 .trash-item:hover { background: #f3f4f6; }
-.dark .trash-item { background: #1f2937; border-color: #374151; }
-.dark .trash-item:hover { background: #252f3f; }
+.dark .trash-item { background: var(--main-bg-c); border-color: #3f3f46; }
+background: rgba(255, 255, 255, 0.05);
 
 .item-check { display: flex; align-items: start; padding-top: .2rem; }
 .item-main .content {
@@ -553,7 +553,7 @@ onMounted(() => {
   border: 1px solid transparent;
 }
 .btn-secondary { background: #f3f4f6; color: #333; border-color: #e5e7eb; }
-.dark .btn-secondary { background: #374151; color: #e5e7eb; border-color: #4b5563; }
+.dark .btn-secondary { background: var(--main-bg-c); color: #e5e7eb; border-color: #4b5563; }
 .btn-danger { background: #ef4444; color: #fff; }
 .btn-danger:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 .check-all.disabled { opacity: 0.5; pointer-events: none; }

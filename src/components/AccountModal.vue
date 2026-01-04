@@ -882,7 +882,7 @@ function handleForgotOldPwd() {
 /* 🌑 情况1：系统设置为深色模式 */
 @media (prefers-color-scheme: dark) {
   .modal-overlay {
-    --ac-bg: #2a2a2a;
+    --ac-bg: var(--main-bg-c);
     --ac-text: #e0e0e0;
     --ac-text-sub: #aaaaaa;
     --ac-border: #444444;
@@ -906,7 +906,7 @@ function handleForgotOldPwd() {
 
 /* 🌑 情况2：全局手动开启了 .dark 类 (优先级更高) */
 :global(.dark) .modal-overlay {
-  --ac-bg: #2a2a2a;
+  --ac-bg: var(--main-bg-c);
   --ac-text: #e0e0e0;
   --ac-text-sub: #aaaaaa;
   --ac-border: #444444;
