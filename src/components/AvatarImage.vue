@@ -7,66 +7,95 @@ const props = defineProps({
   alt: { type: String, default: 'Avatar' },
 })
 
-// ✅ 新增 emit，用于告诉父组件“我彻底加载失败了，请显示首字母”
 const emit = defineEmits(['error'])
 
 const currentSrc = ref<string | null>(null)
 const hasError = ref(false)
 
-// ✅ 优化 1：同时监听 userId 和 src，防止切换用户时缓存 Key 滞后
-// src/components/AvatarImage.vue
-watch([() => props.src, () => props.userId], ([newUrl, newUserId]) => {
+// ♻️ 辅助：将 Blob 转 Base64
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// 💾 核心：使用 Fetch 下载并缓存图片
+async function cacheImageFromUrl(url: string, uid: string) {
+  try {
+    // 使用 fetch 获取图片数据 (比 Image 对象更可靠)
+    const response = await fetch(url, { mode: 'cors' })
+    if (!response.ok)
+      throw new Error('Network response was not ok')
+
+    const blob = await response.blob()
+    const base64 = await blobToBase64(blob)
+
+    // 存入缓存
+    const key = `avatar_cache_${uid}`
+    try {
+      localStorage.setItem(key, base64)
+      // 如果当前正在显示旧图或网络图，更新为 Base64 以验证缓存成功
+      // (可选: 这样能确保离线时用的就是这份数据)
+      // currentSrc.value = base64
+    }
+    catch (storageErr) {
+      console.warn('头像缓存失败(可能是存储空间已满):', storageErr)
+    }
+  }
+  catch (e) {
+    console.warn('头像下载/缓存失败(可能是跨域CORS限制):', e)
+  }
+}
+
+watch([() => props.src, () => props.userId], async ([newUrl, newUserId]) => {
   hasError.value = false
 
-  // 1. 尝试读取 LocalStorage 缓存
-  // 注意：如果 newUserId 是 undefined (极少数情况), cacheKey 会变成 avatar_cache_undefined，没关系，读不到就是 null
+  // 1. 先尝试读取缓存 (实现秒开)
   const cacheKey = `avatar_cache_${newUserId}`
   const cachedBase64 = localStorage.getItem(cacheKey)
 
   if (cachedBase64) {
-    // ✅ 命中缓存：无论 newUrl 是否存在，先显示缓存
+    // ✅ 场景 A：有缓存 -> 立即显示缓存
     currentSrc.value = cachedBase64
 
-    // 如果有网络地址，尝试后台更新；如果没有网络地址(离线启动中)，就保持显示缓存
-    if (newUrl) {
-      const img = new Image()
-      img.src = newUrl
-      img.onload = () => {
-        currentSrc.value = newUrl
-      }
+    // 📡 即使有缓存，如果有新 URL，也在后台默默更新缓存
+    if (newUrl && newUrl !== 'null') {
+      // 不立即替换显示，防止闪烁，只更新 LocalStorage
+      cacheImageFromUrl(newUrl, newUserId)
     }
   }
   else {
-    // ❌ 无缓存
-    if (newUrl) {
-      // 有网络地址，尝试显示
+    // ❌ 场景 B：无缓存
+    if (newUrl && newUrl !== 'null') {
+      // 有网络图 -> 显示网络图 -> 并尝试下载缓存
       currentSrc.value = newUrl
+      cacheImageFromUrl(newUrl, newUserId)
     }
     else {
-      // 既无缓存，也无网络地址，这才清空
+      // 既无缓存，也无网络图 (PWA离线启动瞬间)
+      // 保持 null，等待父组件数据更新，暂不报错
       currentSrc.value = null
-      // 此时可以抛出 error 让父组件切到首字母
-      if (newUserId) { // 只有 ID 存在时才报 error，防止初始化时的误报
-        emit('error')
-      }
     }
   }
 }, { immediate: true })
 
 function handleError() {
-  // 再次尝试回退机制
+  // 图片加载出错 (404 或 断网)
+  // 再次尝试回退到缓存 (防止上面的 watch 逻辑漏网)
   const cacheKey = `avatar_cache_${props.userId}`
   const cachedBase64 = localStorage.getItem(cacheKey)
 
-  // 如果当前显示的不是缓存，且缓存存在，则回退到缓存
   if (cachedBase64 && currentSrc.value !== cachedBase64) {
+    // 救活了：切换到缓存
     currentSrc.value = cachedBase64
-    hasError.value = false // 救活了
+    hasError.value = false
   }
   else {
-    // 彻底没救了（既没网，也没缓存）
+    // 彻底挂了：通知父组件显示首字母
     hasError.value = true
-    // ✅ 优化 2：通知父组件
     emit('error')
   }
 }
@@ -74,8 +103,7 @@ function handleError() {
 
 <template>
   <img
-    v-if="currentSrc"
-    v-show="!hasError"
+    v-if="currentSrc && !hasError"
     :src="currentSrc"
     :alt="alt"
     class="avatar-img"
@@ -84,7 +112,6 @@ function handleError() {
 </template>
 
 <style scoped>
-/* 确保图片样式正确，继承父级圆角 */
 .avatar-img {
   width: 100%;
   height: 100%;

@@ -36,8 +36,10 @@ const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
 const isUserActivated = ref(false)
 const daysRemaining = ref(7)
+const logoError = ref(false)
 watch(user, async (currentUser) => {
   if (currentUser) {
+    logoError.value = false
     const registeredAt = new Date(currentUser.created_at)
     const now = new Date()
     const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
@@ -184,9 +186,6 @@ const themeStyle = computed(() => {
     '--theme-primary-light': val.primaryLightC, // 亮色 (如 深色模式下的文字)
   }
 })
-
-// ✅ [新增] 控制 Logo 加载状态
-const logoError = ref(false)
 
 // ✅ [新增] 获取用户首字母/名称用于显示
 const userInitials = computed(() => {
