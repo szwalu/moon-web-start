@@ -188,8 +188,11 @@ const editorHeight = computed(() => {
   // 这样 auth.vue 里的不用改，NoteList 里的也能自动生效
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 公式：100dvh - 键盘高度 - 顶部障碍高度
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px)`
+  // 🔥🔥🔥 手动修补值：如果觉得空隙大，就把这个数字改大（比如 30）；如果输入框被遮住了，就改小
+  const manualPatch = 20
+
+  // 公式：100dvh - 键盘 - 顶部偏移 + 手动修补
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px + ${manualPatch}px)`
 })
 const isFreezingBottom = ref(false)
 
