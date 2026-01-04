@@ -647,12 +647,12 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // 1. 先找被点击元素外层有没有 <a> 标签
+  // 1. 查找被点击的链接
   const link = target.closest('a')
 
   if (link) {
     // ---------------------------------------------------------
-    // 🛡️ 防护一：图片链接拦截 (保持不变)
+    // 🛡️ 1. 图片防护：如果是图片，绝对禁止打开
     // ---------------------------------------------------------
     if (link.querySelector('img') || target.tagName === 'IMG') {
       event.preventDefault()
@@ -665,27 +665,35 @@ function handleNoteContentClick(event: MouseEvent) {
       return
 
     // ---------------------------------------------------------
-    // 🛡️ 防护二：PWA 强制跳出逻辑 (核心修改)
+    // 🛡️ 2. PWA 越狱逻辑 (终极方案：模拟点击)
     // ---------------------------------------------------------
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
 
+    // 如果是 PWA 且是 http/https 链接
     if (isStandalone && /^https?:\/\//.test(href)) {
+      // 解析域名，判断是否是“外链”
       try {
-        // 解析域名，判断是否是“外链”
         const currentHost = window.location.host
         const linkUrl = new URL(href)
-        const linkHost = linkUrl.host
 
-        // 如果点击的是外部链接 (域名不同)
-        if (linkHost !== currentHost) {
+        // 只要域名不一致，就强制跳出
+        if (linkUrl.host !== currentHost) {
           event.preventDefault()
           event.stopPropagation()
 
-          // 🚀 核心黑科技：
-          // 在 iOS PWA 中，试图在“当前窗口”导航到“作用域(Scope)以外”的链接，
-          // 系统会被迫将该链接交给 Safari 浏览器处理，从而实现“跳出 App”的效果。
-          // 不要用 window.open，要用 location.href！
-          window.location.href = href
+          // 🚀 核心技巧：创建一个临时的 DOM 元素来模拟点击
+          // 这比 window.open 在 iOS 上成功率更高
+          const tempLink = document.createElement('a')
+          tempLink.href = href
+          // 关键：iOS PWA 看到 _blank 且跨域，通常会弹出一个 Safari 视图层
+          tempLink.target = '_blank'
+          tempLink.rel = 'noopener noreferrer'
+
+          // 模拟点击
+          tempLink.click()
+
+          // 销毁
+          tempLink.remove()
           return
         }
       }
@@ -695,16 +703,17 @@ function handleNoteContentClick(event: MouseEvent) {
     }
 
     // ---------------------------------------------------------
-    // 🛡️ 防护三：普通模式兜底 (保持不变)
+    // 🛡️ 3. 普通模式兜底
     // ---------------------------------------------------------
     localStorage.setItem('pwa_return_note_id', props.note.id)
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
 
+    // 让浏览器执行默认行为
     return
   }
 
-  // 2. 处理任务列表 Checkbox (保持不变)
+  // 2. 处理任务列表 (保持不变)
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
