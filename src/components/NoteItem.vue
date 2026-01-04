@@ -651,18 +651,48 @@ function handleNoteContentClick(event: MouseEvent) {
   const link = target.closest('a')
 
   if (link) {
-    // ✅ 核心修改：如果这个链接里面包含了 img 标签，说明是点击了图片（或者图片链接）
-    // 直接拦截，禁止打开，不做任何响应
+    // ---------------------------------------------------------
+    // 🛡️ 防护一：图片链接拦截
+    // 如果链接包含图片，或者直接点的是图片 -> 只有右键能保存，左键点不反应
+    // ---------------------------------------------------------
     if (link.querySelector('img') || target.tagName === 'IMG') {
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
-    // --- 下面是正常的文字链接处理逻辑 (保留原样) ---
+    // 获取链接地址
+    const href = link.getAttribute('href')
+    if (!href)
+      return
+
+    // ---------------------------------------------------------
+    // 🛡️ 防护二：PWA 强制跳出逻辑 (核心修改)
+    // ---------------------------------------------------------
+    // 判断是否在 PWA 独立模式下 (兼容 iOS 和 Android)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
+
+    // 如果是 PWA 模式，且链接是 http 开头的外部链接 (防止拦截了内部路由锚点等)
+    if (isStandalone && /^https?:\/\//.test(href)) {
+      event.preventDefault() // 阻止 PWA 内部跳转
+      event.stopPropagation()
+
+      // 核心：强制调用系统浏览器打开
+      // 'noopener,noreferrer' 是安全最佳实践
+      window.open(href, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // ---------------------------------------------------------
+    // 🛡️ 防护三：普通网页模式下的兜底
+    // ---------------------------------------------------------
     localStorage.setItem('pwa_return_note_id', props.note.id)
+
+    // 强制添加 _blank
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
+
+    // 这里的 return 让浏览器执行默认的打开行为 (因为有了 target=_blank，会新开标签页)
     return
   }
 
@@ -1520,6 +1550,7 @@ onUnmounted(() => {
   object-fit: contain;
   border-radius: 6px;
   margin: 6px 0;
+  cursor: default !important;
   -webkit-touch-callout: default !important; /* iOS 强制允许弹出长按菜单 */
   pointer-events: auto !important;           /* 确保图片能响应手指触摸 */
   user-select: none;                         /* 禁止选中图片变蓝，但允许长按 */
