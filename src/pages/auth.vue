@@ -717,7 +717,7 @@ onMounted(() => {
 
               if (latestData) {
                 // =========================================================
-                // 🔥 核心修复：水位线裁剪法 (Smart Merge) + hasUpdates 优化
+                // 🔥 核心修复：水位线裁剪法 + 非阻塞快照
                 // =========================================================
 
                 // A. 如果服务器返回空数组
@@ -725,11 +725,12 @@ onMounted(() => {
                   if (notes.value.length > 0) {
                     notes.value = []
                     totalNotes.value = 0
-                    // 既然发生了清空，肯定算有更新，需要强制清理缓存
+                    // 必须清理缓存
                     try {
                       localStorage.removeItem(CACHE_KEYS.HOME)
                       localStorage.removeItem(CACHE_KEYS.HOME_META)
-                      await saveNotesSnapshot([])
+                      // ⚡️ 非阻塞：不写 await，让它后台跑
+                      saveNotesSnapshot([]).catch(e => console.warn('后台清空快照失败', e))
                     }
                     catch {}
                   }
@@ -739,23 +740,21 @@ onMounted(() => {
                   const incomingIds = new Set(latestData.map(n => n.id))
                   const lastFreshNote = latestData[latestData.length - 1]
 
-                  // 标记：是否有变动
                   let hasUpdates = false
 
-                  // 1. 检查头部数据的变化 (新增 或 内容更新)
+                  // 1. 检查头部数据的变化
                   const existingMap = new Map(notes.value.map(n => [n.id, n]))
                   for (const remoteNote of latestData) {
                     const localNote = existingMap.get(remoteNote.id)
                     if (!localNote)
-                      hasUpdates = true // 发现本地没有的新笔记
+                      hasUpdates = true
                     else if (
                       localNote.updated_at !== remoteNote.updated_at
             || localNote.is_pinned !== remoteNote.is_pinned
                     )
-                      hasUpdates = true // 发现内容或置顶状态变更
+                      hasUpdates = true
                   }
 
-                  // 定义优先级比较函数
                   const isHigherOrEqualPriority = (noteA, noteB) => {
                     if (noteA.is_pinned && !noteB.is_pinned)
                       return true
@@ -764,39 +763,36 @@ onMounted(() => {
                     return noteA.created_at >= noteB.created_at
                   }
 
-                  // 2. 过滤本地旧笔记 (同时检测是否有僵尸笔记被杀)
+                  // 2. 过滤本地旧笔记
                   const keptLocalNotes = notes.value.filter((localNote) => {
-                    // 如果这个笔记已经在 latestData 里了，跳过 (会被 latestData 的版本替代)
                     if (incomingIds.has(localNote.id))
                       return false
-
-                    // 杀掉僵尸笔记：如果本地笔记比“水位线”还新，却没在 latestData 里，说明被删了
+                    // 杀掉僵尸笔记
                     if (isHigherOrEqualPriority(localNote, lastFreshNote)) {
-                      hasUpdates = true // 🔥 检测到删除操作！标记为有更新
+                      hasUpdates = true
                       return false
                     }
                     return true
                   })
 
-                  // C. 拼接：最新头部 + 筛选后的旧尾部
+                  // C. 拼接
                   notes.value = [...latestData, ...keptLocalNotes]
 
-                  // 检查总数变化
                   if (count !== null && totalNotes.value !== count) {
                     totalNotes.value = count
                     hasUpdates = true
                   }
 
-                  // D. 只有当检测到实质性变化时，才写入缓存 (节省 I/O)
+                  // D. 写入缓存
                   if (hasUpdates) {
                     try {
-                      // 1. 写入 LocalStorage
+                      // 1. LocalStorage (同步，极快，必须做)
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
                       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
-                      // 2. 🔥 写入 IndexedDB (离线兜底，确保多端同步时的新笔记能存下来)
-                      await saveNotesSnapshot(notes.value)
-                      // console.log('检测到数据变更，已更新所有缓存')
+                      // 2. 🔥【关键修改】IndexedDB (异步，去掉 await)
+                      // 不要让这里的 I/O 阻塞后续代码执行，尤其是不要阻塞 loadAnniversaryNotes
+                      saveNotesSnapshot(notes.value).catch(e => console.warn('后台快照保存失败', e))
                     }
                     catch (e) {
                       console.warn('缓存写入失败', e)
@@ -826,6 +822,7 @@ onMounted(() => {
               hasMoreNotes.value = false
             }
 
+            // 🔥 这里的调用现在会立即执行，不会被上面的 saveNotesSnapshot 卡住了
             anniversaryBannerRef.value?.loadAnniversaryNotes()
             authResolved.value = true
           }
