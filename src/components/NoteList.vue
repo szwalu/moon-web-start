@@ -390,53 +390,34 @@ function syncStickyGutters() {
   wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
 }
 
-// NoteList.vue
-
+/** 新增：用“视口内最靠上的非置顶笔记”的月份纠正 currentMonthKey（仅向上滚调用） */
+// —— 返回“视口内最靠上的非置顶笔记”的月份 key（找不到返回空串）
 function getTopVisibleMonthKey(rootEl: HTMLElement): string {
   const scRect = rootEl.getBoundingClientRect()
 
   let topId: string | null = null
   let topY = Number.POSITIVE_INFINITY
 
-  // 🔥 性能优化：缓存 entries，避免重复解构
-  const entries = Object.entries(noteContainers.value)
-
-  for (const [id, el] of entries) {
+  for (const [id, el] of Object.entries(noteContainers.value)) {
     if (!el || !el.isConnected)
       continue
 
-    // 🔥 性能优化：快速过滤
-    // 虚拟列表的 item 通常有 offsetTop，先用 offsetTop 过滤掉肯定不在视口顶部的元素
-    // 注意：DynamicScrollerItem 是绝对定位的，el.offsetTop 可能不准确，
-    // 但我们可以利用 el.style.transform (如果有) 或者只对大概范围做 getBCR
-
-    const rect = el.getBoundingClientRect()
-
-    // 1. 如果元素完全在视口下方，直接跳过 (大部分元素都在下方)
-    if (rect.top > scRect.bottom)
-      continue
-
-    // 2. 如果元素完全在视口上方太远 (比如 > 1000px)，也跳过
-    if (rect.bottom < scRect.top - 1000)
-      continue
-
-    // 只有在视口附近才进行精确计算
+    // 防止虚拟列表复用导致错位
     const dataId = el.getAttribute('data-note-id')
     if (dataId !== id)
-      continue // 防止复用错位
+      continue
 
     const n = noteById.value[id]
     if (!n || _isPinned(n))
       continue
 
-    // 判断是否在“视口顶部”区域可见
-    const visible = !(rect.bottom <= scRect.top || rect.top >= scRect.bottom)
+    const r = el.getBoundingClientRect()
+    const visible = !(r.bottom <= scRect.top || r.top >= scRect.bottom)
     if (!visible)
       continue
 
-    // 找最靠上的那个
-    if (rect.top < topY) {
-      topY = rect.top
+    if (r.top < topY) {
+      topY = r.top
       topId = id
     }
   }
@@ -1275,10 +1256,5 @@ function checkSameDay(currentItem, index) {
   color: inherit;
 
   cursor: pointer;
-}
-
-:deep(.vue-virtual-scroller__wrapper),
-:deep(.vue-virtual-scroller__item) {
-  overflow-anchor: none !important;
 }
 </style>
