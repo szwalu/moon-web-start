@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-
-// ✅ [修改] 引入 computed, onMounted
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { CheckCircle2 } from 'lucide-vue-next'
@@ -21,31 +19,54 @@ const emit = defineEmits(['success', 'close'])
 
 const inviteCode = ref('')
 const loading = ref(false)
+// ✅ [新增] 标记：是否是“刚刚”在当前会话中完成的激活
+const justActivated = ref(false)
+
 const messageHook = useMessage()
 const { t } = useI18n()
-
-// ✅ [新增] 本地存储的 Key
 const STORAGE_KEY = 'app_activation_status'
 
-// ✅ [新增] 计算属性：综合判断激活状态
-// 逻辑：如果父组件传来的 props.activated 为 true，则肯定是 true。
-// 如果 props.activated 为 false (可能是过期，也可能是离线)，我们检查 localStorage 作为兜底。
+// ✅ [新增] 综合判断激活状态
+// 逻辑：优先信赖父组件(在线状态)，其次信赖本地缓存(离线兜底)
 const isEffectiveActivated = computed(() => {
-  // 1. 优先信任父组件传来的“真”值（在线确认过）
+  // 1. 如果父组件明确说是 true (在线验证通过)，那就一定是 true
   if (props.activated) {
-    // 顺便同步更新本地缓存，确保下次离线可用
     if (typeof window !== 'undefined')
       localStorage.setItem(STORAGE_KEY, 'true')
-
     return true
   }
-
-  // 2. 如果父组件说是 false，检查本地缓存是否曾激活过
+  // 2. 如果父组件说是 false (可能是离线/过期)，检查本地缓存
   if (typeof window !== 'undefined')
     return localStorage.getItem(STORAGE_KEY) === 'true'
 
   return false
 })
+
+// ✅ [新增] 决定是否渲染弹窗内容
+// 逻辑：如果弹窗要求显示(show=true)，但我们检测到是“老激活状态”（非刚刚激活），
+// 则暂时隐藏内容，等待 watch 中的 emit('close') 生效，防止界面闪烁。
+const shouldRender = computed(() => {
+  if (!props.show)
+    return false
+
+  // 如果已激活，但不是刚刚激活的，说明是缓存/离线自动登录，不应该渲染界面
+  if (isEffectiveActivated.value && !justActivated.value)
+    return false
+
+  return true
+})
+
+// ✅ [新增] 自动关闭监听器
+// 监听 props.show 的变化（包括组件刚加载时的初始值）
+watch(() => props.show, (isShow) => {
+  if (isShow) {
+    // 如果需要显示，且已经是激活状态，且不是刚刚激活的
+    if (isEffectiveActivated.value && !justActivated.value) {
+      // 说明是离线/缓存用户，直接静默关闭，不打扰用户
+      emit('close')
+    }
+  }
+}, { immediate: true })
 
 async function handleActivate() {
   if (!inviteCode.value)
@@ -61,14 +82,15 @@ async function handleActivate() {
       throw error
 
     if (data && data.success) {
-      // ✅ [新增] 激活成功，立即写入本地缓存
+      // ✅ [新增] 激活成功，写入缓存并标记为“刚刚激活”
       localStorage.setItem(STORAGE_KEY, 'true')
+      justActivated.value = true
 
       messageHook.success(t('auth.activation.success_message'))
       emit('success')
     }
     else {
-      // 国际化错误处理逻辑
+      // 国际化处理逻辑
       const errorCode = data?.message
       const i18nKey = `auth.activation.errors.${errorCode}`
       let errorMsg = ''
@@ -100,15 +122,13 @@ async function handleSecondaryAction() {
   }
   else {
     await supabase.auth.signOut()
-    // 登出时，最好也清除一下本地激活状态，以免换账号后状态混淆
+    // 登出时清除本地激活缓存，防止切号异常
     localStorage.removeItem(STORAGE_KEY)
     window.location.href = '/auth'
   }
 }
 
-// ✅ [新增] 组件挂载时检查
-// 如果弹窗被打开，但我们发现本地已经是激活状态，可以选择自动关闭，
-// 或者保持打开但显示“已激活”界面（当前代码逻辑是显示“已激活”界面，体验更好）
+// 挂载时同步一次状态（如果在线且已激活）
 onMounted(() => {
   if (props.activated)
     localStorage.setItem(STORAGE_KEY, 'true')
@@ -117,7 +137,7 @@ onMounted(() => {
 
 <template>
   <div
-    v-if="show"
+    v-if="show && shouldRender"
     class="activation-overlay"
     :style="{
       '--act-title': props.themeColor,
@@ -127,10 +147,9 @@ onMounted(() => {
     }"
   >
     <div class="activation-box">
-      <div v-if="isEffectiveActivated" class="activated-content">
+      <div v-if="justActivated" class="activated-content">
         <CheckCircle2 :size="64" class="success-icon" />
-        <h2>{{ t('notes.activation_success_title') }}</h2>
-        <p class="desc">{{ t('notes.activation_success_desc') }}</p>
+        <h2>{{ t('notes.activation_success_message') }}</h2>
         <button class="btn-activate" @click="$emit('close')">
           {{ t('common.close') }}
         </button>
@@ -176,8 +195,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 样式保持不变，此处省略以节省篇幅，直接使用您原有的样式即可 */
-/* ... existing styles ... */
 /* ===========================================================================
    🎨 激活弹窗主题变量
    =========================================================================== */
