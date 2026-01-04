@@ -33,6 +33,27 @@ const props = defineProps({
   topOffset: { type: Number, default: 0 },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const rootRef = ref<HTMLElement | null>(null)
+// 🔥🔥🔥 新增：内部自动计算的顶部偏移量
+const autoTopOffset = ref(0)
+
+// 测量函数：只在编辑模式下生效
+function measureTopOffset() {
+  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  if (!props.isEditing) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
+    // Math.max(0, ...) 防止滚动导致的负数
+    autoTopOffset.value = Math.max(0, rect.top)
+  }
+}
+
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
@@ -133,46 +154,42 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight (请完全替换原有的 computed)
+// 🔥 修正版：editorHeight (完全替换原有的 computed)
 const editorHeight = computed(() => {
-  // 1. 键盘收起时 (非输入状态)
-  if (!isInputFocused.value) {
-    // 保持原有逻辑：编辑模式全屏，新建模式 80%
+  // 1. 键盘收起时
+  if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
-  }
 
-  // 2. 键盘弹出时 (输入状态)
+  // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
-  // 定义这就我们要减去的“键盘高度”
-  let keyboardSubtract = '0px'
+  let keyboardH = '0px'
 
   if (isReallyIOS) {
     if (keyboardOffset.value !== '0px') {
-      // 优先用实时算出来的 visualViewport 偏移量
-      keyboardSubtract = keyboardOffset.value
+      keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底逻辑：根据机型估算
+      // 兜底估算
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
-
-      let fallback = isPWA.value ? '435px' : '290px' // 普通 iPhone
+      let fallback = isPWA.value ? '435px' : '290px'
       if (isIPad)
         fallback = isPWA.value ? '460px' : '380px'
       else if (isLargePhone)
         fallback = isPWA.value ? '480px' : '335px'
-
-      keyboardSubtract = fallback
+      keyboardH = fallback
     }
   }
 
-  // 3. 🔥🔥🔥 最终公式 🔥🔥🔥
-  // 高度 = 100dvh - 键盘高度 - 顶部障碍物高度(topOffset)
-  // 无论 iOS 还是 Android，只要传了 topOffset，都要减去
-  return `calc(100dvh - ${keyboardSubtract} - ${props.topOffset}px)`
+  // 🔥🔥🔥 核心：优先使用外部传入的 props，没有传则使用自动测量的 autoTopOffset
+  // 这样 auth.vue 里的不用改，NoteList 里的也能自动生效
+  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+
+  // 公式：100dvh - 键盘高度 - 顶部障碍高度
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -670,6 +687,10 @@ watch(() => props.isEditing, (v) => {
 
 // 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
+  measureTopOffset()
+
+  // 保险起见，稍后由动画稳定后再测一次
+  setTimeout(measureTopOffset, 300)
   if (props.isEditing)
     focusToEnd()
 })
@@ -1097,7 +1118,6 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
-const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
@@ -1460,6 +1480,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  measureTopOffset()
   isInputFocused.value = true
   emit('focus')
   captureCaret()

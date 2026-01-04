@@ -3265,7 +3265,6 @@ function onCalendarUpdated(updated: any) {
           :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           :tag-counts="tagCounts"
-          :top-offset="showSearchBar ? 110 : 0"
           enable-drafts
           :draft-key="LOCAL_CONTENT_KEY"
           :enable-scroll-push="true"
