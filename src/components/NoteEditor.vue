@@ -189,7 +189,7 @@ const editorHeight = computed(() => {
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
   // 🔥🔥🔥 手动修补值：如果觉得空隙大，就把这个数字改大（比如 30）；如果输入框被遮住了，就改小
-  const manualPatch = 20
+  const manualPatch = 30
 
   // 公式：100dvh - 键盘 - 顶部偏移 + 手动修补
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px + ${manualPatch}px)`
