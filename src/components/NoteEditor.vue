@@ -75,8 +75,19 @@ const isIOS = /iphone|ipad|ipod/.test(UA)
 const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
+const rootRef = ref<HTMLElement | null>(null)
+// 存储顶部障碍物（搜索栏）的高度
+const topOffset = ref(0)
 
-// ... imports ...
+// 更新顶部距离的函数
+function updateTopOffset() {
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    // rect.top 就是编辑器距离屏幕顶部的距离
+    // 如果小于 0 (比如滚动了)，取 0；保证非负
+    topOffset.value = Math.max(0, rect.top)
+  }
+}
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
@@ -145,7 +156,7 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 如果算出来了 offset (visualViewport 生效)，优先用算出来的
     if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value})`
+      return `calc(100dvh - ${keyboardOffset.value} - ${topOffset.value}px)`
 
     // 🛡️ 兜底逻辑 (万一 resize 没触发)
     const screenW = window.screen.width
@@ -672,6 +683,14 @@ watch(() => props.isEditing, (v) => {
 
 // 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
+// ✅ 挂载后立即计算一次
+  updateTopOffset()
+
+  // 为了保险，如果是动画弹出的，可以延迟一下再算一次
+  setTimeout(updateTopOffset, 300)
+
+  // 监听 resize 以防窗口变化
+  window.addEventListener('resize', updateTopOffset)
   if (props.isEditing)
     focusToEnd()
 })
@@ -682,6 +701,7 @@ onUnmounted(() => {
     window.clearTimeout(draftTimer)
     draftTimer = null
   }
+  window.removeEventListener('resize', updateTopOffset)
 })
 
 // ============== Autosize ==============
@@ -1099,7 +1119,6 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
-const rootRef = ref<HTMLElement | null>(null)
 const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
