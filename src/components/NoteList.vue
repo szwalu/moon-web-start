@@ -390,41 +390,53 @@ function syncStickyGutters() {
   wrap.style.setProperty('--sticky-right', `${pr + scrollbarW + 4}px`)
 }
 
+// NoteList.vue
+
 function getTopVisibleMonthKey(rootEl: HTMLElement): string {
   const scRect = rootEl.getBoundingClientRect()
 
   let topId: string | null = null
   let topY = Number.POSITIVE_INFINITY
 
-  // 优化：先获取所有 value 数组，避免重复解构
-  const elements = Object.entries(noteContainers.value)
+  // 🔥 性能优化：缓存 entries，避免重复解构
+  const entries = Object.entries(noteContainers.value)
 
-  for (const [id, el] of elements) {
+  for (const [id, el] of entries) {
     if (!el || !el.isConnected)
       continue
 
+    // 🔥 性能优化：快速过滤
+    // 虚拟列表的 item 通常有 offsetTop，先用 offsetTop 过滤掉肯定不在视口顶部的元素
+    // 注意：DynamicScrollerItem 是绝对定位的，el.offsetTop 可能不准确，
+    // 但我们可以利用 el.style.transform (如果有) 或者只对大概范围做 getBCR
+
+    const rect = el.getBoundingClientRect()
+
+    // 1. 如果元素完全在视口下方，直接跳过 (大部分元素都在下方)
+    if (rect.top > scRect.bottom)
+      continue
+
+    // 2. 如果元素完全在视口上方太远 (比如 > 1000px)，也跳过
+    if (rect.bottom < scRect.top - 1000)
+      continue
+
+    // 只有在视口附近才进行精确计算
     const dataId = el.getAttribute('data-note-id')
     if (dataId !== id)
-      continue
-    const r = el.getBoundingClientRect()
-
-    // 如果元素完全在视口下方，直接跳过 (向下的大部分元素)
-    if (r.top > scRect.bottom)
-      continue
-    // 如果元素完全在视口上方太远 (比如超过 2000px)，也可以跳过，但为了准确性先保留
-    if (r.bottom < scRect.top - 500)
-      continue
+      continue // 防止复用错位
 
     const n = noteById.value[id]
     if (!n || _isPinned(n))
       continue
 
-    const visible = !(r.bottom <= scRect.top || r.top >= scRect.bottom)
+    // 判断是否在“视口顶部”区域可见
+    const visible = !(rect.bottom <= scRect.top || rect.top >= scRect.bottom)
     if (!visible)
       continue
 
-    if (r.top < topY) {
-      topY = r.top
+    // 找最靠上的那个
+    if (rect.top < topY) {
+      topY = rect.top
       topId = id
     }
   }
@@ -1263,5 +1275,10 @@ function checkSameDay(currentItem, index) {
   color: inherit;
 
   cursor: pointer;
+}
+
+:deep(.vue-virtual-scroller__wrapper),
+:deep(.vue-virtual-scroller__item) {
+  overflow-anchor: none !important;
 }
 </style>

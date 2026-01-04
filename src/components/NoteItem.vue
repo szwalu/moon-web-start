@@ -927,6 +927,10 @@ onUnmounted(() => {
 /* ========================================= */
 /* 1. 主卡片基础样式 */
 /* ========================================= */
+
+.note-item {
+  overflow-anchor: none !important;
+}
 .note-card {
   position: relative;
   border-radius: 0.5rem;
