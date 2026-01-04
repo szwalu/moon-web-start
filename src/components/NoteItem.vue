@@ -646,14 +646,27 @@ function handleDropdownSelect(key: string) {
 
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
+
+  // 1. 先找被点击元素外层有没有 <a> 标签
   const link = target.closest('a')
+
   if (link) {
+    // ✅ 核心修改：如果这个链接里面包含了 img 标签，说明是点击了图片（或者图片链接）
+    // 直接拦截，禁止打开，不做任何响应
+    if (link.querySelector('img') || target.tagName === 'IMG') {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    // --- 下面是正常的文字链接处理逻辑 (保留原样) ---
     localStorage.setItem('pwa_return_note_id', props.note.id)
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
-
     return
   }
+
+  // 2. 处理任务列表 Checkbox (保留原样)
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
@@ -721,7 +734,7 @@ onUnmounted(() => {
       <div class="flex-1 min-w-0">
         <div v-if="isExpanded">
           <div
-            class="prose dark:prose-invert note-content max-w-none px-10"
+            class="note-content prose dark:prose-invert max-w-none px-10"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
