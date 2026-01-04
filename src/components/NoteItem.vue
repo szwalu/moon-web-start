@@ -647,73 +647,26 @@ function handleDropdownSelect(key: string) {
 function handleNoteContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // 1. 查找被点击的链接
+  // 1. 先找被点击元素外层有没有 <a> 标签
   const link = target.closest('a')
 
   if (link) {
-    // ---------------------------------------------------------
-    // 🛡️ 1. 图片防护：如果是图片，绝对禁止打开
-    // ---------------------------------------------------------
+    // ✅ 核心修改：如果这个链接里面包含了 img 标签，说明是点击了图片（或者图片链接）
+    // 直接拦截，禁止打开，不做任何响应
     if (link.querySelector('img') || target.tagName === 'IMG') {
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
-    const href = link.getAttribute('href')
-    if (!href)
-      return
-
-    // ---------------------------------------------------------
-    // 🛡️ 2. PWA 越狱逻辑 (终极方案：模拟点击)
-    // ---------------------------------------------------------
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
-
-    // 如果是 PWA 且是 http/https 链接
-    if (isStandalone && /^https?:\/\//.test(href)) {
-      // 解析域名，判断是否是“外链”
-      try {
-        const currentHost = window.location.host
-        const linkUrl = new URL(href)
-
-        // 只要域名不一致，就强制跳出
-        if (linkUrl.host !== currentHost) {
-          event.preventDefault()
-          event.stopPropagation()
-
-          // 🚀 核心技巧：创建一个临时的 DOM 元素来模拟点击
-          // 这比 window.open 在 iOS 上成功率更高
-          const tempLink = document.createElement('a')
-          tempLink.href = href
-          // 关键：iOS PWA 看到 _blank 且跨域，通常会弹出一个 Safari 视图层
-          tempLink.target = '_blank'
-          tempLink.rel = 'noopener noreferrer'
-
-          // 模拟点击
-          tempLink.click()
-
-          // 销毁
-          tempLink.remove()
-          return
-        }
-      }
-      catch (e) {
-        console.warn('URL parse failed', e)
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 🛡️ 3. 普通模式兜底
-    // ---------------------------------------------------------
+    // --- 下面是正常的文字链接处理逻辑 (保留原样) ---
     localStorage.setItem('pwa_return_note_id', props.note.id)
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
-
-    // 让浏览器执行默认行为
     return
   }
 
-  // 2. 处理任务列表 (保持不变)
+  // 2. 处理任务列表 Checkbox (保留原样)
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
