@@ -190,7 +190,7 @@ const editorHeight = computed(() => {
   // 如果是“编辑模式”，说明是全屏，不需要额外减
   // 如果是“新建模式”(!props.isEditing)，因为它是弹窗，可能上面有缝隙或圆角，
   // 我们手动多减去 20px，把工具栏“拉”回来。
-  const extraReduction = props.isEditing ? 0 : 35
+  const extraReduction = props.isEditing ? 0 : 45
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
