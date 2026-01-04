@@ -652,8 +652,7 @@ function handleNoteContentClick(event: MouseEvent) {
 
   if (link) {
     // ---------------------------------------------------------
-    // 🛡️ 防护一：图片链接拦截
-    // 如果链接包含图片，或者直接点的是图片 -> 只有右键能保存，左键点不反应
+    // 🛡️ 防护一：图片链接拦截 (保持不变)
     // ---------------------------------------------------------
     if (link.querySelector('img') || target.tagName === 'IMG') {
       event.preventDefault()
@@ -661,7 +660,6 @@ function handleNoteContentClick(event: MouseEvent) {
       return
     }
 
-    // 获取链接地址
     const href = link.getAttribute('href')
     if (!href)
       return
@@ -669,34 +667,44 @@ function handleNoteContentClick(event: MouseEvent) {
     // ---------------------------------------------------------
     // 🛡️ 防护二：PWA 强制跳出逻辑 (核心修改)
     // ---------------------------------------------------------
-    // 判断是否在 PWA 独立模式下 (兼容 iOS 和 Android)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
 
-    // 如果是 PWA 模式，且链接是 http 开头的外部链接 (防止拦截了内部路由锚点等)
     if (isStandalone && /^https?:\/\//.test(href)) {
-      event.preventDefault() // 阻止 PWA 内部跳转
-      event.stopPropagation()
+      try {
+        // 解析域名，判断是否是“外链”
+        const currentHost = window.location.host
+        const linkUrl = new URL(href)
+        const linkHost = linkUrl.host
 
-      // 核心：强制调用系统浏览器打开
-      // 'noopener,noreferrer' 是安全最佳实践
-      window.open(href, '_blank', 'noopener,noreferrer')
-      return
+        // 如果点击的是外部链接 (域名不同)
+        if (linkHost !== currentHost) {
+          event.preventDefault()
+          event.stopPropagation()
+
+          // 🚀 核心黑科技：
+          // 在 iOS PWA 中，试图在“当前窗口”导航到“作用域(Scope)以外”的链接，
+          // 系统会被迫将该链接交给 Safari 浏览器处理，从而实现“跳出 App”的效果。
+          // 不要用 window.open，要用 location.href！
+          window.location.href = href
+          return
+        }
+      }
+      catch (e) {
+        console.warn('URL parse failed', e)
+      }
     }
 
     // ---------------------------------------------------------
-    // 🛡️ 防护三：普通网页模式下的兜底
+    // 🛡️ 防护三：普通模式兜底 (保持不变)
     // ---------------------------------------------------------
     localStorage.setItem('pwa_return_note_id', props.note.id)
-
-    // 强制添加 _blank
     if (link.getAttribute('target') !== '_blank')
       link.setAttribute('target', '_blank')
 
-    // 这里的 return 让浏览器执行默认的打开行为 (因为有了 target=_blank，会新开标签页)
     return
   }
 
-  // 2. 处理任务列表 Checkbox (保留原样)
+  // 2. 处理任务列表 Checkbox (保持不变)
   const listItem = target.closest('li.task-list-item')
   if (!listItem)
     return
