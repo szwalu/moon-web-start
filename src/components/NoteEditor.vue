@@ -156,7 +156,7 @@ const editorHeight = computed(() => {
   if (isReallyIOS) {
     // 如果算出来了 offset (visualViewport 生效)，优先用算出来的
     if (keyboardOffset.value !== '0px')
-      return `calc(100dvh - ${keyboardOffset.value} - ${topOffset.value}px)`
+      return `calc(100dvh - ${keyboardOffset.value} + ${topOffset.value}px)`
 
     // 🛡️ 兜底逻辑 (万一 resize 没触发)
     const screenW = window.screen.width
