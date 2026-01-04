@@ -809,9 +809,9 @@ notes:
     s8_i1: 'Click "Calendar" in main menu to view/create/edit/copy/pin/delete by date.'
     s8_i2: Calendar supports retroactive entry or creating future notes.
 
-    s9_title: 9) Export
-    s9_i1_tail: ' Main Menu -> "Settings" -> "Export Notes", select date range for MD format; max 5000 items per batch.'
-    s9_i2_tail: ' "Export Notes" supports exporting by tag.'
+    s9_title: 9) Export / Import
+    s9_i1_tail: 'Export: From the main menu, go to Settings → Export/Import. Supports JSON (recommended, includes weather) or Markdown; filter by date and tags; limit 5,000 items per export.'
+    s9_i2_tail: 'Import: Upload backed-up JSON or Markdown files to restore data; the list refreshes automatically after a successful import.'
 
     s10_title: '10) Account & Personalization'
     s10_i1: 'Profile: Click avatar to upload a new image; click nickname or signature to edit directly.'

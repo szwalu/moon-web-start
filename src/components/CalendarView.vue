@@ -1177,7 +1177,7 @@ async function saveNewNote(content: string, weather: string | null) {
   padding-bottom: var(--safe-bottom);
 }
 .dark .calendar-view {
-  background: #1e1e1e;
+  background: var(--main-bg-c);
   color: #f0f0f0;
 }
 .calendar-header {

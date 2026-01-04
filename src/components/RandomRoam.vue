@@ -528,7 +528,7 @@ function getCardStyle(index: number) {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .random-roam-page--dark {
-  background: #111827;
+  background: var(--main-bg-c);
   color: #f9fafb;
 }
 
@@ -618,7 +618,7 @@ function getCardStyle(index: number) {
 }
 
 .random-roam-page--dark .rr-card {
-  background: #111827;
+  background: var(--main-bg-c);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
   color: #e5e7eb;
 }
@@ -890,11 +890,11 @@ function getCardStyle(index: number) {
 
 /* 暗色模式适配 */
 .random-roam-page--dark .card-stack::before {
-  background: #374151;
+  background: var(--main-bg-c);
   border-color: #4b5563;
 }
 .random-roam-page--dark .card-stack::after {
-  background: #1f2937;
+ background: var(--main-bg-c);
   border-color: #374151;
 }
 </style>

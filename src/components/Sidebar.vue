@@ -971,7 +971,7 @@ onMounted(() => {
 
 @media (prefers-color-scheme: dark) {
   .sidebar-container {
-    --sb-bg: #1e1e1e;
+    --sb-bg: var(--main-bg-c);
     --sb-text: #e0e0e0;
     --sb-text-sub: #bbb;
     --sb-hover: rgba(255,255,255,0.06);
@@ -982,7 +982,7 @@ onMounted(() => {
 }
 
 :global(.dark) .sidebar-container {
-  --sb-bg: #1e1e1e;
+  --sb-bg: var(--main-bg-c);
   --sb-text: #e0e0e0;
   --sb-text-sub: #bbb;
   --sb-hover: rgba(255,255,255,0.06);

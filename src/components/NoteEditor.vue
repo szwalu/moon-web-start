@@ -2821,7 +2821,7 @@ function handleTextareaMove(e: TouchEvent) {
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
 }
 .dark .note-editor-reborn {
-  background-color: #2c2c2e;
+  background-color: var(--main-bg-c);
   border-color: #48484a;
 }
 .dark .note-editor-reborn:focus-within {
@@ -2968,7 +2968,7 @@ function handleTextareaMove(e: TouchEvent) {
 }
 /* 深色模式适配 */
 .dark .editor-footer {
-  background-color: #1e1e1e;
+  background-color: var(--main-bg-c);
   border-top-color: #333;
 }
 /* ===== 录音条（固定在工具栏上方） ===== */
@@ -2985,7 +2985,7 @@ function handleTextareaMove(e: TouchEvent) {
   font-size: 13px;
 }
 .dark .record-bar {
-  background-color: #374151;
+  background-color: var(--main-bg-c);
   border-color: #4b5563;
 }
 
@@ -3162,9 +3162,8 @@ function handleTextareaMove(e: TouchEvent) {
   padding: 6px 6px;
 }
 .dark .format-palette {
-  background: #2c2c2e;
+  background: var(--main-bg-c);
   border-color: #3f3f46;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
 .format-row {
@@ -3214,7 +3213,10 @@ function handleTextareaMove(e: TouchEvent) {
   overflow-y: auto;
   min-width: 120px;
 }
-.dark .tag-suggestions { background-color: #2c2c2e; border-color: #48484a; }
+.dark .tag-suggestions {
+  background-color: var(--main-bg-c);
+  border-color: #48484a;
+}
 .tag-suggestions ul { list-style: none; margin: 0; padding: 4px 0; }
 .tag-suggestions li { padding: 6px 12px; cursor: pointer; font-size: 14px; }
 .tag-suggestions li:hover { background-color: #f0f0f0; }
@@ -3307,7 +3309,8 @@ function handleTextareaMove(e: TouchEvent) {
   min-width: 280px;
 }
 .dark .draft-prompt-card {
-  background: #1e1e1e;
+  background: var(--main-bg-c);
+
   border-color: #3f3f46;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
 }

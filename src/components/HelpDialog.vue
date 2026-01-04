@@ -251,7 +251,7 @@ const { t } = useI18n()
   overflow: hidden;
 }
 :host, .dark .help-wrapper {
-  --card-bg: #1e1e1e;
+  --card-bg: var(--main-bg-c);
   --card-fg: #e5e7eb;
 }
 .help-header {

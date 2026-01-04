@@ -721,7 +721,7 @@ onUnmounted(() => {
       <div class="flex-1 min-w-0">
         <div v-if="isExpanded">
           <div
-            class="note-content prose dark:prose-invert max-w-none px-10"
+            class="prose dark:prose-invert note-content max-w-none px-10"
             :class="fontSizeClass"
             v-html="renderMarkdown(note.content)"
           />
@@ -919,7 +919,8 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
 }
 .dark .note-card {
-  background-color: #374151;
+  background-color: var(--main-bg-c);
+  border: 1px solid #3f3f46;
 }
 .note-card-top-bar {
   display: flex;
