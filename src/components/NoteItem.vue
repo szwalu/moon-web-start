@@ -1520,6 +1520,9 @@ onUnmounted(() => {
   object-fit: contain;
   border-radius: 6px;
   margin: 6px 0;
+  -webkit-touch-callout: default !important; /* iOS 强制允许弹出长按菜单 */
+  pointer-events: auto !important;           /* 确保图片能响应手指触摸 */
+  user-select: none;                         /* 禁止选中图片变蓝，但允许长按 */
 }
 .note-content :deep(blockquote) {
   font-size: 0.85em;
