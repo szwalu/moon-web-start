@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { type PropType, computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 
 import { useI18n } from 'vue-i18n'
@@ -10,7 +10,11 @@ import { supabase } from '@/utils/supabaseClient'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
-  user: { type: Object as () => User | null, required: true },
+  user: {
+    type: Object as PropType<User | null>,
+    required: false,
+    default: null,
+  },
 })
 
 const emit = defineEmits(['close'])

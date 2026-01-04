@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
+import { type PropType, computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import { useDialog, useMessage } from 'naive-ui'
@@ -18,7 +18,11 @@ const props = defineProps({
   show: { type: Boolean, required: true },
   email: { type: String, default: '' },
   totalNotes: { type: Number, default: 0 },
-  user: { type: Object as () => User | null, required: true },
+  user: {
+    type: Object as PropType<User | null>,
+    required: false,
+    default: null,
+  },
   themeColor: { type: String, default: '#6366f1' },
 })
 const emit = defineEmits(['close'])

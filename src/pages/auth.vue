@@ -185,6 +185,26 @@ const themeStyle = computed(() => {
   }
 })
 
+// ✅ [新增] 控制 Logo 加载状态
+const logoError = ref(false)
+
+// ✅ [新增] 获取用户首字母/名称用于显示
+const userInitials = computed(() => {
+  const meta = user.value?.user_metadata
+  let name = ''
+  if (meta?.full_name)
+    name = meta.full_name
+  else if (meta?.name)
+    name = meta.name
+  else if (meta?.display_name)
+    name = meta.display_name
+  else if (user.value?.email)
+    name = user.value.email.split('@')[0]
+  else name = 'U'
+
+  return name.charAt(0).toUpperCase()
+})
+
 const currentThemeColor = computed(() => {
   const currentKey = settingStore.settings.theme
   const themeItem = S.theme.children.find(item => item.key === currentKey)
@@ -3065,11 +3085,22 @@ function onCalendarUpdated(updated: any) {
           />
 
           <img
-            v-else
+            v-else-if="!logoError"
             src="/icons/pwa-192.png"
             class="header-logo-btn"
             alt="Menu"
+            @error="logoError = true"
           >
+
+          <div
+            v-else
+            class="header-avatar placeholder"
+            :style="{
+              background: `linear-gradient(135deg, ${themeStyle['--theme-primary']}, ${themeStyle['--theme-primary-dark']})`,
+            }"
+          >
+            {{ userInitials }}
+          </div>
         </div>
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
@@ -3486,15 +3517,30 @@ function onCalendarUpdated(updated: any) {
 .header-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: 50%; /* 圆形 */
   object-fit: cover;
   border: 1px solid #eee;
+  /* 确保它看起来像按钮 */
+  cursor: pointer;
+}
+
+/* ✅ [新增] 默认头像占位符样式 */
+.header-avatar.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  border: none; /* 去掉边框，因为有背景色了 */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .header-logo-btn {
   width: 32px;
   height: 32px;
-  border-radius: 6px; /* Logo 可以稍微方一点 */
+  border-radius: 6px;
+  object-fit: contain;
 }
 
 /* 顶部选择模式条幅 */

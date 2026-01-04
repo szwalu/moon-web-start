@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { type PropType, computed, ref } from 'vue'
+
+// ✅ [修改] 引入 PropType
 import { useI18n } from 'vue-i18n'
+
+import type { User } from '@supabase/supabase-js'
+
+// ✅ [修改] 引入 User 类型
 import {
   NButton,
   NCard,
@@ -22,7 +28,12 @@ import MobileDateRangePicker from '@/components/MobileDateRangePicker.vue'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
-  user: { type: Object, required: true },
+  // ✅ [修改] 允许 user 为 null，消除控制台警告
+  user: {
+    type: Object as PropType<User | null>,
+    required: false,
+    default: null,
+  },
   allTags: { type: Array as () => string[], default: () => [] },
 })
 
@@ -50,6 +61,12 @@ const tagOptions = computed(() => {
 })
 
 async function handleExport() {
+  // ✅ [新增] 安全检查：如果未登录，直接返回
+  if (!props.user) {
+    message.error(t('auth.login_required') || '请先登录')
+    return
+  }
+
   if (!exportDateRange.value) {
     message.warning(t('notes.select_date_range_first') || '请先选择日期范围')
     return
@@ -71,7 +88,7 @@ async function handleExport() {
       let query = supabase
         .from('notes')
         .select('content, created_at, weather')
-        .eq('user_id', props.user.id)
+        .eq('user_id', props.user.id) // ✅ 此时已确认 props.user 存在
         .order('created_at', { ascending: false })
         .range(from, to)
         .gte('created_at', new Date(startDate).toISOString())
@@ -151,16 +168,24 @@ const importResult = ref<{ success: number; skipped: number; total: number } | n
 function parseMarkdownNotes(text: string) {
   const blocks = text.split('========================================')
   const parsedNotes: any[] = []
+
+  // ✅ [优化] 稍微增强正则兼容性，同时支持中文冒号和英文冒号
+  // 也可以考虑支持 t('notes.created_at_label') 动态值，但正则较复杂，这里先保持基本兼容
+  const dateRegex = /(?:创建时间|Created at|Date)[：:]\s*(.+?)\n/i
+
   for (const block of blocks) {
     if (!block.trim())
       continue
-    const dateMatch = block.match(/创建时间[：:]\s*(.+?)\n/)
+
+    const dateMatch = block.match(dateRegex)
     let createdAt = new Date().toISOString()
+
     if (dateMatch && dateMatch[1]) {
       const d = new Date(dateMatch[1].trim())
       if (!Number.isNaN(d.getTime()))
         createdAt = d.toISOString()
     }
+
     const contentParts = block.split('----------------------------------------')
     let content = ''
     if (contentParts.length >= 3)
@@ -181,6 +206,12 @@ function parseMarkdownNotes(text: string) {
 }
 
 async function handleImport() {
+  // ✅ [新增] 安全检查
+  if (!props.user) {
+    message.error(t('auth.login_required') || '请先登录')
+    return
+  }
+
   const file = importFileList.value[0]?.file
   if (!file) {
     message.warning(t('notes.import_select_file') || '请选择文件')
@@ -203,7 +234,7 @@ async function handleImport() {
             content: n.content,
             created_at: n.created_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            user_id: props.user.id,
+            user_id: props.user!.id, // ✅ 使用 ! 断言，因为上面已检查
             id: uuidv4(),
             weather: n.weather || null,
           }))
@@ -217,7 +248,7 @@ async function handleImport() {
       const parsed = parseMarkdownNotes(text)
       notesToInsert = parsed.map(n => ({
         ...n,
-        user_id: props.user.id,
+        user_id: props.user!.id, // ✅ 使用 ! 断言
         id: uuidv4(),
       }))
     }
@@ -425,6 +456,7 @@ function handleClose() {
 </template>
 
 <style scoped>
+/* 样式保持不变 */
 .modal-content-wrapper {
   min-height: 350px;
   display: flex;
@@ -522,17 +554,15 @@ function handleClose() {
   z-index: 100; border-radius: 3px;
 }
 
-/* 🔥 [核心修改] 强制拉高上传框的高度，使其与导出界面视觉平衡 */
 :deep(.upload-dragger-custom) {
-  height: 220px !important; /* 根据导出界面的高度大致估算 */
+  height: 220px !important;
   display: flex !important;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 0 !important; /* 移除默认内边距，让 flex 居中生效 */
+  padding: 0 !important;
 }
 
-/* 压缩 MobileDateRangePicker 内部按钮 */
 :deep(.date-picker-container .n-button),
 :deep(.date-picker-container button) {
   height: 28px !important;
@@ -541,7 +571,6 @@ function handleClose() {
   padding: 0 8px !important;
 }
 
-/* Dark Mode 适配 */
 :global(.dark) .format-card {
   border-color: #333;
   background-color: #262626;

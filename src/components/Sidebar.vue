@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /* eslint-disable style/max-statements-per-line, curly */
-import { computed, defineAsyncComponent, defineComponent, h, onMounted, ref, toRaw, watch } from 'vue'
+// ✅ 添加了 type PropType
+import { type PropType, computed, defineAsyncComponent, defineComponent, h, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@supabase/supabase-js'
 import {
@@ -42,8 +43,9 @@ const props = defineProps({
     required: true,
   },
   user: {
-    type: Object as () => User | null,
-    required: true,
+    type: Object as PropType<User | null>,
+    required: false,
+    default: null,
   },
   totalNotes: {
     type: Number,
@@ -835,9 +837,8 @@ onMounted(() => {
 
             <NSelect
               v-model:value="selectedCityKey"
-              filterable
-              remote
-              clearable
+
+              filterable clearable remote
               :placeholder="t('settings.city_placeholder')"
               :options="cityOptions"
               :loading="loadingCity"

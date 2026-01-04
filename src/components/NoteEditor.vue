@@ -36,7 +36,7 @@ const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
-
+const bottomSafePadding = ref(0)
 const dialog = useDialog()
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
