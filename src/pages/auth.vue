@@ -700,99 +700,132 @@ onMounted(() => {
           }
           // 替换 auth.vue 中 onAuthStateChange 里的 else 分支
           else {
-            // 路径D：无缓存或常规加载
-            if (!notes.value || notes.value.length === 0) {
-              await fetchNotes(true)
-            }
-            else {
-              // =========================================================
-              // 1. 🔥 核心逻辑：静默更新 (简单合并版)
-              // =========================================================
-              try {
-                const { data: latestData } = await supabase
-                  .from('notes')
-                  .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
-                  .eq('user_id', user.value.id)
-                  .order('is_pinned', { ascending: false })
-                  .order('created_at', { ascending: false })
-                  .limit(notesPerPage)
+            // 路径D：混合模式（有缓存，但需要静默更新以确保准确性）
 
-                if (latestData && latestData.length > 0) {
+            // 1. 发起请求获取最新的第一页数据
+            const busterId = uuidv4()
+
+            try {
+              const { data: latestData, count } = await supabase
+                .from('notes')
+                .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited', { count: 'exact' })
+                .eq('user_id', user.value.id)
+                .neq('id', busterId)
+                .order('is_pinned', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(notesPerPage)
+
+              if (latestData) {
+                // =========================================================
+                // 🔥 核心修复：水位线裁剪法 (Smart Merge) + hasUpdates 优化
+                // =========================================================
+
+                // A. 如果服务器返回空数组
+                if (latestData.length === 0) {
+                  if (notes.value.length > 0) {
+                    notes.value = []
+                    totalNotes.value = 0
+                    // 既然发生了清空，肯定算有更新，需要强制清理缓存
+                    try {
+                      localStorage.removeItem(CACHE_KEYS.HOME)
+                      localStorage.removeItem(CACHE_KEYS.HOME_META)
+                      await saveNotesSnapshot([])
+                    }
+                    catch {}
+                  }
+                }
+                else {
+                  // B. 准备逻辑
+                  const incomingIds = new Set(latestData.map(n => n.id))
+                  const lastFreshNote = latestData[latestData.length - 1]
+
+                  // 标记：是否有变动
+                  let hasUpdates = false
+
+                  // 1. 检查头部数据的变化 (新增 或 内容更新)
                   const existingMap = new Map(notes.value.map(n => [n.id, n]))
-                  const newItems: any[] = []
-                  let hasUpdates = false // 👈 新增：标记是否有内容更新
-
                   for (const remoteNote of latestData) {
-                    if (existingMap.has(remoteNote.id)) {
-                      // A. 原地更新
-                      const localNote = existingMap.get(remoteNote.id)
-                      if (
-                        localNote.updated_at !== remoteNote.updated_at
-              || localNote.is_pinned !== remoteNote.is_pinned
-                      ) {
-                        const idx = notes.value.findIndex(n => n.id === remoteNote.id)
-                        if (idx !== -1) {
-                          notes.value[idx] = remoteNote
-                          hasUpdates = true // 👈 标记发生了更新
-                        }
-                      }
-                    }
-                    else {
-                      // B. 收集新笔记
-                      newItems.push(remoteNote)
-                    }
+                    const localNote = existingMap.get(remoteNote.id)
+                    if (!localNote)
+                      hasUpdates = true // 发现本地没有的新笔记
+                    else if (
+                      localNote.updated_at !== remoteNote.updated_at
+            || localNote.is_pinned !== remoteNote.is_pinned
+                    )
+                      hasUpdates = true // 发现内容或置顶状态变更
                   }
 
-                  // C. 只要有新笔记 或者 有更新，就刷新缓存
-                  if (newItems.length > 0 || hasUpdates) {
-                    // 如果有新笔记，合并进去
-                    if (newItems.length > 0) {
-                      notes.value = [...newItems, ...notes.value]
-                      totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
-                    }
+                  // 定义优先级比较函数
+                  const isHigherOrEqualPriority = (noteA, noteB) => {
+                    if (noteA.is_pinned && !noteB.is_pinned)
+                      return true
+                    if (!noteA.is_pinned && noteB.is_pinned)
+                      return false
+                    return noteA.created_at >= noteB.created_at
+                  }
 
-                    // D. 🔥 写入 LocalStorage 和 IndexedDB
+                  // 2. 过滤本地旧笔记 (同时检测是否有僵尸笔记被杀)
+                  const keptLocalNotes = notes.value.filter((localNote) => {
+                    // 如果这个笔记已经在 latestData 里了，跳过 (会被 latestData 的版本替代)
+                    if (incomingIds.has(localNote.id))
+                      return false
+
+                    // 杀掉僵尸笔记：如果本地笔记比“水位线”还新，却没在 latestData 里，说明被删了
+                    if (isHigherOrEqualPriority(localNote, lastFreshNote)) {
+                      hasUpdates = true // 🔥 检测到删除操作！标记为有更新
+                      return false
+                    }
+                    return true
+                  })
+
+                  // C. 拼接：最新头部 + 筛选后的旧尾部
+                  notes.value = [...latestData, ...keptLocalNotes]
+
+                  // 检查总数变化
+                  if (count !== null && totalNotes.value !== count) {
+                    totalNotes.value = count
+                    hasUpdates = true
+                  }
+
+                  // D. 只有当检测到实质性变化时，才写入缓存 (节省 I/O)
+                  if (hasUpdates) {
                     try {
+                      // 1. 写入 LocalStorage
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
                       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
 
-                      // ✅✅✅ 这里就是你要求的：补上快照保存
+                      // 2. 🔥 写入 IndexedDB (离线兜底，确保多端同步时的新笔记能存下来)
                       await saveNotesSnapshot(notes.value)
+                      // console.log('检测到数据变更，已更新所有缓存')
                     }
                     catch (e) {
-                      console.warn('缓存/快照写入失败', e)
+                      console.warn('缓存写入失败', e)
                     }
                   }
                 }
               }
-              catch (err) {
-                console.warn('[Silent Update Failed] Continuing with cached data:', err)
-              }
-
-              // =========================================================
-              // 2. 🚑【后续状态修正】
-              // =========================================================
-              if (notes.value.length > 0) {
-                // (1) 修正游标
-                let minCreated = notes.value[0].created_at
-                for (const n of notes.value) {
-                  if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
-                    minCreated = n.created_at
-                }
-                oldestLoadedAt.value = minCreated
-
-                // (2) 修正页码
-                currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
-
-                // (3) 默认允许加载更多
-                hasMoreNotes.value = true
-              }
-              else {
-                hasMoreNotes.value = false
-              }
+            }
+            catch (err) {
+              console.warn('[Silent Update Failed] Continuing with cached data:', err)
             }
 
-            // === 通用后续逻辑 ===
+            // =========================================================
+            // 2. 🚑 后续状态修正
+            // =========================================================
+            if (notes.value.length > 0) {
+              let minCreated = notes.value[0].created_at
+              for (const n of notes.value) {
+                if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+                  minCreated = n.created_at
+              }
+              oldestLoadedAt.value = minCreated
+              currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
+              hasMoreNotes.value = true
+            }
+            else {
+              hasMoreNotes.value = false
+            }
+
             anniversaryBannerRef.value?.loadAnniversaryNotes()
             authResolved.value = true
           }
