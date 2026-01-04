@@ -700,109 +700,92 @@ onMounted(() => {
           }
           // 替换 auth.vue 中 onAuthStateChange 里的 else 分支
           else {
-            // 路径D：混合模式（有缓存，但需要静默更新以确保准确性）
-
-            // 1. 发起请求获取最新的第一页数据
-            // 生成 busterId 依然保留，确保请求穿透 HTTP 缓存
-            const busterId = uuidv4()
-
-            try {
-              const { data: latestData, count } = await supabase
-                .from('notes')
-                .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited', { count: 'exact' })
-                .eq('user_id', user.value.id)
-                .neq('id', busterId)
-                .order('is_pinned', { ascending: false })
-                .order('created_at', { ascending: false })
-                .limit(notesPerPage) // 获取最新的 Top N
-
-              if (latestData) {
-                // =========================================================
-                // 🔥 核心修复：水位线裁剪法 (Smart Merge)
-                // =========================================================
-
-                // A. 如果服务器返回空数组，说明用户可能把笔记全删了，或者第一页就没数据
-                if (latestData.length === 0) {
-                  // 只有当本地本来有数据，但服务器说没了，才清空，避免误杀
-                  if (notes.value.length > 0) {
-                    notes.value = []
-                    totalNotes.value = 0
-                  }
-                }
-                else {
-                  // B. 正常合并逻辑
-                  const incomingIds = new Set(latestData.map(n => n.id))
-
-                  // 找出“分界线”：最新数据的最后一条笔记
-                  // 任何比这条笔记“更原本应该排在前面”的本地笔记，如果没出现在 latestData 里，就是被删除的“僵尸”
-                  const lastFreshNote = latestData[latestData.length - 1]
-
-                  // 定义一个辅助函数：判断 noteA 是否比 noteB 排序优先级更高（或者相等）
-                  // 排序规则：置顶 > 非置顶；同类中：新 > 旧
-                  const isHigherOrEqualPriority = (noteA, noteB) => {
-                    if (noteA.is_pinned && !noteB.is_pinned)
-                      return true
-                    if (!noteA.is_pinned && noteB.is_pinned)
-                      return false
-                    // 如果置顶状态相同，比时间 (字符串比较即可，ISO时间格式支持直接比)
-                    return noteA.created_at >= noteB.created_at
-                  }
-
-                  // 过滤本地现有的笔记（只保留“尾部”安全的数据）
-                  const keptLocalNotes = notes.value.filter((localNote) => {
-                    // 1. 如果这个笔记已经在 latestData 里了，本地旧版就不要了（会被 latestData 里的新版替代）
-                    if (incomingIds.has(localNote.id))
-                      return false
-
-                    // 2. 🔥【关键修复点】杀掉僵尸笔记
-                    // 如果本地笔记比“分界线”还新（或者就是分界线位置），却没出现在 incomingIds 里，
-                    // 说明它在服务器端已经被删除了（否则它应该出现在 latestData 里）。
-                    if (isHigherOrEqualPriority(localNote, lastFreshNote)) {
-                      // 这是一个僵尸笔记，过滤掉！
-                      return false
-                    }
-
-                    // 3. 剩下的就是比分界线更旧的笔记（第2页、3页...），保留它们以维持 Scroll 位置
-                    return true
-                  })
-
-                  // C. 拼接：最新头部 + 筛选后的旧尾部
-                  notes.value = [...latestData, ...keptLocalNotes]
-
-                  // D. 更新总数 (如果有 count 返回就用精确的，没有就估算)
-                  if (count !== null)
-                    totalNotes.value = count
-
-                  // E. 写入缓存 (保持下次加载时的体验)
-                  try {
-                    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-                    localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-                  }
-                  catch {}
-                }
-              }
-            }
-            catch (err) {
-              console.warn('[Silent Update Failed] Continuing with cached data:', err)
-            }
-
-            // =========================================================
-            // 2. 🚑 后续状态修正 (保持不变)
-            // =========================================================
-            if (notes.value.length > 0) {
-              let minCreated = notes.value[0].created_at
-              for (const n of notes.value) {
-                if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
-                  minCreated = n.created_at
-              }
-              oldestLoadedAt.value = minCreated
-              currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
-              hasMoreNotes.value = true
+            // 路径D：无缓存或常规加载
+            if (!notes.value || notes.value.length === 0) {
+              await fetchNotes(true)
             }
             else {
-              hasMoreNotes.value = false
+              // =========================================================
+              // 1. 🔥 核心逻辑：静默更新
+              // =========================================================
+              try {
+                const { data: latestData } = await supabase
+                  .from('notes')
+                  .select('id, content, weather, created_at, updated_at, is_pinned, is_favorited')
+                  .eq('user_id', user.value.id)
+                  .order('is_pinned', { ascending: false })
+                  .order('created_at', { ascending: false })
+                  .limit(notesPerPage)
+
+                if (latestData && latestData.length > 0) {
+                  const existingMap = new Map(notes.value.map(n => [n.id, n]))
+                  const newItems: any[] = []
+
+                  for (const remoteNote of latestData) {
+                    if (existingMap.has(remoteNote.id)) {
+                      // A. 原地更新
+                      const localNote = existingMap.get(remoteNote.id)
+                      if (
+                        localNote.updated_at !== remoteNote.updated_at
+                        || localNote.is_pinned !== remoteNote.is_pinned
+                      ) {
+                        const idx = notes.value.findIndex(n => n.id === remoteNote.id)
+                        if (idx !== -1)
+                          notes.value[idx] = remoteNote
+                      }
+                    }
+                    else {
+                      // B. 收集新笔记
+                      newItems.push(remoteNote)
+                    }
+                  }
+
+                  // C. 插入新笔记
+                  if (newItems.length > 0) {
+                    notes.value = [...newItems, ...notes.value]
+                    // 只增不减，不需要严格校对 totalNotes，防止误判
+                    totalNotes.value = (typeof totalNotes.value === 'number' ? totalNotes.value : notes.value.length) + newItems.length
+
+                    try {
+                      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+                      localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
+                    }
+                    catch {}
+                  }
+                }
+              }
+              catch (err) {
+                console.warn('[Silent Update Failed] Continuing with cached data:', err)
+              }
+
+              // =========================================================
+              // 2. 🚑【关键修复 - 最终版】
+              // =========================================================
+              if (notes.value.length > 0) {
+                // (1) 修正游标：确保知道从哪里开始加载下一页
+                let minCreated = notes.value[0].created_at
+                for (const n of notes.value) {
+                  if (n.created_at && new Date(n.created_at).getTime() < new Date(minCreated).getTime())
+                    minCreated = n.created_at
+                }
+                oldestLoadedAt.value = minCreated
+
+                // (2) 修正页码
+                currentPage.value = Math.max(1, Math.ceil(notes.value.length / notesPerPage))
+
+                // (3) 🔥【重要修改】：只要列表里有数据，就默认允许尝试加载更多。
+                //     不要在这里判断 totalNotes，因为缓存的 totalNotes 可能滞后。
+                //     如果真的没数据了，fetchNotes 会在请求后自动把 hasMoreNotes 设为 false。
+                hasMoreNotes.value = true
+              }
+              else {
+                // 理论上进不来这里（外层已判断），但做个兜底
+                hasMoreNotes.value = false
+              }
             }
 
+            // === 通用后续逻辑 ===
+            // fetchAllTags()
             anniversaryBannerRef.value?.loadAnniversaryNotes()
             authResolved.value = true
           }
@@ -2437,8 +2420,6 @@ async function triggerDeleteConfirmation(id: string) {
   if (!id || !user.value?.id)
     return
 
-  const noteToDelete = notes.value.find(note => note.id === id)
-
   dialog.warning({
     title: t('notes.delete_confirm_title'),
     content: t('notes.delete_confirm_content'),
@@ -2446,7 +2427,7 @@ async function triggerDeleteConfirmation(id: string) {
     negativeText: t('notes.cancel'),
     onPositiveClick: async () => {
       try {
-        // —— 离线分支：本地删除 + 入队 outbox.delete ——
+        // —— A) 离线分支 (保持不变) ——
         if (!isOnline()) {
           await queuePendingDelete(id)
           await applyLocalDeletion([id])
@@ -2457,7 +2438,9 @@ async function triggerDeleteConfirmation(id: string) {
           return
         }
 
-        // —— 在线分支（保持原逻辑）——
+        // —— B) 在线分支 ——
+
+        // 1. 先请求服务器删除
         const { error } = await supabase
           .from('notes')
           .delete()
@@ -2466,35 +2449,25 @@ async function triggerDeleteConfirmation(id: string) {
 
         if (error)
           throw new Error(error.message)
-        notifyAnniversaryDelete([id])
+
+        // 2. 🔥【核心修改】服务器删成功了，立刻调用本地强力清理函数
+        // applyLocalDeletion 会同时处理：
+        // - notes.value (内存)
+        // - localStorage (主页缓存)
+        // - IndexedDB (离线快照) <-- 之前可能漏了这里
+        // - 标签/日历缓存失效
+        await applyLocalDeletion([id])
+
+        // 3. 额外的 UI 清理
         anniversaryBannerRef.value?.removeNoteById(id)
-
-        // 更新本地缓存与 UI（保持原有逻辑）
-        const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
-        if (homeCacheRaw) {
-          const homeCache = JSON.parse(homeCacheRaw)
-          const updatedHomeCache = homeCache.filter((n: any) => n.id !== id)
-          localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(updatedHomeCache))
-        }
-
-        totalNotes.value -= 1
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-
-        if (activeTagFilter.value)
-          notes.value = notes.value.filter(n => n.id !== id)
-
-        else
-          notes.value = notes.value.filter(n => n.id !== id)
-
-        messageHook.success(t('notes.delete_success'))
-
-        if (noteToDelete)
-          invalidateCachesOnDataChange(noteToDelete)
-
         if (showCalendarView.value && calendarViewRef.value) {
-          // @ts-expect-error: calendar method exposed via defineExpose
           ;(calendarViewRef.value as any).commitDelete?.(id)
         }
+
+        // 4. 清理全局搜索缓存 (以防万一)
+        invalidateAllSearchCaches()
+
+        messageHook.success(t('notes.delete_success'))
       }
       catch (err: any) {
         messageHook.error(`删除失败: ${err.message || '请稍后重试'}`)
@@ -2731,6 +2704,7 @@ async function executeBatchAddTag(tagRaw: string) {
 }
 
 async function handleDeleteSelected() {
+  // ✅ 修复点1：换行写 return
   if (selectedNoteIds.value.length === 0)
     return
 
@@ -2744,20 +2718,20 @@ async function handleDeleteSelected() {
         loading.value = true
         const idsToDelete = [...selectedNoteIds.value]
 
-        // —— 离线分支：本地删除 + 入队 delete（逐条）——
+        // —— A) 离线分支 ——
         if (!isOnline()) {
           for (const id of idsToDelete) {
+            // ✅ 修复点2：展开 try-catch，避免同样的 linter 报错
             try {
               await queuePendingDelete(id)
             }
             catch (e) {
-              console.warn('[offline] queuePendingDelete failed:', id, e)
+              console.warn('[offline] queue failed', e)
             }
           }
-
           await applyLocalDeletion(idsToDelete)
 
-          // 清理“正在编辑”的本地态
+          // 清理编辑状态
           if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
             newNoteContent.value = ''
             lastSavedId.value = null
@@ -2768,22 +2742,13 @@ async function handleDeleteSelected() {
 
           isSelectionModeActive.value = false
           selectedNoteIds.value = []
-
           messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
           return
         }
 
-        // —— 在线分支（保持你原来的流程）——
-        // 步骤 1: 循环处理每个笔记的【精确】缓存（标签和日历）
-        idsToDelete.forEach((id) => {
-          const noteToDelete = notes.value.find(n => n.id === id)
-          if (noteToDelete) {
-            // @ts-expect-error: calendar method exposed via defineExpose
-            invalidateCachesOnDataChange(noteToDelete, true)
-          }
-        })
+        // —— B) 在线分支 ——
 
-        // 步骤 2: 执行数据库批量删除操作
+        // 1. 数据库删除
         const { error } = await supabase
           .from('notes')
           .delete()
@@ -2792,18 +2757,15 @@ async function handleDeleteSelected() {
 
         if (error)
           throw new Error(error.message)
-        notifyAnniversaryDelete(idsToDelete)
-        idsToDelete.forEach((id) => {
-          anniversaryBannerRef.value?.removeNoteById(id)
-        })
 
-        // 步骤 3: 在数据库操作成功后，【一次性】清空所有搜索缓存
-        invalidateAllSearchCaches()
+        // 2. 🔥【核心修改】直接调用统一清理函数
+        // 它会负责把这批 ID 从 内存、LocalStorage 和 IndexedDB 中彻底抹去
+        await applyLocalDeletion(idsToDelete)
 
-        // 步骤 4: 更新本地UI状态 (这部分逻辑保持不变)
-        notes.value = notes.value.filter(n => !idsToDelete.includes(n.id))
-        cachedNotes.value = cachedNotes.value.filter(n => !idsToDelete.includes(n.id))
+        // 3. 扫尾工作
+        invalidateAllSearchCaches() // 搜索缓存全部作废
 
+        // 清理编辑区
         if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
           newNoteContent.value = ''
           lastSavedId.value = null
@@ -2812,13 +2774,7 @@ async function handleDeleteSelected() {
           localStorage.removeItem(LOCAL_CONTENT_KEY)
         }
 
-        totalNotes.value = Math.max(0, (totalNotes.value || 0) - idsToDelete.length)
-        hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-        hasPreviousNotes.value = currentPage.value > 1
-
-        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
-        localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-
+        // 退出选择模式
         isSelectionModeActive.value = false
         selectedNoteIds.value = []
 
