@@ -98,7 +98,16 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// ... imports ...
+function isKeyboardCollapsed() {
+  if (!window.visualViewport)
+    return true
+
+  const vvH = window.visualViewport.height
+  const screenH = window.screen.height / window.devicePixelRatio
+
+  // iOS 下允许一点误差（地址栏 / 安全区）
+  return Math.abs(vvH - screenH) < 80
+}
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
@@ -111,11 +120,9 @@ function updateKeyboardOffset() {
 
   const currentHeight = window.visualViewport.height
 
-  // 1. 键盘收起时：更新基准高度
-  if (!isInputFocused.value) {
-    if (currentHeight > 300)
-      baseHeight = currentHeight
-
+  // 1. 键盘完全收起时，才更新 baseHeight
+  if (isKeyboardCollapsed()) {
+    baseHeight = currentHeight
     keyboardOffset.value = '0px'
     return
   }
