@@ -1443,27 +1443,43 @@ defineExpose({ executeSearch, clearSearch })
 .sheet-confirm-btn:hover { background-color: #4f46e5; }
 
 /* 弹窗内部组件 */
-.seg-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.seg-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
 .seg-btn {
-  flex: 1; padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb;
-  background: #f9fafb; color: #374151; cursor: pointer;
+  flex: 1;
+  padding: 6px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #374151;
+  cursor: pointer;
+  /* 防止按钮文字在小屏换行太难看 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .seg-btn.active { background-color: #eff6ff; border-color: #6366f1; color: #6366f1; font-weight: 500; }
 .dark .seg-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
 .dark .seg-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
 
+/* ✅ 重写：改用 Grid 布局，这是强制宽度的最有效方法 */
 .date-input-row {
-  display: flex;
-  align-items: center;
-  /* gap: 12px; -> 改小，腾出空间 */
-  gap: 4px;
+  display: grid;
+  /* 左输入框(1份) | 分隔符(自适应) | 右输入框(1份) */
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  /* 底部对齐：确保 Input 输入框底部在同一水平线，不受 Label 高度影响 */
+  align-items: end;
 }
 
 .date-input-wrapper {
-  flex: 1;
-  /* ✅ 关键修改：添加 min-width: 0 */
-  /* 这告诉 flex 容器，如果空间不够，允许这个子元素缩小到比内容更窄 */
+  /* Grid item 默认会填满格子，但加 min-width: 0 防止被内部内容撑大 */
   min-width: 0;
+  width: 100%;
 }
 
 .date-label {
@@ -1471,43 +1487,38 @@ defineExpose({ executeSearch, clearSearch })
   color: #6b7280;
   margin-bottom: 4px;
   display: block;
-  /* 防止文字换行导致高度不一致 */
+  /* 强制不换行，防止标签太长破坏布局 */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .date-input {
   width: 100%;
-  /* padding: 6px; -> 改为左右更小的 padding */
+  /* 减小内边距，挤出更多空间 */
   padding: 6px 2px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   box-sizing: border-box;
-  /* 移动端字体稍微改小一点，防止撑大 */
+  /* 调小字体，让原生日期控件变小 */
   font-size: 13px;
+  /* 移除 iOS 默认外观，方便控制宽度 */
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: transparent;
 }
+.dark .date-input { background: #111827; border-color: #4b5563; color: #fff; }
 
-.dark .date-input {
-  background: #111827;
-  border-color: #4b5563;
-  color: #fff;
-}
-
-/* ✅ 修改 2: 确保日期分隔符样式正确 */
+/* ✅ 重写：分隔符样式 */
 .date-separator {
-  padding: 0;
-  align-self: center;
-  font-size: 14px; /* 字体改小一点 */
+  /* 之前用 flex + top hack，现在用 grid align-items: end */
+  /* input 高度大概 30-34px，这里给底部 padding 让横线视觉居中于 input */
+  padding-bottom: 8px;
+
+  font-size: 14px;
   color: #9ca3af;
   line-height: 1;
-  /* min-width: 24px; -> 改小一点 */
-  min-width: 16px;
   text-align: center;
-  position: relative;
-  top: 11px;
+  min-width: 10px;
 }
-
 .tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .tag-mode-btn { padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
 .tag-mode-btn.active { border-color: #6366f1; background-color: #eff6ff; color: #6366f1; }
