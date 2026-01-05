@@ -1270,8 +1270,9 @@ export function useTagMenu(
     dialog.create({
       type: 'info',
       title: t('tags.rename_tag') || '重命名标签',
+      style: 'margin-bottom: 46vh;',
       content: () =>
-        h('div', { style: 'display:flex;gap:8px;align-items:center; transform: translateY(-46%);' }, [
+        h('div', { style: 'display:flex;gap:8px;align-items:center;' }, [
           h('span', null, '#'),
           h(NInput, {
             defaultValue: initial,

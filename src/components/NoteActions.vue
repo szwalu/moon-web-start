@@ -1452,31 +1452,62 @@ defineExpose({ executeSearch, clearSearch })
 .dark .seg-btn { background: #374151; border-color: #4b5563; color: #d1d5db; }
 .dark .seg-btn.active { background: #312e81; border-color: #818cf8; color: #818cf8; }
 
-.date-input-row { display: flex; align-items: center; gap: 12px; }
-.date-input-wrapper { flex: 1; }
-.date-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; display: block; }
-.date-input { width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
-.dark .date-input { background: #111827; border-color: #4b5563; color: #fff; }
+.date-input-row {
+  display: flex;
+  align-items: center;
+  /* gap: 12px; -> 改小，腾出空间 */
+  gap: 4px;
+}
+
+.date-input-wrapper {
+  flex: 1;
+  /* ✅ 关键修改：添加 min-width: 0 */
+  /* 这告诉 flex 容器，如果空间不够，允许这个子元素缩小到比内容更窄 */
+  min-width: 0;
+}
+
+.date-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  display: block;
+  /* 防止文字换行导致高度不一致 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.date-input {
+  width: 100%;
+  /* padding: 6px; -> 改为左右更小的 padding */
+  padding: 6px 2px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-sizing: border-box;
+  /* 移动端字体稍微改小一点，防止撑大 */
+  font-size: 13px;
+}
+
+.dark .date-input {
+  background: #111827;
+  border-color: #4b5563;
+  color: #fff;
+}
 
 /* ✅ 修改 2: 确保日期分隔符样式正确 */
 .date-separator {
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: 4px;
-  padding-right: 4px;
-  align-self: center; /* 明确垂直居中 */
-  font-size: 16px;
+  padding: 0;
+  align-self: center;
+  font-size: 14px; /* 字体改小一点 */
   color: #9ca3af;
   line-height: 1;
-
-  /* ✅ 新增：给一个固定宽度，并让文字在里面居中 */
-  min-width: 24px;
+  /* min-width: 24px; -> 改小一点 */
+  min-width: 16px;
   text-align: center;
-
-  /* 保持你调试好的垂直下移参数 */
   position: relative;
   top: 11px;
 }
+
 .tag-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .tag-mode-btn { padding: 6px; font-size: 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
 .tag-mode-btn.active { border-color: #6366f1; background-color: #eff6ff; color: #6366f1; }
