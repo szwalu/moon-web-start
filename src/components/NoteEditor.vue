@@ -98,21 +98,13 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-function isKeyboardCollapsed() {
-  if (!window.visualViewport)
-    return true
-
-  const vvH = window.visualViewport.height
-  const screenH = window.screen.height / window.devicePixelRatio
-
-  // iOS 下允许一点误差（地址栏 / 安全区）
-  return Math.abs(vvH - screenH) < 80
-}
+// ... imports ...
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-
+const viewportReady = ref(false)
+let keyboardMeasureCount = 0
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
@@ -120,28 +112,31 @@ function updateKeyboardOffset() {
 
   const currentHeight = window.visualViewport.height
 
-  // 1. 键盘完全收起时，才更新 baseHeight
+  // 🔴 冷启动 + 键盘弹出时，第一次 resize 是不可信的
+  if (isInputFocused.value && !viewportReady.value) {
+    keyboardMeasureCount++
+
+    // 至少等 2 次 resize（经验值，iOS 实测）
+    if (keyboardMeasureCount < 2) {
+      // 不更新 baseHeight，不算 keyboardOffset
+      return
+    }
+
+    // 第二次开始才认为 viewport 稳定
+    viewportReady.value = true
+  }
+
+  // ===== 正常逻辑 =====
   if (isKeyboardCollapsed()) {
     baseHeight = currentHeight
     keyboardOffset.value = '0px'
     return
   }
 
-  // 2. 键盘弹出时
   if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
-
-    // 只有差值合理才认为是键盘
-    if (diff > 150) {
-      const extraBuffer = 0
-
-      const finalOffset = diff + extraBuffer
-
-      keyboardOffset.value = `${finalOffset}px`
-    }
-    else {
-      keyboardOffset.value = '0px'
-    }
+    if (diff > 150)
+      keyboardOffset.value = `${diff}px`
   }
 }
 
@@ -1495,6 +1490,9 @@ onUnmounted(() => {
 function handleFocus() {
   measureTopOffset()
   isInputFocused.value = true
+  // 🔥 关键：每次重新进入输入态，都重新等待 viewport 稳定
+  viewportReady.value = false
+  keyboardMeasureCount = 0
   emit('focus')
   captureCaret()
 
