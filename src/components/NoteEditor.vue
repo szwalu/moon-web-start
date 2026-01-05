@@ -37,6 +37,8 @@ const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
 
+// 🔥🔥🔥 新增：实时追踪 visualViewport 的高度
+const vvHeight = ref(0)
 // 测量函数：只在编辑模式下生效
 function measureTopOffset() {
   // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
@@ -103,59 +105,41 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
-const viewportReady = ref(false)
-let keyboardMeasureCount = 0
-let coldStartFallbackUsed = false
+
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
+  // 🔥🔥🔥 1. 实时记录当前视口高度
+  vvHeight.value = currentHeight
 
-  // ===== 1. 键盘收起态 =====
+  // 2. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
+    // 稍微放宽一点条件，防止恢复时偶尔的高度抖动
     if (currentHeight > 300)
       baseHeight = currentHeight
-
     keyboardOffset.value = '0px'
-    keyboardMeasureCount = 0
-    coldStartFallbackUsed = false
     return
   }
 
-  // ===== 2. 键盘弹出态 =====
-  if (baseHeight <= 0)
-    return
-
-  const diff = baseHeight - currentHeight
-
-  // -------- 冷恢复关键修复 --------
-  keyboardMeasureCount++
-
-  // iOS 冷启动：第一次 diff 不可信
-  if (keyboardMeasureCount === 1 && diff > 0) {
-    // ⚠️ 不信 diff，但不能为 0，否则必留空隙
-    // 使用稳定 fallback
-    if (!coldStartFallbackUsed) {
-      keyboardOffset.value = isPWA.value ? '435px' : '290px'
-      coldStartFallbackUsed = true
-    }
-    return
+  // 3. 键盘弹出时
+  if (baseHeight > 0) {
+    const diff = baseHeight - currentHeight
+    // 只有差值合理才认为是键盘
+    if (diff > 150)
+      keyboardOffset.value = `${diff}px`
+    else
+      keyboardOffset.value = '0px'
   }
-
-  // -------- 正常稳定阶段 --------
-  if (diff > 150)
-    keyboardOffset.value = `${diff}px`
-
-  else
-    keyboardOffset.value = '0px'
 }
 
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
     baseHeight = window.visualViewport.height
+    vvHeight.value = window.visualViewport.height
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
@@ -168,16 +152,26 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight (针对新建笔记单独微调)
+// 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
     return props.isEditing ? '100dvh' : '80dvh'
 
-  // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
+  // 🔥🔥🔥 核心修复开始 🔥🔥🔥
+  // 针对：iOS + 编辑旧笔记(isEditing) + 键盘已聚焦
+  // 此时直接使用 visualViewport 高度，这是最精准的，不受后台恢复影响
+  if (isReallyIOS && props.isEditing && vvHeight.value > 0) {
+    const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+    // 视口高度 - 顶部避让距离 = 编辑器高度
+    return `${vvHeight.value - finalTopOffset}px`
+  }
+  // 🔥🔥🔥 核心修复结束 🔥🔥🔥
+
+  // --- 下面保持原有的逻辑（用于 Android 或 新建笔记弹窗模式） ---
   let keyboardH = '0px'
 
   if (isReallyIOS) {
@@ -197,29 +191,18 @@ const editorHeight = computed(() => {
       keyboardH = fallback
     }
   }
-
-  let finalTopOffset = 0
-
-  if (!isInputFocused.value) {
-  // 浏览态：允许顶部偏移
-    finalTopOffset
-    = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-  }
   else {
-  // 🔥 键盘弹出态（编辑旧笔记）
-  // iOS 冷恢复下，topOffset 不可靠，必须归零
-    finalTopOffset = 0
+    // Android 即使在这里通常也不需要处理，因为 Android 视口会自动挤压
+    // 但保留原逻辑以防万一
+    if (keyboardOffset.value !== '0px')
+      keyboardH = keyboardOffset.value
   }
 
-  // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
-  // 如果是“编辑模式”，说明是全屏，不需要额外减
-  // 如果是“新建模式”(!props.isEditing)，因为它是弹窗，可能上面有缝隙或圆角，
-  // 我们手动多减去 20px，把工具栏“拉”回来。
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
+  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
+  // 新建模式的额外扣除
+  const extraReduction = props.isEditing ? 0 : (isPWA.value ? 48 : 10)
+
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
@@ -1513,12 +1496,10 @@ onUnmounted(() => {
 function handleFocus() {
   measureTopOffset()
   isInputFocused.value = true
-  // 🔥 关键：每次重新进入输入态，都重新等待 viewport 稳定
-  viewportReady.value = false
-  keyboardMeasureCount = 0
-  coldStartFallbackUsed = false
   emit('focus')
   captureCaret()
+  if (window.visualViewport && window.visualViewport.height > 600)
+    baseHeight = window.visualViewport.height
 
   // 允许再次“轻推”
   _hasPushedPage = false
