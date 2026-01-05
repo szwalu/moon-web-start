@@ -1492,26 +1492,36 @@ defineExpose({ executeSearch, clearSearch })
 }
 
 .date-input {
+  display: block; /* 确保是块级表现 */
   width: 100%;
-  /* 减小内边距，挤出更多空间 */
-  padding: 6px 2px;
+
+  /* ✅ 关键修复：显式设置高度 */
+  height: 34px;
+  min-height: 34px; /* 双重保险 */
+
+  /* 调整 padding，垂直方向设为 0，依靠 line-height 或 height 居中 */
+  padding: 0 4px;
+
   border: 1px solid #d1d5db;
   border-radius: 6px;
   box-sizing: border-box;
-  /* 调小字体，让原生日期控件变小 */
   font-size: 13px;
-  /* 移除 iOS 默认外观，方便控制宽度 */
+
+  /* 移除默认外观（之前导致塌陷的原因之一，但为了布局必须移除，配合 height 即可修复） */
   -webkit-appearance: none;
   appearance: none;
   background-color: transparent;
+
+  /* 确保文字垂直居中 */
+  line-height: 32px;
 }
 .dark .date-input { background: #111827; border-color: #4b5563; color: #fff; }
 
-/* ✅ 重写：分隔符样式 */
+/* ✅ 微调：配合新的 34px 高度调整分隔符位置 */
 .date-separator {
-  /* 之前用 flex + top hack，现在用 grid align-items: end */
-  /* input 高度大概 30-34px，这里给底部 padding 让横线视觉居中于 input */
-  padding-bottom: 8px;
+  /* 使用 padding-bottom 将分隔符“顶”到输入框的视觉中心 */
+  /* 输入框高 34px，大概需要在底部留 9-10px 的空间 */
+  padding-bottom: 9px;
 
   font-size: 14px;
   color: #9ca3af;
