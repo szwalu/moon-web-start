@@ -3958,6 +3958,9 @@ selection-actions-banner,
 
   width: 48px;
   height: 48px;
+  /* ✅ 新增：锁死最小宽度，防止被挤压或撑开 */
+  min-width: 48px;
+
   border-radius: 50%;
   border: none;
   font-size: 30px;
@@ -3969,10 +3972,14 @@ selection-actions-banner,
 
   /* ✅ 新增：消除行高干扰，并微调视觉重心 */
   line-height: 1;
+
+  /* 🔥 修复核心：先重置所有内边距为 0，再单独设置底边距 */
+  /* iOS Safari 默认会有左右 padding，导致宽度大于 48px 变成椭圆 */
+  padding: 0;
   padding-bottom: 2px; /* 这一行是关键：因为 "+" 符号在很多字体里本身重心偏低，往上顶 2px 视觉上才是在圆心 */
 
   cursor: pointer;
-background: var(--theme-primary); /* 原 #6366f1 */
+  background: var(--theme-primary); /* 原 #6366f1 */
   color: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
