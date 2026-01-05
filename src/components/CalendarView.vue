@@ -32,74 +32,9 @@ const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
-// 1. 【变量定义区】放在最前面
-const calendarRef = ref<any>(null) // 必须最先定义
-const monthPickerValue = ref(Date.now()) // 记录当前月份的时间戳
-const isNavigatingViaPicker = ref(false) // 锁：防止循环触发
-
-// 2. 【计算属性】生成给原生 Input 用的 "YYYY-MM" 格式字符串
-const nativeMonthStr = computed(() => {
-  const d = new Date(monthPickerValue.value)
-  const y = d.getFullYear()
-  const m = d.getMonth() + 1
-  return `${y}-${m.toString().padStart(2, '0')}`
-})
-
-// 3. 【计算属性】用于页面显示的中文标题（例如：2025年 1月）
-const displayMonthTitle = computed(() => {
-  const d = new Date(monthPickerValue.value)
-  return `${d.getFullYear()}年 ${d.getMonth() + 1}月`
-})
-
-// 4. 【事件处理】处理原生滚轮选择后的变化
-async function handleNativeMonthChange(e: Event) {
-  const target = e.target as HTMLInputElement
-  if (!target.value)
-    return // 用户取消
-
-  // 解析 "2025-01" 格式
-  const [y, m] = target.value.split('-').map(Number)
-  const newDate = new Date(y, m - 1, 1)
-
-  // 上锁：防止 onCalendarMove 再次反向修改
-  isNavigatingViaPicker.value = true
-
-  // 更新内部值
-  monthPickerValue.value = newDate.getTime()
-
-  // 触发数据更新
-  fetchMonthlyStats(newDate)
-
-  // 移动日历
-  if (calendarRef.value)
-    await calendarRef.value.move(newDate)
-
-  // 500ms 后解锁
-  setTimeout(() => {
-    isNavigatingViaPicker.value = false
-  }, 500)
-}
-
-// 5. 【日历监听】保持之前的逻辑，增加锁判断
-function onCalendarMove(pages: any[]) {
-  // 如果锁是开着的（说明正在用滚动条选日期），不要执行这里的逻辑
-  if (isNavigatingViaPicker.value)
-    return
-
-  if (!pages || !pages.length)
-    return
-  const page = pages[0]
-  const viewDate = new Date(page.year, page.month - 1, 1)
-
-  // 滑动日历时，同步更新显示的标题
-  monthPickerValue.value = viewDate.getTime()
-
-  fetchMonthlyStats(viewDate)
-}
-
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
-
+const calendarRef = ref<any>(null)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 watch(isExpanded, async (val) => {
   if (!val) {
@@ -211,6 +146,15 @@ async function fetchMonthlyStats(date: Date) {
   catch (e) {
     console.warn('[Calendar] 统计更新失败:', e)
   }
+}
+
+function onCalendarMove(pages: any[]) {
+  if (!pages || !pages.length)
+    return
+
+  const page = pages[0]
+  const viewDate = new Date(page.year, page.month - 1, 1)
+  fetchMonthlyStats(viewDate)
 }
 
 const isWriting = ref(false)
@@ -568,6 +512,83 @@ const attributes = computed(() => {
   }
   return attrs
 })
+
+function formatCalendarHeaderTitle(rawTitle: string) {
+  if (!rawTitle)
+    return rawTitle
+
+  const zhMonthMap: Record<string, string> = {
+    january: '1',
+    february: '2',
+    march: '3',
+    april: '4',
+    may: '5',
+    june: '6',
+    july: '7',
+    august: '8',
+    september: '9',
+    october: '10',
+    november: '11',
+    december: '12',
+    jan: '1',
+    feb: '2',
+    mar: '3',
+    apr: '4',
+    jun: '6',
+    jul: '7',
+    aug: '8',
+    sep: '9',
+    oct: '10',
+    nov: '11',
+    dec: '12',
+    一月: '1',
+    二月: '2',
+    三月: '3',
+    四月: '4',
+    五月: '5',
+    六月: '6',
+    七月: '7',
+    八月: '8',
+    九月: '9',
+    十月: '10',
+    十一月: '11',
+    十二月: '12',
+  }
+  const normalizeMonth = (m: string) => {
+    const lower = m.trim().toLowerCase()
+    if (zhMonthMap[lower])
+      return zhMonthMap[lower]
+
+    const numMatch = lower.match(/^(\d{1,2})/)
+    if (numMatch)
+      return numMatch[1]
+
+    return m.trim()
+  }
+  const formatPart = (m: string, y: string) => {
+    return `${y}年${normalizeMonth(m)}月`
+  }
+  const isZh = String(locale.value || '').toLowerCase().startsWith('zh')
+  if (!isZh)
+    return rawTitle
+
+  const crossYearMatch = rawTitle.match(/^(.*?)\s+(\d{4})\s*[-–]\s*(.*?)\s+(\d{4})$/)
+  if (crossYearMatch) {
+    const [_, m1, y1, m2, y2] = crossYearMatch
+    return `${formatPart(m1, y1)} - ${formatPart(m2, y2)}`
+  }
+  const rangeMatch = rawTitle.match(/^(.*?)\s*[-–]\s*(.*?)\s+(\d{4})$/)
+  if (rangeMatch) {
+    const [_, m1, m2, year] = rangeMatch
+    return `${year}年 ${normalizeMonth(m1)}月 - ${normalizeMonth(m2)}月`
+  }
+  const singleMatch = rawTitle.match(/^(.*?)\s+(\d{4})$/)
+  if (singleMatch) {
+    const [_, m, year] = singleMatch
+    return formatPart(m, year)
+  }
+  return rawTitle
+}
 
 async function fetchAllNoteDatesFull() {
   if (!user.value)
@@ -1005,19 +1026,25 @@ async function saveNewNote(content: string, weather: string | null) {
           @dayclick="day => fetchNotesForDate(day.date)"
           @did-move="onCalendarMove"
         >
-          <template #header-title>
-            <div class="native-month-picker-container" @click.stop>
-              <div class="picker-label">
-                {{ displayMonthTitle }}
-                <span class="dropdown-caret">▼</span>
-              </div>
-
-              <input
-                type="month"
-                class="native-month-input"
-                :value="nativeMonthStr"
-                @change="handleNativeMonthChange"
+          <template #header-title="{ title }">
+            <div class="calendar-nav-wrapper">
+              <span class="calendar-nav-title">
+                {{ formatCalendarHeaderTitle(title) }}
+              </span>
+              <svg
+                class="nav-caret"
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
             </div>
           </template>
         </Calendar>
@@ -1448,52 +1475,6 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
-}
-
-/* ✅ 容器：相对定位 */
-.native-month-picker-container {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-}
-
-/* ✅ 视觉文字样式 */
-.picker-label {
-  font-size: 17px;
-  font-weight: 600;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.dark .picker-label {
-  color: #f9fafb;
-}
-
-/* ✅ 小箭头样式 */
-.dropdown-caret {
-  font-size: 12px;
-  opacity: 0.5;
-  transform: scaleY(0.8);
-}
-
-/* ✅ 隐形 Input：核心！*/
-.native-month-input {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0; /* 完全透明 */
-  z-index: 10; /* 盖在文字上面 */
-  cursor: pointer;
-
-  /* 消除默认样式 */
-  border: none;
-  background: transparent;
-  -webkit-appearance: none;
 }
 </style>
 
