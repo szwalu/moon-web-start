@@ -4,7 +4,6 @@ import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
 import { useI18n } from 'vue-i18n'
-import { NDatePicker } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
@@ -32,50 +31,67 @@ const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
-// ✅ [新增] 定义年月选择器的绑定值
-const calendarRef = ref<any>(null)
-const monthPickerValue = ref(Date.now())
 
-// ✅ [新增] 定义一个锁，防止“选择器”和“日历滑动”互相打架
-const isNavigatingViaPicker = ref(false)
+// 1. 【变量定义区】放在最前面
+const calendarRef = ref<any>(null) // 必须最先定义
+const monthPickerValue = ref(Date.now()) // 记录当前月份的时间戳
+const isNavigatingViaPicker = ref(false) // 锁：防止循环触发
 
-// ✅ [修改] 处理用户在选择器中改变月份的事件
-async function handleMonthPickerUpdate(ts: number) {
-  if (!ts)
-    return
+// 2. 【计算属性】生成给原生 Input 用的 "YYYY-MM" 格式字符串
+const nativeMonthStr = computed(() => {
+  const d = new Date(monthPickerValue.value)
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  return `${y}-${m.toString().padStart(2, '0')}`
+})
 
-  // 1. 上锁：告诉 onCalendarMove “这是我主动改的，你别插手”
+// 3. 【计算属性】用于页面显示的中文标题（例如：2025年 1月）
+const displayMonthTitle = computed(() => {
+  const d = new Date(monthPickerValue.value)
+  return `${d.getFullYear()}年 ${d.getMonth() + 1}月`
+})
+
+// 4. 【事件处理】处理原生滚轮选择后的变化
+async function handleNativeMonthChange(e: Event) {
+  const target = e.target as HTMLInputElement
+  if (!target.value)
+    return // 用户取消
+
+  // 解析 "2025-01" 格式
+  const [y, m] = target.value.split('-').map(Number)
+  const newDate = new Date(y, m - 1, 1)
+
+  // 上锁：防止 onCalendarMove 再次反向修改
   isNavigatingViaPicker.value = true
 
-  monthPickerValue.value = ts
-  const date = new Date(ts)
+  // 更新内部值
+  monthPickerValue.value = newDate.getTime()
 
-  // 2. 主动触发数据更新 (因为我们屏蔽了下面的监听，所以这里要手动调一次)
-  fetchMonthlyStats(date)
+  // 触发数据更新
+  fetchMonthlyStats(newDate)
 
-  // 3. 让 v-calendar 跳转到指定日期
+  // 移动日历
   if (calendarRef.value)
-    await calendarRef.value.move(date)
+    await calendarRef.value.move(newDate)
 
-  // 4. 解锁：给一点延迟，等待日历动画或内部状态稳定后，再允许滑动监听生效
+  // 500ms 后解锁
   setTimeout(() => {
     isNavigatingViaPicker.value = false
   }, 500)
 }
 
-// ✅ [修改] 监听日历移动（左右滑动）
+// 5. 【日历监听】保持之前的逻辑，增加锁判断
 function onCalendarMove(pages: any[]) {
-  // 🔒 如果锁是开着的（说明正在进行选择器跳转），直接忽略这次事件，防止跳回旧月份
+  // 如果锁是开着的（说明正在用滚动条选日期），不要执行这里的逻辑
   if (isNavigatingViaPicker.value)
     return
 
   if (!pages || !pages.length)
     return
-
   const page = pages[0]
   const viewDate = new Date(page.year, page.month - 1, 1)
 
-  // 只有在用户手滑日历时，才反向更新选择器的显示
+  // 滑动日历时，同步更新显示的标题
   monthPickerValue.value = viewDate.getTime()
 
   fetchMonthlyStats(viewDate)
@@ -83,6 +99,7 @@ function onCalendarMove(pages: any[]) {
 
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
+
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 watch(isExpanded, async (val) => {
   if (!val) {
@@ -989,15 +1006,18 @@ async function saveNewNote(content: string, weather: string | null) {
           @did-move="onCalendarMove"
         >
           <template #header-title>
-            <div class="calendar-month-picker" @click.stop>
-              <NDatePicker
-                v-model:value="monthPickerValue"
+            <div class="native-month-picker-container" @click.stop>
+              <div class="picker-label">
+                {{ displayMonthTitle }}
+                <span class="dropdown-caret">▼</span>
+              </div>
+
+              <input
                 type="month"
-                :clearable="false"
-                size="medium"
-                class="custom-month-picker"
-                @update:value="handleMonthPickerUpdate"
-              />
+                class="native-month-input"
+                :value="nativeMonthStr"
+                @change="handleNativeMonthChange"
+              >
             </div>
           </template>
         </Calendar>
@@ -1430,49 +1450,50 @@ async function saveNewNote(content: string, weather: string | null) {
   font-size: 16px;
 }
 
-/* CalendarView.vue <style scoped> 部分 */
-
-/* ✅ [新增] 样式优化 */
-.calendar-month-picker {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 120px;
+/* ✅ 容器：相对定位 */
+.native-month-picker-container {
   position: relative;
-  z-index: 10; /* 提高层级，确保容易点中 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
 }
 
-/* 深度选择器覆盖 Naive UI 默认样式，使其融入 Header */
-:deep(.custom-month-picker) {
-  /* 去除输入框背景和边框，使其看起来像纯文字标题 */
-  --n-border: none !important;
-  --n-border-hover: none !important;
-  --n-border-focus: none !important;
-  --n-box-shadow-focus: none !important;
-  background-color: transparent !important;
-}
-
-:deep(.custom-month-picker .n-input) {
-  background-color: transparent !important;
-}
-
-:deep(.custom-month-picker .n-input__input-el) {
-  /* 调整字体样式以匹配原有标题 */
-  font-size: 16px;
+/* ✅ 视觉文字样式 */
+.picker-label {
+  font-size: 17px;
   font-weight: 600;
-  text-align: center;
-  cursor: pointer;
   color: #333;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-
-/* 深色模式适配 */
-.dark :deep(.custom-month-picker .n-input__input-el) {
+.dark .picker-label {
   color: #f9fafb;
 }
 
-/* 隐藏输入框右侧原本的日期图标，让界面更简洁（可选） */
-:deep(.custom-month-picker .n-input__suffix) {
-  display: none;
+/* ✅ 小箭头样式 */
+.dropdown-caret {
+  font-size: 12px;
+  opacity: 0.5;
+  transform: scaleY(0.8);
+}
+
+/* ✅ 隐形 Input：核心！*/
+.native-month-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0; /* 完全透明 */
+  z-index: 10; /* 盖在文字上面 */
+  cursor: pointer;
+
+  /* 消除默认样式 */
+  border: none;
+  background: transparent;
+  -webkit-appearance: none;
 }
 </style>
 
