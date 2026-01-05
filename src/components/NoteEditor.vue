@@ -105,6 +105,7 @@ const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 const viewportReady = ref(false)
 let keyboardMeasureCount = 0
+let coldStartFallbackUsed = false
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
@@ -112,32 +113,43 @@ function updateKeyboardOffset() {
 
   const currentHeight = window.visualViewport.height
 
-  // 🔴 冷启动 + 键盘弹出时，第一次 resize 是不可信的
-  if (isInputFocused.value && !viewportReady.value) {
-    keyboardMeasureCount++
+  // ===== 1. 键盘收起态 =====
+  if (!isInputFocused.value) {
+    if (currentHeight > 300)
+      baseHeight = currentHeight
 
-    // 至少等 2 次 resize（经验值，iOS 实测）
-    if (keyboardMeasureCount < 2) {
-      // 不更新 baseHeight，不算 keyboardOffset
-      return
-    }
-
-    // 第二次开始才认为 viewport 稳定
-    viewportReady.value = true
-  }
-
-  // ===== 正常逻辑 =====
-  if (isKeyboardCollapsed()) {
-    baseHeight = currentHeight
     keyboardOffset.value = '0px'
+    keyboardMeasureCount = 0
+    coldStartFallbackUsed = false
     return
   }
 
-  if (baseHeight > 0) {
-    const diff = baseHeight - currentHeight
-    if (diff > 150)
-      keyboardOffset.value = `${diff}px`
+  // ===== 2. 键盘弹出态 =====
+  if (baseHeight <= 0)
+    return
+
+  const diff = baseHeight - currentHeight
+
+  // -------- 冷恢复关键修复 --------
+  keyboardMeasureCount++
+
+  // iOS 冷启动：第一次 diff 不可信
+  if (keyboardMeasureCount === 1 && diff > 0) {
+    // ⚠️ 不信 diff，但不能为 0，否则必留空隙
+    // 使用稳定 fallback
+    if (!coldStartFallbackUsed) {
+      keyboardOffset.value = isPWA.value ? '435px' : '290px'
+      coldStartFallbackUsed = true
+    }
+    return
   }
+
+  // -------- 正常稳定阶段 --------
+  if (diff > 150)
+    keyboardOffset.value = `${diff}px`
+
+  else
+    keyboardOffset.value = '0px'
 }
 
 // 在 onMounted 里监听
@@ -1493,6 +1505,7 @@ function handleFocus() {
   // 🔥 关键：每次重新进入输入态，都重新等待 viewport 稳定
   viewportReady.value = false
   keyboardMeasureCount = 0
+  coldStartFallbackUsed = false
   emit('focus')
   captureCaret()
 
