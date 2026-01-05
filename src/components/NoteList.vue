@@ -666,6 +666,8 @@ function _ensureCardVisible(noteId: string) {
 }
 
 async function toggleExpand(noteId: string) {
+  if (props.isSelectionModeActive)
+    return
   if (editingNoteId.value === noteId)
     return
 
@@ -1133,6 +1135,9 @@ function checkSameDay(currentItem, index) {
 .note-selection-wrapper.selection-mode {
   cursor: pointer; padding: 0.5rem;
   margin: -0.5rem -0.5rem calc(-0.5rem + 1.5rem) -0.5rem; border-radius: 8px;
+}
+.note-selection-wrapper.selection-mode .note-content-wrapper {
+  pointer-events: none;
 }
 .note-selection-wrapper.selection-mode:hover { background-color: rgba(0, 0, 0, 0.03); }
 .dark .note-selection-wrapper.selection-mode:hover { background-color: rgba(255, 255, 255, 0.05); }

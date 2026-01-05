@@ -1271,7 +1271,7 @@ export function useTagMenu(
       type: 'info',
       title: t('tags.rename_tag') || '重命名标签',
       content: () =>
-        h('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+        h('div', { style: 'display:flex;gap:8px;align-items:center; transform: translateY(-46%);' }, [
           h('span', null, '#'),
           h(NInput, {
             defaultValue: initial,
