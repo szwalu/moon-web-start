@@ -198,7 +198,18 @@ const editorHeight = computed(() => {
     }
   }
 
-  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+  let finalTopOffset = 0
+
+  if (!isInputFocused.value) {
+  // 浏览态：允许顶部偏移
+    finalTopOffset
+    = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+  }
+  else {
+  // 🔥 键盘弹出态（编辑旧笔记）
+  // iOS 冷恢复下，topOffset 不可靠，必须归零
+    finalTopOffset = 0
+  }
 
   // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
   // 如果是“编辑模式”，说明是全屏，不需要额外减
