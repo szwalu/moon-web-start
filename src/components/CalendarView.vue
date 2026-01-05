@@ -4,6 +4,7 @@ import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
 import { useI18n } from 'vue-i18n'
+import { NDatePicker } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
@@ -31,10 +32,57 @@ const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
 const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+// ✅ [新增] 定义年月选择器的绑定值
+const calendarRef = ref<any>(null)
+const monthPickerValue = ref(Date.now())
+
+// ✅ [新增] 定义一个锁，防止“选择器”和“日历滑动”互相打架
+const isNavigatingViaPicker = ref(false)
+
+// ✅ [修改] 处理用户在选择器中改变月份的事件
+async function handleMonthPickerUpdate(ts: number) {
+  if (!ts)
+    return
+
+  // 1. 上锁：告诉 onCalendarMove “这是我主动改的，你别插手”
+  isNavigatingViaPicker.value = true
+
+  monthPickerValue.value = ts
+  const date = new Date(ts)
+
+  // 2. 主动触发数据更新 (因为我们屏蔽了下面的监听，所以这里要手动调一次)
+  fetchMonthlyStats(date)
+
+  // 3. 让 v-calendar 跳转到指定日期
+  if (calendarRef.value)
+    await calendarRef.value.move(date)
+
+  // 4. 解锁：给一点延迟，等待日历动画或内部状态稳定后，再允许滑动监听生效
+  setTimeout(() => {
+    isNavigatingViaPicker.value = false
+  }, 500)
+}
+
+// ✅ [修改] 监听日历移动（左右滑动）
+function onCalendarMove(pages: any[]) {
+  // 🔒 如果锁是开着的（说明正在进行选择器跳转），直接忽略这次事件，防止跳回旧月份
+  if (isNavigatingViaPicker.value)
+    return
+
+  if (!pages || !pages.length)
+    return
+
+  const page = pages[0]
+  const viewDate = new Date(page.year, page.month - 1, 1)
+
+  // 只有在用户手滑日历时，才反向更新选择器的显示
+  monthPickerValue.value = viewDate.getTime()
+
+  fetchMonthlyStats(viewDate)
+}
 
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
-const calendarRef = ref<any>(null)
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 watch(isExpanded, async (val) => {
   if (!val) {
@@ -146,15 +194,6 @@ async function fetchMonthlyStats(date: Date) {
   catch (e) {
     console.warn('[Calendar] 统计更新失败:', e)
   }
-}
-
-function onCalendarMove(pages: any[]) {
-  if (!pages || !pages.length)
-    return
-
-  const page = pages[0]
-  const viewDate = new Date(page.year, page.month - 1, 1)
-  fetchMonthlyStats(viewDate)
 }
 
 const isWriting = ref(false)
@@ -512,83 +551,6 @@ const attributes = computed(() => {
   }
   return attrs
 })
-
-function formatCalendarHeaderTitle(rawTitle: string) {
-  if (!rawTitle)
-    return rawTitle
-
-  const zhMonthMap: Record<string, string> = {
-    january: '1',
-    february: '2',
-    march: '3',
-    april: '4',
-    may: '5',
-    june: '6',
-    july: '7',
-    august: '8',
-    september: '9',
-    october: '10',
-    november: '11',
-    december: '12',
-    jan: '1',
-    feb: '2',
-    mar: '3',
-    apr: '4',
-    jun: '6',
-    jul: '7',
-    aug: '8',
-    sep: '9',
-    oct: '10',
-    nov: '11',
-    dec: '12',
-    一月: '1',
-    二月: '2',
-    三月: '3',
-    四月: '4',
-    五月: '5',
-    六月: '6',
-    七月: '7',
-    八月: '8',
-    九月: '9',
-    十月: '10',
-    十一月: '11',
-    十二月: '12',
-  }
-  const normalizeMonth = (m: string) => {
-    const lower = m.trim().toLowerCase()
-    if (zhMonthMap[lower])
-      return zhMonthMap[lower]
-
-    const numMatch = lower.match(/^(\d{1,2})/)
-    if (numMatch)
-      return numMatch[1]
-
-    return m.trim()
-  }
-  const formatPart = (m: string, y: string) => {
-    return `${y}年${normalizeMonth(m)}月`
-  }
-  const isZh = String(locale.value || '').toLowerCase().startsWith('zh')
-  if (!isZh)
-    return rawTitle
-
-  const crossYearMatch = rawTitle.match(/^(.*?)\s+(\d{4})\s*[-–]\s*(.*?)\s+(\d{4})$/)
-  if (crossYearMatch) {
-    const [_, m1, y1, m2, y2] = crossYearMatch
-    return `${formatPart(m1, y1)} - ${formatPart(m2, y2)}`
-  }
-  const rangeMatch = rawTitle.match(/^(.*?)\s*[-–]\s*(.*?)\s+(\d{4})$/)
-  if (rangeMatch) {
-    const [_, m1, m2, year] = rangeMatch
-    return `${year}年 ${normalizeMonth(m1)}月 - ${normalizeMonth(m2)}月`
-  }
-  const singleMatch = rawTitle.match(/^(.*?)\s+(\d{4})$/)
-  if (singleMatch) {
-    const [_, m, year] = singleMatch
-    return formatPart(m, year)
-  }
-  return rawTitle
-}
 
 async function fetchAllNoteDatesFull() {
   if (!user.value)
@@ -1026,25 +988,16 @@ async function saveNewNote(content: string, weather: string | null) {
           @dayclick="day => fetchNotesForDate(day.date)"
           @did-move="onCalendarMove"
         >
-          <template #header-title="{ title }">
-            <div class="calendar-nav-wrapper">
-              <span class="calendar-nav-title">
-                {{ formatCalendarHeaderTitle(title) }}
-              </span>
-              <svg
-                class="nav-caret"
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+          <template #header-title>
+            <div class="calendar-month-picker" @click.stop>
+              <NDatePicker
+                v-model:value="monthPickerValue"
+                type="month"
+                :clearable="false"
+                size="medium"
+                class="custom-month-picker"
+                @update:value="handleMonthPickerUpdate"
+              />
             </div>
           </template>
         </Calendar>
@@ -1475,6 +1428,51 @@ async function saveNewNote(content: string, weather: string | null) {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
+}
+
+/* CalendarView.vue <style scoped> 部分 */
+
+/* ✅ [新增] 样式优化 */
+.calendar-month-picker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 120px;
+  position: relative;
+  z-index: 10; /* 提高层级，确保容易点中 */
+}
+
+/* 深度选择器覆盖 Naive UI 默认样式，使其融入 Header */
+:deep(.custom-month-picker) {
+  /* 去除输入框背景和边框，使其看起来像纯文字标题 */
+  --n-border: none !important;
+  --n-border-hover: none !important;
+  --n-border-focus: none !important;
+  --n-box-shadow-focus: none !important;
+  background-color: transparent !important;
+}
+
+:deep(.custom-month-picker .n-input) {
+  background-color: transparent !important;
+}
+
+:deep(.custom-month-picker .n-input__input-el) {
+  /* 调整字体样式以匹配原有标题 */
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  color: #333;
+}
+
+/* 深色模式适配 */
+.dark :deep(.custom-month-picker .n-input__input-el) {
+  color: #f9fafb;
+}
+
+/* 隐藏输入框右侧原本的日期图标，让界面更简洁（可选） */
+:deep(.custom-month-picker .n-input__suffix) {
+  display: none;
 }
 </style>
 
