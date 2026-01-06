@@ -13,8 +13,8 @@ import NoteEditor from '@/components/NoteEditor.vue'
 import { queuePendingNote, queuePendingUpdate } from '@/utils/offline-db'
 
 const props = defineProps({
-  // 👇 新增这一行：接收父组件传来的颜色，默认绿色
   themeColor: { type: String, default: '#00b386' },
+  hideTitleBar: { type: Boolean, default: false },
 })
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite'])
 const allTags = ref<string[]>([])
@@ -1010,7 +1010,7 @@ async function saveNewNote(content: string, weather: string | null) {
       '--theme-text-dark': `color-mix(in srgb, ${props.themeColor}, white 20%)`, // 深色模式下的文字色
     }"
   >
-    <div v-show="!hideHeader" class="calendar-header" @click="handleHeaderClick">
+    <div v-show="!hideHeader && !props.hideTitleBar" class="calendar-header" @click="handleHeaderClick">
       <h2>{{ t('notes.calendar.title') }}</h2>
       <button class="close-btn" @click.stop="emit('close')">×</button>
     </div>

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { House, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, House, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -66,6 +66,13 @@ const logoError = ref(false)
 const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
 const isLocked = ref(false)
 const lockCode = ref('')
+
+const currentDateText = computed(() => {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${m}月${day}日`
+})
 
 // ✅ [新增] 常量定义
 const LOCK_TIMEOUT_KEY = 'app_lock_timeout_setting' // 设置(分钟)
@@ -3264,6 +3271,19 @@ function onCalendarUpdated(updated: any) {
             {{ userInitials }}
           </div>
         </div>
+
+        <div class="header-center-trigger" @click.stop="showCalendarView = !showCalendarView">
+          <Transition name="fade" mode="out-in">
+            <div v-if="showCalendarView" class="trigger-content active">
+              <ChevronUp :size="18" />
+            </div>
+            <div v-else class="trigger-content">
+              <span class="date-text">{{ currentDateText }}</span>
+              <ChevronDown :size="16" class="arrow-down" />
+            </div>
+          </Transition>
+        </div>
+
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
           <button
@@ -3468,8 +3488,11 @@ function onCalendarUpdated(updated: any) {
 
       <Transition name="slide-up-fade">
         <CalendarView
-          v-if="showCalendarView" ref="calendarViewRef"
+          v-if="showCalendarView"
+          ref="calendarViewRef"
           :theme-color="currentThemeColor"
+          :hide-title-bar="true"
+          class="dropdown-calendar-override"
           @close="showCalendarView = false"
           @created="onCalendarCreated"
           @updated="(payload) => {
@@ -4224,6 +4247,65 @@ selection-actions-banner,
 .dark .close-results-btn {
   /* 深色模式下的紫色稍微亮一点 */
   color: var(--theme-primary-light);
+}
+
+/* 1. Header 中间触发器样式 */
+.header-center-trigger {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%); /* 绝对居中 */
+
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 20px;
+  transition: background-color 0.2s;
+  user-select: none;
+  color: #333;
+}
+.dark .header-center-trigger {
+  color: #f0f0f0;
+}
+
+/* 触摸反馈 */
+.header-center-trigger:active {
+  background-color: rgba(0,0,0,0.05);
+  transform: translate(-50%, -50%) scale(0.96);
+}
+.dark .header-center-trigger:active {
+  background-color: rgba(255,255,255,0.1);
+}
+
+/* 触发器内部布局 */
+.trigger-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px; /* 与标题大小相当 */
+  font-weight: 600;
+}
+.trigger-content.active {
+  color: var(--theme-primary); /* 打开状态高亮颜色 */
+}
+
+/* 箭头微调 */
+.arrow-down {
+  opacity: 0.6;
+  margin-top: 1px;
+}
+
+/* 2. 下拉日历样式覆写 (核心) */
+/* 使用 global 选择器穿透 scoped，或者直接加 class */
+:deep(.dropdown-calendar-override) {
+  /* 让日历显示在 Header 下方 */
+  top: var(--header-height) !important;
+  height: calc(100% - var(--header-height)) !important;
+
+  /* 层级必须低于 Header (3000)，但高于内容 */
+  z-index: 2000 !important;
+
+  /* 如果想要半透明背景遮罩效果，可以在 CalendarView 里调整背景色 */
+  /* 这里默认它是白色全屏遮盖列表 */
 }
 </style>
 
