@@ -16,7 +16,7 @@ const props = defineProps({
   themeColor: { type: String, default: '#00b386' },
   hideTitleBar: { type: Boolean, default: false },
 })
-const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite'])
+const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite', 'startCompose'])
 const allTags = ref<string[]>([])
 const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
@@ -29,7 +29,6 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
-const newNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 // --- 控制日历展开/收起的状态 ---
@@ -158,16 +157,6 @@ function onCalendarMove(pages: any[]) {
 }
 
 const isWriting = ref(false)
-const newNoteContent = ref('')
-
-const writingKey = computed(() => {
-  const currentKeyStr = dateKeyStr(selectedDate.value)
-  const todayKeyStr = dateKeyStr(new Date())
-  if (currentKeyStr === todayKeyStr)
-    return 'new_note_content_draft'
-
-  return `calendar_draft_${currentKeyStr}`
-})
 
 async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
   try {
@@ -859,33 +848,45 @@ function refreshData() {
   checkAndRefreshIncremental()
 }
 
+// 👇 [新增] 供父组件调用：当在主页编辑器写完笔记后，手动插入到日历列表
+function insertExternalNote(newNote: any) {
+  if (!newNote || !newNote.created_at)
+    return
+
+  // 检查这笔记是不是属于当前选中的这一天
+  const noteDateStr = toDateKeyStrFromISO(newNote.created_at)
+  const currentDateStr = dateKeyStr(selectedDate.value)
+
+  if (noteDateStr === currentDateStr) {
+    // 是这一天的，插到最前面
+    selectedDateNotes.value = [newNote, ...selectedDateNotes.value]
+
+    // 更新缓存
+    localStorage.setItem(
+      getCalendarDateCacheKey(selectedDate.value),
+      JSON.stringify(selectedDateNotes.value),
+    )
+
+    // 重新计算统计数据
+    fetchMonthlyStats(selectedDate.value)
+
+    // 确保小圆点亮起
+    const key = dateKeyStr(selectedDate.value)
+    if (!datesWithNotes.value.has(key)) {
+      datesWithNotes.value.add(key)
+      datesWithNotes.value = new Set(datesWithNotes.value)
+      localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
+    }
+  }
+}
+
+// 👇 [修改] 记得把这个新方法暴露出去
 defineExpose({
   refreshData,
   commitDelete,
   commitUpdate,
+  insertExternalNote, // 👈 新增
 })
-
-// CalendarView.vue
-async function startWriting() {
-  newNoteContent.value = ''
-  try {
-    const targetKey = writingKey.value
-    const raw = localStorage.getItem(targetKey)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.content === 'string')
-        newNoteContent.value = parsed.content
-    }
-  }
-  catch (e) {}
-  isWriting.value = true
-  hideHeader.value = true
-  if (scrollBodyRef.value)
-    scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
-  await nextTick()
-  newNoteEditorRef.value?.focus()
-}
 
 const composeButtonText = computed(() => {
   const sel = selectedDate.value
@@ -901,102 +902,6 @@ const composeButtonText = computed(() => {
 
   return t('notes.calendar.compose_write', { date: labelDate })
 })
-
-function cancelWriting() {
-  isWriting.value = false
-  hideHeader.value = false
-}
-
-function buildCreatedAtForSelectedDay(): string {
-  const day = new Date(selectedDate.value)
-  const now = new Date()
-  day.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
-  return day.toISOString()
-}
-
-// ✅ 修改：新建笔记保存后，重新拉取统计
-async function saveNewNote(content: string, weather: string | null) {
-  if (!user.value || !content.trim())
-    return
-
-  const createdISO = buildCreatedAtForSelectedDay()
-  const tempId = globalThis.crypto ? globalThis.crypto.randomUUID() : `local-${Date.now()}`
-
-  const optimisticNote = {
-    id: tempId,
-    user_id: user.value.id,
-    content: content.trim(),
-    created_at: createdISO,
-    updated_at: createdISO,
-    weather,
-  }
-
-  let finalNote = optimisticNote
-
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .insert({
-        id: tempId,
-        user_id: user.value.id,
-        content: content.trim(),
-        created_at: createdISO,
-        updated_at: createdISO,
-        weather,
-      })
-      .select('*')
-      .single()
-
-    if (error)
-      throw error
-
-    finalNote = data
-    if (finalNote.updated_at) {
-      const noteTs = new Date(finalNote.updated_at).getTime()
-      const currentLastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0')
-      if (noteTs > currentLastSync)
-        localStorage.setItem(CAL_LAST_SYNC_TS, String(noteTs))
-    }
-  }
-  catch (e) {
-    console.warn('联网保存新建笔记失败，转入离线队列:', e)
-    await saveToOfflineQueue('INSERT', optimisticNote)
-  }
-
-  selectedDateNotes.value = [finalNote, ...selectedDateNotes.value]
-
-  const key = dateKeyStr(selectedDate.value)
-  if (!datesWithNotes.value.has(key)) {
-    datesWithNotes.value.add(key)
-    datesWithNotes.value = new Set(datesWithNotes.value)
-    localStorage.setItem(
-      CACHE_KEYS.CALENDAR_ALL_DATES,
-      JSON.stringify(Array.from(datesWithNotes.value)),
-    )
-  }
-
-  localStorage.setItem(
-    getCalendarDateCacheKey(selectedDate.value),
-    JSON.stringify(selectedDateNotes.value),
-  )
-
-  emit('created', finalNote)
-
-  // ✅ 核心修改：新建成功后，重新拉取月度统计
-  await fetchMonthlyStats(selectedDate.value)
-
-  const draftKey = writingKey.value
-  if (draftKey) {
-    try {
-      localStorage.removeItem(draftKey)
-    }
-    catch {}
-  }
-
-  isWriting.value = false
-  newNoteContent.value = ''
-  hideHeader.value = false
-}
 </script>
 
 <template>
@@ -1058,7 +963,7 @@ async function saveNewNote(content: string, weather: string | null) {
 
       <div class="notes-for-day-container">
         <div v-if="!isWriting && !isEditingExisting" class="compose-row">
-          <button class="compose-btn" @click="startWriting">
+          <button class="compose-btn" @click="emit('startCompose', selectedDate)">
             {{ composeButtonText }}
           </button>
 
@@ -1079,27 +984,6 @@ async function saveNewNote(content: string, weather: string | null) {
 
     <div ref="scrollBodyRef" class="calendar-body">
       <div class="notes-for-day-container">
-        <div v-if="isWriting" class="inline-editor">
-          <NoteEditor
-            ref="newNoteEditorRef"
-            v-model="newNoteContent"
-            :is-editing="false"
-            :is-loading="false"
-            :max-note-length="20000"
-            :placeholder="t('notes.calendar.placeholder_new')"
-            :all-tags="allTags"
-            :tag-counts="tagCounts"
-            :enable-drafts="true"
-            :draft-key="writingKey"
-            :enable-scroll-push="true"
-            :clear-draft-on-save="true"
-            @save="saveNewNote"
-            @cancel="cancelWriting"
-            @focus="onEditorFocus"
-            @blur="() => {}"
-          />
-        </div>
-
         <div v-if="isEditingExisting" class="inline-editor">
           <NoteEditor
             ref="editNoteEditorRef"

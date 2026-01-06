@@ -299,6 +299,7 @@ const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
+const composerTargetDate = ref<Date | null>(null)
 const SESSION_SCROLL_Y = 'session_scroll_y'
 const themeStyle = computed(() => {
   const currentKey = settingStore.settings.theme
@@ -1124,7 +1125,19 @@ async function _reloadNotes() {
 async function handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
   try {
-    const saved = await saveNote(content, null, { showMessage: true, weather }) // 👈 透传 weather
+    // 👇 [修改] 核心逻辑：如果有目标日期，就用它；否则用当前时间
+    let customCreatedAt = null
+    if (composerTargetDate.value) {
+      const d = new Date(composerTargetDate.value)
+      const now = new Date()
+      // 保留当前的时分秒，只改变年月日
+      d.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
+      customCreatedAt = d.toISOString()
+    }
+
+    // 👇 [修改] 传给 saveNote 第三个参数 (expanding the options object)
+    const saved = await saveNote(content, null, { showMessage: true, weather, createdAt: customCreatedAt })
+
     if (saved) {
       // ✅ 老版草稿 key（字符串版）
       localStorage.removeItem(LOCAL_CONTENT_KEY)
@@ -1140,10 +1153,13 @@ async function handleCreateNote(content: string, weather?: string | null) {
       compactWhileTyping.value = false
       headerCollapsed.value = false
       showComposer.value = false
+      if (showCalendarView.value && calendarViewRef.value)
+        (calendarViewRef.value as any).insertExternalNote?.(saved)
     }
   }
   finally {
     isCreating.value = false
+    composerTargetDate.value = null
   }
 }
 
@@ -1155,7 +1171,7 @@ async function handleUpdateNote({ id, content }: { id: string; content: string }
 
 // 构造一条“本地新建”的笔记对象（与线上结构一致）
 function buildLocalNote(content: string, weather?: string | null) {
-  const nowIso = new Date().toISOString()
+  const nowIso = createdAt || new Date().toISOString()
   return {
     id: uuidv4(),
     content: content.trim(),
@@ -1171,7 +1187,7 @@ function buildLocalNote(content: string, weather?: string | null) {
 async function saveNote(
   contentToSave: string,
   noteIdToUpdate: string | null,
-  { showMessage = false, weather = null }: { showMessage?: boolean; weather?: string | null } = {},
+  { showMessage = false, weather = null, createdAt = null }: { showMessage?: boolean; weather?: string | null; createdAt?: string | null } = {},
 ) {
   // 基本校验
   if (!contentToSave.trim() || !user.value?.id) {
@@ -1241,7 +1257,7 @@ async function saveNote(
 
   // ====== A) 新建 且 当前离线：本地落盘 + outbox 入队 ======
   if (!noteIdToUpdate && !isOnline()) {
-    const localNote = buildLocalNote(contentToSave, weather)
+    const localNote = buildLocalNote(contentToSave, weather, createdAt)
     notes.value = [localNote, ...notes.value].sort((a: any, b: any) => b.is_pinned - a.is_pinned || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
     try {
@@ -1302,7 +1318,14 @@ async function saveNote(
     else {
       // --- 在线新建 (移除 withRetry) ---
       const newId = uuidv4()
-      const insertPayload: any = { ...noteData, id: newId, weather: weather ?? null }
+      const finalCreatedAt = createdAt || new Date().toISOString()
+      const insertPayload: any = {
+        ...noteData,
+        id: newId,
+        weather: weather ?? null,
+        created_at: finalCreatedAt, // 👈 显式写入
+        updated_at: finalCreatedAt,
+      }
 
       const { data: insertedData, error: insertError } = await supabase
         .from('notes')
@@ -3504,6 +3527,10 @@ function onCalendarUpdated(updated: any) {
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"
           @favorite="handleFavoriteNote"
+          @start-compose="(date) => {
+            composerTargetDate = date; // 1. 记下日期
+            openComposer(); // 2. 打开主页输入框
+          }"
         />
       </Transition>
       <Transition name="slide-up-fade">
