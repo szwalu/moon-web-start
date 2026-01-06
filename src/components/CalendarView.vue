@@ -8,9 +8,6 @@ import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/utils/supabaseClient'
 import { CACHE_KEYS, getCalendarDateCacheKey } from '@/utils/cacheKeys'
 import NoteItem from '@/components/NoteItem.vue'
-import NoteEditor from '@/components/NoteEditor.vue'
-
-import { queuePendingNote, queuePendingUpdate } from '@/utils/offline-db'
 
 const props = defineProps({
   themeColor: { type: String, default: '#00b386' },
@@ -29,7 +26,6 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
-const editNoteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
@@ -156,30 +152,6 @@ function onCalendarMove(pages: any[]) {
   fetchMonthlyStats(viewDate)
 }
 
-const isWriting = ref(false)
-
-async function saveToOfflineQueue(action: 'INSERT' | 'UPDATE', note: any) {
-  try {
-    if (action === 'INSERT') {
-      await queuePendingNote(note)
-    }
-    else if (action === 'UPDATE') {
-      const updatePayload = {
-        content: note.content,
-        updated_at: note.updated_at,
-        user_id: note.user_id,
-        weather: note.weather,
-        is_pinned: note.is_pinned || false,
-        is_favorited: note.is_favorited || false,
-      }
-      await queuePendingUpdate(note.id, updatePayload)
-    }
-  }
-  catch (e) {
-    console.error('[Calendar] 写入离线队列失败:', e)
-  }
-}
-
 async function fetchTagData() {
   if (!user.value)
     return
@@ -213,16 +185,7 @@ async function fetchTagData() {
   }
 }
 
-const editingNote = ref<any | null>(null)
-const editContent = ref('')
-const isEditingExisting = computed(() => !!editingNote.value)
-const editDraftKey = computed(() => editingNote.value ? `calendar_edit_${editingNote.value.id}` : '')
-
 const hideHeader = ref(false)
-
-function onEditorFocus() {
-  hideHeader.value = true
-}
 
 const rootRef = ref<HTMLElement | null>(null)
 
@@ -275,94 +238,11 @@ function dateFromKeyStr(key: string) {
   return new Date(y, (m - 1), d)
 }
 
-// ✅ 修改：保存后直接重新拉取统计，而非手动计算 diff
-async function saveExistingNote(content: string) {
-  if (!user.value || !editingNote.value)
-    return
-
-  const id = editingNote.value.id
-  const trimmed = (content || '').trim()
-  if (!trimmed)
-    return
-
-  const nowISO = new Date().toISOString()
-  const optimisticNote = {
-    ...editingNote.value,
-    content: trimmed,
-    updated_at: nowISO,
-  }
-
-  let finalNote = optimisticNote
-
-  try {
-    const { data, error } = await supabase
-      .from('notes')
-      .update({ content: trimmed, updated_at: nowISO })
-      .eq('id', id)
-      .eq('user_id', user.value.id)
-      .select('*')
-      .single()
-
-    if (error)
-      throw error
-
-    finalNote = data
-
-    // 手动更新本地同步时间戳，防止触发自动同步导致数据被覆盖
-    if (finalNote.updated_at) {
-      const noteTs = new Date(finalNote.updated_at).getTime()
-      const currentLastSync = Number(localStorage.getItem(CAL_LAST_SYNC_TS) || '0')
-      if (noteTs > currentLastSync)
-        localStorage.setItem(CAL_LAST_SYNC_TS, String(noteTs))
-    }
-  }
-  catch (e) {
-    console.warn('联网保存失败，转入离线队列:', e)
-    await saveToOfflineQueue('UPDATE', optimisticNote)
-  }
-
-  selectedDateNotes.value = selectedDateNotes.value.map(n => (n.id === id ? finalNote : n))
-
-  localStorage.setItem(
-    getCalendarDateCacheKey(selectedDate.value),
-    JSON.stringify(selectedDateNotes.value),
-  )
-  emit('updated', finalNote)
-
-  // ✅ 核心修改：保存成功后，直接重新拉取月度统计，确保绝对准确
-  await fetchMonthlyStats(selectedDate.value)
-
-  const draftKey = editDraftKey.value
-  if (draftKey) {
-    try {
-      localStorage.removeItem(draftKey)
-    }
-    catch {}
-  }
-
-  editingNote.value = null
-  editContent.value = ''
-  hideHeader.value = false
-}
-
-function cancelEditExisting() {
-  editingNote.value = null
-  editContent.value = ''
-  hideHeader.value = false
-}
-
 async function handleEdit(note: any) {
-  editingNote.value = note
-  editContent.value = note?.content || ''
-  isWriting.value = false
-  expandedNoteId.value = null
-  hideHeader.value = true
-  if (scrollBodyRef.value)
-    scrollBodyRef.value.scrollTo({ top: 0, behavior: 'smooth' })
-
-  await nextTick()
-  editNoteEditorRef.value?.focus()
+  // 直接告诉父组件：我要编辑这个 note
+  emit('editNote', note)
 }
+
 function handleCopy(content: string) {
   emit('copy', content)
 }
@@ -984,26 +864,6 @@ const composeButtonText = computed(() => {
 
     <div ref="scrollBodyRef" class="calendar-body">
       <div class="notes-for-day-container">
-        <div v-if="isEditingExisting" class="inline-editor">
-          <NoteEditor
-            ref="editNoteEditorRef"
-            v-model="editContent"
-            :is-editing="true"
-            :note-id="editingNote.id" :is-loading="false"
-            :max-note-length="20000"
-            :placeholder="t('notes.calendar.placeholder_edit')"
-            :all-tags="allTags"
-            :tag-counts="tagCounts"
-            :enable-drafts="true"
-            :clear-draft-on-save="true"
-            :enable-scroll-push="true"
-            @save="saveExistingNote"
-            @cancel="cancelEditExisting"
-            @focus="onEditorFocus"
-            @blur="() => {}"
-          />
-        </div>
-
         <div v-if="isLoadingNotes" class="loading-text">
           {{ t('notes.calendar.loading') }}
         </div>

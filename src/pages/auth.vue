@@ -48,7 +48,6 @@ function decryptPin(encoded: string | null) {
     return ''
   }
 }
-
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false)
 const authStore = useAuthStore()
@@ -509,48 +508,94 @@ function notifyAnniversaryDelete(ids: string[]) {
 const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 
+async function handleEditFromCalendar(noteToEdit: any) {
+  editingNote.value = noteToEdit
+  newNoteContent.value = noteToEdit.content || ''
+  openComposer()
+}
+
+async function handleEditorSave(content: string, weather?: string | null) {
+  // A. 如果是编辑现有笔记
+  if (editingNote.value) {
+    const id = editingNote.value.id
+
+    // 1. 先调用保存接口
+    const saved = await saveNote(content, id, { showMessage: true, weather })
+
+    if (saved) {
+      showComposer.value = false
+      isEditorActive.value = false
+      compactWhileTyping.value = false
+
+      // 3. 等待 Vue 完成组件销毁
+      await nextTick()
+      localStorage.removeItem(`note_draft_${id}`)
+      localStorage.removeItem(`draft_${id}`)
+      localStorage.removeItem(LOCAL_CONTENT_KEY)
+      // 清理新版编辑器可能产生的缓存 key
+      localStorage.removeItem(`${LOCAL_CONTENT_KEY}:editor-v2`)
+
+      // 5. 最后清理内存变量
+      newNoteContent.value = ''
+      editingNote.value = null
+    }
+  }
+  // B. 如果是新建笔记
+  else {
+    await handleCreateNote(content, weather)
+  }
+}
+
 function openComposer() {
-  // ✅ 1. 新增：每次打开输入框前，强制从 LocalStorage 读取最新草稿
-  // 这样就能读到刚才在日历组件里写的内容了
-  try {
-    const raw = localStorage.getItem(LOCAL_CONTENT_KEY) // 即 'new_note_content_draft'
-    if (raw) {
-      // 尝试解析 JSON（因为日历组件存的是 JSON 格式: {"content": "..."}）
-      try {
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed.content === 'string') {
-          newNoteContent.value = parsed.content
+  // 🔥 [核心修复] 如果当前正在编辑某条特定笔记，不要读取“新建草稿”覆盖它
+  // 只有在是“新建模式”时，才尝试恢复上次未写完的新建内容
+  if (!editingNote.value) {
+    try {
+      const raw = localStorage.getItem(LOCAL_CONTENT_KEY)
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed.content === 'string')
+            newNoteContent.value = parsed.content
+          else
+            newNoteContent.value = raw
         }
-        else {
-          // 兼容旧数据的纯文本格式
+        catch {
           newNoteContent.value = raw
         }
       }
-      catch {
-        // 解析失败说明是纯文本，直接赋值
-        newNoteContent.value = raw
+      else {
+        newNoteContent.value = ''
       }
     }
-    else {
-      // 如果没有缓存，清空内容（防止残留上次的字）
-      newNoteContent.value = ''
+    catch (e) {
+      console.error('读取草稿失败', e)
     }
   }
-  catch (e) {
-    console.error('读取草稿失败', e)
-  }
 
-  // ✅ 2. 原有打开逻辑保持不变
   showComposer.value = true
   headerCollapsed.value = false
   isEditorActive.value = true
   compactWhileTyping.value = true
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
 }
+// App.vue Script 区域
+
+// [修改] 关闭编辑器
+// src/App.vue
+
 function closeComposer() {
+  // 1. 先隐藏
   showComposer.value = false
   isEditorActive.value = false
   compactWhileTyping.value = false
+
+  // 3. 延迟清理数据，防止组件还在更新时丢失 ID
+  setTimeout(() => {
+    editingNote.value = null
+    // 如果是取消操作，也可以顺手尝试清理一下（可选）
+    // localStorage.removeItem(LOCAL_CONTENT_KEY)
+  }, 100)
 }
 
 const calendarViewRef = ref(null)
@@ -1020,7 +1065,14 @@ onUnmounted(() => {
   window.removeEventListener('md-img-load', handleMdImageLoad)
 })
 
+// src/App.vue
+
 watch(newNoteContent, (val) => {
+  // 🔥 [新增] 核心修复：如果当前正在编辑旧笔记，绝对不要把内容写入“新建笔记草稿”
+  if (editingNote.value)
+    return
+
+  // 下面是原有的逻辑
   if (isReady.value) {
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
@@ -1153,7 +1205,7 @@ async function handleCreateNote(content: string, weather?: string | null) {
       compactWhileTyping.value = false
       headerCollapsed.value = false
       showComposer.value = false
-      if (showCalendarView.value && calendarViewRef.value)
+      if (calendarViewRef.value)
         (calendarViewRef.value as any).insertExternalNote?.(saved)
     }
   }
@@ -2128,7 +2180,7 @@ function updateNoteInList(updatedNote: any) {
   }
 
   // 4. 【原样】日历 UI 实时同步
-  if (showCalendarView.value && calendarViewRef.value)
+  if (calendarViewRef.value)
     (calendarViewRef.value as any).commitUpdate?.(updatedNote)
 
   // 5. 【原样】那年今日更新
@@ -2668,9 +2720,9 @@ async function triggerDeleteConfirmation(id: string) {
         if (!isOnline()) {
           await queuePendingDelete(id)
           await applyLocalDeletion([id])
-          if (showCalendarView.value && calendarViewRef.value) {
-            ;(calendarViewRef.value as any).commitDelete?.(id)
-          }
+          if (calendarViewRef.value)
+            (calendarViewRef.value as any).commitDelete?.(id)
+
           messageHook.success(t('notes.delete_success'))
           return
         }
@@ -2697,7 +2749,7 @@ async function triggerDeleteConfirmation(id: string) {
 
         // 3. 额外的 UI 清理
         anniversaryBannerRef.value?.removeNoteById(id)
-        if (showCalendarView.value && calendarViewRef.value) {
+        if (calendarViewRef.value) {
           ;(calendarViewRef.value as any).commitDelete?.(id)
         }
 
@@ -2967,6 +3019,12 @@ async function handleDeleteSelected() {
             }
           }
           await applyLocalDeletion(idsToDelete)
+          if (calendarViewRef.value) {
+            idsToDelete.forEach((id) => {
+              // 这里的 ?. 是为了防止 calendar 组件没暴露方法报错
+              (calendarViewRef.value as any).commitDelete?.(id)
+            })
+          }
 
           // 清理编辑状态
           if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
@@ -2998,6 +3056,11 @@ async function handleDeleteSelected() {
         // 2. 🔥【核心修改】直接调用统一清理函数
         // 它会负责把这批 ID 从 内存、LocalStorage 和 IndexedDB 中彻底抹去
         await applyLocalDeletion(idsToDelete)
+        if (calendarViewRef.value) {
+          idsToDelete.forEach((id) => {
+            (calendarViewRef.value as any).commitDelete?.(id)
+          })
+        }
 
         // 3. 扫尾工作
         invalidateAllSearchCaches() // 搜索缓存全部作废
@@ -3068,66 +3131,6 @@ function handleMainMenuSelect(key: string) {
 async function handleDataRefresh() {
   // 重置分页并重新拉取
   await fetchNotes({ reset: true })
-}
-
-async function handleEditFromCalendar(noteToFind: any) {
-  // 1. 关闭日历视图并清理所有筛选状态（这部分保持不变）
-  showCalendarView.value = false
-  if (isAnniversaryViewActive.value)
-    handleAnniversaryToggle(null)
-  if (activeTagFilter.value)
-    clearTagFilter()
-  if (searchQuery.value || isShowingSearchResults.value)
-    handleCancelSearch()
-  await nextTick()
-
-  // 2. 检查笔记是否已在当前加载的列表中
-  const noteExists = notes.value.some(n => n.id === noteToFind.id)
-
-  if (noteExists) {
-    // 情况A：笔记已在列表中，这是理想情况，直接定位即可
-    if (noteListRef.value)
-      (noteListRef.value as any).focusAndEditNote(noteToFind.id)
-
-    return
-  }
-
-  // 情况B：笔记不在列表中，这是问题的核心，需要从服务器分页加载直到找到它
-  isLoadingNotes.value = true // 显示加载动画
-  notes.value = [] // 清空当前列表
-  currentPage.value = 1 // 重置页码
-  hasMoreNotes.value = true // 假定有更多数据可以加载
-
-  // 循环加载，直到找到笔记或加载完所有笔记
-  while (hasMoreNotes.value) {
-    // fetchNotes 会根据 currentPage 加载该页数据并追加到 notes 数组
-    await fetchNotes()
-
-    // 检查新加载的这页数据里是否包含我们的目标笔记
-    const found = notes.value.some(n => n.id === noteToFind.id)
-    if (found) {
-      // 找到了！
-      isLoadingNotes.value = false // 隐藏加载动画
-      await nextTick() // 等待DOM更新
-      if (noteListRef.value) {
-        // 命令 NoteList 组件定位并编辑
-        (noteListRef.value as any).focusAndEditNote(noteToFind.id)
-      }
-      return // 任务完成，退出函数
-    }
-
-    // 如果当前页没找到，且服务器确认还有更多数据，则准备加载下一页
-    if (hasMoreNotes.value)
-      currentPage.value++
-  }
-
-  // 如果循环结束但仍未找到笔记（这是一种边缘情况，比如笔记在别处被删了）
-  isLoadingNotes.value = false
-  // 作为最后的保障，使用旧的 unshift 方法，至少让用户能编辑这条笔记，即使位置不对
-  notes.value.unshift(noteToFind)
-  await nextTick()
-  if (noteListRef.value)
-    (noteListRef.value as any).focusAndEditNote(noteToFind.id)
 }
 
 useOfflineSync()
@@ -3455,7 +3458,8 @@ function onCalendarUpdated(updated: any) {
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
-          :is-editing="false"
+          :is-editing="!!editingNote"
+          :note-id="editingNote?.id"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
@@ -3464,7 +3468,8 @@ function onCalendarUpdated(updated: any) {
           enable-drafts
           :draft-key="LOCAL_CONTENT_KEY"
           :enable-scroll-push="true"
-          @save="handleCreateNote"
+          :clear-draft-on-save="true"
+          @save="handleEditorSave"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
           @cancel="closeComposer"
@@ -3511,7 +3516,7 @@ function onCalendarUpdated(updated: any) {
 
       <Transition name="slide-up-fade">
         <CalendarView
-          v-if="showCalendarView"
+          v-show="showCalendarView"
           ref="calendarViewRef"
           :theme-color="currentThemeColor"
           :hide-title-bar="true"
@@ -3528,8 +3533,8 @@ function onCalendarUpdated(updated: any) {
           @delete="triggerDeleteConfirmation"
           @favorite="handleFavoriteNote"
           @start-compose="(date) => {
-            composerTargetDate = date; // 1. 记下日期
-            openComposer(); // 2. 打开主页输入框
+            composerTargetDate = date;
+            openComposer();
           }"
         />
       </Transition>
@@ -4288,7 +4293,7 @@ selection-actions-banner,
   border-radius: 20px;
   transition: background-color 0.2s;
   user-select: none;
-  color: #333;
+  color: #555;
 }
 .dark .header-center-trigger {
   color: #f0f0f0;
