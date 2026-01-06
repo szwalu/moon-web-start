@@ -1221,8 +1221,8 @@ async function handleUpdateNote({ id, content }: { id: string; content: string }
     callback(!!saved)
 }
 
-// 构造一条“本地新建”的笔记对象（与线上结构一致）
-function buildLocalNote(content: string, weather?: string | null) {
+// ✅ 加上第三个参数 createdAt
+function buildLocalNote(content: string, weather?: string | null, createdAt?: string | null) {
   const nowIso = createdAt || new Date().toISOString()
   return {
     id: uuidv4(),
@@ -1231,8 +1231,8 @@ function buildLocalNote(content: string, weather?: string | null) {
     created_at: nowIso,
     updated_at: nowIso,
     is_pinned: false,
-    user_id: user.value!.id, // 已登录前提
-    _localOnly: true as const, // 仅用于 UI 标记（可选）
+    user_id: user.value!.id,
+    _localOnly: true as const,
   }
 }
 
@@ -1304,6 +1304,7 @@ async function saveNote(
     const updatedObj = notes.value.find(n => n.id === noteIdToUpdate) || null
     if (updatedObj)
       notifyAnniversaryUpdate(updatedObj)
+    updateNoteInList(updatedObj)
     return updatedObj
   }
 
@@ -1450,7 +1451,7 @@ async function saveNote(
       try {
         console.warn('新建失败，转入离线队列')
         // 1. 生成本地对象
-        const localNote = buildLocalNote(contentToSave, weather)
+        const localNote = buildLocalNote(contentToSave, weather, createdAt)
 
         // 2. 更新 UI
         notes.value = [localNote, ...notes.value]
