@@ -978,7 +978,7 @@ onMounted(() => {
 
       <NModal v-model:show="showPasswordModal">
         <NCard
-          style="width: 90%; max-width: 360px;"
+          class="password-modal-card"
           :title="t('settings.app_lock') || '应用锁设置'"
           :bordered="false"
           size="huge"
@@ -998,6 +998,7 @@ onMounted(() => {
               :placeholder="t('settings.lock_placeholder')"
               :maxlength="4"
               :allow-input="(value) => !value || /^\d+$/.test(value)"
+              inputmode="numeric"
               style="text-align: center; font-size: 18px; letter-spacing: 4px;"
             >
               <template #prefix>
@@ -1400,6 +1401,34 @@ onMounted(() => {
   margin-left: 0 !important; /* ⚡️ 核心：去掉负边距 */
   padding-left: 20px !important; /* ⚡️ 核心：补上 20px 内边距，跟上面对齐 */
   box-sizing: border-box;
+}
+
+/* ... 原有的样式 ... */
+
+/* 🔥 密码弹窗专用样式 🔥 */
+:deep(.password-modal-card) {
+  /* 1. 基础尺寸设置 */
+  width: 90%;
+  max-width: 360px;
+
+  /* 2. 关键定位逻辑 */
+  position: fixed; /* 固定定位，脱离文档流，不受父容器挤压 */
+  left: 50%;
+  top: 46%; /* ✅ 核心需求：距离顶部 46% */
+  transform: translate(-50%, -50%); /* 居中校准 */
+
+  /* 3. 防止键盘顶飞的关键 */
+  /* 当键盘弹出时，视口变小，如果不设置 margin，浏览器可能会尝试自动滚动 */
+  /* 固定定位通常能较好地抵抗这种自动滚动 */
+  margin: 0 !important;
+}
+
+/* 📱 针对移动端键盘弹出时的优化 (可选) */
+/* 当屏幕高度很小时（例如键盘弹起），我们可以稍微上移一点点，防止被键盘遮挡 */
+@media (max-height: 500px) {
+  :deep(.password-modal-card) {
+    top: 40%; /* 键盘弹起时稍微再往上提一点，视情况调整 */
+  }
 }
 </style>
 
