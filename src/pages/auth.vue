@@ -300,7 +300,6 @@ const isMonthJumpView = ref(false)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
 const composerTargetDate = ref<Date | null>(null)
-const calendarEditingNote = ref<any | null>(null)
 const SESSION_SCROLL_Y = 'session_scroll_y'
 const themeStyle = computed(() => {
   const currentKey = settingStore.settings.theme
@@ -511,14 +510,6 @@ const LOCAL_CONTENT_KEY = 'new_note_content_draft'
 const LOCAL_NOTE_ID_KEY = 'last_edited_note_id'
 
 function openComposer() {
-  if (calendarEditingNote.value) {
-    showComposer.value = true
-    headerCollapsed.value = false
-    isEditorActive.value = true
-    compactWhileTyping.value = true
-    nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
-    return
-  }
   // ✅ 1. 新增：每次打开输入框前，强制从 LocalStorage 读取最新草稿
   // 这样就能读到刚才在日历组件里写的内容了
   try {
@@ -555,6 +546,11 @@ function openComposer() {
   isEditorActive.value = true
   compactWhileTyping.value = true
   nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
+}
+function closeComposer() {
+  showComposer.value = false
+  isEditorActive.value = false
+  compactWhileTyping.value = false
 }
 
 const calendarViewRef = ref(null)
@@ -1026,8 +1022,6 @@ onUnmounted(() => {
 
 watch(newNoteContent, (val) => {
   if (isReady.value) {
-    if (calendarEditingNote.value)
-      return
     if (val)
       localStorage.setItem(LOCAL_CONTENT_KEY, val)
     else
@@ -1128,85 +1122,47 @@ async function _reloadNotes() {
 
 // 接收 NoteEditor.vue 发来的 { content, weather }
 
-// auth.vue
-
-// 👇 [修改] 这是一个通用的保存入口
-async function handleComposerSave(content: string, weather?: string | null) {
-  // --- 分支 A: 编辑旧笔记 (来自日历) ---
-  if (calendarEditingNote.value) {
-    const note = calendarEditingNote.value
-
-    // 调用更新 API (复用你已有的 saveNote 逻辑，或者直接调 supabase)
-    // 这里我们可以直接调用 saveNote，它内部处理了离线/在线
-    // 但为了简单直接，且确保更新的是指定ID，我们这里手写一个简单的更新流程
-    // 或者复用 handleUpdateNote? 不行，handleUpdateNote 绑定了主页列表
-
-    // 让我们复用 saveNote 来处理核心逻辑：
-    // saveNote(content, id, ...)
-    isCreating.value = true
-    try {
-      const updated = await saveNote(content, note.id, { showMessage: true, weather })
-      if (updated) {
-        // 1. 关闭编辑器
-        closeComposer()
-
-        // 2. 通知日历刷新该笔记
-        if (showCalendarView.value && calendarViewRef.value)
-          (calendarViewRef.value as any).updateExternalNote?.(updated)
-      }
-    }
-    finally {
-      isCreating.value = false
-    }
-    return
-  }
-
-  // --- 分支 B: 新建笔记 (原有的逻辑) ---
-  // (把原来 handleCreateNote 的代码搬到这里)
+async function handleCreateNote(content: string, weather?: string | null) {
   isCreating.value = true
   try {
+    // 👇 [修改] 核心逻辑：如果有目标日期，就用它；否则用当前时间
     let customCreatedAt = null
     if (composerTargetDate.value) {
       const d = new Date(composerTargetDate.value)
       const now = new Date()
+      // 保留当前的时分秒，只改变年月日
       d.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
       customCreatedAt = d.toISOString()
     }
 
+    // 👇 [修改] 传给 saveNote 第三个参数 (expanding the options object)
     const saved = await saveNote(content, null, { showMessage: true, weather, createdAt: customCreatedAt })
 
     if (saved) {
+      // ✅ 老版草稿 key（字符串版）
       localStorage.removeItem(LOCAL_CONTENT_KEY)
+      // ✅ 新版 NoteEditor 草稿 key（带 editor-v2 后缀）
       localStorage.removeItem(`${LOCAL_CONTENT_KEY}:editor-v2`)
+
       newNoteContent.value = ''
       nextTick(() => {
-        (newNoteEditorRef.value as any)?.reset?.();
-        (newNoteEditorRef.value as any)?.blur?.()
+        (newNoteEditorRef.value as any)?.reset?.()
+        ;(newNoteEditorRef.value as any)?.blur?.()
       })
-      closeComposer() // 复用关闭逻辑
-
+      isEditorActive.value = false
+      compactWhileTyping.value = false
+      headerCollapsed.value = false
+      showComposer.value = false
       if (showCalendarView.value && calendarViewRef.value)
         (calendarViewRef.value as any).insertExternalNote?.(saved)
     }
   }
   finally {
     isCreating.value = false
-    composerTargetDate.value = null // 清理日期
+    composerTargetDate.value = null
   }
 }
 
-// auth.vue
-
-function closeComposer() {
-  showComposer.value = false
-  isEditorActive.value = false
-  compactWhileTyping.value = false
-
-  // 仅重置状态标记，不要动 newNoteContent 的值
-  // 防止误触发 watcher 删除草稿
-  calendarEditingNote.value = null
-  composerTargetDate.value = null
-}
 async function handleUpdateNote({ id, content }: { id: string; content: string }, callback: (success: boolean) => void) {
   const saved = await saveNote(content, id, { showMessage: true })
   if (callback)
@@ -3499,8 +3455,7 @@ function onCalendarUpdated(updated: any) {
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
-          :is-editing="!!calendarEditingNote"
-          :note-id="calendarEditingNote?.id"
+          :is-editing="false"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
           :placeholder="$t('notes.content_placeholder')"
@@ -3509,7 +3464,7 @@ function onCalendarUpdated(updated: any) {
           enable-drafts
           :draft-key="LOCAL_CONTENT_KEY"
           :enable-scroll-push="true"
-          @save="handleComposerSave"
+          @save="handleCreateNote"
           @focus="onEditorFocus"
           @blur="onEditorBlur"
           @cancel="closeComposer"
@@ -3573,18 +3528,8 @@ function onCalendarUpdated(updated: any) {
           @delete="triggerDeleteConfirmation"
           @favorite="handleFavoriteNote"
           @start-compose="(date) => {
-            // 新建逻辑
-            composerTargetDate = date;
-            calendarEditingNote = null; // 确保不是编辑模式
-            newNoteContent = ''; // 清空内容
-            openComposer();
-          }"
-          @start-edit="(note) => {
-            // 编辑逻辑
-            calendarEditingNote = note; // 记下要编辑的笔记
-            composerTargetDate = null;
-            newNoteContent = note.content; // 填入内容
-            openComposer();
+            composerTargetDate = date; // 1. 记下日期
+            openComposer(); // 2. 打开主页输入框
           }"
         />
       </Transition>
