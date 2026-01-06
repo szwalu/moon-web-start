@@ -171,22 +171,22 @@ const editorHeight = computed(() => {
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   let keyboardH = '0px'
-
-  // 只要检测到了 offset，就应用它
-  if (keyboardOffset.value !== '0px') {
-    keyboardH = keyboardOffset.value
-  }
-  else if (isReallyIOS) {
-    // 兜底估算（仅当计算失败时）
-    const screenW = window.screen.width
-    const isIPad = screenW >= 740
-    const isLargePhone = screenW > 420
-    let fallback = isPWA.value ? '435px' : '290px'
-    if (isIPad)
-      fallback = isPWA.value ? '460px' : '380px'
-    else if (isLargePhone)
-      fallback = isPWA.value ? '480px' : '335px'
-    keyboardH = fallback
+  if (isReallyIOS) {
+    if (keyboardOffset.value !== '0px') {
+      keyboardH = keyboardOffset.value
+    }
+    else {
+      // 兜底估算（仅当计算失败时）
+      const screenW = window.screen.width
+      const isIPad = screenW >= 740
+      const isLargePhone = screenW > 420
+      let fallback = isPWA.value ? '435px' : '290px'
+      if (isIPad)
+        fallback = isPWA.value ? '460px' : '380px'
+      else if (isLargePhone)
+        fallback = isPWA.value ? '480px' : '335px'
+      keyboardH = fallback
+    }
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
