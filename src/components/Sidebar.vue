@@ -1421,7 +1421,7 @@ body > .n-dialog-mask {
   max-width: 360px;
   position: fixed !important; /* 强制固定 */
   left: 50% !important;
-  top: 46% !important;        /* 核心位置 */
+  top: 56% !important;        /* 核心位置 */
   transform: translate(-50%, -50%) !important;
   margin: 0 !important;
   z-index: 10001 !important; /* 确保在最上层 */
