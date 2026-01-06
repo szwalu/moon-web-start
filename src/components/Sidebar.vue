@@ -239,10 +239,16 @@ const showPasswordModal = ref(false)
 const lockPassword = ref('')
 const loadingPassword = ref(false)
 
-// 打开弹窗时，稍微清理一下状态
+const isInputFocused = ref(false)
+
+// 修改 openPasswordModal 函数，打开时默认重置状态
 function openPasswordModal() {
-  lockPassword.value = '' // 默认清空，让用户重新输入
+  lockPassword.value = ''
   showPasswordModal.value = true
+
+  // 如果输入框有 autofocus，这里可以预设为 true，或者等待 @focus 事件触发
+  // 为了体验流畅，我们打开时先不垫高，等键盘真的弹出来（触发 focus）再垫高
+  isInputFocused.value = false
 }
 
 async function handleSavePassword() {
@@ -993,7 +999,10 @@ onMounted(() => {
           :style="{
             width: '90%',
             maxWidth: '360px',
-            marginBottom: isIOS ? '46vh' : '0',
+            /* 🚀 核心修复：改为动态判断 */
+            /* 只有在 iOS 且 输入框聚焦 时，才垫高底部 */
+            /* 失焦（收起键盘）时，回归 0，卡片回到正中 */
+            marginBottom: (isIOS && isInputFocused) ? '46vh' : '0',
             transition: 'margin-bottom 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
           }"
           @close="showPasswordModal = false"
@@ -1011,6 +1020,8 @@ onMounted(() => {
               :allow-input="(value) => !value || /^\d+$/.test(value)"
               inputmode="numeric"
               style="text-align: center; font-size: 18px; letter-spacing: 4px;"
+              @focus="isInputFocused = true"
+              @blur="isInputFocused = false"
             >
               <template #prefix>
                 <Lock :size="16" style="opacity: 0.5" />
