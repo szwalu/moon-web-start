@@ -4303,9 +4303,12 @@ selection-actions-banner,
 
   /* 层级必须低于 Header (3000)，但高于内容 */
   z-index: 2000 !important;
-
-  /* 如果想要半透明背景遮罩效果，可以在 CalendarView 里调整背景色 */
-  /* 这里默认它是白色全屏遮盖列表 */
+  padding-top: 0 !important;
+}
+:deep(.dropdown-calendar-override .calendar-container) {
+  /* 原本是 padding: 1rem 1rem 0 1rem; */
+  /* 改为顶部只有 0.5rem (8px)，甚至 0 */
+  padding-top: 0.5rem !important;
 }
 </style>
 
