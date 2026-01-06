@@ -58,6 +58,14 @@ settings:
   lock_placeholder: 输入4位数字
   lock_screen_success: 解锁成功
   lock_screen_prompt: 输入密码解锁
+  lock_timeout_label: 自动锁定时间
+  lock_mismatch: 两次输入的密码不一致
+  lock_confirm_placeholder: 再次输入以确认
+  lock_timeout_0: 立即锁定
+  lock_timeout_1: 1 分钟后
+  lock_timeout_5: 5 分钟后
+  lock_timeout_15: 15 分钟后
+  lock_timeout_60: 1 小时后
 
   theme:
     title: 主题

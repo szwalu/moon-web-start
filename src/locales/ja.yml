@@ -58,6 +58,14 @@ settings:
   lock_placeholder: 4桁の数字を入力
   lock_screen_success: ロック解除成功
   lock_screen_prompt: 暗証番号を入力してロック解除
+  lock_timeout_label: 自動ロック
+  lock_mismatch: パスワードが一致しません
+  lock_confirm_placeholder: 確認のため再入力
+  lock_timeout_0: 即時
+  lock_timeout_1: 1分後
+  lock_timeout_5: 5分後
+  lock_timeout_15: 15分後
+  lock_timeout_60: 1時間後
 
   theme:
     title: テーマ

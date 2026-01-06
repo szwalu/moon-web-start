@@ -67,8 +67,38 @@ const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
 const isLocked = ref(false)
 const lockCode = ref('')
 
+// ✅ [新增] 常量定义
+const LOCK_TIMEOUT_KEY = 'app_lock_timeout_setting' // 设置(分钟)
+const LAST_ACTIVE_KEY = 'app_lock_last_active_ts' // 最后活跃时间戳(毫秒)
+
+// ✅ [新增] 核心判断函数：检查是否超时
+function shouldLock(): boolean {
+  // 1. 获取最后活跃时间
+  const lastActive = localStorage.getItem(LAST_ACTIVE_KEY)
+  if (!lastActive)
+    return true // 如果没有记录（比如第一次装），默认锁
+
+  // 2. 获取设置的超时时间 (分钟 -> 毫秒)
+  const timeoutMin = Number(localStorage.getItem(LOCK_TIMEOUT_KEY) || 0)
+  const timeoutMs = timeoutMin * 60 * 1000
+
+  // 3. 计算时间差
+  const passed = Date.now() - Number(lastActive)
+
+  // 4. 如果 逝去的时间 > 设定的超时，则需要锁
+  return passed > timeoutMs
+}
+
+// ✅ [新增] 更新最后活跃时间
+function updateLastActive() {
+  localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()))
+}
+
 watch(user, async (currentUser) => {
   if (currentUser) {
+    // ---------------------------------------------------------
+    // 1. 基础状态重置 & 计算试用期 (用于激活弹窗)
+    // ---------------------------------------------------------
     logoError.value = false
     const registeredAt = new Date(currentUser.created_at)
     const now = new Date()
@@ -77,13 +107,27 @@ watch(user, async (currentUser) => {
     const TRIAL_DAYS = 7
     daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
 
+    // ---------------------------------------------------------
+    // 🔥 步骤 1: 优先读取本地缓存 (支持离线/断网秒开锁屏)
+    // ---------------------------------------------------------
     try {
       const cachedEncrypted = localStorage.getItem(LOCK_CACHE_KEY)
       if (cachedEncrypted) {
-        const plainPin = decryptPin(cachedEncrypted)
+        const plainPin = decryptPin(cachedEncrypted) // 🔐 解密
+
+        // 只有解密出有效的 4 位数字才认为是有效密码
         if (plainPin && /^\d{4}$/.test(plainPin)) {
           lockCode.value = plainPin
-          isLocked.value = true
+
+          // ✅ [超时判断]：只有在“应该锁”的时候才锁
+          if (shouldLock()) {
+            isLocked.value = true
+          }
+          else {
+            // 没超时，自动放行，并刷新活跃时间，算作一次活跃
+            isLocked.value = false
+            updateLastActive()
+          }
         }
       }
     }
@@ -91,38 +135,58 @@ watch(user, async (currentUser) => {
       console.warn('读取本地锁屏缓存失败', e)
     }
 
-    // B. 再请求网络
+    // ---------------------------------------------------------
+    // 🔥 步骤 2: 发起网络请求 (同步最新状态并刷新缓存)
+    // ---------------------------------------------------------
     const { data, error } = await supabase
       .from('users')
-      .select('is_active, app_lock_code')
+      .select('is_active, app_lock_code, app_lock_timeout') // ✅ 记得查 app_lock_timeout
       .eq('id', currentUser.id)
       .single()
 
+    // 2.1 更新激活状态
     isUserActivated.value = (data && data.is_active === true)
 
+    // 2.2 同步应用锁状态
     if (data) {
       if (data.app_lock_code) {
+        // A. 服务器有密码：同步到内存
         if (!lockCode.value) {
           lockCode.value = data.app_lock_code
-          isLocked.value = true
+          // 如果刚才缓存没命中，这里也要做一次超时判断
+          if (shouldLock())
+            isLocked.value = true
         }
+
+        // B. 同步密码到本地缓存
         const newEncrypted = encryptPin(data.app_lock_code)
         if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
           localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
+
+        // ✅ C. 同步超时设置到本地缓存
+        const serverTimeout = String(data.app_lock_timeout || 0)
+        if (localStorage.getItem(LOCK_TIMEOUT_KEY) !== serverTimeout)
+          localStorage.setItem(LOCK_TIMEOUT_KEY, serverTimeout)
       }
       else {
+        // D. 服务器没密码 (用户在别处取消了)：强制解锁并清理本地
         isLocked.value = false
         lockCode.value = ''
         localStorage.removeItem(LOCK_CACHE_KEY)
+        localStorage.removeItem(LOCK_TIMEOUT_KEY)
       }
     }
 
+    // ---------------------------------------------------------
+    // 🔥 步骤 3: 处理激活弹窗逻辑 (保留原有逻辑)
+    // ---------------------------------------------------------
+    // 如果请求出错，或者数据为空，或者 is_active 不为 true
     if (error || !data || data.is_active !== true) {
       if (diffDays <= TRIAL_DAYS) {
-        canDismissActivation.value = true
+        canDismissActivation.value = true // 试用期内可关闭
       }
       else {
-        canDismissActivation.value = false
+        canDismissActivation.value = false // 试用期过，强制弹窗
         showActivation.value = true
       }
     }
@@ -1455,7 +1519,23 @@ function handleSearchCleared() {
 }
 
 async function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
+  if (document.visibilityState === 'hidden') {
+    // 🚪 离开页面/切到后台：记录当前时间
+    updateLastActive()
+  }
+  else if (document.visibilityState === 'visible') {
+    // 👋 回到页面
+
+    // 1. 检查是否超时锁屏
+    if (lockCode.value && shouldLock()) {
+      isLocked.value = true
+    }
+    else {
+      // 没超时，续命
+      updateLastActive()
+    }
+
+    // 2. 检查 Session 状态 (合并之前的逻辑)
     const { data, error } = await supabase.auth.getSession()
     if ((!data.session || error) && authStore.user) {
       messageHook.warning(t('auth.session_expired_relogin'))
@@ -1469,6 +1549,8 @@ async function handleVisibilityChange() {
       })
       localStorage.removeItem(LOCAL_CONTENT_KEY)
     }
+
+    // 3. 刷新那年今日
     anniversaryBannerRef.value?.loadAnniversaryNotes(true)
   }
 }
@@ -3145,7 +3227,10 @@ function onCalendarUpdated(updated: any) {
       <AppLock
         v-if="isLocked && lockCode"
         :correct-code="lockCode"
-        @unlock="isLocked = false"
+        @unlock="() => {
+          isLocked = false;
+          updateLastActive(); // ✅ 解锁成功，刷新计时器
+        }"
       />
     </Transition>
 

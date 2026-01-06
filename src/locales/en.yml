@@ -58,6 +58,14 @@ settings:
   lock_placeholder: Enter 4-digit PIN
   lock_screen_success: Unlocked successfully
   lock_screen_prompt: Enter PIN to unlock
+  lock_timeout_label: Auto-lock Timeout
+  lock_mismatch: Passcodes do not match
+  lock_confirm_placeholder: Re-enter to confirm
+  lock_timeout_0: Immediately
+  lock_timeout_1: After 1 minute
+  lock_timeout_5: After 5 minutes
+  lock_timeout_15: After 15 minutes
+  lock_timeout_60: After 1 hour
 
   theme:
     title: Theme

@@ -237,16 +237,31 @@ async function handleNotificationToggle(value: boolean) {
 // ===========================================================================
 const showPasswordModal = ref(false)
 const lockPassword = ref('')
+const lockPasswordConfirm = ref('')
 const loadingPassword = ref(false)
+
+// ✅ [新增] 超时设置相关
+const lockTimeout = ref(0) // 默认 0 (立即)
+const LOCK_TIMEOUT_KEY = 'app_lock_timeout_setting' // LocalStorage Key
+
+// 定义选项
+const timeoutOptions = computed(() => [
+  { label: t('settings.lock_timeout_0') || '立即锁定', value: 0 },
+  { label: t('settings.lock_timeout_1') || '1 分钟后', value: 1 },
+  { label: t('settings.lock_timeout_5') || '5 分钟后', value: 5 },
+  { label: t('settings.lock_timeout_15') || '15 分钟后', value: 15 },
+  { label: t('settings.lock_timeout_60') || '1 小时后', value: 60 },
+])
 
 // 修改 openPasswordModal 函数，打开时默认重置状态
 function openPasswordModal() {
   lockPassword.value = ''
+  lockPasswordConfirm.value = ''
   showPasswordModal.value = true
 
-  // 如果输入框有 autofocus，这里可以预设为 true，或者等待 @focus 事件触发
-  // 为了体验流畅，我们打开时先不垫高，等键盘真的弹出来（触发 focus）再垫高
-  isInputFocused.value = false
+  // ✅ [新增] 读取本地缓存的超时设置回显
+  const savedTimeout = localStorage.getItem(LOCK_TIMEOUT_KEY)
+  lockTimeout.value = savedTimeout ? Number(savedTimeout) : 0
 }
 
 async function handleSavePassword() {
@@ -258,31 +273,40 @@ async function handleSavePassword() {
     return
   }
 
+  if (lockPassword.value && lockPassword.value !== lockPasswordConfirm.value) {
+    message.error(t('settings.lock_mismatch') || '两次输入的密码不一致')
+    return
+  }
+
   loadingPassword.value = true
   try {
     const valToSave = lockPassword.value ? lockPassword.value : null
+    // ✅ [新增] 获取超时时间
+    const timeoutToSave = lockTimeout.value
 
     const { error } = await supabase
       .from('users')
-      .update({ app_lock_code: valToSave })
+      .update({
+        app_lock_code: valToSave,
+        app_lock_timeout: timeoutToSave, // ✅ 同步保存超时设置
+      })
       .eq('id', props.user.id)
 
     if (error)
       throw error
 
     if (valToSave) {
-      // ✅ [国际化] 开启成功提示
       message.success(t('settings.lock_enabled') || '应用锁已开启')
-
-      // ✅ [修改] 加密后存入本地缓存
       localStorage.setItem(LOCK_CACHE_KEY, encryptPin(valToSave))
+
+      // ✅ [新增] 保存超时设置到本地
+      localStorage.setItem(LOCK_TIMEOUT_KEY, String(timeoutToSave))
     }
     else {
-      // ✅ [国际化] 关闭成功提示
       message.success(t('settings.lock_disabled') || '应用锁已关闭')
-
-      // ✅ [修改] 清除本地缓存
       localStorage.removeItem(LOCK_CACHE_KEY)
+      // ✅ [新增] 清理设置
+      localStorage.removeItem(LOCK_TIMEOUT_KEY)
     }
     showPasswordModal.value = false
   }
@@ -1029,6 +1053,32 @@ onMounted(() => {
                 <Lock :size="16" style="opacity: 0.5" />
               </template>
             </NInput>
+
+            <NInput
+              v-if="lockPassword"
+              v-model:value="lockPasswordConfirm"
+              type="text"
+              :placeholder="t('settings.lock_confirm_placeholder') || '再次输入以确认'"
+              :maxlength="4"
+              :allow-input="(value) => !value || /^\d+$/.test(value)"
+              inputmode="numeric"
+              style="text-align: center; font-size: 18px; letter-spacing: 4px; margin-top: 12px;"
+            >
+              <template #prefix>
+                <CheckSquare :size="16" style="opacity: 0.5" />
+              </template>
+            </NInput>
+
+            <div v-if="lockPassword" style="margin-top: 8px;">
+              <NText depth="3" style="font-size: 12px; margin-bottom: 4px; display:block;">
+                {{ t('settings.lock_timeout_label') || '自动锁定时间' }}
+              </NText>
+              <NSelect
+                v-model:value="lockTimeout"
+                :options="timeoutOptions"
+                size="medium"
+              />
+            </div>
 
             <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
               <NButton
