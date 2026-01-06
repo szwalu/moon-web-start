@@ -239,8 +239,6 @@ const showPasswordModal = ref(false)
 const lockPassword = ref('')
 const loadingPassword = ref(false)
 
-const isInputFocused = ref(false)
-
 // 修改 openPasswordModal 函数，打开时默认重置状态
 function openPasswordModal() {
   lockPassword.value = ''
@@ -996,14 +994,20 @@ onMounted(() => {
           role="dialog"
           aria-modal="true"
           closable
-          :style="{
+          :style="isIOS ? {
+            /* 🍎 iOS 专用稳如泰山样式 */
+            position: 'fixed',
+            top: '18%', /* 永远固定在距离顶部 18% 的位置 */
+            left: '50%',
+            transform: 'translateX(-50%)', /* 只做水平居中，不做垂直居中 */
             width: '90%',
             maxWidth: '360px',
-            /* 🚀 核心修复：改为动态判断 */
-            /* 只有在 iOS 且 输入框聚焦 时，才垫高底部 */
-            /* 失焦（收起键盘）时，回归 0，卡片回到正中 */
-            marginBottom: (isIOS && isInputFocused) ? '46vh' : '0',
-            transition: 'margin-bottom 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
+            margin: '0', /* 清除可能存在的 margin */
+            transition: 'none', /* 禁止过渡动画，防止键盘弹出时的视觉延迟 */
+          } : {
+            /* 🤖 安卓/PC 保持默认垂直居中 */
+            width: '90%',
+            maxWidth: '360px',
           }"
           @close="showPasswordModal = false"
         >
@@ -1020,8 +1024,6 @@ onMounted(() => {
               :allow-input="(value) => !value || /^\d+$/.test(value)"
               inputmode="numeric"
               style="text-align: center; font-size: 18px; letter-spacing: 4px;"
-              @focus="isInputFocused = true"
-              @blur="isInputFocused = false"
             >
               <template #prefix>
                 <Lock :size="16" style="opacity: 0.5" />
