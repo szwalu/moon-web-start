@@ -838,6 +838,7 @@ notes:
     s10_i5: 'default_city: Set a default city and get weather instantly for new notes;Not set: Using GPS/IP auto-location.'
     s10_i6: 'Daily reminder: When enabled, the system will send a notification at a fixed time each day to remind you to write or review notes. Please ensure browser notification permissions are granted.'
     s10_i7: 'Theme settings: Your theme configuration is synced to the cloud and stays consistent across devices.'
+    s10_i8: 'App Lock: Set a 4-digit passcode to protect your privacy, supporting custom auto-lock timeouts (e.g., Immediately or After 1 hour); leave blank and save to disable the lock.'
 
     s11_title: '11) Offline & Cache'
     s11_i1_tail: ': New/Edit/Pin/Fav/Delete update UI and local snapshots instantly offline, syncing when online.'
