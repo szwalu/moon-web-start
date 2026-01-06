@@ -105,36 +105,42 @@ const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
+// 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
+  const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时：更新基准高度
+  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
   if (!isInputFocused.value) {
     if (currentHeight > 300)
       baseHeight = currentHeight
-
     keyboardOffset.value = '0px'
     return
   }
 
   // 2. 键盘弹出时
-  if (baseHeight > 0) {
-    const diff = baseHeight - currentHeight
-
-    // 只有差值合理才认为是键盘
-    if (diff > 150) {
-      const extraBuffer = 0
-
-      const finalOffset = diff + extraBuffer
-
-      keyboardOffset.value = `${finalOffset}px`
-    }
-    else {
+  // 🔥🔥🔥 核心修复：iOS 专用逻辑
+  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
+  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
+  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
+  if (isIOS) {
+    const diff = window.innerHeight - currentHeight
+    // 只有差值合理才认为是键盘/工具栏
+    if (diff > 100)
+      keyboardOffset.value = `${diff}px`
+    else
       keyboardOffset.value = '0px'
-    }
+  }
+  // Android / 其他设备：继续使用 baseHeight 逻辑
+  else if (baseHeight > 0) {
+    const diff = baseHeight - currentHeight
+    if (diff > 150)
+      keyboardOffset.value = `${diff}px`
+    else
+      keyboardOffset.value = '0px'
   }
 }
 
@@ -154,7 +160,7 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight (针对新建笔记单独微调)
+// 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
@@ -166,30 +172,25 @@ const editorHeight = computed(() => {
 
   let keyboardH = '0px'
 
-  if (isReallyIOS) {
-    if (keyboardOffset.value !== '0px') {
-      keyboardH = keyboardOffset.value
-    }
-    else {
-      // 兜底估算
-      const screenW = window.screen.width
-      const isIPad = screenW >= 740
-      const isLargePhone = screenW > 420
-      let fallback = isPWA.value ? '435px' : '290px'
-      if (isIPad)
-        fallback = isPWA.value ? '460px' : '380px'
-      else if (isLargePhone)
-        fallback = isPWA.value ? '480px' : '335px'
-      keyboardH = fallback
-    }
+  // 只要检测到了 offset，就应用它
+  if (keyboardOffset.value !== '0px') {
+    keyboardH = keyboardOffset.value
+  }
+  else if (isReallyIOS) {
+    // 兜底估算（仅当计算失败时）
+    const screenW = window.screen.width
+    const isIPad = screenW >= 740
+    const isLargePhone = screenW > 420
+    let fallback = isPWA.value ? '435px' : '290px'
+    if (isIPad)
+      fallback = isPWA.value ? '460px' : '380px'
+    else if (isLargePhone)
+      fallback = isPWA.value ? '480px' : '335px'
+    keyboardH = fallback
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 🔥🔥🔥 核心修改在这里 🔥🔥🔥
-  // 如果是“编辑模式”，说明是全屏，不需要额外减
-  // 如果是“新建模式”(!props.isEditing)，因为它是弹窗，可能上面有缝隙或圆角，
-  // 我们手动多减去 20px，把工具栏“拉”回来。
   const extraReduction = props.isEditing
     ? 0
     : (isPWA.value ? 48 : 10)
@@ -1486,15 +1487,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  if (window.visualViewport) {
-    const currentH = window.visualViewport.height
-    // 只有当高度足够大（说明键盘还没弹起）时才更新，避免误判
-    if (currentH > 300) {
-      baseHeight = currentH
-      // 顺便把 offset 归零，防止残留
-      keyboardOffset.value = '0px'
-    }
-  }
   measureTopOffset()
   isInputFocused.value = true
   emit('focus')

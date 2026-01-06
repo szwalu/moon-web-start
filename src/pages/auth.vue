@@ -18,14 +18,39 @@ import { useTagMenu } from '@/composables/useTagMenu'
 import { useSettingStore } from '@/stores/setting'
 import * as S from '@/utils/settings'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
-
 import { useOfflineSync } from '@/composables/useSync'
 
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
+
+const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
+const SALT = 'cloud-notes-salt-8848-xyz-'
+
+function encryptPin(pin: string) {
+  if (!pin)
+    return ''
+  try {
+    return btoa(SALT + pin)
+  }
+  catch (e) {
+    return ''
+  }
+}
+
+function decryptPin(encoded: string | null) {
+  if (!encoded)
+    return ''
+  try {
+    return atob(encoded).replace(SALT, '')
+  }
+  catch (e) {
+    return ''
+  }
+}
+
 const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
-const showSidebar = ref(false) // [新增] 控制侧边栏显示
+const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
 const showActivation = ref(false)
@@ -37,6 +62,11 @@ const showHelpDialog = ref(false)
 const isUserActivated = ref(false)
 const daysRemaining = ref(7)
 const logoError = ref(false)
+
+const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
+const isLocked = ref(false)
+const lockCode = ref('')
+
 watch(user, async (currentUser) => {
   if (currentUser) {
     logoError.value = false
@@ -46,16 +76,47 @@ watch(user, async (currentUser) => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     const TRIAL_DAYS = 7
     daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
+
+    try {
+      const cachedEncrypted = localStorage.getItem(LOCK_CACHE_KEY)
+      if (cachedEncrypted) {
+        const plainPin = decryptPin(cachedEncrypted)
+        if (plainPin && /^\d{4}$/.test(plainPin)) {
+          lockCode.value = plainPin
+          isLocked.value = true
+        }
+      }
+    }
+    catch (e) {
+      console.warn('读取本地锁屏缓存失败', e)
+    }
+
+    // B. 再请求网络
     const { data, error } = await supabase
       .from('users')
-      .select('is_active')
+      .select('is_active, app_lock_code')
       .eq('id', currentUser.id)
       .single()
 
-    // ✅ [新增] 记录激活状态
     isUserActivated.value = (data && data.is_active === true)
 
-    // 原有弹窗拦截逻辑 (保持不变)
+    if (data) {
+      if (data.app_lock_code) {
+        if (!lockCode.value) {
+          lockCode.value = data.app_lock_code
+          isLocked.value = true
+        }
+        const newEncrypted = encryptPin(data.app_lock_code)
+        if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
+          localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
+      }
+      else {
+        isLocked.value = false
+        lockCode.value = ''
+        localStorage.removeItem(LOCK_CACHE_KEY)
+      }
+    }
+
     if (error || !data || data.is_active !== true) {
       if (diffDays <= TRIAL_DAYS) {
         canDismissActivation.value = true
@@ -67,14 +128,13 @@ watch(user, async (currentUser) => {
     }
   }
 }, { immediate: true })
+
 function onActivationSuccess() {
   showActivation.value = false
-  // 激活成功后，刷新页面以确保所有数据流重新初始化
   window.location.reload()
 }
 
 const { manualSync: _manualSync } = useOfflineSync()
-
 // ---- 只保留这一处 useI18n 声明 ----
 const { t } = useI18n()
 // ---- 只保留这一处 allTags 声明（如果后文已有一处，请删除后文那处）----
@@ -3081,6 +3141,14 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
     :style="themeStyle"
   >
+    <Transition name="fade">
+      <AppLock
+        v-if="isLocked && lockCode"
+        :correct-code="lockCode"
+        @unlock="isLocked = false"
+      />
+    </Transition>
+
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">

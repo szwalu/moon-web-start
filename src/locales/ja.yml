@@ -49,6 +49,15 @@ settings:
   ui_font_lg: 大きめ
   ui_font_hint: ヒント：UIフォントサイズはドロワー、ドロップダウン、ダイアログ、メッセージなどに影響します。「合わせる」を有効にするとノートのフォントサイズに基づいて自動的に最適なUIサイズを選択します。
   backup_data: データのバックアップと復元
+  app_lock: アプリロック
+  lock_desc: 4桁の暗証番号を設定します。アプリを起動するたびに、この番号の入力が必要になります。空欄のまま保存すると無効になります。
+  lock_input_warning: 4桁の数字を入力してください。無効にする場合は空欄にしてください。
+  lock_enabled: アプリロックが有効になりました
+  lock_disabled: アプリロックが無効になりました
+  lock_setting_failed: 設定に失敗しました
+  lock_placeholder: 4桁の数字を入力
+  lock_screen_success: ロック解除成功
+  lock_screen_prompt: 暗証番号を入力してロック解除
 
   theme:
     title: テーマ

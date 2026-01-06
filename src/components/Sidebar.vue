@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Download,
   HelpCircle,
+  Lock,
   MapPin,
   MessageSquare,
   Palette,
@@ -23,7 +24,7 @@ import {
   User as UserIcon,
 } from 'lucide-vue-next'
 
-import { NButton, NCard, NModal, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
+import { NButton, NCard, NInput, NModal, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
 import { useSettingStore } from '@/stores/setting'
 
 // 引入 SiteStore 获取书签数据用于上传
@@ -60,8 +61,16 @@ const props = defineProps({
     default: () => [],
   },
 })
-
 const emit = defineEmits(['close', 'menuClick'])
+const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
+const SALT = 'cloud-notes-salt-8848-xyz-' // ⚠️ 确保这个字符串和 Home.vue 里完全一致！
+
+function encryptPin(pin: string) {
+  if (!pin)
+    return ''
+  try { return btoa(SALT + pin) }
+  catch (e) { return '' }
+}
 
 const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 const settingStore = useSettingStore()
@@ -215,6 +224,66 @@ async function handleNotificationToggle(value: boolean) {
   }
 
   notificationLoading.value = false
+}
+
+// ===========================================================================
+// 🔥 应用锁 (密码) 设置逻辑
+// ===========================================================================
+const showPasswordModal = ref(false)
+const lockPassword = ref('')
+const loadingPassword = ref(false)
+
+// 打开弹窗时，稍微清理一下状态
+function openPasswordModal() {
+  lockPassword.value = '' // 默认清空，让用户重新输入
+  showPasswordModal.value = true
+}
+
+async function handleSavePassword() {
+  if (!props.user)
+    return
+
+  if (lockPassword.value && !/^\d{4}$/.test(lockPassword.value)) {
+    message.warning(t('settings.lock_input_warning') || '请输入4位数字密码，或留空以关闭应用锁')
+    return
+  }
+
+  loadingPassword.value = true
+  try {
+    const valToSave = lockPassword.value ? lockPassword.value : null
+
+    const { error } = await supabase
+      .from('users')
+      .update({ app_lock_code: valToSave })
+      .eq('id', props.user.id)
+
+    if (error)
+      throw error
+
+    if (valToSave) {
+      // ✅ [国际化] 开启成功提示
+      message.success(t('settings.lock_enabled') || '应用锁已开启')
+
+      // ✅ [修改] 加密后存入本地缓存
+      localStorage.setItem(LOCK_CACHE_KEY, encryptPin(valToSave))
+    }
+    else {
+      // ✅ [国际化] 关闭成功提示
+      message.success(t('settings.lock_disabled') || '应用锁已关闭')
+
+      // ✅ [修改] 清除本地缓存
+      localStorage.removeItem(LOCK_CACHE_KEY)
+    }
+    showPasswordModal.value = false
+  }
+  catch (e: any) {
+    console.error(e)
+    // ✅ [国际化] 错误提示
+    message.error(`${t('settings.lock_setting_failed') || '设置失败'}: ${e.message}`)
+  }
+  finally {
+    loadingPassword.value = false
+  }
 }
 
 // ===========================================================================
@@ -586,6 +655,10 @@ function handleItemClick(key: string) {
     openThemeModal()
     return
   }
+  if (key === 'passwordSetting') {
+    openPasswordModal()
+    return
+  }
   if (key === 'feedback') {
     showFeedback.value = true
     // emit('close')
@@ -729,6 +802,10 @@ onMounted(() => {
 
               <div class="menu-item sub" @click="handleItemClick('themeSetting')">
                 <Palette :size="18" /><span>{{ t('settings.theme_title') || '主题设置' }}</span>
+              </div>
+
+              <div class="menu-item sub" @click="handleItemClick('passwordSetting')">
+                <Lock :size="18" /><span>{{ t('settings.app_lock') || '应用锁' }}</span>
               </div>
 
               <div class="menu-item sub" @click="handleItemClick('export')">
@@ -893,6 +970,49 @@ onMounted(() => {
                 :color="headerStyle['--header-bg-start']" @click="showThemeModal = false"
               >
                 {{ t('button.confirm') || 'OK' }}
+              </NButton>
+            </div>
+          </NSpace>
+        </NCard>
+      </NModal>
+
+      <NModal v-model:show="showPasswordModal">
+        <NCard
+          style="width: 90%; max-width: 360px;"
+          :title="t('settings.app_lock') || '应用锁设置'"
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+          closable
+          @close="showPasswordModal = false"
+        >
+          <NSpace vertical size="large">
+            <NText depth="3" style="font-size: 13px;">
+              {{ t('settings.lock_desc') || '设置一个 4 位数字密码。每次打开应用时需要输入此密码。留空并保存即可关闭锁。' }}
+            </NText>
+
+            <NInput
+              v-model:value="lockPassword"
+              type="text"
+              :placeholder="t('settings.lock_placeholder')"
+              :maxlength="4"
+              :allow-input="(value) => !value || /^\d+$/.test(value)"
+              style="text-align: center; font-size: 18px; letter-spacing: 4px;"
+            >
+              <template #prefix>
+                <Lock :size="16" style="opacity: 0.5" />
+              </template>
+            </NInput>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+              <NButton
+                type="primary"
+                :loading="loadingPassword"
+                :color="headerStyle['--header-bg-start']"
+                @click="handleSavePassword"
+              >
+                {{ t('auth.save') || '保存' }}
               </NButton>
             </div>
           </NSpace>
