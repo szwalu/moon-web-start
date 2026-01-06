@@ -1042,7 +1042,8 @@ onMounted(() => {
 
             <NInput
               v-model:value="lockPassword"
-              type="text"
+              type="password"
+              show-password-on="click"
               :placeholder="t('settings.lock_placeholder')"
               :maxlength="4"
               :allow-input="(value) => !value || /^\d+$/.test(value)"
@@ -1057,7 +1058,8 @@ onMounted(() => {
             <NInput
               v-if="lockPassword"
               v-model:value="lockPasswordConfirm"
-              type="text"
+              type="password"
+              show-password-on="click"
               :placeholder="t('settings.lock_confirm_placeholder') || '再次输入以确认'"
               :maxlength="4"
               :allow-input="(value) => !value || /^\d+$/.test(value)"
