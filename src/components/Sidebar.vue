@@ -78,6 +78,12 @@ const siteStore = useSiteStore()
 const { t } = useI18n()
 const message = useMessage()
 const showFeedback = ref(false)
+const isIOS = typeof navigator !== 'undefined'
+  && typeof window !== 'undefined'
+  && (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
+    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
+  )
 
 const headerStyle = computed(() => {
   const currentKey = settingStore.settings.theme
@@ -978,13 +984,18 @@ onMounted(() => {
 
       <NModal v-model:show="showPasswordModal">
         <NCard
-          class="password-modal-card"
           :title="t('settings.app_lock') || '应用锁设置'"
           :bordered="false"
           size="huge"
           role="dialog"
           aria-modal="true"
           closable
+          :style="{
+            width: '90%',
+            maxWidth: '360px',
+            marginBottom: isIOS ? '46vh' : '0',
+            transition: 'margin-bottom 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)',
+          }"
           @close="showPasswordModal = false"
         >
           <NSpace vertical size="large">
@@ -1414,21 +1425,5 @@ body > .n-modal-container,
 body > .n-dialog-container,
 body > .n-dialog-mask {
   z-index: 10000 !important;
-}
-/* ✅ 放在这里最稳妥，因为 Modal 是挂载在 body 上的 */
-.password-modal-card {
-  width: 90%;
-  max-width: 360px;
-  position: fixed !important; /* 强制固定 */
-  left: 50% !important;
-  top: 56% !important;        /* 核心位置 */
-  transform: translate(-50%, -50%) !important;
-  margin: 0 !important;
-  z-index: 10001 !important; /* 确保在最上层 */
-}
-
-/* 防止移动端键盘顶起时的自动居中逻辑干扰 */
-.n-modal-container {
-  display: block !important; /* 覆盖默认的 flex/grid 居中 */
 }
 </style>
