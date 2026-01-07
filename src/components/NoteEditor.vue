@@ -165,23 +165,8 @@ onUnmounted(() => {
 // 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
   // 1. 键盘收起时
-  if (!isInputFocused.value) {
-    if (props.isEditing) {
-      // 🔥🔥🔥 核心修改：针对日历模式，高度再多减去 60px 🔥🔥🔥
-
-      // 判断是否为日历模式（顶部偏移大于 80 说明有日历头）
-      const isCalendarMode = autoTopOffset.value > 80
-
-      // 如果是日历模式，额外再减去 60px（你可以根据遮挡程度调整这个数字）
-      // 这样编辑器底部就会悬空在保存按钮上方，光标自然就露出来了
-      const extraSafeSpace = isCalendarMode ? 50 : 0
-
-      // 公式：全屏 - 顶部偏移 - 额外安全距离
-      return `calc(100dvh - ${autoTopOffset.value}px - ${extraSafeSpace}px)`
-    }
-    // 新建模式（底部弹窗）保持 80dvh
-    return '80dvh'
-  }
+  if (!isInputFocused.value)
+    return props.isEditing ? '100dvh' : '80dvh'
 
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
