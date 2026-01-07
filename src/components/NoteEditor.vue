@@ -164,7 +164,7 @@ onUnmounted(() => {
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
-    return props.isEditing ? '100dvh' : '100dvh'
+    return props.isEditing ? '100dvh' : '80dvh'
 
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
