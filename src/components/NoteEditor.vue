@@ -2779,27 +2779,27 @@ function handleTextareaMove(e: TouchEvent) {
 
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
-  /* 1. 保持相对定位 */
-  position: relative !important;
+  /* 🔥 1. 核心修改：改为 fixed，脱离文档流，直接相对于屏幕定位 */
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important; /* 强制宽度占满屏幕 */
 
-  /* 2. 解除高度限制（关键！） */
-  /* 既然我们要全屏，就不能有最大高度限制，也不能有最小高度防止溢出键盘 */
+  /* 🔥 2. 提升层级：确保盖住 Header (Header 的 z-index 通常是 100 左右) */
+  z-index: 5000 !important;
+
+  /* 3. 清理边距和高度限制 */
+  margin: 0 !important;
+  border-radius: 0 !important;
   max-height: none !important;
   min-height: 0 !important;
-
-  /* 3. 关掉过渡动画，让键盘弹出时高度变化瞬间完成，不卡顿 */
   transition: none;
 
-  /* 4. 强制顶部对齐，填补顶部空隙（关键！） */
-  margin-top: 0 !important;
+  /* 4. 不需要负边距了，因为 fixed 定位无视父容器 padding */
+  /* margin-left: -1.5rem !important; <-- 删除这些 */
+  /* margin-right: -1.5rem !important; <-- 删除这些 */
 
-  /* 5. 去掉圆角，让它看起来像原生全屏页面 */
-  border-radius: 0 !important;
-
-  /* 6. 抵消父容器的 padding (左右撑满) */
-  margin-left: -1.5rem !important;
-  margin-right: -1.5rem !important;
-  width: calc(100% + 3rem) !important;
+  /* 确保背景色不透明 (继承自 .note-editor-reborn，这里不用动，但原理是靠它遮挡) */
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
