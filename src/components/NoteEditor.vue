@@ -1170,25 +1170,29 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-  const viewBottom = el.scrollTop + el.clientHeight
+  const effectivePadding = autoTopOffset.value > 80 ? 80 : 0
+
+  // 我们稍微留点情面，扣掉大部分 Padding，这样光标就会被迫滚到 Padding 之上
+  const viewBottom = el.scrollTop + el.clientHeight - effectivePadding
+
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const extraBuffer = autoTopOffset.value > 80 ? 40 : 0
+  const extraBuffer = autoTopOffset.value > 80 ? 10 : 0
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + extraBuffer
 
   if (caretDesiredBottom > viewBottom) {
-    const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
-    // 原代码：el.scrollTop = targetScroll
+    // 滚动的目标也要把扣掉的 padding 加回来，确保滚够位置
+    const targetScroll = Math.min(caretDesiredBottom - (el.clientHeight - effectivePadding), el.scrollHeight - el.clientHeight)
+
     el.scrollTo({
       top: targetScroll,
-      behavior: 'smooth', // 👈 加上这句，就是原生般的丝滑动画
+      behavior: 'smooth',
     })
   }
   else if (caretDesiredTop < viewTop) {
     const targetScroll = Math.max(caretDesiredTop, 0)
-    // 原代码：el.scrollTop = targetScroll
     el.scrollTo({
       top: targetScroll,
-      behavior: 'smooth', // 👈 加上这句
+      behavior: 'smooth',
     })
   }
 }
