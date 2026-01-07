@@ -105,7 +105,6 @@ const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
-// 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
@@ -118,6 +117,7 @@ function updateKeyboardOffset() {
     if (currentHeight > 300)
       baseHeight = currentHeight
     keyboardOffset.value = '0px'
+    measureTopOffset()
     return
   }
 
@@ -142,6 +142,8 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
+  if (props.isEditing)
+    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -1525,6 +1527,7 @@ function handleFocus() {
   }, t2)
 
   setTimeout(() => {
+    measureTopOffset()
     ensureCaretVisibleInTextarea()
   }, 400) // 400ms > transition 0.3s
 
