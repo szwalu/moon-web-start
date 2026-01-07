@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useDark } from '@vueuse/core'
 import { Calendar } from 'v-calendar'
 import 'v-calendar/dist/style.css'
@@ -14,6 +14,7 @@ const props = defineProps({
   hideTitleBar: { type: Boolean, default: false },
 })
 const emit = defineEmits(['close', 'editNote', 'copy', 'pin', 'delete', 'setDate', 'created', 'updated', 'favorite', 'startCompose'])
+const StatsDetail = defineAsyncComponent(() => import('@/components/StatsDetail.vue'))
 const allTags = ref<string[]>([])
 const tagCounts = ref<Record<string, number>>({})
 const authStore = useAuthStore()
@@ -44,6 +45,13 @@ watch(isExpanded, async (val) => {
 // ✅ 重构：月度统计逻辑 (缓存优先 + 全量校准)
 // ==========================================
 const monthlyStats = ref({ days: 0, count: 0, chars: 0 })
+const showStatsDetail = ref(false)
+const calendarStatsData = computed(() => ({
+  days: monthlyStats.value.days,
+  notes: monthlyStats.value.count,
+  words: monthlyStats.value.chars,
+  media: 0,
+}))
 
 // 1. 通用分页拉取函数 (解决单次请求 1000 条限制)
 async function fetchAllData(queryBuilder: any) {
@@ -884,7 +892,12 @@ async function jumpToToday() {
             {{ composeButtonText }}
           </button>
 
-          <i18n-t keypath="notes.calendar.month_stats" tag="span" class="monthly-stats">
+          <i18n-t
+            keypath="notes.calendar.month_stats"
+            tag="span"
+            class="monthly-stats"
+            @click="showStatsDetail = true"
+          >
             <template #days>
               <span class="stat-num">{{ monthlyStats.days }}</span>
             </template>
@@ -939,6 +952,14 @@ async function jumpToToday() {
         </div>
       </div>
     </div>
+    <Transition name="fade">
+      <StatsDetail
+        v-if="showStatsDetail"
+        :stats="calendarStatsData"
+        :theme-color="props.themeColor"
+        @close="showStatsDetail = false"
+      />
+    </Transition>
   </div>
 </template>
 
@@ -1220,6 +1241,10 @@ async function jumpToToday() {
   text-align: right;
   line-height: 1.5;
   flex: 1;
+  cursor: pointer;
+}
+.monthly-stats:hover {
+  opacity: 0.8;
 }
 .dark .monthly-stats {
   color: #6b7280;

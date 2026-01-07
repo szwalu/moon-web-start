@@ -311,7 +311,7 @@ function handleClose() {
     >
       <div class="modal-content-wrapper">
         <NTabs v-model:value="activeTab" type="segment" animated>
-          <NTabPane name="export" :tab="t('notes.export_all') || '导出笔记'">
+          <NTabPane name="export" :tab="t('notes.export_notes') || '导出笔记'">
             <div class="tab-content-compact">
               <NText depth="3" class="desc-text">
                 <i18n-t keypath="notes.export_tip_json" tag="span">

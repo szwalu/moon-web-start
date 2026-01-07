@@ -1596,16 +1596,16 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 }
 
 function handleSearchCleared() {
-  // 1. 【优先】立即清空状态，让 UI 上的 Search Bar 消失
+  // 1. 【修改】只清空数据状态，不要关闭搜索栏 (去掉 showSearchBar.value = false)
   searchQuery.value = ''
   hasSearchRun.value = false
-  isShowingSearchResults.value = false // 关键：这会切换 displayedNotes 的数据源
-  showSearchBar.value = false // 确保搜索框也收起
+  isShowingSearchResults.value = false // 退出“搜索结果视图”，回到“主页视图”
 
+  // 清理 Session
   sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
   sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
 
-  // 2. 【推迟】尝试恢复主页数据
+  // 2. 恢复主页数据
   setTimeout(() => {
     // 尝试从缓存恢复，如果失败（比如缓存坏了）则发起网络请求
     if (!restoreHomepageFromCache()) {
@@ -1618,6 +1618,13 @@ function handleSearchCleared() {
   }, 10)
 }
 
+function handleCancelSearch() {
+  // 1. 【关键】这是“取消/退出”按钮的逻辑，必须显式关闭搜索栏
+  showSearchBar.value = false
+
+  // 2. 然后调用清理逻辑来恢复数据
+  handleSearchCleared()
+}
 async function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
     // 🚪 离开页面/切到后台：记录当前时间
@@ -2865,15 +2872,6 @@ function toggleSearchBar() {
   // 🔒 互斥规则：打开“搜索”时，若当前有标签筛选，则关闭标签筛选
   if (willShow && activeTagFilter.value)
     clearTagFilter()
-}
-
-function handleCancelSearch() {
-  // 1. 【优先】立即隐藏搜索栏
-  searchQuery.value = ''
-  showSearchBar.value = false
-
-  // 2. 调用上面的函数（由于上面的函数内部已经加了 setTimeout，这里直接调即可）
-  handleSearchCleared()
 }
 
 // 在 auth.vue 中找到这个函数

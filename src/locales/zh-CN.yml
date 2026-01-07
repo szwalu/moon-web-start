@@ -454,7 +454,7 @@ notes:
   delete_success_multiple: '成功删除 {count} 条笔记，已放进回收站'
   delete_second_confirm_tip: '你即将永久删除 {count} 条笔记。'
   delete_second_confirm_hint: 此操作无法撤销，请再次确认。
-  search_placeholder_enter: 搜索(可搜索天气中地点)
+  search_placeholder_enter: 搜索(可搜索天气中的城市)
   search_tags: 搜索标签
   favorites: 常用标签
   all_favorites: 🏷️全部标签
@@ -470,6 +470,7 @@ notes:
   export_fmt_json_desc: 含天气数据 (推荐)
   export_fmt_md_desc: 阅读通用格式
   import_notes: 导入笔记
+  export_notes: 导出笔记
   import_completed: 导入完成
   import_success_count: '成功导入：{count} 条'
   continue_import: 继续导入

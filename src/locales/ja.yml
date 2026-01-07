@@ -473,6 +473,7 @@ notes:
   export_fmt_json_desc: 天気データを含む（推奨）
   export_fmt_md_desc: 汎用的な閲覧形式
   import_notes: ノートをインポート
+  export_notes: エクスポートノート
   import_completed: インポート完了
   import_success_count: 'インポート成功：{count}件'
   continue_import: インポートを続行

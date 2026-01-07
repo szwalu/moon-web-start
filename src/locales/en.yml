@@ -474,6 +474,7 @@ notes:
   export_fmt_json_desc: Includes weather data (recommended)
   export_fmt_md_desc: Universal reading format
   import_notes: Import notes
+  export_notes: Export notes
   import_completed: Import completed
   import_success_count: 'Successfully imported: {count}'
   continue_import: Continue import
