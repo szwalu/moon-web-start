@@ -1553,7 +1553,10 @@ function onBlur() {
 
   measureTopOffset()
   // 加个延时双保险，等浏览器滚动动画结束
-  setTimeout(measureTopOffset, 300)
+  setTimeout(() => {
+    measureTopOffset() // 再次确认高度
+    ensureCaretVisibleInTextarea() // 👈【加这一句】让光标滚出来，别被底部挡住
+  }, 300)
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
