@@ -1172,7 +1172,8 @@ function ensureCaretVisibleInTextarea() {
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + 40
+  const extraBuffer = autoTopOffset.value > 0 ? 20 : 0
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + extraBuffer
 
   if (caretDesiredBottom > viewBottom) {
     const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
