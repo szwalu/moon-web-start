@@ -26,7 +26,9 @@ const selectedDate = ref(new Date())
 const isLoadingNotes = ref(false)
 const expandedNoteId = ref<string | null>(null)
 const scrollBodyRef = ref<HTMLElement | null>(null)
-
+const isEditingExisting = ref(false)
+const isWriting = ref(false)
+const editingNote = ref<any>(null)
 // --- 控制日历展开/收起的状态 ---
 const isExpanded = ref(false)
 const calendarRef = ref<any>(null)
