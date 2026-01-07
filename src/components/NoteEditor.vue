@@ -165,8 +165,16 @@ onUnmounted(() => {
 // 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
   // 1. 键盘收起时
-  if (!isInputFocused.value)
-    return props.isEditing ? '100dvh' : '80dvh'
+  if (!isInputFocused.value) {
+    if (props.isEditing) {
+      // 🔥🔥🔥 核心修复：减去 autoTopOffset
+      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
+      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
+      return `calc(100dvh - ${autoTopOffset.value}px)`
+    }
+    // 新建模式保持 80dvh (半屏弹窗)
+    return '80dvh'
+  }
 
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
@@ -1543,6 +1551,9 @@ function onBlur() {
   stopFocusBoost()
   _lastBottomNeed = 0
 
+  measureTopOffset()
+  // 加个延时双保险，等浏览器滚动动画结束
+  setTimeout(measureTopOffset, 300)
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
