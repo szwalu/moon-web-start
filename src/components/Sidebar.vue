@@ -78,12 +78,6 @@ const siteStore = useSiteStore()
 const { t } = useI18n()
 const message = useMessage()
 const showFeedback = ref(false)
-const isIOS = typeof navigator !== 'undefined'
-  && typeof window !== 'undefined'
-  && (
-    /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
-    || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1)
-  )
 
 const headerStyle = computed(() => {
   const currentKey = settingStore.settings.theme
@@ -233,18 +227,27 @@ async function handleNotificationToggle(value: boolean) {
 }
 
 // ===========================================================================
-// 🔥 应用锁 (密码) 设置逻辑
+// 🔥 应用锁 (密码) 设置逻辑 - Day One 风格重构
 // ===========================================================================
 const showPasswordModal = ref(false)
-const lockPassword = ref('')
-const lockPasswordConfirm = ref('')
 const loadingPassword = ref(false)
 
-// ✅ [新增] 超时设置相关
-const lockTimeout = ref(0) // 默认 0 (立即)
-const LOCK_TIMEOUT_KEY = 'app_lock_timeout_setting' // LocalStorage Key
+// 流程控制：'menu' (菜单页) | 'input' (输入密码页)
+const passwordViewMode = ref<'menu' | 'input'>('menu')
+// 输入阶段：0 (验证旧密码) | 1 (第一次输入新密码) | 2 (确认新密码)
+const inputStep = ref(1)
+// 临时存储
+const tempPin = ref('')
+const currentInputPin = ref('')
+// 新增：验证意图 'disable'(关闭) | 'reset'(重设)
+const verifyIntent = ref<'disable' | 'reset' | null>(null)
 
-// 定义选项
+// 当前是否已开启锁 (用于控制 Switch 显示状态)
+const isLockEnabled = ref(false)
+
+// 超时设置
+const lockTimeout = ref(0)
+const LOCK_TIMEOUT_KEY = 'app_lock_timeout_setting'
 const timeoutOptions = computed(() => [
   { label: t('settings.lock_timeout_0') || '立即锁定', value: 0 },
   { label: t('settings.lock_timeout_1') || '1 分钟后', value: 1 },
@@ -253,72 +256,169 @@ const timeoutOptions = computed(() => [
   { label: t('settings.lock_timeout_60') || '1 小时后', value: 60 },
 ])
 
-// 修改 openPasswordModal 函数，打开时默认重置状态
+// 打开弹窗：初始化状态
 function openPasswordModal() {
-  lockPassword.value = ''
-  lockPasswordConfirm.value = ''
-  showPasswordModal.value = true
+  // 从用户信息或本地缓存判断当前是否已上锁
+  const hasLocalLock = !!localStorage.getItem(LOCK_CACHE_KEY)
+  isLockEnabled.value = hasLocalLock
 
-  // ✅ [新增] 读取本地缓存的超时设置回显
+  // 读取超时设置
   const savedTimeout = localStorage.getItem(LOCK_TIMEOUT_KEY)
   lockTimeout.value = savedTimeout ? Number(savedTimeout) : 0
+
+  // 重置视图
+  passwordViewMode.value = 'menu'
+  currentInputPin.value = ''
+  showPasswordModal.value = true
 }
 
-async function handleSavePassword() {
+// 处理 Switch 开关点击
+function handleLockSwitch(val: boolean) {
+  if (val) {
+    // 开启：直接进入设置新密码流程
+    startSetPinFlow()
+  }
+  else {
+    // 关闭：先进入验证流程
+    verifyIntent.value = 'disable'
+    startVerifyFlow()
+  }
+}
+
+// 监听输入框变化 (自动跳转)
+watch(currentInputPin, (val) => {
+  if (val.length === 4) {
+    handlePinInputComplete(val)
+  }
+})
+
+// 🔥🔥🔥 核心修改：处理密码输入完成逻辑 (增加了 Step 0)
+function handlePinInputComplete(pin: string) {
+  // 稍微延迟一下，给用户视觉反馈
+  setTimeout(() => {
+    // ✅ 情况 0：验证旧密码
+    if (inputStep.value === 0) {
+      const storedHash = localStorage.getItem(LOCK_CACHE_KEY)
+      // encryptPin 在上方已定义
+      if (encryptPin(pin) === storedHash) {
+        message.success(t('settings.verify_success') || '验证通过')
+
+        if (verifyIntent.value === 'disable') {
+          // 意图：关闭锁 -> 执行关闭逻辑，并回到菜单显示关闭状态
+          saveLockToCloud(null)
+          passwordViewMode.value = 'menu'
+        }
+        else if (verifyIntent.value === 'reset') {
+          // 意图：重设 -> 进入 Step 1 (设置新密码)
+          startSetPinFlow()
+        }
+        verifyIntent.value = null
+      }
+      else {
+        message.error(t('settings.pin_error') || '密码错误，请重试')
+        currentInputPin.value = ''
+      }
+      return
+    }
+
+    // ✅ 情况 1：输入新密码 (第一遍)
+    if (inputStep.value === 1) {
+      tempPin.value = pin
+      currentInputPin.value = ''
+      inputStep.value = 2
+    }
+    // ✅ 情况 2：确认新密码 (第二遍)
+    else {
+      if (pin === tempPin.value) {
+        // 密码一致，保存
+        saveLockToCloud(pin)
+      }
+      else {
+        // 密码不一致
+        message.error(t('settings.lock_mismatch') || '两次输入的密码不一致，请重试')
+        // 重置回第一步
+        currentInputPin.value = ''
+        inputStep.value = 1
+        tempPin.value = ''
+      }
+    }
+  }, 200)
+}
+
+function startVerifyFlow() {
+  passwordViewMode.value = 'input'
+  inputStep.value = 0
+  currentInputPin.value = ''
+}
+
+// 新增：点击“变更密码”时的入口
+function handleChangePinClick() {
+  verifyIntent.value = 'reset'
+  startVerifyFlow()
+}
+
+function startSetPinFlow() {
+  passwordViewMode.value = 'input'
+  inputStep.value = 1
+  currentInputPin.value = ''
+  tempPin.value = ''
+}
+
+// 真正的保存逻辑
+async function saveLockToCloud(finalPin: string | null) {
   if (!props.user)
     return
-
-  if (lockPassword.value && !/^\d{4}$/.test(lockPassword.value)) {
-    message.warning(t('settings.lock_input_warning') || '请输入4位数字密码，或留空以关闭应用锁')
-    return
-  }
-
-  if (lockPassword.value && lockPassword.value !== lockPasswordConfirm.value) {
-    message.error(t('settings.lock_mismatch') || '两次输入的密码不一致')
-    return
-  }
-
   loadingPassword.value = true
+
   try {
-    const valToSave = lockPassword.value ? lockPassword.value : null
-    // ✅ [新增] 获取超时时间
     const timeoutToSave = lockTimeout.value
 
     const { error } = await supabase
       .from('users')
       .update({
-        app_lock_code: valToSave,
-        app_lock_timeout: timeoutToSave, // ✅ 同步保存超时设置
+        app_lock_code: finalPin,
+        app_lock_timeout: timeoutToSave,
       })
       .eq('id', props.user.id)
 
     if (error)
       throw error
 
-    if (valToSave) {
+    if (finalPin) {
       message.success(t('settings.lock_enabled') || '应用锁已开启')
-      localStorage.setItem(LOCK_CACHE_KEY, encryptPin(valToSave))
-
-      // ✅ [新增] 保存超时设置到本地
+      localStorage.setItem(LOCK_CACHE_KEY, encryptPin(finalPin))
       localStorage.setItem(LOCK_TIMEOUT_KEY, String(timeoutToSave))
+      isLockEnabled.value = true
+      // 回到菜单页
+      passwordViewMode.value = 'menu'
     }
     else {
       message.success(t('settings.lock_disabled') || '应用锁已关闭')
       localStorage.removeItem(LOCK_CACHE_KEY)
-      // ✅ [新增] 清理设置
       localStorage.removeItem(LOCK_TIMEOUT_KEY)
+      isLockEnabled.value = false
     }
-    showPasswordModal.value = false
   }
   catch (e: any) {
     console.error(e)
-    // ✅ [国际化] 错误提示
     message.error(`${t('settings.lock_setting_failed') || '设置失败'}: ${e.message}`)
+    // 如果开启失败，把开关拨回去
+    if (finalPin)
+      isLockEnabled.value = false
   }
   finally {
     loadingPassword.value = false
   }
 }
+
+// 监听超时时间变化，自动保存 (如果锁是开启状态)
+watch(lockTimeout, async (newVal) => {
+  if (isLockEnabled.value && props.user) {
+    localStorage.setItem(LOCK_TIMEOUT_KEY, String(newVal))
+    // 可以在后台静默同步到 Supabase，这里简化处理，不弹 Loading
+    await supabase.from('users').update({ app_lock_timeout: newVal }).eq('id', props.user.id)
+  }
+})
 
 // ===========================================================================
 // 🔥 城市设置相关逻辑
@@ -1014,87 +1114,92 @@ onMounted(() => {
 
       <NModal v-model:show="showPasswordModal">
         <NCard
-          :title="t('settings.app_lock') || '应用锁设置'"
+          style="width: 90%; max-width: 400px; border-radius: 16px;"
           :bordered="false"
-          size="huge"
+          size="medium"
           role="dialog"
           aria-modal="true"
           closable
-          :style="isIOS ? {
-            /* 🍎 iOS 专用稳如泰山样式 */
-            position: 'fixed',
-            top: '18%', /* 永远固定在距离顶部 18% 的位置 */
-            left: '50%',
-            transform: 'translateX(-50%)', /* 只做水平居中，不做垂直居中 */
-            width: '90%',
-            maxWidth: '360px',
-            margin: '0', /* 清除可能存在的 margin */
-            transition: 'none', /* 禁止过渡动画，防止键盘弹出时的视觉延迟 */
-          } : {
-            /* 🤖 安卓/PC 保持默认垂直居中 */
-            width: '90%',
-            maxWidth: '360px',
-          }"
           @close="showPasswordModal = false"
         >
-          <NSpace vertical size="large">
-            <NText depth="3" style="font-size: 13px;">
-              {{ t('settings.lock_desc') || '设置一个 4 位数字密码。每次打开应用时需要输入此密码。留空并保存即可关闭锁。' }}
+          <div v-if="passwordViewMode === 'menu'">
+            <div style="text-align: center; margin-bottom: 24px; margin-top: 10px;">
+              <div class="lock-icon-circle">
+                <Lock :size="32" stroke-width="2" />
+              </div>
+              <NText depth="3" style="font-size: 13px; margin-top: 12px; display: block; padding: 0 10px;">
+                {{ t('settings.lock_desc_simple') || '使用密码保护您的日记，防止不必要的窥探。' }}
+              </NText>
+            </div>
+
+            <div class="dayone-list">
+              <div class="dayone-item">
+                <div class="dayone-label">{{ t('settings.app_lock') || '密码' }}</div>
+                <NSwitch
+                  :value="isLockEnabled"
+                  :loading="loadingPassword"
+                  @update:value="handleLockSwitch"
+                />
+              </div>
+
+              <div v-if="isLockEnabled" class="dayone-expanded-area">
+                <div class="divider-line" />
+
+                <div class="dayone-item clickable" @click="handleChangePinClick">
+                  <div class="dayone-label">{{ t('settings.change_password') || '变更密码' }}</div>
+                  <ChevronDown :size="16" style="transform: rotate(-90deg); opacity: 0.3;" />
+                </div>
+
+                <div class="divider-line" />
+
+                <div class="dayone-item">
+                  <div class="dayone-label">{{ t('settings.lock_timeout_label') || '自动锁定时间' }}</div>
+                  <NSelect
+                    v-model:value="lockTimeout"
+                    :options="timeoutOptions"
+                    size="small"
+                    :bordered="false"
+                    style="width: 110px; text-align: right;"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else style="text-align: center; padding: 20px 0;">
+            <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">
+              <template v-if="inputStep === 0">
+                {{ t('settings.enter_current_pin') || '请输入当前密码' }}
+              </template>
+              <template v-else-if="inputStep === 1">
+                {{ t('settings.set_new_pin') || '输入新密码' }}
+              </template>
+              <template v-else>
+                {{ t('settings.lock_confirm_placeholder') || '再次输入以确认' }}
+              </template>
+            </h3>
+
+            <NText depth="3" style="font-size: 13px; margin-bottom: 30px; display: block;">
+              {{ t('settings.lock_input_warning') || '请输入4位数字' }}
             </NText>
 
             <NInput
-              v-model:value="lockPassword"
+              v-model:value="currentInputPin"
               type="password"
-              show-password-on="click"
-              :placeholder="t('settings.lock_placeholder')"
+              placeholder=""
               :maxlength="4"
-              :allow-input="(value) => !value || /^\d+$/.test(value)"
               inputmode="numeric"
-              style="text-align: center; font-size: 18px; letter-spacing: 4px;"
-            >
-              <template #prefix>
-                <Lock :size="16" style="opacity: 0.5" />
-              </template>
-            </NInput>
-
-            <NInput
-              v-if="lockPassword"
-              v-model:value="lockPasswordConfirm"
-              type="password"
-              show-password-on="click"
-              :placeholder="t('settings.lock_confirm_placeholder') || '再次输入以确认'"
-              :maxlength="4"
               :allow-input="(value) => !value || /^\d+$/.test(value)"
-              inputmode="numeric"
-              style="text-align: center; font-size: 18px; letter-spacing: 4px; margin-top: 12px;"
-            >
-              <template #prefix>
-                <CheckSquare :size="16" style="opacity: 0.5" />
-              </template>
-            </NInput>
+              style="text-align: center; font-size: 24px; letter-spacing: 12px; height: 50px; width: 160px; margin: 0 auto;"
+              autofocus
+            />
 
-            <div v-if="lockPassword" style="margin-top: 8px;">
-              <NText depth="3" style="font-size: 12px; margin-bottom: 4px; display:block;">
-                {{ t('settings.lock_timeout_label') || '自动锁定时间' }}
-              </NText>
-              <NSelect
-                v-model:value="lockTimeout"
-                :options="timeoutOptions"
-                size="medium"
-              />
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-              <NButton
-                type="primary"
-                :loading="loadingPassword"
-                :color="headerStyle['--header-bg-start']"
-                @click="handleSavePassword"
-              >
-                {{ t('auth.save') || '保存' }}
+            <div style="margin-top: 30px;">
+              <NButton quaternary size="small" @click="passwordViewMode = 'menu'">
+                {{ t('button.cancel') || '取消' }}
               </NButton>
             </div>
-          </NSpace>
+          </div>
         </NCard>
       </NModal>
     </div>
@@ -1479,6 +1584,73 @@ onMounted(() => {
   margin-left: 0 !important; /* ⚡️ 核心：去掉负边距 */
   padding-left: 20px !important; /* ⚡️ 核心：补上 20px 内边距，跟上面对齐 */
   box-sizing: border-box;
+}
+
+/* --- Day One 风格应用锁样式 --- */
+.lock-icon-circle {
+  width: 64px; height: 64px;
+  background-color: rgba(0,0,0,0.05);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto;
+  color: var(--sb-text);
+}
+.dark .lock-icon-circle {
+  background-color: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.dayone-list {
+  background-color: #fff;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 20px;
+}
+.dark .dayone-list {
+  background-color: #1a1a1a;
+  border-color: #333;
+}
+
+.dayone-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px;
+  min-height: 24px;
+  background: transparent;
+  transition: background 0.2s;
+}
+
+.dayone-item.clickable {
+  cursor: pointer;
+}
+.dayone-item.clickable:active {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.dayone-label {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--sb-text);
+}
+
+.divider-line {
+  height: 1px;
+  background-color: #f0f0f0;
+  margin-left: 16px; /* iOS 风格缩进 */
+}
+.dark .divider-line {
+  background-color: #333;
+}
+
+/* 覆盖 Naive UI Select 的默认边框，使其看起来像纯文本 */
+:deep(.n-base-selection__border), :deep(.n-base-selection__state-border) {
+  display: none !important;
+}
+:deep(.n-base-selection-input__content) {
+  text-align: right;
+  color: var(--sb-text-sub);
 }
 </style>
 
