@@ -167,12 +167,19 @@ const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value) {
     if (props.isEditing) {
-      // 🔥🔥🔥 核心修复：减去 autoTopOffset
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
-      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
-      return `calc(100dvh - ${autoTopOffset.value}px)`
+      // 🔥🔥🔥 核心修改：针对日历模式，高度再多减去 60px 🔥🔥🔥
+
+      // 判断是否为日历模式（顶部偏移大于 80 说明有日历头）
+      const isCalendarMode = autoTopOffset.value > 80
+
+      // 如果是日历模式，额外再减去 60px（你可以根据遮挡程度调整这个数字）
+      // 这样编辑器底部就会悬空在保存按钮上方，光标自然就露出来了
+      const extraSafeSpace = isCalendarMode ? 50 : 0
+
+      // 公式：全屏 - 顶部偏移 - 额外安全距离
+      return `calc(100dvh - ${autoTopOffset.value}px - ${extraSafeSpace}px)`
     }
-    // 新建模式保持 80dvh (半屏弹窗)
+    // 新建模式（底部弹窗）保持 80dvh
     return '80dvh'
   }
 
@@ -1170,29 +1177,24 @@ function ensureCaretVisibleInTextarea() {
   document.body.removeChild(mirror)
 
   const viewTop = el.scrollTop
-  const effectivePadding = autoTopOffset.value > 80 ? 80 : 0
-
-  // 我们稍微留点情面，扣掉大部分 Padding，这样光标就会被迫滚到 Padding 之上
-  const viewBottom = el.scrollTop + el.clientHeight - effectivePadding
-
+  const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const extraBuffer = autoTopOffset.value > 80 ? 10 : 0
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + extraBuffer
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
   if (caretDesiredBottom > viewBottom) {
-    // 滚动的目标也要把扣掉的 padding 加回来，确保滚够位置
-    const targetScroll = Math.min(caretDesiredBottom - (el.clientHeight - effectivePadding), el.scrollHeight - el.clientHeight)
-
+    const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
+    // 原代码：el.scrollTop = targetScroll
     el.scrollTo({
       top: targetScroll,
-      behavior: 'smooth',
+      behavior: 'smooth', // 👈 加上这句，就是原生般的丝滑动画
     })
   }
   else if (caretDesiredTop < viewTop) {
     const targetScroll = Math.max(caretDesiredTop, 0)
+    // 原代码：el.scrollTop = targetScroll
     el.scrollTo({
       top: targetScroll,
-      behavior: 'smooth',
+      behavior: 'smooth', // 👈 加上这句
     })
   }
 }
@@ -1556,9 +1558,6 @@ function onBlur() {
   stopFocusBoost()
   _lastBottomNeed = 0
 
-  measureTopOffset()
-  // 加个延时双保险，等浏览器滚动动画结束
-  setTimeout(measureTopOffset, 300)
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -2396,7 +2395,6 @@ function handleTextareaMove(e: TouchEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
-        :style="{ paddingBottom: autoTopOffset > 80 ? '80px' : '20px' }"
         autocomplete="off"
         autocorrect="on"
         autocapitalize="sentences"
