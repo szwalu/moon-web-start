@@ -513,6 +513,7 @@ notes:
   select_tag_first: Please select a tag first
   batch_tag_success: 'Successfully added tags to {count} notes'
   batch_tag_error: 'Operation partially failed: {msg}'
+  all_data: All notes
 
   comment:
     trigger: 📝 Record thoughts or add follow-up

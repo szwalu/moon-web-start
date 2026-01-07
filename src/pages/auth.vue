@@ -1596,18 +1596,25 @@ function handleSearchCompleted({ data, error }: { data: any[] | null; error: Err
 }
 
 function handleSearchCleared() {
-  // 1. 【优先】确保搜索词和 UI 状态立即被清空
+  // 1. 【优先】立即清空状态，让 UI 上的 Search Bar 消失
   searchQuery.value = ''
   hasSearchRun.value = false
-  isShowingSearchResults.value = false // 让搜索结果横幅立刻消失
+  isShowingSearchResults.value = false // 关键：这会切换 displayedNotes 的数据源
+  showSearchBar.value = false // 确保搜索框也收起
 
-  // 2. 【推迟】主页数据恢复
+  sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+
+  // 2. 【推迟】尝试恢复主页数据
   setTimeout(() => {
+    // 尝试从缓存恢复，如果失败（比如缓存坏了）则发起网络请求
     if (!restoreHomepageFromCache()) {
       currentPage.value = 1
       oldestLoadedAt.value = null
-      fetchNotes(true)
+      fetchNotes({ reset: true }) // 强制重置拉取
     }
+    // 强制 UI 刷新一下
+    noteListKey.value++
   }, 10)
 }
 
@@ -2682,48 +2689,70 @@ async function nextPage() {
 }
 
 // 本地应用“删除”并刷新缓存/快照（单条或批量都可复用）
+// 本地应用“删除”并刷新缓存/快照（单条或批量都可复用）
 async function applyLocalDeletion(idsToDelete: string[]) {
-  // 1) 更新 UI 列表
+  // 1) 更新 UI 列表 (无论在主页还是搜索页，都要让当前看到的列表立刻少一条)
   const toDelete = new Set(idsToDelete)
   const deletedNotes = notes.value.filter(n => toDelete.has(n.id)) // 用于缓存失效
+
+  // 从当前视图变量中移除
   notes.value = notes.value.filter(n => !toDelete.has(n.id))
+  // 同时也清理 cachedNotes (如果用到)
   cachedNotes.value = cachedNotes.value.filter(n => !toDelete.has(n.id))
+
+  // 更新“那年今日”相关状态
   notifyAnniversaryDelete(idsToDelete)
-  // 如果当前正在查看“那年今日”视图（虽然applyLocalDeletion通常发生在这里），也同步内存变量
   if (anniversaryNotes.value && anniversaryNotes.value.length > 0)
     anniversaryNotes.value = anniversaryNotes.value.filter(n => !toDelete.has(n.id))
 
   // 2) 维护 total / 分页元数据
   const delta = idsToDelete.length
   totalNotes.value = Math.max(0, (totalNotes.value || 0) - delta)
-  hasMoreNotes.value = currentPage.value * notesPerPage < totalNotes.value
-  hasPreviousNotes.value = currentPage.value > 1
+  // 如果是搜索/筛选视图，currentPage 计算可能不准，但在恢复主页时会重置，所以这里暂不严格修正
 
-  // 3) 失效相关缓存（标签、日历、搜索）
+  // 3) 失效相关细粒度缓存（标签、日历、搜索结果本身）
   for (const note of deletedNotes) {
     try {
       invalidateCachesOnDataChange(note)
     }
-    catch {
-      // 忽略单条缓存失效异常
-    }
+    catch { /* 忽略异常 */ }
   }
 
-  // 4) 刷新 localStorage
+  // ==================================================================================
+  // 🔥🔥🔥【核心修复】防止缓存污染 🔥🔥🔥
+  // ==================================================================================
+  const isFilteredView = isShowingSearchResults.value || activeTagFilter.value || isAnniversaryViewActive.value || isMonthJumpView.value
+
   try {
-    localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+    if (isFilteredView) {
+      // 场景 A：在 搜索/标签/那年今日 视图下删除
+      // ⚠️ 绝对不能把当前的 notes.value (它是子集) 存入 CACHE_KEYS.HOME
+      // ✅ 正确做法：读取原本的主页缓存 -> 剔除被删项 -> 存回去
+      const homeCacheRaw = localStorage.getItem(CACHE_KEYS.HOME)
+      if (homeCacheRaw) {
+        const homeList = JSON.parse(homeCacheRaw)
+        // 在全量缓存中剔除
+        const newHomeList = homeList.filter((n: any) => !toDelete.has(n.id))
+        localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(newHomeList))
+
+        // 顺便更新快照 (用这份全量数据)
+        saveNotesSnapshot(newHomeList).catch(e => console.warn('[offline] snapshot failed (filtered)', e))
+      }
+    }
+    else {
+      // 场景 B：在 主页 视图下删除
+      // 当前 notes.value 就是全集，直接存即可
+      localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
+
+      // 更新快照
+      saveNotesSnapshot(notes.value).catch(e => console.warn('[offline] snapshot failed (home)', e))
+    }
+
+    // 统一更新元数据
     localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
   }
-  catch {
-    // 忽略 localStorage 写入异常
-  }
-
-  // 5) 写入 IndexedDB 快照（离线冷启动直接还原）
-  try {
-    await saveNotesSnapshot(notes.value)
-  }
   catch (e) {
-    console.warn('[offline] saveNotesSnapshot failed after deletion:', e)
+    console.warn('缓存/快照更新失败', e)
   }
 }
 
@@ -3119,7 +3148,10 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   // 处理来自 Sidebar 的点击事件
-  if (key === 'calendar') {
+  if (key === 'all-notes') {
+    handleBackToHomeGlobal()
+  }
+  else if (key === 'calendar') {
     showCalendarView.value = true
   }
   else if (key === 'toggleSelection') {
@@ -3153,6 +3185,55 @@ function handleMainMenuSelect(key: string) {
   else if (key === 'feedback') {
     window.location.href = '/apply?from=auth'
   }
+}
+
+async function handleBackToHomeGlobal() {
+  showSidebar.value = false
+  showSettingsModal.value = false
+  showAccountModal.value = false
+
+  searchQuery.value = ''
+  hasSearchRun.value = false
+  isShowingSearchResults.value = false
+  showSearchBar.value = false
+
+  activeTagFilter.value = null
+  isMonthJumpView.value = false
+  headerCollapsed.value = false
+
+  if (isAnniversaryViewActive.value) {
+    anniversaryBannerRef.value?.setView(false)
+    isAnniversaryViewActive.value = false
+    anniversaryNotes.value = null
+  }
+
+  // 2. 🧹 清理持久化 Session
+  sessionStorage.removeItem(SESSION_SEARCH_QUERY_KEY)
+  sessionStorage.removeItem(SESSION_SEARCH_RESULTS_KEY)
+  sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+  localStorage.removeItem(SESSION_ANNIV_ACTIVE_KEY)
+
+  // 3. 🛡️ 退出选择模式
+  if (isSelectionModeActive.value) {
+    isSelectionModeActive.value = false
+    selectedNoteIds.value = []
+  }
+
+  setTimeout(async () => {
+    // 尝试从缓存恢复主页数据
+    const restored = restoreHomepageFromCache()
+
+    // 🚑 兜底：如果缓存没命中，或者数据看起来不对，强制从服务器拉取第一页
+    if (!restored)
+      await fetchNotes({ reset: true })
+
+    // ⚡️ 强制 DOM 重绘 (解决搜索结果卡在屏幕上的关键)
+    noteListKey.value++
+
+    // 📜 滚回到顶部
+    if (noteListRef.value)
+      (noteListRef.value as any).scrollToTop?.()
+  }, 10)
 }
 
 async function handleDataRefresh() {
@@ -3223,18 +3304,20 @@ async function fetchNotesByTag(tag: string) {
 }
 
 function clearTagFilter() {
-  // 1. 【优先】UI 状态立即变更，让横幅瞬间消失
+  // 1. 【优先】UI 状态立即变更
   activeTagFilter.value = null
   headerCollapsed.value = false
 
-  // 2. 【推迟】繁重的数据恢复逻辑，给浏览器喘息时间先渲染 UI
+  sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
+
+  // 2. 【推迟】恢复数据
   setTimeout(() => {
     if (!restoreHomepageFromCache()) {
       currentPage.value = 1
       oldestLoadedAt.value = null
-      fetchNotes(true)
+      fetchNotes({ reset: true })
     }
-    noteListKey.value++ // 强制刷新列表
+    noteListKey.value++
   }, 10)
 }
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”

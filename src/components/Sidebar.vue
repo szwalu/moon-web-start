@@ -7,6 +7,7 @@ import type { User } from '@supabase/supabase-js'
 import {
   ArrowUpRight,
   Bell,
+  Book,
   CheckSquare,
   ChevronDown,
   ChevronUp,
@@ -829,6 +830,7 @@ onMounted(() => {
                 <span>{{ t('settings.title') || '设置选项' }}</span>
                 <ChevronUp :size="16" />
               </div>
+
               <div class="sub menu-item" @click="handleItemClick('settings')">
                 <Type :size="18" /><span>{{ t('settings.font_title') }}</span>
               </div>
@@ -869,6 +871,11 @@ onMounted(() => {
               </div>
 
               <div class="divider" style="margin: 4px 24px 12px 24px;" />
+            </div>
+
+            <div class="menu-item" @click="handleItemClick('all-notes')">
+              <Book :size="20" />
+              <span>{{ t('notes.all_data') || '全部笔记' }}</span>
             </div>
 
             <div class="menu-item" @click="handleItemClick('toggleSelection')">

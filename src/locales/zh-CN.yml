@@ -507,6 +507,7 @@ notes:
   select_tag_first: 请先选择一个标签
   batch_tag_success: '成功为 {count} 条笔记添加了标签'
   batch_tag_error: '操作部分失败: {msg}'
+  all_data: 全部笔记
 
   comment:
     trigger: 📝记录感想或续记
