@@ -296,7 +296,6 @@ const editingNote = ref<any | null>(null)
 const cachedNotes = ref<any[]>([])
 const headerCollapsed = ref(false)
 const isMonthJumpView = ref(false)
-const isEditorMode = computed(() => !!editingNote.value)
 // === 新增：控制“+”唤起输入框的开关 ===
 const showComposer = ref(false)
 const composerTargetDate = ref<Date | null>(null)
@@ -318,22 +317,6 @@ const themeStyle = computed(() => {
     '--theme-primary-light': val.primaryLightC, // 亮色 (如 深色模式下的文字)
   }
 })
-
-// ✅ [新增 2] 处理日历的“新建笔记”请求
-function onCalendarStartCompose(date: Date) {
-  // 1. 核心：清空 editingNote，标记为“新建模式”
-  editingNote.value = null
-
-  // 2. 记录日历传来的日期（用于 handleCreateNote 保存时使用该日期）
-  composerTargetDate.value = date
-
-  // 3. 清空内容并打开编辑器
-  newNoteContent.value = ''
-  // 尝试读取草稿（可选，如果你希望日历新建也能读草稿的话，否则设为''）
-  // tryLoadDraft()
-
-  openComposer()
-}
 
 // ✅ [新增] 获取用户首字母/名称用于显示
 const userInitials = computed(() => {
@@ -1645,7 +1628,8 @@ function handleCancelSearch() {
 async function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
     // 🚪 离开页面/切到后台：记录当前时间
-    updateLastActive()
+    if (!isLocked.value)
+      updateLastActive()
   }
   else if (document.visibilityState === 'visible') {
     // 👋 回到页面
@@ -3636,11 +3620,11 @@ function onCalendarUpdated(updated: any) {
         <NoteEditor
           ref="newNoteEditorRef"
           v-model="newNoteContent"
-          :is-editing="isEditorMode"
+          :is-editing="!!editingNote"
           :note-id="editingNote?.id"
           :is-loading="isCreating"
           :max-note-length="maxNoteLength"
-          :placeholder="isEditorMode ? '' : $t('notes.content_placeholder')"
+          :placeholder="$t('notes.content_placeholder')"
           :all-tags="allTags"
           :tag-counts="tagCounts"
           enable-drafts
@@ -3700,17 +3684,20 @@ function onCalendarUpdated(updated: any) {
           :hide-title-bar="true"
           class="dropdown-calendar-override"
           @close="showCalendarView = false"
-          @start-compose="onCalendarStartCompose"
-          @edit-note="handleEditFromCalendar"
           @created="onCalendarCreated"
           @updated="(payload) => {
             onCalendarUpdated(payload)
             handleDateOrContentUpdate(payload)
           }"
+          @edit-note="handleEditFromCalendar"
           @copy="handleCopy"
           @pin="handlePinToggle"
           @delete="triggerDeleteConfirmation"
           @favorite="handleFavoriteNote"
+          @start-compose="(date) => {
+            composerTargetDate = date;
+            openComposer();
+          }"
         />
       </Transition>
       <Transition name="slide-up-fade">
