@@ -49,7 +49,14 @@ settings:
   ui_font_lg: Large
   ui_font_hint: 'Hint: UI font size affects drawers, dropdowns, dialogs, messages, etc. Enabling “Follow” will auto-select a suitable UI font size based on note font size.'
   backup_data: Data backup & restore
-  app_lock: App Lock
+
+  lock_desc_simple: Protect your notes with a passcode to prevent unwanted access.
+  change_password: Change passcode
+  enter_current_pin: Enter current passcode
+  set_new_pin: Set a new passcode
+  verify_success: Verification successful
+  pin_error: Incorrect passcode. Please try again.
+  app_lock: Lock
   lock_desc: Set a 4-digit PIN. You will be asked to enter this PIN every time you open the app. Leave blank and save to disable.
   lock_input_warning: 'Please enter a 4-digit PIN, or leave blank to disable.'
   lock_enabled: App lock enabled
