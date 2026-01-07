@@ -790,6 +790,25 @@ const composeButtonText = computed(() => {
 
   return t('notes.calendar.compose_write', { date: labelDate })
 })
+
+// ✅ 判断是否是今天 (用于控制按钮显示/隐藏，可选)
+function isToday(date: Date) {
+  const today = new Date()
+  return date.getDate() === today.getDate()
+         && date.getMonth() === today.getMonth()
+         && date.getFullYear() === today.getFullYear()
+}
+
+// ✅ 跳转逻辑
+async function jumpToToday() {
+  const today = new Date()
+  // 1. 让日历视图滚动/跳转到今天
+  if (calendarRef.value)
+    calendarRef.value.move(today)
+
+  // 2. 更新选中数据
+  await fetchNotesForDate(today)
+}
 </script>
 
 <template>
@@ -810,6 +829,14 @@ const composeButtonText = computed(() => {
 
     <div>
       <div v-show="!isWriting && !isEditingExisting" class="calendar-container">
+        <button
+          v-if="!isToday(selectedDate)"
+          class="back-to-today-btn"
+          @click="jumpToToday"
+        >
+          {{ t('notes.export_picker.today') || '今天' }}
+        </button>
+
         <Calendar
           ref="calendarRef"
           is-expanded
@@ -1227,6 +1254,54 @@ const composeButtonText = computed(() => {
 .dark .calendar-nav-title {
   color: #f9fafb;
   font-size: 16px;
+}
+
+/* 1. 确保容器是相对定位，作为坐标基准 */
+.calendar-container {
+  position: relative; /* ✅ 必须加这个 */
+  padding: 1rem 1rem 0 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 2. 按钮样式 */
+.back-to-today-btn {
+  position: absolute;
+  /* 垂直居中：使用 top 50% + translateY，比写死 px 更稳 */
+  top: 27px;
+  transform: translateY(-50%);
+
+  /* 🔥 核心修改：加大 right 值 */
+  /* 原来可能贴边了，现在改为 50px 或 60px，刚好就在右箭头的左边 */
+  right: 50px;
+
+  z-index: 10;
+
+  /* 💊 胶囊核心样式 */
+  padding: 3px 10px;        /* 左右宽一点，上下窄一点，形成胶囊感 */
+  border-radius: 999px;     /* 极大值，确保两头圆润 */
+  border: 1px solid var(--theme-color); /* 主题色细边框 */
+
+  font-size: 12px;          /* 字号稍微小一点，显得精致 */
+  font-weight: 500;
+  color: var(--theme-color);
+  background-color: transparent; /* 默认背景透明 */
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.2;         /* 防止文字把按钮撑得太高 */
+}
+
+/* 🖱️ 交互效果：按下时变实心 */
+.back-to-today-btn:active {
+  background-color: var(--theme-color);
+  color: white;
+  transform: scale(0.95); /* 轻微缩放，手感更好 */
+}
+
+/* 🌑 深色模式适配 */
+.dark .back-to-today-btn {
+  /* 深色模式下，背景可以稍微给点透明的主题色，或者保持描边 */
+  background-color: rgba(0, 0, 0, 0.2);
 }
 </style>
 
