@@ -213,7 +213,7 @@ async function restoreOne(id: string) {
       saveCache(user.value.id, list.value)
     localStorage.setItem('NOTES_DB_VERSION', Date.now().toString())
     message.success(t('notes.trash.restore_success_one'))
-    emit('restored')
+    emit('restored', targetNote ? [targetNote] : [])
   }
   catch (err: any) {
     console.error(err)

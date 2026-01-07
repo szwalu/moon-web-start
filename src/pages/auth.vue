@@ -681,6 +681,16 @@ watch(activeTagFilter, (newValue) => {
     sessionStorage.removeItem(SESSION_TAG_FILTER_KEY)
 })
 
+// ✅ [新增] 监听日历打开状态：每次打开时，强制刷新一下当前日期的列表
+watch(showCalendarView, (isOpen) => {
+  if (isOpen) {
+    nextTick(() => {
+      // 这里的 ?. 是防止组件还没挂载
+      (calendarViewRef.value as any)?.refreshSelectedDate?.()
+    })
+  }
+})
+
 // ++ 新增：专门用于控制“那年今日”横幅显示的计算属性
 const showAnniversaryBanner = computed(() => {
   // 如果正在编辑新笔记，则隐藏
@@ -2593,6 +2603,17 @@ async function handleTrashRestored(restoredNotes?: any[]) {
     await fetchNotes(true)
   }
 
+  // ✅✅✅ [新增] 核心修复：在这里通知日历组件
+  if (calendarViewRef.value && Array.isArray(restoredNotes)) {
+    // 同样使用 for...of 循环更稳健
+    for (const note of restoredNotes) {
+      // 1. 插入到日历列表（如果是当天）并点亮圆点
+      (calendarViewRef.value as any).insertExternalNote?.(note)
+      // 2. 清理该日期的缓存，确保下次点击时是最新的
+      invalidateCachesOnDataChange(note)
+    }
+  }
+
   // ⭐ 核心修复：强制刷新“那年今日”，绕过本地缓存
   if (anniversaryBannerRef.value?.loadAnniversaryNotes)
     await anniversaryBannerRef.value.loadAnniversaryNotes(true)
@@ -2994,7 +3015,6 @@ async function executeBatchAddTag(tagRaw: string) {
 }
 
 async function handleDeleteSelected() {
-  // ✅ 修复点1：换行写 return
   if (selectedNoteIds.value.length === 0)
     return
 
@@ -3006,12 +3026,14 @@ async function handleDeleteSelected() {
     onPositiveClick: async () => {
       try {
         loading.value = true
-        const idsToDelete = [...selectedNoteIds.value]
+
+        // 1. 定义变量：统一使用 itemsToDelete
+        const itemsToDelete = [...selectedNoteIds.value]
 
         // —— A) 离线分支 ——
         if (!isOnline()) {
-          for (const id of idsToDelete) {
-            // ✅ 修复点2：展开 try-catch，避免同样的 linter 报错
+          // 使用 for...of 循环避免 forEach 报错
+          for (const id of itemsToDelete) {
             try {
               await queuePendingDelete(id)
             }
@@ -3019,16 +3041,20 @@ async function handleDeleteSelected() {
               console.warn('[offline] queue failed', e)
             }
           }
-          await applyLocalDeletion(idsToDelete)
-          if (calendarViewRef.value) {
-            idsToDelete.forEach((id) => {
-              // 这里的 ?. 是为了防止 calendar 组件没暴露方法报错
-              (calendarViewRef.value as any).commitDelete?.(id)
-            })
-          }
 
+          // 使用 itemsToDelete
+          await applyLocalDeletion(itemsToDelete)
+
+          // 同步到日历
+          if (calendarViewRef.value) {
+            const view = calendarViewRef.value as any
+            for (const id of itemsToDelete)
+              view.commitDelete?.(id)
+
+            view.refreshDots?.()
+          }
           // 清理编辑状态
-          if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+          if (lastSavedId.value && itemsToDelete.includes(lastSavedId.value)) {
             newNoteContent.value = ''
             lastSavedId.value = null
             editingNote.value = null
@@ -3038,36 +3064,37 @@ async function handleDeleteSelected() {
 
           isSelectionModeActive.value = false
           selectedNoteIds.value = []
-          messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+          messageHook.success(t('notes.delete_success_multiple', { count: itemsToDelete.length }))
           return
         }
 
         // —— B) 在线分支 ——
-
-        // 1. 数据库删除
         const { error } = await supabase
           .from('notes')
           .delete()
-          .in('id', idsToDelete)
+          .in('id', itemsToDelete) // 👈 【关键修正】这里之前写错了，必须用 itemsToDelete
           .eq('user_id', user.value!.id)
 
         if (error)
           throw new Error(error.message)
 
-        // 2. 🔥【核心修改】直接调用统一清理函数
-        // 它会负责把这批 ID 从 内存、LocalStorage 和 IndexedDB 中彻底抹去
-        await applyLocalDeletion(idsToDelete)
+        // 使用 itemsToDelete
+        await applyLocalDeletion(itemsToDelete)
+
+        // 同步到日历
         if (calendarViewRef.value) {
-          idsToDelete.forEach((id) => {
-            (calendarViewRef.value as any).commitDelete?.(id)
-          })
+          const view = calendarViewRef.value as any
+          for (const id of itemsToDelete)
+            view.commitDelete?.(id)
+
+          view.refreshDots?.()
         }
 
-        // 3. 扫尾工作
-        invalidateAllSearchCaches() // 搜索缓存全部作废
+        // 扫尾工作
+        invalidateAllSearchCaches()
 
         // 清理编辑区
-        if (lastSavedId.value && idsToDelete.includes(lastSavedId.value)) {
+        if (lastSavedId.value && itemsToDelete.includes(lastSavedId.value)) {
           newNoteContent.value = ''
           lastSavedId.value = null
           editingNote.value = null
@@ -3075,11 +3102,10 @@ async function handleDeleteSelected() {
           localStorage.removeItem(LOCAL_CONTENT_KEY)
         }
 
-        // 退出选择模式
         isSelectionModeActive.value = false
         selectedNoteIds.value = []
 
-        messageHook.success(t('notes.delete_success_multiple', { count: idsToDelete.length }))
+        messageHook.success(t('notes.delete_success_multiple', { count: itemsToDelete.length }))
       }
       catch (err: any) {
         messageHook.error(`${t('notes.delete_error')}: ${err.message || t('notes.try_again')}`)

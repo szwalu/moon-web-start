@@ -7,7 +7,6 @@ import type { User } from '@supabase/supabase-js'
 import {
   ArrowUpRight,
   Bell,
-  Calendar,
   CheckSquare,
   ChevronDown,
   ChevronUp,
@@ -870,10 +869,6 @@ onMounted(() => {
               </div>
 
               <div class="divider" style="margin: 4px 24px 12px 24px;" />
-            </div>
-
-            <div class="menu-item" @click="handleItemClick('calendar')">
-              <Calendar :size="20" /><span>{{ t('auth.Calendar') }}</span>
             </div>
 
             <div class="menu-item" @click="handleItemClick('toggleSelection')">

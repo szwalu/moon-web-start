@@ -728,44 +728,52 @@ function refreshData() {
   checkAndRefreshIncremental()
 }
 
-// 👇 [新增] 供父组件调用：当在主页编辑器写完笔记后，手动插入到日历列表
+// 1. 修改 insertExternalNote 函数
 function insertExternalNote(newNote: any) {
   if (!newNote || !newNote.created_at)
     return
 
-  // 检查这笔记是不是属于当前选中的这一天
   const noteDateStr = toDateKeyStrFromISO(newNote.created_at)
   const currentDateStr = dateKeyStr(selectedDate.value)
 
+  // A. 如果是当前选中的这一天，插入列表并刷新统计
   if (noteDateStr === currentDateStr) {
-    // 是这一天的，插到最前面
     selectedDateNotes.value = [newNote, ...selectedDateNotes.value]
-
-    // 更新缓存
     localStorage.setItem(
       getCalendarDateCacheKey(selectedDate.value),
       JSON.stringify(selectedDateNotes.value),
     )
-
-    // 重新计算统计数据
     fetchMonthlyStats(selectedDate.value)
+  }
 
-    // 确保小圆点亮起
-    const key = dateKeyStr(selectedDate.value)
-    if (!datesWithNotes.value.has(key)) {
-      datesWithNotes.value.add(key)
-      datesWithNotes.value = new Set(datesWithNotes.value)
-      localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
-    }
+  // B. ✅ [核心修复] 无论是不是这一天，都要确保该日期的小圆点亮起
+  if (!datesWithNotes.value.has(noteDateStr)) {
+    datesWithNotes.value.add(noteDateStr)
+    datesWithNotes.value = new Set(datesWithNotes.value)
+    localStorage.setItem(CACHE_KEYS.CALENDAR_ALL_DATES, JSON.stringify(Array.from(datesWithNotes.value)))
   }
 }
 
-// 👇 [修改] 记得把这个新方法暴露出去
+// 2. 新增：将全量刷新圆点的方法暴露出去
+function refreshDots() {
+  // 简单粗暴：直接重新拉取所有有笔记的日期（去重）
+  // 因为批量删除后，我们不知道哪天变空了，全量拉取最稳妥
+  fetchAllNoteDatesFull().catch(() => {})
+}
+
+function refreshSelectedDate() {
+  if (selectedDate.value)
+    fetchNotesForDate(selectedDate.value)
+}
+
+// 3. 修改 defineExpose，把 refreshDots 加进去
 defineExpose({
   refreshData,
   commitDelete,
   commitUpdate,
-  insertExternalNote, // 👈 新增
+  insertExternalNote,
+  refreshDots, // 👈 新增这个
+  refreshSelectedDate,
 })
 
 const composeButtonText = computed(() => {
