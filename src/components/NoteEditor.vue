@@ -2793,6 +2793,16 @@ function handleTextareaMove(e: TouchEvent) {
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
+
+  /* 🔥🔥🔥 新增修复：输入时强制像编辑模式一样顶满屏幕 🔥🔥🔥 */
+  margin-top: 0 !important; /* 1. 消除 margin-top: auto 带来的顶部间隙 */
+  border-radius: 0 !important; /* 2. 键盘弹起时不需要圆角 */
+
+  /* 3. 仿照 .editing-viewport，用负边距抵消父容器的 padding */
+  /* 如果你的父容器 padding 是 1.5rem (24px)，请保留这两行 */
+  margin-left: -1.5rem !important;
+  margin-right: -1.5rem !important;
+  width: calc(100% + 3rem) !important;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */

@@ -3190,9 +3190,6 @@ function handleMainMenuSelect(key: string) {
   if (key === 'all-notes') {
     handleBackToHomeGlobal()
   }
-  else if (key === 'calendar') {
-    showCalendarView.value = true
-  }
   else if (key === 'toggleSelection') {
     toggleSelectionMode()
   }
