@@ -1643,15 +1643,6 @@ onMounted(() => {
 .dark .divider-line {
   background-color: #333;
 }
-
-/* 覆盖 Naive UI Select 的默认边框，使其看起来像纯文本 */
-:deep(.n-base-selection__border), :deep(.n-base-selection__state-border) {
-  display: none !important;
-}
-:deep(.n-base-selection-input__content) {
-  text-align: right;
-  color: var(--sb-text-sub);
-}
 </style>
 
 <style>

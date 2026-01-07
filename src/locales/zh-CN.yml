@@ -50,7 +50,7 @@ settings:
   ui_font_hint: 提示：系统字号影响抽屉、下拉、弹窗、消息等界面元素；开启“跟随”后将根据内容字号自动选择合适的系统字号。
   backup_data: 数据备份与恢复
 
-  lock_desc_simple: 使用密码保护您的笔记，防止不必要的窥探。
+  lock_desc_simple: 使用密码保护笔记，防止不必要的窥探。
   change_password: 变更密码
   enter_current_pin: 请输入当前密码
   set_new_pin: 输入新密码
