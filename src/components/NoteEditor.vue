@@ -164,7 +164,7 @@ onUnmounted(() => {
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
-    return '100dvh'
+    return props.isEditing ? '100dvh' : '100dvh'
 
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
@@ -189,9 +189,11 @@ const editorHeight = computed(() => {
     }
   }
 
-  const finalTopOffset = 0
+  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  const extraReduction = 0
+  const extraReduction = props.isEditing
+    ? 0
+    : (isPWA.value ? 48 : 10)
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
