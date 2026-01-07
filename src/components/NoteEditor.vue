@@ -1172,7 +1172,7 @@ function ensureCaretVisibleInTextarea() {
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + 40
 
   if (caretDesiredBottom > viewBottom) {
     const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -1553,10 +1553,7 @@ function onBlur() {
 
   measureTopOffset()
   // 加个延时双保险，等浏览器滚动动画结束
-  setTimeout(() => {
-    measureTopOffset() // 再次确认高度
-    ensureCaretVisibleInTextarea() // 👈【加这一句】让光标滚出来，别被底部挡住
-  }, 300)
+  setTimeout(measureTopOffset, 300)
   if (suppressNextBlur.value) {
     suppressNextBlur.value = false
     return
@@ -2394,6 +2391,7 @@ function handleTextareaMove(e: TouchEvent) {
         class="editor-textarea"
         :class="`font-size-${settingsStore.noteFontSize}`"
         :placeholder="placeholder"
+        :style="{ paddingBottom: autoTopOffset > 0 ? '80px' : '20px' }"
         autocomplete="off"
         autocorrect="on"
         autocapitalize="sentences"
