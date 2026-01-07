@@ -2864,14 +2864,49 @@ async function handleCopy(noteContent: string) {
   }
 }
 
+// ✅ [新增] 专门用于切换日历视图，并互斥关闭其他状态
+function toggleCalendarView() {
+  const willShow = !showCalendarView.value
+
+  if (willShow) {
+    // 1. 关闭搜索
+    if (showSearchBar.value || isShowingSearchResults.value)
+      handleCancelSearch()
+
+    // 2. 关闭标签筛选
+    if (activeTagFilter.value)
+      clearTagFilter()
+
+    // 3. 退出选择模式
+    if (isSelectionModeActive.value) {
+      isSelectionModeActive.value = false
+      selectedNoteIds.value = []
+    }
+  }
+
+  showCalendarView.value = willShow
+}
+
 function toggleSearchBar() {
   const willShow = !showSearchBar.value
+
+  if (willShow) {
+    // 1. 关闭日历 ✅
+    showCalendarView.value = false
+
+    // 2. 关闭标签筛选 (原逻辑已有，保持)
+    if (activeTagFilter.value)
+      clearTagFilter()
+
+    // 3. 退出选择模式 ✅
+    if (isSelectionModeActive.value) {
+      isSelectionModeActive.value = false
+      selectedNoteIds.value = []
+    }
+  }
+
   showSearchBar.value = willShow
   showDropdown.value = false
-
-  // 🔒 互斥规则：打开“搜索”时，若当前有标签筛选，则关闭标签筛选
-  if (willShow && activeTagFilter.value)
-    clearTagFilter()
 }
 
 // 在 auth.vue 中找到这个函数
@@ -2908,20 +2943,26 @@ function handleAnniversaryToggle(data: any[] | null) {
 // === 选择模式：仅修改选择相关逻辑 ===
 function toggleSelectionMode() {
   const willEnable = !isSelectionModeActive.value
-  isSelectionModeActive.value = willEnable
 
   if (willEnable) {
-    // 进入选择模式：立刻隐藏搜索条（条幅将显示）
-    // showSearchBar.value = false
+    // 1. 关闭日历 ✅
+    showCalendarView.value = false
+
+    // 2. 关闭搜索 ✅
+    if (showSearchBar.value || isShowingSearchResults.value)
+      handleCancelSearch()
+
+    // 3. 关闭标签筛选 ✅
+    if (activeTagFilter.value)
+      clearTagFilter()
   }
-  else {
-    // 退出选择模式：清空选择
+
+  isSelectionModeActive.value = willEnable
+  if (!willEnable)
     selectedNoteIds.value = []
-  }
 
   showDropdown.value = false
 }
-
 function finishSelectionMode() {
   isSelectionModeActive.value = false
   selectedNoteIds.value = []
@@ -3257,6 +3298,15 @@ async function fetchNotesByTag(tag: string) {
   if (!tag || !user.value)
     return
 
+  // ✅ [新增] 关闭日历
+  showCalendarView.value = false
+
+  // ✅ [新增] 退出选择模式
+  if (isSelectionModeActive.value) {
+    isSelectionModeActive.value = false
+    selectedNoteIds.value = []
+  }
+
   const hashTag = tag === UNTAGGED_SENTINEL
     ? UNTAGGED_SENTINEL
     : (tag.startsWith('#') ? tag : `#${tag}`)
@@ -3412,7 +3462,7 @@ function onCalendarUpdated(updated: any) {
           </div>
         </div>
 
-        <div class="header-center-trigger" @click.stop="showCalendarView = !showCalendarView">
+        <div class="header-center-trigger" @click.stop="toggleCalendarView">
           <Transition name="fade" mode="out-in">
             <div v-if="showCalendarView" class="trigger-content active">
               <ChevronUp :size="18" />
