@@ -164,7 +164,7 @@ onUnmounted(() => {
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value)
-    return props.isEditing ? '100dvh' : '80dvh'
+    return '100dvh'
 
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
@@ -189,11 +189,9 @@ const editorHeight = computed(() => {
     }
   }
 
-  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+  const finalTopOffset = 0
 
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
+  const extraReduction = 0
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
@@ -2763,11 +2761,7 @@ function handleTextareaMove(e: TouchEvent) {
   /* 2. 最小高度保底 */
   min-height: 430px;
 
-  /* 3. 封顶 */
-  max-height: 90dvh;
-
   /* 4. 沉底逻辑 */
-  margin-top: auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
