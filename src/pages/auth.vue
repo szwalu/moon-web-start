@@ -3189,8 +3189,14 @@ function handleMainMenuSelect(key: string) {
 
 async function handleBackToHomeGlobal() {
   showSidebar.value = false
+  showCalendarView.value = false
   showSettingsModal.value = false
   showAccountModal.value = false
+  showDataBackup.value = false // 导出备份界面
+  showTrashModal.value = false // 废纸篓
+  showRandomRoam.value = false // 随机漫游
+  showHelpDialog.value = false
+  showActivation.value = false
 
   searchQuery.value = ''
   hasSearchRun.value = false
