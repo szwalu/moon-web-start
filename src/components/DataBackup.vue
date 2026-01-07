@@ -296,6 +296,7 @@ function handleClose() {
   <NModal
     :show="show"
     transform-origin="center"
+    :auto-focus="false"
     @update:show="(v) => emit('update:show', v)"
   >
     <NCard
