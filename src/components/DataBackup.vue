@@ -325,7 +325,7 @@ function handleClose() {
 
               <div class="compact-form-item date-picker-container">
                 <label>1. {{ t('notes.export_select_range') || '选择时间范围' }}</label>
-                <MobileDateRangePicker v-model="exportDateRange" />
+                <MobileDateRangePicker v-model="exportDateRange" class="stacked-date-picker" />
               </div>
 
               <div class="compact-form-item">
@@ -493,13 +493,16 @@ function handleClose() {
 .format-card {
   border: 1px solid #e0e0e0;
   border-radius: 6px;
-  padding: 8px 10px;
+  /* 原来是 8px 10px，现在改为 4px 8px，高度显著降低 */
+  padding: 4px 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* 确保最小高度不至于太高 */
+  min-height: 42px;
 }
 
 .format-card:hover {
@@ -525,10 +528,11 @@ function handleClose() {
 }
 
 .format-desc {
-  font-size: 11px;
+  font-size: 11px; /* 可以改为 10px 如果想更小 */
   color: #666;
-  margin-top: 2px;
+  margin-top: 0px; /* 原来是 2px，改为 0 */
   margin-left: 24px;
+  line-height: 1.2; /* 紧凑行高 */
 }
 
 .format-card.active .format-desc { color: #555; }
@@ -570,6 +574,20 @@ function handleClose() {
   line-height: 28px !important;
   font-size: 12px !important;
   padding: 0 8px !important;
+}
+
+:deep(.stacked-date-picker) {
+  display: flex !important;
+  flex-direction: column !important; /* 强制垂直排列 */
+  gap: 8px !important; /* 上下两个框之间的间距 */
+}
+
+/* 确保内部的按钮/输入框占满整行 */
+:deep(.stacked-date-picker > div),
+:deep(.stacked-date-picker button),
+:deep(.stacked-date-picker .n-input) {
+  width: 100% !important;
+  margin: 0 !important;
 }
 
 :global(.dark) .format-card {
