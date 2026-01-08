@@ -140,7 +140,7 @@ function updateKeyboardOffset() {
 
     // ✅ 这里必须加 {
     if (diff > 150) {
-      const androidGapCorrection = 30
+      const androidGapCorrection = 60
       const finalHeight = Math.max(0, diff - androidGapCorrection)
       keyboardOffset.value = `${finalHeight}px`
     } // ✅ 这里必须加 }
