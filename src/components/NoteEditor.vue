@@ -134,20 +134,24 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-  // Android / 其他设备：继续使用 baseHeight 逻辑
+
+  // 👇👇👇 修改 Android / 其他设备 的逻辑 👇👇👇
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
 
-    // ✅ 这里必须加 {
+    // ✅ 加上大括号，修复语法错误
     if (diff > 150) {
-      const androidGapCorrection = 60
-      const finalHeight = Math.max(0, diff - androidGapCorrection)
-      keyboardOffset.value = `${finalHeight}px`
-    } // ✅ 这里必须加 }
+      // Android 核心修复：
+      // 大部分 Android 浏览器会自动把视口高度(currentHeight)变小来避让键盘。
+      // 这意味着我们不需要再减去键盘高度，否则就减了两次（出现空隙）。
+      // 这里直接设为 '0px'，让 CSS 的 100dvh 自动撑满剩余空间即可。
+      keyboardOffset.value = '0px'
+    }
     else {
       keyboardOffset.value = '0px'
     }
   }
+
   if (props.isEditing)
     measureTopOffset()
 }
@@ -2826,16 +2830,6 @@ function handleTextareaMove(e: TouchEvent) {
 
   /* 顺便移除可能存在的 scrollbar 占位，让宽度利用率达到 100% */
   scrollbar-gutter: auto !important;
-}
-
-/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
-/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
-   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
-@media (max-height: 600px) {
-  .note-editor-reborn.editing-viewport {
-    height: 100dvh !important;
-    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
-  }
 }
 
 /* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式修复 🔥🔥🔥 */
