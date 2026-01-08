@@ -2279,7 +2279,6 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
-  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
   const isRealTyping
     = t.startsWith('insert')
@@ -2289,13 +2288,20 @@ function handleBeforeInput(e: InputEvent) {
   if (!isRealTyping)
     return
 
-  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 预抬升：iPhone 保底 120，Android 保底 180
+  // 🔥 核心修改：Android 不需要额外的垫高 (prelift)
+  // Android 键盘弹出时，WebView 会自动改变可视区域大小，光标跟随即可。
+  // iOS 才需要这个垫高来防止被遮挡。
+  if (isAndroid) {
+    // Android 保持 0 或仅保留 footer 高度即可，不要加额外的 180
+    return
+  }
+
+  // 只有 iOS 走这套垫高逻辑
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  const prelift = Math.max(base, 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
