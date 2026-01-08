@@ -3432,6 +3432,11 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
     :style="themeStyle"
   >
+    <div
+      class="status-bar-trigger"
+      @click="handleHeaderClick"
+      @touchstart.passive="handleHeaderClick"
+    />
     <Transition name="fade">
       <AppLock
         v-if="isLocked && lockCode"
@@ -4531,6 +4536,26 @@ selection-actions-banner,
   /* 改为顶部只有 0.5rem (8px)，甚至 0 */
   padding-top: 0.5rem !important;
 }
+
+/* ✅ 隐形天花板样式 */
+.status-bar-trigger {
+  position: fixed;        /* 固定定位，不随页面滚动 */
+  top: 0;
+  left: 0;
+  right: 0;
+
+  /* 高度设为安全区高度，为了手感好，额外加 5px 覆盖到 Header 的上边缘 */
+  height: calc(env(safe-area-inset-top) + 5px);
+
+  z-index: 99999;         /*以此确保在所有图层（包括弹窗、遮罩）的最上面 */
+  cursor: pointer;
+
+  /* 关键：完全透明，不影响视觉 */
+  background: transparent;
+
+  /* 调试用：如果你想确认它在哪里，暂时把下面这行解开注释，会看到一个红条 */
+  /* background: rgba(255, 0, 0, 0.3); */
+}
 </style>
 
 <style>
@@ -4607,17 +4632,9 @@ html, body, #app {
 
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-  top: 0 !important; /* 1. 让 Header 直接吸附在屏幕最顶端，覆盖状态栏背景 */
-
-  /* 2. 高度 = 基础高度(44px) + 状态栏高度 */
-  height: calc(var(--header-base) + var(--safe-top)) !important;
-
-  /* 3. 内边距 = 原本的 padding(0.5rem) + 状态栏高度 */
-  /* 这样文字内容就会乖乖待在原来的位置，但点击区域扩大到了屏幕边缘 */
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-
-  /* 确保 z-index 够高 */
-  z-index: 3000;
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
