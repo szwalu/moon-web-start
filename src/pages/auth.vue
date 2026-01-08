@@ -3835,40 +3835,6 @@ function onCalendarUpdated(updated: any) {
 .dark .page-header {
   background: #1e1e1e;
 }
-/* ✅ 核心修复：使用伪元素向“上”扩展点击区域 */
-/* 这样视觉上 Header 还在原来位置，但手指点状态栏时，实际点到的是 Header 的延伸部分 */
-.auth-container .page-header::before {
-  content: "";
-  position: absolute;
-  /* 向上延伸，覆盖安全区 (状态栏) */
-  top: calc(-1 * env(safe-area-inset-top));
-  left: 0;
-  right: 0;
-  /* 高度 = 安全区高度 + 10px (多一点冗余，防止手指按太高没反应) */
-  height: calc(env(safe-area-inset-top) + 10px);
-
-  /* 确保它在 Header 内部的图层最上方 */
-  z-index: 5000;
-  cursor: pointer;
-
-  /* 关键：完全透明 */
-  background: transparent;
-
-  /* 调试技巧：如果你再次遇到没反应，把下面这行取消注释，看看绿条还在不在 */
-  /* background: rgba(0, 255, 0, 0.3); */
-}
-.status-bar-touch-area {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* 🟢 修改：原有高度是 env(safe-area-inset-top)，建议加 10px 容错 */
-  height: calc(env(safe-area-inset-top) + 10px);
-  z-index: 9999;
-  /* 调试时可以保留红色背景，确认好用后再改成 transparent */
-   background: rgba(255, 0, 0, 0.2);
-  /*background: transparent; */
-}
 
 /* 标题本身不再绝对定位，跟着 flex 正常排布就好 */
 .page-title {
@@ -4557,26 +4523,6 @@ selection-actions-banner,
   /* 改为顶部只有 0.5rem (8px)，甚至 0 */
   padding-top: 0.5rem !important;
 }
-
-/* ✅ 隐形天花板样式 */
-.status-bar-trigger {
-  position: fixed;        /* 固定定位，不随页面滚动 */
-  top: 0;
-  left: 0;
-  right: 0;
-
-  /* 高度设为安全区高度，为了手感好，额外加 5px 覆盖到 Header 的上边缘 */
-  height: calc(env(safe-area-inset-top) + 5px);
-
-  z-index: 99999;         /*以此确保在所有图层（包括弹窗、遮罩）的最上面 */
-  cursor: pointer;
-
-  /* 关键：完全透明，不影响视觉 */
-  background: transparent;
-
-  /* 调试用：如果你想确认它在哪里，暂时把下面这行解开注释，会看到一个红条 */
-  /* background: rgba(255, 0, 0, 0.3); */
-}
 </style>
 
 <style>
@@ -4652,10 +4598,58 @@ html, body, #app {
 }
 
 /* Sticky 头部下移 safe-top */
+/* ✅ 1. Header 容器：物理上占满顶部，但背景透明 */
 .auth-container .page-header {
-  top: var(--safe-top) !important;
-  height: var(--header-base) !important;
-  padding-top: 0.5rem !important;
+  position: -webkit-sticky;
+  position: sticky;
+
+  /* 关键：直接吸顶，覆盖刘海区 */
+  top: 0 !important;
+
+  /* 关键：高度 = 内容高度(44px) + 顶部安全区 */
+  height: calc(44px + var(--safe-top)) !important;
+
+  /* 关键：用 padding 把内部的按钮/文字挤下来，不让它们被刘海挡住 */
+  /* 原来的 padding 是 0.75rem，现在加上 safe-top */
+  padding-top: calc(0.75rem + var(--safe-top)) !important;
+
+  /* 关键：背景设为透明！否则状态栏会变白 */
+  background: transparent !important;
+
+  z-index: 3000;
+
+  /* 确保伪元素能定位 */
+  isolation: isolate;
+}
+
+/* ✅ 2. 伪元素：这才是我们要显示的“白色背景条” */
+/* 它负责显示白色背景，但只从安全区下方开始渲染 */
+.auth-container .page-header::before {
+  content: "";
+  position: absolute;
+
+  /* 核心魔法：背景条从安全区下方开始，把上面的状态栏空出来 */
+  top: var(--safe-top);
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  /* 恢复原来的背景色 */
+  background: white;
+
+  /* 放在文字下面 */
+  z-index: -1;
+
+  /* 如果原来有阴影，加在这里（视你原设计而定，没有可不加） */
+  /* box-shadow: 0 1px 2px rgba(0,0,0,0.05); */
+}
+
+/* ✅ 3. 深色模式适配 */
+.dark .auth-container .page-header {
+  background: transparent !important; /* 同样透明 */
+}
+.dark .auth-container .page-header::before {
+  background: #1e1e1e; /* 深色模式背景色加在伪元素上 */
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
