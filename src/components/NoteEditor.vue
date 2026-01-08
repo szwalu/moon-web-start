@@ -37,23 +37,6 @@ const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
 
-// 测量函数：只在编辑模式下生效
-function measureTopOffset() {
-  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
-  if (!props.isEditing) {
-    autoTopOffset.value = 0
-    return
-  }
-
-  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
-  if (rootRef.value) {
-    const rect = rootRef.value.getBoundingClientRect()
-    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
-    // Math.max(0, ...) 防止滚动导致的负数
-    autoTopOffset.value = Math.max(0, rect.top)
-  }
-}
-
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
@@ -98,7 +81,30 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// ... imports ...
+// 测量函数：只在编辑模式下生效
+function measureTopOffset() {
+  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  if (!props.isEditing) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 🔥🔥🔥 核心修复：Android 键盘弹起时，强制归零 🔥🔥🔥
+  // Android 浏览器会自动把视口高度缩小到键盘上方。
+  // 此时如果再减去 rect.top（顶部距离），就会导致编辑器高度不足，底部出现空隙。
+  // 所以 Android 输入状态下，直接设为 0，让它占满 100dvh (当前可见区域) 即可。
+  if (isAndroid && isInputFocused.value) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    // 只有当距离大于 0 时才认为是障碍物
+    autoTopOffset.value = Math.max(0, rect.top)
+  }
+}
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
