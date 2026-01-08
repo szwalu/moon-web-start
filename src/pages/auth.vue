@@ -3432,11 +3432,6 @@ function onCalendarUpdated(updated: any) {
     :aria-busy="!isReady"
     :style="themeStyle"
   >
-    <div
-      class="status-bar-trigger"
-      @click="handleHeaderClick"
-      @touchstart.passive="handleHeaderClick"
-    />
     <Transition name="fade">
       <AppLock
         v-if="isLocked && lockCode"
@@ -3449,7 +3444,12 @@ function onCalendarUpdated(updated: any) {
     </Transition>
 
     <template v-if="user || !authResolved">
-      <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
+      <div
+        v-show="!isEditorActive && !isTopEditing"
+        class="page-header"
+        @click="handleHeaderClick"
+        @touchstart.passive="handleHeaderClick"
+      >
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
             v-if="(user?.user_metadata?.avatar_url || lastUserId) && !logoError"
@@ -3835,7 +3835,28 @@ function onCalendarUpdated(updated: any) {
 .dark .page-header {
   background: #1e1e1e;
 }
+/* ✅ 核心修复：使用伪元素向“上”扩展点击区域 */
+/* 这样视觉上 Header 还在原来位置，但手指点状态栏时，实际点到的是 Header 的延伸部分 */
+.auth-container .page-header::before {
+  content: "";
+  position: absolute;
+  /* 向上延伸，覆盖安全区 (状态栏) */
+  top: calc(-1 * env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  /* 高度 = 安全区高度 + 10px (多一点冗余，防止手指按太高没反应) */
+  height: calc(env(safe-area-inset-top) + 10px);
 
+  /* 确保它在 Header 内部的图层最上方 */
+  z-index: 5000;
+  cursor: pointer;
+
+  /* 关键：完全透明 */
+  background: transparent;
+
+  /* 调试技巧：如果你再次遇到没反应，把下面这行取消注释，看看绿条还在不在 */
+  /* background: rgba(0, 255, 0, 0.3); */
+}
 .status-bar-touch-area {
   position: fixed;
   top: 0;
