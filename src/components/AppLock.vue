@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 import { Delete, LockKeyhole } from 'lucide-vue-next'
 
 const props = defineProps<{
-  correctCode: string // 父组件传进来的正确密码（从数据库读的）
+  correctCode: string
 }>()
 
 const emit = defineEmits(['unlock'])
@@ -12,30 +12,25 @@ const inputCode = ref('')
 const errorAnim = ref(false)
 const isSuccess = ref(false)
 
-// 数字键盘按键处理
 function append(num: number) {
   if (inputCode.value.length < 4 && !errorAnim.value && !isSuccess.value)
     inputCode.value += num.toString()
 }
 
-// 删除键处理
 function backspace() {
   if (inputCode.value.length > 0 && !errorAnim.value && !isSuccess.value)
     inputCode.value = inputCode.value.slice(0, -1)
 }
 
-// 核心逻辑：监听输入长度
 watch(inputCode, (val) => {
   if (val.length === 4) {
     if (val === props.correctCode) {
-      // 1. 密码正确：显示绿色成功状态，并在短暂延迟后解锁
       isSuccess.value = true
       setTimeout(() => {
         emit('unlock')
       }, 300)
     }
     else {
-      // 2. 密码错误：触发震动动画，并在动画结束后清空
       errorAnim.value = true
       setTimeout(() => {
         inputCode.value = ''
@@ -47,7 +42,7 @@ watch(inputCode, (val) => {
 </script>
 
 <template>
-  <div class="lock-overlay">
+  <div id="app-lock-overlay" class="lock-overlay">
     <div class="lock-content" :class="{ 'shake-anim': errorAnim }">
       <div class="lock-icon-wrapper" :class="{ success: isSuccess }">
         <LockKeyhole :size="40" :stroke-width="2" />
@@ -93,19 +88,21 @@ watch(inputCode, (val) => {
 </template>
 
 <style scoped>
-/* 全屏遮罩：层级设为极高，背景适配深色模式 */
 .lock-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
+
+  /* 默认背景 (亮色) */
+  background-color: #ffffff;
+  /* 如果你的应用定义了 --app-bg，也可以优先用变量，这里做兜底 */
   background-color: var(--app-bg, #ffffff);
+
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 毛玻璃效果增加高级感 */
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  /* 禁止页面滚动 */
   overscroll-behavior: none;
   touch-action: none;
 }
@@ -119,64 +116,48 @@ watch(inputCode, (val) => {
   padding: 0 20px;
 }
 
-/* 图标 */
 .lock-icon-wrapper {
   color: var(--theme-primary, #6366f1);
   margin-bottom: 16px;
   transition: color 0.3s;
 }
-.lock-icon-wrapper.success {
-  color: #10b981; /* Emerald Green */
-}
+.lock-icon-wrapper.success { color: #10b981; }
 
-/* 标题 */
 .lock-title {
   margin: 0 0 32px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: #333333; /* 默认亮色文字 */
+  transition: color 0.3s;
 }
 
-/* 圆点区域 */
 .dots-container {
   display: flex;
   gap: 20px;
   margin-bottom: 48px;
-  height: 16px; /* 占位防止跳动 */
+  height: 16px;
 }
 
 .dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid #ddd;
+  border: 2px solid #dddddd; /* 默认亮色边框 */
   transition: all 0.2s ease;
 }
 
-/* 圆点激活状态 */
 .dot.filled {
   background-color: var(--theme-primary, #6366f1);
   border-color: var(--theme-primary, #6366f1);
   transform: scale(1.1);
 }
+.dot.filled.error { background-color: #ef4444; border-color: #ef4444; }
+.dot.filled.success { background-color: #10b981; border-color: #10b981; }
 
-/* 错误状态：变红 */
-.dot.filled.error {
-  background-color: #ef4444;
-  border-color: #ef4444;
-}
-
-/* 成功状态：变绿 */
-.dot.filled.success {
-  background-color: #10b981;
-  border-color: #10b981;
-}
-
-/* 键盘布局 */
 .keypad-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px 32px; /* 行间距 和 列间距 */
+  gap: 24px 32px;
   width: 100%;
 }
 
@@ -189,7 +170,7 @@ watch(inputCode, (val) => {
   background-color: transparent;
   font-size: 26px;
   font-weight: 500;
-  color: #333;
+  color: #333333; /* 默认亮色按键 */
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -198,51 +179,47 @@ watch(inputCode, (val) => {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+.key-btn:active { background-color: rgba(0, 0, 0, 0.05); }
 
-.key-btn:active {
-  background-color: rgba(0, 0, 0, 0.05);
-}
+.delete-btn { font-size: 18px; color: #666666; }
 
-/* 特殊按键样式 */
-.delete-btn {
-  font-size: 18px;
-  color: #666;
-}
-
-/* 错误时的震动动画 */
-.shake-anim {
-  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
-}
-
+.shake-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
 @keyframes shake {
   10%, 90% { transform: translate3d(-1px, 0, 0); }
   20%, 80% { transform: translate3d(2px, 0, 0); }
   30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
   40%, 60% { transform: translate3d(4px, 0, 0); }
 }
+</style>
 
-/* === 深色模式适配 (Dark Mode) === */
-:global(.dark) .lock-overlay {
-  background-color: #1e1e1e;
+<style>
+/* 使用 "html.dark .lock-overlay" 这种选择器，
+  它能无视组件层级，直接命中 DOM 结构，修复“不生效”的问题。
+*/
+html.dark .lock-overlay,
+body.dark .lock-overlay {
+  background-color: #1e1e1e !important;
 }
 
-:global(.dark) .lock-title {
-  color: #f0f0f0;
+html.dark .lock-title {
+  color: #f0f0f0 !important;
 }
 
-:global(.dark) .dot {
-  border-color: #444;
+html.dark .lock-content .dot {
+  border-color: #444444 !important;
 }
 
-:global(.dark) .key-btn {
-  color: #e0e0e0;
+/* 注意：填充状态不需要改 border，因为是用的主题色/红色/绿色，深色模式也通用 */
+
+html.dark .key-btn {
+  color: #e0e0e0 !important;
 }
 
-:global(.dark) .key-btn:active {
-  background-color: rgba(255, 255, 255, 0.1);
+html.dark .key-btn:active {
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-:global(.dark) .delete-btn {
-  color: #999;
+html.dark .delete-btn {
+  color: #999999 !important;
 }
 </style>
