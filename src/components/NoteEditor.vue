@@ -2811,6 +2811,11 @@ function handleTextareaMove(e: TouchEvent) {
   max-height: none !important;
 }
 
+/* 作用：当在非 Android 设备上，且键盘收起时，强制恢复 90% 高度限制，避免撑满屏幕 */
+.note-editor-reborn:not(.android):not(.is-focused) {
+  max-height: 90dvh !important;
+}
+
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
 .note-editor-reborn.editing-viewport {
 
