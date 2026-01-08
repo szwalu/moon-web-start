@@ -3444,8 +3444,8 @@ function onCalendarUpdated(updated: any) {
     </Transition>
 
     <template v-if="user || !authResolved">
+      <div class="status-bar-touch-area" @click="handleHeaderClick" />
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
-        <div class="status-bar-touch-area" />
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
             v-if="(user?.user_metadata?.avatar_url || lastUserId) && !logoError"
@@ -3833,14 +3833,14 @@ function onCalendarUpdated(updated: any) {
 }
 
 .status-bar-touch-area {
-  position: fixed; /* 固定在视口，不受父元素 sticky 偏移的影响 */
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: env(safe-area-inset-top); /* 高度精确等于刘海/状态栏高度 */
-  z-index: 4000; /* 层级比 Header (3000) 高，确保能点到 */
+  height: env(safe-area-inset-top);
+  z-index: 9999; /*以此确保它在最顶层，甚至高于AppLock以外的组件*/
   cursor: pointer;
-  background: rgba(255, 0, 0, 0.2);  /*<-- 调试用：打开这行如果能看到顶部红条，说明位置对了 */
+  background: transparent; /* ✅ 改回透明 */
 }
 
 /* 标题本身不再绝对定位，跟着 flex 正常排布就好 */
