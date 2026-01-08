@@ -845,7 +845,7 @@ notes:
     s10_i3: 'Security: Email users can change login password; securely sign out.'
     s10_i4: 'Font Settings: Independently adjust "Content Font Size" (note body) and "System Font Size" (UI controls); enable "Follow" to automatically adapt system font size to content size.'
     s10_i5: 'default_city: Set a default city and get weather instantly for new notes;Not set: Using GPS/IP auto-location.'
-    s10_i6: 'Daily reminder: When enabled, the system will send a notification at a fixed time each day to remind you to write or review notes. Please ensure browser notification permissions are granted.'
+    s10_i6: 'Daily Reminder: When enabled, you will receive daily notifications to remind you to write or review notes. A red dot badge will also appear on the app icon (open the app to clear it); please ensure browser notification permissions are granted.'
     s10_i7: 'Theme settings: Your theme configuration is synced to the cloud and stays consistent across devices.'
     s10_i8: 'App Lock: Set a 4-digit passcode to protect your privacy, supporting custom auto-lock timeouts (e.g., Immediately or After 1 hour); leave blank and save to disable the lock.'
 

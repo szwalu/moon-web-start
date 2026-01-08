@@ -3444,7 +3444,6 @@ function onCalendarUpdated(updated: any) {
     </Transition>
 
     <template v-if="user || !authResolved">
-      <div class="status-bar-touch-area" @touchstart.prevent="handleHeaderClick" />
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
@@ -4608,9 +4607,17 @@ html, body, #app {
 
 /* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-  top: var(--safe-top) !important;
-  height: var(--header-base) !important;
-  padding-top: 0.5rem !important;
+  top: 0 !important; /* 1. 让 Header 直接吸附在屏幕最顶端，覆盖状态栏背景 */
+
+  /* 2. 高度 = 基础高度(44px) + 状态栏高度 */
+  height: calc(var(--header-base) + var(--safe-top)) !important;
+
+  /* 3. 内边距 = 原本的 padding(0.5rem) + 状态栏高度 */
+  /* 这样文字内容就会乖乖待在原来的位置，但点击区域扩大到了屏幕边缘 */
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+
+  /* 确保 z-index 够高 */
+  z-index: 3000;
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
