@@ -3444,12 +3444,7 @@ function onCalendarUpdated(updated: any) {
     </Transition>
 
     <template v-if="user || !authResolved">
-      <div
-        v-show="!isEditorActive && !isTopEditing"
-        class="page-header"
-        @click="handleHeaderClick"
-        @touchstart.passive="handleHeaderClick"
-      >
+      <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
             v-if="(user?.user_metadata?.avatar_url || lastUserId) && !logoError"
@@ -4598,58 +4593,10 @@ html, body, #app {
 }
 
 /* Sticky 头部下移 safe-top */
-/* ✅ 1. Header 容器：物理上占满顶部，但背景透明 */
 .auth-container .page-header {
-  position: -webkit-sticky;
-  position: sticky;
-
-  /* 关键：直接吸顶，覆盖刘海区 */
-  top: 0 !important;
-
-  /* 关键：高度 = 内容高度(44px) + 顶部安全区 */
-  height: calc(44px + var(--safe-top)) !important;
-
-  /* 关键：用 padding 把内部的按钮/文字挤下来，不让它们被刘海挡住 */
-  /* 原来的 padding 是 0.75rem，现在加上 safe-top */
-  padding-top: calc(0.75rem + var(--safe-top)) !important;
-
-  /* 关键：背景设为透明！否则状态栏会变白 */
-  background: transparent !important;
-
-  z-index: 3000;
-
-  /* 确保伪元素能定位 */
-  isolation: isolate;
-}
-
-/* ✅ 2. 伪元素：这才是我们要显示的“白色背景条” */
-/* 它负责显示白色背景，但只从安全区下方开始渲染 */
-.auth-container .page-header::before {
-  content: "";
-  position: absolute;
-
-  /* 核心魔法：背景条从安全区下方开始，把上面的状态栏空出来 */
-  top: var(--safe-top);
-  left: 0;
-  right: 0;
-  bottom: 0;
-
-  /* 恢复原来的背景色 */
-  background: white;
-
-  /* 放在文字下面 */
-  z-index: -1;
-
-  /* 如果原来有阴影，加在这里（视你原设计而定，没有可不加） */
-  /* box-shadow: 0 1px 2px rgba(0,0,0,0.05); */
-}
-
-/* ✅ 3. 深色模式适配 */
-.dark .auth-container .page-header {
-  background: transparent !important; /* 同样透明 */
-}
-.dark .auth-container .page-header::before {
-  background: #1e1e1e; /* 深色模式背景色加在伪元素上 */
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
 }
 
 /* 二级横幅、搜索栏跟随 header-height */
