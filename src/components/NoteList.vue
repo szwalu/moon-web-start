@@ -144,6 +144,15 @@ const normalizedNotes = computed<any[]>(() => {
 })
 /* ========================== 结束新增 ========================== */
 
+/** 新增：id -> 原始笔记（向上滚兜底需要），用 normalizedNotes 更一致 */
+const noteById = computed<Record<string, any>>(() => {
+  const m: Record<string, any> = {}
+  for (const n of normalizedNotes.value)
+    m[n.id] = n
+
+  return m
+})
+
 /** 跳过置顶段，从第一条非置顶开始插入月份头 */
 const mixedItems = computed<MixedItem[]>(() => {
   const out: MixedItem[] = []
@@ -175,6 +184,17 @@ const mixedItems = computed<MixedItem[]>(() => {
 
 const hasLeadingMonthHeader = computed(() => mixedItems.value[0]?.type === 'month-header')
 
+// 新增：判断列表第一项是否为置顶笔记
+const hasPinnedAtTop = computed(() => {
+  const firstItem = mixedItems.value[0]
+  if (!firstItem || firstItem.type !== 'note')
+    return false
+
+  // 找到原始笔记数据，检查是否 pinned
+  const n = noteById.value[firstItem.id]
+  return n && _isPinned(n)
+})
+
 /** noteId -> 混合列表 index（滚动定位用） */
 const noteIdToMixedIndex = computed<Record<string, number>>(() => {
   const map: Record<string, number> = {}
@@ -183,15 +203,6 @@ const noteIdToMixedIndex = computed<Record<string, number>>(() => {
       map[it.id] = idx
   })
   return map
-})
-
-/** 新增：id -> 原始笔记（向上滚兜底需要），用 normalizedNotes 更一致 */
-const noteById = computed<Record<string, any>>(() => {
-  const m: Record<string, any> = {}
-  for (const n of normalizedNotes.value)
-    m[n.id] = n
-
-  return m
 })
 
 function scrollToMonth(year: number, month: number): boolean {
@@ -368,6 +379,41 @@ function recomputeStickyState() {
   const topKey = getTopVisibleMonthKey(root)
   if (topKey && topKey !== currentMonthKey.value)
     currentMonthKey.value = topKey
+
+  {
+    const scRect = root.getBoundingClientRect()
+    let minTop = Number.POSITIVE_INFINITY
+    let topNoteId: string | null = null
+
+    // 遍历当前渲染的 DOM 节点，找到视觉位置最靠上的那一个
+    for (const id in noteContainers.value) {
+      const el = noteContainers.value[id]
+      if (!el || !el.isConnected)
+        continue
+      // 安全校验：防止虚拟列表复用导致 DOM 属性滞后
+      if (el.getAttribute('data-note-id') !== id)
+        continue
+
+      const r = el.getBoundingClientRect()
+      // 判断是否在视口可见范围内（只要露出一部分就算）
+      if (r.bottom > scRect.top && r.top < scRect.bottom) {
+        if (r.top < minTop) {
+          minTop = r.top
+          topNoteId = id
+        }
+      }
+    }
+
+    // 检查这个最靠上的笔记是否为置顶
+    if (topNoteId) {
+      const topNote = noteById.value[topNoteId]
+      // 只要是置顶笔记，就清空 currentMonthKey -> 从而隐藏悬浮条
+      if (topNote && _isPinned(topNote)) {
+        currentMonthKey.value = ''
+        pushOffset.value = 0
+      }
+    }
+  }
 }
 
 // 让 .sticky-month 和 .month-header 宽度对齐（不遮住滚动条）
@@ -1028,7 +1074,7 @@ function checkSameDay(currentItem, index) {
       key-field="vid"
     >
       <template #before>
-        <div :style="{ height: hasLeadingMonthHeader ? '0px' : `${HEADER_HEIGHT}px` }" />
+        <div :style="{ height: (hasLeadingMonthHeader || hasPinnedAtTop) ? '0px' : `${HEADER_HEIGHT}px` }" />
       </template>
       <template #default="{ item, index, active }">
         <DynamicScrollerItem
