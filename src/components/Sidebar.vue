@@ -64,6 +64,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'menuClick'])
 const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
 const SALT = 'cloud-notes-salt-8848-xyz-' // ⚠️ 确保这个字符串和 Home.vue 里完全一致！
+const statusMessage = ref('')
 
 function encryptPin(pin: string) {
   if (!pin)
@@ -241,7 +242,8 @@ const tempPin = ref('')
 const currentInputPin = ref('')
 // 新增：验证意图 'disable'(关闭) | 'reset'(重设)
 const verifyIntent = ref<'disable' | 'reset' | null>(null)
-
+const inputFeedback = ref('')
+const inputFeedbackType = ref<'error' | 'success' | 'info'>('info')
 // 当前是否已开启锁 (用于控制 Switch 显示状态)
 const isLockEnabled = ref(false)
 
@@ -269,6 +271,7 @@ function openPasswordModal() {
   // 重置视图
   passwordViewMode.value = 'menu'
   currentInputPin.value = ''
+  statusMessage.value = ''
   showPasswordModal.value = true
 }
 
@@ -287,56 +290,66 @@ function handleLockSwitch(val: boolean) {
 
 // 监听输入框变化 (自动跳转)
 watch(currentInputPin, (val) => {
+  if (val.length > 0) {
+    inputFeedback.value = ''
+  }
   if (val.length === 4) {
     handlePinInputComplete(val)
   }
 })
 
-// 🔥🔥🔥 核心修改：处理密码输入完成逻辑 (增加了 Step 0)
+// ✅ [修改] 核心逻辑：处理密码输入完成
 function handlePinInputComplete(pin: string) {
-  // 稍微延迟一下，给用户视觉反馈
   setTimeout(() => {
-    // ✅ 情况 0：验证旧密码
+    // Case 0: 验证旧密码 (保持不变)
     if (inputStep.value === 0) {
+      // ... (这部分代码保持不变) ...
       const storedHash = localStorage.getItem(LOCK_CACHE_KEY)
-      // encryptPin 在上方已定义
       if (encryptPin(pin) === storedHash) {
-        message.success(t('settings.verify_success') || '验证通过')
-
-        if (verifyIntent.value === 'disable') {
-          // 意图：关闭锁 -> 执行关闭逻辑，并回到菜单显示关闭状态
-          saveLockToCloud(null)
-          passwordViewMode.value = 'menu'
-        }
-        else if (verifyIntent.value === 'reset') {
-          // 意图：重设 -> 进入 Step 1 (设置新密码)
-          startSetPinFlow()
-        }
-        verifyIntent.value = null
+        inputFeedback.value = t('settings.verify_success') || '验证通过'
+        inputFeedbackType.value = 'success'
+        setTimeout(() => {
+          if (verifyIntent.value === 'disable') {
+            saveLockToCloud(null)
+            passwordViewMode.value = 'menu'
+          }
+          else if (verifyIntent.value === 'reset') {
+            startSetPinFlow()
+          }
+          verifyIntent.value = null
+          inputFeedback.value = ''
+        }, 500)
       }
       else {
-        message.error(t('settings.pin_error') || '密码错误，请重试')
+        inputFeedback.value = t('settings.pin_error') || '密码错误，请重试'
+        inputFeedbackType.value = 'error'
+        if (navigator.vibrate)
+          navigator.vibrate(200)
         currentInputPin.value = ''
       }
       return
     }
 
-    // ✅ 情况 1：输入新密码 (第一遍)
+    // 🔥 [修改这里] Case 1: 输入新密码 (第一遍)
     if (inputStep.value === 1) {
       tempPin.value = pin
       currentInputPin.value = ''
       inputStep.value = 2
+
+      // 🔥 修改：进入确认步骤时，清空提示。
+      // 因为标题已经变成了“再次输入确认”，下方不需要重复显示。
+      inputFeedback.value = ''
     }
-    // ✅ 情况 2：确认新密码 (第二遍)
+    // Case 2: 确认新密码 (第二遍) (保持不变)
     else {
       if (pin === tempPin.value) {
-        // 密码一致，保存
         saveLockToCloud(pin)
       }
       else {
-        // 密码不一致
-        message.error(t('settings.lock_mismatch') || '两次输入的密码不一致，请重试')
-        // 重置回第一步
+        inputFeedback.value = t('settings.lock_mismatch') || '两次输入的密码不一致，请重试'
+        inputFeedbackType.value = 'error'
+        if (navigator.vibrate)
+          navigator.vibrate(200)
         currentInputPin.value = ''
         inputStep.value = 1
         tempPin.value = ''
@@ -349,6 +362,7 @@ function startVerifyFlow() {
   passwordViewMode.value = 'input'
   inputStep.value = 0
   currentInputPin.value = ''
+  inputFeedback.value = '' // 重置提示
 }
 
 // 新增：点击“变更密码”时的入口
@@ -362,6 +376,7 @@ function startSetPinFlow() {
   inputStep.value = 1
   currentInputPin.value = ''
   tempPin.value = ''
+  inputFeedback.value = '' // 重置提示
 }
 
 // 真正的保存逻辑
@@ -385,7 +400,7 @@ async function saveLockToCloud(finalPin: string | null) {
       throw error
 
     if (finalPin) {
-      message.success(t('settings.lock_enabled') || '应用锁已开启')
+      statusMessage.value = t('settings.lock_enabled') || '应用锁已开启'
       localStorage.setItem(LOCK_CACHE_KEY, encryptPin(finalPin))
       localStorage.setItem(LOCK_TIMEOUT_KEY, String(timeoutToSave))
       isLockEnabled.value = true
@@ -393,11 +408,14 @@ async function saveLockToCloud(finalPin: string | null) {
       passwordViewMode.value = 'menu'
     }
     else {
-      message.success(t('settings.lock_disabled') || '应用锁已关闭')
+      statusMessage.value = t('settings.lock_disabled') || '应用锁已关闭'
       localStorage.removeItem(LOCK_CACHE_KEY)
       localStorage.removeItem(LOCK_TIMEOUT_KEY)
       isLockEnabled.value = false
     }
+    setTimeout(() => {
+      statusMessage.value = ''
+    }, 2000)
   }
   catch (e: any) {
     console.error(e)
@@ -1123,10 +1141,23 @@ onMounted(() => {
           @close="showPasswordModal = false"
         >
           <div v-if="passwordViewMode === 'menu'">
-            <div style="text-align: center; margin-bottom: 24px; margin-top: 10px;">
+            <div style="text-align: center; margin-bottom: 24px; margin-top: 0; position: relative;">
+              <div style="position: absolute; top: -28px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;">
+                <Transition name="fade">
+                  <span
+                    v-if="statusMessage"
+                    style="color: #18a058; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    {{ statusMessage }}
+                  </span>
+                </Transition>
+              </div>
+
               <div class="lock-icon-circle">
                 <Lock :size="32" stroke-width="2" />
               </div>
+
               <NText depth="3" style="font-size: 13px; margin-top: 12px; display: block; padding: 0 10px;">
                 {{ t('settings.lock_desc_simple') || '使用密码保护您的日记，防止不必要的窥探。' }}
               </NText>
@@ -1194,7 +1225,18 @@ onMounted(() => {
               autofocus
             />
 
-            <div style="margin-top: 30px;">
+            <div style="min-height: 24px; margin-top: 16px;">
+              <Transition name="fade">
+                <div
+                  v-if="inputFeedback"
+                  class="feedback-text" :class="[inputFeedbackType]"
+                >
+                  {{ inputFeedback }}
+                </div>
+              </Transition>
+            </div>
+
+            <div style="margin-top: 20px;">
               <NButton quaternary size="small" @click="passwordViewMode = 'menu'">
                 {{ t('button.cancel') || '取消' }}
               </NButton>
@@ -1642,6 +1684,31 @@ onMounted(() => {
 }
 .dark .divider-line {
   background-color: #333;
+}
+
+/* ✅ [新增] 密码输入反馈文字样式 */
+.feedback-text {
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.feedback-text.error {
+  color: #d03050; /* 红色错误提示 */
+}
+.dark .feedback-text.error {
+  color: #ff6b6b;
+}
+
+.feedback-text.success {
+  color: #18a058; /* 绿色成功提示 */
+}
+.dark .feedback-text.success {
+  color: #63e2b7;
+}
+
+.feedback-text.info {
+  color: var(--sb-text-sub); /* 普通提示 */
 }
 </style>
 
