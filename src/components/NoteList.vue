@@ -1092,8 +1092,10 @@ function checkSameDay(currentItem, index) {
               :ref="(el) => setHeaderEl(el, item.monthKey)"
               class="month-header"
               :data-month="item.monthKey"
+              @click.stop="emit('monthHeaderClick', item.monthKey)"
             >
-              {{ item.label }}
+              <span class="sticky-month-label">{{ item.label }}</span>
+              <span class="sticky-month-caret" />
             </div>
           </div>
 
@@ -1229,8 +1231,13 @@ function checkSameDay(currentItem, index) {
   color: #374151;
   background: #eef2ff;
   border: 1px solid #e5e7eb;
+
   display: flex;
   align-items: center;
+
+  /* ✅ 新增：间距和小手，与吸顶状态保持一致 */
+  gap: 4px;
+  cursor: pointer;
 }
 .dark .month-header {
   color: #e5e7eb;
