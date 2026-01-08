@@ -137,10 +137,16 @@ function updateKeyboardOffset() {
   // Android / 其他设备：继续使用 baseHeight 逻辑
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
-    if (diff > 150)
-      keyboardOffset.value = `${diff}px`
-    else
+
+    // ✅ 这里必须加 {
+    if (diff > 150) {
+      const androidGapCorrection = 30
+      const finalHeight = Math.max(0, diff - androidGapCorrection)
+      keyboardOffset.value = `${finalHeight}px`
+    } // ✅ 这里必须加 }
+    else {
       keyboardOffset.value = '0px'
+    }
   }
   if (props.isEditing)
     measureTopOffset()
