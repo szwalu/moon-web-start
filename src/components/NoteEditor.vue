@@ -203,12 +203,9 @@ const editorHeight = computed(() => {
   const extraReduction = props.isEditing
     ? 0
     : (isPWA.value ? 48 : 10)
-  let androidFix = 0
-  if (!isReallyIOS && isAndroid)
-    androidFix = 80 // 👈 试着把这个数字调大（例如30或40），直到空隙消失
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px + ${androidFix}px)`
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -2288,7 +2285,7 @@ function handleBeforeInput(e: InputEvent) {
 
   // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, isAndroid ? 180 : 120)
+  const prelift = isAndroid ? 0 : Math.max(base, 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
@@ -2777,9 +2774,6 @@ function handleTextareaMove(e: TouchEvent) {
   /* 2. 最小高度保底 */
   min-height: 430px;
 
-  /* 3. 封顶 */
-  max-height: 90dvh;
-
   /* 4. 沉底逻辑 */
   margin-top: auto;
   overflow: hidden;
@@ -2807,6 +2801,7 @@ function handleTextareaMove(e: TouchEvent) {
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
+  max-height: none !important;
 }
 
 /* --- 场景 C：编辑旧笔记 (全屏模式) --- */
