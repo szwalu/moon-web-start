@@ -6,7 +6,7 @@ on:
     - cron: '12 17 * * *'
     # 第二次：加州晚上 20:12 (UTC 04:12)
     - cron: '12 4 * * *'
-  # 允许手动触发
+  # 允许手动触发方便测试
   workflow_dispatch:
 
 jobs:
@@ -19,15 +19,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20' # 🔥 升级到 20 以消除警告
+          node-version: '20'
 
-      # 注意：这里会生成 pnpm-lock.yaml，避免安装冲突
       - name: Install dependencies
+        # 安装必要的依赖
         run: npm install -g pnpm && pnpm add firebase-admin @supabase/supabase-js
 
       - name: Run Reminder Script
-        # 👇👇👇 核心修改：这几行 env 必须存在，且缩进正确 👇👇👇
         env:
+          # 只需要传基础的 Key 即可，逻辑交给脚本处理
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

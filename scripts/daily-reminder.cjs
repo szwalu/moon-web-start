@@ -1,4 +1,3 @@
-// scripts/daily-reminder.js
 const { createClient } = require('@supabase/supabase-js')
 const admin = require('firebase-admin')
 
@@ -19,35 +18,46 @@ async function sendDailyReminders() {
   console.log('--- 开始执行定时提醒任务 ---')
 
   // ==========================================
-  // 🔥 核心修改：根据当前时间决定文案
+  // 🔥 核心逻辑：根据 UTC 时间判断早晚
   // ==========================================
   const now = new Date()
-  const currentUtcHour = now.getUTCHours() // 获取当前的 UTC 小时 (0-23)
+  const currentUtcHour = now.getUTCHours()
 
   console.log(`当前 UTC 小时: ${currentUtcHour}`)
 
   let notifTitle = ''
   let notifBody = ''
+  // 默认为空，不带红点
+  let dataPayload = {}
 
   // 判断逻辑：
-  // 上午 10:12 PST 运行 -> UTC 是 18:12 -> 小时数是 18 (或者前后有延迟，定为 17-19)
-  // 晚上 20:12 PST 运行 -> UTC 是 04:12 -> 小时数是 4  (或者前后有延迟，定为 3-5)
-
+  // 上午 09:12 PST = UTC 17:12 -> 范围大致在 16 - 20 之间
+  // 晚上 20:12 PST = UTC 04:12 -> 范围在其他时间
   if (currentUtcHour >= 16 && currentUtcHour <= 20) {
-    // ☀️ 第一波：上午 10:12 的提醒 (使用你原来的文案)
-    console.log('判定为：上午提醒')
+    // ☀️ 早晨：使用“笔记时间”文案 + 🔴 带红点
+    console.log('判定为：上午提醒 (带红点)')
     notifTitle = '📝 每日笔记时间到'
     notifBody = '即使只有一句话，也要记录下今天的闪光点。\nEven one sentence is enough to capture today’s highlight.'
+
+    // 写入红点数据
+    dataPayload = {
+      badge_count: '1',
+    }
   }
   else {
-    // 🌙 第二波：晚上 20:12 的提醒 (使用新设计的文案)
-    console.log('判定为：晚上提醒')
+    // 🌙 晚上：使用“回顾时间”文案 + ⚪️ 不带红点
+    console.log('判定为：晚上提醒 (无红点)')
     notifTitle = '📝 每日回顾时间到'
     notifBody = '哪怕过得很平凡，也值得回顾下今天的点滴。\nEven an ordinary day is worth looking back on.'
+
+    // dataPayload 保持为空
   }
 
+  console.log('🔥 正在进行强制红点测试 🔥')
+  dataPayload = { badge_count: '1' }
+
   // ==========================================
-  // 3. 获取用户并去重 (防止一人收到两条)
+  // 3. 获取用户并去重
   // ==========================================
   const { data: users, error } = await supabase
     .from('users')
@@ -59,33 +69,32 @@ async function sendDailyReminders() {
     return
   }
 
-  // 使用 Set 进行去重，防止同一个 Token 出现多次
   const uniqueTokens = [...new Set(users.map(u => u.fcm_token))]
-  console.log(`数据库记录: ${users.length} 条，去重后需发送: ${uniqueTokens.length} 台设备`)
+  console.log(`需发送设备数: ${uniqueTokens.length}`)
 
-  if (uniqueTokens.length === 0) {
-    console.log('没有用户订阅，任务结束。')
+  if (uniqueTokens.length === 0)
     return
-  }
 
   // ==========================================
-  // 4. 批量发送 (更高效的写法)
+  // 4. 发送消息
   // ==========================================
   const message = {
     notification: {
       title: notifTitle,
       body: notifBody,
     },
-    tokens: uniqueTokens, // ⚠️ 注意：这里用 tokens (复数) 配合 sendEachForMulticast
+    // 将 data 数据（包含可能的 badge）放入消息
+    data: dataPayload,
+    tokens: uniqueTokens,
   }
 
   try {
     const response = await admin.messaging().sendEachForMulticast(message)
-    console.log(`✅ 发送成功: ${response.successCount} 条`)
-    console.log(`❌ 发送失败: ${response.failureCount} 条`)
+    console.log(`✅ 发送成功: ${response.successCount}`)
+    console.log(`❌ 发送失败: ${response.failureCount}`)
   }
   catch (e) {
-    console.error('发送过程中出错:', e)
+    console.error('发送出错:', e)
   }
 }
 
