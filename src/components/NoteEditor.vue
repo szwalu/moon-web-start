@@ -37,6 +37,23 @@ const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
 
+// 测量函数：只在编辑模式下生效
+function measureTopOffset() {
+  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  if (!props.isEditing) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
+    // Math.max(0, ...) 防止滚动导致的负数
+    autoTopOffset.value = Math.max(0, rect.top)
+  }
+}
+
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
@@ -81,35 +98,12 @@ const iosFirstInputLatch = ref(false)
 
 const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
-// 测量函数：只在编辑模式下生效
-function measureTopOffset() {
-  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
-  if (!props.isEditing) {
-    autoTopOffset.value = 0
-    return
-  }
-
-  // 🔥🔥🔥 核心修复：Android 键盘弹起时，强制归零 🔥🔥🔥
-  // Android 浏览器会自动把视口高度缩小到键盘上方。
-  // 此时如果再减去 rect.top（顶部距离），就会导致编辑器高度不足，底部出现空隙。
-  // 所以 Android 输入状态下，直接设为 0，让它占满 100dvh (当前可见区域) 即可。
-  if (isAndroid && isInputFocused.value) {
-    autoTopOffset.value = 0
-    return
-  }
-
-  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
-  if (rootRef.value) {
-    const rect = rootRef.value.getBoundingClientRect()
-    // 只有当距离大于 0 时才认为是障碍物
-    autoTopOffset.value = Math.max(0, rect.top)
-  }
-}
+// ... imports ...
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
+let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
-// 🔥 修改版：updateKeyboardOffset
 // 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
@@ -118,30 +112,36 @@ function updateKeyboardOffset() {
   const currentHeight = window.visualViewport.height
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时
+  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
   if (!isInputFocused.value) {
     if (currentHeight > 300)
-      keyboardOffset.value = '0px'
+      baseHeight = currentHeight
+    keyboardOffset.value = '0px'
     measureTopOffset()
     return
   }
 
   // 2. 键盘弹出时
+  // 🔥🔥🔥 核心修复：iOS 专用逻辑
+  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
+  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
+  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
   if (isIOS) {
-    // iOS 必须手动减去键盘高度
     const diff = window.innerHeight - currentHeight
+    // 只有差值合理才认为是键盘/工具栏
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
     else
       keyboardOffset.value = '0px'
   }
-  else {
-    // 🔥 Android 核心修改：
-    // Android 浏览器会自动挤压页面，所以这里必须设为 0px！
-    // 之前这里算出了 diff 并赋值，导致高度被扣了两次，产生巨大空隙。
-    keyboardOffset.value = '0px'
+  // Android / 其他设备：继续使用 baseHeight 逻辑
+  else if (baseHeight > 0) {
+    const diff = baseHeight - currentHeight
+    if (diff > 150)
+      keyboardOffset.value = `${diff}px`
+    else
+      keyboardOffset.value = '0px'
   }
-
   if (props.isEditing)
     measureTopOffset()
 }
@@ -149,6 +149,7 @@ function updateKeyboardOffset() {
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
+    baseHeight = window.visualViewport.height
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
@@ -202,9 +203,12 @@ const editorHeight = computed(() => {
   const extraReduction = props.isEditing
     ? 0
     : (isPWA.value ? 48 : 10)
+  let androidFix = 0
+  if (!isReallyIOS && isAndroid)
+    androidFix = 20 // 👈 试着把这个数字调大（例如30或40），直到空隙消失
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px + ${androidFix}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -1503,17 +1507,27 @@ function handleFocus() {
   // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 🔥 Android 核心修改：只有 iOS 需要临时托起
-  // Android 聚焦瞬间不需要手动撑起 padding，否则键盘出来后这就变成了空隙
-  if (isIOS)
-    emit('bottomSafeChange', getFooterHeight())
+  // 用真实 footer 高度“临时托起”，不等 vv
+  emit('bottomSafeChange', getFooterHeight())
 
   // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
+  /*
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
-  // 覆盖 visualViewport 延迟
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  }
+  */
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
   }, t1)
@@ -1525,8 +1539,9 @@ function handleFocus() {
   setTimeout(() => {
     measureTopOffset()
     ensureCaretVisibleInTextarea()
-  }, 400)
+  }, 400) // 400ms > transition 0.3s
 
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -1554,6 +1569,7 @@ function onBlur() {
   if (window.visualViewport) {
     // 稍微延迟一点点，等键盘完全收起后再记录新的高度
     setTimeout(() => {
+      baseHeight = window.visualViewport!.height
     }, 300)
   }
 }
@@ -2256,6 +2272,7 @@ function handleBeforeInput(e: InputEvent) {
     return
   _hasPushedPage = false
 
+  // 不是插入/删除（如仅移动光标/选区）的 beforeinput，跳过预抬升
   const t = e.inputType || ''
   const isRealTyping
     = t.startsWith('insert')
@@ -2265,17 +2282,13 @@ function handleBeforeInput(e: InputEvent) {
   if (!isRealTyping)
     return
 
+  // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
 
-  // 🔥 Android 核心修改：直接返回，不要加任何垫高
-  // Android 的光标跟随由浏览器原生处理，不需要这里干预
-  if (isAndroid)
-    return
-
-  // 仅 iOS 执行以下垫高逻辑
+  // 预抬升：iPhone 保底 120，Android 保底 180
   const base = getFooterHeight() + 24
-  const prelift = Math.max(base, 120)
+  const prelift = Math.max(base, isAndroid ? 180 : 120)
   emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
@@ -2810,6 +2823,16 @@ function handleTextareaMove(e: TouchEvent) {
 
   /* 顺便移除可能存在的 scrollbar 占位，让宽度利用率达到 100% */
   scrollbar-gutter: auto !important;
+}
+
+/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
+/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
+   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
+@media (max-height: 600px) {
+  .note-editor-reborn.editing-viewport {
+    height: 100dvh !important;
+    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
+  }
 }
 
 /* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式修复 🔥🔥🔥 */
