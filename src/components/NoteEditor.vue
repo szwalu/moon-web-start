@@ -205,7 +205,7 @@ const editorHeight = computed(() => {
     : (isPWA.value ? 48 : 10)
   let androidFix = 0
   if (!isReallyIOS && isAndroid)
-    androidFix = 20 // 👈 试着把这个数字调大（例如30或40），直到空隙消失
+    androidFix = 80 // 👈 试着把这个数字调大（例如30或40），直到空隙消失
 
   // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px + ${androidFix}px)`
