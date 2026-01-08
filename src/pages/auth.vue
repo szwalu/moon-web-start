@@ -3444,7 +3444,7 @@ function onCalendarUpdated(updated: any) {
     </Transition>
 
     <template v-if="user || !authResolved">
-      <div class="status-bar-touch-area" @click="handleHeaderClick" />
+      <div class="status-bar-touch-area" @touchstart.prevent="handleHeaderClick" />
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
@@ -3837,10 +3837,12 @@ function onCalendarUpdated(updated: any) {
   top: 0;
   left: 0;
   right: 0;
-  height: env(safe-area-inset-top);
-  z-index: 9999; /*以此确保它在最顶层，甚至高于AppLock以外的组件*/
-  cursor: pointer;
-  background: transparent; /* ✅ 改回透明 */
+  /* 🟢 修改：原有高度是 env(safe-area-inset-top)，建议加 10px 容错 */
+  height: calc(env(safe-area-inset-top) + 10px);
+  z-index: 9999;
+  /* 调试时可以保留红色背景，确认好用后再改成 transparent */
+   background: rgba(255, 0, 0, 0.2);
+  /*background: transparent; */
 }
 
 /* 标题本身不再绝对定位，跟着 flex 正常排布就好 */
