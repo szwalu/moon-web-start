@@ -178,6 +178,8 @@ const editorHeight = computed(() => {
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+  if (!isReallyIOS && isAndroid)
+    return '100%'
 
   let keyboardH = '0px'
   if (isReallyIOS) {
@@ -1505,7 +1507,8 @@ function handleFocus() {
   _hasPushedPage = false
 
   // 用真实 footer 高度“临时托起”，不等 vv
-  emit('bottomSafeChange', getFooterHeight())
+  if (!isAndroid)
+    emit('bottomSafeChange', getFooterHeight())
 
   // 立即一轮计算
   requestAnimationFrame(() => {
@@ -2825,7 +2828,7 @@ function handleTextareaMove(e: TouchEvent) {
    强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
 @media (max-height: 600px) {
   .note-editor-reborn.editing-viewport {
-    height: 100dvh !important;
+    height: 100% !important;
     border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
   }
 }
