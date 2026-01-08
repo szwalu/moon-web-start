@@ -752,7 +752,21 @@ watch(authResolved, (isReady) => {
   }
 })
 
+// ✅ [新增] 清除应用红点 (Helper Function)
+function tryClearBadge() {
+  try {
+    if ('clearAppBadge' in navigator)
+      navigator.clearAppBadge().catch(() => {})
+    else if ('setAppBadge' in navigator)
+      navigator.setAppBadge(0).catch(() => {})
+  }
+  catch (e) {
+    console.warn('清除红点失败', e)
+  }
+}
+
 onMounted(() => {
+  tryClearBadge()
   // === [PATCH-3] 预热一次 session，避免仅依赖 onAuthStateChange 导致“未知”状态 ===
   ;(async () => {
     try {
@@ -1633,7 +1647,7 @@ async function handleVisibilityChange() {
   }
   else if (document.visibilityState === 'visible') {
     // 👋 回到页面
-
+    tryClearBadge()
     // 1. 检查是否超时锁屏
     if (lockCode.value && shouldLock()) {
       isLocked.value = true
