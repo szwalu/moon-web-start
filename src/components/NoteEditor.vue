@@ -178,8 +178,12 @@ const editorHeight = computed(() => {
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
-  if (!isReallyIOS && isAndroid)
-    return '100%'
+
+  if (!isReallyIOS && isAndroid) {
+    const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+    // 只减去顶部的偏移（如果有），其他全部撑满
+    return `calc(100dvh - ${finalTopOffset}px)`
+  }
 
   let keyboardH = '0px'
   if (isReallyIOS) {
@@ -2821,16 +2825,6 @@ function handleTextareaMove(e: TouchEvent) {
 
   /* 顺便移除可能存在的 scrollbar 占位，让宽度利用率达到 100% */
   scrollbar-gutter: auto !important;
-}
-
-/* 2. 🔥🔥🔥 Android 修复补丁 🔥🔥🔥 */
-/* 当可视区域高度小于 600px 时（意味着大概率是手机且键盘弹起了），
-   强制把高度设为 100%，铺满键盘上方区域，不再按 80% 计算 */
-@media (max-height: 600px) {
-  .note-editor-reborn.editing-viewport {
-    height: 100% !important;
-    border-radius: 0 !important; /* 键盘弹起时，建议直角，贴合更紧密 */
-  }
 }
 
 /* 🔥🔥🔥 电脑端 (PC/Mac/iPad) 专属样式修复 🔥🔥🔥 */
