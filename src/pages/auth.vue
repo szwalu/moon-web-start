@@ -3445,6 +3445,7 @@ function onCalendarUpdated(updated: any) {
 
     <template v-if="user || !authResolved">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
+        <div class="status-bar-touch-area" />
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
             v-if="(user?.user_metadata?.avatar_url || lastUserId) && !logoError"
@@ -3829,6 +3830,17 @@ function onCalendarUpdated(updated: any) {
 }
 .dark .page-header {
   background: #1e1e1e;
+}
+
+.status-bar-touch-area {
+  position: fixed; /* 固定在视口，不受父元素 sticky 偏移的影响 */
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top); /* 高度精确等于刘海/状态栏高度 */
+  z-index: 4000; /* 层级比 Header (3000) 高，确保能点到 */
+  cursor: pointer;
+  background: rgba(255, 0, 0, 0.2);  /*<-- 调试用：打开这行如果能看到顶部红条，说明位置对了 */
 }
 
 /* 标题本身不再绝对定位，跟着 flex 正常排布就好 */
