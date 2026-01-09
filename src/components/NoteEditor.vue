@@ -278,6 +278,30 @@ async function focusToEnd() {
   })
 }
 
+// ... (在 focusToEnd 函数附近添加)
+
+// 🔥 新增：只滚动到底部并设置光标位置，但【绝不聚焦】（防止键盘弹出）
+async function jumpToBottomWithoutFocus() {
+  await nextTick()
+  const el = textarea.value
+  if (!el)
+    return
+
+  // 1. 设置 Selection Range 到末尾
+  //    这样做的好处是：虽然键盘没弹出来，但当用户下一次点击输入框时，
+  //    光标会自然出现在末尾，而不是跳回开头。
+  const len = el.value.length
+  try {
+    el.setSelectionRange(len, len)
+  }
+  catch {}
+
+  // 2. 暴力直接滚到底部
+  //    这里不使用 ensureCaretVisibleInTextarea，因为它依赖精确计算且带有平滑动画，
+  //    页面刚打开时直接跳到底部体验更好。
+  el.scrollTop = el.scrollHeight
+}
+
 // ===== 简单自动草稿 =====
 let draftTimer: number | null = null
 const DRAFT_SAVE_DELAY = 400 // ms
@@ -671,8 +695,13 @@ onMounted(() => {
   checkAndPromptDraft()
 
   if (props.isEditing) {
-    if (!showDraftPrompt.value)
-      focusToEnd()
+    if (!showDraftPrompt.value) {
+      // 🔴 原代码：直接聚焦并弹出键盘
+      // focusToEnd()
+
+      // 🟢 修改后：只跳到底部，不弹键盘
+      jumpToBottomWithoutFocus()
+    }
   }
   else {
     weatherPromise = fetchWeatherLine()
