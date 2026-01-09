@@ -2262,13 +2262,11 @@ function startFocusBoost() {
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    measureTopOffset()
     ensureCaretVisibleInTextarea()
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
     if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
       stopFocusBoost()
-      measureTopOffset()
     }
   }, 60)
 }
@@ -2329,7 +2327,6 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      paddingTop: autoTopOffset < 5 ? 'env(safe-area-inset-top)' : '0px',
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
@@ -2776,7 +2773,7 @@ function handleTextareaMove(e: TouchEvent) {
 .note-editor-reborn {
   position: relative;
   background-color: #f9f9f9;
-  box-sizing: border-box;
+
   /* --- 场景 A：键盘收起时 (浏览态) --- */
   /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
   height: 80dvh;
