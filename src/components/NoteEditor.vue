@@ -2255,30 +2255,19 @@ function stopFocusBoost() {
   }
 }
 
+// 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  // 增加判空保护
-  const startVvH = window.visualViewport ? window.visualViewport.height : 0
+  const startVvH = vv ? vv.height : 0
   let ticks = 0
-
   focusBoostTimer = window.setInterval(() => {
     ticks++
-
-    // 🔥🔥🔥 核心修复点在这里 🔥🔥🔥
-    // 在键盘弹出的动画过程中，页面会被浏览器强制推上推下。
-    // 首次打开时这种推挤很不稳定，必须每一帧都重新测量“我离顶端有多远”。
-    // 这样一旦页面被推上去，autoTopOffset 就会更新，输入框高度就会自动缩减，让出刘海区。
     measureTopOffset()
-
     ensureCaretVisibleInTextarea()
-
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
-
-    // 稍微延长监测时间到 15 次 (约900ms)，覆盖 iOS 较慢的冷启动动画
-    if (changed || ticks >= 15) {
+    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
       stopFocusBoost()
-      // 🛑 循环结束后，最后强制测一次，确保定格在正确位置
       measureTopOffset()
     }
   }, 60)
