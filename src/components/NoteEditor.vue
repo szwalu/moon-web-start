@@ -2329,6 +2329,7 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
+      paddingTop: autoTopOffset < 5 ? 'env(safe-area-inset-top)' : '0px',
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
@@ -2775,7 +2776,7 @@ function handleTextareaMove(e: TouchEvent) {
 .note-editor-reborn {
   position: relative;
   background-color: #f9f9f9;
-
+  box-sizing: border-box;
   /* --- 场景 A：键盘收起时 (浏览态) --- */
   /* 设置一个较高的值，比如 85% 屏幕高度，让你能看到更多内容 */
   height: 80dvh;
