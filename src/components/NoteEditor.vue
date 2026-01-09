@@ -37,24 +37,41 @@ const isInputFocused = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
+const maxRecordedTop = ref(0)
 // 测量函数：只在编辑模式下生效
 // 找到 measureTopOffset 函数，替换为：
 
 function measureTopOffset() {
-  // 如果是“新建笔记”（底部弹窗模式），直接归零
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
   }
 
-  // 🔥🔥🔥 核心修复：删除了原来的 if (isInputFocused.value) return ...
-  // 我们需要它在 Focus 状态下也能工作，只要页面位置变了，它就得变。
-
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-    // 实时更新：如果页面滚到了顶部，rect.top 就是 Header 的高度
-    // 如果页面被推上去了，rect.top 就是 0
-    autoTopOffset.value = Math.max(0, rect.top)
+
+    // 1. 只要测到了更大的正值，就说明这是 Header 的真实高度，赶紧存下来！
+    if (rect.top > maxRecordedTop.value)
+      maxRecordedTop.value = rect.top
+
+    // 2. 决策逻辑
+    if (isInputFocused.value) {
+      // 🔥 核心修复：
+      // 如果正在输入，且测得顶部距离几乎为 0 (被浏览器推上去了)，
+      // 绝对不能用 0！必须强制使用缓存的 Header 高度。
+      // 这样编辑器就会算出“变矮”后的高度，从而避开刘海。
+      if (rect.top < 20 && maxRecordedTop.value > 0) {
+        autoTopOffset.value = maxRecordedTop.value
+      }
+      else {
+        // 如果测出来是正常的（比如 100px），那就用测出来的值
+        autoTopOffset.value = Math.max(0, rect.top)
+      }
+    }
+    else {
+      // 非输入状态，实事求是
+      autoTopOffset.value = Math.max(0, rect.top)
+    }
   }
 }
 
@@ -88,6 +105,8 @@ onMounted(() => {
     pinnedTags.value = []
   }
   isPWA.value = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
+  measureTopOffset()
+  setTimeout(measureTopOffset, 300)
 })
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -1513,34 +1532,28 @@ function handleFocus() {
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 🔥🔥🔥 核心修复逻辑开始
   if (props.isEditing) {
-    // 1. 强制动作：先把被浏览器顶飞的页面拉回顶部 (0, 0)
-    // 这会让 Header 重新露出来，避免输入框顶进刘海
+    // 1. 既然高度已经强制变矮了（避让 Header），
+    // 必须把页面滚回顶部，让 Header 露出来填补那个空缺。
     window.scrollTo(0, 0)
 
-    // 2. 立即测量：因为上面刚刚 scrollTo(0,0)，现在的 rect.top 就是真实的 Header 高度
-    // 此时 autoTopOffset 会从 0 变成例如 100px
+    // 2. 立即触发测量（应用上面的记忆逻辑）
     measureTopOffset()
 
-    // 3. 双重保险：iOS 键盘动画期间，viewport 可能会抖动
-    // 在 100ms 和 300ms 后各补测一次，确保高度最终是正确的“变矮”状态
+    // 3. 延时保险：防止键盘动画过程中 scroll 被打断
     setTimeout(() => {
-      window.scrollTo(0, 0) // 再次确认回正
+      window.scrollTo(0, 0)
       measureTopOffset()
-      ensureCaretVisibleInTextarea() // 高度变矮了，赶紧把光标滚出来
+      ensureCaretVisibleInTextarea()
     }, 100)
 
     setTimeout(() => {
       measureTopOffset()
-      requestAnimationFrame(() => ensureCaretVisibleInTextarea())
     }, 300)
   }
   else {
-    // 新建模式（弹窗）不需要回正逻辑
     measureTopOffset()
   }
-  // 🔥🔥🔥 核心修复逻辑结束
 
   startFocusBoost()
 }
