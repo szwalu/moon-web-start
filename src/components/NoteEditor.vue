@@ -165,7 +165,7 @@ onUnmounted(() => {
 // 🔥 修正版：editorHeight
 
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
+  // 1. 键盘收起时：保持原样
   if (!isInputFocused.value) {
     if (props.isEditing)
       return `calc(100dvh - ${autoTopOffset.value}px)`
@@ -177,18 +177,20 @@ const editorHeight = computed(() => {
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
+  // Android 逻辑保持不变
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
+  // iOS 计算键盘高度
   let keyboardH = '0px'
   if (isReallyIOS) {
     if (keyboardOffset.value !== '0px') {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底估算
+      // 兜底
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
@@ -203,13 +205,16 @@ const editorHeight = computed(() => {
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 🔥🔥🔥 这里的 extraReduction 必须被下面的 return 使用
-  const extraReduction = props.isEditing
-    ? (isPWA.value && isInputFocused.value ? 44 : 0) // 输入时手动扣除 44px (刘海/顶部栏)
-    : (isPWA.value ? 48 : 10)
+  // 🔥🔥🔥 核心修复 2：动态扣除刘海高度 🔥🔥🔥
+  // 如果 finalTopOffset 接近 0（说明被顶到刘海区了），我们必须额外扣除安全区高度
+  // 用来给 paddingTop 腾位置。如果不扣除，加上 padding 后总高度会溢出屏幕。
+  // 44px 是标准刘海高度，也可以用 10 + 34
+  const safeAreaReduction = (isPWA.value && finalTopOffset < 10) ? 44 : 0
 
-  // ✅ 确保最后一部分是 - ${extraReduction}px
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
+  // 额外的微调保留 (isPWA ? 48 : 10) 可能是你之前的底部安全区或Tab栏
+  const baseReduction = isPWA.value ? 48 : 10
+
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${baseReduction}px - ${safeAreaReduction}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -2256,42 +2261,42 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
+  // 记录初始视口高度
   const startVvH = window.visualViewport ? window.visualViewport.height : 0
   let ticks = 0
 
   focusBoostTimer = window.setInterval(() => {
     ticks++
 
-    // 🔥🔥🔥 核心修改 A：主动轮询键盘高度 🔥🔥🔥
-    // 不要依赖 resize 事件监听，因为首次弹起时事件可能滞后。
-    // 主动调用它，能让 keyboardOffset.value 在键盘动画过程中实时更新，
-    // 从而让 editorHeight 迅速变小，浏览器发现内容放得下了，就不会乱推页面了。
+    // 🔥🔥🔥 核心修复 1：实时测量 Top 值 🔥🔥🔥
+    // 不管浏览器怎么推页面，我们只信赖当前的物理位置。
+    // 如果浏览器把页面推到了刘海区，rect.top 会变成 0，autoTopOffset 也会随之更新为 0。
+    if (rootRef.value) {
+      const rect = rootRef.value.getBoundingClientRect()
+      // 只有在键盘弹出期间(isInputFocused)才允许更新为更小的值
+      // 这样能确保 editorHeight 里的减数变小，从而高度变大，填补底部空隙
+      if (isInputFocused.value)
+        autoTopOffset.value = Math.max(0, rect.top)
+    }
+
+    // 同时也确保护键盘高度是最新的
     updateKeyboardOffset()
-
-    // 🔥🔥🔥 核心修改 B：暴力按住页面不让滚 🔥🔥🔥
-    // PWA 模式下，如果键盘弹起导致 window.scrollY 大于 0，说明浏览器正在把页面往刘海区推。
-    // 我们强制把它滚回 (0, 0)，让 NoteEditor 牢牢钉在顶部。
-    if (window.scrollY > 0)
-      window.scrollTo(0, 0)
-
-    // 原有的光标逻辑保留
     ensureCaretVisibleInTextarea()
 
     const vvNow = window.visualViewport
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
 
-    // 稍微延长一点轮询时间，确保覆盖 iOS 首次较慢的动画
-    // 15 * 60ms = 900ms，足够覆盖绝大多数 iOS 键盘动画
-    if (changed || ticks >= 15) {
+    // 稍微延长轮询时间到 1秒 (16 * 60ms)，确保覆盖 iOS 缓慢的滚动动画
+    if (changed || ticks >= 16) {
       stopFocusBoost()
-      // 结束后再补一刀，确保状态正确
-      updateKeyboardOffset()
-      if (window.scrollY > 0)
-        window.scrollTo(0, 0)
+      // 动画结束后再测一次定格
+      if (rootRef.value && isInputFocused.value) {
+        const rect = rootRef.value.getBoundingClientRect()
+        autoTopOffset.value = Math.max(0, rect.top)
+      }
     }
   }, 60)
 }
-
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
@@ -2348,7 +2353,7 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      paddingTop: (isPWA && isInputFocused && autoTopOffset === 0) ? '44px' : '0px',
+      paddingTop: (isPWA && isInputFocused && autoTopOffset < 10) ? '44px' : '0px',
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
