@@ -37,23 +37,6 @@ const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
 
-// 测量函数：只在编辑模式下生效
-function measureTopOffset() {
-  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
-  if (!props.isEditing) {
-    autoTopOffset.value = 0
-    return
-  }
-
-  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
-  if (rootRef.value) {
-    const rect = rootRef.value.getBoundingClientRect()
-    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
-    // Math.max(0, ...) 防止滚动导致的负数
-    autoTopOffset.value = Math.max(0, rect.top)
-  }
-}
-
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
@@ -76,6 +59,23 @@ function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
 const isPWA = ref(false)
+
+// 找到 measureTopOffset 函数，用下面的代码替换
+function measureTopOffset() {
+  // 🟢 核心修改：如果是 PWA 且正在输入（键盘弹出），强制归零！
+  // 这能解决“底部被顶得较高”的问题，因为不再错误地减去顶部的距离了。
+  if (!props.isEditing || (isPWA.value && isInputFocused.value)) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 下面是原有的浏览模式逻辑，保持不变
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    autoTopOffset.value = Math.max(0, rect.top)
+  }
+}
+
 onMounted(() => {
   try {
     const raw = localStorage.getItem(PINNED_TAGS_KEY)
@@ -163,25 +163,22 @@ onUnmounted(() => {
 })
 
 // 🔥 修正版：editorHeight
+
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value) {
-    if (props.isEditing) {
-      // 🔥🔥🔥 核心修复：减去 autoTopOffset
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
-      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
+    if (props.isEditing)
       return `calc(100dvh - ${autoTopOffset.value}px)`
-    }
-    // 新建模式保持 80dvh (半屏弹窗)
+
     return '80dvh'
   }
+
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-    // 只减去顶部的偏移（如果有），其他全部撑满
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
@@ -191,7 +188,7 @@ const editorHeight = computed(() => {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底估算（仅当计算失败时）
+      // 兜底估算
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
@@ -206,11 +203,12 @@ const editorHeight = computed(() => {
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
+  // 🔥🔥🔥 这里的 extraReduction 必须被下面的 return 使用
   const extraReduction = props.isEditing
-    ? 0
+    ? (isPWA.value && isInputFocused.value ? 44 : 0) // 输入时手动扣除 44px (刘海/顶部栏)
     : (isPWA.value ? 48 : 10)
 
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
+  // ✅ 确保最后一部分是 - ${extraReduction}px
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
@@ -2350,6 +2348,7 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
+      paddingTop: (isPWA && isInputFocused && autoTopOffset === 0) ? '44px' : '0px',
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
