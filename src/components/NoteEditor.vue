@@ -1502,7 +1502,9 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  measureTopOffset()
+  if (props.isEditing && isIOS)
+    autoTopOffset.value = 0
+
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -2329,13 +2331,14 @@ function handleTextareaMove(e: TouchEvent) {
       paddingBottom: `${bottomSafePadding}px`,
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
-      paddingTop: (isIOS && isEditing && autoTopOffset < 20)
-        ? 'env(safe-area-inset-top)'
-        : '0px',
     }"
     @click.stop
     @touchmove.prevent
   >
+    <div
+      v-if="isIOS && isEditing && autoTopOffset < 40"
+      class="notch-spacer"
+    />
     <input
       ref="imageInputRef"
       type="file"
@@ -2773,7 +2776,17 @@ function handleTextareaMove(e: TouchEvent) {
 </template>
 
 <style scoped>
+.notch-spacer {
+  width: 100%;
+  /* 优先用环境遍历，兜底 47px (iPhone 14/15/16 Pro 岛高度) */
+  height: 47px;
+  height: env(safe-area-inset-top);
+  flex-shrink: 0; /* 防止被压缩 */
+  background: transparent;
+  transition: height 0.2s;
+}
 .note-editor-reborn {
+box-sizing: border-box;
   position: relative;
   background-color: #f9f9f9;
 
