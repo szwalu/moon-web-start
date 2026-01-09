@@ -194,7 +194,7 @@ const editorHeight = computed(() => {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底估算（仅当计算失败时）
+      // 兜底逻辑保持不变
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
@@ -208,13 +208,22 @@ const editorHeight = computed(() => {
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+  const extraReduction = props.isEditing ? 0 : (isPWA.value ? 48 : 10)
 
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
+  // 🔥🔥🔥 关键修改：
+  // 如果是全屏编辑模式(isEditing)，即使 JS 算出来 offset 是 0，
+  // 我们也要强制减去 env(safe-area-inset-top)，防止内容顶进刘海。
+  // 使用 CSS max() 函数：如果 autoTopOffset 有值(比如100)，就用它；
+  // 如果它是 0，就用 safe-area-inset-top (通常是 47px 或 59px)。
+  let safeAreaDeduction = `${finalTopOffset}px`
 
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
+  if (isReallyIOS && props.isEditing) {
+    // 意思是：至少要减去一个刘海的高度
+    safeAreaDeduction = `max(${finalTopOffset}px, env(safe-area-inset-top))`
+  }
+
+  return `calc(100dvh - ${keyboardH} - ${safeAreaDeduction} - ${extraReduction}px)`
+  // === iOS 核心修复结束 ===
 })
 const isFreezingBottom = ref(false)
 
@@ -2350,6 +2359,9 @@ function handleTextareaMove(e: TouchEvent) {
       paddingBottom: `${bottomSafePadding}px`,
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
+      paddingTop: (isInputFocused && isEditing && isIOS)
+        ? 'max(0px, env(safe-area-inset-top))'
+        : '0px',
     }"
     @click.stop
     @touchmove.prevent
