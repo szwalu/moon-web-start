@@ -110,33 +110,31 @@ function updateKeyboardOffset() {
     return
 
   const currentHeight = window.visualViewport.height
-  // 增加 ipad|macintosh 判断，增强兼容性
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时：更新基准高度
+  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
   if (!isInputFocused.value) {
-    if (currentHeight > 300) {
-      // 只有在确信是全屏状态下才更新 baseHeight
+    if (currentHeight > 300)
       baseHeight = currentHeight
-    }
     keyboardOffset.value = '0px'
     measureTopOffset()
     return
   }
 
   // 2. 键盘弹出时
+  // 🔥🔥🔥 核心修复：iOS 专用逻辑
+  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
+  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
+  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
   if (isIOS) {
-    let diff = window.innerHeight - currentHeight
-
-    if (diff < 100 && baseHeight > 0 && currentHeight < baseHeight * 0.85)
-      diff = baseHeight - currentHeight
-
+    const diff = window.innerHeight - currentHeight
+    // 只有差值合理才认为是键盘/工具栏
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
     else
       keyboardOffset.value = '0px'
   }
-  // Android / 其他设备
+  // Android / 其他设备：继续使用 baseHeight 逻辑
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
     if (diff > 150)
@@ -144,7 +142,6 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-
   if (props.isEditing)
     measureTopOffset()
 }
@@ -194,7 +191,7 @@ const editorHeight = computed(() => {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底逻辑保持不变
+      // 兜底估算（仅当计算失败时）
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
@@ -208,22 +205,13 @@ const editorHeight = computed(() => {
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-  const extraReduction = props.isEditing ? 0 : (isPWA.value ? 48 : 10)
 
-  // 🔥🔥🔥 关键修改：
-  // 如果是全屏编辑模式(isEditing)，即使 JS 算出来 offset 是 0，
-  // 我们也要强制减去 env(safe-area-inset-top)，防止内容顶进刘海。
-  // 使用 CSS max() 函数：如果 autoTopOffset 有值(比如100)，就用它；
-  // 如果它是 0，就用 safe-area-inset-top (通常是 47px 或 59px)。
-  let safeAreaDeduction = `${finalTopOffset}px`
+  const extraReduction = props.isEditing
+    ? 0
+    : (isPWA.value ? 48 : 10)
 
-  if (isReallyIOS && props.isEditing) {
-    // 意思是：至少要减去一个刘海的高度
-    safeAreaDeduction = `max(${finalTopOffset}px, env(safe-area-inset-top))`
-  }
-
-  return `calc(100dvh - ${keyboardH} - ${safeAreaDeduction} - ${extraReduction}px)`
-  // === iOS 核心修复结束 ===
+  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -1546,7 +1534,6 @@ function handleFocus() {
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
-    measureTopOffset()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
@@ -2268,35 +2255,18 @@ function stopFocusBoost() {
   }
 }
 
-// 把原来的 startFocusBoost 逻辑加强
-// 针对 iOS 26.2 这种“第一次不准”的情况，我们需要多测几次
+// 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = window.visualViewport ? window.visualViewport.height : 0
+  const startVvH = vv ? vv.height : 0
   let ticks = 0
-
   focusBoostTimer = window.setInterval(() => {
     ticks++
-
-    // 🔥 关键点：每一帧都重新测量顶部偏移
-    // iOS 26.2 可能在键盘弹出的前半段，getBoundingClientRect().top 还是 0
-    // 等页面被顶上去后，它才会变成正数（比如 47px 或 59px）
-    measureTopOffset()
-
-    // 同时强制更新一下键盘高度计算
-    updateKeyboardOffset()
-
     ensureCaretVisibleInTextarea()
-
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
-
-    // 如果高度变了（键盘出来了），或者跑了足够久（比如 1.2秒）
-    if (changed || ticks >= 20) {
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
+    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
       stopFocusBoost()
-      // 🔥 停止后再补一刀，确保万无一失
-      measureTopOffset()
-      updateKeyboardOffset()
     }
   }, 60)
 }
@@ -2359,8 +2329,8 @@ function handleTextareaMove(e: TouchEvent) {
       paddingBottom: `${bottomSafePadding}px`,
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
-      paddingTop: (isInputFocused && isEditing && isIOS)
-        ? 'max(0px, env(safe-area-inset-top))'
+      paddingTop: (isIOS && isEditing && autoTopOffset < 20)
+        ? 'env(safe-area-inset-top)'
         : '0px',
     }"
     @click.stop
