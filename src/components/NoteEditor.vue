@@ -50,11 +50,6 @@ function measureTopOffset() {
     const rect = rootRef.value.getBoundingClientRect()
     const currentTop = Math.max(0, rect.top)
 
-    // 🔥🔥🔥 核心修复：针对 iOS PWA 首次弹出键盘的修正 🔥🔥🔥
-    // 原理：当键盘首次弹出时，iOS PWA 往往会暴力将页面顶到最顶端 (rect.top = 0)。
-    // 如果我们之前已经测算出一个有效的顶部距离 (autoTopOffset.value > 10)，
-    // 而这次突然变成了 0，这通常是浏览器的视口跳动，而非用户真的把 Header 滚没了。
-    // 此时强行保留上一次的正确高度，防止输入框“窜”进刘海区。
     const isIOSDevice = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
     if (isPWA.value && isIOSDevice && currentTop === 0 && autoTopOffset.value > 10) {
       // 保持原值，不更新为 0
@@ -152,8 +147,6 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-  if (props.isEditing)
-    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -1512,7 +1505,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  measureTopOffset()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
