@@ -1179,7 +1179,7 @@ function ensureCaretVisibleInTextarea() {
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + 30
 
   if (caretDesiredBottom > viewBottom) {
     const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -1506,9 +1506,7 @@ onUnmounted(() => {
 // 找到 handleFocus 函数，替换为：
 
 function handleFocus() {
-  // 1. 聚焦瞬间，此时键盘还没出来，位置是最准确的，赶紧测一次！
   measureTopOffset()
-
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -1522,26 +1520,26 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   })
 
-  // 🔥🔥🔥 核心修复：恢复这段强制回正代码
-  // 这能对抗 iOS 首次聚焦时把整个 Header 顶出屏幕的坏习惯
+  // 🔥🔥🔥 核心修改：在强制回正页面（scrollTo 0,0）的同时，
+  // 必须紧接着调用 ensureCaretVisibleInTextarea()。
+  // 这样当页面“蹦”下来时，光标会自动“滚”上去，保持在视野内。
   if (props.isEditing) {
-    // 立即执行一次，防止瞬间跳变
     window.scrollTo(0, 0)
-    // 稍微延迟后再执行一次，确保键盘动画结束后页面依然稳如泰山
+
     setTimeout(() => {
       window.scrollTo(0, 0)
+      ensureCaretVisibleInTextarea() // 👈 新增这句
     }, 100)
+
     setTimeout(() => {
       window.scrollTo(0, 0)
+      ensureCaretVisibleInTextarea() // 👈 新增这句
     }, 300)
   }
 
-  // ❌ 删除或注释掉下面这几行 measureTopOffset 的调用
-  // 原因：400ms 后键盘已经弹出来了，这时候再去测，只会测到被顶上去的 0，导致布局崩溃。
-  // measureTopOffset() <-- 删除
-  // setTimeout(measureTopOffset, 300) <-- 删除
+  // 之前的逻辑保持删除
+  // setTimeout(measureTopOffset, 400) // ❌ 确保这行还是删除状态
 
-  // startFocusBoost 里的逻辑主要为了光标，可以保留，但不要在里面测 TopOffset
   startFocusBoost()
 }
 
