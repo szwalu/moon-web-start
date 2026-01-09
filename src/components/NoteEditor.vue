@@ -36,30 +36,25 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
-const isInputFocused = ref(false)
-// 平台判定（尽量保守）
-const UA = navigator.userAgent.toLowerCase()
-const isIOS = /iphone|ipad|ipod/.test(UA)
-// 找到 measureTopOffset 函数，替换为：
+
+// 测量函数：只在编辑模式下生效
 function measureTopOffset() {
+  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
   }
 
+  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-    const currentTop = Math.max(0, rect.top)
-
-    // 🔥 核心逻辑：如果在聚焦状态下测得 top 为 0，
-    // 且当前是 iOS 环境，这极大概率是键盘弹出导致的视口偏移，而非 Header 真的消失了。
-    // 此时应拒绝更新，保留上一次的有效值。
-    if (isInputFocused.value && currentTop === 0 && isIOS)
-      return
-
-    autoTopOffset.value = currentTop
+    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
+    // Math.max(0, ...) 防止滚动导致的负数
+    autoTopOffset.value = Math.max(0, rect.top)
   }
 }
+
+const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -93,6 +88,10 @@ onMounted(() => {
 })
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+
+// 平台判定（尽量保守）
+const UA = navigator.userAgent.toLowerCase()
+const isIOS = /iphone|ipad|ipod/.test(UA)
 
 // iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
 const iosFirstInputLatch = ref(false)
@@ -143,8 +142,6 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-  if (props.isEditing)
-    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -667,32 +664,17 @@ function clearDraft() {
   }
 }
 
-// 找到 onMounted，替换为：
-onMounted(async () => {
+// 初次挂载：尝试恢复
+onMounted(() => {
   checkAndPromptDraft()
-  // 1. 初始尝试测量
-  measureTopOffset()
-
-  // 2. 也是为了保险，等一帧
-  await nextTick()
-  measureTopOffset()
 
   if (props.isEditing) {
-    // 🔥🔥🔥 核心修复：延迟聚焦 🔥🔥🔥
-    // iOS 页面转场/渲染需要时间。如果立即聚焦，键盘动画和转场混在一起，
-    // 会导致我们在测出正确的 Header 高度之前，页面就已经被顶到 0 了。
-    // 给它 100ms，让 header 先“落位”，测出数值（比如 90），然后再弹键盘。
-    setTimeout(() => {
-      // 聚焦前最后一测，确保拿到正确高度
-      measureTopOffset()
-      // 如果此时 autoTopOffset 还是 0，说明真的可能是 0，或者还得等，但通常 100ms 够了
-      if (!showDraftPrompt.value)
-        focusToEnd()
-    }, 100) // 100ms 足够让肉眼无感，但让布局稳定
+    if (!showDraftPrompt.value)
+      focusToEnd()
   }
   else {
-    // 新建笔记逻辑保持不变
     weatherPromise = fetchWeatherLine()
+
     if (weatherPromise) {
       weatherPromise.then((res) => {
         cachedWeather.value = res
@@ -702,10 +684,8 @@ onMounted(async () => {
       })
     }
   }
-
-  // 兜底定时器可以保留
-  setTimeout(measureTopOffset, 300)
 })
+
 // 内容变化：400ms 节流保存
 watch(() => contentModel.value, () => {
   if (!props.enableDrafts)
@@ -1520,6 +1500,7 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
+  measureTopOffset()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -1556,23 +1537,23 @@ function handleFocus() {
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
   }, t2)
+
   setTimeout(() => {
+    measureTopOffset()
     ensureCaretVisibleInTextarea()
-  }, 400)
+  }, 400) // 400ms > transition 0.3s
 
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
 function onBlur() {
-  isInputFocused.value = false // ✅ 只有这句执行后，measureTopOffset 才会生效
+  isInputFocused.value = false
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
-
-  // 这里可以保留，因为 isInputFocused 已经是 false 了，测量是安全的
   measureTopOffset()
   setTimeout(measureTopOffset, 300)
   if (suppressNextBlur.value) {
