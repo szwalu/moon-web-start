@@ -33,11 +33,13 @@ const props = defineProps({
   topOffset: { type: Number, default: 0 },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
+const isInputFocused = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
-
 // 测量函数：只在编辑模式下生效
+// 找到 measureTopOffset 函数，替换为：
+
 function measureTopOffset() {
   // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
   if (!props.isEditing) {
@@ -45,16 +47,18 @@ function measureTopOffset() {
     return
   }
 
+  // 🔥🔥🔥 核心修复：一旦进入输入聚焦状态，就锁定之前的测量值。
+  // 防止键盘弹出期间，浏览器自动滚屏导致 rect.top 变成 0，进而导致误判。
+  if (isInputFocused.value)
+    return
+
   // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
-    // Math.max(0, ...) 防止滚动导致的负数
     autoTopOffset.value = Math.max(0, rect.top)
   }
 }
 
-const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -142,8 +146,6 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-  if (props.isEditing)
-    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -1501,51 +1503,45 @@ onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
+// 找到 handleFocus 函数，替换为：
+
 function handleFocus() {
+  // 1. 聚焦瞬间，此时键盘还没出来，位置是最准确的，赶紧测一次！
   measureTopOffset()
+
   isInputFocused.value = true
   emit('focus')
   captureCaret()
 
-  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  /*
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+
+  // 🔥🔥🔥 核心修复：恢复这段强制回正代码
+  // 这能对抗 iOS 首次聚焦时把整个 Header 顶出屏幕的坏习惯
+  if (props.isEditing) {
+    // 立即执行一次，防止瞬间跳变
+    window.scrollTo(0, 0)
+    // 稍微延迟后再执行一次，确保键盘动画结束后页面依然稳如泰山
     setTimeout(() => {
       window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+    }, 100)
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+    }, 300)
   }
-  */
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-  }, t1)
 
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-  }, t2)
+  // ❌ 删除或注释掉下面这几行 measureTopOffset 的调用
+  // 原因：400ms 后键盘已经弹出来了，这时候再去测，只会测到被顶上去的 0，导致布局崩溃。
+  // measureTopOffset() <-- 删除
+  // setTimeout(measureTopOffset, 300) <-- 删除
 
-  setTimeout(() => {
-    measureTopOffset()
-    ensureCaretVisibleInTextarea()
-  }, 400) // 400ms > transition 0.3s
-
-  // 启动短时“助推轮询”（iOS 尤其需要）
+  // startFocusBoost 里的逻辑主要为了光标，可以保留，但不要在里面测 TopOffset
   startFocusBoost()
 }
 
