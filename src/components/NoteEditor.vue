@@ -102,6 +102,7 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
+const realViewportHeight = ref(0)
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
@@ -109,10 +110,15 @@ function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
-  const currentHeight = window.visualViewport.height
+  const vv = window.visualViewport
+  const currentHeight = vv.height
+
+  // 【新增】实时记录真实的视口高度
+  realViewportHeight.value = currentHeight
+
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
+  // 1. 键盘收起时
   if (!isInputFocused.value) {
     if (currentHeight > 300)
       baseHeight = currentHeight
@@ -122,19 +128,14 @@ function updateKeyboardOffset() {
   }
 
   // 2. 键盘弹出时
-  // 🔥🔥🔥 核心修复：iOS 专用逻辑
-  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
-  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
-  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
+  // 保持你原有的逻辑用于计算 offset (虽然我们下面可能不再用它来定高度，但保留逻辑以防万一)
   if (isIOS) {
     const diff = window.innerHeight - currentHeight
-    // 只有差值合理才认为是键盘/工具栏
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
     else
       keyboardOffset.value = '0px'
   }
-  // Android / 其他设备：继续使用 baseHeight 逻辑
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
     if (diff > 150)
@@ -178,6 +179,17 @@ const editorHeight = computed(() => {
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+
+  if (isReallyIOS) {
+    // 如果能获取到真实的视口高度，直接用它！
+    // 这种方式在 iOS 16/17/18 上都代表“键盘上方的可视区域高度”
+    if (realViewportHeight.value > 0) {
+      // 减去一个微小的安全余量(如 2px)防止像素抖动导致滚动条出现
+      return `${realViewportHeight.value}px`
+    }
+    // 兜底逻辑（万一 realViewportHeight 没取到）
+    // ... 原有的兜底代码 ...
+  }
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
@@ -246,7 +258,6 @@ const contentModel = computed({
 })
 
 const textarea = ref<HTMLTextAreaElement | null>(null)
-const lastSelectionStart = ref<number>(0)
 const input = computed({
   get: () => props.modelValue,
   set: val => emit('update:modelValue', val),
@@ -277,28 +288,6 @@ async function focusToEnd() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-}
-
-// 🟢 修改后的函数：只滚动，绝对不碰 selectionRange
-async function jumpToBottomWithoutFocus() {
-  await nextTick()
-  const el = textarea.value
-  if (!el)
-    return
-
-  // 1. 防御性代码：如果此时焦点已经在输入框里，强制移出
-  if (document.activeElement === el)
-    el.blur()
-
-  // 2. ❌ 彻底删除这行！不要在挂载时设置选区，这会诱发键盘弹出
-  // try { el.setSelectionRange(el.value.length, el.value.length) } catch {}
-
-  // 3. ✅ 只更新内部变量，让组件知道“光标逻辑上在最后”
-  // 这样当用户真正点击输入框时，不会影响后续逻辑
-  lastSelectionStart.value = el.value.length
-
-  // 4. 暴力滚到底部（纯视觉）
-  el.scrollTop = el.scrollHeight
 }
 
 // ===== 简单自动草稿 =====
@@ -692,15 +681,22 @@ function clearDraft() {
 // 初次挂载：尝试恢复
 onMounted(() => {
   checkAndPromptDraft()
-  weatherPromise = fetchWeatherLine()
 
-  if (weatherPromise) {
-    weatherPromise.then((res) => {
-      cachedWeather.value = res
-    }).catch((e) => {
-      console.warn('[天气] 异步出错:', e)
-      cachedWeather.value = null
-    })
+  if (props.isEditing) {
+    if (!showDraftPrompt.value)
+      focusToEnd()
+  }
+  else {
+    weatherPromise = fetchWeatherLine()
+
+    if (weatherPromise) {
+      weatherPromise.then((res) => {
+        cachedWeather.value = res
+      }).catch((e) => {
+        console.warn('[天气] 异步出错:', e)
+        cachedWeather.value = null
+      })
+    }
   }
 })
 
@@ -717,47 +713,20 @@ watch(() => contentModel.value, () => {
   }, DRAFT_SAVE_DELAY) as unknown as number
 })
 
-// 🟢 修改后的 watch
+// 进入编辑态：把光标移到末端并聚焦
 watch(() => props.isEditing, (v) => {
-  if (v && !showDraftPrompt.value) {
-    // 核心逻辑：如果是“已有笔记”(有ID)，只跳到底部不弹键盘
-    // 如果是“新建笔记”(无ID)，才自动聚焦弹键盘
-    if (props.noteId)
-      jumpToBottomWithoutFocus()
-    else
-      focusToEnd()
-  }
+  if (v && !showDraftPrompt.value)
+    focusToEnd()
 })
 
-// 🟢 修复版：合并逻辑 + 修复 ESLint 格式报错
+// 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
-  // 1. 测量几何尺寸
   measureTopOffset()
+
+  // 保险起见，稍后由动画稳定后再测一次
   setTimeout(measureTopOffset, 300)
-
-  // 2. 检查草稿
-  checkAndPromptDraft()
-
-  // 3. 决定是否跳转底部
-  // 只有在“是编辑模式”且“没有弹窗阻挡”时才跳转
-  if (props.isEditing && !showDraftPrompt.value)
-    jumpToBottomWithoutFocus()
-
-  // 4. 如果不是编辑模式，获取天气
-  if (!props.isEditing) {
-    weatherPromise = fetchWeatherLine()
-    if (weatherPromise) {
-      weatherPromise
-        .then((res) => {
-          cachedWeather.value = res
-        })
-        .catch((e) => {
-          // ✅ 这里的语句分行写，解决了 "2 statements per line" 的报错
-          console.warn('[天气] 异步出错:', e)
-          cachedWeather.value = null
-        })
-    }
-  }
+  if (props.isEditing)
+    focusToEnd()
 })
 
 // 组件卸载：收尾
@@ -1183,6 +1152,7 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
+const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
   if (el && typeof el.selectionStart === 'number')
