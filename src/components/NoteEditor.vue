@@ -102,7 +102,6 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
-const realViewportHeight = ref(0)
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
@@ -110,32 +109,40 @@ function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
-  const vv = window.visualViewport
-  const currentHeight = vv.height
-
-  // 【新增】实时记录真实的视口高度
-  realViewportHeight.value = currentHeight
-
+  const currentHeight = window.visualViewport.height
+  // 增加 ipad|macintosh 判断，增强兼容性
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时
+  // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
-    if (currentHeight > 300)
+    if (currentHeight > 300) {
+      // 只有在确信是全屏状态下才更新 baseHeight
       baseHeight = currentHeight
+    }
     keyboardOffset.value = '0px'
     measureTopOffset()
     return
   }
 
   // 2. 键盘弹出时
-  // 保持你原有的逻辑用于计算 offset (虽然我们下面可能不再用它来定高度，但保留逻辑以防万一)
   if (isIOS) {
-    const diff = window.innerHeight - currentHeight
+    let diff = window.innerHeight - currentHeight
+
+    // 🔥🔥🔥 核心修复开始：iOS 16.x 兜底逻辑 🔥🔥🔥
+    // 问题：在部分旧 iOS 上，键盘弹出时 innerHeight 会瞬间变小，导致 diff ≈ 0。
+    // 解决：如果 diff 很小，但当前视口明显小于基准高度（说明键盘确实弹出了），
+    //       则强制使用 (baseHeight - currentHeight) 作为键盘高度。
+    if (diff < 50 && baseHeight > 0 && currentHeight < baseHeight * 0.85)
+      diff = baseHeight - currentHeight
+
+    // 🔥🔥🔥 核心修复结束 🔥🔥🔥
+
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
     else
       keyboardOffset.value = '0px'
   }
+  // Android / 其他设备
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
     if (diff > 150)
@@ -143,6 +150,7 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
+
   if (props.isEditing)
     measureTopOffset()
 }
@@ -179,17 +187,6 @@ const editorHeight = computed(() => {
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
-
-  if (isReallyIOS) {
-    // 如果能获取到真实的视口高度，直接用它！
-    // 这种方式在 iOS 16/17/18 上都代表“键盘上方的可视区域高度”
-    if (realViewportHeight.value > 0) {
-      // 减去一个微小的安全余量(如 2px)防止像素抖动导致滚动条出现
-      return `${realViewportHeight.value}px`
-    }
-    // 兜底逻辑（万一 realViewportHeight 没取到）
-    // ... 原有的兜底代码 ...
-  }
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
@@ -1546,6 +1543,7 @@ function handleFocus() {
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
+    measureTopOffset()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
@@ -2267,18 +2265,29 @@ function stopFocusBoost() {
   }
 }
 
-// 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
+// 在键盘弹起早期，连续重算 600~720ms
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = vv ? vv.height : 0
+  const startVvH = window.visualViewport ? window.visualViewport.height : 0
   let ticks = 0
+
   focusBoostTimer = window.setInterval(() => {
     ticks++
+
+    // 🔥 新增：在助推期间不断测量顶部偏移，防止页面发生滚动后这里没更新
+    measureTopOffset()
+
     ensureCaretVisibleInTextarea()
+
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
-    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
+    // 阈值稍微放宽一点，防止微小抖动误判
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
+
+    // iOS 16 比较慢，建议增加 ticks 次数，覆盖更长的动画时间
+    if (changed || ticks >= 20) { // 改为 20 次 (约 1.2秒)，覆盖旧机型缓慢的动画
       stopFocusBoost()
+      // 停止后再补测一次，确保最终状态正确
+      measureTopOffset()
     }
   }, 60)
 }
