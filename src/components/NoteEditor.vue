@@ -1178,16 +1178,8 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
-  if (alignToCenter) {
-    const targetScroll = caretTopInTextarea - (el.clientHeight / 2)
-    el.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: 'auto', // 聚焦时瞬间跳过去，不要 smooth，防止动画冲突
-    })
-    return
-  }
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
-  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + 30
+  const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5
 
   if (caretDesiredBottom > viewBottom) {
     const targetScroll = Math.min(caretDesiredBottom - el.clientHeight, el.scrollHeight - el.clientHeight)
@@ -1514,38 +1506,44 @@ onUnmounted(() => {
 // 找到 handleFocus 函数，替换为：
 
 function handleFocus() {
-  measureTopOffset()
+  // 1. 先标记聚焦状态
   isInputFocused.value = true
   emit('focus')
   captureCaret()
-
   _hasPushedPage = false
 
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 1. 立即执行一次居中（为了响应快）
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea(true) // 🔥 传 true，强制居中
-  })
-
+  // 🔥🔥🔥 核心修复：针对“编辑旧笔记”的特殊处理
   if (props.isEditing) {
-    // 强制把页面拉下来的逻辑（你已经有了）
+    // A. 强制回正：防止 iOS 首次聚焦时把 Header 顶飞
     window.scrollTo(0, 0)
 
-    // 2. 这里的延时要覆盖键盘动画的全程 (0ms ~ 600ms)
-    // 每次拉回页面后，都强制让光标居中
-    const timers = [50, 200, 450, 650] // 🔥 加了一个 650ms 的兜底
+    // B. 延迟重测：等待回正完成后，手动测量真实的顶部偏移
+    // 必须在这里手动写测量逻辑，因为 measureTopOffset() 有 isInputFocused 锁，会直接返回
+    setTimeout(() => {
+      // 再次强制回正，确保万无一失
+      window.scrollTo(0, 0)
 
-    timers.forEach((t) => {
-      setTimeout(() => {
-        window.scrollTo(0, 0)
-        ensureCaretVisibleInTextarea(true) // 🔥 传 true，强制居中
-      }, t)
-    })
+      if (rootRef.value) {
+        const rect = rootRef.value.getBoundingClientRect()
+        // 获取由于 scrollTo(0,0) 而重新露出来的 Header 高度
+        // 这将修正 editorHeight，使其减去 Header 高度，从而让底部光标露出来
+        autoTopOffset.value = Math.max(0, rect.top)
+      }
+
+      // C. 高度修正完毕后，立即执行光标滚动检测
+      // 这一步至关重要，它会在高度缩小的瞬间，把被遮住的光标滚回可视区
+      ensureCaretVisibleInTextarea()
+    }, 100) // 100ms 足够让 scrollTo 完成布局更新
+  }
+  else {
+    // 新建模式很简单，直接测
+    measureTopOffset()
   }
 
-  // startFocusBoost 也可以保留，作为双重保险
+  // 启动循环检测（处理键盘弹出的动画过程）
   startFocusBoost()
 }
 
@@ -2258,18 +2256,16 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = window.visualViewport ? window.visualViewport.height : 0
+  const startVvH = vv ? vv.height : 0
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    // 🔥 这里也传 true，确保在键盘弹出的过程中，光标始终锁定在视野中央
-    ensureCaretVisibleInTextarea(true)
-
+    ensureCaretVisibleInTextarea()
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
-    // 稍微延长一点轮询时间，到 800ms 左右停止
-    if (changed || ticks >= 15)
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
+    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
       stopFocusBoost()
+    }
   }, 60)
 }
 
