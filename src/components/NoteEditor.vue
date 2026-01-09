@@ -100,62 +100,54 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // ... imports ...
 
-// 🔥 新增：基础高度与键盘偏移量
-const keyboardOffset = ref('0px')
-let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
+// 🔥 [重写] 实时视口样式对象
+const vvStyle = ref({
+  height: '100%', // 默认占满
+  transform: 'none', // 默认不偏移
+})
 
-// 🔥 修改版：updateKeyboardOffset
-// 🔥 修改版：updateKeyboardOffset
+// 🔥 [重写] 核心视口更新函数
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
-  const currentHeight = window.visualViewport.height
-  // 增加 standalone 判断，增强 PWA 环境检测
-  const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
-
-  // 1. 键盘收起时：更新基准高度
+  // 1. 如果没有聚焦，或者不在编辑模式，恢复默认流式布局
   if (!isInputFocused.value) {
-    // 稍微放宽限制，避免极个别情况不更新
-    if (currentHeight > 300)
-      baseHeight = currentHeight
-
-    keyboardOffset.value = '0px'
+    vvStyle.value = {
+      height: props.isEditing ? `calc(100dvh - ${autoTopOffset.value}px)` : '80dvh',
+      transform: 'none',
+    }
     measureTopOffset()
     return
   }
 
-  // 2. 键盘弹出时
+  // 2. 聚焦状态：完全接管尺寸和位置
+  const vv = window.visualViewport
+  const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
+
   if (isIOS) {
-    // 🔥🔥🔥 核心修复：iOS 18.2 PWA 修复
-    // 不要使用 window.innerHeight，因为它在 PWA 键盘弹出瞬间可能会变。
-    // 优先使用缓存的 baseHeight (即无键盘时的满屏高度)。
-    const referenceHeight = baseHeight > 0 ? baseHeight : window.innerHeight
-    const diff = referenceHeight - currentHeight
-
-    // 只有差值合理才认为是键盘/工具栏
-    if (diff > 100)
-      keyboardOffset.value = `${diff}px`
-    else
-      keyboardOffset.value = '0px'
+    // 🔥 iOS 核心修复：
+    // 高度 = 可视区域高度 (自动减去了键盘)
+    // 偏移 = offsetTop (如果浏览器把页面推上去了，offsetTop 会变成正数，我们要 translate 下来抵消它)
+    vvStyle.value = {
+      height: `${vv.height}px`,
+      transform: `translateY(${vv.offsetTop}px)`, // 👈 这行代码消除了“被顶进刘海”和“底部空隙”
+    }
   }
-  // Android / 其他设备
-  else if (baseHeight > 0) {
-    const diff = baseHeight - currentHeight
-    if (diff > 150)
-      keyboardOffset.value = `${diff}px`
-    else
-      keyboardOffset.value = '0px'
+  else {
+    // Android 通常只变高度，不推页面
+    // 但为了保险，只用 height，Android 键盘弹出时 innerHeight 会变
+    const finalTop = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+    vvStyle.value = {
+      height: `calc(100dvh - ${finalTop}px)`, // Android 保持原有逻辑往往更稳
+      transform: 'none',
+    }
   }
-
-  if (props.isEditing)
-    measureTopOffset()
 }
 
 // 在 onMounted 里监听
 onMounted(() => {
   if (window.visualViewport) {
-    baseHeight = window.visualViewport.height
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
@@ -168,57 +160,6 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight
-const editorHeight = computed(() => {
-  // 1. 键盘收起时
-  if (!isInputFocused.value) {
-    if (props.isEditing) {
-      // 🔥🔥🔥 核心修复：减去 autoTopOffset
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
-      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
-      return `calc(100dvh - ${autoTopOffset.value}px)`
-    }
-    // 新建模式保持 80dvh (半屏弹窗)
-    return '80dvh'
-  }
-  // 2. 键盘弹出时
-  const currentUA = navigator.userAgent.toLowerCase()
-  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
-
-  if (!isReallyIOS && isAndroid) {
-    const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-    // 只减去顶部的偏移（如果有），其他全部撑满
-    return `calc(100dvh - ${finalTopOffset}px)`
-  }
-
-  let keyboardH = '0px'
-  if (isReallyIOS) {
-    if (keyboardOffset.value !== '0px') {
-      keyboardH = keyboardOffset.value
-    }
-    else {
-      // 兜底估算（仅当计算失败时）
-      const screenW = window.screen.width
-      const isIPad = screenW >= 740
-      const isLargePhone = screenW > 420
-      let fallback = isPWA.value ? '435px' : '290px'
-      if (isIPad)
-        fallback = isPWA.value ? '460px' : '380px'
-      else if (isLargePhone)
-        fallback = isPWA.value ? '480px' : '335px'
-      keyboardH = fallback
-    }
-  }
-
-  const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
-
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
-})
 const isFreezingBottom = ref(false)
 
 // 手指按下：进入“选择/拖动”冻结期（两端都适用）
@@ -1508,55 +1449,18 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  measureTopOffset()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
-
   _hasPushedPage = false
 
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
-  })
+  // 立即触发一次计算
+  updateKeyboardOffset()
 
-  // 🔥🔥🔥 核心修复：针对 iOS PWA 首次弹出的强制归位
-  // iOS 键盘弹出时原生行为会把页面往上推，导致 Header 顶到刘海里。
-  // 这里强制把页面按回顶部 (0,0)，配合上面的 editorHeight 自动缩减，就能完美吸底。
-  if (isIOS && isPWA.value) {
-    // 使用 setTimeout 覆盖原生滚动的时序
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 100) // 100ms 通常足够，如果还跳，可以试着加到 200ms
-
-    // 双重保险
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-    }, 300)
-  }
-
-  // 覆盖 visualViewport 延迟
-  const t1 = isIOS ? 120 : 80
-  window.setTimeout(() => {
-    // 可以在这里触发一次 updateKeyboardOffset 以防万一
-    updateKeyboardOffset()
-  }, t1)
-
-  const t2 = isIOS ? 260 : 180
-  window.setTimeout(() => {
-  }, t2)
-
-  setTimeout(() => {
-    measureTopOffset()
-    ensureCaretVisibleInTextarea()
-  }, 400)
-
+  // 启动高频修正循环（针对 iOS 弹起动画）
   startFocusBoost()
 }
 
@@ -2269,17 +2173,17 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = vv ? vv.height : 0
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
+    // 🔥 关键：每一帧都重新读取 visualViewport 并修正 transform
+    updateKeyboardOffset()
     ensureCaretVisibleInTextarea()
-    const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
-    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
+
+    // 持续 600ms 左右，覆盖键盘动画
+    if (ticks >= 20)
       stopFocusBoost()
-    }
-  }, 60)
+  }, 30) // 提高频率到 30ms，让动画更跟手
 }
 
 function handleBeforeInput(e: InputEvent) {
@@ -2338,8 +2242,9 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
-      height: editorHeight,
+      /* 🔥 修改：直接应用计算好的 vvStyle */
+      height: vvStyle.height,
+      transform: vvStyle.transform,
     }"
     @click.stop
     @touchmove.prevent
