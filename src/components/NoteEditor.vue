@@ -246,6 +246,7 @@ const contentModel = computed({
 })
 
 const textarea = ref<HTMLTextAreaElement | null>(null)
+const lastSelectionStart = ref<number>(0)
 const input = computed({
   get: () => props.modelValue,
   set: val => emit('update:modelValue', val),
@@ -278,27 +279,24 @@ async function focusToEnd() {
   })
 }
 
-// ... (在 focusToEnd 函数附近添加)
-
-// 🔥 新增：只滚动到底部并设置光标位置，但【绝不聚焦】（防止键盘弹出）
+// 🟢 完善后的跳转函数
 async function jumpToBottomWithoutFocus() {
   await nextTick()
   const el = textarea.value
   if (!el)
     return
 
-  // 1. 设置 Selection Range 到末尾
-  //    这样做的好处是：虽然键盘没弹出来，但当用户下一次点击输入框时，
-  //    光标会自然出现在末尾，而不是跳回开头。
   const len = el.value.length
   try {
+    // 1. 设置光标逻辑位置（如果不设，用户下次点击输入框时，光标会跳回开头）
     el.setSelectionRange(len, len)
+
+    // 2. 🔥 重要：同步更新内部的光标位置记录，确保后续点击“#”或工具栏时位置正确
+    lastSelectionStart.value = len
   }
   catch {}
 
-  // 2. 暴力直接滚到底部
-  //    这里不使用 ensureCaretVisibleInTextarea，因为它依赖精确计算且带有平滑动画，
-  //    页面刚打开时直接跳到底部体验更好。
+  // 3. 暴力滚到底部
   el.scrollTop = el.scrollHeight
 }
 
@@ -730,10 +728,16 @@ watch(() => contentModel.value, () => {
   }, DRAFT_SAVE_DELAY) as unknown as number
 })
 
-// 进入编辑态：把光标移到末端并聚焦
+// 🟢 修改后的 watch
 watch(() => props.isEditing, (v) => {
-  if (v && !showDraftPrompt.value)
-    focusToEnd()
+  if (v && !showDraftPrompt.value) {
+    // 核心逻辑：如果是“已有笔记”(有ID)，只跳到底部不弹键盘
+    // 如果是“新建笔记”(无ID)，才自动聚焦弹键盘
+    if (props.noteId)
+      jumpToBottomWithoutFocus()
+    else
+      focusToEnd()
+  }
 })
 
 // 如果组件一挂载就处于编辑态，也执行一次
@@ -1173,7 +1177,6 @@ onUnmounted(() => {
 })
 
 // 根节点 + 光标缓存
-const lastSelectionStart = ref<number>(0)
 function captureCaret() {
   const el = textarea.value
   if (el && typeof el.selectionStart === 'number')
