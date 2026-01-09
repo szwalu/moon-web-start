@@ -33,48 +33,28 @@ const props = defineProps({
   topOffset: { type: Number, default: 0 },
 })
 const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur', 'bottomSafeChange'])
-const isInputFocused = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
-const maxRecordedTop = ref(0)
-// 测量函数：只在编辑模式下生效
-// 找到 measureTopOffset 函数，替换为：
 
+// 测量函数：只在编辑模式下生效
 function measureTopOffset() {
+  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
   }
 
+  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-
-    // 1. 只要测到了更大的正值，就说明这是 Header 的真实高度，赶紧存下来！
-    if (rect.top > maxRecordedTop.value)
-      maxRecordedTop.value = rect.top
-
-    // 2. 决策逻辑
-    if (isInputFocused.value) {
-      // 🔥 核心修复：
-      // 如果正在输入，且测得顶部距离几乎为 0 (被浏览器推上去了)，
-      // 绝对不能用 0！必须强制使用缓存的 Header 高度。
-      // 这样编辑器就会算出“变矮”后的高度，从而避开刘海。
-      if (rect.top < 20 && maxRecordedTop.value > 0) {
-        autoTopOffset.value = maxRecordedTop.value
-      }
-      else {
-        // 如果测出来是正常的（比如 100px），那就用测出来的值
-        autoTopOffset.value = Math.max(0, rect.top)
-      }
-    }
-    else {
-      // 非输入状态，实事求是
-      autoTopOffset.value = Math.max(0, rect.top)
-    }
+    // 只有当距离大于 0 时才认为是障碍物（例如搜索栏）
+    // Math.max(0, ...) 防止滚动导致的负数
+    autoTopOffset.value = Math.max(0, rect.top)
   }
 }
 
+const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -105,8 +85,6 @@ onMounted(() => {
     pinnedTags.value = []
   }
   isPWA.value = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true
-  measureTopOffset()
-  setTimeout(measureTopOffset, 300)
 })
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -164,6 +142,8 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
+  if (props.isEditing)
+    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -1521,40 +1501,51 @@ onUnmounted(() => {
   document.removeEventListener('selectionchange', onDocSelectionChange)
 })
 
-// 找到 handleFocus 函数，替换为：
-
 function handleFocus() {
+  measureTopOffset()
   isInputFocused.value = true
   emit('focus')
   captureCaret()
+
+  // 允许再次“轻推”
   _hasPushedPage = false
 
+  // 用真实 footer 高度“临时托起”，不等 vv
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  if (props.isEditing) {
-    // 1. 既然高度已经强制变矮了（避让 Header），
-    // 必须把页面滚回顶部，让 Header 露出来填补那个空缺。
-    window.scrollTo(0, 0)
-
-    // 2. 立即触发测量（应用上面的记忆逻辑）
-    measureTopOffset()
-
-    // 3. 延时保险：防止键盘动画过程中 scroll 被打断
+  // 立即一轮计算
+  requestAnimationFrame(() => {
+    ensureCaretVisibleInTextarea()
+  })
+  /*
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
     setTimeout(() => {
       window.scrollTo(0, 0)
-      measureTopOffset()
-      ensureCaretVisibleInTextarea()
-    }, 100)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
-    setTimeout(() => {
-      measureTopOffset()
-    }, 300)
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
   }
-  else {
+  */
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+  const t1 = isIOS ? 120 : 80
+  window.setTimeout(() => {
+  }, t1)
+
+  const t2 = isIOS ? 260 : 180
+  window.setTimeout(() => {
+  }, t2)
+
+  setTimeout(() => {
     measureTopOffset()
-  }
+    ensureCaretVisibleInTextarea()
+  }, 400) // 400ms > transition 0.3s
 
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -2333,10 +2324,10 @@ function handleTextareaMove(e: TouchEvent) {
     :class="{
       'editing-viewport': isEditing,
       'is-focused': isInputFocused,
-      'is-top-collapsed': autoTopOffset < 10, /* 🔥 新增这一行：当距离顶部小于10px时，认为进入了全屏/刘海区 */
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
+      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
     @click.stop
