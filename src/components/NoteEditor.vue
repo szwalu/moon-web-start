@@ -36,31 +36,25 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
-const isPWA = ref(false)
-// 测量函数：只在编辑模式下生效
+const isInputFocused = ref(false)
+// 找到 measureTopOffset 函数
 function measureTopOffset() {
-  // 1. 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  // 🔥 1. 新增：如果键盘已经弹起（正在输入），绝对不要测量！
+  // 此时浏览器可能把页面卷动了，测出来的 top 是错的（通常是 0）。
+  // 我们要信任键盘弹出前最后一次测量的结果。
+  if (isInputFocused.value)
+    return
+
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
   }
 
-  // 2. 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-    const currentTop = Math.max(0, rect.top)
-
-    const isIOSDevice = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
-    if (isPWA.value && isIOSDevice && currentTop === 0 && autoTopOffset.value > 10) {
-      // 保持原值，不更新为 0
-      return
-    }
-
-    autoTopOffset.value = currentTop
+    autoTopOffset.value = Math.max(0, rect.top)
   }
 }
-
-const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
@@ -81,6 +75,7 @@ const pinnedTags = ref<string[]>([])
 function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
+const isPWA = ref(false)
 onMounted(() => {
   try {
     const raw = localStorage.getItem(PINNED_TAGS_KEY)
@@ -147,6 +142,8 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
+  if (props.isEditing)
+    measureTopOffset()
 }
 
 // 在 onMounted 里监听
@@ -1541,23 +1538,23 @@ function handleFocus() {
   const t2 = isIOS ? 260 : 180
   window.setTimeout(() => {
   }, t2)
-
   setTimeout(() => {
-    measureTopOffset()
     ensureCaretVisibleInTextarea()
-  }, 400) // 400ms > transition 0.3s
+  }, 400)
 
   // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
 function onBlur() {
-  isInputFocused.value = false
+  isInputFocused.value = false // ✅ 只有这句执行后，measureTopOffset 才会生效
   emit('blur')
   emit('bottomSafeChange', 0)
   _hasPushedPage = false
   stopFocusBoost()
   _lastBottomNeed = 0
+
+  // 这里可以保留，因为 isInputFocused 已经是 false 了，测量是安全的
   measureTopOffset()
   setTimeout(measureTopOffset, 300)
   if (suppressNextBlur.value) {
