@@ -284,7 +284,7 @@ auth:
   insert_failed_create_note: 网络问题，无法创建新笔记
   Calendar: 日历
   trash: 回收站
-  go_to_links: 前往网址站
+  go_to_links: 网址站
   back_to_top: 回到顶部
   change: 修改
   change_password_title: 修改密码

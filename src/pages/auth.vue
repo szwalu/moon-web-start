@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { NSelect, useDialog, useMessage } from 'naive-ui'
 import { v4 as uuidv4 } from 'uuid'
-import { ChevronDown, ChevronUp, House, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, X } from 'lucide-vue-next'
 import { supabase } from '@/utils/supabaseClient'
 import { useAuthStore } from '@/stores/auth'
 import { CACHE_KEYS, getCalendarDateCacheKey, getTagCacheKey } from '@/utils/cacheKeys'
@@ -3389,10 +3389,6 @@ function clearTagFilter() {
 // 避免 ESLint 误报这些在模板中使用的函数“未使用”
 const _usedTemplateFns = [handleCopySelected, handleDeleteSelected, handleEditFromCalendar]
 
-function goToLinksSite() {
-  window.location.assign('/?from=notes')
-}
-
 function onCalendarCreated(note: any) {
   addNoteToList(note)
   invalidateCachesOnDataChange(note)
@@ -3488,13 +3484,6 @@ function onCalendarUpdated(updated: any) {
 
         <div class="header-actions">
           <button class="header-action-btn" @click.stop="toggleSearchBar">🔍</button>
-          <button
-            class="header-action-btn"
-            aria-label="t('auth.go_to_links')"
-            @click="goToLinksSite"
-          >
-            <House :size="18" />
-          </button>
         </div>
       </div>
       <Sidebar

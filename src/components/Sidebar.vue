@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Download,
   HelpCircle,
+  House,
   Lock,
   MapPin,
   MessageSquare,
@@ -824,6 +825,10 @@ function handleItemClick(key: string) {
   emit('close')
 }
 
+function goToLinksSite() {
+  window.location.assign('/?from=notes')
+}
+
 const showStatsDetail = ref(false)
 
 const statsData = computed(() => ({
@@ -1021,6 +1026,11 @@ onMounted(() => {
 
             <div class="menu-item" @click="handleItemClick('trash')">
               <Trash2 :size="20" /><span>{{ t('auth.trash') }}</span>
+            </div>
+
+            <div class="menu-item" @click="goToLinksSite">
+              <House :size="20" />
+              <span>{{ t('auth.go_to_links') || '网址站' }}</span>
             </div>
 
             <div style="height: 40px;" />
