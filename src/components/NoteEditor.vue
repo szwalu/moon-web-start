@@ -128,14 +128,8 @@ function updateKeyboardOffset() {
   if (isIOS) {
     let diff = window.innerHeight - currentHeight
 
-    // 🔥🔥🔥 核心修复开始：iOS 16.x 兜底逻辑 🔥🔥🔥
-    // 问题：在部分旧 iOS 上，键盘弹出时 innerHeight 会瞬间变小，导致 diff ≈ 0。
-    // 解决：如果 diff 很小，但当前视口明显小于基准高度（说明键盘确实弹出了），
-    //       则强制使用 (baseHeight - currentHeight) 作为键盘高度。
-    if (diff < 50 && baseHeight > 0 && currentHeight < baseHeight * 0.85)
+    if (diff < 100 && baseHeight > 0 && currentHeight < baseHeight * 0.85)
       diff = baseHeight - currentHeight
-
-    // 🔥🔥🔥 核心修复结束 🔥🔥🔥
 
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
@@ -2265,7 +2259,8 @@ function stopFocusBoost() {
   }
 }
 
-// 在键盘弹起早期，连续重算 600~720ms
+// 把原来的 startFocusBoost 逻辑加强
+// 针对 iOS 26.2 这种“第一次不准”的情况，我们需要多测几次
 function startFocusBoost() {
   stopFocusBoost()
   const startVvH = window.visualViewport ? window.visualViewport.height : 0
@@ -2274,20 +2269,25 @@ function startFocusBoost() {
   focusBoostTimer = window.setInterval(() => {
     ticks++
 
-    // 🔥 新增：在助推期间不断测量顶部偏移，防止页面发生滚动后这里没更新
+    // 🔥 关键点：每一帧都重新测量顶部偏移
+    // iOS 26.2 可能在键盘弹出的前半段，getBoundingClientRect().top 还是 0
+    // 等页面被顶上去后，它才会变成正数（比如 47px 或 59px）
     measureTopOffset()
+
+    // 同时强制更新一下键盘高度计算
+    updateKeyboardOffset()
 
     ensureCaretVisibleInTextarea()
 
     const vvNow = window.visualViewport
-    // 阈值稍微放宽一点，防止微小抖动误判
     const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
 
-    // iOS 16 比较慢，建议增加 ticks 次数，覆盖更长的动画时间
-    if (changed || ticks >= 20) { // 改为 20 次 (约 1.2秒)，覆盖旧机型缓慢的动画
+    // 如果高度变了（键盘出来了），或者跑了足够久（比如 1.2秒）
+    if (changed || ticks >= 20) {
       stopFocusBoost()
-      // 停止后再补测一次，确保最终状态正确
+      // 🔥 停止后再补一刀，确保万无一失
       measureTopOffset()
+      updateKeyboardOffset()
     }
   }, 60)
 }
