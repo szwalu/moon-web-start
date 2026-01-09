@@ -105,36 +105,41 @@ const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
 // 🔥 修改版：updateKeyboardOffset
+// 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
 
   const currentHeight = window.visualViewport.height
+  // 增加 standalone 判断，增强 PWA 环境检测
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
+  // 1. 键盘收起时：更新基准高度
   if (!isInputFocused.value) {
+    // 稍微放宽限制，避免极个别情况不更新
     if (currentHeight > 300)
       baseHeight = currentHeight
+
     keyboardOffset.value = '0px'
     measureTopOffset()
     return
   }
 
   // 2. 键盘弹出时
-  // 🔥🔥🔥 核心修复：iOS 专用逻辑
-  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
-  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
-  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
   if (isIOS) {
-    const diff = window.innerHeight - currentHeight
+    // 🔥🔥🔥 核心修复：iOS 18.2 PWA 修复
+    // 不要使用 window.innerHeight，因为它在 PWA 键盘弹出瞬间可能会变。
+    // 优先使用缓存的 baseHeight (即无键盘时的满屏高度)。
+    const referenceHeight = baseHeight > 0 ? baseHeight : window.innerHeight
+    const diff = referenceHeight - currentHeight
+
     // 只有差值合理才认为是键盘/工具栏
     if (diff > 100)
       keyboardOffset.value = `${diff}px`
     else
       keyboardOffset.value = '0px'
   }
-  // Android / 其他设备：继续使用 baseHeight 逻辑
+  // Android / 其他设备
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
     if (diff > 150)
@@ -142,6 +147,7 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
+
   if (props.isEditing)
     measureTopOffset()
 }
@@ -1507,33 +1513,39 @@ function handleFocus() {
   emit('focus')
   captureCaret()
 
-  // 允许再次“轻推”
   _hasPushedPage = false
 
-  // 用真实 footer 高度“临时托起”，不等 vv
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  /*
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+
+  // 🔥🔥🔥 核心修复：针对 iOS PWA 首次弹出的强制归位
+  // iOS 键盘弹出时原生行为会把页面往上推，导致 Header 顶到刘海里。
+  // 这里强制把页面按回顶部 (0,0)，配合上面的 editorHeight 自动缩减，就能完美吸底。
+  if (isIOS && isPWA.value) {
+    // 使用 setTimeout 覆盖原生滚动的时序
     setTimeout(() => {
       window.scrollTo(0, 0)
       if (document.body.scrollTop !== 0)
         document.body.scrollTop = 0
-
       if (document.documentElement.scrollTop !== 0)
         document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+    }, 100) // 100ms 通常足够，如果还跳，可以试着加到 200ms
+
+    // 双重保险
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+    }, 300)
   }
-  */
-  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
+
+  // 覆盖 visualViewport 延迟
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
+    // 可以在这里触发一次 updateKeyboardOffset 以防万一
+    updateKeyboardOffset()
   }, t1)
 
   const t2 = isIOS ? 260 : 180
@@ -1543,9 +1555,8 @@ function handleFocus() {
   setTimeout(() => {
     measureTopOffset()
     ensureCaretVisibleInTextarea()
-  }, 400) // 400ms > transition 0.3s
+  }, 400)
 
-  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
