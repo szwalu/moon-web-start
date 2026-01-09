@@ -41,20 +41,19 @@ const autoTopOffset = ref(0)
 // 找到 measureTopOffset 函数，替换为：
 
 function measureTopOffset() {
-  // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  // 如果是“新建笔记”（底部弹窗模式），直接归零
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
   }
 
-  // ❌ 删除下面这两行！不要锁定！
-  // if (isInputFocused.value)
-  //   return
+  // 🔥🔥🔥 核心修复：删除了原来的 if (isInputFocused.value) return ...
+  // 我们需要它在 Focus 状态下也能工作，只要页面位置变了，它就得变。
 
-  // 实时测量：如果 Header 被浏览器滚出去了，rect.top 会变成负数或 0
-  // 这样 autoTopOffset 也会变成 0，编辑器高度就会自动变长，填补空隙
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
+    // 实时更新：如果页面滚到了顶部，rect.top 就是 Header 的高度
+    // 如果页面被推上去了，rect.top 就是 0
     autoTopOffset.value = Math.max(0, rect.top)
   }
 }
@@ -1514,18 +1513,34 @@ function handleFocus() {
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 🔥 修复：去掉 window.scrollTo(0, 0)，不再强行把 Header 拉下来
+  // 🔥🔥🔥 核心修复逻辑开始
+  if (props.isEditing) {
+    // 1. 强制动作：先把被浏览器顶飞的页面拉回顶部 (0, 0)
+    // 这会让 Header 重新露出来，避免输入框顶进刘海
+    window.scrollTo(0, 0)
 
-  // 延迟测量：等待键盘弹出、浏览器自动把 Header 推上去之后，再测一次
-  // 此时 measureTopOffset 会测到 0，从而消除底部的空隙
-  setTimeout(() => {
+    // 2. 立即测量：因为上面刚刚 scrollTo(0,0)，现在的 rect.top 就是真实的 Header 高度
+    // 此时 autoTopOffset 会从 0 变成例如 100px
     measureTopOffset()
 
-    // 确保测量更新高度后，光标在视野内
-    requestAnimationFrame(() => {
-      ensureCaretVisibleInTextarea()
-    })
-  }, 300) // 300ms 也就是键盘动画大概结束的时间
+    // 3. 双重保险：iOS 键盘动画期间，viewport 可能会抖动
+    // 在 100ms 和 300ms 后各补测一次，确保高度最终是正确的“变矮”状态
+    setTimeout(() => {
+      window.scrollTo(0, 0) // 再次确认回正
+      measureTopOffset()
+      ensureCaretVisibleInTextarea() // 高度变矮了，赶紧把光标滚出来
+    }, 100)
+
+    setTimeout(() => {
+      measureTopOffset()
+      requestAnimationFrame(() => ensureCaretVisibleInTextarea())
+    }, 300)
+  }
+  else {
+    // 新建模式（弹窗）不需要回正逻辑
+    measureTopOffset()
+  }
+  // 🔥🔥🔥 核心修复逻辑结束
 
   startFocusBoost()
 }
@@ -2865,7 +2880,7 @@ function handleTextareaMove(e: TouchEvent) {
   height: 100%;
   flex: 1;
   padding: 12px 16px; /* 调整内边距 */
-  transition: padding-top 0.3s ease;
+
   border: none;
   background-color: transparent;
   color: inherit;
@@ -2890,9 +2905,6 @@ function handleTextareaMove(e: TouchEvent) {
 
   scroll-padding-top: 80px;
   padding-top: 10px;
-  .note-editor-reborn.is-top-collapsed .editor-textarea {
-  padding-top: calc(12px + env(safe-area-inset-top));
-}
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
