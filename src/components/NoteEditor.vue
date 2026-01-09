@@ -279,24 +279,25 @@ async function focusToEnd() {
   })
 }
 
-// 🟢 完善后的跳转函数
+// 🟢 修改后的函数：只滚动，绝对不碰 selectionRange
 async function jumpToBottomWithoutFocus() {
   await nextTick()
   const el = textarea.value
   if (!el)
     return
 
-  const len = el.value.length
-  try {
-    // 1. 设置光标逻辑位置（如果不设，用户下次点击输入框时，光标会跳回开头）
-    el.setSelectionRange(len, len)
+  // 1. 防御性代码：如果此时焦点已经在输入框里，强制移出
+  if (document.activeElement === el)
+    el.blur()
 
-    // 2. 🔥 重要：同步更新内部的光标位置记录，确保后续点击“#”或工具栏时位置正确
-    lastSelectionStart.value = len
-  }
-  catch {}
+  // 2. ❌ 彻底删除这行！不要在挂载时设置选区，这会诱发键盘弹出
+  // try { el.setSelectionRange(el.value.length, el.value.length) } catch {}
 
-  // 3. 暴力滚到底部
+  // 3. ✅ 只更新内部变量，让组件知道“光标逻辑上在最后”
+  // 这样当用户真正点击输入框时，不会影响后续逻辑
+  lastSelectionStart.value = el.value.length
+
+  // 4. 暴力滚到底部（纯视觉）
   el.scrollTop = el.scrollHeight
 }
 
@@ -691,27 +692,15 @@ function clearDraft() {
 // 初次挂载：尝试恢复
 onMounted(() => {
   checkAndPromptDraft()
+  weatherPromise = fetchWeatherLine()
 
-  if (props.isEditing) {
-    if (!showDraftPrompt.value) {
-      // 🔴 原代码：直接聚焦并弹出键盘
-      // focusToEnd()
-
-      // 🟢 修改后：只跳到底部，不弹键盘
-      jumpToBottomWithoutFocus()
-    }
-  }
-  else {
-    weatherPromise = fetchWeatherLine()
-
-    if (weatherPromise) {
-      weatherPromise.then((res) => {
-        cachedWeather.value = res
-      }).catch((e) => {
-        console.warn('[天气] 异步出错:', e)
-        cachedWeather.value = null
-      })
-    }
+  if (weatherPromise) {
+    weatherPromise.then((res) => {
+      cachedWeather.value = res
+    }).catch((e) => {
+      console.warn('[天气] 异步出错:', e)
+      cachedWeather.value = null
+    })
   }
 })
 
@@ -740,17 +729,34 @@ watch(() => props.isEditing, (v) => {
   }
 })
 
-// 如果组件一挂载就处于编辑态，也执行一次
+// 🟢 修复版：合并逻辑 + 修复 ESLint 格式报错
 onMounted(() => {
+  // 1. 测量几何尺寸
   measureTopOffset()
-
-  // 保险起见，稍后由动画稳定后再测一次
   setTimeout(measureTopOffset, 300)
 
-  if (props.isEditing) {
-    // 🔴 删除原代码: focusToEnd()
-    // 🟢 改为:
+  // 2. 检查草稿
+  checkAndPromptDraft()
+
+  // 3. 决定是否跳转底部
+  // 只有在“是编辑模式”且“没有弹窗阻挡”时才跳转
+  if (props.isEditing && !showDraftPrompt.value)
     jumpToBottomWithoutFocus()
+
+  // 4. 如果不是编辑模式，获取天气
+  if (!props.isEditing) {
+    weatherPromise = fetchWeatherLine()
+    if (weatherPromise) {
+      weatherPromise
+        .then((res) => {
+          cachedWeather.value = res
+        })
+        .catch((e) => {
+          // ✅ 这里的语句分行写，解决了 "2 statements per line" 的报错
+          console.warn('[天气] 异步出错:', e)
+          cachedWeather.value = null
+        })
+    }
   }
 })
 
