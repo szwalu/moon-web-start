@@ -2258,15 +2258,38 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = vv ? vv.height : 0
+  const startVvH = window.visualViewport ? window.visualViewport.height : 0
   let ticks = 0
+
   focusBoostTimer = window.setInterval(() => {
     ticks++
+
+    // 🔥🔥🔥 核心修改 A：主动轮询键盘高度 🔥🔥🔥
+    // 不要依赖 resize 事件监听，因为首次弹起时事件可能滞后。
+    // 主动调用它，能让 keyboardOffset.value 在键盘动画过程中实时更新，
+    // 从而让 editorHeight 迅速变小，浏览器发现内容放得下了，就不会乱推页面了。
+    updateKeyboardOffset()
+
+    // 🔥🔥🔥 核心修改 B：暴力按住页面不让滚 🔥🔥🔥
+    // PWA 模式下，如果键盘弹起导致 window.scrollY 大于 0，说明浏览器正在把页面往刘海区推。
+    // 我们强制把它滚回 (0, 0)，让 NoteEditor 牢牢钉在顶部。
+    if (window.scrollY > 0)
+      window.scrollTo(0, 0)
+
+    // 原有的光标逻辑保留
     ensureCaretVisibleInTextarea()
+
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
-    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
+
+    // 稍微延长一点轮询时间，确保覆盖 iOS 首次较慢的动画
+    // 15 * 60ms = 900ms，足够覆盖绝大多数 iOS 键盘动画
+    if (changed || ticks >= 15) {
       stopFocusBoost()
+      // 结束后再补一刀，确保状态正确
+      updateKeyboardOffset()
+      if (window.scrollY > 0)
+        window.scrollTo(0, 0)
     }
   }, 60)
 }
