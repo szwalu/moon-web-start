@@ -2305,10 +2305,10 @@ function handleTextareaMove(e: TouchEvent) {
     :class="{
       'editing-viewport': isEditing,
       'is-focused': isInputFocused,
+      'is-top-collapsed': autoTopOffset < 10, /* 🔥 新增这一行：当距离顶部小于10px时，认为进入了全屏/刘海区 */
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
     @click.stop
@@ -2865,7 +2865,7 @@ function handleTextareaMove(e: TouchEvent) {
   height: 100%;
   flex: 1;
   padding: 12px 16px; /* 调整内边距 */
-
+  transition: padding-top 0.3s ease;
   border: none;
   background-color: transparent;
   color: inherit;
@@ -2890,6 +2890,9 @@ function handleTextareaMove(e: TouchEvent) {
 
   scroll-padding-top: 80px;
   padding-top: 10px;
+  .note-editor-reborn.is-top-collapsed .editor-textarea {
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
 }
 
 /* 4. Android 特殊处理也可以删掉了，或者保留 height: 100% */
