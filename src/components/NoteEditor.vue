@@ -1178,6 +1178,14 @@ function ensureCaretVisibleInTextarea() {
 
   const viewTop = el.scrollTop
   const viewBottom = el.scrollTop + el.clientHeight
+  if (alignToCenter) {
+    const targetScroll = caretTopInTextarea - (el.clientHeight / 2)
+    el.scrollTo({
+      top: Math.max(0, targetScroll),
+      behavior: 'auto', // 聚焦时瞬间跳过去，不要 smooth，防止动画冲突
+    })
+    return
+  }
   const caretDesiredTop = caretTopInTextarea - lineHeight * 0.5
   const caretDesiredBottom = caretTopInTextarea + lineHeight * 1.5 + 30
 
@@ -1516,30 +1524,28 @@ function handleFocus() {
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
+  // 1. 立即执行一次居中（为了响应快）
   requestAnimationFrame(() => {
-    ensureCaretVisibleInTextarea()
+    ensureCaretVisibleInTextarea(true) // 🔥 传 true，强制居中
   })
 
-  // 🔥🔥🔥 核心修改：在强制回正页面（scrollTo 0,0）的同时，
-  // 必须紧接着调用 ensureCaretVisibleInTextarea()。
-  // 这样当页面“蹦”下来时，光标会自动“滚”上去，保持在视野内。
   if (props.isEditing) {
+    // 强制把页面拉下来的逻辑（你已经有了）
     window.scrollTo(0, 0)
 
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      ensureCaretVisibleInTextarea() // 👈 新增这句
-    }, 100)
+    // 2. 这里的延时要覆盖键盘动画的全程 (0ms ~ 600ms)
+    // 每次拉回页面后，都强制让光标居中
+    const timers = [50, 200, 450, 650] // 🔥 加了一个 650ms 的兜底
 
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      ensureCaretVisibleInTextarea() // 👈 新增这句
-    }, 300)
+    timers.forEach((t) => {
+      setTimeout(() => {
+        window.scrollTo(0, 0)
+        ensureCaretVisibleInTextarea(true) // 🔥 传 true，强制居中
+      }, t)
+    })
   }
 
-  // 之前的逻辑保持删除
-  // setTimeout(measureTopOffset, 400) // ❌ 确保这行还是删除状态
-
+  // startFocusBoost 也可以保留，作为双重保险
   startFocusBoost()
 }
 
@@ -2252,16 +2258,18 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  const startVvH = vv ? vv.height : 0
+  const startVvH = window.visualViewport ? window.visualViewport.height : 0
   let ticks = 0
   focusBoostTimer = window.setInterval(() => {
     ticks++
-    ensureCaretVisibleInTextarea()
+    // 🔥 这里也传 true，确保在键盘弹出的过程中，光标始终锁定在视野中央
+    ensureCaretVisibleInTextarea(true)
+
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
-    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
+    // 稍微延长一点轮询时间，到 800ms 左右停止
+    if (changed || ticks >= 15)
       stopFocusBoost()
-    }
   }, 60)
 }
 
