@@ -742,8 +742,12 @@ onMounted(() => {
 
   // 保险起见，稍后由动画稳定后再测一次
   setTimeout(measureTopOffset, 300)
-  if (props.isEditing)
-    focusToEnd()
+
+  if (props.isEditing) {
+    // 🔴 删除原代码: focusToEnd()
+    // 🟢 改为:
+    jumpToBottomWithoutFocus()
+  }
 })
 
 // 组件卸载：收尾
