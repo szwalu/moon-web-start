@@ -47,12 +47,12 @@ function measureTopOffset() {
     return
   }
 
-  // 🔥🔥🔥 核心修复：一旦进入输入聚焦状态，就锁定之前的测量值。
-  // 防止键盘弹出期间，浏览器自动滚屏导致 rect.top 变成 0，进而导致误判。
-  if (isInputFocused.value)
-    return
+  // ❌ 删除下面这两行！不要锁定！
+  // if (isInputFocused.value)
+  //   return
 
-  // 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
+  // 实时测量：如果 Header 被浏览器滚出去了，rect.top 会变成负数或 0
+  // 这样 autoTopOffset 也会变成 0，编辑器高度就会自动变长，填补空隙
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
     autoTopOffset.value = Math.max(0, rect.top)
@@ -1506,7 +1506,6 @@ onUnmounted(() => {
 // 找到 handleFocus 函数，替换为：
 
 function handleFocus() {
-  // 1. 先标记聚焦状态
   isInputFocused.value = true
   emit('focus')
   captureCaret()
@@ -1515,35 +1514,19 @@ function handleFocus() {
   if (!isAndroid)
     emit('bottomSafeChange', getFooterHeight())
 
-  // 🔥🔥🔥 核心修复：针对“编辑旧笔记”的特殊处理
-  if (props.isEditing) {
-    // A. 强制回正：防止 iOS 首次聚焦时把 Header 顶飞
-    window.scrollTo(0, 0)
+  // 🔥 修复：去掉 window.scrollTo(0, 0)，不再强行把 Header 拉下来
 
-    // B. 延迟重测：等待回正完成后，手动测量真实的顶部偏移
-    // 必须在这里手动写测量逻辑，因为 measureTopOffset() 有 isInputFocused 锁，会直接返回
-    setTimeout(() => {
-      // 再次强制回正，确保万无一失
-      window.scrollTo(0, 0)
-
-      if (rootRef.value) {
-        const rect = rootRef.value.getBoundingClientRect()
-        // 获取由于 scrollTo(0,0) 而重新露出来的 Header 高度
-        // 这将修正 editorHeight，使其减去 Header 高度，从而让底部光标露出来
-        autoTopOffset.value = Math.max(0, rect.top)
-      }
-
-      // C. 高度修正完毕后，立即执行光标滚动检测
-      // 这一步至关重要，它会在高度缩小的瞬间，把被遮住的光标滚回可视区
-      ensureCaretVisibleInTextarea()
-    }, 100) // 100ms 足够让 scrollTo 完成布局更新
-  }
-  else {
-    // 新建模式很简单，直接测
+  // 延迟测量：等待键盘弹出、浏览器自动把 Header 推上去之后，再测一次
+  // 此时 measureTopOffset 会测到 0，从而消除底部的空隙
+  setTimeout(() => {
     measureTopOffset()
-  }
 
-  // 启动循环检测（处理键盘弹出的动画过程）
+    // 确保测量更新高度后，光标在视野内
+    requestAnimationFrame(() => {
+      ensureCaretVisibleInTextarea()
+    })
+  }, 300) // 300ms 也就是键盘动画大概结束的时间
+
   startFocusBoost()
 }
 
