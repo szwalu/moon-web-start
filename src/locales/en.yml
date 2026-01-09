@@ -868,7 +868,7 @@ notes:
     faq_1_a1_suffix: ', register and login.'
     faq_1_a2: 'Select "Add to Home Screen" in mobile browser to use like a native app.'
     faq_1_a3_prefix: 'Click Nebula Notes or Logo in the portal; click '''
-    faq_1_a3_suffix: ''' right of 🔍 in main interface to return to portal.'
+    faq_1_a3_suffix: ''' In the notes sidebar.'
 
     faq_2_q: Will offline edits/deletes be lost?
     faq_2_a1: 'No, operations are written to local snapshots and sync queues, auto-submitting when online.'

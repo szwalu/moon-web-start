@@ -102,10 +102,9 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 
 // 🔥 新增：基础高度与键盘偏移量
 const keyboardOffset = ref('0px')
-
-const isKeyboardPending = ref(false)
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
+// 🔥 修改版：updateKeyboardOffset
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
@@ -113,32 +112,29 @@ function updateKeyboardOffset() {
   const currentHeight = window.visualViewport.height
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  // 1. 键盘收起时：更新基准高度
+  // 1. 键盘收起时：更新基准高度（供 Android 或非键盘场景兜底）
   if (!isInputFocused.value) {
     if (currentHeight > 300)
       baseHeight = currentHeight
     keyboardOffset.value = '0px'
-    isKeyboardPending.value = false // 🔥 键盘收起时，重置 pending 状态
     measureTopOffset()
     return
   }
 
   // 2. 键盘弹出时
+  // 🔥🔥🔥 核心修复：iOS 专用逻辑
+  // iOS 上 window.innerHeight 通常代表 Layout Viewport (≈ 100dvh)，是不变的
+  // 而 visualViewport.height 是实际可视区域。两者之差就是我们要减去的高度。
+  // 这种实时计算比依赖缓存的 baseHeight 更能抵抗“后台恢复”带来的状态偏差。
   if (isIOS) {
     const diff = window.innerHeight - currentHeight
-
-    // 🔥🔥🔥 修改逻辑：只有算出了合理的高度 (>100)，才认为是数据准了
-    if (diff > 100) {
+    // 只有差值合理才认为是键盘/工具栏
+    if (diff > 100)
       keyboardOffset.value = `${diff}px`
-      isKeyboardPending.value = false // 🔥 数据准了，解除“悲观预估”状态
-    }
-    else {
+    else
       keyboardOffset.value = '0px'
-      // 注意：这里不要把 isKeyboardPending 设为 false，保持它为 true，
-      // 让 editorHeight 继续使用 300px 的兜底高度，直到 diff 变大
-    }
   }
-  // Android / 其他设备
+  // Android / 其他设备：继续使用 baseHeight 逻辑
   else if (baseHeight > 0) {
     const diff = baseHeight - currentHeight
     if (diff > 150)
@@ -146,7 +142,6 @@ function updateKeyboardOffset() {
     else
       keyboardOffset.value = '0px'
   }
-
   if (props.isEditing)
     measureTopOffset()
 }
@@ -171,44 +166,51 @@ onUnmounted(() => {
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value) {
-    if (props.isEditing)
+    if (props.isEditing) {
+      // 🔥🔥🔥 核心修复：减去 autoTopOffset
+      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
+      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
       return `calc(100dvh - ${autoTopOffset.value}px)`
-
+    }
     // 新建模式保持 80dvh (半屏弹窗)
     return '80dvh'
   }
-
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+    // 只减去顶部的偏移（如果有），其他全部撑满
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
-  // === iOS 核心修复 ===
   let keyboardH = '0px'
-
   if (isReallyIOS) {
-    const realOffset = keyboardOffset.value
-
-    // 🔥🔥🔥 核心判断：如果键盘高度算出来是 0 (Bug状态) 或者 处于 Pending (正在弹出)
-    // 强制使用 '300px' (常见键盘高度) 先把编辑器高度压下来。
-    // 这样浏览器就不会因为内容太高而把页面顶进刘海里。
-    if (realOffset === '0px' || isKeyboardPending.value) {
-      // PWA 模式下键盘通常更高一点，普通网页 300 够了
-      keyboardH = isPWA.value ? '340px' : '300px'
+    if (keyboardOffset.value !== '0px') {
+      keyboardH = keyboardOffset.value
     }
     else {
-      keyboardH = realOffset
+      // 兜底估算（仅当计算失败时）
+      const screenW = window.screen.width
+      const isIPad = screenW >= 740
+      const isLargePhone = screenW > 420
+      let fallback = isPWA.value ? '435px' : '290px'
+      if (isIPad)
+        fallback = isPWA.value ? '460px' : '380px'
+      else if (isLargePhone)
+        fallback = isPWA.value ? '480px' : '335px'
+      keyboardH = fallback
     }
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-  const extraReduction = props.isEditing ? 0 : (isPWA.value ? 48 : 10)
 
-  // 公式：100dvh - (真实键盘高 或 预估键盘高) - 顶部偏移
+  const extraReduction = props.isEditing
+    ? 0
+    : (isPWA.value ? 48 : 10)
+
+  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
@@ -1500,12 +1502,6 @@ onUnmounted(() => {
 })
 
 function handleFocus() {
-  // 🔥🔥🔥 核心修改：聚焦瞬间开启“防御模式”
-  // 此时 editorHeight 会立即减去 300px，变矮。
-  // 浏览器发现高度只有 60% 屏幕高，空间足够，就不会触发“顶到头”的滚动行为。
-  if (isIOS)
-    isKeyboardPending.value = true
-
   measureTopOffset()
   isInputFocused.value = true
   emit('focus')
@@ -1522,14 +1518,20 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
+  /*
+  if (!props.isEditing) {
+    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
+    setTimeout(() => {
+      window.scrollTo(0, 0)
+      if (document.body.scrollTop !== 0)
+        document.body.scrollTop = 0
 
-  // 延迟关闭 Pending：给浏览器一点时间去震荡 (600ms)
-  // 如果 600ms 后 updateKeyboardOffset 还没算出结果，也强制解除，避免一直卡在 300px
-  setTimeout(() => {
-    isKeyboardPending.value = false
-  }, 600)
-
-  // 覆盖 visualViewport 延迟
+      if (document.documentElement.scrollTop !== 0)
+        document.documentElement.scrollTop = 0
+    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  }
+  */
+  // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
   }, t1)
@@ -1543,7 +1545,7 @@ function handleFocus() {
     ensureCaretVisibleInTextarea()
   }, 400) // 400ms > transition 0.3s
 
-  // 启动短时“助推轮询”
+  // 启动短时“助推轮询”（iOS 尤其需要）
   startFocusBoost()
 }
 
@@ -2327,7 +2329,6 @@ function handleTextareaMove(e: TouchEvent) {
       paddingBottom: `${bottomSafePadding}px`,
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
-      scrollMarginTop: 'env(safe-area-inset-top)',
     }"
     @click.stop
     @touchmove.prevent
