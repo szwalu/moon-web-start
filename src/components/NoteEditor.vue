@@ -37,14 +37,11 @@ const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
 const isInputFocused = ref(false)
-// 找到 measureTopOffset 函数
+// 平台判定（尽量保守）
+const UA = navigator.userAgent.toLowerCase()
+const isIOS = /iphone|ipad|ipod/.test(UA)
+// 找到 measureTopOffset 函数，替换为：
 function measureTopOffset() {
-  // 🔥 1. 新增：如果键盘已经弹起（正在输入），绝对不要测量！
-  // 此时浏览器可能把页面卷动了，测出来的 top 是错的（通常是 0）。
-  // 我们要信任键盘弹出前最后一次测量的结果。
-  if (isInputFocused.value)
-    return
-
   if (!props.isEditing) {
     autoTopOffset.value = 0
     return
@@ -52,7 +49,15 @@ function measureTopOffset() {
 
   if (rootRef.value) {
     const rect = rootRef.value.getBoundingClientRect()
-    autoTopOffset.value = Math.max(0, rect.top)
+    const currentTop = Math.max(0, rect.top)
+
+    // 🔥 核心逻辑：如果在聚焦状态下测得 top 为 0，
+    // 且当前是 iOS 环境，这极大概率是键盘弹出导致的视口偏移，而非 Header 真的消失了。
+    // 此时应拒绝更新，保留上一次的有效值。
+    if (isInputFocused.value && currentTop === 0 && isIOS)
+      return
+
+    autoTopOffset.value = currentTop
   }
 }
 const cachedWeather = ref<string | null>(null)
@@ -88,10 +93,6 @@ onMounted(() => {
 })
 
 const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-
-// 平台判定（尽量保守）
-const UA = navigator.userAgent.toLowerCase()
-const isIOS = /iphone|ipad|ipod/.test(UA)
 
 // iOS：仅“首次输入”需要一点额外冗余，露出后立刻关闭
 const iosFirstInputLatch = ref(false)
@@ -666,17 +667,32 @@ function clearDraft() {
   }
 }
 
-// 初次挂载：尝试恢复
-onMounted(() => {
+// 找到 onMounted，替换为：
+onMounted(async () => {
   checkAndPromptDraft()
+  // 1. 初始尝试测量
+  measureTopOffset()
+
+  // 2. 也是为了保险，等一帧
+  await nextTick()
+  measureTopOffset()
 
   if (props.isEditing) {
-    if (!showDraftPrompt.value)
-      focusToEnd()
+    // 🔥🔥🔥 核心修复：延迟聚焦 🔥🔥🔥
+    // iOS 页面转场/渲染需要时间。如果立即聚焦，键盘动画和转场混在一起，
+    // 会导致我们在测出正确的 Header 高度之前，页面就已经被顶到 0 了。
+    // 给它 100ms，让 header 先“落位”，测出数值（比如 90），然后再弹键盘。
+    setTimeout(() => {
+      // 聚焦前最后一测，确保拿到正确高度
+      measureTopOffset()
+      // 如果此时 autoTopOffset 还是 0，说明真的可能是 0，或者还得等，但通常 100ms 够了
+      if (!showDraftPrompt.value)
+        focusToEnd()
+    }, 100) // 100ms 足够让肉眼无感，但让布局稳定
   }
   else {
+    // 新建笔记逻辑保持不变
     weatherPromise = fetchWeatherLine()
-
     if (weatherPromise) {
       weatherPromise.then((res) => {
         cachedWeather.value = res
@@ -686,8 +702,10 @@ onMounted(() => {
       })
     }
   }
-})
 
+  // 兜底定时器可以保留
+  setTimeout(measureTopOffset, 300)
+})
 // 内容变化：400ms 节流保存
 watch(() => contentModel.value, () => {
   if (!props.enableDrafts)
