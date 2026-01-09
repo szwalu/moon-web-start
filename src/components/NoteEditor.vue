@@ -36,6 +36,34 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
+const isPWA = ref(false)
+// 测量函数：只在编辑模式下生效
+function measureTopOffset() {
+  // 1. 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
+  if (!props.isEditing) {
+    autoTopOffset.value = 0
+    return
+  }
+
+  // 2. 如果是“编辑模式”，测量一下自己距离屏幕顶部有多远
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    const currentTop = Math.max(0, rect.top)
+
+    // 🔥🔥🔥 核心修复：针对 iOS PWA 首次弹出键盘的修正 🔥🔥🔥
+    // 原理：当键盘首次弹出时，iOS PWA 往往会暴力将页面顶到最顶端 (rect.top = 0)。
+    // 如果我们之前已经测算出一个有效的顶部距离 (autoTopOffset.value > 10)，
+    // 而这次突然变成了 0，这通常是浏览器的视口跳动，而非用户真的把 Header 滚没了。
+    // 此时强行保留上一次的正确高度，防止输入框“窜”进刘海区。
+    const isIOSDevice = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
+    if (isPWA.value && isIOSDevice && currentTop === 0 && autoTopOffset.value > 10) {
+      // 保持原值，不更新为 0
+      return
+    }
+
+    autoTopOffset.value = currentTop
+  }
+}
 
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
@@ -58,24 +86,6 @@ const pinnedTags = ref<string[]>([])
 function isPinned(tag: string) {
   return pinnedTags.value.includes(tag)
 }
-const isPWA = ref(false)
-
-// 找到 measureTopOffset 函数，用下面的代码替换
-function measureTopOffset() {
-  // 🟢 核心修改：如果是 PWA 且正在输入（键盘弹出），强制归零！
-  // 这能解决“底部被顶得较高”的问题，因为不再错误地减去顶部的距离了。
-  if (!props.isEditing || (isPWA.value && isInputFocused.value)) {
-    autoTopOffset.value = 0
-    return
-  }
-
-  // 下面是原有的浏览模式逻辑，保持不变
-  if (rootRef.value) {
-    const rect = rootRef.value.getBoundingClientRect()
-    autoTopOffset.value = Math.max(0, rect.top)
-  }
-}
-
 onMounted(() => {
   try {
     const raw = localStorage.getItem(PINNED_TAGS_KEY)
@@ -163,34 +173,35 @@ onUnmounted(() => {
 })
 
 // 🔥 修正版：editorHeight
-
 const editorHeight = computed(() => {
-  // 1. 键盘收起时：保持原样
+  // 1. 键盘收起时
   if (!isInputFocused.value) {
-    if (props.isEditing)
+    if (props.isEditing) {
+      // 🔥🔥🔥 核心修复：减去 autoTopOffset
+      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
+      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
       return `calc(100dvh - ${autoTopOffset.value}px)`
-
+    }
+    // 新建模式保持 80dvh (半屏弹窗)
     return '80dvh'
   }
-
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
-  // Android 逻辑保持不变
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+    // 只减去顶部的偏移（如果有），其他全部撑满
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
-  // iOS 计算键盘高度
   let keyboardH = '0px'
   if (isReallyIOS) {
     if (keyboardOffset.value !== '0px') {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底
+      // 兜底估算（仅当计算失败时）
       const screenW = window.screen.width
       const isIPad = screenW >= 740
       const isLargePhone = screenW > 420
@@ -205,16 +216,12 @@ const editorHeight = computed(() => {
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
-  // 🔥🔥🔥 核心修复 2：动态扣除刘海高度 🔥🔥🔥
-  // 如果 finalTopOffset 接近 0（说明被顶到刘海区了），我们必须额外扣除安全区高度
-  // 用来给 paddingTop 腾位置。如果不扣除，加上 padding 后总高度会溢出屏幕。
-  // 44px 是标准刘海高度，也可以用 10 + 34
-  const safeAreaReduction = (isPWA.value && finalTopOffset < 10) ? 44 : 0
+  const extraReduction = props.isEditing
+    ? 0
+    : (isPWA.value ? 48 : 10)
 
-  // 额外的微调保留 (isPWA ? 48 : 10) 可能是你之前的底部安全区或Tab栏
-  const baseReduction = isPWA.value ? 48 : 10
-
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${baseReduction}px - ${safeAreaReduction}px)`
+  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
+  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
 
@@ -2261,42 +2268,19 @@ function stopFocusBoost() {
 // 在键盘弹起早期，连续重算 600~720ms，直到 vv 有明显变化或超时
 function startFocusBoost() {
   stopFocusBoost()
-  // 记录初始视口高度
-  const startVvH = window.visualViewport ? window.visualViewport.height : 0
+  const startVvH = vv ? vv.height : 0
   let ticks = 0
-
   focusBoostTimer = window.setInterval(() => {
     ticks++
-
-    // 🔥🔥🔥 核心修复 1：实时测量 Top 值 🔥🔥🔥
-    // 不管浏览器怎么推页面，我们只信赖当前的物理位置。
-    // 如果浏览器把页面推到了刘海区，rect.top 会变成 0，autoTopOffset 也会随之更新为 0。
-    if (rootRef.value) {
-      const rect = rootRef.value.getBoundingClientRect()
-      // 只有在键盘弹出期间(isInputFocused)才允许更新为更小的值
-      // 这样能确保 editorHeight 里的减数变小，从而高度变大，填补底部空隙
-      if (isInputFocused.value)
-        autoTopOffset.value = Math.max(0, rect.top)
-    }
-
-    // 同时也确保护键盘高度是最新的
-    updateKeyboardOffset()
     ensureCaretVisibleInTextarea()
-
     const vvNow = window.visualViewport
-    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40
-
-    // 稍微延长轮询时间到 1秒 (16 * 60ms)，确保覆盖 iOS 缓慢的滚动动画
-    if (changed || ticks >= 16) {
+    const changed = vvNow && Math.abs((vvNow.height || 0) - startVvH) >= 40 // 键盘高度变化阈值
+    if (changed || ticks >= 12) { // 12*60ms ≈ 720ms
       stopFocusBoost()
-      // 动画结束后再测一次定格
-      if (rootRef.value && isInputFocused.value) {
-        const rect = rootRef.value.getBoundingClientRect()
-        autoTopOffset.value = Math.max(0, rect.top)
-      }
     }
   }, 60)
 }
+
 function handleBeforeInput(e: InputEvent) {
   if (!isMobile)
     return
@@ -2353,7 +2337,6 @@ function handleTextareaMove(e: TouchEvent) {
     }"
     :style="{
       paddingBottom: `${bottomSafePadding}px`,
-      paddingTop: (isPWA && isInputFocused && autoTopOffset < 10) ? '44px' : '0px',
       /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
       height: editorHeight,
     }"
