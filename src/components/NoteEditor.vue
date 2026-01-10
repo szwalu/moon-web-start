@@ -104,10 +104,16 @@ const isAndroid = /Android|Adr/i.test(navigator.userAgent)
 const keyboardOffset = ref('0px')
 let baseHeight = 0 // 用于存储键盘未弹出时的视口高度
 
-// 🔥 修改版：updateKeyboardOffset
+// 🔥 新增：响应式的 visualViewport 高度
+const visualViewportHeight = ref(typeof window !== 'undefined' && window.visualViewport ? window.visualViewport.height : 0)
+
+// 修改 updateKeyboardOffset 函数，顺便更新这个高度
 function updateKeyboardOffset() {
   if (!window.visualViewport)
     return
+
+  // ✅ 实时记录高度，供 computed 使用
+  visualViewportHeight.value = window.visualViewport.height
 
   const currentHeight = window.visualViewport.height
   const isIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
@@ -162,45 +168,33 @@ onUnmounted(() => {
   }
 })
 
-// 🔥 修正版：editorHeight
-// 🔥 修正版：editorHeight
+// 🔥 最终修正版：editorHeight
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
+  // 1. 键盘收起
   if (!isInputFocused.value) {
-    if (props.isEditing) {
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh
+    if (props.isEditing)
       return `calc(100dvh - ${autoTopOffset.value}px)`
-    }
-    // 新建模式保持 80dvh
     return '80dvh'
   }
 
-  // 2. 键盘弹出时
-  const currentUA = navigator.userAgent.toLowerCase()
-  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
+  const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(navigator.userAgent.toLowerCase()) && ('ontouchstart' in window)
 
-  if (!isReallyIOS && isAndroid) {
-    const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-    return `calc(100dvh - ${finalTopOffset}px)`
-  }
-
-  let keyboardH = '0px'
+  // 2. iOS 键盘弹出：直接用响应式的高度变量
   if (isReallyIOS) {
-    // ✅ 只信任实时计算的 offset
-    // 如果 visualViewport 还没变（offset 为 0），就让它先保持 0，
-    // 不要去猜一个错误的高度（fallback），否则会导致巨大的空隙。
-    if (keyboardOffset.value !== '0px')
-      keyboardH = keyboardOffset.value
+    // 这里的 visualViewportHeight.value 会随 resize 自动变小 (如 800 -> 450)
+    // 如果是新建笔记(isEditing=false)，autoTopOffset为0，高度就是 450px，完美贴合。
+    const top = props.isEditing ? autoTopOffset.value : 0
+
+    // 兜底：如果还没获取到有效高度，就用 100dvh
+    if (!visualViewportHeight.value)
+      return '100dvh'
+
+    return `${visualViewportHeight.value - top}px`
   }
 
+  // 3. Android
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-
-  // 编辑模式不减额外值，PWA/新建模式减一点
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
-
-  return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
+  return `calc(100dvh - ${finalTopOffset}px)`
 })
 const isFreezingBottom = ref(false)
 
