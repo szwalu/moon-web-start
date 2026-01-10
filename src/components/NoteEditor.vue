@@ -1211,12 +1211,6 @@ function _getScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-function getFooterHeight(): number {
-  const root = rootRef.value
-  const footerEl = root ? (root.querySelector('.editor-footer') as HTMLElement | null) : null
-  return footerEl ? footerEl.offsetHeight : 88 // 兜底
-}
-
 let _hasPushedPage = false // 只在“刚被遮挡”时推一次，避免抖
 let _lastBottomNeed = 0
 
@@ -1509,11 +1503,7 @@ function handleFocus() {
 
   // 允许再次“轻推”
   _hasPushedPage = false
-
-  // 用真实 footer 高度“临时托起”，不等 vv
-  if (!isAndroid)
-    emit('bottomSafeChange', getFooterHeight())
-
+  emit('bottomSafeChange', 0)
   // 立即一轮计算
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
@@ -2289,11 +2279,6 @@ function handleBeforeInput(e: InputEvent) {
   // iOS 首次输入：打闩，让 EXTRA 生效一轮
   if (isIOS && !iosFirstInputLatch.value)
     iosFirstInputLatch.value = true
-
-  // 预抬升：iPhone 保底 120，Android 保底 180
-  const base = getFooterHeight() + 24
-  const prelift = isAndroid ? 0 : Math.max(base, 120)
-  emit('bottomSafeChange', prelift)
 
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
