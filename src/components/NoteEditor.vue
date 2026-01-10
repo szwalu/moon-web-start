@@ -677,9 +677,6 @@ function clearDraft() {
   }
 }
 
-// 初次挂载：尝试恢复
-// src/components/NoteEditor.vue
-
 onMounted(() => {
   // 1. 尝试触发内部草稿逻辑（保留它，用于处理编辑模式的冲突弹窗）
   checkAndPromptDraft()
@@ -707,6 +704,12 @@ onMounted(() => {
         focusToEnd()
     }, 100) // 延时稍微给足一点，确保父组件传值的 props 已经稳定
   }
+
+  const preventWindowScroll = () => {
+    if (window.scrollY !== 0 || window.scrollX !== 0)
+      window.scrollTo(0, 0)
+  }
+  window.addEventListener('scroll', preventWindowScroll)
 })
 
 // 内容变化：400ms 节流保存
@@ -736,6 +739,7 @@ onUnmounted(() => {
     window.clearTimeout(draftTimer)
     draftTimer = null
   }
+  window.removeEventListener('scroll', preventWindowScroll)
 })
 
 // ============== Autosize ==============
@@ -1531,19 +1535,22 @@ function handleFocus() {
   requestAnimationFrame(() => {
     ensureCaretVisibleInTextarea()
   })
-  /*
-  if (!props.isEditing) {
-    // 加一点点延迟，覆盖掉浏览器原生的滚动行为
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop !== 0)
-        document.body.scrollTop = 0
-
-      if (document.documentElement.scrollTop !== 0)
-        document.documentElement.scrollTop = 0
-    }, 250) // 100ms 足够等待键盘动画开始，把页面按回去
+  const forceResetScroll = () => {
+    window.scrollTo(0, 0)
+    if (document.body.scrollTop !== 0)
+      document.body.scrollTop = 0
+    if (document.documentElement.scrollTop !== 0)
+      document.documentElement.scrollTop = 0
   }
-  */
+
+  // 立即执行一次
+  forceResetScroll()
+
+  // 在接下来的 400ms 内连续执行，覆盖 iOS 的动画周期
+  setTimeout(forceResetScroll, 100)
+  setTimeout(forceResetScroll, 200)
+  setTimeout(forceResetScroll, 300)
+  setTimeout(forceResetScroll, 400) // 兜底
   // 覆盖 visualViewport 延迟：iOS 稍慢、Android 稍快
   const t1 = isIOS ? 120 : 80
   window.setTimeout(() => {
