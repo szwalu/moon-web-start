@@ -19,7 +19,7 @@ import { useSettingStore } from '@/stores/setting'
 import * as S from '@/utils/settings'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 import { useOfflineSync } from '@/composables/useSync'
-
+import Sidebar from '@/components/Sidebar.vue'
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
@@ -48,7 +48,7 @@ function decryptPin(encoded: string | null) {
     return ''
   }
 }
-const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
+
 const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()

@@ -34,7 +34,6 @@ import { useSiteStore } from '@/stores/site'
 import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
-import { requestFcmToken } from '@/utils/firebase'
 import * as S from '@/utils/settings'
 import { toggleTheme } from '@/composables/theme'
 import { getText } from '@/utils'
@@ -182,10 +181,26 @@ function openThemeModal() {
 const notificationEnabled = ref(localStorage.getItem('isDailyReminderOn') === 'true')
 const notificationLoading = ref(false)
 
+// ✅ 修改后的函数如下：
 async function handleNotificationToggle(value: boolean) {
   notificationLoading.value = true
 
   if (value) {
+    // 🔥 核心修改：在这里动态引入，只有用户点击开启时才加载，防止主页崩溃
+    let requestFcmToken
+    try {
+      const module = await import('@/utils/firebase')
+      requestFcmToken = module.requestFcmToken
+    }
+    catch (e) {
+      console.error('Firebase 加载失败', e)
+      message.error('通知组件加载失败，请检查网络或配置')
+      notificationLoading.value = false
+      notificationEnabled.value = false
+      return
+    }
+
+    // 下面保持原样
     const token = await requestFcmToken()
     if (token) {
       if (props.user) {
@@ -214,6 +229,7 @@ async function handleNotificationToggle(value: boolean) {
     }
   }
   else {
+    // 关闭逻辑保持不变
     if (props.user) {
       await supabase
         .from('users')
@@ -1719,6 +1735,12 @@ onMounted(() => {
 
 .feedback-text.info {
   color: var(--sb-text-sub); /* 普通提示 */
+}
+
+/* 给 Teleport 的根容器加上层级，确保它高于 App 的 header (3000) */
+.sidebar-wrapper-root {
+  position: relative;
+  z-index: 3500;
 }
 </style>
 
