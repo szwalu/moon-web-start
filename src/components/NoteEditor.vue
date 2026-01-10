@@ -673,11 +673,13 @@ onMounted(() => {
   checkAndPromptDraft()
 
   if (props.isEditing) {
-    // 这里的自动聚焦已禁用，保留空块以维持逻辑结构
+    // 编辑模式：什么都不做（保留这个空块或注释，ESLint 不会报错）
   }
   else {
-    weatherPromise = fetchWeatherLine()
+    // === 新建笔记模式 ===
 
+    // 1. 获取天气（保留原逻辑）
+    weatherPromise = fetchWeatherLine()
     if (weatherPromise) {
       weatherPromise.then((res) => {
         cachedWeather.value = res
@@ -686,6 +688,14 @@ onMounted(() => {
         cachedWeather.value = null
       })
     }
+
+    // 2. 🔥🔥🔥 新增核心逻辑：如果没有内容（没草稿），则聚焦 🔥🔥🔥
+    // 我们用 setTimeout 给一点点缓冲，确保 checkAndPromptDraft 已经把草稿填进去了（如果有的话）
+    setTimeout(() => {
+      // 如果此时输入框还是空的，说明没有自动恢复草稿，那就聚焦并弹出键盘
+      if (!props.modelValue)
+        focusToEnd()
+    }, 50)
   }
 })
 
@@ -2236,7 +2246,7 @@ function _savePrefix(urlText: string) {
 
 defineExpose({
   reset: triggerResize,
-  focus: () => { /* 禁止外部强制聚焦 */ },
+  focus: () => { focusToEnd() },
 })
 
 let focusBoostTimer: number | null = null
