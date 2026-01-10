@@ -678,28 +678,34 @@ function clearDraft() {
 }
 
 // 初次挂载：尝试恢复
+// src/components/NoteEditor.vue
+
 onMounted(() => {
-  // 1. 先检查草稿（如果有草稿，isDraftRestored 会变成 true）
+  // 1. 尝试触发内部草稿逻辑（保留它，用于处理编辑模式的冲突弹窗）
   checkAndPromptDraft()
 
   if (props.isEditing) {
-    // 编辑模式，啥也不干
+    // 编辑模式：保持静默，不聚焦
   }
   else {
     // === 新建模式 ===
 
-    // 天气逻辑保持不变
+    // (这里原本的天气逻辑保持不变...)
     weatherPromise = fetchWeatherLine()
     if (weatherPromise)
       weatherPromise.then(res => cachedWeather.value = res).catch(() => cachedWeather.value = null)
 
-    // 🔥 简化版聚焦逻辑：
-    // 直接尝试调用聚焦。
-    // 如果刚才恢复了草稿，focusToEnd 内部的拦截器会阻止它。
-    // 如果刚才没恢复草稿，focusToEnd 就会正常执行，弹出键盘。
+    // 🔥🔥🔥 核心修正 🔥🔥🔥
+    // 不要管 checkAndPromptDraft 返回什么。
+    // 只要判断：如果 props.modelValue 里有字（无论是父组件读的，还是刚才内部恢复的），就不聚焦。
+    // 只有当它真的是空的，才聚焦。
     setTimeout(() => {
-      focusToEnd()
-    }, 50)
+      // trim() 是为了防止只有一个空格的情况也弹键盘
+      const hasContent = props.modelValue && props.modelValue.trim().length > 0
+
+      if (!hasContent)
+        focusToEnd()
+    }, 100) // 延时稍微给足一点，确保父组件传值的 props 已经稳定
   }
 })
 

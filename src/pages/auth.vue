@@ -577,7 +577,11 @@ function openComposer() {
   headerCollapsed.value = false
   isEditorActive.value = true
   compactWhileTyping.value = true
-  nextTick(() => (newNoteEditorRef.value as any)?.focus?.())
+  nextTick(() => {
+    // 只有当内容为空（既不是编辑旧笔记，也没恢复出草稿）时，才自动弹键盘
+    if (!newNoteContent.value || !newNoteContent.value.trim())
+      (newNoteEditorRef.value as any)?.focus?.()
+  })
 }
 // App.vue Script 区域
 
