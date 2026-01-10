@@ -163,54 +163,43 @@ onUnmounted(() => {
 })
 
 // 🔥 修正版：editorHeight
+// 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
   // 1. 键盘收起时
   if (!isInputFocused.value) {
     if (props.isEditing) {
-      // 🔥🔥🔥 核心修复：减去 autoTopOffset
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
-      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
+      // 主页时 autoTopOffset 为 0，高度就是 100dvh
       return `calc(100dvh - ${autoTopOffset.value}px)`
     }
-    // 新建模式保持 80dvh (半屏弹窗)
+    // 新建模式保持 80dvh
     return '80dvh'
   }
+
   // 2. 键盘弹出时
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-    // 只减去顶部的偏移（如果有），其他全部撑满
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
   let keyboardH = '0px'
   if (isReallyIOS) {
-    if (keyboardOffset.value !== '0px') {
+    // ✅ 只信任实时计算的 offset
+    // 如果 visualViewport 还没变（offset 为 0），就让它先保持 0，
+    // 不要去猜一个错误的高度（fallback），否则会导致巨大的空隙。
+    if (keyboardOffset.value !== '0px')
       keyboardH = keyboardOffset.value
-    }
-    else {
-      // 兜底估算（仅当计算失败时）
-      const screenW = window.screen.width
-      const isIPad = screenW >= 740
-      const isLargePhone = screenW > 420
-      let fallback = isPWA.value ? '435px' : '290px'
-      if (isIPad)
-        fallback = isPWA.value ? '460px' : '380px'
-      else if (isLargePhone)
-        fallback = isPWA.value ? '480px' : '335px'
-      keyboardH = fallback
-    }
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
 
+  // 编辑模式不减额外值，PWA/新建模式减一点
   const extraReduction = props.isEditing
     ? 0
     : (isPWA.value ? 48 : 10)
 
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
