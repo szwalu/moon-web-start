@@ -341,13 +341,13 @@ function handleDiscardDraft() {
 
 function checkAndPromptDraft() {
   if (!props.enableDrafts)
-    return
+    return false // 🔴 改动：返回 false
   const key = draftStorageKey.value
   if (!key)
-    return
+    return false // 🔴 改动：返回 false
   const raw = localStorage.getItem(key)
   if (!raw)
-    return
+    return false // 🔴 改动：返回 false
 
   let tVal = ''
   try {
@@ -360,10 +360,9 @@ function checkAndPromptDraft() {
 
   // 只有内容不一致时才需要处理
   if (tVal && tVal !== props.modelValue) {
-    // ✅ 核心修改：如果是“新建笔记”（没有 noteId），直接静默覆盖，不弹窗
+    // 如果是“新建笔记”（没有 noteId），直接静默覆盖
     if (!props.noteId) {
       emit('update:modelValue', tVal)
-      // 顺便触发一下高度调整，确保排版正确
       nextTick(() => {
         try {
           triggerResize?.()
@@ -372,17 +371,20 @@ function checkAndPromptDraft() {
           // ignore
         }
       })
-      return
+      return true // 🟢 新增：明确告诉外部，我恢复了草稿！
     }
 
-    // 🛑 如果是“编辑已有笔记”（有 noteId），仍然保留弹窗
-    // 因为已有笔记涉及版本冲突，弹窗更安全，防止覆盖了云端拉取的内容
+    // 如果是“编辑已有笔记”
     pendingDraftText.value = tVal
     promptMode.value = 'draft'
     showDraftPrompt.value = true
     if (textarea.value)
       textarea.value.blur()
+
+    return true // 🟢 新增：明确告诉外部，我弹出了草稿提示！
   }
+
+  return false // 🔴 新增：如果内容一样或没内容，返回 false
 }
 
 // --- 安全触发文件选择 ---
@@ -670,15 +672,16 @@ function clearDraft() {
 
 // 初次挂载：尝试恢复
 onMounted(() => {
-  checkAndPromptDraft()
+  // 🔥🔥🔥 核心修改：接收返回值（true 表示有草稿操作，false 表示无）
+  const hasDraftAction = checkAndPromptDraft()
 
   if (props.isEditing) {
-    // 编辑模式：什么都不做（保留这个空块或注释，ESLint 不会报错）
+    // 编辑模式：什么都不做（之前已处理过）
   }
   else {
     // === 新建笔记模式 ===
 
-    // 1. 获取天气（保留原逻辑）
+    // 1. 获取天气
     weatherPromise = fetchWeatherLine()
     if (weatherPromise) {
       weatherPromise.then((res) => {
@@ -689,13 +692,10 @@ onMounted(() => {
       })
     }
 
-    // 2. 🔥🔥🔥 新增核心逻辑：如果没有内容（没草稿），则聚焦 🔥🔥🔥
-    // 我们用 setTimeout 给一点点缓冲，确保 checkAndPromptDraft 已经把草稿填进去了（如果有的话）
-    setTimeout(() => {
-      // 如果此时输入框还是空的，说明没有自动恢复草稿，那就聚焦并弹出键盘
-      if (!props.modelValue)
-        focusToEnd()
-    }, 50)
+    // 2. 🔥🔥🔥 聚焦逻辑修正 🔥🔥🔥
+    // 只有在“没有”执行任何草稿操作（没恢复也没弹窗）时，才聚焦
+    if (!hasDraftAction)
+      focusToEnd()
   }
 })
 
