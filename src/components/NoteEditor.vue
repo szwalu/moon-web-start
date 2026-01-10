@@ -2424,6 +2424,7 @@ function handleTextareaMove(e: TouchEvent) {
         v-if="showTagSuggestions && tagSuggestions.length"
         class="tag-suggestions"
         :style="suggestionsStyle"
+        @touchmove.stop
       >
         <ul>
           <li
@@ -3249,6 +3250,12 @@ function handleTextareaMove(e: TouchEvent) {
   max-height: 300px;
   overflow-y: auto;
   min-width: 120px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 🔥🔥🔥 新增：强制显示滚动条 (Webkit内核: iOS/Android/Chrome/Safari) 🔥🔥🔥 */
+.tag-suggestions::-webkit-scrollbar {
+  width: 4px; /* 移动端设细一点比较美观 */
 }
 .dark .tag-suggestions {
   background-color: var(--main-bg-c);
