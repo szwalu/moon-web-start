@@ -36,7 +36,7 @@ const emit = defineEmits(['update:modelValue', 'save', 'cancel', 'focus', 'blur'
 const rootRef = ref<HTMLElement | null>(null)
 // 🔥🔥🔥 新增：内部自动计算的顶部偏移量
 const autoTopOffset = ref(0)
-
+const isDraftRestored = ref(false)
 // 测量函数：只在编辑模式下生效
 function measureTopOffset() {
   // 如果是“新建笔记”（底部弹窗模式），不需要避让顶部，直接归零
@@ -257,6 +257,12 @@ function triggerResize() { /* 不需要 resize 了，因为是 CSS 控制高度 
 async function focusToEnd() {
   if (props.isEditing)
     return
+
+  if (isDraftRestored.value) {
+    isDraftRestored.value = false // 消费掉标记，保证下次用户手动点击时能正常聚焦
+    return
+  }
+
   await nextTick()
   const el = textarea.value
   if (!el)
@@ -363,6 +369,7 @@ function checkAndPromptDraft() {
     // 如果是“新建笔记”（没有 noteId），直接静默覆盖
     if (!props.noteId) {
       emit('update:modelValue', tVal)
+      isDraftRestored.value = true
       nextTick(() => {
         try {
           triggerResize?.()
@@ -672,30 +679,27 @@ function clearDraft() {
 
 // 初次挂载：尝试恢复
 onMounted(() => {
-  // 🔥🔥🔥 核心修改：接收返回值（true 表示有草稿操作，false 表示无）
-  const hasDraftAction = checkAndPromptDraft()
+  // 1. 先检查草稿（如果有草稿，isDraftRestored 会变成 true）
+  checkAndPromptDraft()
 
   if (props.isEditing) {
-    // 编辑模式：什么都不做（之前已处理过）
+    // 编辑模式，啥也不干
   }
   else {
-    // === 新建笔记模式 ===
+    // === 新建模式 ===
 
-    // 1. 获取天气
+    // 天气逻辑保持不变
     weatherPromise = fetchWeatherLine()
-    if (weatherPromise) {
-      weatherPromise.then((res) => {
-        cachedWeather.value = res
-      }).catch((e) => {
-        console.warn('[天气] 异步出错:', e)
-        cachedWeather.value = null
-      })
-    }
+    if (weatherPromise)
+      weatherPromise.then(res => cachedWeather.value = res).catch(() => cachedWeather.value = null)
 
-    // 2. 🔥🔥🔥 聚焦逻辑修正 🔥🔥🔥
-    // 只有在“没有”执行任何草稿操作（没恢复也没弹窗）时，才聚焦
-    if (!hasDraftAction)
+    // 🔥 简化版聚焦逻辑：
+    // 直接尝试调用聚焦。
+    // 如果刚才恢复了草稿，focusToEnd 内部的拦截器会阻止它。
+    // 如果刚才没恢复草稿，focusToEnd 就会正常执行，弹出键盘。
+    setTimeout(() => {
       focusToEnd()
+    }, 50)
   }
 })
 
