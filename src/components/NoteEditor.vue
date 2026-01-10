@@ -255,6 +255,8 @@ const input = computed({
 function triggerResize() { /* 不需要 resize 了，因为是 CSS 控制高度 */ }
 // —— 进入编辑时把光标聚焦到末尾（并做一轮滚动/安全区校准）
 async function focusToEnd() {
+  if (props.isEditing)
+    return
   await nextTick()
   const el = textarea.value
   if (!el)
@@ -671,8 +673,7 @@ onMounted(() => {
   checkAndPromptDraft()
 
   if (props.isEditing) {
-    if (!showDraftPrompt.value)
-      focusToEnd()
+    // 这里的自动聚焦已禁用，保留空块以维持逻辑结构
   }
   else {
     weatherPromise = fetchWeatherLine()
@@ -701,20 +702,12 @@ watch(() => contentModel.value, () => {
   }, DRAFT_SAVE_DELAY) as unknown as number
 })
 
-// 进入编辑态：把光标移到末端并聚焦
-watch(() => props.isEditing, (v) => {
-  if (v && !showDraftPrompt.value)
-    focusToEnd()
-})
-
 // 如果组件一挂载就处于编辑态，也执行一次
 onMounted(() => {
   measureTopOffset()
 
   // 保险起见，稍后由动画稳定后再测一次
   setTimeout(measureTopOffset, 300)
-  if (props.isEditing)
-    focusToEnd()
 })
 
 // 组件卸载：收尾
@@ -2243,7 +2236,7 @@ function _savePrefix(urlText: string) {
 
 defineExpose({
   reset: triggerResize,
-  focus: () => { focusToEnd() },
+  focus: () => { /* 禁止外部强制聚焦 */ },
 })
 
 let focusBoostTimer: number | null = null
