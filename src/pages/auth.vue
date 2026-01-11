@@ -3778,7 +3778,7 @@ function onCalendarUpdated(updated: any) {
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 1.5rem; /* 安全修改：仅移除底部的 0.75rem padding */
+  padding: 0 1.5rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -3786,8 +3786,21 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
+  /* 🔥 核心修复开始 🔥 */
+  /* 1. 锁死高度，不许伸缩 */
+  height: 100%;
   min-height: 100%;
-  overflow: visible;
+
+  /* 2. 底部归零，不要内边距 */
+  padding-bottom: 0 !important;
+
+  /* 3. 【关键】用负边距把容器拉长，覆盖住 iPhone 底部的黑色/灰色区域 */
+  margin-bottom: calc(-1 * env(safe-area-inset-bottom)) !important;
+
+  /* 4. 这里的 overflow 必须是 hidden，配合内部列表滚动 */
+  overflow: hidden;
+  /* 🔥 核心修复结束 🔥 */
+
   position: relative;
 }
 .dark .auth-container {
@@ -3801,17 +3814,20 @@ function onCalendarUpdated(updated: any) {
   flex-basis: 0;
   position: relative;
 
-  /* 🔥 修改点 1：由 hidden 改为 auto，让它负责滚动 */
+  /* 🔥 核心修复开始 🔥 */
+  /* 1. 开启垂直滚动 */
   overflow-y: auto;
-  /* 确保占满剩余空间 */
+
+  /* 2. 确保高度填满 */
   height: 100%;
 
-  /* 🔥 修改点 2：底部加透明 Padding，高度 = 按钮(50) + 间距(20) + 安全区 */
+  /* 3. 底部增加透明缓冲区：按钮高度(50) + 间距(30) + 安全区 */
+  /* 这样最后一条笔记能滚上来，不会被 + 号或黑条挡住 */
   padding-bottom: calc(80px + env(safe-area-inset-bottom));
 
-  /* 关键：背景设为透明，否则 Padding 会显示颜色 */
-  background-color: transparent;
+  /* 4. 关键：确保 padding 不会撑破容器宽度 */
   box-sizing: border-box;
+  /* 🔥 核心修复结束 🔥 */
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
@@ -4268,6 +4284,7 @@ selection-actions-banner,
 /* ++ 新增：“回到顶部”按钮的样式 ++ */
 .scroll-top-button {
   position: fixed;
+  bottom: 158px;
   right: 20px;
   z-index: 5000;
 
@@ -4287,7 +4304,6 @@ selection-actions-banner,
 
   cursor: pointer;
   transition: background-color 0.2s ease, transform 0.2s ease;
-  bottom: calc(83px + env(safe-area-inset-bottom));
 }
 
 .scroll-top-button:hover {
@@ -4341,6 +4357,7 @@ selection-actions-banner,
 .fab-add {
   position: fixed;
   right: 20px;
+  bottom: 60px;
   z-index: 5000;
 
   width: 48px;
@@ -4371,7 +4388,6 @@ selection-actions-banner,
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
   transform: translateY(-7px);
-  bottom: calc(20px + env(safe-area-inset-bottom));
 }
 .fab-add:hover { transform: translateY(-3px); }
 .fab-add:active { transform: scale(0.96); }
@@ -4527,13 +4543,16 @@ selection-actions-banner,
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 1. 下拉菜单样式（保持不变） */
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom)) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom) - 16px) !important;
   overflow: auto !important;
@@ -4541,58 +4560,58 @@ selection-actions-banner,
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
+
+/* 子菜单项紧凑一些 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
+
+/* 让“设置”下面的二级菜单整体再向左挪一点 */
 .n-dropdown-menu .submenu-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: -9px;
+  margin-left: -9px; /* 调整这个数值大小以控制左移距离，比如 -6px/-10px */
 }
+
+/* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70dvh !important;
   }
 }
-.n-dropdown-menu .menu-caret {
-  display: inline-block;
-  transition: transform .15s ease;
-  transform: translateY(1px);
-}
-.n-dropdown-menu .menu-caret.rot90 {
-  transform: translateY(1px) rotate(90deg);
-}
 
-/* 2. 核心变量 */
+/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px;
+  --header-base: 44px; /* 头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
-  --app-bg: #fff; /* 浅色默认 */
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 3. 🔥🔥🔥 核心修复：还原为旧版的“视口锁死”策略 🔥🔥🔥 */
+/* 统一页面背景 + 核心视口锁死 */
 html, body {
   width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
 
-  /* 关键：锁死滚动，由内部容器负责滚动 */
+  /* 🔥 关键 1: 禁止根节点滚动 */
   overflow: hidden !important;
 
-  /* 关键：强制固定，防止 iOS 键盘或弹窗推挤导致露出背景 */
+  /* 🔥 关键 2: 固定定位 (Fixed) 是防止 iOS 键盘推挤 viewport 的唯一真神 */
   position: fixed;
   top: 0;
   left: 0;
 
+  /* 禁止橡皮筋效果 */
   overscroll-behavior: none;
+
   background: var(--app-bg);
 }
 
+/* 让 Vue 挂载点填满，并接管背景色 */
 #app {
   width: 100%;
   height: 100%;
@@ -4600,18 +4619,13 @@ html, body {
   background: var(--app-bg);
 }
 
-/* 4. 容器修复：确保占满 100% 高度并压入安全区 */
+/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-  /* 顶部避让刘海 */
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-
-  /* 🔥 底部归零（消除灰条的关键） */
   padding-bottom: 0 !important;
-
-  /* 🔥 负 Margin 压入安全区（旧版的核心技巧） */
   margin-bottom: calc(-1 * var(--safe-bottom)) !important;
 
-  /* 强制占满父容器 */
+  /* ✅ 必须继承高度，配合 fixed body 撑满屏幕 */
   height: 100%;
 
   overscroll-behavior-y: contain;
@@ -4621,14 +4635,28 @@ html, body {
   border-bottom-right-radius: 0 !important;
 }
 
-/* 头部和横幅定位 */
+/* Sticky 头部下移 safe-top */
 .auth-container .page-header {
   top: var(--safe-top) !important;
   height: var(--header-base) !important;
   padding-top: 0.5rem !important;
 }
+
+/* 二级横幅、搜索栏跟随 header-height */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
+}
+
+:root { --app-bg: #fff; }         /* ✅ 浅色默认 */
+.dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
+
+.n-dropdown-menu .menu-caret {
+  display: inline-block;
+  transition: transform .15s ease;
+  transform: translateY(1px);
+}
+.n-dropdown-menu .menu-caret.rot90 {
+  transform: translateY(1px) rotate(90deg);
 }
 </style>
