@@ -138,6 +138,8 @@ settings:
   notification_enabled: 毎日のリマインダーを有効にしました
   notification_cancel: リマインダーを無効にしました
   notification_permission_denied: 有効にできません：ブラウザの通知権限を確認してください
+  reminder_time_title: リマインド時刻を設定
+  daily_reminder_hint: 毎日この時刻にローカル通知が送信されます。
 
 messages:
   tip: ヒント
@@ -521,6 +523,9 @@ notes:
   batch_tag_success: '{count} 件のメモにタグを追加しました'
   batch_tag_error: '操作が部分的に失敗しました: {msg}'
   all_data: すべてのノート
+  daily_reminder_title: 📝 Time for your daily note
+  daily_reminder_body: Even a single sentence is worth capturing today’s highlights.
+  back: ノートに戻る
 
   comment:
     trigger: 📝 感想や追記を記録

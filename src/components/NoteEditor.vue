@@ -200,7 +200,7 @@ const editorHeight = computed(() => {
 
       const extraReduction = props.isEditing
         ? '0px'
-        : 'calc(env(safe-area-inset-bottom) + 15px)'
+        : 'calc(env(safe-area-inset-bottom) + 9px)'
 
       // 注意：这里把 extraReduction 直接拼接到字符串里
       return `calc(100vh - ${finalTop}px - ${nativeKeyboardHeight.value}px - ${extraReduction})`
@@ -2926,14 +2926,7 @@ function handleTextareaMove(e: TouchEvent) {
     transition: none; /* 键盘弹起时不要过渡动画，防止卡顿 */
   }
 }
-.note-editor-reborn:focus-within {
-  border-color: #00b386;
-  box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.1);
-}
-.dark .note-editor-reborn {
-  background-color: var(--main-bg-c);
-  border-color: #48484a;
-}
+
 .dark .note-editor-reborn:focus-within {
   border-color: #00b386;
   box-shadow: 0 0 0 3px rgba(0, 179, 134, 0.2);
@@ -3046,9 +3039,9 @@ function handleTextareaMove(e: TouchEvent) {
 /* ——— 新增：统一尺寸（高度 & 宽度） ——— */
 .btn-primary,
 .btn-secondary {
-  padding: 3px 9px;
-  min-width: 54px;
-  height: 28px;
+  padding: 0px 8px;
+  min-width: 50px;
+  height: 24px;
   box-sizing: border-box;
   border-radius: 6px;
   font-size: 13px;
@@ -3061,15 +3054,15 @@ function handleTextareaMove(e: TouchEvent) {
   justify-content: space-between;
 
   /* 原来可能写的 8px 太少了，改成 20px 或更多 */
-  padding: 4px 10px;
+  padding: 2px 10px;
 
   /* 🔥 核心修改：加大基础间距 */
   /* 解释：env(safe-area...) 是系统保留区，前面加的 24px 是为了防止浏览器底部栏遮挡的额外保险距离 */
   padding-bottom: calc(-20px + constant(safe-area-inset-bottom));
   padding-bottom: calc(-20px + env(safe-area-inset-bottom));
 
-  background-color: #fff;
-  border-top: 1px solid #eee;
+  background-color: #f9f9f9;
+  border-top: 1px solid none;
   z-index: 100;
   flex-shrink: 0;
 

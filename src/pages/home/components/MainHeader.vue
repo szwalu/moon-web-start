@@ -161,7 +161,7 @@ async function handleSettingsClick() {
         <div
           v-if="showBackTip"
           class="bubble-tip"
-          @click.prevent.stop="closeTip"
+          @click="closeTip"
         >
           {{ $t('notes.back_to_notes') }}
         </div>

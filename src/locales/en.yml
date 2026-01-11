@@ -138,6 +138,8 @@ settings:
   notification_enabled: Daily reminder enabled
   notification_cancel: Reminder disabled
   notification_permission_denied: Unable to enable!please check browser notification permissions
+  reminder_time_title: Set reminder time
+  daily_reminder_hint: Local notifications will be sent at this time every day.
 
 messages:
   tip: Tip
@@ -522,6 +524,9 @@ notes:
   batch_tag_success: 'Successfully added tags to {count} notes'
   batch_tag_error: 'Operation partially failed: {msg}'
   all_data: All notes
+  daily_reminder_title: 📝 Time for your daily note
+  daily_reminder_body: Even a single sentence is worth capturing today’s highlights.
+  back: Back to Notes
 
   comment:
     trigger: 📝 Record thoughts or add follow-up

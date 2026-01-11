@@ -26,11 +26,13 @@ import {
 } from 'lucide-vue-next'
 
 import { NButton, NCard, NInput, NModal, NSelect, NSpace, NSwitch, NText, useMessage } from 'naive-ui'
-import { useSettingStore } from '@/stores/setting'
+import { Capacitor } from '@capacitor/core'
+import { LocalNotifications } from '@capacitor/local-notifications'
 
 // 引入 SiteStore 获取书签数据用于上传
+import { useRouter } from 'vue-router'
 import { useSiteStore } from '@/stores/site'
-
+import { useSettingStore } from '@/stores/setting'
 import StatsDetail from '@/components/StatsDetail.vue'
 import { supabase } from '@/utils/supabaseClient'
 
@@ -65,7 +67,7 @@ const emit = defineEmits(['close', 'menuClick'])
 const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
 const SALT = 'cloud-notes-salt-8848-xyz-' // ⚠️ 确保这个字符串和 Home.vue 里完全一致！
 const statusMessage = ref('')
-
+const router = useRouter()
 function encryptPin(pin: string) {
   if (!pin)
     return ''
@@ -180,65 +182,155 @@ function openThemeModal() {
 // ===========================================================================
 const notificationEnabled = ref(localStorage.getItem('isDailyReminderOn') === 'true')
 const notificationLoading = ref(false)
+const showReminderModal = ref(false)
+// ✅ 修复：确保时间格式永远是 HH:mm (例如 08:45)，否则原生 input 可能不显示
+const rawTime = localStorage.getItem('dailyReminderTime') || '08:45'
+function formatTime(t: string) {
+  if (!t.includes(':'))
+    return '08:00'
+  const [h, m] = t.split(':')
+  // 补齐前导零 (8:5 -> 08:05)
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
+}
+const reminderTime = ref(formatTime(rawTime))
 
-// ✅ 修改后的函数如下：
-async function handleNotificationToggle(value: boolean) {
+// 监听变化，实时存入本地 (可选，或者只在点击保存时存)
+watch(reminderTime, (val) => {
+  if (val)
+    localStorage.setItem('dailyReminderTime', val)
+})
+
+// ✨ 新增：打开设置弹窗（仅限 App 端）
+function handleReminderClick() {
+  if (Capacitor.isNativePlatform()) {
+    showReminderModal.value = true
+  }
+}
+
+// ✨ 新增：保存时间并重新调度通知
+async function saveReminderTime() {
+  // 1. 保存到本地存储
+  localStorage.setItem('dailyReminderTime', reminderTime.value)
+
+  // 2. 关闭弹窗
+  showReminderModal.value = false
+
+  // 3. 如果当前是开启状态，重新调度通知（传入 silent=true，防止再次弹窗）
+  if (notificationEnabled.value) {
+    await handleNotificationToggle(true, true) // 🔥 关键：加了第二个参数 true
+  }
+}
+// ✨ 修改：通知切换逻辑
+// 增加 silent 参数：如果为 true，说明是后台更新时间，不需要弹出设置框
+async function handleNotificationToggle(value: boolean, silent = false) {
   notificationLoading.value = true
 
   if (value) {
-    // 🔥 核心修改：在这里动态引入，只有用户点击开启时才加载，防止主页崩溃
-    let requestFcmToken
-    try {
-      const module = await import('@/utils/firebase')
-      requestFcmToken = module.requestFcmToken
-    }
-    catch (e) {
-      console.error('Firebase 加载失败', e)
-      message.error('通知组件加载失败，请检查网络或配置')
-      notificationLoading.value = false
-      notificationEnabled.value = false
-      return
-    }
+    // ===========================
+    // 📱 场景 A: 原生 App (使用本地通知)
+    // ===========================
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const permResult = await LocalNotifications.requestPermissions()
+        if (permResult.display !== 'granted') {
+          throw new Error('通知权限被拒绝')
+        }
 
-    // 下面保持原样
-    const token = await requestFcmToken()
-    if (token) {
-      if (props.user) {
-        const { error } = await supabase
-          .from('users')
-          .update({ fcm_token: token })
-          .eq('id', props.user.id)
+        // 1. 取消旧的通知
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }] })
 
-        if (!error) {
+        // 2. 解析当前设定的时间 (格式处理)
+        // 确保格式为 HH:mm，防止原生 input 格式不兼容
+        const timeStr = reminderTime.value.includes(':') ? reminderTime.value : '08:45'
+        const [h, m] = timeStr.split(':').map(Number)
+
+        // 3. 计算触发时间
+        const triggerTime = new Date()
+        triggerTime.setHours(h, m, 0, 0)
+        if (new Date() >= triggerTime) {
+          triggerTime.setDate(triggerTime.getDate() + 1)
+        }
+
+        // 4. 调度通知
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title: t('notes.daily_reminder_title') || '📝 每日笔记时间到',
+              body: t('notes.daily_reminder_body') || '即使只有一句话，也要记录下今天的闪光点。',
+              id: 1001,
+              schedule: {
+                at: triggerTime,
+                every: 'day',
+                allowWhileIdle: true,
+              },
+              sound: 'beep.wav',
+              channelId: 'default',
+            },
+          ],
+        })
+
+        // 5. 更新状态
+        notificationEnabled.value = true
+        localStorage.setItem('isDailyReminderOn', 'true')
+
+        // 🔥 核心修改：如果是手动点击开关打开 (silent=false)，则立即弹出时间设置框供用户确认
+        if (!silent) {
+          showReminderModal.value = true
+        }
+        else {
+          // 只有在静默更新（比如点击保存按钮）时才提示成功，避免开启时双重打扰
+          message.success(`${t('settings.notification_enabled') || '每日提醒已开启'} (${reminderTime.value})`)
+        }
+      }
+      catch (e) {
+        console.error('本地通知设置失败', e)
+        message.error('无法开启通知，请检查手机权限')
+        notificationEnabled.value = false
+      }
+    }
+    // ===========================
+    // 🌐 场景 B: 网页/PWA
+    // ===========================
+    else {
+      // (网页版逻辑保持不变，通常不需要弹窗选时间，或者您可以按需加上)
+      try {
+        const module = await import('@/utils/firebase')
+        const requestFcmToken = module.requestFcmToken
+        const token = await requestFcmToken()
+
+        if (token && props.user) {
+          await supabase.from('users').update({ fcm_token: token }).eq('id', props.user.id)
           notificationEnabled.value = true
           localStorage.setItem('isDailyReminderOn', 'true')
           message.success(t('settings.notification_enabled') || '每日提醒已开启')
         }
         else {
-          console.error('保存 Token 失败:', error)
-          message.error('开启失败，请稍后重试')
-          notificationEnabled.value = false
+          throw new Error('无法获取 Web 推送权限')
         }
       }
-    }
-    else {
-      notificationEnabled.value = false
-      message.warning(
-        t('settings.notification_permission_denied') || '无法开启：请检查浏览器通知权限',
-      )
+      catch (e) {
+        console.error(e)
+        message.warning('网页通知开启失败，请检查浏览器设置')
+        notificationEnabled.value = false
+      }
     }
   }
+  // ===========================
+  // 📴 关闭通知
+  // ===========================
   else {
-    // 关闭逻辑保持不变
-    if (props.user) {
-      await supabase
-        .from('users')
-        .update({ fcm_token: null })
-        .eq('id', props.user.id)
+    if (Capacitor.isNativePlatform()) {
+      await LocalNotifications.cancel({ notifications: [{ id: 1001 }] })
     }
+    else {
+      if (props.user) {
+        await supabase.from('users').update({ fcm_token: null }).eq('id', props.user.id)
+      }
+    }
+
     notificationEnabled.value = false
     localStorage.setItem('isDailyReminderOn', 'false')
-    message.success(t('settings.notification_cancel') || '提醒已关闭')
+    // 关闭时也无需弹出任何弹窗
   }
 
   notificationLoading.value = false
@@ -842,7 +934,14 @@ function handleItemClick(key: string) {
 }
 
 function goToLinksSite() {
-  window.location.assign('/?from=notes')
+  // 关闭侧边栏
+  emit('close')
+
+  // 触发菜单点击事件（保持逻辑完整）
+  emit('menuClick', 'link-site')
+
+  // ✅ 核心：跳转到包含 Iframe 的那个页面
+  router.push('/links')
 }
 
 const showStatsDetail = ref(false)
@@ -989,11 +1088,19 @@ onMounted(() => {
                 <UserIcon :size="18" /><span>{{ t('auth.account_title') }}</span>
               </div>
 
-              <div class="menu-item sub" style="justify-content: space-between; cursor: default;" @click.stop>
+              <div
+                class="menu-item sub"
+                style="justify-content: space-between; cursor: pointer;"
+                @click="handleReminderClick"
+              >
                 <div style="display: flex; align-items: center; gap: 16px;">
                   <Bell :size="18" />
                   <span>{{ t('settings.daily_reminder') || '每日提醒' }}</span>
+                  <span v-if="Capacitor.isNativePlatform()" style="font-size: 12px; opacity: 0.5; margin-left: 4px;">
+                    {{ reminderTime }}
+                  </span>
                 </div>
+
                 <div style="margin-right: -4px;" @click.stop>
                   <NSwitch
                     v-model:value="notificationEnabled"
@@ -1150,6 +1257,55 @@ onMounted(() => {
                 :color="headerStyle['--header-bg-start']" @click="showThemeModal = false"
               >
                 {{ t('button.confirm') || 'OK' }}
+              </NButton>
+            </div>
+          </NSpace>
+        </NCard>
+      </NModal>
+
+      <NModal v-model:show="showReminderModal">
+        <NCard
+          style="width: 90%; max-width: 350px;"
+          :title="t('settings.reminder_time_title') || '设置提醒时间'"
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+          closable
+          @close="showReminderModal = false"
+        >
+          <NSpace vertical align="center">
+            <div style="margin: 20px 0; display: flex; justify-content: center;">
+              <input
+                v-model="reminderTime"
+                type="time"
+                style="
+      appearance: none;
+      border: 1px solid rgba(100, 100, 100, 0.2);
+      background: rgba(125, 125, 125, 0.05);
+      border-radius: 12px;
+      padding: 12px 32px;
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--sb-text);
+      outline: none;
+      font-family: monospace;
+      text-align: center;
+    "
+              >
+            </div>
+
+            <NText depth="3" style="font-size: 12px; text-align: center; display: block;">
+              {{ t('settings.daily_reminder_hint') || '将在每天的这个时间发送本地通知' }}
+            </NText>
+
+            <div style="display: flex; justify-content: flex-end; width: 100%; margin-top: 12px;">
+              <NButton
+                type="primary"
+                :color="headerStyle['--header-bg-start']"
+                @click="saveReminderTime"
+              >
+                {{ t('button.save') || '保存' }}
               </NButton>
             </div>
           </NSpace>

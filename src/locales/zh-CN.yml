@@ -138,6 +138,8 @@ settings:
   notification_enabled: 每日提醒已开启
   notification_cancel: 提醒已关闭
   notification_permission_denied: 无法开启：请检查浏览器通知权限
+  reminder_time_title: 设置提醒时间
+  daily_reminder_hint: 将在每天的这个时间发送本地通知
 
 messages:
   tip: 提示
@@ -516,6 +518,9 @@ notes:
   batch_tag_success: '成功为 {count} 条笔记添加了标签'
   batch_tag_error: '操作部分失败: {msg}'
   all_data: 全部笔记
+  daily_reminder_title: 📝 每日笔记时间到
+  daily_reminder_body: 即使只有一句话，也要记录下今天的闪光点。
+  back: 返回笔记
 
   comment:
     trigger: 📝记录感想或续记
