@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.kunming.notes',
-  appName: 'MyNotes',
+  appName: '星云笔记',
   webDir: 'dist', // <--- 重点1：确保这里是 dist
   server: {
     androidScheme: 'https',
@@ -11,7 +11,9 @@ const config: CapacitorConfig = {
   plugins: {
     Keyboard: {
       accessoryBarVisible: false, // 这一行去掉白条
-      resize: 'body', // 让页面高度随键盘自动适应
+      resize: 'none',
+      style: 'LIGHT', // 或 LIGHT
+      resizeOnFullScreen: true,
     },
   },
 }

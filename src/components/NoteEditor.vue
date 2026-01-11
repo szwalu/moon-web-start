@@ -3,9 +3,12 @@ import { computed, defineExpose, h, nextTick, onMounted, onUnmounted, ref, watch
 
 import { NInput, useDialog } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { Capacitor } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
 import { useSettingStore } from '@/stores/setting'
 import { supabase } from '@/utils/supabaseClient'
 
+// 引入键盘插件
 // —— 天气映射（用于城市名映射与图标）——
 import { cityMap, weatherMap } from '@/utils/weatherMap'
 
@@ -53,13 +56,16 @@ function measureTopOffset() {
     autoTopOffset.value = Math.max(0, rect.top)
   }
 }
-
+// 🔥 新增：Native 环境下的键盘高度
+const nativeKeyboardHeight = ref(0)
+const isNative = Capacitor.isNativePlatform() // 判断是否是原生 App
 const isInputFocused = ref(false)
 const cachedWeather = ref<string | null>(null)
 let weatherPromise: Promise<string | null> | null = null
 const { t } = useI18n()
 const bottomSafePadding = ref(0)
 const dialog = useDialog()
+
 const draftStorageKey = computed(() => {
   if (!props.enableDrafts)
     return null
@@ -153,6 +159,21 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', updateKeyboardOffset)
     window.visualViewport.addEventListener('scroll', updateKeyboardOffset)
   }
+
+  if (isNative) {
+    Keyboard.addListener('keyboardWillShow', (info) => {
+      // 获取原生键盘高度
+      nativeKeyboardHeight.value = info.keyboardHeight
+      // 强制触发一次滚动检查，防止光标被挡住
+      requestAnimationFrame(() => {
+        ensureCaretVisibleInTextarea()
+      })
+    })
+
+    Keyboard.addListener('keyboardWillHide', () => {
+      nativeKeyboardHeight.value = 0
+    })
+  }
 })
 
 onUnmounted(() => {
@@ -160,28 +181,55 @@ onUnmounted(() => {
     window.visualViewport.removeEventListener('resize', updateKeyboardOffset)
     window.visualViewport.removeEventListener('scroll', updateKeyboardOffset)
   }
+
+  if (isNative)
+    Keyboard.removeAllListeners()
 })
 
 // 🔥 修正版：editorHeight
 const editorHeight = computed(() => {
-  // 1. 键盘收起时
-  if (!isInputFocused.value) {
-    if (props.isEditing) {
-      // 🔥🔥🔥 核心修复：减去 autoTopOffset
-      // 主页时 autoTopOffset 为 0，高度就是 100dvh，没影响。
-      // 日历时 autoTopOffset 是顶部距离（如 120px），高度自动减小，底部就露出来了。
-      return `calc(100dvh - ${autoTopOffset.value}px)`
+  // ============================================
+  // 🚀 Native App (Capacitor) 专用逻辑
+  // ============================================
+  if (isNative) {
+    // 1. 只要键盘弹起 (nativeKeyboardHeight > 0)
+    //    无论是新建还是编辑，都强制把高度撑满 (100vh)，以获得最大输入视野。
+    //    配合 template 里的 padding-bottom，工具栏会稳稳地贴在键盘上方。
+    if (nativeKeyboardHeight.value > 0) {
+      const finalTop = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+
+      const extraReduction = props.isEditing
+        ? '0px'
+        : 'calc(env(safe-area-inset-bottom) + 15px)'
+
+      // 注意：这里把 extraReduction 直接拼接到字符串里
+      return `calc(100vh - ${finalTop}px - ${nativeKeyboardHeight.value}px - ${extraReduction})`
     }
-    // 新建模式保持 80dvh (半屏弹窗)
+
+    // 2. 键盘收起 + 编辑模式 -> 正常全屏 (减去顶部避让)
+    if (props.isEditing)
+      return `calc(100vh - ${autoTopOffset.value}px)`
+
+    // 3. 键盘收起 + 新建模式 -> 保持 80vh 半屏 (经典的底部弹窗样式)
+    return '80vh'
+  }
+
+  // ============================================
+  // 🍂 下面是原有的 PWA 逻辑 (完全保持不变)
+  // ============================================
+
+  if (!isInputFocused.value) {
+    if (props.isEditing)
+      return `calc(100dvh - ${autoTopOffset.value}px)`
+
     return '80dvh'
   }
-  // 2. 键盘弹出时
+
   const currentUA = navigator.userAgent.toLowerCase()
   const isReallyIOS = /iphone|ipad|ipod|macintosh/.test(currentUA) && isMobile
 
   if (!isReallyIOS && isAndroid) {
     const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
-    // 只减去顶部的偏移（如果有），其他全部撑满
     return `calc(100dvh - ${finalTopOffset}px)`
   }
 
@@ -191,26 +239,20 @@ const editorHeight = computed(() => {
       keyboardH = keyboardOffset.value
     }
     else {
-      // 兜底估算（仅当计算失败时）
       const screenW = window.screen.width
       const isIPad = screenW >= 740
-      const isLargePhone = screenW > 420
       let fallback = isPWA.value ? '435px' : '290px'
       if (isIPad)
         fallback = isPWA.value ? '460px' : '380px'
-      else if (isLargePhone)
+      else if (screenW > 420)
         fallback = isPWA.value ? '480px' : '335px'
       keyboardH = fallback
     }
   }
 
   const finalTopOffset = props.topOffset > 0 ? props.topOffset : autoTopOffset.value
+  const extraReduction = props.isEditing ? 0 : (isPWA.value ? 48 : 10)
 
-  const extraReduction = props.isEditing
-    ? 0
-    : (isPWA.value ? 48 : 10)
-
-  // 公式：100dvh - 键盘 - 顶部偏移 - 新建模式的额外扣除
   return `calc(100dvh - ${keyboardH} - ${finalTopOffset}px - ${extraReduction}px)`
 })
 const isFreezingBottom = ref(false)
@@ -2346,9 +2388,17 @@ function handleTextareaMove(e: TouchEvent) {
       'is-focused': isInputFocused,
     }"
     :style="{
-      paddingBottom: `${bottomSafePadding}px`,
-      /* ✅✅✅ 修改：无论新建还是编辑，统统听 editorHeight 的指挥 */
+      /* 1. 键盘弹起时，Padding 归零 */
+      paddingBottom: (isNative && nativeKeyboardHeight > 0) ? '0px' : `${bottomSafePadding}px`,
+
+      /* 2. 应用新的高度 */
       height: editorHeight,
+
+      /* 🔥🔥🔥 必须确保这一行存在！🔥🔥🔥
+         当键盘弹起时，强制取消 margin-top: auto，让窗口顶头对齐。
+         否则算出来的窗口虽然高度对了，但位置还在屏幕最下面（被键盘挡住）。
+      */
+      marginTop: (isNative && nativeKeyboardHeight > 0) ? '0px' : '',
     }"
     @click.stop
     @touchmove.prevent
@@ -2571,8 +2621,7 @@ function handleTextareaMove(e: TouchEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.image_dialog.title')"
-            @mousedown.prevent
-            @click="onPickImageSync"
+            @click.stop="onPickImageSync"
           >
             <svg
               class="icon-20"
@@ -2620,15 +2669,18 @@ function handleTextareaMove(e: TouchEvent) {
       </div>
 
       <div class="actions">
-        <button type="button" class="btn-secondary" @mousedown.prevent @click="emit('cancel')">
+        <button
+          type="button"
+          class="btn-secondary"
+          @pointerdown.stop.prevent="emit('cancel')"
+        >
           {{ t('notes.editor.save.button_cancel') }}
         </button>
         <button
           type="button"
           class="btn-primary"
           :disabled="isLoading || isSubmitting || !contentModel"
-          @mousedown.prevent
-          @click="handleSave"
+          @pointerdown.stop.prevent="handleSave"
         >
           {{ t('notes.editor.save.button_save') }}
         </button>
@@ -2825,11 +2877,11 @@ function handleTextareaMove(e: TouchEvent) {
   position: relative !important;
 
   /* 2. 只有这行 min-height 是为了防止小屏幕溢出 */
-  min-height: 200px !important;
+ min-height: 200px !important;
 
   /* 3. 去掉过渡，响应更干脆 */
   transition: none;
-  max-height: none !important;
+   max-height: none !important;
 }
 
 /* 作用：当在非 Android 设备上，且键盘收起时，强制恢复 90% 高度限制，避免撑满屏幕 */
