@@ -4571,7 +4571,7 @@ selection-actions-banner,
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: -9px; /* 调整这个数值大小以控制左移距离，比如 -6px/-10px */
+  margin-left: -9px;
 }
 
 /* 移动端给子菜单更多空间 */
@@ -4590,44 +4590,21 @@ selection-actions-banner,
 }
 .dark :root { --app-bg: #1e1e1e; }
 
-/* 统一页面背景 + 核心视口锁死 */
-html, body {
-  width: 100%;
-  height: 100%;
+/* 统一页面背景 */
+html, body, #app {
+  min-height: 100svh;
+  min-height: 100dvh;
+  min-height: 100lvh;
+  min-height: calc(var(--vh, 1vh) * 100);
   margin: 0;
-  padding: 0;
-
-  /* 🔥 关键 1: 禁止根节点滚动 */
-  overflow: hidden !important;
-
-  /* 🔥 关键 2: 固定定位 (Fixed) 是防止 iOS 键盘推挤 viewport 的唯一真神 */
-  position: fixed;
-  top: 0;
-  left: 0;
-
-  /* 禁止橡皮筋效果 */
-  overscroll-behavior: none;
-
-  background: var(--app-bg);
-}
-
-/* 让 Vue 挂载点填满，并接管背景色 */
-#app {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
   background: var(--app-bg);
 }
 
 /* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;
-  margin-bottom: calc(-1 * var(--safe-bottom)) !important;
-
-  /* ✅ 必须继承高度，配合 fixed body 撑满屏幕 */
-  height: 100%;
-
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
   overscroll-behavior-y: contain;
   background: var(--app-bg);
   position: relative;
