@@ -19,7 +19,7 @@ import { useSettingStore } from '@/stores/setting'
 import * as S from '@/utils/settings'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 import { useOfflineSync } from '@/composables/useSync'
-import Sidebar from '@/components/Sidebar.vue'
+
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
@@ -48,7 +48,7 @@ function decryptPin(encoded: string | null) {
     return ''
   }
 }
-
+const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
 const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
@@ -3778,7 +3778,7 @@ function onCalendarUpdated(updated: any) {
 .auth-container {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0 1.5rem; /* 安全修改：仅移除底部的 0.75rem padding */
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
@@ -3786,21 +3786,8 @@ function onCalendarUpdated(updated: any) {
   display: flex;
   flex-direction: column;
 
-  /* 🔥 核心修复开始 🔥 */
-  /* 1. 锁死高度，不许伸缩 */
-  height: 100%;
   min-height: 100%;
-
-  /* 2. 底部归零，不要内边距 */
-  padding-bottom: 0 !important;
-
-  /* 3. 【关键】用负边距把容器拉长，覆盖住 iPhone 底部的黑色/灰色区域 */
-  margin-bottom: calc(-1 * env(safe-area-inset-bottom)) !important;
-
-  /* 4. 这里的 overflow 必须是 hidden，配合内部列表滚动 */
-  overflow: hidden;
-  /* 🔥 核心修复结束 🔥 */
-
+  overflow: visible;
   position: relative;
 }
 .dark .auth-container {
@@ -3812,22 +3799,8 @@ function onCalendarUpdated(updated: any) {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
+  overflow-y: hidden;
   position: relative;
-
-  /* 🔥 核心修复开始 🔥 */
-  /* 1. 开启垂直滚动 */
-  overflow-y: auto;
-
-  /* 2. 确保高度填满 */
-  height: 100%;
-
-  /* 3. 底部增加透明缓冲区：按钮高度(50) + 间距(30) + 安全区 */
-  /* 这样最后一条笔记能滚上来，不会被 + 号或黑条挡住 */
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
-
-  /* 4. 关键：确保 padding 不会撑破容器宽度 */
-  box-sizing: border-box;
-  /* 🔥 核心修复结束 🔥 */
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
@@ -4541,9 +4514,10 @@ selection-actions-banner,
 </style>
 
 <style>
-/* === 全局样式修正版 === */
+/* === 全局样式（非 scoped）=== */
 
-/* 1. 下拉菜单基础设置 (保持不变) */
+/* 先“清零”所有根级下拉菜单的限制：不出现滚动条不限制高度 */
+/* 让根层菜单也能滚动，避免太长溢出屏幕 */
 .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom)) !important;
   overflow: auto !important;
@@ -4551,6 +4525,7 @@ selection-actions-banner,
   -webkit-overflow-scrolling: touch;
 }
 
+/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom) - 16px) !important;
   overflow: auto !important;
@@ -4559,94 +4534,73 @@ selection-actions-banner,
   padding-right: 4px;
 }
 
+/* 子菜单项紧凑一些 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
 
+/* 让“设置”下面的二级菜单整体再向左挪一点 */
 .n-dropdown-menu .submenu-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: -9px;
+  margin-left: -9px; /* 调整这个数值大小以控制左移距离，比如 -6px/-10px */
 }
 
+/* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70dvh !important;
   }
 }
 
-/* 2. ✅ 保留关键变量 (修复页眉乱套的核心) */
+/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px;
+  --header-base: 44px; /* 头部高度 */
   --header-height: calc(var(--header-base) + var(--safe-top));
-  --app-bg: #fff; /* 浅色默认背景 */
 }
-.dark :root { --app-bg: #1e1e1e; } /* 深色默认背景 */
+.dark :root { --app-bg: #1e1e1e; }
 
-/* 3. ✅ 恢复自然滚动流 (消除灰色页脚的核心) */
-html, body {
-  width: 100%;
-  /* 🔥 关键改动：从 height:100% 改为 min-height，允许撑开 */
+/* 统一页面背景 */
+html, body, #app {
   min-height: 100svh;
+  min-height: 100dvh;
+  min-height: 100lvh;
+  min-height: calc(var(--vh, 1vh) * 100);
   margin: 0;
-  padding: 0;
-
-  /* 🔥 关键改动：允许滚动，去掉 hidden 和 fixed */
-  overflow-y: auto;
-  position: static;
-
   background: var(--app-bg);
-  -webkit-overflow-scrolling: touch;
 }
 
-#app {
-  width: 100%;
-  min-height: 100svh;
-  background: var(--app-bg);
-  /* 去掉 overflow: hidden，允许内容溢出 */
-}
-
-/* 4. ✅ 容器样式融合 */
+/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
 .auth-container {
-  /* 顶部避让刘海 */
   padding-top: calc(0.5rem + var(--safe-top)) !important;
-
-  /* 🔥 关键改动：让容器高度至少占满屏幕，背景色就会铺满底部 */
-  min-height: 100svh;
-  height: auto !important; /* 解除锁死 */
-
-  /* 底部处理：不再使用负 margin，而是确保背景延伸 */
-  padding-bottom: calc(1rem + var(--safe-bottom)) !important;
-  margin-bottom: 0 !important;
-
+  padding-bottom: 0 !important;                                  /* 不占位 */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
+  overscroll-behavior-y: contain;
   background: var(--app-bg);
+  position: relative;
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
 }
 
-/* 5. ✅ 页眉定位修正 (配合变量) */
+/* Sticky 头部下移 safe-top */
 .auth-container .page-header {
-  /* 必须使用 sticky 才能在 body 滚动时吸顶 */
-  position: -webkit-sticky !important;
-  position: sticky !important;
-
-  /* 修正位置 */
   top: var(--safe-top) !important;
   height: var(--header-base) !important;
   padding-top: 0.5rem !important;
-  z-index: 3000;
 }
 
-/* 二级横幅跟随 */
+/* 二级横幅、搜索栏跟随 header-height */
 .search-bar-container,
 .selection-actions-banner {
   top: var(--header-height) !important;
 }
 
-/* 菜单小箭头 */
+:root { --app-bg: #fff; }         /* ✅ 浅色默认 */
+.dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
+
 .n-dropdown-menu .menu-caret {
   display: inline-block;
   transition: transform .15s ease;
