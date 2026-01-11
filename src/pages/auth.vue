@@ -19,7 +19,7 @@ import { useSettingStore } from '@/stores/setting'
 import * as S from '@/utils/settings'
 import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, readNotesSnapshot, saveNotesSnapshot } from '@/utils/offline-db'
 import { useOfflineSync } from '@/composables/useSync'
-
+import Sidebar from '@/components/Sidebar.vue'
 import HelpDialog from '@/components/HelpDialog.vue'
 import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
@@ -48,7 +48,7 @@ function decryptPin(encoded: string | null) {
     return ''
   }
 }
-const Sidebar = defineAsyncComponent(() => import('@/components/Sidebar.vue'))
+
 const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
@@ -3799,8 +3799,19 @@ function onCalendarUpdated(updated: any) {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0;
-  overflow-y: hidden;
   position: relative;
+
+  /* 🔥 修改点 1：由 hidden 改为 auto，让它负责滚动 */
+  overflow-y: auto;
+  /* 确保占满剩余空间 */
+  height: 100%;
+
+  /* 🔥 修改点 2：底部加透明 Padding，高度 = 按钮(50) + 间距(20) + 安全区 */
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+
+  /* 关键：背景设为透明，否则 Padding 会显示颜色 */
+  background-color: transparent;
+  box-sizing: border-box;
 }
 .new-note-editor-container {
   padding-top: 0.5rem;
@@ -4257,7 +4268,6 @@ selection-actions-banner,
 /* ++ 新增：“回到顶部”按钮的样式 ++ */
 .scroll-top-button {
   position: fixed;
-  bottom: 158px;
   right: 20px;
   z-index: 5000;
 
@@ -4277,6 +4287,7 @@ selection-actions-banner,
 
   cursor: pointer;
   transition: background-color 0.2s ease, transform 0.2s ease;
+  bottom: calc(83px + env(safe-area-inset-bottom));
 }
 
 .scroll-top-button:hover {
@@ -4330,7 +4341,6 @@ selection-actions-banner,
 .fab-add {
   position: fixed;
   right: 20px;
-  bottom: 60px;
   z-index: 5000;
 
   width: 48px;
@@ -4361,6 +4371,7 @@ selection-actions-banner,
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
   transform: translateY(-7px);
+  bottom: calc(20px + env(safe-area-inset-bottom));
 }
 .fab-add:hover { transform: translateY(-3px); }
 .fab-add:active { transform: scale(0.96); }
@@ -4516,16 +4527,13 @@ selection-actions-banner,
 <style>
 /* === 全局样式（非 scoped）=== */
 
-/* 先“清零”所有根级下拉菜单的限制：不出现滚动条不限制高度 */
-/* 让根层菜单也能滚动，避免太长溢出屏幕 */
+/* 1. 下拉菜单样式（保持不变） */
 .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom)) !important;
   overflow: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
-
-/* 子菜单的滚动限制 */
 .n-dropdown-menu .n-dropdown-menu {
   max-height: calc(100dvh - var(--header-height) - var(--safe-bottom) - 16px) !important;
   overflow: auto !important;
@@ -4533,74 +4541,20 @@ selection-actions-banner,
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
-
-/* 子菜单项紧凑一些 */
 .n-dropdown-menu .n-dropdown-menu .n-dropdown-option {
   line-height: 1.2;
 }
-
-/* 让“设置”下面的二级菜单整体再向左挪一点 */
 .n-dropdown-menu .submenu-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: -9px; /* 调整这个数值大小以控制左移距离，比如 -6px/-10px */
+  margin-left: -9px;
 }
-
-/* 移动端给子菜单更多空间 */
 @media (max-width: 768px) {
   .n-dropdown-menu .n-dropdown-menu {
     max-height: 70dvh !important;
   }
 }
-
-/* 全局：定义安全区变量（iOS PWA 刘海/状态栏） */
-:root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --header-base: 44px; /* 头部高度 */
-  --header-height: calc(var(--header-base) + var(--safe-top));
-}
-.dark :root { --app-bg: #1e1e1e; }
-
-/* 统一页面背景 */
-html, body, #app {
-  min-height: 100svh;
-  min-height: 100dvh;
-  min-height: 100lvh;
-  min-height: calc(var(--vh, 1vh) * 100);
-  margin: 0;
-  background: var(--app-bg);
-}
-
-/* 容器整体：顶部留 safe-top，底部用负 margin 压进安全区 */
-.auth-container {
-  padding-top: calc(0.5rem + var(--safe-top)) !important;
-  padding-bottom: 0 !important;                                  /* 不占位 */
-  margin-bottom: calc(-1 * var(--safe-bottom)) !important;        /* 直接压进安全区，遮住 home 栏 */
-  overscroll-behavior-y: contain;
-  background: var(--app-bg);
-  position: relative;
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-}
-
-/* Sticky 头部下移 safe-top */
-.auth-container .page-header {
-  top: var(--safe-top) !important;
-  height: var(--header-base) !important;
-  padding-top: 0.5rem !important;
-}
-
-/* 二级横幅、搜索栏跟随 header-height */
-.search-bar-container,
-.selection-actions-banner {
-  top: var(--header-height) !important;
-}
-
-:root { --app-bg: #fff; }         /* ✅ 浅色默认 */
-.dark :root { --app-bg: #1e1e1e; }/* ✅ 深色覆写 */
-
 .n-dropdown-menu .menu-caret {
   display: inline-block;
   transition: transform .15s ease;
@@ -4608,5 +4562,73 @@ html, body, #app {
 }
 .n-dropdown-menu .menu-caret.rot90 {
   transform: translateY(1px) rotate(90deg);
+}
+
+/* 2. 核心变量 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-base: 44px;
+  --header-height: calc(var(--header-base) + var(--safe-top));
+  --app-bg: #fff; /* 浅色默认 */
+}
+.dark :root { --app-bg: #1e1e1e; }
+
+/* 3. 🔥🔥🔥 核心修复：还原为旧版的“视口锁死”策略 🔥🔥🔥 */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+
+  /* 关键：锁死滚动，由内部容器负责滚动 */
+  overflow: hidden !important;
+
+  /* 关键：强制固定，防止 iOS 键盘或弹窗推挤导致露出背景 */
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  overscroll-behavior: none;
+  background: var(--app-bg);
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--app-bg);
+}
+
+/* 4. 容器修复：确保占满 100% 高度并压入安全区 */
+.auth-container {
+  /* 顶部避让刘海 */
+  padding-top: calc(0.5rem + var(--safe-top)) !important;
+
+  /* 🔥 底部归零（消除灰条的关键） */
+  padding-bottom: 0 !important;
+
+  /* 🔥 负 Margin 压入安全区（旧版的核心技巧） */
+  margin-bottom: calc(-1 * var(--safe-bottom)) !important;
+
+  /* 强制占满父容器 */
+  height: 100%;
+
+  overscroll-behavior-y: contain;
+  background: var(--app-bg);
+  position: relative;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+/* 头部和横幅定位 */
+.auth-container .page-header {
+  top: var(--safe-top) !important;
+  height: var(--header-base) !important;
+  padding-top: 0.5rem !important;
+}
+.search-bar-container,
+.selection-actions-banner {
+  top: var(--header-height) !important;
 }
 </style>
