@@ -1,0 +1,3 @@
+"NSMicrophoneUsageDescription" = "We need access to the microphone to record voice notes.";
+
+"CFBundleDisplayName" = "Nebula Notes";

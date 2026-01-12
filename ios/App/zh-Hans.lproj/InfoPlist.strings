@@ -1,0 +1,5 @@
+/* 这里的 Key 必须和 Info.plist 里的 Key 一模一样 */
+"NSMicrophoneUsageDescription" = "我们需要访问麦克风以录制语音笔记";
+
+/* 如果你想把 App 的名字也国际化 */
+"CFBundleDisplayName" = "星云笔记";

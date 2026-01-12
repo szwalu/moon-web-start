@@ -1022,7 +1022,7 @@ onMounted(() => {
                       // 1. LocalStorage (同步，极快，必须做)
                       localStorage.setItem(CACHE_KEYS.HOME, JSON.stringify(notes.value))
                       localStorage.setItem(CACHE_KEYS.HOME_META, JSON.stringify({ totalNotes: totalNotes.value }))
-
+                      localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
                       // 2. 🔥【关键修改】IndexedDB (异步，去掉 await)
                       // 不要让这里的 I/O 阻塞后续代码执行，尤其是不要阻塞 loadAnniversaryNotes
                       saveNotesSnapshot(notes.value).catch(e => console.warn('后台快照保存失败', e))
@@ -2304,6 +2304,7 @@ async function fetchNotes(arg?: boolean | { reset?: boolean; silent?: boolean })
     if (reset) {
       notes.value = newNotes
       totalNotes.value = typeof count === 'number' ? count : totalNotes.value
+      localStorage.removeItem(CACHE_KEYS.CALENDAR_ALL_DATES)
     }
     else {
       // 追加时做一次去重，避免 prefetch / 手动加载造成重复
