@@ -2869,6 +2869,14 @@ function handleTextareaMove(e: TouchEvent) {
   overscroll-behavior: none;
 }
 
+.dark .note-editor-reborn {
+  /* 方案 A：如果你想和底部工具栏颜色一致（推荐） */
+  background-color: var(--main-bg-c, #101014);
+
+  /* 方案 B：如果你想要一个特定的深灰色 */
+  /* background-color: #18181c; */
+}
+
 /* --- 场景 B：键盘弹出时 (输入态) --- */
 .note-editor-reborn.is-focused {
   /* 高度已经由 style 绑定控制了，这里不需要写 height */
