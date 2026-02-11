@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "U6MTFHRZW2.com.kunming.notes",
+        "paths": ["*"]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["U6MTFHRZW2.com.kunming.notes"]
+  }
+}
