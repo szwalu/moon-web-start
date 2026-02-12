@@ -45,7 +45,7 @@ const showDataBackup = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
 const logoError = ref(false)
-
+const isBlockedForWeb = ref(false)
 const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
 const isLocked = ref(false)
 const lockCode = ref('')
@@ -3393,7 +3393,7 @@ function onCalendarUpdated(updated: any) {
       </div>
     </div>
 
-    <template v-if="user || !authResolved">
+    <template v-if="(user || !authResolved) && !isBlockedForWeb">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
@@ -4487,6 +4487,48 @@ selection-actions-banner,
   color: #666;
 }
 
+.dark .block-desc {
+  color: #bbb;
+}
+
+/* ✅✅✅ [新增] 遮罩层样式 */
+.web-block-overlay {
+  position: fixed; /* 强制固定全屏 */
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--app-bg); /* 跟随主题背景 */
+  z-index: 9999; /* 层级最高，盖住一切 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-content {
+  text-align: center;
+  padding: 2rem;
+  background: rgba(128, 128, 128, 0.1);
+  border-radius: 12px;
+  width: 80%;
+  max-width: 300px;
+}
+
+.block-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+.dark .block-title {
+  color: #fff;
+}
+
+.block-desc {
+  font-size: 15px;
+  opacity: 0.8;
+  color: #666;
+}
 .dark .block-desc {
   color: #bbb;
 }
