@@ -1,7 +1,7 @@
 {
-  "name": "我abc网址导航",
-  "short_name": "我abc",
-  "start_url": "/",
+  "name": "星云笔记",
+  "short_name": "星云笔记",
+  "start_url": "/auth",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
