@@ -21,7 +21,6 @@ import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, rea
 import { useOfflineSync } from '@/composables/useSync'
 import Sidebar from '@/components/Sidebar.vue'
 import HelpDialog from '@/components/HelpDialog.vue'
-import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
 
 const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
@@ -52,14 +51,10 @@ function decryptPin(encoded: string | null) {
 const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
-const showActivation = ref(false)
-const canDismissActivation = ref(false)
 const DataBackup = defineAsyncComponent(() => import('@/components/DataBackup.vue'))
 const showDataBackup = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
-const isUserActivated = ref(false)
-const daysRemaining = ref(7)
 const logoError = ref(false)
 
 const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
@@ -98,11 +93,6 @@ function shouldLock(): boolean {
 // ✅ [新增] 更新最后活跃时间
 function updateLastActive() {
   localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()))
-}
-
-function onActivationSuccess() {
-  showActivation.value = false
-  window.location.reload()
 }
 
 const { manualSync: _manualSync } = useOfflineSync()
@@ -3207,40 +3197,35 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   // 处理来自 Sidebar 的点击事件
-  if (key === 'all-notes') {
+  if (key === 'all-notes')
     handleBackToHomeGlobal()
-  }
-  else if (key === 'toggleSelection') {
+
+  else if (key === 'toggleSelection')
     toggleSelectionMode()
-  }
-  else if (key === 'settings') {
+
+  else if (key === 'settings')
     showSettingsModal.value = true
-  }
-  else if (key === 'export') {
+
+  else if (key === 'export')
     showDataBackup.value = true
-  }
-  else if (key === 'account') {
+
+  else if (key === 'account')
     showAccountModal.value = true
-  }
-  else if (key === 'randomRoam') {
+
+  else if (key === 'randomRoam')
     showRandomRoam.value = true
-  }
-  else if (key === 'trash') {
+
+  else if (key === 'trash')
     showTrashModal.value = true
-  }
-  else if (key === 'help') {
+
+  else if (key === 'help')
     showHelpDialog.value = true
-  }
-  else if (key === 'activation') {
-    canDismissActivation.value = true
-    showActivation.value = true
-  }
-  else if (key === 'defaultCity') {
+
+  else if (key === 'defaultCity')
     showCitySelectionDialog.value = true
-  }
-  else if (key === 'feedback') {
+
+  else if (key === 'feedback')
     window.location.href = '/apply?from=auth'
-  }
 }
 
 async function handleBackToHomeGlobal() {
@@ -3756,16 +3741,6 @@ function onCalendarUpdated(updated: any) {
         @close="showTrashModal = false"
         @restored="handleTrashRestored"
         @purged="handleTrashPurged"
-      />
-
-      <ActivationModal
-        :show="showActivation"
-        :allow-close="canDismissActivation"
-        :activated="isUserActivated"
-        :days-remaining="daysRemaining"
-        :theme-color="currentThemeColor"
-        @close="showActivation = false"
-        @success="onActivationSuccess"
       />
     </template>
     <template v-else>
