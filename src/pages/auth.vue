@@ -100,105 +100,6 @@ function updateLastActive() {
   localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()))
 }
 
-watch(user, async (currentUser) => {
-  if (currentUser) {
-    // ---------------------------------------------------------
-    // 1. 基础状态重置 & 计算试用期 (用于激活弹窗)
-    // ---------------------------------------------------------
-    logoError.value = false
-    const registeredAt = new Date(currentUser.created_at)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    const TRIAL_DAYS = 7
-    daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 1: 优先读取本地缓存 (支持离线/断网秒开锁屏)
-    // ---------------------------------------------------------
-    try {
-      const cachedEncrypted = localStorage.getItem(LOCK_CACHE_KEY)
-      if (cachedEncrypted) {
-        const plainPin = decryptPin(cachedEncrypted) // 🔐 解密
-
-        // 只有解密出有效的 4 位数字才认为是有效密码
-        if (plainPin && /^\d{4}$/.test(plainPin)) {
-          lockCode.value = plainPin
-
-          // ✅ [超时判断]：只有在“应该锁”的时候才锁
-          if (shouldLock()) {
-            isLocked.value = true
-          }
-          else {
-            // 没超时，自动放行，并刷新活跃时间，算作一次活跃
-            isLocked.value = false
-            updateLastActive()
-          }
-        }
-      }
-    }
-    catch (e) {
-      console.warn('读取本地锁屏缓存失败', e)
-    }
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 2: 发起网络请求 (同步最新状态并刷新缓存)
-    // ---------------------------------------------------------
-    const { data, error } = await supabase
-      .from('users')
-      .select('is_active, app_lock_code, app_lock_timeout') // ✅ 记得查 app_lock_timeout
-      .eq('id', currentUser.id)
-      .single()
-
-    // 2.1 更新激活状态
-    isUserActivated.value = (data && data.is_active === true)
-
-    // 2.2 同步应用锁状态
-    if (data) {
-      if (data.app_lock_code) {
-        // A. 服务器有密码：同步到内存
-        if (!lockCode.value) {
-          lockCode.value = data.app_lock_code
-          // 如果刚才缓存没命中，这里也要做一次超时判断
-          if (shouldLock())
-            isLocked.value = true
-        }
-
-        // B. 同步密码到本地缓存
-        const newEncrypted = encryptPin(data.app_lock_code)
-        if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
-          localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
-
-        // ✅ C. 同步超时设置到本地缓存
-        const serverTimeout = String(data.app_lock_timeout || 0)
-        if (localStorage.getItem(LOCK_TIMEOUT_KEY) !== serverTimeout)
-          localStorage.setItem(LOCK_TIMEOUT_KEY, serverTimeout)
-      }
-      else {
-        // D. 服务器没密码 (用户在别处取消了)：强制解锁并清理本地
-        isLocked.value = false
-        lockCode.value = ''
-        localStorage.removeItem(LOCK_CACHE_KEY)
-        localStorage.removeItem(LOCK_TIMEOUT_KEY)
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 3: 处理激活弹窗逻辑 (保留原有逻辑)
-    // ---------------------------------------------------------
-    // 如果请求出错，或者数据为空，或者 is_active 不为 true
-    if (error || !data || data.is_active !== true) {
-      if (diffDays <= TRIAL_DAYS) {
-        canDismissActivation.value = true // 试用期内可关闭
-      }
-      else {
-        canDismissActivation.value = false // 试用期过，强制弹窗
-        showActivation.value = true
-      }
-    }
-  }
-}, { immediate: true })
-
 function onActivationSuccess() {
   showActivation.value = false
   window.location.reload()
@@ -768,6 +669,105 @@ function tryClearBadge() {
     console.warn('清除红点失败', e)
   }
 }
+
+watch(user, async (currentUser) => {
+  if (currentUser) {
+    // ---------------------------------------------------------
+    // 1. 基础状态重置 & 计算试用期 (用于激活弹窗)
+    // ---------------------------------------------------------
+    logoError.value = false
+    const registeredAt = new Date(currentUser.created_at)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    const TRIAL_DAYS = 7
+    daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
+
+    // ---------------------------------------------------------
+    // 🔥 步骤 1: 优先读取本地缓存 (支持离线/断网秒开锁屏)
+    // ---------------------------------------------------------
+    try {
+      const cachedEncrypted = localStorage.getItem(LOCK_CACHE_KEY)
+      if (cachedEncrypted) {
+        const plainPin = decryptPin(cachedEncrypted) // 🔐 解密
+
+        // 只有解密出有效的 4 位数字才认为是有效密码
+        if (plainPin && /^\d{4}$/.test(plainPin)) {
+          lockCode.value = plainPin
+
+          // ✅ [超时判断]：只有在“应该锁”的时候才锁
+          if (shouldLock()) {
+            isLocked.value = true
+          }
+          else {
+            // 没超时，自动放行，并刷新活跃时间，算作一次活跃
+            isLocked.value = false
+            updateLastActive()
+          }
+        }
+      }
+    }
+    catch (e) {
+      console.warn('读取本地锁屏缓存失败', e)
+    }
+
+    // ---------------------------------------------------------
+    // 🔥 步骤 2: 发起网络请求 (同步最新状态并刷新缓存)
+    // ---------------------------------------------------------
+    const { data, error } = await supabase
+      .from('users')
+      .select('is_active, app_lock_code, app_lock_timeout') // ✅ 记得查 app_lock_timeout
+      .eq('id', currentUser.id)
+      .single()
+
+    // 2.1 更新激活状态
+    isUserActivated.value = (data && data.is_active === true)
+
+    // 2.2 同步应用锁状态
+    if (data) {
+      if (data.app_lock_code) {
+        // A. 服务器有密码：同步到内存
+        if (!lockCode.value) {
+          lockCode.value = data.app_lock_code
+          // 如果刚才缓存没命中，这里也要做一次超时判断
+          if (shouldLock())
+            isLocked.value = true
+        }
+
+        // B. 同步密码到本地缓存
+        const newEncrypted = encryptPin(data.app_lock_code)
+        if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
+          localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
+
+        // ✅ C. 同步超时设置到本地缓存
+        const serverTimeout = String(data.app_lock_timeout || 0)
+        if (localStorage.getItem(LOCK_TIMEOUT_KEY) !== serverTimeout)
+          localStorage.setItem(LOCK_TIMEOUT_KEY, serverTimeout)
+      }
+      else {
+        // D. 服务器没密码 (用户在别处取消了)：强制解锁并清理本地
+        isLocked.value = false
+        lockCode.value = ''
+        localStorage.removeItem(LOCK_CACHE_KEY)
+        localStorage.removeItem(LOCK_TIMEOUT_KEY)
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 🔥 步骤 3: 处理激活弹窗逻辑 (保留原有逻辑)
+    // ---------------------------------------------------------
+    // 如果请求出错，或者数据为空，或者 is_active 不为 true
+    if (error || !data || data.is_active !== true) {
+      if (diffDays <= TRIAL_DAYS) {
+        canDismissActivation.value = true // 试用期内可关闭
+      }
+      else {
+        canDismissActivation.value = false // 试用期过，强制弹窗
+        showActivation.value = true
+      }
+    }
+  }
+}, { immediate: true })
 
 onMounted(() => {
   tryClearBadge()
