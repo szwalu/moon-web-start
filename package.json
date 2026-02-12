@@ -31,17 +31,24 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@capacitor-community/media": "^8.0.1",
     "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.1",
     "@capacitor/core": "^7.4.4",
+    "@capacitor/filesystem": "^7.1.6",
+    "@capacitor/geolocation": "^7.1.7",
     "@capacitor/ios": "^7.4.4",
     "@capacitor/keyboard": "^7.0.4",
     "@capacitor/local-notifications": "^7.0.4",
+    "@capacitor/share": "^7.0.3",
+    "@capawesome/capacitor-badge": "7",
     "@milkdown/core": "^7.15.5",
     "@milkdown/plugin-listener": "^7.15.5",
     "@milkdown/preset-commonmark": "^7.15.5",
     "@milkdown/theme-nord": "^7.15.5",
     "@milkdown/vue": "^7.15.5",
     "@popperjs/core": "^2.11.8",
+    "@revenuecat/purchases-capacitor": "^11.3.2",
     "@supabase/supabase-js": "^2.75.1",
     "@tiptap/extension-character-count": "^3.3.0",
     "@tiptap/extension-focus": "^3.3.0",
@@ -66,6 +73,8 @@
     "firebase-admin": "^13.6.0",
     "html2canvas": "^1.4.1",
     "idb": "^8.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "ky": "^1.7.2",
     "lodash-es": "^4.17.21",
     "lucide-vue-next": "^0.544.0",
@@ -123,7 +132,8 @@
     "unplugin-vue-macros": "^2.6.1",
     "vite": "^4.4.11",
     "vite-plugin-pages": "^0.29.0",
-    "vite-plugin-pwa": "^1.1.0"
+    "vite-plugin-pwa": "^1.1.0",
+    "workbox-window": "^7.4.0"
   },
   "lint-staged": {
     "*": "eslint --fix"
