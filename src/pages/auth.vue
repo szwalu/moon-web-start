@@ -3386,9 +3386,9 @@ function onCalendarUpdated(updated: any) {
 
     <div v-if="isBlockedForWeb" class="web-block-overlay">
       <div class="block-content">
-        <div class="block-title">提示</div>
+        <div class="block-title">{{ $t('messages.tip') || '提示' }}</div>
         <div class="block-desc">
-          请下载“星云笔记”App 使用。
+          {{ $t('notes.download_app') || '请下载“星云笔记”App 使用' }}
         </div>
       </div>
     </div>

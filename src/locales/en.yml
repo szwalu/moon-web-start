@@ -527,6 +527,7 @@ notes:
   daily_reminder_title: 📝 Time for your daily note
   daily_reminder_body: Even a single sentence is worth capturing today’s highlights.
   back: Back to Notes
+  download_app: Please download the "Nebula Notes" app to use this feature.
 
   comment:
     trigger: 📝 Record thoughts or add follow-up
