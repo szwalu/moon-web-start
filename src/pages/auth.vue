@@ -21,7 +21,6 @@ import { isOnline, queuePendingDelete, queuePendingNote, queuePendingUpdate, rea
 import { useOfflineSync } from '@/composables/useSync'
 import Sidebar from '@/components/Sidebar.vue'
 import HelpDialog from '@/components/HelpDialog.vue'
-import ActivationModal from '@/components/ActivationModal.vue'
 import AvatarImage from '@/components/AvatarImage.vue'
 
 const LOCK_CACHE_KEY = 'app_lock_code_secure_v1'
@@ -38,30 +37,15 @@ function encryptPin(pin: string) {
   }
 }
 
-function decryptPin(encoded: string | null) {
-  if (!encoded)
-    return ''
-  try {
-    return atob(encoded).replace(SALT, '')
-  }
-  catch (e) {
-    return ''
-  }
-}
-
 const showSidebar = ref(false)
 const authStore = useAuthStore()
 const settingStore = useSettingStore()
-const showActivation = ref(false)
-const canDismissActivation = ref(false)
 const DataBackup = defineAsyncComponent(() => import('@/components/DataBackup.vue'))
 const showDataBackup = ref(false)
 const user = computed(() => authStore.user)
 const showHelpDialog = ref(false)
-const isUserActivated = ref(false)
-const daysRemaining = ref(7)
 const logoError = ref(false)
-
+const isBlockedForWeb = ref(false)
 const AppLock = defineAsyncComponent(() => import('@/components/AppLock.vue'))
 const isLocked = ref(false)
 const lockCode = ref('')
@@ -98,110 +82,6 @@ function shouldLock(): boolean {
 // ✅ [新增] 更新最后活跃时间
 function updateLastActive() {
   localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()))
-}
-
-watch(user, async (currentUser) => {
-  if (currentUser) {
-    // ---------------------------------------------------------
-    // 1. 基础状态重置 & 计算试用期 (用于激活弹窗)
-    // ---------------------------------------------------------
-    logoError.value = false
-    const registeredAt = new Date(currentUser.created_at)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - registeredAt.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    const TRIAL_DAYS = 7
-    daysRemaining.value = Math.max(0, TRIAL_DAYS - diffDays)
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 1: 优先读取本地缓存 (支持离线/断网秒开锁屏)
-    // ---------------------------------------------------------
-    try {
-      const cachedEncrypted = localStorage.getItem(LOCK_CACHE_KEY)
-      if (cachedEncrypted) {
-        const plainPin = decryptPin(cachedEncrypted) // 🔐 解密
-
-        // 只有解密出有效的 4 位数字才认为是有效密码
-        if (plainPin && /^\d{4}$/.test(plainPin)) {
-          lockCode.value = plainPin
-
-          // ✅ [超时判断]：只有在“应该锁”的时候才锁
-          if (shouldLock()) {
-            isLocked.value = true
-          }
-          else {
-            // 没超时，自动放行，并刷新活跃时间，算作一次活跃
-            isLocked.value = false
-            updateLastActive()
-          }
-        }
-      }
-    }
-    catch (e) {
-      console.warn('读取本地锁屏缓存失败', e)
-    }
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 2: 发起网络请求 (同步最新状态并刷新缓存)
-    // ---------------------------------------------------------
-    const { data, error } = await supabase
-      .from('users')
-      .select('is_active, app_lock_code, app_lock_timeout') // ✅ 记得查 app_lock_timeout
-      .eq('id', currentUser.id)
-      .single()
-
-    // 2.1 更新激活状态
-    isUserActivated.value = (data && data.is_active === true)
-
-    // 2.2 同步应用锁状态
-    if (data) {
-      if (data.app_lock_code) {
-        // A. 服务器有密码：同步到内存
-        if (!lockCode.value) {
-          lockCode.value = data.app_lock_code
-          // 如果刚才缓存没命中，这里也要做一次超时判断
-          if (shouldLock())
-            isLocked.value = true
-        }
-
-        // B. 同步密码到本地缓存
-        const newEncrypted = encryptPin(data.app_lock_code)
-        if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
-          localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
-
-        // ✅ C. 同步超时设置到本地缓存
-        const serverTimeout = String(data.app_lock_timeout || 0)
-        if (localStorage.getItem(LOCK_TIMEOUT_KEY) !== serverTimeout)
-          localStorage.setItem(LOCK_TIMEOUT_KEY, serverTimeout)
-      }
-      else {
-        // D. 服务器没密码 (用户在别处取消了)：强制解锁并清理本地
-        isLocked.value = false
-        lockCode.value = ''
-        localStorage.removeItem(LOCK_CACHE_KEY)
-        localStorage.removeItem(LOCK_TIMEOUT_KEY)
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 🔥 步骤 3: 处理激活弹窗逻辑 (保留原有逻辑)
-    // ---------------------------------------------------------
-    // 如果请求出错，或者数据为空，或者 is_active 不为 true
-    if (error || !data || data.is_active !== true) {
-      if (diffDays <= TRIAL_DAYS) {
-        canDismissActivation.value = true // 试用期内可关闭
-      }
-      else {
-        canDismissActivation.value = false // 试用期过，强制弹窗
-        showActivation.value = true
-      }
-    }
-  }
-}, { immediate: true })
-
-function onActivationSuccess() {
-  showActivation.value = false
-  window.location.reload()
 }
 
 const { manualSync: _manualSync } = useOfflineSync()
@@ -768,6 +648,71 @@ function tryClearBadge() {
     console.warn('清除红点失败', e)
   }
 }
+
+watch(user, async (currentUser) => {
+  if (currentUser) {
+    // ---------------------------------------------------------
+    // 1. 基础状态重置
+    // ---------------------------------------------------------
+    logoError.value = false
+
+    // ---------------------------------------------------------
+    // 2. 核心权限检查 (VIP / 激活状态)
+    // ---------------------------------------------------------
+    const { data } = await supabase
+      .from('users')
+      .select('is_vip, is_active, app_lock_code, app_lock_timeout')
+      .eq('id', currentUser.id)
+      .single()
+
+    // ✅ 严谨判定：只要不是 true，就统统算 false (防 null/undefined)
+    const isVip = data?.is_vip === true
+    const isActive = data?.is_active === true
+
+    // 🚫 拦截逻辑：既不是 VIP 也不是 Active，直接拦截
+    if (!isVip && !isActive) {
+      isBlockedForWeb.value = true
+
+      // 强力措施：关闭所有可能打开的交互窗口
+      showComposer.value = false
+      showSidebar.value = false
+      showSettingsModal.value = false
+    }
+    else {
+      // 通过验证，允许进入
+      isBlockedForWeb.value = false
+    }
+
+    // ---------------------------------------------------------
+    // 3. 应用锁 (AppLock) 逻辑同步
+    // ---------------------------------------------------------
+    if (data && data.app_lock_code) {
+      // A. 同步密码到本地
+      if (!lockCode.value) {
+        lockCode.value = data.app_lock_code
+        // 检查是否需要立即锁屏
+        if (shouldLock())
+          isLocked.value = true
+      }
+
+      // B. 更新缓存
+      const newEncrypted = encryptPin(data.app_lock_code)
+      if (localStorage.getItem(LOCK_CACHE_KEY) !== newEncrypted)
+        localStorage.setItem(LOCK_CACHE_KEY, newEncrypted)
+
+      const serverTimeout = String(data.app_lock_timeout || 0)
+      if (localStorage.getItem(LOCK_TIMEOUT_KEY) !== serverTimeout)
+        localStorage.setItem(LOCK_TIMEOUT_KEY, serverTimeout)
+    }
+    else if (data && !data.app_lock_code) {
+      // C. 服务器端已移除密码：清理本地
+      isLocked.value = false
+      lockCode.value = ''
+      localStorage.removeItem(LOCK_CACHE_KEY)
+      localStorage.removeItem(LOCK_TIMEOUT_KEY)
+    }
+  }
+}, { immediate: true })
 
 onMounted(() => {
   tryClearBadge()
@@ -3207,40 +3152,35 @@ async function handleDeleteSelected() {
 
 function handleMainMenuSelect(key: string) {
   // 处理来自 Sidebar 的点击事件
-  if (key === 'all-notes') {
+  if (key === 'all-notes')
     handleBackToHomeGlobal()
-  }
-  else if (key === 'toggleSelection') {
+
+  else if (key === 'toggleSelection')
     toggleSelectionMode()
-  }
-  else if (key === 'settings') {
+
+  else if (key === 'settings')
     showSettingsModal.value = true
-  }
-  else if (key === 'export') {
+
+  else if (key === 'export')
     showDataBackup.value = true
-  }
-  else if (key === 'account') {
+
+  else if (key === 'account')
     showAccountModal.value = true
-  }
-  else if (key === 'randomRoam') {
+
+  else if (key === 'randomRoam')
     showRandomRoam.value = true
-  }
-  else if (key === 'trash') {
+
+  else if (key === 'trash')
     showTrashModal.value = true
-  }
-  else if (key === 'help') {
+
+  else if (key === 'help')
     showHelpDialog.value = true
-  }
-  else if (key === 'activation') {
-    canDismissActivation.value = true
-    showActivation.value = true
-  }
-  else if (key === 'defaultCity') {
+
+  else if (key === 'defaultCity')
     showCitySelectionDialog.value = true
-  }
-  else if (key === 'feedback') {
+
+  else if (key === 'feedback')
     window.location.href = '/apply?from=auth'
-  }
 }
 
 async function handleBackToHomeGlobal() {
@@ -3444,7 +3384,16 @@ function onCalendarUpdated(updated: any) {
       />
     </Transition>
 
-    <template v-if="user || !authResolved">
+    <div v-if="isBlockedForWeb" class="web-block-overlay">
+      <div class="block-content">
+        <div class="block-title">提示</div>
+        <div class="block-desc">
+          请下载“星云笔记”App 使用。
+        </div>
+      </div>
+    </div>
+
+    <template v-if="(user || !authResolved) && !isBlockedForWeb">
       <div v-show="!isEditorActive && !isTopEditing" class="page-header" @click="handleHeaderClick">
         <div class="header-left" @click.stop="showSidebar = true">
           <AvatarImage
@@ -3756,16 +3705,6 @@ function onCalendarUpdated(updated: any) {
         @close="showTrashModal = false"
         @restored="handleTrashRestored"
         @purged="handleTrashPurged"
-      />
-
-      <ActivationModal
-        :show="showActivation"
-        :allow-close="canDismissActivation"
-        :activated="isUserActivated"
-        :days-remaining="daysRemaining"
-        :theme-color="currentThemeColor"
-        @close="showActivation = false"
-        @success="onActivationSuccess"
       />
     </template>
     <template v-else>
@@ -4511,6 +4450,87 @@ selection-actions-banner,
   /* 原本是 padding: 1rem 1rem 0 1rem; */
   /* 改为顶部只有 0.5rem (8px)，甚至 0 */
   padding-top: 0.5rem !important;
+}
+
+.web-block-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--app-bg); /* 跟随主题背景 */
+  z-index: 9999; /* 确保层级最高，挡住一切 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-content {
+  text-align: center;
+  padding: 2rem;
+  background: rgba(128, 128, 128, 0.1);
+  border-radius: 12px;
+  width: 80%;
+  max-width: 300px;
+}
+
+.block-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--theme-primary-dark);
+}
+
+.block-desc {
+  font-size: 15px;
+  opacity: 0.8;
+  color: #666;
+}
+
+.dark .block-desc {
+  color: #bbb;
+}
+
+/* ✅✅✅ [新增] 遮罩层样式 */
+.web-block-overlay {
+  position: fixed; /* 强制固定全屏 */
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--app-bg); /* 跟随主题背景 */
+  z-index: 9999; /* 层级最高，盖住一切 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-content {
+  text-align: center;
+  padding: 2rem;
+  background: rgba(128, 128, 128, 0.1);
+  border-radius: 12px;
+  width: 80%;
+  max-width: 300px;
+}
+
+.block-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+.dark .block-title {
+  color: #fff;
+}
+
+.block-desc {
+  font-size: 15px;
+  opacity: 0.8;
+  color: #666;
+}
+.dark .block-desc {
+  color: #bbb;
 }
 </style>
 
