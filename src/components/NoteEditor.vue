@@ -557,9 +557,21 @@ async function onImageChosen(e: Event) {
     showDraftPrompt.value = true
   }
   finally {
-    // 允许连续选择同一张图片
+    // 1. 允许连续选择同一张图片
     if (imageInputRef.value)
       imageInputRef.value.value = ''
+
+    // 2. 🔥 核心修复：强制拉起键盘
+    // 使用 nextTick 确保 UI 状态稳定后再聚焦
+    nextTick(() => {
+      const el = textarea.value
+      if (el) {
+        el.focus()
+        
+        // 如果你有这个函数，最好也调用一下，确保光标滚到可视区
+        // ensureCaretVisibleInTextarea() 
+      }
+    })
   }
 }
 // ========== 图片压缩与上传：纯前端，无第三方库 ==========
