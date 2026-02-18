@@ -2621,7 +2621,9 @@ function handleTextareaMove(e: TouchEvent) {
             type="button"
             class="toolbar-btn"
             :title="t('notes.editor.image_dialog.title')"
-            @click.stop="onPickImageSync"
+            @mousedown.prevent
+            @touchstart.prevent
+            @pointerdown.prevent="onPickImageSync"
           >
             <svg
               class="icon-20"
