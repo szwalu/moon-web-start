@@ -659,15 +659,39 @@ watch(user, async (currentUser) => {
     // ---------------------------------------------------------
     // 2. 核心权限检查 (VIP / 激活状态)
     // ---------------------------------------------------------
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .select('is_vip, is_active, app_lock_code, app_lock_timeout')
       .eq('id', currentUser.id)
       .single()
 
-    // ✅ 严谨判定：只要不是 true，就统统算 false (防 null/undefined)
-    const isVip = data?.is_vip === true
-    const isActive = data?.is_active === true
+    // 将 const 改为 let，以便在离线时重新赋值
+    let isVip = data?.is_vip === true
+    let isActive = data?.is_active === true
+
+    // ===== 👇 新增断网离线处理逻辑 👇 =====
+    // 如果没有返回 data (例如断网请求失败)，或者系统判断为离线
+    if (!data || !isOnline()) {
+      const cached = localStorage.getItem(`user_status_${currentUser.id}`)
+      if (cached) {
+        // 1. 如果有缓存，使用上一次联网时保存的权限状态
+        const parsed = JSON.parse(cached)
+        isVip = parsed.isVip
+        isActive = parsed.isActive
+      } else {
+        // 2. 如果没有任何缓存（例如第一次打开就断网），默认放行
+        // 如果你想严格一点，这里可以改成 isVip = false
+        isVip = true
+        isActive = true
+      }
+    } else if (!error) {
+      // 网络正常且拿到数据时，把最新的状态缓存到本地，留给下次断网时用
+      localStorage.setItem(
+        `user_status_${currentUser.id}`, 
+        JSON.stringify({ isVip, isActive })
+      )
+    }
+    // ===== 👆 新增断网离线处理逻辑 👆 =====
 
     // 🚫 拦截逻辑：既不是 VIP 也不是 Active，直接拦截
     if (!isVip && !isActive) {
