@@ -6,24 +6,25 @@
 </head>
 <body>
     <script>
-        // 1. 获取百度传给这个网页的 code
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const targetUrl = "trifles://auth?code=" + code;
+    
+    if (code) {
+        // 尝试自动跳转
+        window.location.href = targetUrl;
         
-        if (code) {
-            // 2. 利用 Deep Link 唤醒手机里的 App，并将 code 带回去
-            window.location.href = "trifles://auth?code=" + code;
-            
-            // 3. 提示用户
-            document.body.innerHTML = "<h2>授权成功，正在返回“鸡毛蒜皮”...</h2>";
-            
-            // 4. 兜底：如果没自动跳转，给个手动按钮
-            setTimeout(() => {
-                document.body.innerHTML += '<button onclick="window.location.href=\'trifles://auth?code='+code+'\'">点击手动返回</button>';
-            }, 1000);
-        } else {
-            document.body.innerHTML = "<h2>授权失败，未获取到 Code。</h2>";
-        }
-    </script>
+        // 提示 UI
+        document.body.innerHTML = `
+            <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
+                <h2 style="color: #4CAF50;">授权成功！</h2>
+                <p style="color: #666;">如果页面没有自动返回，请点击下方按钮：</p>
+                <a href="${targetUrl}" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">立即返回鸡毛蒜皮</a>
+            </div>
+        `;
+    } else {
+        document.body.innerHTML = "<h2 style='text-align: center; margin-top: 50px;'>授权失败，未获取到 Code。</h2>";
+    }
+</script>
 </body>
 </html>
