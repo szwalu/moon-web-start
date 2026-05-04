@@ -3,36 +3,30 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>授权回调</title>
+    <title>授权成功</title>
 </head>
 <body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
     
-    <h2 id="msg" style="color: #666; font-size: 18px;">正在处理...</h2>
-    
-    <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 30px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-        立即返回鸡毛蒜皮
-    </a>
+    <div id="content">
+        <h2 style="color: #10b981; font-size: 22px; margin-bottom: 10px;">授权成功！</h2>
+        <p style="color: #666; font-size: 14px;">已安全获取百度网盘权限</p>
+        
+        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(99,102,241,0.3);">
+            立即返回鸡毛蒜皮
+        </a>
+    </div>
 
     <script>
-        // 用最原始的正则匹配，兼容所有老旧浏览器
-        var match = window.location.search.match(/code=([^&]+)/);
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
         
-        if (match && match[1]) {
-            var code = match[1];
-            var targetUrl = "trifles://auth?code=" + code;
-            
-            document.getElementById('msg').innerHTML = "<span style='color:#10b981'>授权成功！</span><br><span style='font-size:14px;color:#999;display:inline-block;margin-top:10px;'>请点击下方按钮唤醒 App</span>";
-            
-            var btn = document.getElementById('btn');
-            btn.href = targetUrl;
+        if (code) {
+            const btn = document.getElementById('btn');
+            btn.href = "trifles://auth?code=" + code;
             btn.style.display = "inline-block";
-            
-            // 延迟尝试自动唤醒
-            setTimeout(function() {
-                window.location.href = targetUrl;
-            }, 500);
+            // ❌ 删除了导致白屏崩溃的 setTimeout 自动跳转
         } else {
-            document.getElementById('msg').innerText = "未找到授权码，请重试。";
+            document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
         }
     </script>
 </body>
