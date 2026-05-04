@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>正在跳转...</title>
+</head>
+<body>
+    <script>
+        // 1. 获取百度传给这个网页的 code
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        
+        if (code) {
+            // 2. 利用 Deep Link 唤醒手机里的 App，并将 code 带回去
+            window.location.href = "trifles://auth?code=" + code;
+            
+            // 3. 提示用户
+            document.body.innerHTML = "<h2>授权成功，正在返回“鸡毛蒜皮”...</h2>";
+            
+            // 4. 兜底：如果没自动跳转，给个手动按钮
+            setTimeout(() => {
+                document.body.innerHTML += '<button onclick="window.location.href=\'trifles://auth?code='+code+'\'">点击手动返回</button>';
+            }, 1000);
+        } else {
+            document.body.innerHTML = "<h2>授权失败，未获取到 Code。</h2>";
+        }
+    </script>
+</body>
+</html>
