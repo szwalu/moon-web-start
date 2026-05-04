@@ -2,65 +2,38 @@
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>正在返回应用</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: #f9fafb; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; color: #333; }
-        .card { background: white; padding: 30px 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); text-align: center; width: 85%; max-width: 320px; }
-        .title { color: #10b981; margin: 0 0 10px 0; font-size: 22px; }
-        .desc { color: #666; font-size: 14px; margin-bottom: 20px; line-height: 1.5; }
-        .btn { display: inline-block; background-color: #6366f1; color: white; text-decoration: none; padding: 12px 0; width: 100%; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 5px; transition: opacity 0.2s; }
-        .btn:active { opacity: 0.8; }
-        .error { color: #ef4444; }
-        .error-box { background: #fee2e2; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 15px; word-break: break-all; color: #b91c1c; text-align: left; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>授权回调</title>
 </head>
-<body>
-    <div class="card" id="app">
-        <h2 style="color:#999; font-size: 18px;">正在处理授权...</h2>
-    </div>
+<body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
+    
+    <h2 id="msg" style="color: #666; font-size: 18px;">正在处理...</h2>
+    
+    <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 30px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+        立即返回鸡毛蒜皮
+    </a>
 
     <script>
-        // 🛡️ 核心修复：必须等页面完全加载，才能执行修改，彻底杜绝白屏报错
-        window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const code = urlParams.get('code');
-            const error = urlParams.get('error');
-            const errorDesc = urlParams.get('error_description');
-            const appDiv = document.getElementById('app');
-
-            if (code) {
-                const targetUrl = "trifles://auth?code=" + code;
-                // 渲染精美的成功 UI
-                appDiv.innerHTML = `
-                    <h2 class="title">授权成功！</h2>
-                    <p class="desc">正在自动唤醒“鸡毛蒜皮”App...</p>
-                    <p style="font-size: 12px; color: #aaa;">如果没反应，请点击下方按钮手动返回</p>
-                    <a href="${targetUrl}" class="btn">立即返回 App</a>
-                `;
-                
-                // 延迟 400 毫秒跳回 App，一方面让用户看到成功提示，另一方面防 Safari 拦截强制跳转
-                setTimeout(() => {
-                    window.location.href = targetUrl;
-                }, 400);
-
-            } else if (error) {
-                // 如果百度把错误抛回来了，直接显示在屏幕上方便排查
-                appDiv.innerHTML = `
-                    <h2 class="title error">授权失败</h2>
-                    <p class="desc">百度网盘拒绝了授权请求或回调异常。</p>
-                    <div class="error-box">
-                        <strong>错误码：</strong>${error}<br>
-                        <strong>详情：</strong>${errorDesc || '无'}
-                    </div>
-                `;
-            } else {
-                appDiv.innerHTML = `
-                    <h2 class="title error">参数缺失</h2>
-                    <p class="desc">未获取到授权码 (Code)，请返回 App 重新尝试登录。</p>
-                `;
-            }
-        };
+        // 用最原始的正则匹配，兼容所有老旧浏览器
+        var match = window.location.search.match(/code=([^&]+)/);
+        
+        if (match && match[1]) {
+            var code = match[1];
+            var targetUrl = "trifles://auth?code=" + code;
+            
+            document.getElementById('msg').innerHTML = "<span style='color:#10b981'>授权成功！</span><br><span style='font-size:14px;color:#999;display:inline-block;margin-top:10px;'>请点击下方按钮唤醒 App</span>";
+            
+            var btn = document.getElementById('btn');
+            btn.href = targetUrl;
+            btn.style.display = "inline-block";
+            
+            // 延迟尝试自动唤醒
+            setTimeout(function() {
+                window.location.href = targetUrl;
+            }, 500);
+        } else {
+            document.getElementById('msg').innerText = "未找到授权码，请重试。";
+        }
     </script>
 </body>
 </html>
