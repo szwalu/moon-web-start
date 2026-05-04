@@ -1,30 +1,66 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <title>正在跳转...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>正在返回应用</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: #f9fafb; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; color: #333; }
+        .card { background: white; padding: 30px 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); text-align: center; width: 85%; max-width: 320px; }
+        .title { color: #10b981; margin: 0 0 10px 0; font-size: 22px; }
+        .desc { color: #666; font-size: 14px; margin-bottom: 20px; line-height: 1.5; }
+        .btn { display: inline-block; background-color: #6366f1; color: white; text-decoration: none; padding: 12px 0; width: 100%; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 5px; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.8; }
+        .error { color: #ef4444; }
+        .error-box { background: #fee2e2; padding: 12px; border-radius: 8px; font-size: 12px; margin-top: 15px; word-break: break-all; color: #b91c1c; text-align: left; }
+    </style>
 </head>
 <body>
+    <div class="card" id="app">
+        <h2 style="color:#999; font-size: 18px;">正在处理授权...</h2>
+    </div>
+
     <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const targetUrl = "trifles://auth?code=" + code;
-    
-    if (code) {
-        // 尝试自动跳转
-        window.location.href = targetUrl;
-        
-        // 提示 UI
-        document.body.innerHTML = `
-            <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
-                <h2 style="color: #4CAF50;">授权成功！</h2>
-                <p style="color: #666;">如果页面没有自动返回，请点击下方按钮：</p>
-                <a href="${targetUrl}" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">立即返回鸡毛蒜皮</a>
-            </div>
-        `;
-    } else {
-        document.body.innerHTML = "<h2 style='text-align: center; margin-top: 50px;'>授权失败，未获取到 Code。</h2>";
-    }
-</script>
+        // 🛡️ 核心修复：必须等页面完全加载，才能执行修改，彻底杜绝白屏报错
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const error = urlParams.get('error');
+            const errorDesc = urlParams.get('error_description');
+            const appDiv = document.getElementById('app');
+
+            if (code) {
+                const targetUrl = "trifles://auth?code=" + code;
+                // 渲染精美的成功 UI
+                appDiv.innerHTML = `
+                    <h2 class="title">授权成功！</h2>
+                    <p class="desc">正在自动唤醒“鸡毛蒜皮”App...</p>
+                    <p style="font-size: 12px; color: #aaa;">如果没反应，请点击下方按钮手动返回</p>
+                    <a href="${targetUrl}" class="btn">立即返回 App</a>
+                `;
+                
+                // 延迟 400 毫秒跳回 App，一方面让用户看到成功提示，另一方面防 Safari 拦截强制跳转
+                setTimeout(() => {
+                    window.location.href = targetUrl;
+                }, 400);
+
+            } else if (error) {
+                // 如果百度把错误抛回来了，直接显示在屏幕上方便排查
+                appDiv.innerHTML = `
+                    <h2 class="title error">授权失败</h2>
+                    <p class="desc">百度网盘拒绝了授权请求或回调异常。</p>
+                    <div class="error-box">
+                        <strong>错误码：</strong>${error}<br>
+                        <strong>详情：</strong>${errorDesc || '无'}
+                    </div>
+                `;
+            } else {
+                appDiv.innerHTML = `
+                    <h2 class="title error">参数缺失</h2>
+                    <p class="desc">未获取到授权码 (Code)，请返回 App 重新尝试登录。</p>
+                `;
+            }
+        };
+    </script>
 </body>
 </html>
