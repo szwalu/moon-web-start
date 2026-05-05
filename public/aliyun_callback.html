@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>阿里云盘授权成功</title>
+</head>
+<body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
+    <div id="content">
+        <h2 style="color: #10b981; font-size: 22px; margin-bottom: 10px;">授权成功！</h2>
+        <p style="color: #666; font-size: 14px;">已安全获取阿里云盘权限</p>
+        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+            立即返回鸡毛蒜皮
+        </a>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        
+        if (code) {
+            const btn = document.getElementById('btn');
+            // ✨ 重点：带上平台标记，让 App 知道是谁发来的 Code
+            btn.href = "trifles://auth?platform=aliyun&code=" + code;
+            btn.style.display = "inline-block";
+        } else {
+            document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
+        }
+    </script>
+</body>
+</html>
