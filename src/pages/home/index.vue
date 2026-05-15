@@ -281,9 +281,9 @@ onMounted(async () => {
     // ---- iOS 逻辑 ----
     if (isIOS.value) {
       showInstallBtn.value = false
-      setTimeout(() => {
-        showManualGuide(true)
-      }, 1500)
+      // setTimeout(() => {
+        // showManualGuide(true)
+      // }, 1500)
     }
   }
   else {
