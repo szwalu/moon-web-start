@@ -3,15 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>授权成功</title>
+    <title>百度授权成功</title>
 </head>
 <body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
-    
     <div id="content">
         <h2 style="color: #10b981; font-size: 22px; margin-bottom: 10px;">授权成功！</h2>
-        <p style="color: #666; font-size: 14px;">已安全获取百度网盘权限</p>
+        <p style="color: #666; font-size: 14px;">已安全获取权限，正在无缝返回应用...</p>
         
-        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(99,102,241,0.3);">
+        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
             立即返回鸡毛蒜皮
         </a>
     </div>
@@ -19,10 +18,17 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
+        
         if (code) {
             const btn = document.getElementById('btn');
-            btn.href = "trifles://auth?code=" + code;
+            const deepLink = "trifles://auth?code=" + code;
+            btn.href = deepLink;
             btn.style.display = "inline-block";
+            
+            // ✨ 延时 300ms 触发，给 Android 底层路由注册的反应时间，同时提供兜底按钮
+            setTimeout(() => {
+                window.location.replace(deepLink);
+            }, 300);
         } else {
             document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
         }
