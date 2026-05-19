@@ -3,13 +3,16 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>授权成功</title>
+    <title>百度授权成功</title>
 </head>
 <body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
     <div id="content">
         <h2 style="color: #10b981; font-size: 22px; margin-bottom: 10px;">授权成功！</h2>
-        <p style="color: #666; font-size: 14px;">正在无缝返回应用，若无响应请手动点击...</p>
-        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">立即返回鸡毛蒜皮</a>
+        <p style="color: #666; font-size: 14px;">如果未能自动返回，请手动点击下方按钮</p>
+        
+        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
+            立即返回鸡毛蒜皮
+        </a>
     </div>
 
     <script>
@@ -18,22 +21,15 @@
         
         if (code) {
             const btn = document.getElementById('btn');
-            const isAndroid = /android/i.test(navigator.userAgent);
-            
-            // ✨ 核心修复：针对 Android 启用 intent 强力唤醒引擎
-            let deepLink = "trifles://auth?code=" + code;
-            if (isAndroid) {
-                // ⚠️ 注意：务必把下面这行的 package 换成你 App 的包名！
-                deepLink = `intent://auth?code=${code}#Intent;scheme=trifles;package=com.kunming.notes;end;`;
-            }
-            
+            // 🌟 终极修复：抛弃 intent，直接使用最纯净的自定义协议
+            const deepLink = "trifles://auth?code=" + code;
             btn.href = deepLink;
             btn.style.display = "inline-block";
             
-            // 延时自动跳转，防止被浏览器误判为恶意劫持
+            // 🌟 终极修复：使用 btn.click() 模拟真实的人类点击，骗过安卓浏览器的拦截墙
             setTimeout(() => {
-                window.location.replace(deepLink);
-            }, 500);
+                btn.click();
+            }, 300);
         } else {
             document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
         }
