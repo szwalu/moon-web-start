@@ -17,29 +17,14 @@
     </div>
 
     <script>
-        // 1. 从当前网址提取百度发来的 code
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
-        
         if (code) {
-            // 2. 🚀 魔法跳板：拼接自定义协议，强行呼叫你的 App！
-            const appUrl = "trifles://auth?code=" + code + "&platform=baidu";
-            
-            // 尝试自动跳转
-            window.location.href = appUrl;
-            
-            // 3. 兜底设计：如果安卓浏览器拦截了自动跳转，给用户一个手动点击的按钮
-            setTimeout(() => {
-                document.body.innerHTML = `
-                    <h3>即将完成！</h3>
-                    <p style="color: #666;">如果页面没有自动关闭，请点击下方按钮：</p>
-                    <a href="${appUrl}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">
-                        👉 点击这里返回应用
-                    </a>
-                `;
-            }, 1500);
+            const btn = document.getElementById('btn');
+            btn.href = "trifles://auth?code=" + code;
+            btn.style.display = "inline-block";
         } else {
-            document.body.innerHTML = "<h3 style='color:red;'>授权失败：未获取到验证码</h3>";
+            document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
         }
     </script>
 </body>
