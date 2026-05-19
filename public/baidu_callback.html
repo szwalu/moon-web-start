@@ -3,19 +3,17 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>百度授权成功</title>
-    <style>
-        body { text-align: center; padding-top: 80px; font-family: -apple-system, sans-serif; background: #f9fafb; margin: 0; }
-        .btn { display: inline-block; margin-top: 30px; padding: 16px 50px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 18px; box-shadow: 0 4px 16px rgba(37,99,235,0.3); transition: transform 0.2s; }
-        .btn:active { transform: scale(0.95); }
-    </style>
+    <title>百度授权成功 (V3)</title>
 </head>
-<body>
+<!-- ✨ 特意改成浅蓝色背景，只要你看到浅蓝色，说明彻底摆脱了旧缓存！ -->
+<body style="text-align: center; padding-top: 80px; font-family: -apple-system, sans-serif; background: #e0f2fe; margin: 0;">
     <div id="content">
-        <h2 style="color: #10b981; font-size: 26px; margin-bottom: 10px;">✅ 授权成功！</h2>
-        <p style="color: #666; font-size: 15px; padding: 0 20px;">安全连接已建立，请点击下方按钮返回应用</p>
+        <h2 style="color: #0369a1; font-size: 26px; margin-bottom: 10px;">✅ 百度授权成功</h2>
+        <p style="color: #0284c7; font-size: 15px; padding: 0 20px;">请手动点击下方按钮返回应用</p>
         
-        <a id="btn" class="btn" href="#">返回 鸡毛蒜皮</a>
+        <a id="btn" href="#" style="display: inline-block; margin-top: 30px; padding: 16px 50px; background-color: #0284c7; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 18px; box-shadow: 0 4px 16px rgba(2,132,199,0.3);">
+            👉 唤醒 鸡毛蒜皮
+        </a>
     </div>
 
     <script>
@@ -24,19 +22,19 @@
         
         if (code) {
             const btn = document.getElementById('btn');
-            // 最纯净的跳转链接
+            // 最纯净、无任何杂质的原生深度链接
             const deepLink = "trifles://auth?code=" + code;
             btn.href = deepLink;
             
             const isAndroid = /android/i.test(navigator.userAgent);
             if (!isAndroid) {
-                // 🍎 iOS 的 Safari 依然允许自动跳转，保留极速体验
+                // 🍎 iOS 继续享受自动跳转
                 setTimeout(() => { window.location.href = deepLink; }, 300);
             }
-            // 🤖 安卓系统下，JS 到此为止！将页面停留在绿色的成功提示上。
-            // 用户看到后，亲手点击蓝色的“返回 鸡毛蒜皮”按钮，安卓系统必将放行。
+            // 🤖 安卓系统下，JS 到此为止！将页面停留在浅蓝色的提示上。
+            // 必须由你亲自点一下那个蓝色的按钮，安卓底层必将放行。
         } else {
-            document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>❌ 授权失败</h2><p>未获取到核心授权码，请重试</p>";
+            document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>❌ 授权失败</h2><p>未获取到核心授权码</p>";
         }
     </script>
 </body>
