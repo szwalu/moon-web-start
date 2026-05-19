@@ -8,9 +8,9 @@
 <body style="text-align: center; padding-top: 60px; font-family: -apple-system, sans-serif; background: #f9fafb;">
     <div id="content">
         <h2 style="color: #10b981; font-size: 22px; margin-bottom: 10px;">授权成功！</h2>
-        <p style="color: #666; font-size: 14px;">已安全获取 Google Drive 权限</p>
+        <p style="color: #666; font-size: 14px;">已安全获取权限，正在无缝返回应用...</p>
         
-        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #4285f4; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+        <a id="btn" href="#" style="display: none; margin-top: 30px; padding: 14px 40px; background-color: #4285f4; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(66,133,244,0.3);">
             立即返回鸡毛蒜皮
         </a>
     </div>
@@ -21,8 +21,13 @@
         
         if (code) {
             const btn = document.getElementById('btn');
-            btn.href = "trifles://auth?platform=google&code=" + code;
+            const deepLink = "trifles://auth?platform=google&code=" + code;
+            btn.href = deepLink;
             btn.style.display = "inline-block";
+            
+            setTimeout(() => {
+                window.location.replace(deepLink);
+            }, 300);
         } else {
             document.getElementById('content').innerHTML = "<h2 style='color:#ef4444'>授权失败</h2><p>未获取到核心授权码</p>";
         }
