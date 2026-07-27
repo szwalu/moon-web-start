@@ -40,24 +40,15 @@
       padding: 48px 0 32px;
     }
 
-    .app-icon-placeholder {
-      width: 96px;
-      height: 96px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      border-radius: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 12px 24px rgba(99, 102, 241, 0.25);
-      margin-bottom: 20px;
-    }
-
-    .icon-text {
-      color: white;
-      font-size: 20px;
-      font-weight: bold;
-      line-height: 1.2;
-    }
+.app-icon-image {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px; /* 完美契合 iOS 圆角规范 */
+  object-fit: cover;   /* 保证图片不变形 */
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08); /* 添加柔和的高级阴影 */
+  margin-bottom: 20px;
+  display: block;
+}
 
     .app-title {
       font-size: 28px;
@@ -256,9 +247,7 @@
       
       <!-- 顶部 Hero 区块 -->
       <header class="hero-section">
-        <div class="app-icon-placeholder">
-          <span class="icon-text">鸡毛<br>蒜皮</span>
-        </div>
+        <img class="app-icon-image" src="/主题.png" alt="鸡毛蒜皮 Logo" />
         <h1 class="app-title">鸡毛蒜皮</h1>
         <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账体验。</p>
       </header>
