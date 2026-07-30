@@ -40,15 +40,15 @@
       padding: 48px 0 32px;
     }
 
-.app-icon-image {
-  width: 96px;
-  height: 96px;
-  border-radius: 22px; /* 完美契合 iOS 圆角规范 */
-  object-fit: cover;   /* 保证图片不变形 */
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08); /* 添加柔和的高级阴影 */
-  margin-bottom: 20px;
-  display: block;
-}
+    .app-icon-image {
+      width: 96px;
+      height: 96px;
+      border-radius: 22px; /* 完美契合 iOS 圆角规范 */
+      object-fit: cover;   /* 保证图片不变形 */
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08); /* 添加柔和的高级阴影 */
+      margin-bottom: 20px;
+      display: block;
+    }
 
     .app-title {
       font-size: 28px;
@@ -205,6 +205,49 @@
       color: #94a3b8;
     }
 
+    /* === 微信引导遮罩层样式 === */
+    .wechat-mask {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      color: white;
+    }
+
+    .mask-content {
+      padding: 20px 30px;
+      text-align: right; 
+    }
+
+    .mask-content .arrow {
+      font-size: 60px;
+      line-height: 1;
+      margin-bottom: 10px;
+      margin-right: 10px;
+      animation: bounce 1s infinite alternate;
+    }
+
+    .mask-content p {
+      font-size: 18px;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .mask-hint {
+      font-size: 14px;
+      color: #aaa;
+    }
+
+    @keyframes bounce {
+      from { transform: translateY(0) translateX(0); }
+      to { transform: translateY(-10px) translateX(10px); }
+    }
+
     /* === 深色模式适配 === */
     @media (prefers-color-scheme: dark) {
       body { background: #1c1c1e; color: #e0e0e0; }
@@ -254,16 +297,16 @@
 
       <!-- 下载卡片区块 -->
       <section class="download-section">
-        <!-- iOS 下载提示卡片 -->
+        <!-- iOS 下载卡片 -->
         <div class="download-card ios-card" onclick="openAppStore()">
           <div class="card-info">
             <div class="platform-icon"></div>
             <div class="text-group">
               <div class="main-title">iOS 版下载</div>
-              <div class="sub-title">请前往苹果商店搜索「鸡毛蒜皮」</div>
+              <div class="sub-title">前往 App Store 免费获取</div>
             </div>
           </div>
-          <div class="action-btn">去搜索</div>
+          <div class="action-btn">立即下载</div>
         </div>
 
         <!-- Android 下载卡片 -->
@@ -314,15 +357,42 @@
     </div>
   </div>
 
+  <!-- 微信浏览器引导遮罩层 -->
+  <div id="wechat-mask" class="wechat-mask" style="display: none;" onclick="hideMask()">
+    <div class="mask-content">
+      <div class="arrow">↗</div>
+      <p>点击右上角 <strong>···</strong></p>
+      <p>选择在<strong>「浏览器」</strong>或<strong>「Safari」</strong>中打开</p>
+      <p class="mask-hint">（即可正常下载）</p>
+    </div>
+  </div>
+
   <script>
-    // 原生 JavaScript 点击事件处理
-    function handleAndroidDownload() {
-      // 触发下载动作，直接跳转 Gitee 的 Releases 链接
-      window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
+    // 判断是否在微信浏览器内
+    function isWeChat() {
+      return /MicroMessenger/i.test(navigator.userAgent);
     }
 
+    // 隐藏遮罩层
+    function hideMask() {
+      document.getElementById('wechat-mask').style.display = 'none';
+    }
+
+    // 处理 Android 下载
+    function handleAndroidDownload() {
+      if (isWeChat()) {
+        // 微信内直接弹出遮罩层提示去浏览器打开
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        // 非微信环境直接下载
+        window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
+      }
+    }
+
+    // 处理 iOS 跳转
     function openAppStore() {
-      alert('请前往苹果 App Store 搜索「鸡毛蒜皮」进行下载');
+      // 苹果 App Store 链接通常微信不拦截，可以直接跳转
+      window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
     }
   </script>
 
