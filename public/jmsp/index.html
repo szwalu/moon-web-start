@@ -391,8 +391,13 @@
 
     // 处理 iOS 跳转
     function openAppStore() {
-      // 苹果 App Store 链接通常微信不拦截，可以直接跳转
-      window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
+      if (isWeChat()) {
+        // 微信内直接弹出遮罩层提示去 Safari 打开，保证万无一失
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        // 非微信环境直接跳转 App Store
+        window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
+      }
     }
   </script>
 
