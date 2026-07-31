@@ -411,7 +411,7 @@
       document.getElementById('wechat-mask').style.display = 'none';
     }
 
-    // 处理 Android Gitee 主源下载
+    // 处理 Android Gitee 主源下载（保持当前页直接开始下载文件）
     function handleAndroidDownload() {
       if (isWeChat()) {
         document.getElementById('wechat-mask').style.display = 'block';
@@ -420,12 +420,12 @@
       }
     }
 
-    // 处理 Android 蓝奏云 备用源下载
+    // 处理 Android 蓝奏云 备用源下载（在新标签页打开网页，不覆盖当前官方页）
     function handleLanzouDownload() {
       if (isWeChat()) {
         document.getElementById('wechat-mask').style.display = 'block';
       } else {
-        window.location.href = 'https://wwany.lanzoup.com/i4TeD3zvp8wf';
+        window.open('https://wwany.lanzoup.com/i4TeD3zvp8wf', '_blank');
       }
     }
 
