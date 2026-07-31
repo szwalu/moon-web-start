@@ -137,7 +137,7 @@
       color: white;
     }
 
-    /* Android 卡片风格 */
+    /* Android 主下载卡片风格 */
     .android-card {
       background: #f0fdf4;
       border-color: #bbf7d0;
@@ -148,6 +148,19 @@
       background: #22c55e;
       color: white;
       box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+    }
+
+    /* Android 备用下载（蓝奏云）卡片风格 */
+    .android-backup-card {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1e40af;
+    }
+    .android-backup-card .sub-title { color: #2563eb; }
+    .android-backup-card .action-btn {
+      background: #3b82f6;
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
     }
 
     /* === 功能区块 === */
@@ -271,6 +284,14 @@
       }
       .android-card .sub-title { color: #86efac; }
       .android-card .action-btn { background: #16a34a; }
+
+      .android-backup-card {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.2);
+        color: #bfdbfe;
+      }
+      .android-backup-card .sub-title { color: #93c5fd; }
+      .android-backup-card .action-btn { background: #2563eb; }
       
       .feature-item {
         background: #2c2c2e;
@@ -309,16 +330,28 @@
           <div class="action-btn">立即下载</div>
         </div>
 
-        <!-- Android 下载卡片 -->
+        <!-- Android 主下载卡片 (Gitee 源) -->
         <div class="download-card android-card" onclick="handleAndroidDownload()">
           <div class="card-info">
             <div class="platform-icon">🤖</div>
             <div class="text-group">
-              <div class="main-title">Android 版下载</div>
-              <div class="sub-title">v1.2.8 | Gitee 官方源直接下载</div>
+              <div class="main-title">Android 版下载（主源）</div>
+              <div class="sub-title">v1.2.8 | Gitee 官方源直链下载</div>
             </div>
           </div>
           <div class="action-btn">立即下载</div>
+        </div>
+
+        <!-- Android 备用下载卡片 (蓝奏云) -->
+        <div class="download-card android-backup-card" onclick="handleLanzouDownload()">
+          <div class="card-info">
+            <div class="platform-icon">☁️</div>
+            <div class="text-group">
+              <div class="main-title">Android 版下载（备用源）</div>
+              <div class="sub-title">蓝奏云高速网盘（密码：7su8）</div>
+            </div>
+          </div>
+          <div class="action-btn">进入下载</div>
         </div>
       </section>
 
@@ -378,24 +411,29 @@
       document.getElementById('wechat-mask').style.display = 'none';
     }
 
-    // 处理 Android 下载
+    // 处理 Android Gitee 主源下载
     function handleAndroidDownload() {
       if (isWeChat()) {
-        // 微信内直接弹出遮罩层提示去浏览器打开
         document.getElementById('wechat-mask').style.display = 'block';
       } else {
-        // 非微信环境直接下载
         window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
+      }
+    }
+
+    // 处理 Android 蓝奏云 备用源下载
+    function handleLanzouDownload() {
+      if (isWeChat()) {
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        window.location.href = 'https://wwany.lanzoup.com/i4TeD3zvp8wf';
       }
     }
 
     // 处理 iOS 跳转
     function openAppStore() {
       if (isWeChat()) {
-        // 微信内直接弹出遮罩层提示去 Safari 打开，保证万无一失
         document.getElementById('wechat-mask').style.display = 'block';
       } else {
-        // 非微信环境直接跳转 App Store
         window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
       }
     }
