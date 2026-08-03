@@ -4,21 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>鸡毛蒜皮 - 管理后台</title>
-    <!-- 引入 Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- 引入 Supabase 客户端 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
         
-        /* 密码登录遮罩 */
+        /* 登录遮罩 */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
-        .login-box { background: #fff; padding: 30px; border-radius: 10px; width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; }
+        .login-box { background: #fff; padding: 30px; border-radius: 10px; width: 340px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; }
         .login-box h3 { margin-bottom: 15px; color: #333; }
-        .login-box input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
+        .login-box input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
         .login-box button { width: 100%; padding: 10px; background: #007aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .login-box button:hover { background: #0056b3; }
+        .error-tip { color: #ff3b30; font-size: 12px; margin-bottom: 10px; text-align: left; }
 
         /* 主体布局 */
         .admin-container { display: flex; flex: 1; height: 100vh; overflow: hidden; }
@@ -29,7 +28,8 @@
         .dev-preview { font-size: 12px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
         
         .chat-area { flex: 1; display: flex; flex-direction: column; background: #fff; }
-        .chat-header { padding: 15px; border-bottom: 1px solid #ddd; font-weight: bold; background: #fafafa; font-size: 14px; color: #333; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #ddd; font-weight: bold; background: #fafafa; font-size: 14px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+        .logout-btn { background: #ff3b30; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .message-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: #fafafa; }
         .msg-row { display: flex; }
         .user-msg { justify-content: flex-start; }
@@ -49,12 +49,14 @@
 <body>
 
 <div id="app">
-    <!-- 密码拦截弹窗 -->
+    <!-- Supabase 账号登录遮罩 -->
     <div v-if="!isLoggedIn" class="login-overlay">
         <div class="login-box">
-            <h3>请输入后台访问密码</h3>
-            <input type="password" v-model="inputPassword" placeholder="输入密码..." @keyup.enter="handleLogin">
-            <button @click="handleLogin">进入后台</button>
+            <h3>管理员登录</h3>
+            <div v-if="loginError" class="error-tip">{{ loginError }}</div>
+            <input type="email" v-model="email" placeholder="输入管理员邮箱..." @keyup.enter="handleLogin">
+            <input type="password" v-model="password" placeholder="输入密码..." @keyup.enter="handleLogin">
+            <button @click="handleLogin" :disabled="loading">{{ loading ? '登录中...' : '登 录' }}</button>
         </div>
     </div>
 
@@ -78,7 +80,10 @@
         <!-- 右侧：聊天与回复 -->
         <div class="chat-area">
             <template v-if="currentDevice">
-                <div class="chat-header">当前对话设备：{{ currentDevice }}</div>
+                <div class="chat-header">
+                    <span>当前对话设备：{{ currentDevice }}</span>
+                    <button class="logout-btn" @click="handleLogout">退出登录</button>
+                </div>
                 
                 <div class="message-box" ref="messageBoxRef">
                     <div 
@@ -113,18 +118,19 @@
 <script>
 const { createApp, ref, onMounted, nextTick } = Vue
 
-// ====== 请在这里配置你的 Supabase 信息和后台访问密码 ======
+// ====== 请在这里配置你的 Supabase 信息 ======
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ' // 填入你的 anon key
-const ADMIN_PASSWORD = 'xi6304' // 比如改成你自己的复杂密码
-// ====================================================
+const SUPABASE_ANON_KEY = '你的_SUPABASE_ANON_KEY'
+// ===========================================
 
 createApp({
     setup() {
         const isLoggedIn = ref(false)
-        const inputPassword = ref('')
+        const email = ref('')
+        const password = ref('')
+        const loginError = ref('')
+        const loading = ref(false)
         
-        // 使用 supabaseClient 避免与全局引入的 supabase 库名冲突
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
         
         const devices = ref([])
@@ -133,21 +139,46 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        onMounted(() => {
-            if (localStorage.getItem('woabc_admin_auth') === 'true') {
+        // 检查网页加载时是否已有有效的登录态（Token）
+        onMounted(async () => {
+            const { data: { session } } = await supabaseClient.auth.getSession()
+            if (session) {
                 isLoggedIn.value = true
                 initData()
             }
         })
 
-        const handleLogin = () => {
-            if (inputPassword.value === ADMIN_PASSWORD) {
-                isLoggedIn.value = true
-                localStorage.setItem('woabc_admin_auth', 'true')
-                initData()
-            } else {
-                alert('密码错误！')
+        // 调用 Supabase 真实登录接口
+        const handleLogin = async () => {
+            if (!email.value || !password.value) {
+                loginError.value = '请输入邮箱和密码'
+                return
             }
+            loading.value = true
+            loginError.value = ''
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: email.value,
+                password: password.value,
+            })
+
+            loading.value = false
+
+            if (error) {
+                loginError.value = '登录失败: ' + error.message
+            } else {
+                isLoggedIn.value = true
+                initData()
+            }
+        }
+
+        // 退出登录
+        const handleLogout = async () => {
+            await supabaseClient.auth.signOut()
+            isLoggedIn.value = false
+            currentDevice.value = null
+            email.value = ''
+            password.value = ''
         }
 
         const initData = () => {
@@ -213,8 +244,6 @@ createApp({
                 return
             }
 
-            // 💡 核心修改：发送成功后，只清空输入框！
-            // 不要在这里调用 selectDevice()，把界面的同步完全留给下方的 Realtime 监听。
             replyText.value = ''
         }
 
@@ -228,8 +257,12 @@ createApp({
 
         return {
             isLoggedIn,
-            inputPassword,
+            email,
+            password,
+            loginError,
+            loading,
             handleLogin,
+            handleLogout,
             devices,
             currentDevice,
             messages,
