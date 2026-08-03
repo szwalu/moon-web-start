@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鸡毛蒜皮 - 管理后台</title>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Supabase 客户端 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
+        
+        /* 密码登录遮罩 */
+        .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
+        .login-box { background: #fff; padding: 30px; border-radius: 10px; width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; }
+        .login-box h3 { margin-bottom: 15px; color: #333; }
+        .login-box input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
+        .login-box button { width: 100%; padding: 10px; background: #007aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .login-box button:hover { background: #0056b3; }
+
+        /* 主体布局 */
+        .admin-container { display: flex; flex: 1; height: 100vh; overflow: hidden; }
+        .device-list { width: 320px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; padding: 15px; }
+        .device-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; border-radius: 6px; margin-bottom: 6px; transition: background 0.2s; }
+        .device-item:hover, .device-item.active { background: #eef2ff; }
+        .dev-id { font-weight: bold; font-size: 13px; color: #333; }
+        .dev-preview { font-size: 12px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+        
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #fff; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #ddd; font-weight: bold; background: #fafafa; font-size: 14px; color: #333; }
+        .message-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: #fafafa; }
+        .msg-row { display: flex; }
+        .user-msg { justify-content: flex-start; }
+        .admin-msg { justify-content: flex-end; }
+        .bubble { max-width: 65%; padding: 10px 14px; border-radius: 8px; font-size: 14px; line-height: 1.4; word-break: break-all; }
+        .user-msg .bubble { background: #fff; color: #333; border: 1px solid #e0e0e0; }
+        .admin-msg .bubble { background: #007aff; color: #fff; }
+        .role-tag { font-size: 11px; opacity: 0.8; display: block; margin-bottom: 2px; }
+        
+        .send-box { padding: 15px; border-top: 1px solid #ddd; display: flex; gap: 10px; background: #fff; }
+        .send-box textarea { flex: 1; height: 50px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; resize: none; font-size: 14px; }
+        .send-box button { padding: 0 20px; background: #007aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .send-box button:hover { background: #0056b3; }
+        .no-select { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- 密码拦截弹窗 -->
+    <div v-if="!isLoggedIn" class="login-overlay">
+        <div class="login-box">
+            <h3>请输入后台访问密码</h3>
+            <input type="password" v-model="inputPassword" placeholder="输入密码..." @keyup.enter="handleLogin">
+            <button @click="handleLogin">进入后台</button>
+        </div>
+    </div>
+
+    <!-- 管理后台主体 -->
+    <div class="admin-container" v-else>
+        <!-- 左侧：用户设备列表 -->
+        <div class="device-list">
+            <h3 style="margin-bottom: 12px; font-size: 15px; color: #333;">反馈用户列表</h3>
+            <div 
+                v-for="item in devices" 
+                :key="item.device_id"
+                class="device-item"
+                :class="{ active: currentDevice === item.device_id }"
+                @click="selectDevice(item.device_id)"
+            >
+                <div class="dev-id">设备: {{ item.device_id }}</div>
+                <div class="dev-preview">{{ item.content }}</div>
+            </div>
+        </div>
+
+        <!-- 右侧：聊天与回复 -->
+        <div class="chat-area">
+            <template v-if="currentDevice">
+                <div class="chat-header">当前对话设备：{{ currentDevice }}</div>
+                
+                <div class="message-box" ref="messageBoxRef">
+                    <div 
+                        v-for="msg in messages" 
+                        :key="msg.id"
+                        class="msg-row"
+                        :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'"
+                    >
+                        <div class="bubble">
+                            <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（管理员）' : '用户' }}</span>
+                            {{ msg.content }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="send-box">
+                    <textarea 
+                        v-model="replyText" 
+                        placeholder="输入回复内容，按 Enter 发送..."
+                        @keyup.enter.exact.prevent="sendReply"
+                    ></textarea>
+                    <button @click="sendReply">发送</button>
+                </div>
+            </template>
+            <template v-else>
+                <div class="no-select">请在左侧选择一个用户的反馈进行查看和回复</div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted, nextTick } = Vue
+
+// ====== 请在这里配置你的 Supabase 信息和后台访问密码 ======
+const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ' // 填入你的 anon key
+const ADMIN_PASSWORD = 'xi6304' // 比如改成你自己的复杂密码
+// ====================================================
+
+createApp({
+    setup() {
+        const isLoggedIn = ref(false)
+        const inputPassword = ref('')
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        const devices = ref([])
+        const currentDevice = ref(null)
+        const messages = ref([])
+        const replyText = ref('')
+        const messageBoxRef = ref(null)
+
+        // 检查本地是否已经登录过
+        onMounted(() => {
+            if (localStorage.getItem('woabc_admin_auth') === 'true') {
+                isLoggedIn.value = true
+                initData()
+            }
+        })
+
+        const handleLogin = () => {
+            if (inputPassword.value === ADMIN_PASSWORD) {
+                isLoggedIn.value = true
+                localStorage.setItem('woabc_admin_auth', 'true')
+                initData()
+            } else {
+                alert('密码错误！')
+            }
+        }
+
+        const initData = () => {
+            fetchDevices()
+            // 实时监听新消息
+            supabase
+                .channel('admin-web-realtime')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, payload => {
+                    const newMsg = payload.new
+                    if (currentDevice.value === newMsg.device_id) {
+                        messages.value.push(newMsg)
+                        scrollToBottom()
+                    }
+                    fetchDevices()
+                })
+                .subscribe()
+        }
+
+        const fetchDevices = async () => {
+            const { data, error } = await supabase
+                .from('ticket_messages')
+                .select('device_id, created_at, content')
+                .order('created_at', { ascending: false })
+
+            if (!error && data) {
+                const map = new Map()
+                data.forEach(item => {
+                    if (!map.has(item.device_id)) {
+                        map.set(item.device_id, item)
+                    }
+                })
+                devices.value = Array.from(map.values())
+            }
+        }
+
+        const selectDevice = async (deviceId) => {
+            currentDevice.value = deviceId
+            const { data, error } = await supabase
+                .from('ticket_messages')
+                .select('*')
+                .eq('device_id', deviceId)
+                .order('created_at', { ascending: true })
+
+            if (!error && data) {
+                messages.value = data
+                scrollToBottom()
+            }
+        }
+
+        const sendReply = async () => {
+            if (!replyText.value.trim() || !currentDevice.value) return
+
+            const content = replyText.value.trim()
+            const { error } = await supabase
+                .from('ticket_messages')
+                .insert([{
+                    device_id: currentDevice.value,
+                    sender_role: 'admin',
+                    content: content
+                }])
+
+            if (error) {
+                alert('发送失败: ' + error.message)
+                return
+            }
+
+            replyText.value = ''
+            selectDevice(currentDevice.value)
+        }
+
+        const scrollToBottom = () => {
+            nextTick(() => {
+                if (messageBoxRef.value) {
+                    messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
+                }
+            })
+        }
+
+        return {
+            isLoggedIn,
+            inputPassword,
+            handleLogin,
+            devices,
+            currentDevice,
+            messages,
+            replyText,
+            selectDevice,
+            sendReply,
+            messageBoxRef
+        }
+    }
+}).mount('#app')
+</script>
+
+</body>
+</html>
