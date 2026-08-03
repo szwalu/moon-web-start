@@ -213,8 +213,9 @@ createApp({
                 return
             }
 
+            // 💡 核心修改：发送成功后，只清空输入框！
+            // 不要在这里调用 selectDevice()，把界面的同步完全留给下方的 Realtime 监听。
             replyText.value = ''
-            selectDevice(currentDevice.value)
         }
 
         const scrollToBottom = () => {
