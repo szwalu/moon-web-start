@@ -123,7 +123,9 @@ createApp({
     setup() {
         const isLoggedIn = ref(false)
         const inputPassword = ref('')
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        // 使用 supabaseClient 避免与全局引入的 supabase 库名冲突
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
         
         const devices = ref([])
         const currentDevice = ref(null)
@@ -131,7 +133,6 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 检查本地是否已经登录过
         onMounted(() => {
             if (localStorage.getItem('woabc_admin_auth') === 'true') {
                 isLoggedIn.value = true
@@ -151,8 +152,7 @@ createApp({
 
         const initData = () => {
             fetchDevices()
-            // 实时监听新消息
-            supabase
+            supabaseClient
                 .channel('admin-web-realtime')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, payload => {
                     const newMsg = payload.new
@@ -166,7 +166,7 @@ createApp({
         }
 
         const fetchDevices = async () => {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('ticket_messages')
                 .select('device_id, created_at, content')
                 .order('created_at', { ascending: false })
@@ -184,7 +184,7 @@ createApp({
 
         const selectDevice = async (deviceId) => {
             currentDevice.value = deviceId
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('ticket_messages')
                 .select('*')
                 .eq('device_id', deviceId)
@@ -200,7 +200,7 @@ createApp({
             if (!replyText.value.trim() || !currentDevice.value) return
 
             const content = replyText.value.trim()
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('ticket_messages')
                 .insert([{
                     device_id: currentDevice.value,
