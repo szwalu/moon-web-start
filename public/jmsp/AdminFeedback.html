@@ -220,6 +220,12 @@ const { createApp, ref, onMounted, nextTick } = Vue
 // ====== 请在这里配置你的 Supabase 信息 ======
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
+
+// 🌟 新增：管理员邮箱白名单（请填入你自己的真实管理员邮箱）
+const ALLOWED_ADMIN_EMAILS = [
+    'admin@example.com', // 替换为你的邮箱
+    'another_admin@example.com' 
+]
 // ===========================================
 
 createApp({
@@ -238,12 +244,18 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 检查网页加载时是否已有有效的登录态（Token）
+        // 🌟 修改：页面加载时，自动登录也需要校验白名单
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
             if (session) {
-                isLoggedIn.value = true
-                initData()
+                // 校验邮箱是否在白名单中
+                if (ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+                    isLoggedIn.value = true
+                    initData()
+                } else {
+                    // 如果非管理员缓存了登录态，静默登出
+                    await supabaseClient.auth.signOut()
+                }
             }
             
             // 响应式处理注销按钮在手机列表页的展示
@@ -257,7 +269,7 @@ createApp({
             }, 100);
         })
 
-        // 调用 Supabase 真实登录接口
+        // 🌟 修改：登录接口校验逻辑
         const handleLogin = async () => {
             if (!email.value || !password.value) {
                 loginError.value = '请输入邮箱和密码'
@@ -276,12 +288,18 @@ createApp({
             if (error) {
                 loginError.value = '登录失败: ' + error.message
             } else {
-                isLoggedIn.value = true
-                initData()
+                // 登录成功后，校验该用户邮箱是否有权限
+                if (ALLOWED_ADMIN_EMAILS.includes(data.user.email)) {
+                    isLoggedIn.value = true
+                    initData()
+                } else {
+                    loginError.value = '权限不足：该账号不是管理员'
+                    // 强制将非法账号登出
+                    await supabaseClient.auth.signOut()
+                }
             }
         }
 
-        // 退出登录
         const handleLogout = async () => {
             await supabaseClient.auth.signOut()
             isLoggedIn.value = false
@@ -354,6 +372,7 @@ createApp({
             }
 
             replyText.value = ''
+            scrollToBottom()
         }
 
         const scrollToBottom = () => {
@@ -362,6 +381,17 @@ createApp({
                     messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
                 }
             })
+        }
+
+        // 处理键盘弹出时的错位
+        const handleInputFocus = () => {
+            setTimeout(() => {
+                window.scrollTo(0, 0)
+                scrollToBottom()
+            }, 300)
+        }
+        const handleInputBlur = () => {
+            window.scrollTo(0, 0)
         }
 
         const parseMessage = (content) => {
@@ -378,12 +408,10 @@ createApp({
             return { text, images }
         }
 
-        // 用于在新标签页打开图片的方法
         const openImage = (url) => {
             window.open(url, '_blank')
         }
 
-        // 从公开 URL 中提取 Storage 里的文件路径
         const extractStoragePath = (url) => {
             const marker = '/public/feedback-images/'
             const idx = url.indexOf(marker)
@@ -391,7 +419,6 @@ createApp({
             return url.slice(idx + marker.length)
         }
 
-        // 删除单条消息（含其关联图片）
         const deleteMessage = async (msg) => {
             if (!confirm('确定要删除这条消息吗？此操作不可撤销。')) return
 
@@ -421,7 +448,6 @@ createApp({
             messages.value = messages.value.filter(m => m.id !== msg.id)
         }
 
-        // 删除整个设备的所有反馈记录（慎用）
         const deleteDeviceThread = async (deviceId) => {
             if (!confirm(`确定要删除设备 ${deviceId} 的全部反馈记录吗？此操作不可撤销。`)) return
 
@@ -478,7 +504,9 @@ createApp({
             parseMessage,
             openImage,
             deleteMessage,
-            deleteDeviceThread
+            deleteDeviceThread,
+            handleInputFocus,
+            handleInputBlur
         }
     }
 }).mount('#app')
