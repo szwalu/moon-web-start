@@ -302,6 +302,17 @@ const deleteMessage = async (msg) => {
 
     const { images } = parseMessage(msg.content)
     console.log('提取到的图片 URL:', images)   // 👈 加这行
+    // 👇 临时加：列出该设备文件夹下实际存在的文件
+    if (images.length > 0) {
+        const testPath = extractStoragePath(images[0])
+        const folderPath = testPath.substring(0, testPath.lastIndexOf('/'))
+        const { data: fileList, error: listError } = await supabaseClient.storage
+            .from('feedback-images')
+            .list(folderPath)
+        console.log('文件夹路径:', folderPath)
+        console.log('实际存在的文件列表:', fileList)
+        console.log('list 错误:', listError)
+    }
 
     if (images.length > 0) {
         const paths = images.map(extractStoragePath).filter(Boolean)
