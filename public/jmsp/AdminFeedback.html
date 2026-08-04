@@ -2,19 +2,32 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 🌟 核心改动 1：增加 interactive-widget=resizes-content 让现代安卓自动调整高度 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>鸡毛蒜皮 - 管理后台</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; color: #333; }
+        /* 🌟 核心改动 2：使用 100dvh，同时将 body 锁死防止 iOS 整体上推回弹 */
+        html { height: 100%; overflow: hidden; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #f5f5f5; 
+            height: 100vh; /* 老版本回退 */
+            height: 100dvh; /* 魔法属性：动态适应键盘高度 */
+            display: flex; 
+            flex-direction: column; 
+            color: #333; 
+            overflow: hidden; 
+            position: relative;
+        }
         
         /* 登录遮罩 */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .login-box { background: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); text-align: center; }
         .login-box h3 { margin-bottom: 20px; color: #333; }
-        .login-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 15px; outline: none; transition: border 0.2s; }
+        .login-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 16px; outline: none; transition: border 0.2s; }
         .login-box input:focus { border-color: #007aff; }
         .login-box button { width: 100%; padding: 12px; background: #007aff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; transition: background 0.2s; }
         .login-box button:hover:not(:disabled) { background: #0056b3; }
@@ -22,7 +35,7 @@
         .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
 
         /* 主体布局 */
-        .admin-container { display: flex; flex: 1; height: 100vh; overflow: hidden; }
+        .admin-container { display: flex; flex: 1; height: 100%; overflow: hidden; }
         .device-list { width: 320px; background: #fff; border-right: 1px solid #e5e5e5; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; }
         .device-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; border-radius: 8px; margin-bottom: 6px; transition: background 0.2s; }
         .device-item:hover { background: #f9fafb; }
@@ -31,29 +44,29 @@
         .dev-preview { font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; }
         
         .chat-area { flex: 1; display: flex; flex-direction: column; background: #fff; min-width: 0; }
-        .chat-header { padding: 15px; border-bottom: 1px solid #e5e5e5; font-weight: bold; background: #f9fafb; font-size: 14px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #e5e5e5; font-weight: bold; background: #f9fafb; font-size: 14px; color: #333; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
         .header-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
         .header-left span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
-        /* 移动端专属返回按钮 */
         .mobile-back-btn { display: none; background: none; border: none; color: #007aff; font-size: 15px; font-weight: 600; cursor: pointer; padding: 4px 8px 4px 0; }
         
         .logout-btn { background: #ff3b30; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
         .delete-btn { background: #ff9500; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
         
-        .message-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: #f5f6f8; }
+        /* 🌟 让 message-box 使用平滑滚动，体验更好 */
+        .message-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: #f5f6f8; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
         .msg-row { display: flex; width: 100%; }
         .user-msg { justify-content: flex-start; }
         .admin-msg { justify-content: flex-end; }
-        .bubble { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+        .bubble { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 15px; line-height: 1.5; word-break: break-word; }
         .user-msg .bubble { background: #fff; color: #333; border: 1px solid #e5e5e5; border-top-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
         .admin-msg .bubble { background: #007aff; color: #fff; border-top-right-radius: 4px; box-shadow: 0 1px 2px rgba(0,122,255,0.2); }
         .role-tag { font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px; }
         
-        .send-box { padding: 12px 16px; border-top: 1px solid #e5e5e5; display: flex; gap: 12px; background: #fff; align-items: flex-end; }
-        .send-box textarea { flex: 1; min-height: 44px; max-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 22px; resize: none; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
+        .send-box { padding: 12px 16px; border-top: 1px solid #e5e5e5; display: flex; gap: 12px; background: #fff; align-items: flex-end; z-index: 10; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+        .send-box textarea { flex: 1; min-height: 44px; max-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 22px; resize: none; font-size: 16px; outline: none; background: #f9fafb; transition: border 0.2s; }
         .send-box textarea:focus { border-color: #007aff; background: #fff; }
-        .send-box button { padding: 0 20px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; }
+        .send-box button { padding: 0 20px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 15px; font-weight: 600; white-space: nowrap; }
         .send-box button:hover { background: #0056b3; }
         .no-select { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; }
 
@@ -61,14 +74,11 @@
         @media (max-width: 768px) {
             .device-list { width: 100%; border-right: none; }
             .chat-area { width: 100%; }
-            /* 如果选中了设备，隐藏列表，显示聊天；否则反之 */
             .admin-container.has-device .device-list { display: none; }
             .admin-container:not(.has-device) .chat-area { display: none; }
             .mobile-back-btn { display: inline-block; }
-            /* iOS 防自动放大 */
-            .login-box input, .send-box textarea { font-size: 16px; }
-            .bubble { max-width: 85%; }
-            .header-left span { font-size: 13px; }
+            .bubble { max-width: 85%; font-size: 16px; }
+            .header-left span { font-size: 14px; }
             .chat-header { padding: 12px; }
             .delete-btn, .logout-btn { padding: 6px 8px; font-size: 11px; }
         }
@@ -76,14 +86,11 @@
         /* ====== 黑暗模式适配 ====== */
         @media (prefers-color-scheme: dark) {
             body { background: #121212; color: #e5e5e5; }
-            
-            /* 登录框 */
             .login-box { background: #1e1e1e; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
             .login-box h3 { color: #f5f5f5; }
             .login-box input { background: #2c2c2c; border: 1px solid #444; color: #f5f5f5; }
             .login-box input:focus { border-color: #0a84ff; }
             
-            /* 主界面 */
             .device-list { background: #181818; border-right-color: #333; }
             .device-list h3 { color: #e5e5e5 !important; }
             .device-item { border-bottom-color: #2c2c2c; }
@@ -92,22 +99,18 @@
             .dev-id { color: #f5f5f5; }
             .dev-preview { color: #aaa; }
             
-            /* 聊天区域 */
             .chat-area { background: #121212; }
             .chat-header { background: #1e1e1e; border-bottom-color: #333; color: #e5e5e5; }
             .message-box { background: #121212; }
             
-            /* 气泡 */
             .user-msg .bubble { background: #242424; color: #e5e5e5; border-color: #333; }
             .admin-msg .bubble { background: #0a84ff; color: #fff; }
             
-            /* 输入框 */
             .send-box { background: #1e1e1e; border-top-color: #333; }
             .send-box textarea { background: #2c2c2c; border-color: #444; color: #f5f5f5; }
             .send-box textarea:focus { background: #242424; border-color: #0a84ff; }
             .no-select { background: #121212; color: #666; }
             
-            /* 滚动条美化（黑暗模式下更协调） */
             ::-webkit-scrollbar { width: 6px; }
             ::-webkit-scrollbar-track { background: transparent; }
             ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
@@ -118,7 +121,6 @@
 <body>
 
 <div id="app">
-    <!-- Supabase 账号登录遮罩 -->
     <div v-if="!isLoggedIn" class="login-overlay">
         <div class="login-box">
             <h3>管理员登录</h3>
@@ -129,10 +131,8 @@
         </div>
     </div>
 
-    <!-- 管理后台主体：使用 :class 控制移动端单页显示状态 -->
     <div class="admin-container" :class="{ 'has-device': !!currentDevice }" v-else>
         
-        <!-- 左侧：用户设备列表 -->
         <div class="device-list">
             <h3 style="margin-bottom: 16px; font-size: 16px;">反馈用户列表</h3>
             <div style="flex:1; overflow-y:auto; padding-right:4px;">
@@ -149,7 +149,6 @@
             </div>
         </div>
 
-        <!-- 右侧：聊天与回复 -->
         <div class="chat-area">
             <template v-if="currentDevice">
                 <div class="chat-header">
@@ -193,17 +192,19 @@
                 </div>
 
                 <div class="send-box">
+                    <!-- 🌟 核心改动 3：加入 @focus 事件动态修正屏幕滚动 -->
                     <textarea 
                         v-model="replyText" 
                         placeholder="输入回复内容..."
                         @keyup.enter.exact.prevent="sendReply"
+                        @focus="handleInputFocus"
+                        @blur="handleInputBlur"
                     ></textarea>
                     <button @click="sendReply">发 送</button>
                 </div>
             </template>
             <template v-else>
                 <div class="no-select">
-                    <!-- 移动端显示顶部导航，方便退出 -->
                     <div class="chat-header" style="position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: flex-end; background: transparent; border: none;">
                         <button class="logout-btn" @click="handleLogout" style="display: none;" id="mobile-logout">退出登录</button>
                     </div>
@@ -217,10 +218,8 @@
 <script>
 const { createApp, ref, onMounted, nextTick } = Vue
 
-// ====== 请在这里配置你的 Supabase 信息 ======
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
-// ===========================================
 
 createApp({
     setup() {
@@ -238,7 +237,6 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 检查网页加载时是否已有有效的登录态（Token）
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
             if (session) {
@@ -246,7 +244,6 @@ createApp({
                 initData()
             }
             
-            // 响应式处理注销按钮在手机列表页的展示
             window.addEventListener('resize', () => {
                 const btn = document.getElementById('mobile-logout');
                 if (btn) btn.style.display = window.innerWidth <= 768 ? 'block' : 'none';
@@ -257,7 +254,6 @@ createApp({
             }, 100);
         })
 
-        // 调用 Supabase 真实登录接口
         const handleLogin = async () => {
             if (!email.value || !password.value) {
                 loginError.value = '请输入邮箱和密码'
@@ -281,7 +277,6 @@ createApp({
             }
         }
 
-        // 退出登录
         const handleLogout = async () => {
             await supabaseClient.auth.signOut()
             isLoggedIn.value = false
@@ -354,6 +349,7 @@ createApp({
             }
 
             replyText.value = ''
+            scrollToBottom()
         }
 
         const scrollToBottom = () => {
@@ -362,6 +358,17 @@ createApp({
                     messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
                 }
             })
+        }
+
+        // 🌟 核心改动 3 辅助函数：处理键盘弹出时的错位
+        const handleInputFocus = () => {
+            setTimeout(() => {
+                window.scrollTo(0, 0) // 防范 iOS 整页被推上去下不来的 bug
+                scrollToBottom()
+            }, 300)
+        }
+        const handleInputBlur = () => {
+            window.scrollTo(0, 0)
         }
 
         const parseMessage = (content) => {
@@ -378,12 +385,10 @@ createApp({
             return { text, images }
         }
 
-        // 用于在新标签页打开图片的方法
         const openImage = (url) => {
             window.open(url, '_blank')
         }
 
-        // 从公开 URL 中提取 Storage 里的文件路径
         const extractStoragePath = (url) => {
             const marker = '/public/feedback-images/'
             const idx = url.indexOf(marker)
@@ -391,7 +396,6 @@ createApp({
             return url.slice(idx + marker.length)
         }
 
-        // 删除单条消息（含其关联图片）
         const deleteMessage = async (msg) => {
             if (!confirm('确定要删除这条消息吗？此操作不可撤销。')) return
 
@@ -421,7 +425,6 @@ createApp({
             messages.value = messages.value.filter(m => m.id !== msg.id)
         }
 
-        // 删除整个设备的所有反馈记录（慎用）
         const deleteDeviceThread = async (deviceId) => {
             if (!confirm(`确定要删除设备 ${deviceId} 的全部反馈记录吗？此操作不可撤销。`)) return
 
@@ -478,7 +481,9 @@ createApp({
             parseMessage,
             openImage,
             deleteMessage,
-            deleteDeviceThread
+            deleteDeviceThread,
+            handleInputFocus,
+            handleInputBlur
         }
     }
 }).mount('#app')
