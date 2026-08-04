@@ -278,20 +278,6 @@ const parseMessage = (content) => {
   return { text, images }
 }
         
-const parseMessage = (content) => {
-  if (!content) return { text: '', images: [] }
-  const marker = '【附图】：'
-  const idx = content.indexOf(marker)
-  if (idx === -1) return { text: content, images: [] }
-  const text = content.slice(0, idx).trim()
-  const images = content
-    .slice(idx + marker.length)
-    .split('\n')
-    .map(s => s.trim())
-    .filter(s => s.startsWith('http'))
-  return { text, images }
-}
-        
         return {
             isLoggedIn,
             email,
