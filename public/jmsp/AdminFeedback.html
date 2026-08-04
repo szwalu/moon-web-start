@@ -80,10 +80,16 @@
         <!-- 右侧：聊天与回复 -->
         <div class="chat-area">
             <template v-if="currentDevice">
-                <div class="chat-header">
-                    <span>当前对话设备：{{ currentDevice }}</span>
-                    <button class="logout-btn" @click="handleLogout">退出登录</button>
-                </div>
+               <div class="chat-header">
+    <span>当前对话设备：{{ currentDevice }}</span>
+    <div style="display:flex; gap:8px;">
+        <button
+            style="background:#ff9500; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;"
+            @click="deleteDeviceThread(currentDevice)"
+        >删除该会话</button>
+        <button class="logout-btn" @click="handleLogout">退出登录</button>
+    </div>
+</div>
                 
                 <div class="message-box" ref="messageBoxRef">
                     <div 
@@ -104,6 +110,10 @@
             @click="window.open(url, '_blank')"
         >
     </div>
+    <button
+        @click="deleteMessage(msg)"
+        style="margin-top:6px; background:none; border:none; color:#999; font-size:11px; cursor:pointer; padding:0;"
+    >删除</button>
 </div>
                     </div>
                 </div>
@@ -277,6 +287,83 @@ const parseMessage = (content) => {
     .filter(s => s.startsWith('http'))
   return { text, images }
 }
+
+        // 从公开 URL 中提取 Storage 里的文件路径
+const extractStoragePath = (url) => {
+    const marker = '/public/feedback-images/'
+    const idx = url.indexOf(marker)
+    if (idx === -1) return null
+    return url.slice(idx + marker.length)
+}
+
+// 删除单条消息（含其关联图片）
+const deleteMessage = async (msg) => {
+    if (!confirm('确定要删除这条消息吗？此操作不可撤销。')) return
+
+    const { images } = parseMessage(msg.content)
+    if (images.length > 0) {
+        const paths = images.map(extractStoragePath).filter(Boolean)
+        if (paths.length > 0) {
+            const { error: storageError } = await supabaseClient.storage
+                .from('feedback-images')
+                .remove(paths)
+            if (storageError) {
+                console.error('图片删除失败:', storageError)
+            }
+        }
+    }
+
+    const { error } = await supabaseClient
+        .from('ticket_messages')
+        .delete()
+        .eq('id', msg.id)
+
+    if (error) {
+        alert('删除失败: ' + error.message)
+        return
+    }
+
+    messages.value = messages.value.filter(m => m.id !== msg.id)
+}
+
+// 删除整个设备的所有反馈记录（慎用）
+const deleteDeviceThread = async (deviceId) => {
+    if (!confirm(`确定要删除设备 ${deviceId} 的全部反馈记录吗？此操作不可撤销。`)) return
+
+    const { data: msgsToDelete } = await supabaseClient
+        .from('ticket_messages')
+        .select('content')
+        .eq('device_id', deviceId)
+
+    const allPaths = []
+    ;(msgsToDelete || []).forEach(m => {
+        const { images } = parseMessage(m.content)
+        images.forEach(url => {
+            const path = extractStoragePath(url)
+            if (path) allPaths.push(path)
+        })
+    })
+
+    if (allPaths.length > 0) {
+        await supabaseClient.storage.from('feedback-images').remove(allPaths)
+    }
+
+    const { error } = await supabaseClient
+        .from('ticket_messages')
+        .delete()
+        .eq('device_id', deviceId)
+
+    if (error) {
+        alert('删除失败: ' + error.message)
+        return
+    }
+
+    if (currentDevice.value === deviceId) {
+        currentDevice.value = null
+        messages.value = []
+    }
+    fetchDevices()
+}
         
         return {
             isLoggedIn,
@@ -293,7 +380,9 @@ const parseMessage = (content) => {
             selectDevice,
             sendReply,
             messageBoxRef,
-            parseMessage
+            parseMessage,
+            deleteMessage,
+            deleteDeviceThread
         }
     }
 }).mount('#app')
