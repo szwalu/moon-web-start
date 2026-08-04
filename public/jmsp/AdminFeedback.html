@@ -301,14 +301,21 @@ const deleteMessage = async (msg) => {
     if (!confirm('确定要删除这条消息吗？此操作不可撤销。')) return
 
     const { images } = parseMessage(msg.content)
+    console.log('提取到的图片 URL:', images)   // 👈 加这行
+
     if (images.length > 0) {
         const paths = images.map(extractStoragePath).filter(Boolean)
+        console.log('提取到的 Storage 路径:', paths)   // 👈 加这行
+
         if (paths.length > 0) {
-            const { error: storageError } = await supabaseClient.storage
+            const { data, error: storageError } = await supabaseClient.storage
                 .from('feedback-images')
                 .remove(paths)
+            console.log('删除结果:', data, '错误:', storageError)   // 👈 加这行
+
             if (storageError) {
                 console.error('图片删除失败:', storageError)
+                alert('图片删除失败: ' + storageError.message)   // 👈 加这行，明确弹出来
             }
         }
     }
