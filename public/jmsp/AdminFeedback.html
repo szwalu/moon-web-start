@@ -93,9 +93,18 @@
                         :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'"
                     >
                         <div class="bubble">
-                            <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（管理员）' : '用户' }}</span>
-                            {{ msg.content }}
-                        </div>
+    <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（管理员）' : '用户' }}</span>
+    <div v-if="parseMessage(msg.content).text">{{ parseMessage(msg.content).text }}</div>
+    <div v-if="parseMessage(msg.content).images.length" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+        <img
+            v-for="(url, i) in parseMessage(msg.content).images"
+            :key="i"
+            :src="url"
+            style="width:100px;height:100px;object-fit:cover;border-radius:6px;cursor:pointer;"
+            @click="window.open(url, '_blank')"
+        >
+    </div>
+</div>
                     </div>
                 </div>
 
@@ -255,6 +264,21 @@ createApp({
             })
         }
 
+    // 放在 setup() 内部，其他函数定义附近（比如 scrollToBottom 后面）
+const parseMessage = (content) => {
+  if (!content) return { text: '', images: [] }
+  const marker = '【附图】：'
+  const idx = content.indexOf(marker)
+  if (idx === -1) return { text: content, images: [] }
+  const text = content.slice(0, idx).trim()
+  const images = content
+    .slice(idx + marker.length)
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.startsWith('http'))
+  return { text, images }
+}
+        
         return {
             isLoggedIn,
             email,
@@ -269,7 +293,8 @@ createApp({
             replyText,
             selectDevice,
             sendReply,
-            messageBoxRef
+            messageBoxRef,
+            parseMessage
         }
     }
 }).mount('#app')
