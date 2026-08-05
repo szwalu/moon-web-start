@@ -9,9 +9,14 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* 🌟 高度控制核心：html/body 高度交给 JS 通过 CSS 变量 --app-height 持续更新，
-           不使用 position:fixed，不需要手动 transform/scrollTo，避免多套逻辑打架 */
+        /* 🌟 高度控制核心：
+           1) position:fixed 锁住 html/body，阻止 iOS Safari 在输入框聚焦时
+              自己把整页往上滚（这才是之前"输入框被推到刘海外"的真正原因）
+           2) height 用 --app-height 变量持续跟随 visualViewport，键盘弹出时精确收缩 */
         html, body {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
             height: var(--app-height, 100vh);
             overflow: hidden;
