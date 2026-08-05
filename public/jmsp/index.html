@@ -45,28 +45,58 @@
       background-attachment: fixed;
     }
 
-    /* 稍微加大容器宽度以适应图片排版 */
     .container {
       max-width: 960px;
       margin: 0 auto;
       padding: calc(env(safe-area-inset-top) + 40px) 24px calc(env(safe-area-inset-bottom) + 40px);
     }
 
-    /* === Hero & 下载区域 (保持不变) === */
-    .hero { text-align: center; margin-bottom: 56px; animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
-    .app-icon { width: 108px; height: 108px; border-radius: 24px; object-fit: cover; box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1); margin-bottom: 24px; transition: transform 0.3s ease; }
+    /* === 修复3：Hero 区域改为左图右文横向排版，首行居左 === */
+    .hero { 
+      display: flex; 
+      align-items: center; 
+      gap: 24px; 
+      margin-bottom: 56px; 
+      text-align: left; 
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1); 
+    }
+    .app-icon { 
+      width: 96px; 
+      height: 96px; 
+      border-radius: 22px; 
+      object-fit: cover; 
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1); 
+      flex-shrink: 0; 
+      transition: transform 0.3s ease; 
+    }
     .app-icon:hover { transform: scale(1.05); }
-    .app-title { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; background: linear-gradient(135deg, var(--text-main) 0%, #64748b 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .app-slogan { font-size: 17px; color: var(--text-muted); max-width: 500px; margin: 0 auto; }
+    .hero-content { display: flex; flex-direction: column; justify-content: center; }
+    
+    .app-title { 
+      font-size: 36px; 
+      font-weight: 800; 
+      letter-spacing: -0.5px; 
+      margin-bottom: 8px; 
+      background: linear-gradient(135deg, var(--text-main) 0%, #64748b 100%); 
+      -webkit-background-clip: text; 
+      -webkit-text-fill-color: transparent; 
+    }
+    .app-slogan { font-size: 16px; color: var(--text-muted); max-width: 500px; margin: 0; }
+
+    /* === 修复2：下载区域按钮防止文字换行 === */
     .downloads { display: flex; flex-direction: column; gap: 16px; margin-bottom: 64px; max-width: 800px; margin-left: auto; margin-right: auto; animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
     .dl-btn { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-radius: 20px; background: var(--card-bg); border: 1px solid var(--card-border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: var(--glass-shadow); cursor: pointer; text-decoration: none; transition: all 0.2s ease; color: var(--text-main); }
     .dl-btn:active { transform: scale(0.98); }
     .dl-btn:hover { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08); border-color: rgba(99, 102, 241, 0.3); }
-    .dl-left { display: flex; align-items: center; gap: 16px; }
-    .dl-icon { font-size: 28px; line-height: 1; }
-    .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; }
-    .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-    .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+    
+    /* 防换行核心布局 */
+    .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
+    .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+    .dl-text-group { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-left: 12px; }
+    
     .dl-android-main .dl-action { background: #10b981; color: #fff; }
     .dl-android-alt .dl-action { background: #3b82f6; color: #fff; }
 
@@ -79,7 +109,6 @@
       gap: 20px;
     }
 
-    /* 基础卡片框架 */
     .bento-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -90,28 +119,16 @@
       display: flex;
       flex-direction: column;
       position: relative;
-      overflow: hidden; /* 核心：裁剪超出的超长图片 */
+      overflow: hidden;
       transition: transform 0.4s ease, box-shadow 0.4s ease;
-      height: 480px; /* 固定小卡片高度 */
+      height: 480px; 
     }
     
-    .bento-card:hover { 
-      transform: translateY(-4px); 
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-    }
+    .bento-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
 
-    /* 大卡片 */
-    .span-2 { 
-      grid-column: span 2; 
-      height: auto;
-      min-height: 440px; 
-    }
+    .span-2 { grid-column: span 2; height: auto; min-height: 440px; }
 
-    /* 文字内容区 */
-    .bento-content {
-      padding: 32px 32px 0 32px;
-      z-index: 2;
-    }
+    .bento-content { padding: 32px 32px 0 32px; z-index: 2; }
 
     .icon-wrapper { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.2)); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
     @media (prefers-color-scheme: dark) { .icon-wrapper { background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02)); } }
@@ -122,63 +139,32 @@
     .bento-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
     .bento-desc { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 
-    /* 图片包裹区 (底部贴合) */
-    .bento-img-wrap {
-      flex: 1;
-      margin-top: 24px;
-      padding: 0 15%; /* 左右留白，让手机界面有呼吸感 */
-      display: flex;
-      justify-content: center;
-      align-items: flex-start; /* 顶部对齐，底部溢出隐藏 */
-    }
+    .bento-img-wrap { flex: 1; margin-top: 24px; padding: 0 15%; display: flex; justify-content: center; align-items: flex-start; }
 
-    /* 半掩式手机截图质感 */
-    .mockup-img {
-      width: 100%;
-      display: block;
-      border-radius: 20px 20px 0 0; /* 仅顶部圆角，模拟真实手机 */
-      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.1);
-      border: 2px solid var(--img-border);
-      border-bottom: none;
-      transform: translateY(24px); /* 默认下沉一点 */
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    
-    /* Hover 时图片微微探出头 */
+    .mockup-img { width: 100%; display: block; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.1); border: 2px solid var(--img-border); border-bottom: none; transform: translateY(24px); transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
     .bento-card:hover .mockup-img { transform: translateY(12px); }
 
-    /* === 大卡片 PC 端横向排版 === */
     @media (min-width: 768px) {
       .card-hz { flex-direction: row; height: 440px; }
       .card-hz-rev { flex-direction: row-reverse; height: 440px; }
-      
-      .card-hz .bento-content, .card-hz-rev .bento-content {
-        flex: 1;
-        padding: 48px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-      }
-
-      .card-hz .bento-img-wrap, .card-hz-rev .bento-img-wrap {
-        flex: 1;
-        margin-top: 0;
-        padding: 48px 10% 0 10%; /* 图片在右侧下沉 */
-      }
+      .card-hz .bento-content, .card-hz-rev .bento-content { flex: 1; padding: 48px; display: flex; flex-direction: column; justify-content: center; }
+      .card-hz .bento-img-wrap, .card-hz-rev .bento-img-wrap { flex: 1; margin-top: 0; padding: 48px 10% 0 10%; }
     }
 
-    /* === 底部 === */
     .footer { text-align: center; margin-top: 64px; padding: 24px 0; font-size: 13px; color: var(--text-muted); border-top: 1px solid var(--card-border); }
 
-    /* 微信遮罩层样式 (略) */
-    .wechat-mask { display: none; /* ...同前 */ }
+    .wechat-mask { display: none; }
 
-    /* === 手机端自适应 === */
+    /* === 手机端自适应优化 === */
     @media (max-width: 768px) {
+      .hero { gap: 16px; margin-bottom: 40px; }
+      .app-icon { width: 80px; height: 80px; border-radius: 18px; }
+      .app-title { font-size: 28px; }
+      .app-slogan { font-size: 14px; }
+      
       .bento-grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: span 1; }
-      .bento-card { height: 460px; } /* 移动端统一高度 */
-      .app-title { font-size: 32px; }
+      .bento-card { height: 460px; } 
       .downloads { padding: 0 12px; }
       
       .card-hz .bento-content, .card-hz-rev .bento-content { padding: 24px 24px 0 24px; justify-content: flex-start; flex: none; }
@@ -190,23 +176,49 @@
 <body>
 
   <div class="container">
-    <!-- Hero & 下载 区块 (保持原样) -->
+    
+    <!-- === 调整为左侧图标，右侧文字排版 === -->
     <header class="hero">
       <img class="app-icon" src="/主题.png" alt="鸡毛蒜皮 Logo" onerror="this.src='https://api.iconify.design/fluent-emoji-flat:feather.svg'" />
-      <h1 class="app-title">鸡毛蒜皮</h1>
-      <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账的全新体验。</p>
+      <div class="hero-content">
+        <h1 class="app-title">鸡毛蒜皮</h1>
+        <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账的全新体验。</p>
+      </div>
     </header>
 
     <section class="downloads">
-      <!-- iOS / Android / 蓝奏云 下载按钮 (此处代码未改，略写以节省篇幅) -->
+      <!-- 按钮包裹结构优化，完美解决多行文字折行撑爆问题 -->
       <div class="dl-btn" onclick="openAppStore()">
-        <div class="dl-left"><div class="dl-icon"></div><div><div class="dl-text-main">App Store 下载</div><div class="dl-text-sub">iOS 专属纯净体验</div></div></div><div class="dl-action">获取</div>
+        <div class="dl-left">
+          <div class="dl-icon"></div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">App Store 下载</div>
+            <div class="dl-text-sub">iOS 专属纯净体验</div>
+          </div>
+        </div>
+        <div class="dl-action">获取</div>
       </div>
+      
       <div class="dl-btn dl-android-main" onclick="handleAndroidDownload()">
-        <div class="dl-left"><div class="dl-icon">🤖</div><div><div class="dl-text-main">Android 官方源</div><div class="dl-text-sub">v1.2.8 | Gitee 直链极速下载</div></div></div><div class="dl-action">下载</div>
+        <div class="dl-left">
+          <div class="dl-icon">🤖</div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">Android 官方源</div>
+            <div class="dl-text-sub">v1.2.8 | Gitee 直链极速下载</div>
+          </div>
+        </div>
+        <div class="dl-action">下载</div>
       </div>
+      
       <div class="dl-btn dl-android-alt" onclick="handleLanzouDownload()">
-        <div class="dl-left"><div class="dl-icon">☁️</div><div><div class="dl-text-main">Android 备用源</div><div class="dl-text-sub">蓝奏云高速网盘 (密码: 7su8)</div></div></div><div class="dl-action">进入</div>
+        <div class="dl-left">
+          <div class="dl-icon">☁️</div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">Android 备用源</div>
+            <div class="dl-text-sub">蓝奏云高速网盘 (密码: 7su8)</div>
+          </div>
+        </div>
+        <div class="dl-action">进入</div>
       </div>
     </section>
 
@@ -215,7 +227,7 @@
       <h2 class="section-title">重新定义记录方式</h2>
       <div class="bento-grid">
         
-        <!-- 卡片1：AI记账 (横向大卡片) -->
+        <!-- 卡片1：AI记账 -->
         <div class="bento-card span-2 card-hz">
           <div class="bento-content">
             <div class="icon-wrapper c-blue">✨</div>
@@ -223,12 +235,11 @@
             <p class="bento-desc">支持 Siri 免触控语音与一句话记账。内置 AI 大模型深度解析，可完美处理极度口语化的复杂长句，智能拆分多笔账单，让记账如同与私人管家聊天般自然顺畅。</p>
           </div>
           <div class="bento-img-wrap">
-            <!-- 尝试加上 ./ -->
             <img class="mockup-img" src="./jz.PNG" alt="极速记账魔法界面" loading="lazy">
           </div>
         </div>
 
-        <!-- 卡片2：时光日记 (纵向小卡片) -->
+        <!-- 卡片2：时光日记 -->
         <div class="bento-card">
           <div class="bento-content">
             <div class="icon-wrapper c-pink">📖</div>
@@ -236,12 +247,11 @@
             <p class="bento-desc">不仅支持沉浸式长篇写作，还能在后台无感记录天气与定位。通过“那年今日”及足迹地图，重温珍贵记忆。</p>
           </div>
           <div class="bento-img-wrap">
-            <!-- 尝试加上 ./ -->
             <img class="mockup-img" src="/jmsp/rj.PNG" alt="时光日记本界面" loading="lazy">
           </div>
         </div>
 
-        <!-- 卡片3：全能看板 (纵向小卡片) - 🔴 百度图片测试 🔴 -->
+        <!-- 卡片3：全能看板 -->
         <div class="bento-card">
           <div class="bento-content">
             <div class="icon-wrapper c-purple">📊</div>
@@ -249,12 +259,11 @@
             <p class="bento-desc">三模无缝滑动的首页看板，融合 AI 智能复盘诊断。支持多币种自动折算与净资产实时追踪。</p>
           </div>
           <div class="bento-img-wrap">
-            <!-- 这里修复了语法错误，加上了 src=" -->
             <img class="mockup-img" src="/jmsp/kb.PNG" loading="lazy">
           </div>
         </div>
 
-        <!-- 卡片4：资产管理 (纵向小卡片) -->
+        <!-- 卡片4：资产管理 -->
         <div class="bento-card">
           <div class="bento-content">
             <div class="icon-wrapper c-orange">📦</div>
@@ -266,7 +275,7 @@
           </div>
         </div>
 
-        <!-- 卡片5：智能提醒 (纵向小卡片) -->
+        <!-- 卡片5：智能提醒 -->
         <div class="bento-card">
           <div class="bento-content">
             <div class="icon-wrapper c-teal">🔔</div>
@@ -278,7 +287,7 @@
           </div>
         </div>
 
-        <!-- 卡片6：隐私安全 (反向横向大卡片) -->
+        <!-- 卡片6：隐私安全 -->
         <div class="bento-card span-2 card-hz-rev">
           <div class="bento-content">
             <div class="icon-wrapper c-green">🛡️</div>
@@ -293,13 +302,17 @@
       </div>
     </section>
 
+    <!-- === 修复1：使用 span 标签包裹年份供 JS 调用 === -->
     <footer class="footer">
-      <p>© 2026 鸡毛蒜皮 App. All rights reserved.</p>
+      <p>© <span id="dynamic-year"></span> 鸡毛蒜皮 App. All rights reserved.</p>
     </footer>
   </div>
 
-  <!-- JS (保持原样) -->
   <script>
+    // 动态植入当前年份
+    document.getElementById('dynamic-year').textContent = new Date().getFullYear();
+
+    // 其它逻辑保持原样
     function isWeChat() {
       return /MicroMessenger/i.test(navigator.userAgent);
     }
