@@ -85,14 +85,7 @@
         .system-divider { text-align: center; margin: 20px 0; }
         .system-divider span { background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #fca5a5; }
 
-        .send-box { padding: 12px 20px; display: flex; gap: 12px; background: #fff; align-items: flex-end; border-top: 1px solid #e5e5e5; }
-        .send-box textarea { flex: 1; min-height: 80px; max-height: 250px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 12px; resize: vertical; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
-        .send-box textarea:focus { border-color: #007aff; background: #fff; }
-        .send-box button { padding: 0 24px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: 0.2s; margin-bottom: 4px; }
-        .send-box button:hover { background: #0056b3; }
-
         .closed-banner { padding: 16px; text-align: center; background: #fff; border-top: 1px solid #e5e5e5; color: #999; font-size: 13px; font-weight: 500; }
-
         .no-select { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; gap: 12px; }
         .no-select svg { opacity: 0.2; }
         
@@ -100,15 +93,25 @@
         .preview-item { position: relative; width: 60px; height: 60px; border-radius: 8px; border: 1px solid #eee; }
         .preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
         .preview-item .remove-btn { position: absolute; top: -6px; right: -6px; background: rgba(0,0,0,0.6); color: #fff; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; border: none; }
+        
+        /* 🌟 发送区全新自适应布局 🌟 */
+        .send-box { padding: 12px 20px; display: flex; gap: 12px; background: #fff; align-items: flex-end; border-top: 1px solid #e5e5e5; }
+        .send-box textarea { flex: 1; min-height: 80px; max-height: 250px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 12px; resize: vertical; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
+        .send-box textarea:focus { border-color: #007aff; background: #fff; }
+        
         .icon-btn { background: none; border: none; color: #999; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 50%; transition: 0.2s; flex-shrink: 0; }
         .icon-btn:hover { background: #f0f0f0; color: #007aff; }
         
+        .send-btn { padding: 0 24px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: 0.2s; margin-bottom: 4px; flex-shrink: 0; }
+        .send-btn:hover { background: #0056b3; }
+
         @media (prefers-color-scheme: dark) {
             .image-preview-area { background: #1e1e1e; }
             .preview-item { border-color: #333; }
             .icon-btn:hover { background: #333; }
         }
         
+        /* ====== 移动端适配：将输入框排在第一行，按钮放在下面 ====== */
         @media (max-width: 768px) {
             .device-list { width: 100%; border-right: none; }
             .admin-container[data-view="device"] .main-area { display: none; }
@@ -118,8 +121,13 @@
             .ticket-grid-view { grid-template-columns: 1fr; padding: 12px; }
             .bubble { max-width: 85%; }
             .area-header { padding: 12px; }
-            .send-box { padding: 10px 12px; }
             .mobile-back-btn { display: inline-block; }
+            
+            /* 重点：输入框折行排版 */
+            .send-box { flex-wrap: wrap; padding: 10px 12px; gap: 8px; align-items: center; }
+            .send-box textarea { width: 100%; flex: none; order: -1; min-height: 80px; margin-bottom: 4px; }
+            .icon-btn { margin-right: auto; padding: 4px; margin-bottom: 0; }
+            .send-btn { height: 36px; padding: 0 20px; font-size: 13px; margin-bottom: 0; }
         }
 
         @media (prefers-color-scheme: dark) {
@@ -299,10 +307,12 @@
                             </div>
                         </div>
 
+                        <!-- 🌟 重新布局的发送框结构 -->
                         <div class="send-box" style="border-top: none;">
                             <button class="icon-btn" @click="triggerImageSelect" title="添加图片">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                             </button>
+                            
                             <input type="file" ref="fileInputRef" accept="image/*" multiple style="display: none" @change="handleFileChange">
                             
                             <textarea 
@@ -310,9 +320,10 @@
                                 placeholder="输入回复内容..."
                                 @keyup.enter.exact.prevent="sendReply"
                             ></textarea>
-                            <!-- 🌟 在这里修改了文字，如果你刷新后看到的是“发送回复”，则说明缓存已清除！ -->
-                            <button @click="sendReply" :disabled="isSending">
-                                {{ isSending ? '上传中...' : '发送回复' }}
+                            
+                            <!-- 修改回：发 送 -->
+                            <button class="send-btn" @click="sendReply" :disabled="isSending">
+                                {{ isSending ? '上传中...' : '发 送' }}
                             </button>
                         </div>
                     </div>
@@ -564,7 +575,7 @@ createApp({
             else scrollToBottom()
         }
 
-        // ================= 🌟 改进：彻底底层兼容版的图片压缩，返回纯 Blob =================
+        // ================= 彻底底层兼容版的图片压缩，返回纯 Blob =================
         const compressImage = (file, maxWidth = 800, quality = 0.6) => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader()
