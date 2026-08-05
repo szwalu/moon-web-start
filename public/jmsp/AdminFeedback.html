@@ -94,7 +94,19 @@
 
         .no-select { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; gap: 12px; }
         .no-select svg { opacity: 0.2; }
-
+         /* 🌟 图片上传预览区样式 */
+        .image-preview-area { display: flex; gap: 10px; padding: 10px 20px 0; background: #fff; flex-wrap: wrap; }
+        .preview-item { position: relative; width: 60px; height: 60px; border-radius: 8px; border: 1px solid #eee; }
+        .preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+        .preview-item .remove-btn { position: absolute; top: -6px; right: -6px; background: rgba(0,0,0,0.6); color: #fff; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; border: none; }
+        .icon-btn { background: none; border: none; color: #999; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 50%; transition: 0.2s; flex-shrink: 0; }
+        .icon-btn:hover { background: #f0f0f0; color: #007aff; }
+        
+        @media (prefers-color-scheme: dark) {
+            .image-preview-area { background: #1e1e1e; }
+            .preview-item { border-color: #333; }
+            .icon-btn:hover { background: #333; }
+        }
         /* ====== 移动端适配 ====== */
         @media (max-width: 768px) {
             .device-list { width: 100%; border-right: none; }
@@ -282,13 +294,33 @@
                     <div class="closed-banner" v-if="isCurrentTicketClosed">
                         此工单已被关闭，无法继续回复。
                     </div>
-                    <div class="send-box" v-else>
-                        <textarea 
-                            v-model="replyText" 
-                            placeholder="输入回复内容..."
-                            @keyup.enter.exact.prevent="sendReply"
-                        ></textarea>
-                        <button @click="sendReply">发 送</button>
+                    <!-- 发送区（支持图片上传） -->
+                    <div v-else style="display: flex; flex-direction: column; border-top: 1px solid #e5e5e5; background: #fff;" :style="isCurrentTicketClosed ? 'display:none;' : ''">
+                        
+                        <!-- 选中的图片预览区 -->
+                        <div class="image-preview-area" v-if="imagePreviews.length > 0">
+                            <div class="preview-item" v-for="(src, idx) in imagePreviews" :key="idx">
+                                <img :src="src">
+                                <button class="remove-btn" @click="removeImage(idx)">✕</button>
+                            </div>
+                        </div>
+
+                        <div class="send-box" style="border-top: none;">
+                            <!-- 🌟 图片选择按钮 -->
+                            <button class="icon-btn" @click="triggerImageSelect" title="添加图片">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            </button>
+                            <input type="file" ref="fileInputRef" accept="image/*" multiple style="display: none" @change="handleFileChange">
+                            
+                            <textarea 
+                                v-model="replyText" 
+                                placeholder="输入回复内容..."
+                                @keyup.enter.exact.prevent="sendReply"
+                            ></textarea>
+                            <button @click="sendReply" :disabled="isSending">
+                                {{ isSending ? '发送中...' : '发 送' }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </template>
@@ -311,7 +343,30 @@ createApp({
         const password = ref('')
         const loginError = ref('')
         const loading = ref(false)
-        
+        const fileInputRef = ref(null)
+        const selectedFiles = ref([])
+        const imagePreviews = ref([])
+        const isSending = ref(false)
+
+        const triggerImageSelect = () => {
+            if (fileInputRef.value) fileInputRef.value.click()
+        }
+
+        const handleFileChange = (e) => {
+            if (!e.target.files) return
+            const files = Array.from(e.target.files)
+            files.forEach(file => {
+                selectedFiles.value.push(file)
+                imagePreviews.value.push(URL.createObjectURL(file))
+            })
+            e.target.value = ''
+        }
+
+        const removeImage = (idx) => {
+            selectedFiles.value.splice(idx, 1)
+            URL.revokeObjectURL(imagePreviews.value[idx])
+            imagePreviews.value.splice(idx, 1)
+        }
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
         
         // 核心状态
@@ -533,19 +588,67 @@ createApp({
         }
 
         const sendReply = async () => {
-            if (!replyText.value.trim() || !currentTicketId.value) return
-            const content = replyText.value.trim()
+            if (!replyText.value.trim() && selectedFiles.value.length === 0) return
+            if (!currentTicketId.value) return
+            
+            isSending.value = true
+            let finalContent = replyText.value.trim()
+            const uploadedUrls = []
+
+            // 1. 如果有图片，先直传到 Supabase Storage
+            if (selectedFiles.value.length > 0) {
+                for (const file of selectedFiles.value) {
+                    const fileExt = file.name.split('.').pop()
+                    const fileName = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${fileExt}`
+                    
+                    const { data, error } = await supabaseClient.storage
+                        .from('feedback-images')
+                        .upload(fileName, file)
+                    
+                    if (error) {
+                        alert('图片上传失败: ' + error.message)
+                        isSending.value = false
+                        return
+                    }
+
+                    // 获取上传后的绝对路径 URL
+                    const { data: publicUrlData } = supabaseClient.storage
+                        .from('feedback-images')
+                        .getPublicUrl(fileName)
+                        
+                    if (publicUrlData && publicUrlData.publicUrl) {
+                        uploadedUrls.push(publicUrlData.publicUrl)
+                    }
+                }
+            }
+
+            // 2. 按照客户端 App 的协议格式，拼接图片 URL
+            if (uploadedUrls.length > 0) {
+                finalContent += finalContent ? '\n\n【附图】：\n' : '【附图】：\n'
+                finalContent += uploadedUrls.join('\n')
+            }
+
+            // 3. 将最终内容写入消息表
             const { error } = await supabaseClient
                 .from('ticket_messages')
                 .insert([{
                     device_id: currentDevice.value,
                     ticket_id: currentTicketId.value, 
                     sender_role: 'admin',
-                    content: content
+                    content: finalContent
                 }])
-            if (error) return alert('发送失败: ' + error.message)
-            replyText.value = ''
-            scrollToBottom()
+                
+            if (error) {
+                alert('发送失败: ' + error.message)
+            } else {
+                // 发送成功，清空所有输入和预览
+                replyText.value = ''
+                selectedFiles.value = []
+                imagePreviews.value.forEach(url => URL.revokeObjectURL(url))
+                imagePreviews.value = []
+                scrollToBottom()
+            }
+            isSending.value = false
         }
 
         const deleteMessage = async (msg) => {
@@ -613,6 +716,8 @@ createApp({
             replyText, selectDevice, goBackToDevices, openTicket, closeCurrentTicket, sendReply,
             deleteMessage, deleteDeviceThread, deleteTicket, // 🌟 暴露出刚刚写的删除工单函数
             messageBoxRef, parseMessage, formatDate, openImage
+            fileInputRef, selectedFiles, imagePreviews, isSending,
+            triggerImageSelect, handleFileChange, removeImage,
         }
     }
 }).mount('#app')
