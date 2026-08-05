@@ -3,441 +3,342 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-  <title>鸡毛蒜皮 - 对话式日记与记账</title>
+  <title>鸡毛蒜皮 - 你的数字生活管家</title>
   <style>
-    /* 基础重置 */
-    body, h1, h2, p { margin: 0; padding: 0; }
+    /* === 基础与变量 === */
+    :root {
+      --bg-color: #f8fafc;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --card-bg: rgba(255, 255, 255, 0.7);
+      --card-border: rgba(255, 255, 255, 0.5);
+      --img-border: rgba(255, 255, 255, 0.8);
+      --primary: #6366f1;
+      --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.04);
+      --bento-radius: 28px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #0f172a;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --card-bg: rgba(30, 41, 59, 0.6);
+        --card-border: rgba(255, 255, 255, 0.08);
+        --img-border: rgba(255, 255, 255, 0.12);
+        --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      }
+    }
+
+    body, h1, h2, h3, p { margin: 0; padding: 0; }
     
-    /* === 基础页面样式 === */
     body {
-      background: var(--app-bg, #ffffff);
-      color: var(--text-main, #333);
-      font-family: -apple-system, system-ui, sans-serif;
+      background: var(--bg-color);
+      color: var(--text-main);
+      font-family: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
+      line-height: 1.6;
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+      background-attachment: fixed;
     }
 
-    .home-page {
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: calc(env(safe-area-inset-top) + 40px) 24px calc(env(safe-area-inset-bottom) + 40px);
     }
 
-    .content-wrapper {
-      width: 100%;
-      max-width: 600px;
-      /* 适配刘海屏和底部安全区 */
-      padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
-      box-sizing: border-box;
+    /* === 修复3：Hero 区域改为左图右文横向排版，首行居左 === */
+    .hero { 
+      display: flex; 
+      align-items: center; 
+      gap: 24px; 
+      margin-bottom: 56px; 
+      text-align: left; 
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1); 
     }
+    .app-icon { 
+      width: 96px; 
+      height: 96px; 
+      border-radius: 22px; 
+      object-fit: cover; 
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1); 
+      flex-shrink: 0; 
+      transition: transform 0.3s ease; 
+    }
+    .app-icon:hover { transform: scale(1.05); }
+    .hero-content { display: flex; flex-direction: column; justify-content: center; }
+    
+    .app-title { 
+      font-size: 36px; 
+      font-weight: 800; 
+      letter-spacing: -0.5px; 
+      margin-bottom: 8px; 
+      background: linear-gradient(135deg, var(--text-main) 0%, #64748b 100%); 
+      -webkit-background-clip: text; 
+      -webkit-text-fill-color: transparent; 
+    }
+    .app-slogan { font-size: 16px; color: var(--text-muted); max-width: 500px; margin: 0; }
 
-    /* === Hero 区块 === */
-    .hero-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      padding: 48px 0 32px;
-    }
+    /* === 修复2：下载区域按钮防止文字换行 === */
+    .downloads { display: flex; flex-direction: column; gap: 16px; margin-bottom: 64px; max-width: 800px; margin-left: auto; margin-right: auto; animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+    .dl-btn { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-radius: 20px; background: var(--card-bg); border: 1px solid var(--card-border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: var(--glass-shadow); cursor: pointer; text-decoration: none; transition: all 0.2s ease; color: var(--text-main); }
+    .dl-btn:active { transform: scale(0.98); }
+    .dl-btn:hover { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08); border-color: rgba(99, 102, 241, 0.3); }
+    
+    /* 防换行核心布局 */
+    .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
+    .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+    .dl-text-group { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-left: 12px; }
+    
+    .dl-android-main .dl-action { background: #10b981; color: #fff; }
+    .dl-android-alt .dl-action { background: #3b82f6; color: #fff; }
 
-    .app-icon-image {
-      width: 96px;
-      height: 96px;
-      border-radius: 22px; /* 完美契合 iOS 圆角规范 */
-      object-fit: cover;   /* 保证图片不变形 */
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08); /* 添加柔和的高级阴影 */
-      margin-bottom: 20px;
-      display: block;
-    }
+    /* === 图文混排 Bento Box === */
+    .section-title { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 32px; color: var(--text-main); }
 
-    .app-title {
-      font-size: 28px;
-      font-weight: 700;
-      margin: 0 0 8px 0;
-      color: #1e293b;
-    }
-
-    .app-slogan {
-      font-size: 15px;
-      color: #64748b;
-      margin: 0;
-      padding: 0 20px;
-      line-height: 1.5;
-    }
-
-    /* === 下载卡片区块 === */
-    .download-section {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      margin-bottom: 40px;
-    }
-
-    .download-card {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px;
-      border-radius: 16px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      border: 1px solid transparent;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .download-card:active {
-      transform: scale(0.98);
-      opacity: 0.9;
-    }
-
-    .card-info {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .platform-icon {
-      font-size: 32px;
-      line-height: 1;
-    }
-
-    .text-group {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .main-title {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .sub-title {
-      font-size: 13px;
-      opacity: 0.8;
-    }
-
-    .action-btn {
-      padding: 8px 16px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    /* iOS 卡片风格 */
-    .ios-card {
-      background: #f8fafc;
-      border-color: #e2e8f0;
-      color: #0f172a;
-    }
-    .ios-card .sub-title { color: #64748b; }
-    .ios-card .action-btn {
-      background: #0f172a;
-      color: white;
-    }
-
-    /* Android 主下载卡片风格 */
-    .android-card {
-      background: #f0fdf4;
-      border-color: #bbf7d0;
-      color: #166534;
-    }
-    .android-card .sub-title { color: #15803d; }
-    .android-card .action-btn {
-      background: #22c55e;
-      color: white;
-      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
-    }
-
-    /* Android 备用下载（蓝奏云）卡片风格 */
-    .android-backup-card {
-      background: #eff6ff;
-      border-color: #bfdbfe;
-      color: #1e40af;
-    }
-    .android-backup-card .sub-title { color: #2563eb; }
-    .android-backup-card .action-btn {
-      background: #3b82f6;
-      color: white;
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-    }
-
-    /* === 功能区块 === */
-    .features-section {
-      margin-bottom: 40px;
-    }
-
-    .section-title {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 20px;
-      color: #334155;
-      text-align: center;
-    }
-
-    .features-grid {
+    .bento-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
+      gap: 20px;
     }
 
-    .feature-item {
-      background: #f8fafc;
-      padding: 16px;
-      border-radius: 14px;
-      border: 1px solid #e2e8f0;
+    .bento-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: var(--bento-radius);
+      box-shadow: var(--glass-shadow);
       display: flex;
       flex-direction: column;
-      align-items: flex-start;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.4s ease, box-shadow 0.4s ease;
+      height: 480px; 
+    }
+    
+    .bento-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+
+    .span-2 { grid-column: span 2; height: auto; min-height: 440px; }
+
+    .bento-content { padding: 32px 32px 0 32px; z-index: 2; }
+
+    .icon-wrapper { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.2)); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    @media (prefers-color-scheme: dark) { .icon-wrapper { background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02)); } }
+    
+    .c-blue { color: #3b82f6; } .c-pink { color: #ec4899; } .c-purple { color: #a855f7; } 
+    .c-green { color: #10b981; } .c-orange { color: #f97316; } .c-teal { color: #14b8a6; }
+
+    .bento-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
+    .bento-desc { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+    .bento-img-wrap { flex: 1; margin-top: 24px; padding: 0 15%; display: flex; justify-content: center; align-items: flex-start; }
+
+    .mockup-img { width: 100%; display: block; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.1); border: 2px solid var(--img-border); border-bottom: none; transform: translateY(24px); transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+    .bento-card:hover .mockup-img { transform: translateY(12px); }
+
+    @media (min-width: 768px) {
+      .card-hz { flex-direction: row; height: 440px; }
+      .card-hz-rev { flex-direction: row-reverse; height: 440px; }
+      .card-hz .bento-content, .card-hz-rev .bento-content { flex: 1; padding: 48px; display: flex; flex-direction: column; justify-content: center; }
+      .card-hz .bento-img-wrap, .card-hz-rev .bento-img-wrap { flex: 1; margin-top: 0; padding: 48px 10% 0 10%; }
     }
 
-    .feature-icon {
-      font-size: 24px;
-      margin-bottom: 12px;
-    }
+    .footer { text-align: center; margin-top: 64px; padding: 24px 0; font-size: 13px; color: var(--text-muted); border-top: 1px solid var(--card-border); }
 
-    .feature-name {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1e293b;
-      margin-bottom: 6px;
-    }
+    .wechat-mask { display: none; }
 
-    .feature-desc {
-      font-size: 12px;
-      color: #64748b;
-      line-height: 1.5;
-    }
-
-    /* === 底部 === */
-    .footer {
-      text-align: center;
-      padding: 24px 0;
-      font-size: 12px;
-      color: #94a3b8;
-    }
-
-    /* === 微信引导遮罩层样式 === */
-    .wechat-mask {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.85);
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      color: white;
-    }
-
-    .mask-content {
-      padding: 20px 30px;
-      text-align: right; 
-    }
-
-    .mask-content .arrow {
-      font-size: 60px;
-      line-height: 1;
-      margin-bottom: 10px;
-      margin-right: 10px;
-      animation: bounce 1s infinite alternate;
-    }
-
-    .mask-content p {
-      font-size: 18px;
-      line-height: 1.6;
-      margin-bottom: 8px;
-    }
-
-    .mask-hint {
-      font-size: 14px;
-      color: #aaa;
-    }
-
-    @keyframes bounce {
-      from { transform: translateY(0) translateX(0); }
-      to { transform: translateY(-10px) translateX(10px); }
-    }
-
-    /* === 深色模式适配 === */
-    @media (prefers-color-scheme: dark) {
-      body { background: #1c1c1e; color: #e0e0e0; }
+    /* === 手机端自适应优化 === */
+    @media (max-width: 768px) {
+      .hero { gap: 16px; margin-bottom: 40px; }
+      .app-icon { width: 80px; height: 80px; border-radius: 18px; }
+      .app-title { font-size: 28px; }
+      .app-slogan { font-size: 14px; }
       
-      .app-title { color: #eee; }
-      .app-slogan { color: #aaa; }
-      .section-title { color: #ddd; }
+      .bento-grid { grid-template-columns: 1fr; }
+      .span-2 { grid-column: span 1; }
+      .bento-card { height: 460px; } 
+      .downloads { padding: 0 12px; }
       
-      .ios-card {
-        background: #2c2c2e;
-        border-color: #444;
-        color: #eee;
-      }
-      .ios-card .sub-title { color: #999; }
-      .ios-card .action-btn { background: #e0e0e0; color: #1c1c1e; }
-      
-      .android-card {
-        background: rgba(34, 197, 94, 0.1);
-        border-color: rgba(34, 197, 94, 0.2);
-        color: #bbf7d0;
-      }
-      .android-card .sub-title { color: #86efac; }
-      .android-card .action-btn { background: #16a34a; }
-
-      .android-backup-card {
-        background: rgba(59, 130, 246, 0.1);
-        border-color: rgba(59, 130, 246, 0.2);
-        color: #bfdbfe;
-      }
-      .android-backup-card .sub-title { color: #93c5fd; }
-      .android-backup-card .action-btn { background: #2563eb; }
-      
-      .feature-item {
-        background: #2c2c2e;
-        border-color: #444;
-      }
-      .feature-name { color: #eee; }
-      .feature-desc { color: #aaa; }
-      
-      .footer { color: #666; }
+      .card-hz .bento-content, .card-hz-rev .bento-content { padding: 24px 24px 0 24px; justify-content: flex-start; flex: none; }
+      .card-hz .bento-img-wrap, .card-hz-rev .bento-img-wrap { padding: 0 15%; margin-top: 24px; }
     }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
 
-  <div class="home-page">
-    <div class="content-wrapper">
-      
-      <!-- 顶部 Hero 区块 -->
-      <header class="hero-section">
-        <img class="app-icon-image" src="/主题.png" alt="鸡毛蒜皮 Logo" />
+  <div class="container">
+    
+    <!-- === 调整为左侧图标，右侧文字排版 === -->
+    <header class="hero">
+      <img class="app-icon" src="/主题.png" alt="鸡毛蒜皮 Logo" onerror="this.src='https://api.iconify.design/fluent-emoji-flat:feather.svg'" />
+      <div class="hero-content">
         <h1 class="app-title">鸡毛蒜皮</h1>
-        <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账体验。</p>
-      </header>
+        <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账的全新体验。</p>
+      </div>
+    </header>
 
-      <!-- 下载卡片区块 -->
-      <section class="download-section">
-        <!-- iOS 下载卡片 -->
-        <div class="download-card ios-card" onclick="openAppStore()">
-          <div class="card-info">
-            <div class="platform-icon"></div>
-            <div class="text-group">
-              <div class="main-title">iOS 版下载</div>
-              <div class="sub-title">前往 App Store 免费获取</div>
-            </div>
-          </div>
-          <div class="action-btn">立即下载</div>
-        </div>
-
-        <!-- Android 主下载卡片 (Gitee 源) -->
-        <div class="download-card android-card" onclick="handleAndroidDownload()">
-          <div class="card-info">
-            <div class="platform-icon">🤖</div>
-            <div class="text-group">
-              <div class="main-title">Android 版下载（主源）</div>
-              <div class="sub-title">v1.2.8 | Gitee 官方源直链下载</div>
-            </div>
-          </div>
-          <div class="action-btn">立即下载</div>
-        </div>
-
-        <!-- Android 备用下载卡片 (蓝奏云) -->
-        <div class="download-card android-backup-card" onclick="handleLanzouDownload()">
-          <div class="card-info">
-            <div class="platform-icon">☁️</div>
-            <div class="text-group">
-              <div class="main-title">Android 版下载（备用源）</div>
-              <div class="sub-title">蓝奏云高速网盘（密码：7su8）</div>
-            </div>
-          </div>
-          <div class="action-btn">进入下载</div>
-        </div>
-      </section>
-
-      <!-- 核心功能区块 -->
-      <section class="features-section">
-        <h2 class="section-title">核心功能与理念</h2>
-        <div class="features-grid">
-          <div class="feature-item">
-            <div class="feature-icon">💬</div>
-            <div class="feature-name">对话式记录</div>
-            <div class="feature-desc">自然语言输入，轻松完成日记与账单分类。</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon">🔒</div>
-            <div class="feature-name">纯本地存储</div>
-            <div class="feature-desc">数据完全掌握在自己手中，保护隐私安全。</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon">📊</div>
-            <div class="feature-name">动态图表</div>
-            <div class="feature-desc">自动生成统计图表，收支流水一目了然。</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon">⚡️</div>
-            <div class="feature-name">快捷指令</div>
-            <div class="feature-desc">深度整合系统自动化，支持自动本地备份。</div>
+    <section class="downloads">
+      <!-- 按钮包裹结构优化，完美解决多行文字折行撑爆问题 -->
+      <div class="dl-btn" onclick="openAppStore()">
+        <div class="dl-left">
+          <div class="dl-icon"></div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">App Store 下载</div>
+            <div class="dl-text-sub">iOS 专属纯净体验</div>
           </div>
         </div>
-      </section>
+        <div class="dl-action">获取</div>
+      </div>
       
-      <!-- 底部 Footer -->
-      <footer class="footer">
-        <p>© 2026 鸡毛蒜皮 App. All rights reserved.</p>
-      </footer>
+      <div class="dl-btn dl-android-main" onclick="handleAndroidDownload()">
+        <div class="dl-left">
+          <div class="dl-icon">🤖</div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">Android 官方源</div>
+            <div class="dl-text-sub">v1.2.8 | Gitee 直链极速下载</div>
+          </div>
+        </div>
+        <div class="dl-action">下载</div>
+      </div>
+      
+      <div class="dl-btn dl-android-alt" onclick="handleLanzouDownload()">
+        <div class="dl-left">
+          <div class="dl-icon">☁️</div>
+          <div class="dl-text-group">
+            <div class="dl-text-main">Android 备用源</div>
+            <div class="dl-text-sub">蓝奏云高速网盘 (密码: 7su8)</div>
+          </div>
+        </div>
+        <div class="dl-action">进入</div>
+      </div>
+    </section>
 
-    </div>
-  </div>
+    <!-- 核心理念 (图文混排 Bento Box) -->
+    <section>
+      <h2 class="section-title">重新定义记录方式</h2>
+      <div class="bento-grid">
+        
+        <!-- 卡片1：AI记账 -->
+        <div class="bento-card span-2 card-hz">
+          <div class="bento-content">
+            <div class="icon-wrapper c-blue">✨</div>
+            <h3 class="bento-title">极速记账魔法</h3>
+            <p class="bento-desc">支持 Siri 免触控语音与一句话记账。内置 AI 大模型深度解析，可完美处理极度口语化的复杂长句，智能拆分多笔账单，让记账如同与私人管家聊天般自然顺畅。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="./jz.PNG" alt="极速记账魔法界面" loading="lazy">
+          </div>
+        </div>
 
-  <!-- 微信浏览器引导遮罩层 -->
-  <div id="wechat-mask" class="wechat-mask" style="display: none;" onclick="hideMask()">
-    <div class="mask-content">
-      <div class="arrow">↗</div>
-      <p>点击右上角 <strong>···</strong></p>
-      <p>选择在<strong>「浏览器」</strong>或<strong>「Safari」</strong>中打开</p>
-      <p class="mask-hint">（即可正常下载）</p>
-    </div>
+        <!-- 卡片2：时光日记 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-pink">📖</div>
+            <h3 class="bento-title">时光日记本</h3>
+            <p class="bento-desc">不仅支持沉浸式长篇写作，还能在后台无感记录天气与定位。通过“那年今日”及足迹地图，重温珍贵记忆。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/rj.PNG" alt="时光日记本界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片3：全能看板 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-purple">📊</div>
+            <h3 class="bento-title">多维洞察看板</h3>
+            <p class="bento-desc">三模无缝滑动的首页看板，融合 AI 智能复盘诊断。支持多币种自动折算与净资产实时追踪。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/kb.PNG" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片4：资产管理 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-orange">📦</div>
+            <h3 class="bento-title">物品与资产雷达</h3>
+            <p class="bento-desc">将实体生活全面数字化。从数码家电到常备药，支持多维空间管理，提供 7 天精准过期贴心提醒。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/wp.PNG" alt="物品与资产雷达界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片5：智能提醒 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-teal">🔔</div>
+            <h3 class="bento-title">全场景生活备忘</h3>
+            <p class="bento-desc">支持公农历推算与超长线循环。离线状态依然通过系统底层准时触发通知，绝不漏发。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/bw.PNG" alt="全场景生活备忘界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片6：隐私安全 -->
+        <div class="bento-card span-2 card-hz-rev">
+          <div class="bento-content">
+            <div class="icon-wrapper c-green">🛡️</div>
+            <h3 class="bento-title">绝对的数据主权</h3>
+            <p class="bento-desc">采用离线优先架构，数据默认加密保存手机本地。支持指纹/面容应用锁及 iCloud、WebDAV 等多平台增量无感备份，彻底告别隐私焦虑。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/bf.PNG" alt="数据备份安全界面" loading="lazy">
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- === 修复1：使用 span 标签包裹年份供 JS 调用 === -->
+    <footer class="footer">
+      <p>© <span id="dynamic-year"></span> 鸡毛蒜皮 App. All rights reserved.</p>
+    </footer>
   </div>
 
   <script>
-    // 判断是否在微信浏览器内
+    // 动态植入当前年份
+    document.getElementById('dynamic-year').textContent = new Date().getFullYear();
+
+    // 其它逻辑保持原样
     function isWeChat() {
       return /MicroMessenger/i.test(navigator.userAgent);
     }
 
-    // 隐藏遮罩层
+    function showMask() {
+      document.getElementById('wechat-mask').style.display = 'block';
+    }
+
     function hideMask() {
       document.getElementById('wechat-mask').style.display = 'none';
     }
 
-    // 处理 Android Gitee 主源下载（保持当前页直接开始下载文件）
     function handleAndroidDownload() {
-      if (isWeChat()) {
-        document.getElementById('wechat-mask').style.display = 'block';
-      } else {
-        window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
-      }
+      if (isWeChat()) showMask();
+      else window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
     }
 
-    // 处理 Android 蓝奏云 备用源下载（在新标签页打开网页，不覆盖当前官方页）
     function handleLanzouDownload() {
-      if (isWeChat()) {
-        document.getElementById('wechat-mask').style.display = 'block';
-      } else {
-        window.open('https://wwany.lanzoup.com/i4TeD3zvp8wf', '_blank');
-      }
+      if (isWeChat()) showMask();
+      else window.open('https://wwany.lanzoup.com/i4TeD3zvp8wf', '_blank');
     }
 
-    // 处理 iOS 跳转
     function openAppStore() {
-      if (isWeChat()) {
-        document.getElementById('wechat-mask').style.display = 'block';
-      } else {
-        window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
-      }
+      if (isWeChat()) showMask();
+      else window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
     }
   </script>
-
 </body>
 </html>
