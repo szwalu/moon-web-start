@@ -288,11 +288,11 @@ createApp({
            // 🌟 用 visualViewport 精确处理键盘弹出时的布局
             if (window.visualViewport) {
                 const vv = window.visualViewport
-                const container = document.querySelector('.admin-container')
                 const handleViewportResize = () => {
+                    // 每次触发都重新查询，因为 .admin-container 是登录后才渲染的（v-else），
+                    // 挂载时缓存的引用会是 null
+                    const container = document.querySelector('.admin-container')
                     if (container) {
-                        // vv.height 是键盘弹出后剩余的可视高度
-                        // vv.offsetTop 是可视视口相对页面顶部的偏移（一般应为 0，因为 body 已 fixed）
                         container.style.height = vv.height + 'px'
                         container.style.transform = `translateY(${vv.offsetTop}px)`
                     }
@@ -300,7 +300,6 @@ createApp({
                 }
                 vv.addEventListener('resize', handleViewportResize)
                 vv.addEventListener('scroll', handleViewportResize)
-                // 初始执行一次，避免首次渲染尺寸不对
                 handleViewportResize()
             }
         })
