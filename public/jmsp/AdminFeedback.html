@@ -54,7 +54,6 @@
         .switch-btn:hover { background: #f0f0f0; color: #333; border-color: #bbb; }
         .active-badge { color: #10b981; font-weight: bold; font-size: 11px; background: #e0f8f5; padding: 4px 10px; border-radius: 12px; border: 1px solid #a7f3d0; }
 
-        /* 新增：关闭按钮样式 */
         .close-ticket-btn { background: #fff; border: 1px solid #ff3b30; color: #ff3b30; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .close-ticket-btn:hover { background: #fff5f5; }
 
@@ -187,9 +186,9 @@
                             </div>
                         </div>
 
-                        <!-- 🌟 拦截系统闭环消息 -->
-                        <div v-if="msg.sender_role === 'system' && msg.content === 'TICKET_CLOSED'" class="ticket-divider" style="margin: 10px 0;">
-                            <span style="color: #ff3b30; font-weight: bold; background: #fff; padding: 0 10px;">🔒 该工单已被关闭</span>
+                        <!-- 🌟 改回 admin 角色的闭环消息判断 -->
+                        <div v-if="msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED'" class="ticket-divider" style="margin: 10px 0;">
+                            <span style="color: #ff3b30; font-weight: bold; background: inherit; padding: 0 10px;">🔒 该工单已被关闭</span>
                         </div>
 
                         <div v-else class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
@@ -216,18 +215,15 @@
                     </template>
                 </div>
 
-                <!-- 🌟 增加了关闭工单按钮 -->
                 <div class="reply-context-bar" v-if="activeTicketId">
                     <div style="flex: 1;">
                         正在对工单 <strong>{{ activeTicketId }}</strong> 进行回复
                         <div style="font-size:11px; opacity:0.7;">(点击上方历史工单的切换按钮可更改)</div>
                     </div>
-                    <!-- 若该工单已被关闭，则显示标识；否则显示关闭按钮 -->
                     <button v-if="!isActiveTicketClosed" class="close-ticket-btn" @click="closeActiveTicket">关闭该工单</button>
                     <span v-else class="active-badge" style="background:#ffebee; color:#d32f2f; border-color:#ffcdd2;">🔒 已关闭</span>
                 </div>
 
-                <!-- 若工单被关闭，则隐藏发送框 -->
                 <div class="send-box" v-if="!isActiveTicketClosed">
                     <textarea 
                         v-model="replyText" 
@@ -273,9 +269,9 @@ createApp({
         const messageBoxRef = ref(null)
         const activeTicketId = ref(null)
 
-        // 🌟 新增：动态判断当前锁定的工单是否被关闭
+        // 🌟 动态判断时，也改回匹配 'admin' 角色
         const isActiveTicketClosed = computed(() => {
-            return messages.value.some(m => m.ticket_id === activeTicketId.value && m.sender_role === 'system' && m.content === 'TICKET_CLOSED')
+            return messages.value.some(m => m.ticket_id === activeTicketId.value && m.sender_role === 'admin' && m.content === 'TICKET_CLOSED')
         })
 
         onMounted(async () => {
@@ -382,7 +378,6 @@ createApp({
 
         const setActiveTicket = (tid) => { activeTicketId.value = tid }
 
-        // 🌟 新增：关闭当前选中工单的方法
         const closeActiveTicket = async () => {
             if (!confirm('确定要关闭此工单吗？关闭后用户将在App内看到提示，且无法继续补充。')) return
             const { error } = await supabaseClient
@@ -390,7 +385,7 @@ createApp({
                 .insert([{
                     device_id: currentDevice.value,
                     ticket_id: activeTicketId.value,
-                    sender_role: 'system', // 使用专门定义的 system 身份
+                    sender_role: 'admin', // 🌟 关键修改：用 admin 角色发送闭环指令
                     content: 'TICKET_CLOSED'
                 }])
             if (error) alert('关闭失败: ' + error.message)
