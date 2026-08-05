@@ -1,765 +1,443 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
-    <title>鸡毛蒜皮 - 管理后台</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100dvh; display: flex; flex-direction: column; color: #333; overflow: hidden; }
-        
-        /* === 登录遮罩 === */
-        .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
-        .login-box { background: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); text-align: center; }
-        .login-box h3 { margin-bottom: 20px; color: #333; }
-        .login-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 15px; outline: none; transition: border 0.2s; }
-        .login-box input:focus { border-color: #007aff; }
-        .login-box button { width: 100%; padding: 12px; background: #007aff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; transition: background 0.2s; }
-        .login-box button:hover:not(:disabled) { background: #0056b3; }
-        .login-box button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <title>鸡毛蒜皮 - 对话式日记与记账</title>
+  <style>
+    /* 基础重置 */
+    body, h1, h2, p { margin: 0; padding: 0; }
+    
+    /* === 基础页面样式 === */
+    body {
+      background: var(--app-bg, #ffffff);
+      color: var(--text-main, #333);
+      font-family: -apple-system, system-ui, sans-serif;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
 
-        /* === 主体布局 === */
-        .admin-container { display: flex; flex: 1; height: 100dvh; overflow: hidden; }
-        
-        /* 左侧：设备列表 */
-        .device-list { width: 280px; background: #fff; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; flex-shrink: 0; }
-        .list-header { padding: 16px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center; background: #f9fafb; }
-        .list-header h3 { font-size: 15px; margin: 0; color: #333; }
-        .device-items-wrap { flex: 1; overflow-y: auto; padding: 12px; }
-        .device-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; border-radius: 8px; margin-bottom: 6px; transition: background 0.2s; }
-        .device-item:hover { background: #f9fafb; }
-        .device-item.active { background: #eef2ff; border-bottom-color: transparent; }
-        .dev-id { font-weight: 600; font-size: 13px; color: #111; word-break: break-all; }
-        .dev-preview { font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; }
-        
-        /* 右侧：主内容区 */
-        .main-area { flex: 1; display: flex; flex-direction: column; background: #f5f6f8; min-width: 0; position: relative; }
-        .area-header { padding: 15px 20px; border-bottom: 1px solid #e5e5e5; background: #fff; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .header-title { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 8px; }
-        
-        .btn-ghost { background: transparent; border: none; color: #007aff; font-size: 14px; font-weight: 500; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: 0.2s; }
-        .btn-ghost:hover { background: rgba(0,122,255,0.1); }
-        .mobile-back-btn { display: none; background: transparent; border: none; color: #007aff; font-size: 14px; font-weight: 500; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: 0.2s; }
-        .mobile-back-btn:hover { background: rgba(0,122,255,0.1); }
-        
-        .logout-btn { background: #ff3b30; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
-        .delete-btn { background: #fff; color: #ff3b30; border: 1px solid #ff3b30; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: 0.2s; }
-        .delete-btn:hover { background: #fff5f5; }
+    .home-page {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
 
-        /* 视图 1：工单列表网格 */
-        .ticket-grid-view { flex: 1; overflow-y: auto; padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-content: flex-start; }
-        .ticket-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 12px; transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
-        .ticket-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.06); border-color: #ddd; }
-        .tc-header { display: flex; justify-content: space-between; align-items: center; }
-        .tc-id { font-size: 12px; color: #888; font-family: monospace; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
-        .tc-status { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: bold; }
-        .tc-status.open { background: #e0f8f5; color: #10b981; border: 1px solid #a7f3d0; }
-        .tc-status.closed { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; }
-        .tc-preview { font-size: 14px; color: #333; line-height: 1.5; word-break: break-all; }
-        .tc-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #999; border-top: 1px solid #f0f0f0; padding-top: 12px; }
-        
-        /* 新增：工单卡片上的删除按钮 */
-        .del-ticket-btn { background: transparent; border: none; color: #ff3b30; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: 0.2s; opacity: 0.7; font-weight: 500; }
-        .del-ticket-btn:hover { opacity: 1; background: rgba(255, 59, 48, 0.1); }
+    .content-wrapper {
+      width: 100%;
+      max-width: 600px;
+      /* 适配刘海屏和底部安全区 */
+      padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+      box-sizing: border-box;
+    }
 
-        /* 视图 2：对话详情页 */
-        .chat-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f5f6f8; }
-        .message-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-        .msg-row { display: flex; width: 100%; }
-        .user-msg { justify-content: flex-start; }
-        .admin-msg { justify-content: flex-end; }
-        .bubble { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; position: relative; }
-        .user-msg .bubble { background: #fff; color: #333; border: 1px solid #e5e5e5; border-top-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-        .admin-msg .bubble { background: #007aff; color: #fff; border-top-right-radius: 4px; box-shadow: 0 1px 2px rgba(0,122,255,0.2); }
-        .role-tag { font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px; }
-        .msg-time { font-size: 10px; color: #999; margin-top: 4px; text-align: right; }
-        .admin-msg .msg-time { color: rgba(255,255,255,0.7); }
-        
-        .del-msg-btn { background: none; border: none; color: #999; font-size: 11px; cursor: pointer; padding: 4px; margin-top: 4px; transition: color 0.2s; }
-        .del-msg-btn:hover { color: #ff3b30; }
-        .admin-msg .del-msg-btn { color: rgba(255,255,255,0.6); }
-        .admin-msg .del-msg-btn:hover { color: #fff; }
+    /* === Hero 区块 === */
+    .hero-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 48px 0 32px;
+    }
 
-        .system-divider { text-align: center; margin: 20px 0; }
-        .system-divider span { background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #fca5a5; }
+    .app-icon-image {
+      width: 96px;
+      height: 96px;
+      border-radius: 22px; /* 完美契合 iOS 圆角规范 */
+      object-fit: cover;   /* 保证图片不变形 */
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08); /* 添加柔和的高级阴影 */
+      margin-bottom: 20px;
+      display: block;
+    }
 
-        /* 🌟 优化：增高输入框，使其体验更舒适 */
-        .send-box { padding: 12px 20px; display: flex; gap: 12px; background: #fff; align-items: flex-end; border-top: 1px solid #e5e5e5; }
-        .send-box textarea { flex: 1; min-height: 80px; max-height: 250px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 12px; resize: vertical; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
-        .send-box textarea:focus { border-color: #007aff; background: #fff; }
-        .send-box button { padding: 0 24px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: 0.2s; margin-bottom: 4px; }
-        .send-box button:hover { background: #0056b3; }
+    .app-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      color: #1e293b;
+    }
 
-        .closed-banner { padding: 16px; text-align: center; background: #fff; border-top: 1px solid #e5e5e5; color: #999; font-size: 13px; font-weight: 500; }
+    .app-slogan {
+      font-size: 15px;
+      color: #64748b;
+      margin: 0;
+      padding: 0 20px;
+      line-height: 1.5;
+    }
 
-        .no-select { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; gap: 12px; }
-        .no-select svg { opacity: 0.2; }
-        
-        /* 🌟 图片上传预览区样式 */
-        .image-preview-area { display: flex; gap: 10px; padding: 10px 20px 0; background: #fff; flex-wrap: wrap; }
-        .preview-item { position: relative; width: 60px; height: 60px; border-radius: 8px; border: 1px solid #eee; }
-        .preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
-        .preview-item .remove-btn { position: absolute; top: -6px; right: -6px; background: rgba(0,0,0,0.6); color: #fff; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; border: none; }
-        .icon-btn { background: none; border: none; color: #999; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 50%; transition: 0.2s; flex-shrink: 0; }
-        .icon-btn:hover { background: #f0f0f0; color: #007aff; }
-        
-        @media (prefers-color-scheme: dark) {
-            .image-preview-area { background: #1e1e1e; }
-            .preview-item { border-color: #333; }
-            .icon-btn:hover { background: #333; }
-        }
-        
-        /* ====== 移动端适配 ====== */
-        @media (max-width: 768px) {
-            .device-list { width: 100%; border-right: none; }
-            /* 状态控制 */
-            .admin-container[data-view="device"] .main-area { display: none; }
-            .admin-container[data-view="ticket"] .device-list { display: none; }
-            .admin-container[data-view="chat"] .device-list { display: none; }
-            
-            .ticket-grid-view { grid-template-columns: 1fr; padding: 12px; }
-            .bubble { max-width: 85%; }
-            .area-header { padding: 12px; }
-            .send-box { padding: 10px 12px; }
-            .mobile-back-btn { display: inline-block; }
-        }
+    /* === 下载卡片区块 === */
+    .download-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
 
-        /* ====== 黑暗模式适配 ====== */
-        @media (prefers-color-scheme: dark) {
-            body { background: #121212; color: #e5e5e5; }
-            .login-box { background: #1e1e1e; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
-            .login-box h3 { color: #f5f5f5; }
-            .login-box input { background: #2c2c2c; border: 1px solid #444; color: #f5f5f5; }
-            .login-box input:focus { border-color: #0a84ff; }
-            
-            .device-list, .area-header, .send-box, .closed-banner { background: #1e1e1e; border-color: #333; }
-            .list-header { background: #181818; border-color: #333; }
-            .list-header h3, .header-title { color: #e5e5e5; }
-            .device-item { border-bottom-color: #2c2c2c; }
-            .device-item:hover { background: #242424; }
-            .device-item.active { background: #2c3344; }
-            .dev-id { color: #f5f5f5; }
-            
-            .main-area, .chat-view { background: #121212; }
-            
-            .ticket-card { background: #1e1e1e; border-color: #333; }
-            .ticket-card:hover { border-color: #555; background: #242424; }
-            .tc-id { background: #2c2c2c; color: #aaa; }
-            .tc-preview { color: #e5e5e5; }
-            .tc-footer { border-color: #333; }
-            .tc-status.open { background: rgba(16, 185, 129, 0.15); border-color: rgba(16,185,129,0.3); }
-            .tc-status.closed { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); }
+    .download-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-            .user-msg .bubble { background: #242424; color: #e5e5e5; border-color: #333; }
-            .admin-msg .bubble { background: #0a84ff; color: #fff; }
-            .send-box textarea { background: #2c2c2c; border-color: #444; color: #f5f5f5; }
-            .send-box textarea:focus { background: #242424; border-color: #0a84ff; }
-            .no-select { background: #121212; color: #666; }
-            .btn-ghost, .mobile-back-btn { color: #0a84ff; }
-            .btn-ghost:hover, .mobile-back-btn:hover { background: rgba(10, 132, 255, 0.15); }
-            
-            ::-webkit-scrollbar { width: 6px; }
-            ::-webkit-scrollbar-track { background: transparent; }
-            ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-            ::-webkit-scrollbar-thumb:hover { background: #666; }
-        }
-    </style>
+    .download-card:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    .card-info {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .platform-icon {
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .text-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .main-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .sub-title {
+      font-size: 13px;
+      opacity: 0.8;
+    }
+
+    .action-btn {
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* iOS 卡片风格 */
+    .ios-card {
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #0f172a;
+    }
+    .ios-card .sub-title { color: #64748b; }
+    .ios-card .action-btn {
+      background: #0f172a;
+      color: white;
+    }
+
+    /* Android 主下载卡片风格 */
+    .android-card {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+    .android-card .sub-title { color: #15803d; }
+    .android-card .action-btn {
+      background: #22c55e;
+      color: white;
+      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+    }
+
+    /* Android 备用下载（蓝奏云）卡片风格 */
+    .android-backup-card {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1e40af;
+    }
+    .android-backup-card .sub-title { color: #2563eb; }
+    .android-backup-card .action-btn {
+      background: #3b82f6;
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    }
+
+    /* === 功能区块 === */
+    .features-section {
+      margin-bottom: 40px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #334155;
+      text-align: center;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .feature-item {
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .feature-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-bottom: 6px;
+    }
+
+    .feature-desc {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    /* === 底部 === */
+    .footer {
+      text-align: center;
+      padding: 24px 0;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    /* === 微信引导遮罩层样式 === */
+    .wechat-mask {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      color: white;
+    }
+
+    .mask-content {
+      padding: 20px 30px;
+      text-align: right; 
+    }
+
+    .mask-content .arrow {
+      font-size: 60px;
+      line-height: 1;
+      margin-bottom: 10px;
+      margin-right: 10px;
+      animation: bounce 1s infinite alternate;
+    }
+
+    .mask-content p {
+      font-size: 18px;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+
+    .mask-hint {
+      font-size: 14px;
+      color: #aaa;
+    }
+
+    @keyframes bounce {
+      from { transform: translateY(0) translateX(0); }
+      to { transform: translateY(-10px) translateX(10px); }
+    }
+
+    /* === 深色模式适配 === */
+    @media (prefers-color-scheme: dark) {
+      body { background: #1c1c1e; color: #e0e0e0; }
+      
+      .app-title { color: #eee; }
+      .app-slogan { color: #aaa; }
+      .section-title { color: #ddd; }
+      
+      .ios-card {
+        background: #2c2c2e;
+        border-color: #444;
+        color: #eee;
+      }
+      .ios-card .sub-title { color: #999; }
+      .ios-card .action-btn { background: #e0e0e0; color: #1c1c1e; }
+      
+      .android-card {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.2);
+        color: #bbf7d0;
+      }
+      .android-card .sub-title { color: #86efac; }
+      .android-card .action-btn { background: #16a34a; }
+
+      .android-backup-card {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.2);
+        color: #bfdbfe;
+      }
+      .android-backup-card .sub-title { color: #93c5fd; }
+      .android-backup-card .action-btn { background: #2563eb; }
+      
+      .feature-item {
+        background: #2c2c2e;
+        border-color: #444;
+      }
+      .feature-name { color: #eee; }
+      .feature-desc { color: #aaa; }
+      
+      .footer { color: #666; }
+    }
+  </style>
 </head>
 <body>
 
-<div id="app">
-    <!-- 登录界面 -->
-    <div v-if="!isLoggedIn" class="login-overlay">
-        <div class="login-box">
-            <h3>管理员登录</h3>
-            <div v-if="loginError" class="error-tip">{{ loginError }}</div>
-            <input type="email" v-model="email" placeholder="输入管理员邮箱..." @keyup.enter="handleLogin">
-            <input type="password" v-model="password" placeholder="输入密码..." @keyup.enter="handleLogin">
-            <button @click="handleLogin" :disabled="loading">{{ loading ? '登录中...' : '登 录' }}</button>
+  <div class="home-page">
+    <div class="content-wrapper">
+      
+      <!-- 顶部 Hero 区块 -->
+      <header class="hero-section">
+        <img class="app-icon-image" src="/主题.png" alt="鸡毛蒜皮 Logo" />
+        <h1 class="app-title">鸡毛蒜皮</h1>
+        <p class="app-slogan">记录你的每一个瞬间，对话式日记与记账体验。</p>
+      </header>
+
+      <!-- 下载卡片区块 -->
+      <section class="download-section">
+        <!-- iOS 下载卡片 -->
+        <div class="download-card ios-card" onclick="openAppStore()">
+          <div class="card-info">
+            <div class="platform-icon"></div>
+            <div class="text-group">
+              <div class="main-title">iOS 版下载</div>
+              <div class="sub-title">前往 App Store 免费获取</div>
+            </div>
+          </div>
+          <div class="action-btn">立即下载</div>
         </div>
+
+        <!-- Android 主下载卡片 (Gitee 源) -->
+        <div class="download-card android-card" onclick="handleAndroidDownload()">
+          <div class="card-info">
+            <div class="platform-icon">🤖</div>
+            <div class="text-group">
+              <div class="main-title">Android 版下载（主源）</div>
+              <div class="sub-title">v1.2.8 | Gitee 官方源直链下载</div>
+            </div>
+          </div>
+          <div class="action-btn">立即下载</div>
+        </div>
+
+        <!-- Android 备用下载卡片 (蓝奏云) -->
+        <div class="download-card android-backup-card" onclick="handleLanzouDownload()">
+          <div class="card-info">
+            <div class="platform-icon">☁️</div>
+            <div class="text-group">
+              <div class="main-title">Android 版下载（备用源）</div>
+              <div class="sub-title">蓝奏云高速网盘（密码：7su8）</div>
+            </div>
+          </div>
+          <div class="action-btn">进入下载</div>
+        </div>
+      </section>
+
+      <!-- 核心功能区块 -->
+      <section class="features-section">
+        <h2 class="section-title">核心功能与理念</h2>
+        <div class="features-grid">
+          <div class="feature-item">
+            <div class="feature-icon">💬</div>
+            <div class="feature-name">对话式记录</div>
+            <div class="feature-desc">自然语言输入，轻松完成日记与账单分类。</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🔒</div>
+            <div class="feature-name">纯本地存储</div>
+            <div class="feature-desc">数据完全掌握在自己手中，保护隐私安全。</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📊</div>
+            <div class="feature-name">动态图表</div>
+            <div class="feature-desc">自动生成统计图表，收支流水一目了然。</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">⚡️</div>
+            <div class="feature-name">快捷指令</div>
+            <div class="feature-desc">深度整合系统自动化，支持自动本地备份。</div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- 底部 Footer -->
+      <footer class="footer">
+        <p>© 2026 鸡毛蒜皮 App. All rights reserved.</p>
+      </footer>
+
     </div>
+  </div>
 
-    <!-- 主界面 -->
-    <div class="admin-container" :data-view="mobileView" v-else>
-        
-        <!-- 左侧：用户列表 -->
-        <div class="device-list">
-            <div class="list-header">
-                <h3>用户列表</h3>
-                <button class="logout-btn" @click="handleLogout">退出</button>
-            </div>
-            <div class="device-items-wrap">
-                <div 
-                    v-for="item in devices" 
-                    :key="item.device_id"
-                    class="device-item"
-                    :class="{ active: currentDevice === item.device_id }"
-                    @click="selectDevice(item.device_id)"
-                >
-                    <div class="dev-id">{{ item.device_id }}</div>
-                    <div class="dev-preview">{{ item.content }}</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 右侧：主内容区 -->
-        <div class="main-area">
-            
-            <!-- 空白状态 -->
-            <div class="no-select" v-if="!currentDevice">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                请在左侧选择一个用户查看反馈
-            </div>
-
-            <!-- 视图 1：该用户的工单列表 -->
-            <template v-else-if="currentDevice && !currentTicketId">
-                <div class="area-header">
-                    <div class="header-title">
-                        <button class="mobile-back-btn" @click="goBackToDevices" style="margin-right: 8px;">← 返回</button>
-                        <span>工单列表</span>
-                        <span style="font-weight:normal; font-size:13px; color:#999; margin-left:8px;">{{ currentDevice }}</span>
-                    </div>
-                    <button class="delete-btn" @click="deleteDeviceThread(currentDevice)">清空该用户数据</button>
-                </div>
-                
-                <div class="ticket-grid-view">
-                    <div 
-                        v-for="ticket in groupedTickets" 
-                        :key="ticket.ticket_id" 
-                        class="ticket-card"
-                        @click="openTicket(ticket.ticket_id)"
-                    >
-                        <div class="tc-header">
-                            <span class="tc-id">#{{ ticket.ticket_id ? ticket.ticket_id.split('_')[1] || ticket.ticket_id : '早期记录' }}</span>
-                            <span class="tc-status" :class="ticket.isClosed ? 'closed' : 'open'">
-                                {{ ticket.isClosed ? '已关闭' : '处理中' }}
-                            </span>
-                        </div>
-                        <div class="tc-preview">
-                            {{ ticket.preview || '[图片或文件反馈]' }}
-                        </div>
-                        <div class="tc-footer">
-                            <span>共 {{ ticket.messages.length }} 条对话</span>
-                            <div style="display:flex; gap: 12px; align-items: center;">
-                                <span>{{ formatDate(ticket.lastTime) }}</span>
-                                <button class="del-ticket-btn" @click.stop="deleteTicket(ticket)">删除</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-if="groupedTickets.length === 0" style="grid-column: 1/-1; text-align: center; color: #999; margin-top: 40px;">
-                        暂无有效记录
-                    </div>
-                </div>
-            </template>
-
-            <!-- 视图 2：单个工单聊天详情 -->
-            <template v-else-if="currentDevice && currentTicketId">
-                <div class="chat-view">
-                    <div class="area-header">
-                        <div class="header-title">
-                            <button class="btn-ghost" @click="currentTicketId = null">← 返回工单列表</button>
-                            <span style="font-weight:normal; font-size:13px; color:#999; margin-left:8px;">工单号: {{ currentTicketId }}</span>
-                        </div>
-                        <button v-if="!isCurrentTicketClosed" class="delete-btn" @click="closeCurrentTicket">关闭工单</button>
-                    </div>
-
-                    <div class="message-box" ref="messageBoxRef">
-                        <template v-for="msg in currentTicketMessages" :key="msg.id">
-                            
-                            <div v-if="msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED'" class="system-divider">
-                                <span>🔒 管理员已结束此工单</span>
-                            </div>
-
-                            <div v-else class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
-                                <div class="bubble">
-                                    <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（客服）' : '用户' }}</span>
-                                    <div v-if="parseMessage(msg.content).text">{{ parseMessage(msg.content).text }}</div>
-                                    <div v-if="parseMessage(msg.content).images.length" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                                        <img
-                                            v-for="(url, i) in parseMessage(msg.content).images"
-                                            :key="i"
-                                            :src="url"
-                                            style="width:100px; height:100px; object-fit:cover; border-radius:8px; cursor:pointer;"
-                                            @click="openImage(url)"
-                                        >
-                                    </div>
-                                    <div class="msg-time">{{ formatDate(msg.created_at) }}</div>
-                                    <button class="del-msg-btn" @click="deleteMessage(msg)">删除</button>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-
-                    <!-- 发送区或已关闭提示 -->
-                    <div class="closed-banner" v-if="isCurrentTicketClosed">
-                        此工单已被关闭，无法继续回复。
-                    </div>
-                    <!-- 发送区（支持图片上传） -->
-                    <div v-else style="display: flex; flex-direction: column; border-top: 1px solid #e5e5e5; background: #fff;" :style="isCurrentTicketClosed ? 'display:none;' : ''">
-                        
-                        <div class="image-preview-area" v-if="imagePreviews.length > 0">
-                            <div class="preview-item" v-for="(src, idx) in imagePreviews" :key="idx">
-                                <img :src="src">
-                                <button class="remove-btn" @click="removeImage(idx)">✕</button>
-                            </div>
-                        </div>
-
-                        <div class="send-box" style="border-top: none;">
-                            <button class="icon-btn" @click="triggerImageSelect" title="添加图片">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                            </button>
-                            <input type="file" ref="fileInputRef" accept="image/*" multiple style="display: none" @change="handleFileChange">
-                            
-                            <textarea 
-                                v-model="replyText" 
-                                placeholder="输入回复内容..."
-                                @keyup.enter.exact.prevent="sendReply"
-                            ></textarea>
-                            <button @click="sendReply" :disabled="isSending">
-                                {{ isSending ? '发送中...' : '发 送' }}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </template>
-
-        </div>
+  <!-- 微信浏览器引导遮罩层 -->
+  <div id="wechat-mask" class="wechat-mask" style="display: none;" onclick="hideMask()">
+    <div class="mask-content">
+      <div class="arrow">↗</div>
+      <p>点击右上角 <strong>···</strong></p>
+      <p>选择在<strong>「浏览器」</strong>或<strong>「Safari」</strong>中打开</p>
+      <p class="mask-hint">（即可正常下载）</p>
     </div>
-</div>
+  </div>
 
-<script>
-const { createApp, ref, computed, onMounted, nextTick } = Vue
-
-const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
-const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
-
-createApp({
-    setup() {
-        const isLoggedIn = ref(false)
-        const email = ref('')
-        const password = ref('')
-        const loginError = ref('')
-        const loading = ref(false)
-        const fileInputRef = ref(null)
-        const selectedFiles = ref([])
-        const imagePreviews = ref([])
-        const isSending = ref(false)
-
-        const triggerImageSelect = () => {
-            if (fileInputRef.value) fileInputRef.value.click()
-        }
-
-        const handleFileChange = (e) => {
-            if (!e.target.files) return
-            const files = Array.from(e.target.files)
-            files.forEach(file => {
-                selectedFiles.value.push(file)
-                imagePreviews.value.push(URL.createObjectURL(file))
-            })
-            e.target.value = ''
-        }
-
-        const removeImage = (idx) => {
-            selectedFiles.value.splice(idx, 1)
-            URL.revokeObjectURL(imagePreviews.value[idx])
-            imagePreviews.value.splice(idx, 1)
-        }
-        
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-        
-        // 核心状态
-        const devices = ref([])         
-        const allMessages = ref([])     
-        const currentDevice = ref(null) 
-        const currentTicketId = ref(null) 
-        const replyText = ref('')
-        const messageBoxRef = ref(null)
-
-        // 移动端视图控制
-        const mobileView = computed(() => {
-            if (!currentDevice.value) return 'device'
-            if (!currentTicketId.value) return 'ticket'
-            return 'chat'
-        })
-
-        // 计算当前用户的工单分组
-        const groupedTickets = computed(() => {
-            if (!allMessages.value.length) return []
-            
-            const groups = {}
-            let lastUserTicketId = 'legacy_ticket'
-
-            const sortedMsgs = [...allMessages.value].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-
-            sortedMsgs.forEach(msg => {
-                let tid = msg.ticket_id
-                
-                if (msg.sender_role === 'user' && tid) {
-                    lastUserTicketId = tid
-                } else if (msg.sender_role === 'admin' && !tid) {
-                    tid = lastUserTicketId
-                }
-                if (!tid) tid = lastUserTicketId
-
-                if (!groups[tid]) {
-                    groups[tid] = {
-                        ticket_id: tid,
-                        messages: [],
-                        lastTime: 0,
-                        preview: '',
-                        isClosed: false
-                    }
-                }
-                
-                groups[tid].messages.push(msg)
-                
-                const msgTime = new Date(msg.created_at).getTime()
-                if (msgTime > groups[tid].lastTime) groups[tid].lastTime = msgTime
-
-                if (msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED') {
-                    groups[tid].isClosed = true
-                } else {
-                    const parsed = parseMessage(msg.content)
-                    if (msg.sender_role === 'user' && parsed.text && !groups[tid].preview) {
-                        groups[tid].preview = parsed.text
-                    }
-                }
-            })
-
-            return Object.values(groups).sort((a, b) => b.lastTime - a.lastTime)
-        })
-
-        const currentTicketMessages = computed(() => {
-            const group = groupedTickets.value.find(t => t.ticket_id === currentTicketId.value)
-            return group ? group.messages : []
-        })
-
-        const isCurrentTicketClosed = computed(() => {
-            const group = groupedTickets.value.find(t => t.ticket_id === currentTicketId.value)
-            return group ? group.isClosed : false
-        })
-
-        onMounted(async () => {
-            const { data: { session } } = await supabaseClient.auth.getSession()
-            if (session && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
-                isLoggedIn.value = true
-                initData()
-            }
-        })
-
-        const handleLogin = async () => {
-            if (!email.value || !password.value) return (loginError.value = '请输入邮箱和密码')
-            loading.value = true
-            loginError.value = ''
-            const { data, error } = await supabaseClient.auth.signInWithPassword({ email: email.value, password: password.value })
-            loading.value = false
-            if (error) return loginError.value = '登录失败: ' + error.message
-            if (ALLOWED_ADMIN_EMAILS.includes(data.user.email)) {
-                isLoggedIn.value = true
-                initData()
-            } else {
-                loginError.value = '权限不足'
-                await supabaseClient.auth.signOut()
-            }
-        }
-
-        const handleLogout = async () => {
-            await supabaseClient.auth.signOut()
-            isLoggedIn.value = false
-            currentDevice.value = null
-            currentTicketId.value = null 
-            allMessages.value = []
-        }
-
-        const initData = () => {
-            fetchDevices()
-            supabaseClient
-                .channel('admin-web-realtime')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, payload => {
-                    const newMsg = payload.new
-                    if (currentDevice.value === newMsg.device_id) {
-                        allMessages.value.push(newMsg)
-                        if (currentTicketId.value === newMsg.ticket_id) {
-                            scrollToBottom()
-                        }
-                    }
-                    fetchDevices() 
-                })
-                .subscribe()
-        }
-
-        const fetchDevices = async () => {
-            const { data, error } = await supabaseClient
-                .from('ticket_messages')
-                .select('device_id, created_at, content')
-                .order('created_at', { ascending: false })
-
-            if (!error && data) {
-                const map = new Map()
-                data.forEach(item => {
-                    if (!map.has(item.device_id)) map.set(item.device_id, item)
-                })
-                devices.value = Array.from(map.values())
-            }
-        }
-
-        const selectDevice = async (deviceId) => {
-            currentDevice.value = deviceId
-            currentTicketId.value = null 
-            allMessages.value = []
-
-            const { data, error } = await supabaseClient
-                .from('ticket_messages')
-                .select('*')
-                .eq('device_id', deviceId)
-                .order('created_at', { ascending: true })
-
-            if (!error && data) {
-                allMessages.value = data
-            }
-        }
-
-        const goBackToDevices = () => {
-            currentDevice.value = null
-            currentTicketId.value = null
-        }
-
-        const openTicket = (tid) => {
-            currentTicketId.value = tid
-            scrollToBottom()
-        }
-
-        const deleteTicket = async (ticket) => {
-            const displayId = ticket.ticket_id ? ticket.ticket_id.split('_')[1] || ticket.ticket_id : '早期记录'
-            if (!confirm(`确定要彻底删除工单 #${displayId} 及其全部对话吗？此操作不可恢复。`)) return
-
-            const allPaths = []
-            ticket.messages.forEach(m => {
-                parseMessage(m.content).images.forEach(url => {
-                    const idx = url.indexOf('/public/feedback-images/')
-                    if (idx !== -1) allPaths.push(url.slice(idx + 24))
-                })
-            })
-
-            if (allPaths.length > 0) {
-                await supabaseClient.storage.from('feedback-images').remove(allPaths)
-            }
-
-            const msgIds = ticket.messages.map(m => m.id)
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .delete()
-                .in('id', msgIds)
-
-            if (error) {
-                alert('删除工单失败: ' + error.message)
-                return
-            }
-
-            allMessages.value = allMessages.value.filter(m => !msgIds.includes(m.id))
-        }
-
-        const closeCurrentTicket = async () => {
-            if (!confirm('确定要关闭此工单吗？')) return
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .insert([{
-                    device_id: currentDevice.value,
-                    ticket_id: currentTicketId.value,
-                    sender_role: 'admin', 
-                    content: 'TICKET_CLOSED'
-                }])
-            if (error) alert('关闭失败: ' + error.message)
-            else scrollToBottom()
-        }
-
-        // ================= 🌟 新增：前端压缩图片方法 =================
-        const compressImage = (file, maxWidth = 800, quality = 0.6) => {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader()
-                reader.readAsDataURL(file)
-                reader.onload = (e) => {
-                    const img = new Image()
-                    img.src = e.target.result
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas')
-                        let width = img.width
-                        let height = img.height
-                        
-                        // 等比例缩放
-                        if (width > maxWidth) {
-                            height = Math.round((height * maxWidth) / width)
-                            width = maxWidth
-                        }
-                        
-                        canvas.width = width
-                        canvas.height = height
-                        const ctx = canvas.getContext('2d')
-                        ctx.drawImage(img, 0, 0, width, height)
-                        
-                        // 转换为 Blob，再包装为 File 对象返回
-                        canvas.toBlob((blob) => {
-                            if (blob) {
-                                // 统一转换成 jpeg 格式保存，利用 quality 压缩参数
-                                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { 
-                                    type: 'image/jpeg',
-                                    lastModified: Date.now()
-                                })
-                                resolve(newFile)
-                            } else {
-                                reject(new Error('图片压缩转换失败'))
-                            }
-                        }, 'image/jpeg', quality)
-                    }
-                    img.onerror = reject
-                }
-                reader.onerror = reject
-            })
-        }
-
-        const sendReply = async () => {
-            if (!replyText.value.trim() && selectedFiles.value.length === 0) return
-            if (!currentTicketId.value) return
-            
-            isSending.value = true
-            let finalContent = replyText.value.trim()
-            const uploadedUrls = []
-
-            // 1. 如果有图片，先压缩再直传到 Supabase Storage
-            if (selectedFiles.value.length > 0) {
-                for (const file of selectedFiles.value) {
-                    
-                    // 🌟 1.1 调用压缩方法压缩图片 (质量 0.6，最大宽 800)
-                    const compressedFile = await compressImage(file)
-                    
-                    // 🌟 1.2 构造清晰的存储桶路径： 设备ID / 工单ID / 文件名.jpg
-                    const fileName = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.jpg`
-                    const filePath = `${currentDevice.value}/${currentTicketId.value}/${fileName}`
-                    
-                    const { data, error } = await supabaseClient.storage
-                        .from('feedback-images')
-                        .upload(filePath, compressedFile)
-                    
-                    if (error) {
-                        alert('图片上传失败: ' + error.message)
-                        isSending.value = false
-                        return
-                    }
-
-                    // 获取上传后的绝对路径 URL
-                    const { data: publicUrlData } = supabaseClient.storage
-                        .from('feedback-images')
-                        .getPublicUrl(filePath)
-                        
-                    if (publicUrlData && publicUrlData.publicUrl) {
-                        uploadedUrls.push(publicUrlData.publicUrl)
-                    }
-                }
-            }
-
-            // 2. 按照客户端 App 的协议格式，拼接图片 URL
-            if (uploadedUrls.length > 0) {
-                finalContent += finalContent ? '\n\n【附图】：\n' : '【附图】：\n'
-                finalContent += uploadedUrls.join('\n')
-            }
-
-            // 3. 将最终内容写入消息表
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .insert([{
-                    device_id: currentDevice.value,
-                    ticket_id: currentTicketId.value, 
-                    sender_role: 'admin',
-                    content: finalContent
-                }])
-                
-            if (error) {
-                alert('发送失败: ' + error.message)
-            } else {
-                replyText.value = ''
-                selectedFiles.value = []
-                imagePreviews.value.forEach(url => URL.revokeObjectURL(url))
-                imagePreviews.value = []
-                scrollToBottom()
-            }
-            isSending.value = false
-        }
-
-        const deleteMessage = async (msg) => {
-            if (!confirm('确定删除此消息？')) return
-            const { images } = parseMessage(msg.content)
-            if (images.length > 0) {
-                const paths = images.map(url => {
-                    const idx = url.indexOf('/public/feedback-images/')
-                    return idx !== -1 ? url.slice(idx + 24) : null
-                }).filter(Boolean)
-                if (paths.length > 0) supabaseClient.storage.from('feedback-images').remove(paths)
-            }
-            await supabaseClient.from('ticket_messages').delete().eq('id', msg.id)
-            allMessages.value = allMessages.value.filter(m => m.id !== msg.id)
-        }
-
-        const deleteDeviceThread = async (deviceId) => {
-            if (!confirm(`确定清空 ${deviceId} 的所有数据？`)) return
-            const { data } = await supabaseClient.from('ticket_messages').select('content').eq('device_id', deviceId)
-            const allPaths = []
-            ;(data || []).forEach(m => {
-                parseMessage(m.content).images.forEach(url => {
-                    const idx = url.indexOf('/public/feedback-images/')
-                    if (idx !== -1) allPaths.push(url.slice(idx + 24))
-                })
-            })
-            if (allPaths.length > 0) await supabaseClient.storage.from('feedback-images').remove(allPaths)
-            
-            await supabaseClient.from('ticket_messages').delete().eq('device_id', deviceId)
-            
-            if (currentDevice.value === deviceId) {
-                goBackToDevices()
-            }
-            fetchDevices()
-        }
-
-        const scrollToBottom = () => {
-            nextTick(() => {
-                if (messageBoxRef.value) messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
-            })
-        }
-
-        const parseMessage = (content) => {
-            if (!content) return { text: '', images: [] }
-            const marker = '【附图】：'
-            const idx = content.indexOf(marker)
-            if (idx === -1) return { text: content, images: [] }
-            const text = content.slice(0, idx).trim()
-            const images = content.slice(idx + marker.length).split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))
-            return { text, images }
-        }
-
-        const formatDate = (isoString) => {
-            if (!isoString) return ''
-            const d = new Date(isoString)
-            return `${d.getMonth()+1}-${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
-        }
-
-        const openImage = (url) => window.open(url, '_blank')
-        
-        return {
-            isLoggedIn, email, password, loginError, loading, handleLogin, handleLogout,
-            devices, currentDevice, currentTicketId, mobileView,
-            groupedTickets, currentTicketMessages, isCurrentTicketClosed,
-            replyText, selectDevice, goBackToDevices, openTicket, closeCurrentTicket, sendReply,
-            deleteMessage, deleteDeviceThread, deleteTicket, 
-            messageBoxRef, parseMessage, formatDate, openImage,
-            fileInputRef, selectedFiles, imagePreviews, isSending,
-            triggerImageSelect, handleFileChange, removeImage
-        }
+  <script>
+    // 判断是否在微信浏览器内
+    function isWeChat() {
+      return /MicroMessenger/i.test(navigator.userAgent);
     }
-}).mount('#app')
-</script>
+
+    // 隐藏遮罩层
+    function hideMask() {
+      document.getElementById('wechat-mask').style.display = 'none';
+    }
+
+    // 处理 Android Gitee 主源下载（保持当前页直接开始下载文件）
+    function handleAndroidDownload() {
+      if (isWeChat()) {
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/1.2.8/app-release.apk';
+      }
+    }
+
+    // 处理 Android 蓝奏云 备用源下载（在新标签页打开网页，不覆盖当前官方页）
+    function handleLanzouDownload() {
+      if (isWeChat()) {
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        window.open('https://wwany.lanzoup.com/i4TeD3zvp8wf', '_blank');
+      }
+    }
+
+    // 处理 iOS 跳转
+    function openAppStore() {
+      if (isWeChat()) {
+        document.getElementById('wechat-mask').style.display = 'block';
+      } else {
+        window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
+      }
+    }
+  </script>
 
 </body>
 </html>
