@@ -51,7 +51,7 @@
       padding: calc(env(safe-area-inset-top) + 40px) 24px calc(env(safe-area-inset-bottom) + 40px);
     }
 
-    /* === 修复3：Hero 区域改为左图右文横向排版，首行居左 === */
+    /* === Hero 区域 === */
     .hero { 
       display: flex; 
       align-items: center; 
@@ -83,18 +83,24 @@
     }
     .app-slogan { font-size: 16px; color: var(--text-muted); max-width: 500px; margin: 0; }
 
-    /* === 修复2：下载区域按钮防止文字换行 === */
+    /* === 下载区域 === */
     .downloads { display: flex; flex-direction: column; gap: 16px; margin-bottom: 64px; max-width: 800px; margin-left: auto; margin-right: auto; animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
     .dl-btn { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-radius: 20px; background: var(--card-bg); border: 1px solid var(--card-border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: var(--glass-shadow); cursor: pointer; text-decoration: none; transition: all 0.2s ease; color: var(--text-main); }
     .dl-btn:active { transform: scale(0.98); }
     .dl-btn:hover { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08); border-color: rgba(99, 102, 241, 0.3); }
     
-    /* 防换行核心布局 */
+    /* 核心布局 */
     .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
     .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
-    .dl-text-group { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .dl-text-group { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; }
+    
+    /* 主标题保持单行省略 */
     .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    /* 👇 副标题允许自然换行显示全部，设定 word-break 防止被英文长链接撑爆 */
+    .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; word-break: break-word; }
+    
+    /* 右侧按钮：flex-shrink: 0 确保它绝对不缩水、不换行 */
     .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-left: 12px; }
     
     .dl-android-main .dl-action { background: #10b981; color: #fff; }
@@ -165,7 +171,11 @@
       .bento-grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: span 1; }
       .bento-card { height: 460px; } 
+      
+      /* 👇 在手机端缩小一点内部间距，给文字腾出更多显示空间 */
       .downloads { padding: 0 12px; }
+      .dl-btn { padding: 16px 14px; }
+      .dl-left { gap: 12px; }
       
       .card-hz .bento-content, .card-hz-rev .bento-content { padding: 24px 24px 0 24px; justify-content: flex-start; flex: none; }
       .card-hz .bento-img-wrap, .card-hz-rev .bento-img-wrap { padding: 0 15%; margin-top: 24px; }
@@ -177,7 +187,6 @@
 
   <div class="container">
     
-    <!-- === 调整为左侧图标，右侧文字排版 === -->
     <header class="hero">
       <img class="app-icon" src="/主题.png" alt="鸡毛蒜皮 Logo" onerror="this.src='https://api.iconify.design/fluent-emoji-flat:feather.svg'" />
       <div class="hero-content">
@@ -187,7 +196,6 @@
     </header>
 
     <section class="downloads">
-      <!-- 按钮包裹结构优化，完美解决多行文字折行撑爆问题 -->
       <div class="dl-btn" onclick="openAppStore()">
         <div class="dl-left">
           <div class="dl-icon"></div>
@@ -302,17 +310,14 @@
       </div>
     </section>
 
-    <!-- === 修复1：使用 span 标签包裹年份供 JS 调用 === -->
     <footer class="footer">
       <p>© <span id="dynamic-year"></span> 鸡毛蒜皮 App. All rights reserved.</p>
     </footer>
   </div>
 
   <script>
-    // 动态植入当前年份
     document.getElementById('dynamic-year').textContent = new Date().getFullYear();
 
-    // 其它逻辑保持原样
     function isWeChat() {
       return /MicroMessenger/i.test(navigator.userAgent);
     }
