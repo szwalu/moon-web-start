@@ -2,13 +2,13 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>鸡毛蒜皮 - 管理后台</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; color: #333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100dvh; display: flex; flex-direction: column; color: #333; overflow: hidden; }
         
         /* === 登录遮罩 === */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -22,7 +22,7 @@
         .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
 
         /* === 主体布局 === */
-        .admin-container { display: flex; flex: 1; height: 100vh; overflow: hidden; }
+        .admin-container { display: flex; flex: 1; height: 100dvh; overflow: hidden; }
         
         /* 左侧：设备列表 */
         .device-list { width: 280px; background: #fff; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; flex-shrink: 0; }
