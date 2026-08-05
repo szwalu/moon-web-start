@@ -35,7 +35,6 @@
         .header-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
         .header-left span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
-        /* 移动端专属返回按钮 */
         .mobile-back-btn { display: none; background: none; border: none; color: #007aff; font-size: 15px; font-weight: 600; cursor: pointer; padding: 4px 8px 4px 0; }
         
         .logout-btn { background: #ff3b30; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
@@ -50,11 +49,19 @@
         .admin-msg .bubble { background: #007aff; color: #fff; border-top-right-radius: 4px; box-shadow: 0 1px 2px rgba(0,122,255,0.2); }
         .role-tag { font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px; }
         
-        /* 🌟 新增：工单分割线 */
-        .ticket-divider { text-align: center; font-size: 12px; color: #999; margin: 16px 0; display: flex; align-items: center; }
-        .ticket-divider::before, .ticket-divider::after { content: ''; flex: 1; border-bottom: 1px dashed #ddd; margin: 0 12px; }
+        /* 🌟 重新设计的工单分割线，支持按钮交互 */
+        .ticket-divider { display: flex; align-items: center; text-align: center; font-size: 12px; color: #999; margin: 20px 0; }
+        .ticket-divider::before, .ticket-divider::after { content: ''; flex: 1; border-bottom: 1px dashed #ddd; }
+        .ticket-divider .content { padding: 0 12px; display: flex; align-items: center; gap: 8px; }
+        .switch-btn { background: #fff; border: 1px solid #ddd; padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; color: #666; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .switch-btn:hover { background: #f0f0f0; color: #333; border-color: #bbb; }
+        .active-badge { color: #10b981; font-weight: bold; font-size: 11px; background: #e0f8f5; padding: 4px 10px; border-radius: 12px; border: 1px solid #a7f3d0; }
 
-        .send-box { padding: 12px 16px; border-top: 1px solid #e5e5e5; display: flex; gap: 12px; background: #fff; align-items: flex-end; }
+        /* 🌟 输入框上方的回复状态条 */
+        .reply-context-bar { background: #eef2ff; padding: 10px 16px; font-size: 12px; color: #4b5563; border-top: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; }
+        .reply-context-bar strong { color: #007aff; }
+
+        .send-box { padding: 12px 16px; display: flex; gap: 12px; background: #fff; align-items: flex-end; }
         .send-box textarea { flex: 1; min-height: 44px; max-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 22px; resize: none; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
         .send-box textarea:focus { border-color: #007aff; background: #fff; }
         .send-box button { padding: 0 20px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; }
@@ -73,6 +80,7 @@
             .header-left span { font-size: 13px; }
             .chat-header { padding: 12px; }
             .delete-btn, .logout-btn { padding: 6px 8px; font-size: 11px; }
+            .ticket-divider .content { flex-direction: column; gap: 4px; }
         }
 
         /* ====== 黑暗模式适配 ====== */
@@ -97,9 +105,14 @@
             
             .user-msg .bubble { background: #242424; color: #e5e5e5; border-color: #333; }
             .admin-msg .bubble { background: #0a84ff; color: #fff; }
+            
             .ticket-divider::before, .ticket-divider::after { border-bottom-color: #444; }
+            .switch-btn { background: #242424; border-color: #444; color: #aaa; box-shadow: none; }
+            .switch-btn:hover { background: #333; color: #fff; }
+            .active-badge { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16,185,129,0.3); }
 
-            .send-box { background: #1e1e1e; border-top-color: #333; }
+            .reply-context-bar { background: #1e293b; border-top-color: #333; color: #cbd5e1; }
+            .send-box { background: #1e1e1e; border-top: none; }
             .send-box textarea { background: #2c2c2c; border-color: #444; color: #f5f5f5; }
             .send-box textarea:focus { background: #242424; border-color: #0a84ff; }
             .no-select { background: #121212; color: #666; }
@@ -156,18 +169,26 @@
                 </div>
                 
                 <div class="message-box" ref="messageBoxRef">
-                    <!-- 🌟 修改：遍历消息时，加入了工单分割线的判断逻辑 -->
                     <template v-for="(msg, index) in messages" :key="msg.id">
                         
-                        <!-- 工单分割线：如果和上一条消息的 ticket_id 不同，则显示一条分割线 -->
+                        <!-- 🌟 升级版工单分割线：带操作按钮 -->
                         <div v-if="index === 0 || getTicketId(msg) !== getTicketId(messages[index-1])" class="ticket-divider">
-                            <span>{{ getTicketId(msg) ? '新会话工单: ' + getTicketId(msg) : '历史记录' }}</span>
+                            <div class="content">
+                                <span>{{ getTicketId(msg) ? '工单: ' + getTicketId(msg) : '📜 早期历史记录' }}</span>
+                                
+                                <!-- 只有存在明确 ticket_id 的历史工单才允许切换锁定 -->
+                                <template v-if="getTicketId(msg)">
+                                    <button 
+                                        v-if="getTicketId(msg) !== activeTicketId" 
+                                        class="switch-btn"
+                                        @click="setActiveTicket(getTicketId(msg))"
+                                    >👇 锁定回复此工单</button>
+                                    <span v-else class="active-badge">✅ 当前回复目标</span>
+                                </template>
+                            </div>
                         </div>
 
-                        <div 
-                            class="msg-row"
-                            :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'"
-                        >
+                        <div class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
                             <div class="bubble">
                                 <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（管理员）' : '用户反馈' }}</span>
                                 <div v-if="parseMessage(msg.content).text">{{ parseMessage(msg.content).text }}</div>
@@ -189,6 +210,12 @@
                             </div>
                         </div>
                     </template>
+                </div>
+
+                <!-- 🌟 状态提示条：让管理员清晰知道自己把消息发到了哪里 -->
+                <div class="reply-context-bar" v-if="activeTicketId">
+                    <div>正在对工单 <strong>{{ activeTicketId }}</strong> 进行回复</div>
+                    <div style="font-size:11px; opacity:0.7;">(点击上方历史工单的切换按钮可更改)</div>
                 </div>
 
                 <div class="send-box">
@@ -215,15 +242,13 @@
 <script>
 const { createApp, ref, onMounted, nextTick } = Vue
 
-// ====== 请在这里配置你的 Supabase 信息 ======
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
 
 const ALLOWED_ADMIN_EMAILS = [
-    'ming@woabc.com', // 替换为你的邮箱
+    'ming@woabc.com', 
     'another_admin@example.com' 
 ]
-// ===========================================
 
 createApp({
     setup() {
@@ -240,6 +265,9 @@ createApp({
         const messages = ref([])
         const replyText = ref('')
         const messageBoxRef = ref(null)
+        
+        // 🌟 新增：追踪当前准备回复的目标工单号
+        const activeTicketId = ref(null)
 
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
@@ -294,6 +322,7 @@ createApp({
             await supabaseClient.auth.signOut()
             isLoggedIn.value = false
             currentDevice.value = null
+            activeTicketId.value = null // 退出清理
             email.value = ''
             password.value = ''
         }
@@ -332,6 +361,8 @@ createApp({
 
         const selectDevice = async (deviceId) => {
             currentDevice.value = deviceId
+            activeTicketId.value = null // 切换用户时先置空
+
             const { data, error } = await supabaseClient
                 .from('ticket_messages')
                 .select('*')
@@ -340,33 +371,38 @@ createApp({
 
             if (!error && data) {
                 messages.value = data
+                
+                // 🌟 加载完消息后，自动锁定该用户最新的一条可用工单
+                for (let i = data.length - 1; i >= 0; i--) {
+                    if (data[i].ticket_id) {
+                        activeTicketId.value = data[i].ticket_id
+                        break
+                    }
+                }
+                
                 scrollToBottom()
             }
         }
 
-        // 🌟 辅助函数：安全获取工单ID
         const getTicketId = (msg) => {
             return msg.ticket_id || null;
+        }
+
+        // 🌟 切换回复目标的函数
+        const setActiveTicket = (tid) => {
+            activeTicketId.value = tid
         }
 
         const sendReply = async () => {
             if (!replyText.value.trim() || !currentDevice.value) return
 
-            // 🌟 核心修改：发送回复前，自动往上找，找出这个用户最新的 ticket_id
-            let targetTicketId = null;
-            for (let i = messages.value.length - 1; i >= 0; i--) {
-                if (messages.value[i].ticket_id) {
-                    targetTicketId = messages.value[i].ticket_id;
-                    break;
-                }
-            }
-
+            // 🌟 现在发送回复时，直接使用管理员手动锁定（或默认锁定）的 activeTicketId
             const content = replyText.value.trim()
             const { error } = await supabaseClient
                 .from('ticket_messages')
                 .insert([{
                     device_id: currentDevice.value,
-                    ticket_id: targetTicketId, // ✅ 写入对应的工单 ID
+                    ticket_id: activeTicketId.value, // ✅ 精准注入锁定的工单 ID
                     sender_role: 'admin',
                     content: content
                 }])
@@ -438,6 +474,8 @@ createApp({
             }
 
             messages.value = messages.value.filter(m => m.id !== msg.id)
+            
+            // 如果删除了消息导致当前追踪的工单空了，可选刷新，但这里由前端响应式自动处理了
         }
 
         const deleteDeviceThread = async (deviceId) => {
@@ -473,6 +511,7 @@ createApp({
 
             if (currentDevice.value === deviceId) {
                 currentDevice.value = null
+                activeTicketId.value = null
                 messages.value = []
             }
             fetchDevices()
@@ -497,7 +536,9 @@ createApp({
             openImage,
             deleteMessage,
             deleteDeviceThread,
-            getTicketId
+            getTicketId,
+            activeTicketId,
+            setActiveTicket // 暴露给模板
         }
     }
 }).mount('#app')
