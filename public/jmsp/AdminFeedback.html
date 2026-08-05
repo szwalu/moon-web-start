@@ -10,7 +10,6 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; color: #333; }
         
-        /* 登录遮罩 */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .login-box { background: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); text-align: center; }
         .login-box h3 { margin-bottom: 20px; color: #333; }
@@ -21,7 +20,6 @@
         .login-box button:disabled { opacity: 0.6; cursor: not-allowed; }
         .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
 
-        /* 主体布局 */
         .admin-container { display: flex; flex: 1; height: 100vh; overflow: hidden; }
         .device-list { width: 320px; background: #fff; border-right: 1px solid #e5e5e5; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; }
         .device-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; border-radius: 8px; margin-bottom: 6px; transition: background 0.2s; }
@@ -49,7 +47,6 @@
         .admin-msg .bubble { background: #007aff; color: #fff; border-top-right-radius: 4px; box-shadow: 0 1px 2px rgba(0,122,255,0.2); }
         .role-tag { font-size: 11px; opacity: 0.7; display: block; margin-bottom: 4px; }
         
-        /* 🌟 重新设计的工单分割线，支持按钮交互 */
         .ticket-divider { display: flex; align-items: center; text-align: center; font-size: 12px; color: #999; margin: 20px 0; }
         .ticket-divider::before, .ticket-divider::after { content: ''; flex: 1; border-bottom: 1px dashed #ddd; }
         .ticket-divider .content { padding: 0 12px; display: flex; align-items: center; gap: 8px; }
@@ -57,8 +54,11 @@
         .switch-btn:hover { background: #f0f0f0; color: #333; border-color: #bbb; }
         .active-badge { color: #10b981; font-weight: bold; font-size: 11px; background: #e0f8f5; padding: 4px 10px; border-radius: 12px; border: 1px solid #a7f3d0; }
 
-        /* 🌟 输入框上方的回复状态条 */
-        .reply-context-bar { background: #eef2ff; padding: 10px 16px; font-size: 12px; color: #4b5563; border-top: 1px solid #e5e5e5; display: flex; align-items: center; gap: 8px; }
+        /* 新增：关闭按钮样式 */
+        .close-ticket-btn { background: #fff; border: 1px solid #ff3b30; color: #ff3b30; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .close-ticket-btn:hover { background: #fff5f5; }
+
+        .reply-context-bar { background: #eef2ff; padding: 10px 16px; font-size: 12px; color: #4b5563; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .reply-context-bar strong { color: #007aff; }
 
         .send-box { padding: 12px 16px; display: flex; gap: 12px; background: #fff; align-items: flex-end; }
@@ -68,7 +68,6 @@
         .send-box button:hover { background: #0056b3; }
         .no-select { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; }
 
-        /* ====== 移动端适配 ====== */
         @media (max-width: 768px) {
             .device-list { width: 100%; border-right: none; }
             .chat-area { width: 100%; }
@@ -83,7 +82,6 @@
             .ticket-divider .content { flex-direction: column; gap: 4px; }
         }
 
-        /* ====== 黑暗模式适配 ====== */
         @media (prefers-color-scheme: dark) {
             body { background: #121212; color: #e5e5e5; }
             .login-box { background: #1e1e1e; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
@@ -110,6 +108,9 @@
             .switch-btn { background: #242424; border-color: #444; color: #aaa; box-shadow: none; }
             .switch-btn:hover { background: #333; color: #fff; }
             .active-badge { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16,185,129,0.3); }
+
+            .close-ticket-btn { background: transparent; }
+            .close-ticket-btn:hover { background: rgba(255,59,48,0.1); }
 
             .reply-context-bar { background: #1e293b; border-top-color: #333; color: #cbd5e1; }
             .send-box { background: #1e1e1e; border-top: none; }
@@ -171,12 +172,10 @@
                 <div class="message-box" ref="messageBoxRef">
                     <template v-for="(msg, index) in messages" :key="msg.id">
                         
-                        <!-- 🌟 升级版工单分割线：带操作按钮 -->
+                        <!-- 工单分割线 -->
                         <div v-if="index === 0 || getTicketId(msg) !== getTicketId(messages[index-1])" class="ticket-divider">
                             <div class="content">
                                 <span>{{ getTicketId(msg) ? '工单: ' + getTicketId(msg) : '📜 早期历史记录' }}</span>
-                                
-                                <!-- 只有存在明确 ticket_id 的历史工单才允许切换锁定 -->
                                 <template v-if="getTicketId(msg)">
                                     <button 
                                         v-if="getTicketId(msg) !== activeTicketId" 
@@ -188,7 +187,12 @@
                             </div>
                         </div>
 
-                        <div class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
+                        <!-- 🌟 拦截系统闭环消息 -->
+                        <div v-if="msg.sender_role === 'system' && msg.content === 'TICKET_CLOSED'" class="ticket-divider" style="margin: 10px 0;">
+                            <span style="color: #ff3b30; font-weight: bold; background: #fff; padding: 0 10px;">🔒 该工单已被关闭</span>
+                        </div>
+
+                        <div v-else class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
                             <div class="bubble">
                                 <span class="role-tag">{{ msg.sender_role === 'admin' ? '我（管理员）' : '用户反馈' }}</span>
                                 <div v-if="parseMessage(msg.content).text">{{ parseMessage(msg.content).text }}</div>
@@ -212,13 +216,19 @@
                     </template>
                 </div>
 
-                <!-- 🌟 状态提示条：让管理员清晰知道自己把消息发到了哪里 -->
+                <!-- 🌟 增加了关闭工单按钮 -->
                 <div class="reply-context-bar" v-if="activeTicketId">
-                    <div>正在对工单 <strong>{{ activeTicketId }}</strong> 进行回复</div>
-                    <div style="font-size:11px; opacity:0.7;">(点击上方历史工单的切换按钮可更改)</div>
+                    <div style="flex: 1;">
+                        正在对工单 <strong>{{ activeTicketId }}</strong> 进行回复
+                        <div style="font-size:11px; opacity:0.7;">(点击上方历史工单的切换按钮可更改)</div>
+                    </div>
+                    <!-- 若该工单已被关闭，则显示标识；否则显示关闭按钮 -->
+                    <button v-if="!isActiveTicketClosed" class="close-ticket-btn" @click="closeActiveTicket">关闭该工单</button>
+                    <span v-else class="active-badge" style="background:#ffebee; color:#d32f2f; border-color:#ffcdd2;">🔒 已关闭</span>
                 </div>
 
-                <div class="send-box">
+                <!-- 若工单被关闭，则隐藏发送框 -->
+                <div class="send-box" v-if="!isActiveTicketClosed">
                     <textarea 
                         v-model="replyText" 
                         placeholder="输入回复内容..."
@@ -240,15 +250,11 @@
 </div>
 
 <script>
-const { createApp, ref, onMounted, nextTick } = Vue
+const { createApp, ref, computed, onMounted, nextTick } = Vue
 
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
-
-const ALLOWED_ADMIN_EMAILS = [
-    'ming@woabc.com', 
-    'another_admin@example.com' 
-]
+const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
 
 createApp({
     setup() {
@@ -265,9 +271,12 @@ createApp({
         const messages = ref([])
         const replyText = ref('')
         const messageBoxRef = ref(null)
-        
-        // 🌟 新增：追踪当前准备回复的目标工单号
         const activeTicketId = ref(null)
+
+        // 🌟 新增：动态判断当前锁定的工单是否被关闭
+        const isActiveTicketClosed = computed(() => {
+            return messages.value.some(m => m.ticket_id === activeTicketId.value && m.sender_role === 'system' && m.content === 'TICKET_CLOSED')
+        })
 
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
@@ -291,20 +300,11 @@ createApp({
         })
 
         const handleLogin = async () => {
-            if (!email.value || !password.value) {
-                loginError.value = '请输入邮箱和密码'
-                return
-            }
+            if (!email.value || !password.value) return (loginError.value = '请输入邮箱和密码')
             loading.value = true
             loginError.value = ''
-
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: email.value,
-                password: password.value,
-            })
-
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email: email.value, password: password.value })
             loading.value = false
-
             if (error) {
                 loginError.value = '登录失败: ' + error.message
             } else {
@@ -322,7 +322,7 @@ createApp({
             await supabaseClient.auth.signOut()
             isLoggedIn.value = false
             currentDevice.value = null
-            activeTicketId.value = null // 退出清理
+            activeTicketId.value = null 
             email.value = ''
             password.value = ''
         }
@@ -351,9 +351,7 @@ createApp({
             if (!error && data) {
                 const map = new Map()
                 data.forEach(item => {
-                    if (!map.has(item.device_id)) {
-                        map.set(item.device_id, item)
-                    }
+                    if (!map.has(item.device_id)) map.set(item.device_id, item)
                 })
                 devices.value = Array.from(map.values())
             }
@@ -361,8 +359,7 @@ createApp({
 
         const selectDevice = async (deviceId) => {
             currentDevice.value = deviceId
-            activeTicketId.value = null // 切换用户时先置空
-
+            activeTicketId.value = null 
             const { data, error } = await supabaseClient
                 .from('ticket_messages')
                 .select('*')
@@ -371,56 +368,57 @@ createApp({
 
             if (!error && data) {
                 messages.value = data
-                
-                // 🌟 加载完消息后，自动锁定该用户最新的一条可用工单
                 for (let i = data.length - 1; i >= 0; i--) {
                     if (data[i].ticket_id) {
                         activeTicketId.value = data[i].ticket_id
                         break
                     }
                 }
-                
                 scrollToBottom()
             }
         }
 
-        const getTicketId = (msg) => {
-            return msg.ticket_id || null;
-        }
+        const getTicketId = (msg) => msg.ticket_id || null
 
-        // 🌟 切换回复目标的函数
-        const setActiveTicket = (tid) => {
-            activeTicketId.value = tid
+        const setActiveTicket = (tid) => { activeTicketId.value = tid }
+
+        // 🌟 新增：关闭当前选中工单的方法
+        const closeActiveTicket = async () => {
+            if (!confirm('确定要关闭此工单吗？关闭后用户将在App内看到提示，且无法继续补充。')) return
+            const { error } = await supabaseClient
+                .from('ticket_messages')
+                .insert([{
+                    device_id: currentDevice.value,
+                    ticket_id: activeTicketId.value,
+                    sender_role: 'system', // 使用专门定义的 system 身份
+                    content: 'TICKET_CLOSED'
+                }])
+            if (error) alert('关闭失败: ' + error.message)
+            else scrollToBottom()
         }
 
         const sendReply = async () => {
             if (!replyText.value.trim() || !currentDevice.value) return
-
-            // 🌟 现在发送回复时，直接使用管理员手动锁定（或默认锁定）的 activeTicketId
             const content = replyText.value.trim()
             const { error } = await supabaseClient
                 .from('ticket_messages')
                 .insert([{
                     device_id: currentDevice.value,
-                    ticket_id: activeTicketId.value, // ✅ 精准注入锁定的工单 ID
+                    ticket_id: activeTicketId.value, 
                     sender_role: 'admin',
                     content: content
                 }])
-
             if (error) {
                 alert('发送失败: ' + error.message)
                 return
             }
-
             replyText.value = ''
             scrollToBottom()
         }
 
         const scrollToBottom = () => {
             nextTick(() => {
-                if (messageBoxRef.value) {
-                    messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
-                }
+                if (messageBoxRef.value) messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
             })
         }
 
@@ -430,18 +428,11 @@ createApp({
             const idx = content.indexOf(marker)
             if (idx === -1) return { text: content, images: [] }
             const text = content.slice(0, idx).trim()
-            const images = content
-                .slice(idx + marker.length)
-                .split('\n')
-                .map(s => s.trim())
-                .filter(s => s.startsWith('http'))
+            const images = content.slice(idx + marker.length).split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))
             return { text, images }
         }
 
-        const openImage = (url) => {
-            window.open(url, '_blank')
-        }
-
+        const openImage = (url) => { window.open(url, '_blank') }
         const extractStoragePath = (url) => {
             const marker = '/public/feedback-images/'
             const idx = url.indexOf(marker)
@@ -451,41 +442,22 @@ createApp({
 
         const deleteMessage = async (msg) => {
             if (!confirm('确定要删除这条消息吗？此操作不可撤销。')) return
-
             const { images } = parseMessage(msg.content)
             if (images.length > 0) {
                 const paths = images.map(extractStoragePath).filter(Boolean)
                 if (paths.length > 0) {
-                    const { error: storageError } = await supabaseClient.storage
-                        .from('feedback-images')
-                        .remove(paths)
+                    const { error: storageError } = await supabaseClient.storage.from('feedback-images').remove(paths)
                     if (storageError) console.error('图片删除失败:', storageError)
                 }
             }
-
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .delete()
-                .eq('id', msg.id)
-
-            if (error) {
-                alert('删除失败: ' + error.message)
-                return
-            }
-
+            const { error } = await supabaseClient.from('ticket_messages').delete().eq('id', msg.id)
+            if (error) return alert('删除失败: ' + error.message)
             messages.value = messages.value.filter(m => m.id !== msg.id)
-            
-            // 如果删除了消息导致当前追踪的工单空了，可选刷新，但这里由前端响应式自动处理了
         }
 
         const deleteDeviceThread = async (deviceId) => {
             if (!confirm(`确定要删除设备 ${deviceId} 的全部反馈记录吗？此操作不可撤销。`)) return
-
-            const { data: msgsToDelete } = await supabaseClient
-                .from('ticket_messages')
-                .select('content')
-                .eq('device_id', deviceId)
-
+            const { data: msgsToDelete } = await supabaseClient.from('ticket_messages').select('content').eq('device_id', deviceId)
             const allPaths = []
             ;(msgsToDelete || []).forEach(m => {
                 const { images } = parseMessage(m.content)
@@ -494,21 +466,12 @@ createApp({
                     if (path) allPaths.push(path)
                 })
             })
-
             if (allPaths.length > 0) {
                 await supabaseClient.storage.from('feedback-images').remove(allPaths)
             }
-
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .delete()
-                .eq('device_id', deviceId)
-
-            if (error) {
-                alert('删除失败: ' + error.message)
-                return
-            }
-
+            const { error } = await supabaseClient.from('ticket_messages').delete().eq('device_id', deviceId)
+            if (error) return alert('删除失败: ' + error.message)
+            
             if (currentDevice.value === deviceId) {
                 currentDevice.value = null
                 activeTicketId.value = null
@@ -518,27 +481,12 @@ createApp({
         }
         
         return {
-            isLoggedIn,
-            email,
-            password,
-            loginError,
-            loading,
-            handleLogin,
-            handleLogout,
-            devices,
-            currentDevice,
-            messages,
-            replyText,
-            selectDevice,
-            sendReply,
-            messageBoxRef,
-            parseMessage,
-            openImage,
-            deleteMessage,
-            deleteDeviceThread,
-            getTicketId,
-            activeTicketId,
-            setActiveTicket // 暴露给模板
+            isLoggedIn, email, password, loginError, loading,
+            handleLogin, handleLogout, devices, currentDevice,
+            messages, replyText, selectDevice, sendReply,
+            messageBoxRef, parseMessage, openImage, deleteMessage, deleteDeviceThread,
+            getTicketId, activeTicketId, setActiveTicket,
+            isActiveTicketClosed, closeActiveTicket
         }
     }
 }).mount('#app')
