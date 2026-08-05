@@ -61,7 +61,6 @@
         .tc-preview { font-size: 14px; color: #333; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all; }
         .tc-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #999; border-top: 1px solid #f0f0f0; padding-top: 12px; }
         
-        /* 新增：工单卡片上的删除按钮 */
         .del-ticket-btn { background: transparent; border: none; color: #ff3b30; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: 0.2s; opacity: 0.7; font-weight: 500; }
         .del-ticket-btn:hover { opacity: 1; background: rgba(255, 59, 48, 0.1); }
 
@@ -86,7 +85,6 @@
         .system-divider { text-align: center; margin: 20px 0; }
         .system-divider span { background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #fca5a5; }
 
-        /* 🌟 优化：增高输入框，使其体验更舒适 */
         .send-box { padding: 12px 20px; display: flex; gap: 12px; background: #fff; align-items: flex-end; border-top: 1px solid #e5e5e5; }
         .send-box textarea { flex: 1; min-height: 80px; max-height: 250px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 12px; resize: vertical; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
         .send-box textarea:focus { border-color: #007aff; background: #fff; }
@@ -98,7 +96,6 @@
         .no-select { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; font-size: 15px; background: #f5f6f8; gap: 12px; }
         .no-select svg { opacity: 0.2; }
         
-        /* 🌟 图片上传预览区样式 */
         .image-preview-area { display: flex; gap: 10px; padding: 10px 20px 0; background: #fff; flex-wrap: wrap; }
         .preview-item { position: relative; width: 60px; height: 60px; border-radius: 8px; border: 1px solid #eee; }
         .preview-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
@@ -112,10 +109,8 @@
             .icon-btn:hover { background: #333; }
         }
         
-        /* ====== 移动端适配 ====== */
         @media (max-width: 768px) {
             .device-list { width: 100%; border-right: none; }
-            /* 状态控制 */
             .admin-container[data-view="device"] .main-area { display: none; }
             .admin-container[data-view="ticket"] .device-list { display: none; }
             .admin-container[data-view="chat"] .device-list { display: none; }
@@ -127,7 +122,6 @@
             .mobile-back-btn { display: inline-block; }
         }
 
-        /* ====== 黑暗模式适配 ====== */
         @media (prefers-color-scheme: dark) {
             body { background: #121212; color: #e5e5e5; }
             .login-box { background: #1e1e1e; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
@@ -245,7 +239,6 @@
                             <span>共 {{ ticket.messages.length }} 条对话</span>
                             <div style="display:flex; gap: 12px; align-items: center;">
                                 <span>{{ formatDate(ticket.lastTime) }}</span>
-                                <!-- 🌟 阻止冒泡，点击删除时不进入聊天详情页 -->
                                 <button class="del-ticket-btn" @click.stop="deleteTicket(ticket)">删除</button>
                             </div>
                         </div>
@@ -256,7 +249,7 @@
                 </div>
             </template>
 
-            <!-- 视图 2：单个工单聊天详情 -->
+            <!-- 视图 2：对话详情页 -->
             <template v-else-if="currentDevice && currentTicketId">
                 <div class="chat-view">
                     <div class="area-header">
@@ -264,14 +257,12 @@
                             <button class="btn-ghost" @click="currentTicketId = null">← 返回工单列表</button>
                             <span style="font-weight:normal; font-size:13px; color:#999; margin-left:8px;">工单号: {{ currentTicketId }}</span>
                         </div>
-                        <!-- 如果未关闭，可以在右上角提供一个关闭按钮 -->
                         <button v-if="!isCurrentTicketClosed" class="delete-btn" @click="closeCurrentTicket">关闭工单</button>
                     </div>
 
                     <div class="message-box" ref="messageBoxRef">
                         <template v-for="msg in currentTicketMessages" :key="msg.id">
                             
-                            <!-- 拦截系统闭环消息 -->
                             <div v-if="msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED'" class="system-divider">
                                 <span>🔒 管理员已结束此工单</span>
                             </div>
@@ -296,14 +287,11 @@
                         </template>
                     </div>
 
-                    <!-- 发送区或已关闭提示 -->
                     <div class="closed-banner" v-if="isCurrentTicketClosed">
                         此工单已被关闭，无法继续回复。
                     </div>
-                    <!-- 发送区（支持图片上传） -->
                     <div v-else style="display: flex; flex-direction: column; border-top: 1px solid #e5e5e5; background: #fff;" :style="isCurrentTicketClosed ? 'display:none;' : ''">
                         
-                        <!-- 选中的图片预览区 -->
                         <div class="image-preview-area" v-if="imagePreviews.length > 0">
                             <div class="preview-item" v-for="(src, idx) in imagePreviews" :key="idx">
                                 <img :src="src">
@@ -312,9 +300,8 @@
                         </div>
 
                         <div class="send-box" style="border-top: none;">
-                            <!-- 🌟 图片选择按钮 -->
                             <button class="icon-btn" @click="triggerImageSelect" title="添加图片">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                             </button>
                             <input type="file" ref="fileInputRef" accept="image/*" multiple style="display: none" @change="handleFileChange">
                             
@@ -323,8 +310,9 @@
                                 placeholder="输入回复内容..."
                                 @keyup.enter.exact.prevent="sendReply"
                             ></textarea>
+                            <!-- 🌟 在这里修改了文字，如果你刷新后看到的是“发送回复”，则说明缓存已清除！ -->
                             <button @click="sendReply" :disabled="isSending">
-                                {{ isSending ? '发送中...' : '发 送' }}
+                                {{ isSending ? '上传中...' : '发送回复' }}
                             </button>
                         </div>
                     </div>
@@ -384,17 +372,14 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 移动端视图控制
         const mobileView = computed(() => {
             if (!currentDevice.value) return 'device'
             if (!currentTicketId.value) return 'ticket'
             return 'chat'
         })
 
-        // 计算当前用户的工单分组
         const groupedTickets = computed(() => {
             if (!allMessages.value.length) return []
-            
             const groups = {}
             let lastUserTicketId = 'legacy_ticket'
 
@@ -402,7 +387,6 @@ createApp({
 
             sortedMsgs.forEach(msg => {
                 let tid = msg.ticket_id
-                
                 if (msg.sender_role === 'user' && tid) {
                     lastUserTicketId = tid
                 } else if (msg.sender_role === 'admin' && !tid) {
@@ -421,7 +405,6 @@ createApp({
                 }
                 
                 groups[tid].messages.push(msg)
-                
                 const msgTime = new Date(msg.created_at).getTime()
                 if (msgTime > groups[tid].lastTime) groups[tid].lastTime = msgTime
 
@@ -434,7 +417,6 @@ createApp({
                     }
                 }
             })
-
             return Object.values(groups).sort((a, b) => b.lastTime - a.lastTime)
         })
 
@@ -538,12 +520,10 @@ createApp({
             scrollToBottom()
         }
 
-        // ================= 🌟 新增：删除整个工单的逻辑 =================
         const deleteTicket = async (ticket) => {
             const displayId = ticket.ticket_id ? ticket.ticket_id.split('_')[1] || ticket.ticket_id : '早期记录'
             if (!confirm(`确定要彻底删除工单 #${displayId} 及其全部对话吗？此操作不可恢复。`)) return
 
-            // 1. 寻找工单包含的全部图片，去存储桶彻底清除
             const allPaths = []
             ticket.messages.forEach(m => {
                 parseMessage(m.content).images.forEach(url => {
@@ -556,7 +536,6 @@ createApp({
                 await supabaseClient.storage.from('feedback-images').remove(allPaths)
             }
 
-            // 2. 利用 ID 批量删除数据库内容
             const msgIds = ticket.messages.map(m => m.id)
             const { error } = await supabaseClient
                 .from('ticket_messages')
@@ -568,7 +547,6 @@ createApp({
                 return
             }
 
-            // 3. 在本地内存列表中清理掉这些记录
             allMessages.value = allMessages.value.filter(m => !msgIds.includes(m.id))
         }
 
@@ -586,6 +564,48 @@ createApp({
             else scrollToBottom()
         }
 
+        // ================= 🌟 改进：彻底底层兼容版的图片压缩，返回纯 Blob =================
+        const compressImage = (file, maxWidth = 800, quality = 0.6) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader()
+                reader.readAsDataURL(file)
+                reader.onload = (e) => {
+                    const img = new Image()
+                    img.src = e.target.result
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas')
+                        let width = img.width
+                        let height = img.height
+                        
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width)
+                            width = maxWidth
+                        }
+                        
+                        canvas.width = width
+                        canvas.height = height
+                        const ctx = canvas.getContext('2d')
+                        
+                        // 防透明PNG变黑：先铺一层纯白底色
+                        ctx.fillStyle = '#FFFFFF'
+                        ctx.fillRect(0, 0, canvas.width, canvas.height)
+                        ctx.drawImage(img, 0, 0, width, height)
+                        
+                        // 直接返回 Blob 数据以兼容各种浏览器上传
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob)
+                            } else {
+                                reject(new Error('图片压缩转换失败'))
+                            }
+                        }, 'image/jpeg', quality)
+                    }
+                    img.onerror = () => reject(new Error('图片加载失败'))
+                }
+                reader.onerror = () => reject(new Error('文件读取失败'))
+            })
+        }
+
         const sendReply = async () => {
             if (!replyText.value.trim() && selectedFiles.value.length === 0) return
             if (!currentTicketId.value) return
@@ -594,60 +614,64 @@ createApp({
             let finalContent = replyText.value.trim()
             const uploadedUrls = []
 
-            // 1. 如果有图片，先直传到 Supabase Storage
-            if (selectedFiles.value.length > 0) {
-                for (const file of selectedFiles.value) {
-                    const fileExt = file.name.split('.').pop()
-                    const fileName = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${fileExt}`
-                    
-                    const { data, error } = await supabaseClient.storage
-                        .from('feedback-images')
-                        .upload(fileName, file)
-                    
-                    if (error) {
-                        alert('图片上传失败: ' + error.message)
-                        isSending.value = false
-                        return
-                    }
-
-                    // 获取上传后的绝对路径 URL
-                    const { data: publicUrlData } = supabaseClient.storage
-                        .from('feedback-images')
-                        .getPublicUrl(fileName)
+            try {
+                if (selectedFiles.value.length > 0) {
+                    for (const file of selectedFiles.value) {
                         
-                    if (publicUrlData && publicUrlData.publicUrl) {
-                        uploadedUrls.push(publicUrlData.publicUrl)
+                        // 1. 调用极简压缩 (转为 JPEG Blob)
+                        const compressedBlob = await compressImage(file, 800, 0.6)
+                        
+                        // 2. 构造嵌套路径目录 (设备ID/工单ID/文件名.jpg)
+                        const fileName = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.jpg`
+                        const filePath = `${currentDevice.value}/${currentTicketId.value}/${fileName}`
+                        
+                        // 3. 上传到对应路径
+                        const { data, error } = await supabaseClient.storage
+                            .from('feedback-images')
+                            .upload(filePath, compressedBlob, {
+                                contentType: 'image/jpeg'
+                            })
+                        
+                        if (error) throw error
+
+                        const { data: publicUrlData } = supabaseClient.storage
+                            .from('feedback-images')
+                            .getPublicUrl(filePath)
+                            
+                        if (publicUrlData && publicUrlData.publicUrl) {
+                            uploadedUrls.push(publicUrlData.publicUrl)
+                        }
                     }
                 }
-            }
 
-            // 2. 按照客户端 App 的协议格式，拼接图片 URL
-            if (uploadedUrls.length > 0) {
-                finalContent += finalContent ? '\n\n【附图】：\n' : '【附图】：\n'
-                finalContent += uploadedUrls.join('\n')
-            }
+                if (uploadedUrls.length > 0) {
+                    finalContent += finalContent ? '\n\n【附图】：\n' : '【附图】：\n'
+                    finalContent += uploadedUrls.join('\n')
+                }
 
-            // 3. 将最终内容写入消息表
-            const { error } = await supabaseClient
-                .from('ticket_messages')
-                .insert([{
-                    device_id: currentDevice.value,
-                    ticket_id: currentTicketId.value, 
-                    sender_role: 'admin',
-                    content: finalContent
-                }])
+                const { error: dbError } = await supabaseClient
+                    .from('ticket_messages')
+                    .insert([{
+                        device_id: currentDevice.value,
+                        ticket_id: currentTicketId.value, 
+                        sender_role: 'admin',
+                        content: finalContent
+                    }])
+                    
+                if (dbError) throw dbError
                 
-            if (error) {
-                alert('发送失败: ' + error.message)
-            } else {
-                // 发送成功，清空所有输入和预览
                 replyText.value = ''
                 selectedFiles.value = []
                 imagePreviews.value.forEach(url => URL.revokeObjectURL(url))
                 imagePreviews.value = []
                 scrollToBottom()
+                
+            } catch (err) {
+                console.error(err)
+                alert('发送失败: ' + err.message)
+            } finally {
+                isSending.value = false
             }
-            isSending.value = false
         }
 
         const deleteMessage = async (msg) => {
