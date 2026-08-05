@@ -2,28 +2,22 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>鸡毛蒜皮 - 管理后台</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    -webkit-overflow-scrolling: touch;
-}
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; color: #333; }
 
-#app {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
+        /* 🌟 高度控制核心：html/body 高度交给 JS 通过 CSS 变量 --app-height 持续更新，
+           不使用 position:fixed，不需要手动 transform/scrollTo，避免多套逻辑打架 */
+        html, body {
+            width: 100%;
+            height: var(--app-height, 100vh);
+            overflow: hidden;
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; color: #333; }
         
         /* 登录遮罩 */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -36,7 +30,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         .login-box button:disabled { opacity: 0.6; cursor: not-allowed; }
         .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
 
-        /* 主体布局 */
+        /* 主体布局：高度相对父级 100%，父级高度由 --app-height 变量控制 */
         .admin-container { display: flex; flex: 1; height: 100%; overflow: hidden; }
         .device-list { width: 320px; background: #fff; border-right: 1px solid #e5e5e5; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; }
         .device-item { padding: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; border-radius: 8px; margin-bottom: 6px; transition: background 0.2s; }
@@ -209,12 +203,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
                 <div class="send-box">
                     <textarea 
-    v-model="replyText" 
-    placeholder="输入回复内容..."
-    @keyup.enter.exact.prevent="sendReply"
-    @focus="handleInputFocus"
-    @blur="handleInputBlur"
-></textarea>
+                        v-model="replyText" 
+                        placeholder="输入回复内容..."
+                        @keyup.enter.exact.prevent="sendReply"
+                    ></textarea>
                     <button @click="sendReply">发 送</button>
                 </div>
             </template>
@@ -232,13 +224,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 </div>
 
 <script>
+// 🌟 唯一的高度控制逻辑：把可视视口高度实时写入 CSS 变量 --app-height
+// 不依赖任何 Vue 渲染出的 DOM 元素，页面一加载就生效，键盘弹出/收起时自动跟随
+function syncAppHeight() {
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight
+    document.documentElement.style.setProperty('--app-height', vh + 'px')
+}
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncAppHeight)
+    window.visualViewport.addEventListener('scroll', syncAppHeight)
+} else {
+    window.addEventListener('resize', syncAppHeight)
+}
+syncAppHeight()
+
 const { createApp, ref, onMounted, nextTick } = Vue
 
 // ====== 请在这里配置你的 Supabase 信息 ======
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
 
-// 🌟 新增：管理员邮箱白名单（请填入你自己的真实管理员邮箱）
+// 🌟 管理员邮箱白名单（请填入你自己的真实管理员邮箱）
 const ALLOWED_ADMIN_EMAILS = [
     'ming@woabc.com', // 替换为你的邮箱
     'another_admin@example.com' 
@@ -261,7 +268,7 @@ createApp({
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 🌟 修改：页面加载时，自动登录也需要校验白名单
+        // 页面加载时，自动登录也需要校验白名单
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
             if (session) {
@@ -284,27 +291,9 @@ createApp({
                 const btn = document.getElementById('mobile-logout');
                 if (btn) btn.style.display = window.innerWidth <= 768 ? 'block' : 'none';
             }, 100);
-
-           // 🌟 用 visualViewport 精确处理键盘弹出时的布局
-            if (window.visualViewport) {
-                const vv = window.visualViewport
-                const handleViewportResize = () => {
-                    // 每次触发都重新查询，因为 .admin-container 是登录后才渲染的（v-else），
-                    // 挂载时缓存的引用会是 null
-                    const container = document.querySelector('.admin-container')
-                    if (container) {
-                        container.style.height = vv.height + 'px'
-                        container.style.transform = `translateY(${vv.offsetTop}px)`
-                    }
-                    scrollToBottom()
-                }
-                vv.addEventListener('resize', handleViewportResize)
-                vv.addEventListener('scroll', handleViewportResize)
-                handleViewportResize()
-            }
         })
 
-        // 🌟 修改：登录接口校验逻辑
+        // 登录接口校验逻辑
         const handleLogin = async () => {
             if (!email.value || !password.value) {
                 loginError.value = '请输入邮箱和密码'
@@ -418,18 +407,6 @@ createApp({
             })
         }
 
-        // 键盘弹出/收起时的兜底滚动，主要布局已交给 visualViewport resize 监听
-        const handleInputFocus = () => {
-            nextTick(scrollToBottom)
-        }
-        const handleInputBlur = () => {
-            const container = document.querySelector('.admin-container')
-            if (container) {
-                container.style.height = ''
-                container.style.transform = ''
-            }
-        }
-
         const parseMessage = (content) => {
             if (!content) return { text: '', images: [] }
             const marker = '【附图】：'
@@ -540,9 +517,7 @@ createApp({
             parseMessage,
             openImage,
             deleteMessage,
-            deleteDeviceThread,
-            handleInputFocus,
-            handleInputBlur
+            deleteDeviceThread
         }
     }
 }).mount('#app')
