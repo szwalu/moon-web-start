@@ -194,10 +194,12 @@
 
                 <div class="send-box">
                     <textarea 
-                        v-model="replyText" 
-                        placeholder="输入回复内容..."
-                        @keyup.enter.exact.prevent="sendReply"
-                    ></textarea>
+    v-model="replyText" 
+    placeholder="输入回复内容..."
+    @keyup.enter.exact.prevent="sendReply"
+    @focus="handleInputFocus"
+    @blur="handleInputBlur"
+></textarea>
                     <button @click="sendReply">发 送</button>
                 </div>
             </template>
