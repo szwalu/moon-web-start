@@ -57,6 +57,10 @@
         .tc-status.closed { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; }
         .tc-preview { font-size: 14px; color: #333; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all; }
         .tc-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #999; border-top: 1px solid #f0f0f0; padding-top: 12px; }
+        
+        /* 新增：工单卡片上的删除按钮 */
+        .del-ticket-btn { background: transparent; border: none; color: #ff3b30; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: 0.2s; opacity: 0.7; font-weight: 500; }
+        .del-ticket-btn:hover { opacity: 1; background: rgba(255, 59, 48, 0.1); }
 
         /* 视图 2：对话详情页 */
         .chat-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f5f6f8; }
@@ -79,10 +83,11 @@
         .system-divider { text-align: center; margin: 20px 0; }
         .system-divider span { background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #fca5a5; }
 
+        /* 🌟 优化：增高输入框，使其体验更舒适 */
         .send-box { padding: 12px 20px; display: flex; gap: 12px; background: #fff; align-items: flex-end; border-top: 1px solid #e5e5e5; }
-        .send-box textarea { flex: 1; min-height: 44px; max-height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 22px; resize: none; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
+        .send-box textarea { flex: 1; min-height: 80px; max-height: 250px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 12px; resize: vertical; font-size: 14px; outline: none; background: #f9fafb; transition: border 0.2s; }
         .send-box textarea:focus { border-color: #007aff; background: #fff; }
-        .send-box button { padding: 0 24px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: 0.2s; }
+        .send-box button { padding: 0 24px; height: 44px; background: #007aff; color: #fff; border: none; border-radius: 22px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: 0.2s; margin-bottom: 4px; }
         .send-box button:hover { background: #0056b3; }
 
         .closed-banner { padding: 16px; text-align: center; background: #fff; border-top: 1px solid #e5e5e5; color: #999; font-size: 13px; font-weight: 500; }
@@ -220,7 +225,11 @@
                         </div>
                         <div class="tc-footer">
                             <span>共 {{ ticket.messages.length }} 条对话</span>
-                            <span>{{ formatDate(ticket.lastTime) }}</span>
+                            <div style="display:flex; gap: 12px; align-items: center;">
+                                <span>{{ formatDate(ticket.lastTime) }}</span>
+                                <!-- 🌟 阻止冒泡，点击删除时不进入聊天详情页 -->
+                                <button class="del-ticket-btn" @click.stop="deleteTicket(ticket)">删除</button>
+                            </div>
                         </div>
                     </div>
                     <div v-if="groupedTickets.length === 0" style="grid-column: 1/-1; text-align: center; color: #999; margin-top: 40px;">
@@ -306,34 +315,32 @@ createApp({
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
         
         // 核心状态
-        const devices = ref([])         // 左侧用户列表
-        const allMessages = ref([])     // 当前选中的用户的全部消息
-        const currentDevice = ref(null) // 当前选中的设备ID
-        const currentTicketId = ref(null) // 当前查看的工单ID
+        const devices = ref([])         
+        const allMessages = ref([])     
+        const currentDevice = ref(null) 
+        const currentTicketId = ref(null) 
         const replyText = ref('')
         const messageBoxRef = ref(null)
 
-        // 移动端视图控制: 'device' | 'ticket' | 'chat'
+        // 移动端视图控制
         const mobileView = computed(() => {
             if (!currentDevice.value) return 'device'
             if (!currentTicketId.value) return 'ticket'
             return 'chat'
         })
 
-        // ================= 核心：计算当前用户的工单分组 =================
+        // 计算当前用户的工单分组
         const groupedTickets = computed(() => {
             if (!allMessages.value.length) return []
             
             const groups = {}
             let lastUserTicketId = 'legacy_ticket'
 
-            // 按时间正序遍历，建立归属关系
             const sortedMsgs = [...allMessages.value].sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
             sortedMsgs.forEach(msg => {
                 let tid = msg.ticket_id
                 
-                // 继承逻辑：用户发起的新对话确定 ID，客服回复跟随上一个 ID
                 if (msg.sender_role === 'user' && tid) {
                     lastUserTicketId = tid
                 } else if (msg.sender_role === 'admin' && !tid) {
@@ -356,23 +363,19 @@ createApp({
                 const msgTime = new Date(msg.created_at).getTime()
                 if (msgTime > groups[tid].lastTime) groups[tid].lastTime = msgTime
 
-                // 提取摘要与状态
                 if (msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED') {
                     groups[tid].isClosed = true
                 } else {
                     const parsed = parseMessage(msg.content)
-                    // 只要是用户发的第一句话，就作为该工单的预览
                     if (msg.sender_role === 'user' && parsed.text && !groups[tid].preview) {
                         groups[tid].preview = parsed.text
                     }
                 }
             })
 
-            // 按最后更新时间倒序排列（最新活跃的工单在最上面）
             return Object.values(groups).sort((a, b) => b.lastTime - a.lastTime)
         })
 
-        // 当前聊天视图渲染的消息
         const currentTicketMessages = computed(() => {
             const group = groupedTickets.value.find(t => t.ticket_id === currentTicketId.value)
             return group ? group.messages : []
@@ -383,7 +386,6 @@ createApp({
             return group ? group.isClosed : false
         })
 
-        // ================= 初始化与认证 =================
         onMounted(async () => {
             const { data: { session } } = await supabaseClient.auth.getSession()
             if (session && ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
@@ -391,7 +393,6 @@ createApp({
                 initData()
             }
             
-            // 移动端返回按钮显示逻辑
             window.addEventListener('resize', checkMobileStyle)
             setTimeout(checkMobileStyle, 100)
         })
@@ -425,7 +426,6 @@ createApp({
             allMessages.value = []
         }
 
-        // ================= 数据加载与实时订阅 =================
         const initData = () => {
             fetchDevices()
             supabaseClient
@@ -433,14 +433,12 @@ createApp({
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticket_messages' }, payload => {
                     const newMsg = payload.new
                     if (currentDevice.value === newMsg.device_id) {
-                        // 推入总消息池，computed 会自动重算分配到工单
                         allMessages.value.push(newMsg)
-                        // 如果刚好是当前正在看的工单，滚动到底部
                         if (currentTicketId.value === newMsg.ticket_id) {
                             scrollToBottom()
                         }
                     }
-                    fetchDevices() // 刷新左侧列表预览
+                    fetchDevices() 
                 })
                 .subscribe()
         }
@@ -462,7 +460,7 @@ createApp({
 
         const selectDevice = async (deviceId) => {
             currentDevice.value = deviceId
-            currentTicketId.value = null // 选中用户时，默认停留在工单列表视图
+            currentTicketId.value = null 
             allMessages.value = []
 
             const { data, error } = await supabaseClient
@@ -486,7 +484,40 @@ createApp({
             scrollToBottom()
         }
 
-        // ================= 操作函数 =================
+        // ================= 🌟 新增：删除整个工单的逻辑 =================
+        const deleteTicket = async (ticket) => {
+            const displayId = ticket.ticket_id ? ticket.ticket_id.split('_')[1] || ticket.ticket_id : '早期记录'
+            if (!confirm(`确定要彻底删除工单 #${displayId} 及其全部对话吗？此操作不可恢复。`)) return
+
+            // 1. 寻找工单包含的全部图片，去存储桶彻底清除
+            const allPaths = []
+            ticket.messages.forEach(m => {
+                parseMessage(m.content).images.forEach(url => {
+                    const idx = url.indexOf('/public/feedback-images/')
+                    if (idx !== -1) allPaths.push(url.slice(idx + 24))
+                })
+            })
+
+            if (allPaths.length > 0) {
+                await supabaseClient.storage.from('feedback-images').remove(allPaths)
+            }
+
+            // 2. 利用 ID 批量删除数据库内容
+            const msgIds = ticket.messages.map(m => m.id)
+            const { error } = await supabaseClient
+                .from('ticket_messages')
+                .delete()
+                .in('id', msgIds)
+
+            if (error) {
+                alert('删除工单失败: ' + error.message)
+                return
+            }
+
+            // 3. 在本地内存列表中清理掉这些记录
+            allMessages.value = allMessages.value.filter(m => !msgIds.includes(m.id))
+        }
+
         const closeCurrentTicket = async () => {
             if (!confirm('确定要关闭此工单吗？')) return
             const { error } = await supabaseClient
@@ -551,7 +582,6 @@ createApp({
             fetchDevices()
         }
 
-        // ================= 辅助函数 =================
         const scrollToBottom = () => {
             nextTick(() => {
                 if (messageBoxRef.value) messageBoxRef.value.scrollTop = messageBoxRef.value.scrollHeight
@@ -581,7 +611,7 @@ createApp({
             devices, currentDevice, currentTicketId, mobileView,
             groupedTickets, currentTicketMessages, isCurrentTicketClosed,
             replyText, selectDevice, goBackToDevices, openTicket, closeCurrentTicket, sendReply,
-            deleteMessage, deleteDeviceThread,
+            deleteMessage, deleteDeviceThread, deleteTicket, // 🌟 暴露出刚刚写的删除工单函数
             messageBoxRef, parseMessage, formatDate, openImage
         }
     }
