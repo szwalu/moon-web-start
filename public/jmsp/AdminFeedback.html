@@ -271,8 +271,9 @@
                     <div class="message-box" ref="messageBoxRef">
                         <template v-for="msg in currentTicketMessages" :key="msg.id">
                             
+                            <!-- 🌟 在这里，我们将底层关闭信号展现为你要求的文本 -->
                             <div v-if="msg.sender_role === 'admin' && msg.content === 'TICKET_CLOSED'" class="system-divider">
-                                <span>🔒 管理员已结束此工单</span>
+                                <span>管理员已关闭反馈</span>
                             </div>
 
                             <div v-else class="msg-row" :class="msg.sender_role === 'admin' ? 'admin-msg' : 'user-msg'">
@@ -561,16 +562,25 @@ createApp({
             allMessages.value = allMessages.value.filter(m => !msgIds.includes(m.id))
         }
 
+        // 🌟 核心修改点：插入包含两步信息的数组，不影响既有状态逻辑
         const closeCurrentTicket = async () => {
             if (!confirm('确定要关闭此工单吗？')) return
             const { error } = await supabaseClient
                 .from('ticket_messages')
-                .insert([{
-                    device_id: currentDevice.value,
-                    ticket_id: currentTicketId.value,
-                    sender_role: 'admin', 
-                    content: 'TICKET_CLOSED'
-                }])
+                .insert([
+                    {
+                        device_id: currentDevice.value,
+                        ticket_id: currentTicketId.value,
+                        sender_role: 'admin', 
+                        content: '管理员已将反馈标记为已解决'
+                    },
+                    {
+                        device_id: currentDevice.value,
+                        ticket_id: currentTicketId.value,
+                        sender_role: 'admin', 
+                        content: 'TICKET_CLOSED'
+                    }
+                ])
             if (error) alert('关闭失败: ' + error.message)
             else scrollToBottom()
         }
