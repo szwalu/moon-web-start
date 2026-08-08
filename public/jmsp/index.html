@@ -118,14 +118,19 @@
     .dl-btn:active { transform: scale(0.98); }
     .dl-btn:hover { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08); border-color: rgba(99, 102, 241, 0.3); }
     
+    /* 核心布局 */
     .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
-    /* 👇 这里加入了宽度和居中限制，修复了你之前提到的不对齐问题 */
+    /* 👇 修复不对齐的关键代码：增加 width: 32px 和 text-align: center */
     .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; width: 32px; text-align: center; display: inline-block; }
     .dl-text-group { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; }
     
+    /* 主标题保持单行省略 */
     .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    /* 👇 副标题允许自然换行显示全部，设定 word-break 防止被英文长链接撑爆 */
     .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; word-break: break-word; }
     
+    /* 右侧按钮：flex-shrink: 0 确保它绝对不缩水、不换行 */
     .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-left: 12px; }
     
     .dl-android-main .dl-action { background: #10b981; color: #fff; }
@@ -197,6 +202,7 @@
       .span-2 { grid-column: span 1; }
       .bento-card { height: 460px; } 
       
+      /* 👇 在手机端缩小一点内部间距，给文字腾出更多显示空间 */
       .downloads { padding: 0 12px; }
       .dl-btn { padding: 16px 14px; }
       .dl-left { gap: 12px; }
@@ -209,13 +215,18 @@
 </head>
 <body>
 
-  <!-- 👇 新增：链接到转换后的使用指南页面 -->
-  <a href="/jmsp/help.html" class="nav-help">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+  <!-- 👇 新增：右上角的“使用指南”跳转入口 -->
+  <a href="help.html" class="nav-help">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
     使用指南
   </a>
 
   <div class="container">
+    
     <header class="hero">
       <img class="app-icon" src="/主题.png" alt="鸡毛蒜皮 Logo" onerror="this.src='https://api.iconify.design/fluent-emoji-flat:feather.svg'" />
       <div class="hero-content">
@@ -259,11 +270,83 @@
       </div>
     </section>
 
-    <!-- (此处下方的 Bento Box 和原本一样，未做修改) -->
+    <!-- 核心理念 (图文混排 Bento Box) -->
     <section>
       <h2 class="section-title">重新定义记录方式</h2>
       <div class="bento-grid">
-         <!-- ... 你原本的卡片代码 ... -->
+        
+        <!-- 卡片1：AI记账 -->
+        <div class="bento-card span-2 card-hz">
+          <div class="bento-content">
+            <div class="icon-wrapper c-blue">✨</div>
+            <h3 class="bento-title">极速记账魔法</h3>
+            <p class="bento-desc">支持 Siri 免触控语音与一句话记账。内置 AI 大模型深度解析，可完美处理极度口语化的复杂长句，智能拆分多笔账单，让记账如同与私人管家聊天般自然顺畅。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="./jz.PNG" alt="极速记账魔法界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片2：时光日记 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-pink">📖</div>
+            <h3 class="bento-title">时光日记本</h3>
+            <p class="bento-desc">不仅支持沉浸式长篇写作，还能在后台无感记录天气与定位。通过“那年今日”、“随机漫游”及“足迹地图”，重温珍贵记忆。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/rj.PNG" alt="时光日记本界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片3：全能看板 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-purple">📊</div>
+            <h3 class="bento-title">多维洞察看板</h3>
+            <p class="bento-desc">日记、记账、资产“三模”无缝滑动的首页看板，融合 AI 智能复盘诊断。支持多币种自动折算与净资产实时追踪。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/kb.PNG" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片4：资产管理 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-orange">📦</div>
+            <h3 class="bento-title">物品与资产雷达</h3>
+            <p class="bento-desc">将实体生活全面数字化。从数码家电到常备药物，支持多维空间管理，提供 7 天精准过期贴心提醒。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/wp.PNG" alt="物品与资产雷达界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片5：智能提醒 -->
+        <div class="bento-card">
+          <div class="bento-content">
+            <div class="icon-wrapper c-teal">🔔</div>
+            <h3 class="bento-title">全场景生活备忘</h3>
+            <p class="bento-desc">支持公农历推算与超长线循环。离线状态依然通过系统底层准时触发通知，绝不漏发。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/bw.PNG" alt="全场景生活备忘界面" loading="lazy">
+          </div>
+        </div>
+
+        <!-- 卡片6：隐私安全 -->
+        <div class="bento-card span-2 card-hz-rev">
+          <div class="bento-content">
+            <div class="icon-wrapper c-green">🛡️</div>
+            <h3 class="bento-title">绝对的数据主权</h3>
+            <p class="bento-desc">采用离线优先架构，数据默认加密保存手机本地。支持指纹/面容应用锁及 iCloud、WebDAV 等多平台增量无感备份，彻底告别隐私焦虑。</p>
+          </div>
+          <div class="bento-img-wrap">
+            <img class="mockup-img" src="/jmsp/bf.PNG" alt="数据备份安全界面" loading="lazy">
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -274,17 +357,29 @@
 
   <script>
     document.getElementById('dynamic-year').textContent = new Date().getFullYear();
-    function isWeChat() { return /MicroMessenger/i.test(navigator.userAgent); }
-    function showMask() { /* 实现遮罩逻辑 */ }
-    function hideMask() { /* 实现遮罩逻辑 */ }
+
+    function isWeChat() {
+      return /MicroMessenger/i.test(navigator.userAgent);
+    }
+
+    function showMask() {
+      document.getElementById('wechat-mask').style.display = 'block';
+    }
+
+    function hideMask() {
+      document.getElementById('wechat-mask').style.display = 'none';
+    }
+
     function handleAndroidDownload() {
       if (isWeChat()) showMask();
       else window.location.href = 'https://gitee.com/jmsp8/jmsp/releases/download/v1.3.5/app-release.apk';
     }
+
     function handleLanzouDownload() {
       if (isWeChat()) showMask();
       else window.open('https://wwany.lanzn.com/igUvq41b7clc', '_blank');
     }
+
     function openAppStore() {
       if (isWeChat()) showMask();
       else window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
