@@ -91,7 +91,14 @@
     
     /* 核心布局 */
     .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
-    .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; }
+    .dl-icon { 
+  font-size: 28px; 
+  line-height: 1; 
+  flex-shrink: 0; 
+  width: 32px; /* 增加固定宽度，确保统一 */
+  text-align: center; /* 让图标在固定宽度内居中 */
+  display: inline-block; /* 保证宽度生效 */
+}
     .dl-text-group { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; }
     
     /* 主标题保持单行省略 */
