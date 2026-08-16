@@ -120,21 +120,39 @@
     
     /* 核心布局 */
     .dl-left { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
-    /* 👇 修复不对齐的关键代码：增加 width: 32px 和 text-align: center */
     .dl-icon { font-size: 28px; line-height: 1; flex-shrink: 0; width: 32px; text-align: center; display: inline-block; }
     .dl-text-group { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; }
     
     /* 主标题保持单行省略 */
     .dl-text-main { font-size: 17px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     
-    /* 👇 副标题允许自然换行显示全部，设定 word-break 防止被英文长链接撑爆 */
+    /* 副标题允许自然换行显示全部，设定 word-break 防止被英文长链接撑爆 */
     .dl-text-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; word-break: break-word; }
     
-    /* 右侧按钮：flex-shrink: 0 确保它绝对不缩水、不换行 */
+    /* 右侧按钮 */
     .dl-action { background: var(--text-main); color: var(--bg-color); padding: 8px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; margin-left: 12px; }
     
     .dl-android-main .dl-action { background: #10b981; color: #fff; }
     .dl-android-alt .dl-action { background: #3b82f6; color: #fff; }
+
+    /* 👇 新增：密码一键复制按钮样式（不破坏排版） */
+    .copy-pwd {
+      color: var(--primary);
+      background: rgba(99, 102, 241, 0.1);
+      padding: 2px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin: 0 2px;
+      font-family: monospace;
+      font-weight: 600;
+    }
+    .copy-pwd:hover {
+      background: rgba(99, 102, 241, 0.2);
+    }
+    .copy-pwd:active {
+      transform: scale(0.95);
+    }
 
     /* === 图文混排 Bento Box === */
     .section-title { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 32px; color: var(--text-main); }
@@ -202,7 +220,6 @@
       .span-2 { grid-column: span 1; }
       .bento-card { height: 460px; } 
       
-      /* 👇 在手机端缩小一点内部间距，给文字腾出更多显示空间 */
       .downloads { padding: 0 12px; }
       .dl-btn { padding: 16px 14px; }
       .dl-left { gap: 12px; }
@@ -215,7 +232,6 @@
 </head>
 <body>
 
-  <!-- 👇 新增：右上角的“使用指南”跳转入口 -->
   <a href="/jmsp/help.html" class="nav-help">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"></circle>
@@ -263,7 +279,8 @@
           <div class="dl-icon">☁️</div>
           <div class="dl-text-group">
             <div class="dl-text-main">Android 备用源</div>
-            <div class="dl-text-sub">蓝奏云高速网盘 (密码:6nyd)</div>
+            <!-- 👇 修改：为密码添加 span，并绑定点击复制函数 -->
+            <div class="dl-text-sub">蓝奏云高速网盘 (密码:<span class="copy-pwd" onclick="copyPassword(event, '6nyd')">6nyd</span>)</div>
           </div>
         </div>
         <div class="dl-action">进入</div>
@@ -383,6 +400,43 @@
     function openAppStore() {
       if (isWeChat()) showMask();
       else window.location.href = 'https://apps.apple.com/cn/app/id6762100023';
+    }
+
+    /* 👇 新增：复制密码功能 */
+    function copyPassword(event, text) {
+      // 核心：阻止事件冒泡！防止触发外层 handleLanzouDownload 的网页跳转
+      event.stopPropagation();
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+          showCopySuccess(event.target, text);
+        });
+      } else {
+        // 兼容老版本浏览器
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showCopySuccess(event.target, text);
+        } catch (err) {
+          console.error('复制失败', err);
+        }
+        document.body.removeChild(textArea);
+      }
+    }
+
+    function showCopySuccess(element, originalText) {
+      element.innerText = '已复制';
+      element.style.color = '#10b981'; // 复制成功变成绿色提示
+      element.style.background = 'rgba(16, 185, 129, 0.1)';
+      
+      setTimeout(() => {
+        element.innerText = originalText;
+        element.style.color = ''; // 恢复原状
+        element.style.background = '';
+      }, 1500);
     }
   </script>
 </body>
