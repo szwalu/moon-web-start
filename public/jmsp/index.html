@@ -397,7 +397,10 @@
   </div>
 
   <script>
-    // 默认配置（兜底）
+    // 当前页面的构建标识
+    var CURRENT_PAGE_BUILD = '20260818_1';
+
+    // 默认兜底配置
     var appConfig = {
       version: 'v1.3.8',
       androidGiteeUrl: 'https://gitee.com/jmsp8/jmsp/releases/download/v1.3.8/app-release.apk',
@@ -406,21 +409,27 @@
       iosAppStoreUrl: 'https://apps.apple.com/cn/app/id6762100023'
     };
 
-    // 页面加载时，带时间戳拉取最新配置（天然穿透所有浏览器和 CDN 缓存）
+    // 动态拉取配置，并校验页面是否过期
     function fetchLatestConfig() {
       fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
         .then(function(res) {
           if (res.ok) return res.json();
-          throw new Error('Config not found');
+          throw new Error('Config load failed');
         })
         .then(function(data) {
           if (data) {
+            // 如果发现服务器有新页面版本，且当前运行的是旧 HTML，立即破除缓存重载页面
+            if (data.buildTime && data.buildTime !== CURRENT_PAGE_BUILD) {
+              var cleanUrl = window.location.origin + window.location.pathname + '?refresh=' + Date.now();
+              window.location.replace(cleanUrl);
+              return;
+            }
             appConfig = Object.assign(appConfig, data);
             updateUI();
           }
         })
-        .catch(function() {
-          // 降级使用页面当前配置
+        .catch(function(err) {
+          console.warn('Using local fallback:', err);
           updateUI();
         });
     }
