@@ -132,7 +132,9 @@
     .dl-android-main .dl-action { background: #10b981; color: #fff; }
     .dl-android-alt .dl-action { background: #3b82f6; color: #fff; }
 
-    .copy-pwd {
+   .copy-pwd {
+      display: inline-flex;
+      align-items: center;
       color: var(--primary);
       background: rgba(99, 102, 241, 0.1);
       padding: 2px 6px;
@@ -142,6 +144,7 @@
       margin: 0 2px;
       font-family: monospace;
       font-weight: 600;
+      vertical-align: middle;
     }
     .copy-pwd:hover {
       background: rgba(99, 102, 241, 0.2);
@@ -322,7 +325,13 @@
           <div class="dl-icon">☁️</div>
           <div class="dl-text-group">
             <div class="dl-text-main">Android 备用源</div>
-            <div id="android-alt-sub" class="dl-text-sub">蓝奏云网盘(密码:<span id="lanzou-pwd" class="copy-pwd" onclick="copyPassword(event)">dd51</span>)</div>
+            <div id="android-alt-sub" class="dl-text-sub">蓝奏云网盘(密码:<span class="copy-pwd" onclick="copyPassword(event, this)" title="点击复制">
+  <span id="lanzou-pwd">dd51</span>
+  <svg id="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 3px;">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>
+</span>)</div>
           </div>
         </div>
         <div class="dl-action">进入</div>
@@ -505,18 +514,18 @@
       }
     }
 
-    function copyPassword(event) {
+    function copyPassword(event, element) {
       event.stopPropagation();
       var text = appConfig.lanzouPwd;
       
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text).then(() => {
-          showCopySuccess(event.target, text);
+          showCopySuccess(element, text);
         }).catch(() => {
-          fallbackCopy(text, event.target);
+          fallbackCopy(text, element);
         });
       } else {
-        fallbackCopy(text, event.target);
+        fallbackCopy(text, element);
       }
     }
 
@@ -538,12 +547,20 @@
     }
 
     function showCopySuccess(element, originalText) {
-      element.innerText = '已复制';
+      var textSpan = element.querySelector('#lanzou-pwd');
+      var icon = element.querySelector('#copy-icon');
+      
+      // 切换为已复制状态，暂时隐藏图标
+      if (textSpan) textSpan.innerText = '已复制';
+      if (icon) icon.style.display = 'none';
+      
       element.style.color = '#10b981';
       element.style.background = 'rgba(16, 185, 129, 0.1)';
       
+      // 1.5秒后恢复原状
       setTimeout(() => {
-        element.innerText = originalText;
+        if (textSpan) textSpan.innerText = originalText;
+        if (icon) icon.style.display = 'block';
         element.style.color = '';
         element.style.background = '';
       }, 1500);
