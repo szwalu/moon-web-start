@@ -2,13 +2,13 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=overlays-content">
     <title>鸡毛蒜皮 - 管理后台</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100dvh; display: flex; flex-direction: column; color: #333; overflow: hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: var(--app-height, 100dvh); display: flex; flex-direction: column; color: #333; overflow: hidden; transition: height 0.08s ease-out; }
         
         /* === 登录遮罩 === */
         .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
@@ -22,7 +22,7 @@
         .error-tip { color: #ff3b30; font-size: 13px; margin-bottom: 12px; text-align: left; }
 
         /* === 主体布局 === */
-        .admin-container { display: flex; flex: 1; height: 100dvh; overflow: hidden; }
+        .admin-container { display: flex; flex: 1; height: 100%; overflow: hidden; }
         
         /* 左侧：设备列表 */
         .device-list { width: 280px; background: #fff; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; flex-shrink: 0; }
@@ -81,6 +81,16 @@
         .del-msg-btn:hover { color: #ff3b30; }
         .admin-msg .del-msg-btn { color: rgba(255,255,255,0.6); }
         .admin-msg .del-msg-btn:hover { color: #fff; }
+
+        /* 🌟 运行日志区块 + 复制日志按钮 */
+        .log-block { margin-top: 10px; padding: 8px 10px; background: rgba(0,0,0,0.05); border-radius: 8px; }
+        .log-block-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; opacity: 0.85; }
+        .copy-log-btn { flex-shrink: 0; background: #007aff; color: #fff; border: none; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; cursor: pointer; transition: background 0.2s, opacity 0.2s; }
+        .copy-log-btn:hover { opacity: 0.85; }
+        .copy-log-btn.copied { background: #10b981; }
+        .admin-msg .log-block { background: rgba(255,255,255,0.15); }
+        .admin-msg .copy-log-btn { background: #fff; color: #007aff; }
+        .admin-msg .copy-log-btn.copied { background: #fff; color: #10b981; }
 
         .system-divider { text-align: center; margin: 20px 0; }
         .system-divider span { background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #fca5a5; }
@@ -157,6 +167,8 @@
 
             .user-msg .bubble { background: #242424; color: #e5e5e5; border-color: #333; }
             .admin-msg .bubble { background: #0a84ff; color: #fff; }
+            .copy-log-btn { background: #0a84ff; }
+            .admin-msg .copy-log-btn { background: #fff; color: #0a84ff; }
             .send-box textarea { background: #2c2c2c; border-color: #444; color: #f5f5f5; }
             .send-box textarea:focus { background: #242424; border-color: #0a84ff; }
             .no-select { background: #121212; color: #666; }
@@ -289,6 +301,16 @@
                                             @click="openImage(url)"
                                         >
                                     </div>
+                                    <div v-if="parseMessage(msg.content).logs" class="log-block">
+                                        <div class="log-block-header">
+                                            <span>📋 运行日志</span>
+                                            <button
+                                                class="copy-log-btn"
+                                                :class="{ copied: copiedMsgId === msg.id }"
+                                                @click.stop="copyLogs(msg, parseMessage(msg.content).logs)"
+                                            >{{ copiedMsgId === msg.id ? '已复制 ✓' : '复制日志' }}</button>
+                                        </div>
+                                    </div>
                                     <div class="msg-time">{{ formatDate(msg.created_at) }}</div>
                                     <button class="del-msg-btn" @click="deleteMessage(msg)">删除</button>
                                 </div>
@@ -341,6 +363,29 @@ const { createApp, ref, computed, onMounted, nextTick } = Vue
 const SUPABASE_URL = 'https://reikfzpaefbbokwwocdr.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaWtmenBhZWZiYm9rd3dvY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNTM3ODcsImV4cCI6MjA2NDgyOTc4N30.E2qEwZWZO3ckVkqq9hzmDxrQK61MonUDOpCqUJpzhCQ'
 const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
+
+// 🌟 键盘弹出时输入框"跟手"升降：用 visualViewport 精确算出可视高度，
+// 写进 CSS 变量 --app-height，body 的 height 直接绑定这个变量。
+// 之前完全依赖 <meta interactive-widget=resizes-content> 让浏览器自己缩放
+// 布局视口，不同浏览器/系统版本支持程度不一，还会和输入框聚焦时浏览器自带
+// 的 scrollIntoView 叠加，导致"有时不顶、有时顶得过高"。现在改成 JS 主动、
+// 唯一地控制高度（meta 改成 overlays-content，键盘只覆盖不再自动缩放布局
+// 视口），避免两套机制互相打架，行为在各浏览器下保持一致。
+;(function setupKeyboardFollow() {
+    const root = document.documentElement
+    const applyHeight = () => {
+        const vv = window.visualViewport
+        const h = vv ? vv.height : window.innerHeight
+        root.style.setProperty('--app-height', h + 'px')
+    }
+    applyHeight()
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', applyHeight)
+        window.visualViewport.addEventListener('scroll', applyHeight)
+    } else {
+        window.addEventListener('resize', applyHeight)
+    }
+})()
 
 createApp({
     setup() {
@@ -735,14 +780,60 @@ createApp({
             })
         }
 
+        // 🌟 补充解析【运行日志】区块（原来只切了图片，日志会混在正文里显示）
         const parseMessage = (content) => {
-            if (!content) return { text: '', images: [] }
-            const marker = '【附图】：'
-            const idx = content.indexOf(marker)
-            if (idx === -1) return { text: content, images: [] }
-            const text = content.slice(0, idx).trim()
-            const images = content.slice(idx + marker.length).split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))
-            return { text, images }
+            if (!content) return { text: '', images: [], logs: '' }
+            const logMarker = '【运行日志】：'
+            const imgMarker = '【附图】：'
+            const logIdx = content.indexOf(logMarker)
+            const imgIdx = content.indexOf(imgMarker)
+
+            // 正文要在最早出现的标记（日志或图片，谁先谁截断）之前结束
+            const cutCandidates = [logIdx, imgIdx].filter(i => i !== -1)
+            const cutIdx = cutCandidates.length ? Math.min(...cutCandidates) : -1
+            const text = cutIdx !== -1 ? content.slice(0, cutIdx).trim() : content
+
+            // 日志区间：从日志标记开始，到图片标记（如果在日志之后）或字符串末尾
+            let logs = ''
+            if (logIdx !== -1) {
+                const start = logIdx + logMarker.length
+                const end = (imgIdx !== -1 && imgIdx > logIdx) ? imgIdx : content.length
+                logs = content.slice(start, end).trim()
+            }
+
+            let images = []
+            if (imgIdx !== -1) {
+                images = content.slice(imgIdx + imgMarker.length).split('\n').map(s => s.trim()).filter(s => s.startsWith('http'))
+            }
+
+            return { text, images, logs }
+        }
+
+        // 🌟 复制日志按钮：优先用 Clipboard API，不支持时退回 execCommand 兼容写法
+        const copiedMsgId = ref(null)
+        const copyLogs = async (msg, logs) => {
+            if (!logs) return
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(logs)
+                } else {
+                    const ta = document.createElement('textarea')
+                    ta.value = logs
+                    ta.style.position = 'fixed'
+                    ta.style.opacity = '0'
+                    document.body.appendChild(ta)
+                    ta.focus()
+                    ta.select()
+                    document.execCommand('copy')
+                    document.body.removeChild(ta)
+                }
+                copiedMsgId.value = msg.id
+                setTimeout(() => {
+                    if (copiedMsgId.value === msg.id) copiedMsgId.value = null
+                }, 1500)
+            } catch (err) {
+                alert('复制失败: ' + err.message)
+            }
         }
 
         const formatDate = (isoString) => {
@@ -761,7 +852,8 @@ createApp({
             deleteMessage, deleteDeviceThread, deleteTicket, 
             messageBoxRef, parseMessage, formatDate, openImage,
             fileInputRef, selectedFiles, imagePreviews, isSending,
-            triggerImageSelect, handleFileChange, removeImage
+            triggerImageSelect, handleFileChange, removeImage,
+            copiedMsgId, copyLogs
         }
     }
 }).mount('#app')
