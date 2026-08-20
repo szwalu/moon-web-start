@@ -402,32 +402,41 @@ const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
 
     // 🌟 iOS Safari 键盘弹出不是一次到位的：键盘本体、上方的"上一条/下一条/完成"
     // 工具条、有时还有账号密码自动填充建议条，是分好几个阶段依次出现的，
-    // 每个阶段都可能让 visualViewport 的实际可用高度再变一次，但 resize 事件
-    // 不一定会为每个阶段都精确、完整地触发一次——如果我们只在第一次 resize 时
-    // 算一次高度，很容易停在"键盘出来了，但工具条/自动填充条还没算进去"的中间
-    // 状态，表现为发送按钮被这些条挡住、或者和键盘之间空出一截没用上的空白。
-    // 这里在每次 resize/focus 之后，用一串短延时多算几次，确保动画走完、
-    // 所有条都出现之后，我们最终落在真正准确的高度上。
-    let retryTimers = []
-    const scheduleReapply = () => {
-        retryTimers.forEach(t => clearTimeout(t))
-        retryTimers = [80, 200, 400, 700, 1000].map(ms => setTimeout(applyHeight, ms))
+    // 每个阶段都可能让实际可用高度再变一次，但 visualViewport 的 resize 事件
+    // 不一定会为每个阶段都精确、完整地触发一次——尤其是自动填充建议条，它经常
+    // 要等 Safari 异步查完钥匙串才出现，时间点完全不固定。之前用固定的几个
+    // 延时点（80/200/400/700/1000ms）重算，测下来还是会在某些机型/时机上错过
+    // 最终那一下变化。改成更保险的做法：只要有输入框在聚焦，就用一个短间隔
+    // 定时器持续轮询、持续同步高度，而不是赌几个固定的时间点——不管这个变化
+    // 什么时候发生、发不发 resize 事件，下一次轮询都能追上。
+    let pollTimer = null
+    let pollStopTimer = null
+    const stopPolling = () => {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+        if (pollStopTimer) { clearTimeout(pollStopTimer); pollStopTimer = null }
+    }
+    const startPolling = () => {
+        stopPolling()
+        pollTimer = setInterval(applyHeight, 120)
+        // 轮询 4 秒后自动停止，避免用户长时间停留输入时白白空耗性能；
+        // 4 秒足够覆盖键盘 + 工具条 + 自动填充条这几个阶段全部出现/收起完
+        pollStopTimer = setTimeout(stopPolling, 4000)
     }
 
     applyHeight()
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => { applyHeight(); scheduleReapply() })
+        window.visualViewport.addEventListener('resize', () => { applyHeight(); startPolling() })
         window.visualViewport.addEventListener('scroll', applyHeight)
     } else {
         window.addEventListener('resize', applyHeight)
     }
-    // 输入框获得焦点是整个"键盘 + 工具条"动画的起点，这里也主动兜底触发一轮，
-    // 不完全依赖 visualViewport 自己的事件时机
+    // 输入框获得/失去焦点，都是"键盘 + 工具条"动画可能重新开始的时刻，
+    // 这里也主动兜底启动一轮轮询，不完全依赖 visualViewport 自己的事件时机
     document.addEventListener('focusin', (e) => {
         const tag = e.target && e.target.tagName
-        if (tag === 'TEXTAREA' || tag === 'INPUT') scheduleReapply()
+        if (tag === 'TEXTAREA' || tag === 'INPUT') startPolling()
     })
-    document.addEventListener('focusout', scheduleReapply)
+    document.addEventListener('focusout', startPolling)
 })()
 
 createApp({
