@@ -389,15 +389,41 @@ const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
 // 视口），避免两套机制互相打架，行为在各浏览器下保持一致。
 ;(function setupKeyboardFollow() {
     const root = document.documentElement
+
+    // 🛡️ 已知的 WebKit 渲染坑：body 是 position:fixed，键盘弹出/收起过程中，
+    // 即使我们已经通过 JS 把 --app-height / --vv-offset-top 都算对、写进了
+    // CSS 变量，WebKit 有时也不会立刻把这次变化"刷"到屏幕上——它对 fixed
+    // 元素的合成图层更新是跟"滚动"这个动作绑在一起的，非要等到一次真实的
+    // 滚动手势，才会触发重新合成，界面才会跳到正确位置。这正是"手指往下拨
+    // 一下输入框下面的灰色带，输入框就正常了"的原因：那一下拖动帮你手动
+    // 触发了这次刷新。这里改成程序自己模拟一次极小幅度的滚动（在真正可以
+    // 滚动的聊天记录区域里滚 1px 再滚回来），替用户完成这个动作，不用再靠
+    // 手动拨一下才能生效。
+    const nudgeRepaint = () => {
+        const scrollEl = document.querySelector('.message-box')
+        if (!scrollEl || scrollEl.scrollHeight <= scrollEl.clientHeight) return
+        const original = scrollEl.scrollTop
+        scrollEl.scrollTop = original + 1
+        requestAnimationFrame(() => { scrollEl.scrollTop = original })
+    }
+
+    let lastHeight = null
+    let lastOffsetTop = null
     const applyHeight = () => {
         const vv = window.visualViewport
         const h = vv ? vv.height : window.innerHeight
-        root.style.setProperty('--app-height', h + 'px')
         // 🌟 同步记录 visualViewport 相对布局视口的偏移量，配合上面 body 的
         // transform:translateY(var(--vv-offset-top)) 一起，抵消 iOS Safari
         // 聚焦输入框时自己触发的那次"自动滚动可视视口"，见 CSS 里 body 规则上方注释
         const offsetTop = vv ? vv.offsetTop : 0
+        const changed = h !== lastHeight || offsetTop !== lastOffsetTop
+        lastHeight = h
+        lastOffsetTop = offsetTop
+        root.style.setProperty('--app-height', h + 'px')
         root.style.setProperty('--vv-offset-top', offsetTop + 'px')
+        // 只在数值真的变化时才去"拨一下"，避免轮询期间数值没变也一直
+        // 触发滚动、造成不必要的画面抖动
+        if (changed) nudgeRepaint()
     }
 
     // 🌟 iOS Safari 键盘弹出不是一次到位的：键盘本体、上方的"上一条/下一条/完成"
