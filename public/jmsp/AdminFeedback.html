@@ -390,21 +390,27 @@ const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
 ;(function setupKeyboardFollow() {
     const root = document.documentElement
 
-    // 🛡️ 已知的 WebKit 渲染坑：body 是 position:fixed，键盘弹出/收起过程中，
-    // 即使我们已经通过 JS 把 --app-height / --vv-offset-top 都算对、写进了
-    // CSS 变量，WebKit 有时也不会立刻把这次变化"刷"到屏幕上——它对 fixed
-    // 元素的合成图层更新是跟"滚动"这个动作绑在一起的，非要等到一次真实的
-    // 滚动手势，才会触发重新合成，界面才会跳到正确位置。这正是"手指往下拨
-    // 一下输入框下面的灰色带，输入框就正常了"的原因：那一下拖动帮你手动
-    // 触发了这次刷新。这里改成程序自己模拟一次极小幅度的滚动（在真正可以
-    // 滚动的聊天记录区域里滚 1px 再滚回来），替用户完成这个动作，不用再靠
-    // 手动拨一下才能生效。
+    // 🛡️ 修复了由于过早 return 导致界面没被强制刷新的 BUG
     const nudgeRepaint = () => {
+        // 1. 强制给整个 window 发送极轻微的无感滚动指令。
+        // 这对触发 iOS Safari 重绘 fixed 层非常有效，不受内部 div 元素是否溢出的限制。
+        window.scrollBy(0, 1)
+        window.scrollBy(0, -1)
+        
+        // 2. 原本的 .message-box 滚动逻辑。
+        // 重点：去掉了 scrollHeight <= clientHeight 的 return 拦截！
+        // 就算内容不够多，强行改变一下 scrollTop 也能刺激 WebKit 更新。
         const scrollEl = document.querySelector('.message-box')
-        if (!scrollEl || scrollEl.scrollHeight <= scrollEl.clientHeight) return
-        const original = scrollEl.scrollTop
-        scrollEl.scrollTop = original + 1
-        requestAnimationFrame(() => { scrollEl.scrollTop = original })
+        if (scrollEl) {
+            const original = scrollEl.scrollTop
+            scrollEl.scrollTop = original + 1
+            requestAnimationFrame(() => { scrollEl.scrollTop = original })
+        }
+        
+        // 3. 兜底策略：给 body 施加无感重排
+        document.body.style.paddingTop = '0.1px'
+        document.body.offsetHeight // 触发 reflow
+        document.body.style.paddingTop = ''
     }
 
     let lastHeight = null
