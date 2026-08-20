@@ -8,7 +8,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: var(--app-height, 100dvh); display: flex; flex-direction: column; color: #333; overflow: hidden; transition: height 0.08s ease-out; }
+        /* 🛡️ 修复：iOS Safari 聚焦输入框时，系统会自己把"可视视口"往下滚一截去
+           帮你露出光标，这个滚动完全绕过 body 的 overflow:hidden（它滚动的是
+           visualViewport，不是文档流），表现就是整个页面被顶上去，最上面一截
+           （常常正好是输入框所在的区域）被推到刘海/状态栏底下、彻底看不见。
+           解法：把 body 钉成 position:fixed（不再是一个"可以被系统滚动的文档"），
+           再配合下面 JS 用 visualViewport.offsetTop 把它精确地反向平移回来，
+           让它始终和当前真正可见的那一块区域对齐，不再被系统的自动滚动带偏。 */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; position: fixed; top: 0; left: 0; right: 0; height: var(--app-height, 100dvh); transform: translateY(var(--vv-offset-top, 0px)); display: flex; flex-direction: column; color: #333; overflow: hidden; overscroll-behavior: none; transition: height 0.08s ease-out, transform 0.08s ease-out; }
         /* 🛡️ 修复：#app 本身没有设置过高度（block 元素，height 默认 auto），
            下面 .admin-container 用的是 height:100%，而百分比高度必须要祖先节点有
            "确定的高度" 才能生效——之前缺了这一条规则，导致 .admin-container 的
@@ -386,6 +393,11 @@ const ALLOWED_ADMIN_EMAILS = ['ming@woabc.com', 'another_admin@example.com']
         const vv = window.visualViewport
         const h = vv ? vv.height : window.innerHeight
         root.style.setProperty('--app-height', h + 'px')
+        // 🌟 同步记录 visualViewport 相对布局视口的偏移量，配合上面 body 的
+        // transform:translateY(var(--vv-offset-top)) 一起，抵消 iOS Safari
+        // 聚焦输入框时自己触发的那次"自动滚动可视视口"，见 CSS 里 body 规则上方注释
+        const offsetTop = vv ? vv.offsetTop : 0
+        root.style.setProperty('--vv-offset-top', offsetTop + 'px')
     }
     applyHeight()
     if (window.visualViewport) {
