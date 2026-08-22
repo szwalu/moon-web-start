@@ -532,16 +532,30 @@
     function fallbackCopy(text, element) {
       var textArea = document.createElement("textarea");
       textArea.value = text;
+      
+      // 避免页面滚动，并彻底隐藏
       textArea.style.position = "fixed";
+      textArea.style.top = "0";
+      textArea.style.left = "0";
       textArea.style.opacity = "0";
+      
+      // 关键修复：添加只读属性，防止手机弹起虚拟键盘打断复制过程
+      textArea.setAttribute('readonly', 'readonly');
+      
       document.body.appendChild(textArea);
+      
+      // 增强选中兼容性
       textArea.focus();
       textArea.select();
+      textArea.setSelectionRange(0, 99999); 
+      
       try {
         document.execCommand('copy');
         showCopySuccess(element, text);
       } catch (err) {
         console.error('复制失败', err);
+        // 如果依然失败，给用户一个明确的弹窗提示
+        alert("自动复制失败，请手动记录密码：" + text);
       }
       document.body.removeChild(textArea);
     }
