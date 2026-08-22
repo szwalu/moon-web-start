@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script>
+    // 检测是否为 /jmsp 路径且缺少 index.html
+    var pathname = window.location.pathname;
+    if (pathname === '/jmsp' || pathname === '/jmsp/') {
+      window.location.replace('/jmsp/index.html');
+    }
+  </script>
+</head>
+<body></body>
+</html>
