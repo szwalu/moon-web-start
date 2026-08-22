@@ -418,10 +418,8 @@
   </div>
 
   <script>
-    // 当前页面的构建标识
     var CURRENT_PAGE_BUILD = '20260818_2';
 
-    // 默认兜底配置
     var appConfig = {
       version: 'v1.3.8(2)',
       androidGiteeUrl: 'https://gitee.com/jmsp8/jmsp/releases/download/v1.3.8(2)/app-release.apk',
@@ -430,7 +428,6 @@
       iosAppStoreUrl: 'https://apps.apple.com/cn/app/id6762100023'
     };
 
-    // 动态拉取配置，并校验页面是否过期
     function fetchLatestConfig() {
       fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
         .then(function(res) {
@@ -439,7 +436,6 @@
         })
         .then(function(data) {
           if (data) {
-            // 如果发现服务器有新页面版本，且当前运行的是旧 HTML，立即破除缓存重载页面
             if (data.buildTime && data.buildTime !== CURRENT_PAGE_BUILD) {
               var cleanUrl = window.location.origin + window.location.pathname + '?refresh=' + Date.now();
               window.location.replace(cleanUrl);
@@ -516,7 +512,7 @@
 
     function copyPassword(event, element) {
       event.stopPropagation();
-      var text = appConfig.lanzouPwd;
+      var text = String(appConfig.lanzouPwd);
       
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text).then(() => {
@@ -533,45 +529,46 @@
       var textArea = document.createElement("textarea");
       textArea.value = text;
       
-      // 避免页面滚动，并彻底隐藏
-      textArea.style.position = "fixed";
-      textArea.style.top = "0";
-      textArea.style.left = "0";
-      textArea.style.opacity = "0";
-      
-      // 关键修复：添加只读属性，防止手机弹起虚拟键盘打断复制过程
-      textArea.setAttribute('readonly', 'readonly');
+      // 移出可视区域，同时加上 readonly
+      textArea.style.position = "absolute";
+      textArea.style.left = "-99999px";
+      textArea.style.top = "-99999px";
+      textArea.setAttribute("readonly", "readonly");
       
       document.body.appendChild(textArea);
       
-      // 增强选中兼容性
       textArea.focus();
       textArea.select();
-      textArea.setSelectionRange(0, 99999); 
+      textArea.setSelectionRange(0, 99999);
       
+      var successful = false;
       try {
-        document.execCommand('copy');
-        showCopySuccess(element, text);
+        // execCommand 返回 true 代表成功，false 代表被拦截
+        successful = document.execCommand('copy');
       } catch (err) {
-        console.error('复制失败', err);
-        // 如果依然失败，给用户一个明确的弹窗提示
-        alert("自动复制失败，请手动记录密码：" + text);
+        successful = false;
       }
+      
       document.body.removeChild(textArea);
+      
+      if (successful) {
+        showCopySuccess(element, text);
+      } else {
+        // 关键修复：不再假装成功，明确提示用户并显示密码
+        alert("浏览器安全限制导致自动复制失败，请手动记录密码：\n\n" + text);
+      }
     }
 
     function showCopySuccess(element, originalText) {
       var textSpan = element.querySelector('#lanzou-pwd');
       var icon = element.querySelector('#copy-icon');
       
-      // 切换为已复制状态，暂时隐藏图标
       if (textSpan) textSpan.innerText = '已复制';
       if (icon) icon.style.display = 'none';
       
       element.style.color = '#10b981';
       element.style.background = 'rgba(16, 185, 129, 0.1)';
       
-      // 1.5秒后恢复原状
       setTimeout(() => {
         if (textSpan) textSpan.innerText = originalText;
         if (icon) icon.style.display = 'block';
