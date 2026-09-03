@@ -5,30 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>正在连接 OneDrive...</title>
   <style>
+    /* ✨ 修复安卓白屏：不再用 height:100vh + flex 居中这种依赖视口尺寸提前算好的布局——
+       部分安卓 WebView/Custom Tab 在页面刚打开、视口还没稳定时用 100vh 计算布局，
+       算出来的高度可能是 0 或者不对，会导致里面本该显示的内容跟着"隐形"。改成最朴素的
+       从上到下的块级布局 + 顶部留白，不管视口尺寸有没有及时就绪，内容都能正常撑开显示。 */
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       margin: 0;
       background: #f5f5f7;
       color: #333;
       text-align: center;
-      padding: 24px;
+      padding: 60px 24px 24px 24px;
       box-sizing: border-box;
     }
     #fallback {
-      /* ✨ 修复安卓白屏卡住：默认隐藏，脚本里延迟一小段时间后才展示，
-         给自动跳转（iOS 上几乎瞬间就会离开这个页面）留出窗口，避免这个
-         按钮在正常场景下也一闪而过地被用户看到 */
-      display: none;
-      margin-top: 22px;
-      flex-direction: column;
-      align-items: center;
+      margin-top: 26px;
     }
-    #fallback.show { display: flex; }
     #fallback p {
       margin: 0 0 14px 0;
       font-size: 13px;
@@ -45,23 +37,29 @@
       border-radius: 10px;
     }
     #fallback a:active { opacity: 0.85; }
+    #diag {
+      margin-top: 40px;
+      font-size: 11px;
+      color: #bbb;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <p id="msg">正在跳转回 App，请稍候...</p>
 
-  <!-- ✨ 修复安卓白屏卡住：安卓 Chrome / Custom Tabs 对"页面脚本自动发起的
-       自定义协议跳转"（没有紧跟在一次真实点击后面）经常会直接静默拦截，
-       既不跳转、也不报错，导致停留在这个页面上白屏卡住——iOS 的 Safari /
-       SFSafariViewController 则没有这个限制，脚本自动跳转能正常生效，
-       这就是为什么现象只在安卓上出现。这里保留原有的脚本自动跳转（对 iOS
-       和部分安卓机型仍然是最快的路径），同时新增一个真实的 <a> 标签兜底——
-       一次真实的点击本身就是浏览器认可的"用户主动发起"，安卓上基本总能
-       成功唤起 App，用来兜底脚本跳转被拦截的情况。 -->
+  <!-- ✨ 修复安卓白屏卡住：这个兜底按钮改成从页面一打开就直接可见（不再等一个延迟计时器
+       才显示），因为之前那版"先隐藏、延迟 600ms 再显示"的写法有个隐患——如果这台设备上
+       连显示这个按钮的那段 JS 都没跑起来（不管是什么原因），按钮就永远出不来，用户看到的
+       还是一片空白。现在按钮本身是普通静态 HTML 的一部分，天然就会显示，不依赖任何脚本
+       执行结果；脚本只负责把它的 href 换成真正带授权码的深链接。 -->
   <div id="fallback">
     <p>没有自动跳转？点击下方按钮返回 App</p>
     <a id="fallback-link" href="#">返回 App 完成授权</a>
   </div>
+
+  <p id="diag"></p>
 
   <script>
     // 跟 google_callback.html / baidu_callback.html 是同一套模式：从这个页面自己的
@@ -73,22 +71,37 @@
     var error = params.get('error');
     var errorDescription = params.get('error_description');
 
+    // ✨ 诊断信息：不管跳没跳成功，先老老实实把收到了什么写在页面最下面（浅灰小字，
+    // 不影响正常使用观感）。如果这台设备后面又卡住了，截图把这行发过来就知道到底是
+    // "根本没收到 code"，还是"code 收到了但是没跳成功"，不用再靠肉眼猜。
+    (function renderDiag() {
+      var el = document.getElementById('diag');
+      if (code) {
+        el.textContent = '诊断信息：已收到授权码（长度 ' + code.length + '），准备跳转回 App';
+      } else if (error) {
+        el.textContent = '诊断信息：微软返回了错误 ' + error + (errorDescription ? '（' + errorDescription + '）' : '');
+      } else {
+        el.textContent = '诊断信息：没有收到授权码，也没有错误信息，query 参数为空';
+      }
+    })();
+
     if (code) {
       var deepLink = 'trifles://auth?platform=onedrive&code=' + encodeURIComponent(code);
-
-      // 1. 脚本自动跳转：iOS 上几乎总能立刻生效，这个页面根本不会被用户看到；
-      //    部分安卓机型/浏览器也认，能跳就跳，跳不了不会报错、只是静默无效果。
-      window.location.href = deepLink;
-
-      // 2. 兜底按钮：把同一个深链接绑到一个真实的 <a> 标签上，延迟 600ms 后
-      //    才显示——这样自动跳转成功的场景里（iOS、以及部分安卓）用户几乎不会
-      //    看到这个按钮一闪而过；如果 600ms 后页面还停在这里，说明自动跳转
-      //    大概率被拦截了，这时候按钮出现，用户点一下（真实点击手势）基本总能
-      //    唤起 App，不会再卡在白屏上。
       document.getElementById('fallback-link').href = deepLink;
-      setTimeout(function () {
-        document.getElementById('fallback').className = 'show';
-      }, 600);
+
+      // ✨ 修复安卓白屏卡住的核心改动：不再让脚本一执行到就立刻同步调用
+      // window.location.href 发起自定义协议跳转。之前那种写法是在浏览器还没来得及
+      // 把上面这些静态内容画到屏幕上之前，就抢先去发起一次可能会被系统拦下来卡住的
+      // 跳转尝试——iOS 上这一步很轻快不影响什么，但部分安卓机型上，系统处理这次跳转
+      // 尝试的过程本身会把页面渲染卡住，导致用户看到的是彻底空白、连这段静态文字和
+      // 按钮都没画出来。这里改成用 requestAnimationFrame 让浏览器先完成一帧真实绘制，
+      // 保证不管后面这次跳转顺不顺利，用户至少已经能看到页面内容和这个可以手动点的
+      // 按钮，不会再卡成一片空白。
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          window.location.href = deepLink;
+        });
+      });
     } else {
       document.getElementById('msg').textContent =
         '授权失败：' + (errorDescription || error || '未知错误') + '，请返回 App 重试。';
