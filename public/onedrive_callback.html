@@ -5,71 +5,110 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>正在连接 OneDrive...</title>
   <style>
+    /* ✨ 修复安卓白屏：不再用 height:100vh + flex 居中这种依赖视口尺寸提前算好的布局——
+       部分安卓 WebView/Custom Tab 在页面刚打开、视口还没稳定时用 100vh 计算布局，
+       算出来的高度可能是 0 或者不对，会导致里面本该显示的内容跟着"隐形"。改成最朴素的
+       从上到下的块级布局 + 顶部留白，不管视口尺寸有没有及时就绪，内容都能正常撑开显示。 */
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       margin: 0;
       background: #f5f5f7;
       color: #333;
       text-align: center;
-      padding: 24px;
+      padding: 60px 24px 24px 24px;
       box-sizing: border-box;
     }
-    /* 增加手动跳转按钮的样式 */
-    .fallback-btn {
+    #fallback {
+      margin-top: 26px;
+    }
+    #fallback p {
+      margin: 0 0 14px 0;
+      font-size: 13px;
+      color: #888;
+    }
+    #fallback a {
       display: inline-block;
-      margin-top: 16px;
-      padding: 10px 24px;
-      background-color: #007aff;
+      background: #0078D4;
       color: #fff;
       text-decoration: none;
-      border-radius: 8px;
+      font-size: 15px;
       font-weight: 500;
-      font-size: 16px;
-      box-shadow: 0 2px 4px rgba(0, 122, 255, 0.3);
+      padding: 12px 28px;
+      border-radius: 10px;
+    }
+    #fallback a:active { opacity: 0.85; }
+    #diag {
+      margin-top: 40px;
+      font-size: 11px;
+      color: #bbb;
+      word-break: break-all;
+      white-space: pre-wrap;
     }
   </style>
 </head>
 <body>
-  <div id="container">
-    <p id="msg">正在跳转回 App，请稍候...</p>
+  <p id="msg">正在跳转回 App，请稍候...</p>
+
+  <!-- ✨ 修复安卓白屏卡住：这个兜底按钮改成从页面一打开就直接可见（不再等一个延迟计时器
+       才显示），因为之前那版"先隐藏、延迟 600ms 再显示"的写法有个隐患——如果这台设备上
+       连显示这个按钮的那段 JS 都没跑起来（不管是什么原因），按钮就永远出不来，用户看到的
+       还是一片空白。现在按钮本身是普通静态 HTML 的一部分，天然就会显示，不依赖任何脚本
+       执行结果；脚本只负责把它的 href 换成真正带授权码的深链接。 -->
+  <div id="fallback">
+    <p>没有自动跳转？点击下方按钮返回 App</p>
+    <a id="fallback-link" href="#">返回 App 完成授权</a>
   </div>
-  
+
+  <p id="diag"></p>
+
   <script>
     // 跟 google_callback.html / baidu_callback.html 是同一套模式：从这个页面自己的
     // URL 查询参数里取出 code，转发成 App 里 appUrlOpen 监听器能接住的
     // trifles://auth?... 深链接。platform=onedrive 这个参数是 App 侧用来区分
     // 三个网盘回调、决定 dispatch 哪个 xxx_code_received 事件的关键。
-    var params = new URLSearchParams(window.location.search);
-    var code = params.get('code');
-    var error = params.get('error');
-    var errorDescription = params.get('error_description');
+    //
+    // ✨ 新增兜底：正常情况下微软会把 code 放在 ? 后面（query），但如果 Azure 那边
+    // 这个 redirect URI 当初注册成了"单页应用(SPA)"平台，微软会强制改成放在 # 后面
+    // （fragment），location.search 读不到。这里额外兜底从 location.hash 里也读一次，
+    // 双重保险，不管走哪种都能读到。
+    var searchParams = new URLSearchParams(window.location.search);
+    var hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+    var source = searchParams.get('code') ? 'query' : (hashParams.get('code') ? 'hash' : null);
+    var code = searchParams.get('code') || hashParams.get('code');
+    var error = searchParams.get('error') || hashParams.get('error');
+    var errorDescription = searchParams.get('error_description') || hashParams.get('error_description');
+
+    // ✨ 诊断信息：不管跳没跳成功，先老老实实把收到了什么写在页面最下面（浅灰小字，
+    // 不影响正常使用观感）。如果这台设备后面又卡住了，截图把这行发过来就知道到底是
+    // "根本没收到 code"，还是"code 收到了但是没跳成功"，不用再靠肉眼猜。
+    (function renderDiag() {
+      var el = document.getElementById('diag');
+      if (code) {
+        el.textContent = '诊断信息：已收到授权码（长度 ' + code.length + '，来自 ' + source + '），准备跳转回 App';
+      } else if (error) {
+        el.textContent = '诊断信息：微软返回了错误 ' + error + (errorDescription ? '（' + errorDescription + '）' : '');
+      } else {
+        el.textContent = '诊断信息：没有收到授权码，也没有错误信息，query 和 hash 都为空';
+      }
+    })();
 
     if (code) {
       var deepLink = 'trifles://auth?platform=onedrive&code=' + encodeURIComponent(code);
-      
-      // 1. 尝试自动跳转
-      window.location.href = deepLink;
+      document.getElementById('fallback-link').href = deepLink;
 
-      // 2. 增加安卓兜底方案：如果因为安卓系统安全策略/WebView拦截导致页面 1.5 秒后仍未关闭，显示手动跳转按钮
-      setTimeout(function() {
-        var msgEl = document.getElementById('msg');
-        // 只有当提示信息还是默认内容时，才做更新（防止覆盖错误信息）
-        if (msgEl.textContent.indexOf('正在跳转') !== -1) {
-          msgEl.innerHTML = '如果未能自动跳转，请手动点击下方按钮：';
-          
-          // 创建并插入按钮
-          var btn = document.createElement('a');
-          btn.href = deepLink;
-          btn.className = 'fallback-btn';
-          btn.textContent = '返回 App';
-          document.getElementById('container').appendChild(btn);
-        }
-      }, 1500);
-
+      // ✨ 修复安卓白屏卡住的核心改动：不再让脚本一执行到就立刻同步调用
+      // window.location.href 发起自定义协议跳转。之前那种写法是在浏览器还没来得及
+      // 把上面这些静态内容画到屏幕上之前，就抢先去发起一次可能会被系统拦下来卡住的
+      // 跳转尝试——iOS 上这一步很轻快不影响什么，但部分安卓机型上，系统处理这次跳转
+      // 尝试的过程本身会把页面渲染卡住，导致用户看到的是彻底空白、连这段静态文字和
+      // 按钮都没画出来。这里改成用 requestAnimationFrame 让浏览器先完成一帧真实绘制，
+      // 保证不管后面这次跳转顺不顺利，用户至少已经能看到页面内容和这个可以手动点的
+      // 按钮，不会再卡成一片空白。
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          window.location.href = deepLink;
+        });
+      });
     } else {
       document.getElementById('msg').textContent =
         '授权失败：' + (errorDescription || error || '未知错误') + '，请返回 App 重试。';
